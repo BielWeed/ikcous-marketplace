@@ -1,0 +1,49 @@
+[
+  {
+    "proname": "create_marketplace_order_v10",
+    "proargnames": [
+      "p_items",
+      "p_address_id",
+      "p_payment_method",
+      "p_customer_name",
+      "p_customer_phone",
+      "p_notes",
+      "p_coupon_code"
+    ]
+  },
+  {
+    "proname": "create_marketplace_order_v12",
+    "proargnames": [
+      "p_items",
+      "p_payment_method",
+      "p_address_id",
+      "p_coupon_code",
+      "p_customer_name",
+      "p_customer_phone",
+      "p_notes",
+      "p_user_id"
+    ]
+  },
+  {
+    "proname": "is_admin",
+    "proargnames": null
+  },
+  {
+    "proname": "validate_coupon_secure",
+    "proargnames": [
+      "p_code",
+      "p_subtotal",
+      "is_valid",
+      "discount_amount",
+      "discount_type",
+      "error_message"
+    ]
+  },
+  {
+    "proname": "validate_coupon_secure_v2",
+    "proargnames": [
+      "p_code",
+      "p_subtotal"
+    ]
+  }
+]

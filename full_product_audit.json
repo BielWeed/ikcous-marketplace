@@ -1,0 +1,128 @@
+[
+  {
+    "id": "4b2f3ef9-0eb4-49ff-af5f-4d0a08551891",
+    "nome": "maleta canetas 120",
+    "custo": "62.08",
+    "estoque": 998,
+    "investimento": "61955.84"
+  },
+  {
+    "id": "af47d6b2-b903-49f5-aa2c-fc7a60a206bf",
+    "nome": "Escova De Limpeza Elétrica 9 Em 1 Multifuncional Giratória",
+    "custo": "44.90",
+    "estoque": 1000,
+    "investimento": "44900.00"
+  },
+  {
+    "id": "d6d7d5b8-d590-4a9d-b258-f4129e1756cc",
+    "nome": " Bolhas de Sabão com Pistola Lançadora",
+    "custo": "38.94",
+    "estoque": 1000,
+    "investimento": "38940.00"
+  },
+  {
+    "id": "b3f584cc-14cd-490d-8c9a-c11d9895b5a7",
+    "nome": "Ventilador de teto com controle remoto",
+    "custo": "34.32",
+    "estoque": 998,
+    "investimento": "34251.36"
+  },
+  {
+    "id": "c2277cd9-8dc7-41d0-a04b-a76ced8f3ee4",
+    "nome": "caneta 3d",
+    "custo": "28.55",
+    "estoque": 998,
+    "investimento": "28492.90"
+  },
+  {
+    "id": "1181da15-5e04-40aa-8843-8b296634d732",
+    "nome": "kit de adesivos 3d de microcenas",
+    "custo": "22.73",
+    "estoque": 1000,
+    "investimento": "22730.00"
+  },
+  {
+    "id": "aeb02119-c3bc-4b2b-ba03-45d6b751bb4d",
+    "nome": "Organizador Sapateira Multiuso",
+    "custo": "21.52",
+    "estoque": 1000,
+    "investimento": "21520.00"
+  },
+  {
+    "id": "f7a9a77b-7745-421b-baf4-489fb627682f",
+    "nome": "Tesoura de Sobrancelha com Pente",
+    "custo": "18.33",
+    "estoque": 1000,
+    "investimento": "18330.00"
+  },
+  {
+    "id": "9f614022-8b44-4eac-94d8-6d280f96cb27",
+    "nome": "caderno adesivo 3d, 20 cenarios",
+    "custo": "16.94",
+    "estoque": 1000,
+    "investimento": "16940.00"
+  },
+  {
+    "id": "d0f818ff-fa24-41b9-bd84-5f99ac26bee9",
+    "nome": "Escova Elétrica De Limpeza - 7 em 1",
+    "custo": "15.90",
+    "estoque": 1000,
+    "investimento": "15900.00"
+  },
+  {
+    "id": "57f5be49-bd0a-419b-8a6d-e433b45b5dd4",
+    "nome": "livro de colorir stitch",
+    "custo": "15.50",
+    "estoque": 1000,
+    "investimento": "15500.00"
+  },
+  {
+    "id": "f8be11b0-9a71-4fbc-891f-c9a77ddbc12d",
+    "nome": "livro de colorir capivara",
+    "custo": "14.29",
+    "estoque": 1000,
+    "investimento": "14290.00"
+  },
+  {
+    "id": "e58ec747-d92a-4b25-9ed6-fa61b00e1d5f",
+    "nome": "Umidificador Difusor de Óleo Essencial",
+    "custo": "12.36",
+    "estoque": 998,
+    "investimento": "12335.28"
+  },
+  {
+    "id": "3d145e39-3063-45d0-ab50-0a68465d73b6",
+    "nome": "copo De Alce Água Portátil 600ml Infantil ",
+    "custo": "11.28",
+    "estoque": 1000,
+    "investimento": "11280.00"
+  },
+  {
+    "id": "8bd0188d-74d2-4f51-bd42-c20b8265b339",
+    "nome": "Mini barbeador shaver",
+    "custo": "10.68",
+    "estoque": 1000,
+    "investimento": "10680.00"
+  },
+  {
+    "id": "554f9398-d0a6-4059-9a02-c1fc42dbe1da",
+    "nome": "Tirar Bolinha Roupa Papa Bolinhas EléTrico",
+    "custo": "8.24",
+    "estoque": 1000,
+    "investimento": "8240.00"
+  },
+  {
+    "id": "c7b692e4-1e18-4d51-97ba-889a6266d58e",
+    "nome": "Louças Escova De Limpeza Recipiente Para Detergente",
+    "custo": "6.92",
+    "estoque": 1000,
+    "investimento": "6920.00"
+  },
+  {
+    "id": "47ed8e5c-9c02-4fd9-b0cd-d3a3ac137ca9",
+    "nome": "Bobbie Goods",
+    "custo": "0.01",
+    "estoque": 1000,
+    "investimento": "10.00"
+  }
+]

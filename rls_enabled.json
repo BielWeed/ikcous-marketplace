@@ -1,0 +1,142 @@
+[
+  {
+    "relname": "_ninja_migrations",
+    "relrowsecurity": false
+  },
+  {
+    "relname": "alertas",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "analytics_events",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "answers",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "banners",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "cart_items",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "categorias",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "companies",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "configuracoes",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "coupons",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "favorites",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "fluxo_caixa",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "fornecedores",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "historico_precos",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "kanban_cards",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "marketplace_ai_state",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "marketplace_order_history",
+    "relrowsecurity": false
+  },
+  {
+    "relname": "marketplace_order_items",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "marketplace_orders",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "metas",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "notificacoes",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "pedido_itens",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "pedidos",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "product_variants",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "produtos",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "profiles",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "push_notifications_log",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "push_subscriptions",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "questions",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "retiradas",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "reviews",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "store_config",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "user_addresses",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "vendas",
+    "relrowsecurity": true
+  },
+  {
+    "relname": "vor_receipts",
+    "relrowsecurity": true
+  }
+]

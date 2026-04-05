@@ -1,0 +1,20 @@
+{
+    "css.validate": false,
+    "css.lint.unknownAtRules": "ignore",
+    "scss.validate": false,
+    "scss.lint.unknownAtRules": "ignore",
+    "less.validate": false,
+    "less.lint.unknownAtRules": "ignore",
+    "postcss.validate": false,
+    "postcss.lint.unknownAtRules": "ignore",
+    "files.associations": {
+        "*.css": "tailwindcss"
+    },
+    "editor.quickSuggestions": {
+        "strings": true
+    },
+    "tailwindCSS.includeLanguages": {
+        "plaintext": "ts",
+        "typescript": "javascript"
+    }
+}

@@ -1,0 +1,49 @@
+# Dependencies
+node_modules
+npm-debug.log*
+
+# Build output (we rebuild in Docker)
+dist
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment files (use Cloud Run env vars instead)
+.env
+.env.local
+.env.development
+.env.test
+
+# Logs
+*.log
+build_error*.txt
+lint*.txt
+tsc*.txt
+vite*.txt
+
+# Tests
+coverage
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+
+# Documentation
+README.md
+docs
+
+# Lighthouse reports
+lighthouse*.json
+lighthouse*.html
+
+# Other
+.vercel
+.DS_Store
+Thumbs.db

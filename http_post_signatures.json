@@ -1,0 +1,8 @@
+[
+  {
+    "schema_name": "net",
+    "function_name": "http_post",
+    "arguments": "url text, body jsonb DEFAULT '{}'::jsonb, params jsonb DEFAULT '{}'::jsonb, headers jsonb DEFAULT '{\"Content-Type\": \"application/json\"}'::jsonb, timeout_milliseconds integer DEFAULT 5000",
+    "return_type": "bigint"
+  }
+]

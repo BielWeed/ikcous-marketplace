@@ -1,0 +1,185 @@
+{
+  "allProducts": [
+    {
+      "ID": "47ed8e5c-9c02-4fd9-b0cd-d3a3ac137ca9",
+      "Nome": "Bobbie Goods",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 12.9,
+      "Custo": 0.01
+    },
+    {
+      "ID": "4b2f3ef9-0eb4-49ff-af5f-4d0a08551891",
+      "Nome": "maleta canetas 120",
+      "EstoqueBase": 998,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 998,
+      "Preco": 89.9,
+      "Custo": 62.08
+    },
+    {
+      "ID": "554f9398-d0a6-4059-9a02-c1fc42dbe1da",
+      "Nome": "Tirar Bolinha Roupa Papa Bolinhas EléTrico",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 19.9,
+      "Custo": 8.24
+    },
+    {
+      "ID": "1181da15-5e04-40aa-8843-8b296634d732",
+      "Nome": "kit de adesivos 3d de microcenas",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 38.9,
+      "Custo": 22.73
+    },
+    {
+      "ID": "d6d7d5b8-d590-4a9d-b258-f4129e1756cc",
+      "Nome": " Bolhas de Sabão com Pistola Lançadora",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 68.9,
+      "Custo": 38.94
+    },
+    {
+      "ID": "f8be11b0-9a71-4fbc-891f-c9a77ddbc12d",
+      "Nome": "livro de colorir capivara",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 29.9,
+      "Custo": 14.29
+    },
+    {
+      "ID": "b3f584cc-14cd-490d-8c9a-c11d9895b5a7",
+      "Nome": "Ventilador de teto com controle remoto",
+      "EstoqueBase": 998,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 998,
+      "Preco": 69.9,
+      "Custo": 34.32
+    },
+    {
+      "ID": "af47d6b2-b903-49f5-aa2c-fc7a60a206bf",
+      "Nome": "Escova De Limpeza Elétrica 9 Em 1 Multifuncional Giratória",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 76.9,
+      "Custo": 44.9
+    },
+    {
+      "ID": "9f614022-8b44-4eac-94d8-6d280f96cb27",
+      "Nome": "caderno adesivo 3d, 20 cenarios",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 34.9,
+      "Custo": 16.94
+    },
+    {
+      "ID": "c7b692e4-1e18-4d51-97ba-889a6266d58e",
+      "Nome": "Louças Escova De Limpeza Recipiente Para Detergente",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 14.9,
+      "Custo": 6.92
+    },
+    {
+      "ID": "3d145e39-3063-45d0-ab50-0a68465d73b6",
+      "Nome": "copo De Alce Água Portátil 600ml Infantil ",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 21.9,
+      "Custo": 11.28
+    },
+    {
+      "ID": "aeb02119-c3bc-4b2b-ba03-45d6b751bb4d",
+      "Nome": "Organizador Sapateira Multiuso",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 39.9,
+      "Custo": 21.52
+    },
+    {
+      "ID": "8bd0188d-74d2-4f51-bd42-c20b8265b339",
+      "Nome": "Mini barbeador shaver",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 21.9,
+      "Custo": 10.68
+    },
+    {
+      "ID": "f7a9a77b-7745-421b-baf4-489fb627682f",
+      "Nome": "Tesoura de Sobrancelha com Pente",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 24.9,
+      "Custo": 18.33
+    },
+    {
+      "ID": "d0f818ff-fa24-41b9-bd84-5f99ac26bee9",
+      "Nome": "Escova Elétrica De Limpeza - 7 em 1",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 34.9,
+      "Custo": 15.9
+    },
+    {
+      "ID": "e58ec747-d92a-4b25-9ed6-fa61b00e1d5f",
+      "Nome": "Umidificador Difusor de Óleo Essencial",
+      "EstoqueBase": 998,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 998,
+      "Preco": 24.9,
+      "Custo": 12.36
+    },
+    {
+      "ID": "57f5be49-bd0a-419b-8a6d-e433b45b5dd4",
+      "Nome": "livro de colorir stitch",
+      "EstoqueBase": 1000,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 1000,
+      "Preco": 27.9,
+      "Custo": 15.5
+    },
+    {
+      "ID": "c2277cd9-8dc7-41d0-a04b-a76ced8f3ee4",
+      "Nome": "caneta 3d",
+      "EstoqueBase": 998,
+      "TotalVariantes": 0,
+      "SomaStockVariantes": 0,
+      "StockTotalReal": 998,
+      "Preco": 59.9,
+      "Custo": 28.55
+    }
+  ],
+  "withVariants": []
+}

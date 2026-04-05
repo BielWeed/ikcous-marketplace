@@ -1,0 +1,32 @@
+[
+  {
+    "trigger_name": "on_address_default_update",
+    "event_object_table": "user_addresses",
+    "action_statement": "EXECUTE FUNCTION handle_default_address()"
+  },
+  {
+    "trigger_name": "on_address_default_update",
+    "event_object_table": "user_addresses",
+    "action_statement": "EXECUTE FUNCTION handle_default_address()"
+  },
+  {
+    "trigger_name": "set_updated_at",
+    "event_object_table": "cart_items",
+    "action_statement": "EXECUTE FUNCTION handle_updated_at()"
+  },
+  {
+    "trigger_name": "tr_ensure_role_protection",
+    "event_object_table": "profiles",
+    "action_statement": "EXECUTE FUNCTION ensure_role_protection()"
+  },
+  {
+    "trigger_name": "on_order_item_created",
+    "event_object_table": "marketplace_order_items",
+    "action_statement": "EXECUTE FUNCTION handle_order_item_stock()"
+  },
+  {
+    "trigger_name": "tr_prevent_role_change",
+    "event_object_table": "profiles",
+    "action_statement": "EXECUTE FUNCTION prevent_role_change()"
+  }
+]

@@ -1,0 +1,16 @@
+[
+  {
+    "policyname": "marketplace_orders_select_policy",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "policyname": "marketplace_orders_admin_all_policy",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  }
+]

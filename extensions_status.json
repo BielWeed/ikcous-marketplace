@@ -1,0 +1,10 @@
+[
+  {
+    "name": "http",
+    "installed_version": null
+  },
+  {
+    "name": "pg_net",
+    "installed_version": "0.19.5"
+  }
+]

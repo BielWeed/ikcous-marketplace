@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IKCOUS — Sem conexão</title>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #09090b;
+            --fg: #fafafa;
+            --muted: #71717a;
+            --accent: #e4e4e7;
+            --card: rgba(255, 255, 255, 0.04);
+            --border: rgba(255, 255, 255, 0.08);
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Animated gradient bg */
+        .bg-glow {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background: radial-gradient(ellipse 80% 60% at 20% 80%, rgba(63, 63, 70, 0.5) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 40% at 80% 20%, rgba(39, 39, 42, 0.6) 0%, transparent 60%);
+        }
+
+        /* Pulse rings */
+        .rings {
+            position: absolute;
+            width: 320px;
+            height: 320px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 0;
+        }
+
+        .ring {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            animation: ring-pulse 3s ease-out infinite;
+        }
+
+        .ring:nth-child(2) {
+            inset: -40px;
+            animation-delay: 0.5s;
+        }
+
+        .ring:nth-child(3) {
+            inset: -80px;
+            animation-delay: 1s;
+        }
+
+        .ring:nth-child(4) {
+            inset: -120px;
+            animation-delay: 1.5s;
+        }
+
+        @keyframes ring-pulse {
+
+            0%,
+            100% {
+                opacity: 0.5;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.15;
+                transform: scale(1.03);
+            }
+        }
+
+        /* Card */
+        .card {
+            position: relative;
+            z-index: 10;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 32px;
+            padding: 40px 32px;
+            max-width: 340px;
+            width: 100%;
+            text-align: center;
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            inset-x: 0;
+            top: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+        }
+
+        .logo-wrap {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 32px;
+        }
+
+        .logo-box {
+            width: 52px;
+            height: 52px;
+            background: var(--fg);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-box span {
+            font-size: 28px;
+            font-weight: 900;
+            font-style: italic;
+            color: var(--bg);
+            line-height: 1;
+        }
+
+        .logo-name {
+            font-size: 18px;
+            font-weight: 900;
+            letter-spacing: -0.04em;
+            color: var(--fg);
+        }
+
+        .logo-sub {
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.2em;
+            color: var(--muted);
+            text-transform: uppercase;
+        }
+
+        /* Signal icon */
+        .signal-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 20px;
+            position: relative;
+        }
+
+        .signal-icon svg {
+            width: 100%;
+            height: 100%;
+            stroke: var(--muted);
+            animation: float 2s ease-in-out infinite;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-4px);
+            }
+        }
+
+        h1 {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            margin-bottom: 8px;
+            color: var(--fg);
+        }
+
+        p {
+            font-size: 13px;
+            color: var(--muted);
+            line-height: 1.6;
+            margin-bottom: 28px;
+        }
+
+        /* Retry button */
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 14px;
+            background: var(--fg);
+            color: var(--bg);
+            border: none;
+            border-radius: 18px;
+            font-size: 14px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: transform 0.15s, opacity 0.15s;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+            opacity: 0.85;
+        }
+
+        /* Countdown */
+        #countdown {
+            margin-top: 16px;
+            font-size: 11px;
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        /* Bottom info */
+        .bottom-info {
+            margin-top: 24px;
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.2);
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bg-glow"></div>
+    <div class="rings">
+        <div class="ring"></div>
+        <div class="ring"></div>
+        <div class="ring"></div>
+        <div class="ring"></div>
+    </div>
+
+    <div class="card">
+        <div class="logo-wrap">
+            <div class="logo-box"><span>I</span></div>
+            <span class="logo-name">IKCOUS</span>
+            <span class="logo-sub">imports</span>
+        </div>
+
+        <div class="signal-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="1" y1="1" x2="23" y2="23" />
+                <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
+                <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
+                <path d="M10.71 5.05A16 16 0 0 1 22.56 9" />
+                <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
+                <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+                <line x1="12" y1="20" x2="12.01" y2="20" stroke-width="2.5" />
+            </svg>
+        </div>
+
+        <h1>Sem conexão</h1>
+        <p>Você está offline. Reconecte para continuar navegando no IKCOUS.</p>
+
+        <button class="btn" onclick="handleRetry()" id="retry-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 4v6h-6" />
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+            Tentar novamente
+        </button>
+        <div id="countdown"></div>
+
+        <div class="bottom-info">SUPERNOVA · v15.0</div>
+    </div>
+
+    <script>
+        // Auto-retry after 10s
+        let secs = 10;
+        const countEl = document.getElementById('countdown');
+        const retryBtn = document.getElementById('retry-btn');
+
+        function updateCountdown() {
+            countEl.textContent = `Tentativa automática em ${secs}s`;
+            if (secs <= 0) { window.location.reload(); return; }
+            secs--;
+            setTimeout(updateCountdown, 1000);
+        }
+        updateCountdown();
+
+        function handleRetry() {
+            retryBtn.textContent = 'Conectando...';
+            retryBtn.disabled = true;
+            secs = 0;
+            window.location.reload();
+        }
+
+        // If back online, reload automatically
+        window.addEventListener('online', () => {
+            countEl.textContent = 'Conectado! Recarregando...';
+            setTimeout(() => window.location.reload(), 500);
+        });
+    </script>
+</body>
+
+</html>

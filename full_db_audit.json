@@ -1,0 +1,438 @@
+{
+  "productCount": 18,
+  "activeProductCount": 18,
+  "productsSample": [
+    {
+      "id": "47ed8e5c-9c02-4fd9-b0cd-d3a3ac137ca9",
+      "nome": "Bobbie Goods",
+      "descricao": "### 👽 Livro de Colorir Stitch: Magia e Fofura em Cada Página!\n\nTraga a diversão e a fofura do alienígena mais amado do Havaí para o seu dia a dia! O Livro de Colorir \"Colorindo com Stitch\" é a escolha perfeita para quem quer soltar a imaginação e relaxar pintando cenários adoráveis. Com uma estética super aconchegante e tons pastéis, ele é ideal para derreter o estresse.\n\n---\n\n### ✨ Por que este livro é tão especial?\n\n* **📖 50 Páginas de Pura Criatividade:** Muito espaço para a sua imaginação fluir! São 50 páginas repletas de ilustrações lindas do Stitch em momentos divertidos e relaxantes.\n* **🌀 Encadernação em Espiral:** Super prático! O modelo espiral (wire-o) permite que o livro fique totalmente aberto e plano na mesa, garantindo muito mais conforto na hora de pintar e evitando que as páginas amassem.\n* **☕ Cenários \"Cozy\" e Aconchegantes:** Assim como a capa mostra, as artes trazem o Stitch em momentos fofos e tranquilos — perfeito para acompanhar aquele chazinho ou café da tarde enquanto você colore.\n* **🧘‍♀️ Hobby Relaxante:** Uma excelente forma de desconectar das telas, aliviar a ansiedade e praticar uma atividade terapêutica que agrada a todas as idades.\n\n> Dica Extra: Use marcadores de ponta dupla ou lápis de cor bem vibrantes para dar vida ao Experimento 626 e deixar as páginas ainda mais incríveis e prontas para compartilhar!\n\n---\n\n**Perfeito para:** Fãs do Stitch (crianças, jovens e adultos), amantes da estética fofa/cozy, e qualquer pessoa em busca de um passatempo relaxante e criativo.\n\n**Características do Produto:**\n* Tema: Stitch\n* Quantidade: 50 páginas\n* Acabamento: Encadernação em espiral prateada para facilitar o manuseio",
+      "categoria": "brinquedo",
+      "codigo": "017",
+      "custo": "0.01",
+      "preco_venda": "12.90",
+      "estoque": 1000,
+      "estoque_minimo": 1,
+      "fornecedor_id": null,
+      "ativo": true,
+      "tags": [
+        "boobie goods"
+      ],
+      "data_cadastro": "2026-02-06T23:54:46.189Z",
+      "ultima_atualizacao": "2026-02-18T12:17:14.098Z",
+      "imagem_url": "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770422084691.webp",
+      "meta_title": "",
+      "meta_description": "",
+      "imagem_urls": [
+        "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770422084691.webp"
+      ],
+      "preco_original": null,
+      "is_bestseller": false,
+      "frete_gratis": false,
+      "sold": 0
+    },
+    {
+      "id": "4b2f3ef9-0eb4-49ff-af5f-4d0a08551891",
+      "nome": "maleta canetas 120",
+      "descricao": "🎨 Maleta Premium 120 Cores: O Combo Perfeito para Seus Livros de Colorir!\n\nTransforme seus momentos de relaxamento em verdadeiras obras de arte! Se você é fã dos adoráveis livros de colorir estilo **Bobbie Goods** e ama passar o tempo dando vida a ilustrações fofas, esta maleta com 120 marcadores de ponta dupla é tudo o que você precisava.\n\n---\n\n### ✨ Por que esta maleta vai ser a sua nova queridinha?\n\n* **🌈 120 Tons Incríveis:** Diga adeus à falta de opções! De tons pastéis super delicados (perfeitos para pelúcias e cenários) a cores vibrantes e intensas, você terá a paleta exata para qualquer desenho.\n* **🖌️ Ponta Dupla Inteligente:** Versatilidade em dobro. Use a ponta grossa (chanfrada) para preencher grandes áreas rapidamente e sem deixar marcas, e a ponta fina para os detalhes menores e cantinhos difíceis.\n* **🎒 Maleta Organizadora:** Leve sua terapia em forma de cores para qualquer lugar. A maleta com alça mantém todos os seus 120 marcadores perfeitamente organizados e fáceis de visualizar.\n* **💧 Cobertura Uniforme e Lisa:** A tinta de alta qualidade desliza suavemente pelo papel, garantindo aquele acabamento lisinho, sem manchas e com aspecto profissional que a gente tanto ama ver nos vídeos da internet.\n\n> **Dica de Artista:** O preenchimento uniforme destes marcadores é o segredo para deixar os seus desenhos com aquela estética perfeita e satisfatória, digna de compartilhar no TikTok e no Instagram!\n\n---\n\n**Perfeito para:** Fãs de livros de colorir, amantes de papelaria, estudantes, ilustradores e qualquer pessoa que busque um hobby criativo para desconectar das telas e aliviar a ansiedade.\n\n**Contém na embalagem:**\n\n* 120x Marcadores de Ponta Dupla\n* 1x Maleta de Transporte em Tecido Resistente com Alça\n* 1x Base plástica interna para manter as canetas em pé\n",
+      "categoria": "brinquedo",
+      "codigo": "017",
+      "custo": "62.08",
+      "preco_venda": "89.90",
+      "estoque": 998,
+      "estoque_minimo": 1,
+      "fornecedor_id": null,
+      "ativo": true,
+      "tags": [
+        "boobie goods"
+      ],
+      "data_cadastro": "2026-02-06T23:57:39.882Z",
+      "ultima_atualizacao": "2026-02-07T08:05:41.534Z",
+      "imagem_url": "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770422259291.jpg",
+      "meta_title": "",
+      "meta_description": "",
+      "imagem_urls": [
+        "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770422259291.jpg"
+      ],
+      "preco_original": null,
+      "is_bestseller": false,
+      "frete_gratis": false,
+      "sold": 0
+    },
+    {
+      "id": "554f9398-d0a6-4059-9a02-c1fc42dbe1da",
+      "nome": "Tirar Bolinha Roupa Papa Bolinhas EléTrico",
+      "descricao": "O papa-bolinhas elétrico é um aparelho portátil e moderno projetado para remover fiapos, pelos e as indesejáveis bolinhas (pilling) de roupas e tecidos, restaurando a aparência original das peças.",
+      "categoria": "Utilidade",
+      "codigo": "003",
+      "custo": "8.24",
+      "preco_venda": "19.90",
+      "estoque": 1000,
+      "estoque_minimo": 5,
+      "fornecedor_id": null,
+      "ativo": true,
+      "tags": [
+        "roupa"
+      ],
+      "data_cadastro": "2026-02-06T22:31:21.810Z",
+      "ultima_atualizacao": "2026-02-06T22:31:21.810Z",
+      "imagem_url": "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770417081292.avif",
+      "meta_title": null,
+      "meta_description": null,
+      "imagem_urls": [
+        "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770417081292.avif"
+      ],
+      "preco_original": null,
+      "is_bestseller": false,
+      "frete_gratis": false,
+      "sold": 0
+    },
+    {
+      "id": "1181da15-5e04-40aa-8843-8b296634d732",
+      "nome": "kit de adesivos 3d de microcenas",
+      "descricao": "20 cenas ,60 paginas",
+      "categoria": "brinquedo",
+      "codigo": "004",
+      "custo": "22.73",
+      "preco_venda": "38.90",
+      "estoque": 1000,
+      "estoque_minimo": 1,
+      "fornecedor_id": null,
+      "ativo": true,
+      "tags": [
+        "adesivo 3d"
+      ],
+      "data_cadastro": "2026-02-06T22:50:20.629Z",
+      "ultima_atualizacao": "2026-02-06T22:50:20.629Z",
+      "imagem_url": "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770418219270.jpeg",
+      "meta_title": null,
+      "meta_description": null,
+      "imagem_urls": [
+        "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770418219270.jpeg"
+      ],
+      "preco_original": null,
+      "is_bestseller": false,
+      "frete_gratis": false,
+      "sold": 0
+    },
+    {
+      "id": "d6d7d5b8-d590-4a9d-b258-f4129e1756cc",
+      "nome": " Bolhas de Sabão com Pistola Lançadora",
+      "descricao": "### 🫧 Bolhas de Sabão com Pistola Lançadora: A Magia das Bolhas que Você Pode Tocar!\n\nEsqueça tudo o que você sabe sobre bolhas de sabão comuns! A Pistola Lançadora de Bolhas de Fumaça Elástica vai levar a diversão das crianças para um nível totalmente novo e mágico. Com ela, as bolhas não apenas voam, mas vêm recheadas de uma fumaça segura e divertida, criando um efeito visual incrível!\n\n---\n\n### ✨ Por que esse brinquedo é um sucesso absoluto?\n\n* **🧤 Luvas \"Mágicas\" Inclusas:** O grande diferencial! O kit acompanha um par de luvas especiais que permite que as crianças toquem, segurem e até façam as bolhas quicarem nas mãos sem estourar. \n* **💨 Bolhas com Efeito de Fumaça:** Graças ao atomizador interno, as bolhas saem branquinhas e cheias de fumaça elástica. Quando finalmente estouram, criam um efeitinho de névoa que a criançada ama!\n* **🔋 Bateria Recarregável:** Alívio para o bolso dos pais! Nada de gastar fortunas com pilhas. O brinquedo acompanha bateria e cabo USB para recarregar e brincar quantas vezes quiser.\n* **🎁 Kit Super Completo:** Ele já vem pronto para a diversão! Inclui a varinha lançadora, luvas, bateria recarregável, cabo USB, frasco com líquido especial para bolhas, copinho medidor e alça de suspensão.\n\n> Dica de Diversão: Perfeito para brincar ao ar livre, em parques, no quintal ou para ser a atração principal em festas de aniversário! \n\n---\n\n**Perfeito para:** Crianças (e adultos que amam brincar!), presentear em aniversários, atividades ao ar livre e para criar vídeos incríveis e super satisfatórios.\n\n**Características do Produto:**\n* Categoria: Brinquedos / Ar Livre\n* Cor: Rosa\n* Alimentação: Bateria recarregável via USB (inclusa)\n* Inclui luvas interativas e refil de líquido.",
+      "categoria": "brinquedo",
+      "codigo": "010",
+      "custo": "38.94",
+      "preco_venda": "68.90",
+      "estoque": 1000,
+      "estoque_minimo": 1,
+      "fornecedor_id": null,
+      "ativo": true,
+      "tags": [
+        "bolha de sabão"
+      ],
+      "data_cadastro": "2026-02-06T23:16:25.364Z",
+      "ultima_atualizacao": "2026-02-17T08:39:01.046Z",
+      "imagem_url": "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770419784474.avif",
+      "meta_title": "",
+      "meta_description": "",
+      "imagem_urls": [
+        "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770419784474.avif"
+      ],
+      "preco_original": null,
+      "is_bestseller": false,
+      "frete_gratis": false,
+      "sold": 0
+    },
+    {
+      "id": "f8be11b0-9a71-4fbc-891f-c9a77ddbc12d",
+      "nome": "livro de colorir capivara",
+      "descricao": "### 🤎 Livro de Colorir Capivara: A Vibe Mais Relaxante para a Sua Arte!\n\nSe existe um animalzinho que entende de paz e tranquilidade, é a capivara! O Livro de Colorir Capivara traz essa energia super \"chill\" e divertida para o seu momento de descompressão. Com ilustrações adoráveis e capas com um efeito de brilho lindo, ele é o companheiro perfeito para aliviar o estresse do dia a dia.\n\n---\n\n### ✨ Por que você vai amar este livro?\n\n* **✨ Capa com Acabamento Brilhante:** Um detalhe super fofo e estético que deixa o seu livro ainda mais especial logo de cara!\n* **📖 50 Páginas de Pura Diversão:** São dezenas de desenhos com a nossa amada capivara em várias situações divertidas (capivara rica, fofa, com sorte e muito mais!) para você dar vida e cor.\n* **🌀 Encadernação em Espiral Prática:** O modelo wire-o permite que o livro fique 100% plano na mesa. Mais conforto para a sua mão na hora de pintar e zero risco de amassar as páginas.\n* **🧘‍♀️ Terapia Criativa:** A atividade perfeita para se desconectar do celular, colocar uma música relaxante e focar apenas nas cores e na tranquilidade.\n\n> ⚠️ ALERTA DE ESTOQUE: Este modelo está voando! Restam APENAS 3 UNIDADES disponíveis na IKCOUS. Garanta o seu antes que esgote definitivamente!\n\n---\n\n**Perfeito para:** Amantes de capivaras, fãs de papelaria fofa, pessoas que buscam um hobby antiestresse e qualquer um que ame a estética \"cozy\".\n\n**Características do Produto:**\n* Tema: Capivara (Capas com artes super divertidas)\n* Quantidade: 50 páginas\n* Acabamento: Capa com efeito de brilho e encadernação em espiral",
+      "categoria": "brinquedo",
+      "codigo": "015",
+      "custo": "14.29",
+      "preco_venda": "29.90",
+      "estoque": 1000,
+      "estoque_minimo": 1,
+      "fornecedor_id": null,
+      "ativo": true,
+      "tags": [
+        "boobie goods"
+      ],
+      "data_cadastro": "2026-02-06T23:46:46.247Z",
+      "ultima_atualizacao": "2026-02-06T23:46:46.247Z",
+      "imagem_url": "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770421604821.jpeg",
+      "meta_title": "",
+      "meta_description": "",
+      "imagem_urls": [
+        "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770421604821.jpeg"
+      ],
+      "preco_original": null,
+      "is_bestseller": false,
+      "frete_gratis": false,
+      "sold": 0
+    },
+    {
+      "id": "b3f584cc-14cd-490d-8c9a-c11d9895b5a7",
+      "nome": "Ventilador de teto com controle remoto",
+      "descricao": "### 🌬️ Ventilador de Teto com LED 60W e Controle Remoto: Refresco e Praticidade!\n\nChega de passar calor ou ter que levantar da cama no meio da noite para desligar o vento! Este Ventilador de Teto 2 em 1 é a solução definitiva para quem busca refrescar o ambiente com o máximo de comodidade e ainda garantir uma iluminação super potente. \n\n---\n\n### ✨ Por que este ventilador vai transformar o seu ambiente?\n\n* **📱 Controle Remoto Total:** Ajuste a velocidade do vento e ligue/desligue a luz diretamente da palma da sua mão. Mais conforto para o seu dia a dia, seja do sofá ou da cama!\n* **🌪️ Alta Performance com 5 Pás:** Projetado com 5 pás (folhas) estratégicas que garantem uma ventilação mais forte, contínua e com excelente distribuição de ar por todo o cômodo.\n* **💡 Iluminação LED 60W Integrada:** Um produto, duas soluções! Conta com uma lâmpada LED de 60W embutida, oferecendo uma luz brilhante e econômica que ilumina perfeitamente o seu espaço.\n* **🛠️ Design Clean e Versátil:** Com um visual moderno e compacto, ele se adapta facilmente a qualquer tipo de decoração, unindo utilidade e beleza.\n\n> Dica de Uso: Como ele junta ventilação e uma luz forte de LED na mesma instalação, é perfeito para modernizar cômodos antigos sem precisar quebrar a parede ou refazer a fiação de interruptores!\n\n---\n\n**Perfeito para:** Quartos, salas de estar, escritórios, cozinhas e qualquer ambiente que precise da combinação perfeita entre frescor, luz e tecnologia.\n\n**Características do Produto:**\n* Categoria: Utilidades / Casa\n* Hélices: 5 pás (folhas)\n* Iluminação: Lâmpada LED de 60W potente\n* Facilidade: Acompanha controle remoto",
+      "categoria": "Utilidade",
+      "codigo": "013",
+      "custo": "34.32",
+      "preco_venda": "69.90",
+      "estoque": 998,
+      "estoque_minimo": 1,
+      "fornecedor_id": null,
+      "ativo": true,
+      "tags": [
+        "ventilador"
+      ],
+      "data_cadastro": "2026-02-06T23:25:58.400Z",
+      "ultima_atualizacao": "2026-02-06T23:25:58.400Z",
+      "imagem_url": "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770420356713.jpeg",
+      "meta_title": "",
+      "meta_description": "",
+      "imagem_urls": [
+        "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770420356713.jpeg"
+      ],
+      "preco_original": null,
+      "is_bestseller": false,
+      "frete_gratis": false,
+      "sold": 0
+    },
+    {
+      "id": "af47d6b2-b903-49f5-aa2c-fc7a60a206bf",
+      "nome": "Escova De Limpeza Elétrica 9 Em 1 Multifuncional Giratória",
+      "descricao": "O esfregão 9 em 1 é um dispositivo de limpeza elétrico e multifuncional que combina as funções de um mop tradicional com acessórios versáteis para limpar diversas superfícies da casa, como pisos, janelas, azulejos, e até estofados. Ele é projetado para reduzir o esforço manual na limpeza pesada.",
+      "categoria": "Utilidade",
+      "codigo": "005",
+      "custo": "44.90",
+      "preco_venda": "76.90",
+      "estoque": 1000,
+      "estoque_minimo": 1,
+      "fornecedor_id": null,
+      "ativo": true,
+      "tags": [
+        "limpeza"
+      ],
+      "data_cadastro": "2026-02-06T22:54:37.624Z",
+      "ultima_atualizacao": "2026-02-06T22:54:37.624Z",
+      "imagem_url": "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770418476441.webp",
+      "meta_title": null,
+      "meta_description": null,
+      "imagem_urls": [
+        "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770418476441.webp"
+      ],
+      "preco_original": null,
+      "is_bestseller": false,
+      "frete_gratis": false,
+      "sold": 0
+    },
+    {
+      "id": "9f614022-8b44-4eac-94d8-6d280f96cb27",
+      "nome": "caderno adesivo 3d, 20 cenarios",
+      "descricao": "caderno adesivo 3d, 20 cenarios",
+      "categoria": "brinquedo",
+      "codigo": "006",
+      "custo": "16.94",
+      "preco_venda": "34.90",
+      "estoque": 1000,
+      "estoque_minimo": 1,
+      "fornecedor_id": null,
+      "ativo": true,
+      "tags": [
+        "adesivo 3d"
+      ],
+      "data_cadastro": "2026-02-06T22:58:43.892Z",
+      "ultima_atualizacao": "2026-02-06T22:58:43.892Z",
+      "imagem_url": "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770418722269.jpeg",
+      "meta_title": null,
+      "meta_description": null,
+      "imagem_urls": [
+        "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770418722269.jpeg"
+      ],
+      "preco_original": null,
+      "is_bestseller": false,
+      "frete_gratis": false,
+      "sold": 0
+    },
+    {
+      "id": "c7b692e4-1e18-4d51-97ba-889a6266d58e",
+      "nome": "Louças Escova De Limpeza Recipiente Para Detergente",
+      "descricao": "Louças Escova De Limpeza Recipiente Para Detergente",
+      "categoria": "Utilidade",
+      "codigo": "007",
+      "custo": "6.92",
+      "preco_venda": "14.90",
+      "estoque": 1000,
+      "estoque_minimo": 1,
+      "fornecedor_id": null,
+      "ativo": true,
+      "tags": [
+        "limpeza"
+      ],
+      "data_cadastro": "2026-02-06T23:09:00.392Z",
+      "ultima_atualizacao": "2026-02-06T23:09:00.392Z",
+      "imagem_url": "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770419339829.avif",
+      "meta_title": null,
+      "meta_description": null,
+      "imagem_urls": [
+        "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770419339829.avif"
+      ],
+      "preco_original": null,
+      "is_bestseller": false,
+      "frete_gratis": false,
+      "sold": 0
+    }
+  ],
+  "profiles": [
+    {
+      "id": "1b8d20be-6851-4f2f-974f-e66081b8d5a7",
+      "full_name": "Usuário",
+      "avatar_url": null,
+      "role": "vendedor",
+      "company_id": null,
+      "created_at": "2026-02-22T07:17:16.870Z",
+      "updated_at": "2026-02-22T07:17:16.870Z",
+      "whatsapp": null,
+      "cpf": null
+    },
+    {
+      "id": "d36dddd3-535c-4e43-a139-b1b707a5adc9",
+      "full_name": "Usuário",
+      "avatar_url": null,
+      "role": "vendedor",
+      "company_id": null,
+      "created_at": "2026-02-22T07:52:55.313Z",
+      "updated_at": "2026-02-22T07:52:55.313Z",
+      "whatsapp": null,
+      "cpf": null
+    },
+    {
+      "id": "8ff81728-0252-405a-98b8-7c2b9b94191a",
+      "full_name": "Usuário",
+      "avatar_url": null,
+      "role": "vendedor",
+      "company_id": null,
+      "created_at": "2026-02-22T08:14:14.913Z",
+      "updated_at": "2026-02-22T08:14:14.913Z",
+      "whatsapp": null,
+      "cpf": null
+    },
+    {
+      "id": "0ebc1ffe-4f82-4d24-ad17-e4338522b41d",
+      "full_name": "Usuário",
+      "avatar_url": null,
+      "role": "vendedor",
+      "company_id": null,
+      "created_at": "2026-02-22T08:27:24.336Z",
+      "updated_at": "2026-02-22T08:27:24.336Z",
+      "whatsapp": null,
+      "cpf": null
+    },
+    {
+      "id": "5256dc84-0a48-40a1-8316-966b64fb4620",
+      "full_name": "João Gabriel Vieira de Oliveira ",
+      "avatar_url": null,
+      "role": "admin",
+      "company_id": null,
+      "created_at": "2026-02-07T19:55:25.124Z",
+      "updated_at": "2026-02-07T19:55:25.124Z",
+      "whatsapp": "34999588039",
+      "cpf": null
+    },
+    {
+      "id": "eaaf85fc-62c0-41b4-b6e0-5c916cd8a855",
+      "full_name": "Verified Account 223",
+      "avatar_url": null,
+      "role": "vendedor",
+      "company_id": null,
+      "created_at": "2026-02-21T07:37:28.780Z",
+      "updated_at": "2026-02-21T07:37:28.780Z",
+      "whatsapp": null,
+      "cpf": null
+    },
+    {
+      "id": "58ee6183-8c58-4462-9a2b-8ee3c3485c80",
+      "full_name": "joao gabriel vieira de oliveira",
+      "avatar_url": null,
+      "role": "vendedor",
+      "company_id": null,
+      "created_at": "2026-02-22T07:33:07.041Z",
+      "updated_at": "2026-03-09T15:40:19.114Z",
+      "whatsapp": "34999588039",
+      "cpf": null
+    }
+  ],
+  "tableList": [
+    "categorias",
+    "public_profiles",
+    "kanban_cards",
+    "vw_produtos_public",
+    "notificacoes",
+    "marketplace_orders",
+    "metas",
+    "retiradas",
+    "banners",
+    "coupons",
+    "v_store_config",
+    "store_config",
+    "produtos",
+    "fluxo_caixa",
+    "fornecedores",
+    "vendas",
+    "pedidos",
+    "pedido_itens",
+    "companies",
+    "profiles",
+    "marketplace_ai_state",
+    "marketplace_order_history",
+    "_ninja_migrations",
+    "cart_items",
+    "configuracoes",
+    "alertas",
+    "answers",
+    "reviews",
+    "questions",
+    "user_addresses",
+    "product_variants",
+    "sales_overview",
+    "analytics_events",
+    "push_notifications_log",
+    "historico_precos",
+    "favorites",
+    "app_settings",
+    "vor_receipts",
+    "push_subscriptions",
+    "marketplace_order_items"
+  ],
+  "errors": [],
+  "authUsers": [
+    {
+      "id": "eaaf85fc-62c0-41b4-b6e0-5c916cd8a855",
+      "email": "jetski.test.user.2026@gmail.com"
+    },
+    {
+      "id": "0ebc1ffe-4f82-4d24-ad17-e4338522b41d",
+      "email": "gabrielhg.fwq1@gmail.com"
+    },
+    {
+      "id": "d36dddd3-535c-4e43-a139-b1b707a5adc9",
+      "email": "gabrielhgfw.q1@gmail.com"
+    },
+    {
+      "id": "5256dc84-0a48-40a1-8316-966b64fb4620",
+      "email": "gabrielhgfwq1@gmail.com"
+    },
+    {
+      "id": "1b8d20be-6851-4f2f-974f-e66081b8d5a7",
+      "email": "joaogabrielvo.amz@gmail.com"
+    },
+    {
+      "id": "58ee6183-8c58-4462-9a2b-8ee3c3485c80",
+      "email": "gabrielhgfwq.1@gmail.com"
+    },
+    {
+      "id": "8ff81728-0252-405a-98b8-7c2b9b94191a",
+      "email": "gabrielhgfw.q.1@gmail.com"
+    }
+  ]
+}

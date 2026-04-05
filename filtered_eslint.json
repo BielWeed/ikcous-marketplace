@@ -1,0 +1,494 @@
+[
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\components\\debug\\DebugPanel.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\components\\pwa\\InstallPrompt.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\components\\pwa\\InstallPrompt.tsx:35:25\n  33 |\n  34 |         if (isIOSDevice && !isStandalone) {\n> 35 |             if (!isIOS) setIsIOS(true);\n     |                         ^^^^^^^^ Avoid calling setState() directly within an effect\n  36 |             // Delay showing slightly to not be annoying immediately\n  37 |             const timer = setTimeout(() => setOpen(true), 3000);\n  38 |             return () => clearTimeout(timer);",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "react-hooks/exhaustive-deps: React Hook useEffect has a missing dependency: 'isIOS'. Either include it or remove the dependency array."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\components\\pwa\\PwaDiagnostics.tsx",
+    "errs": [
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\components\\pwa\\PwaDiagnostics.tsx:83:13\n  81 |     useEffect(() => {\n  82 |         if (isOpen) {\n> 83 |             refresh();\n     |             ^^^^^^^ Avoid calling setState() directly within an effect\n  84 |         }\n  85 |         const handleConnectionChange = () => {\n  86 |             setIsOnline(navigator.onLine);",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\components\\pwa\\UpdateNotification.tsx",
+    "errs": [
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\components\\pwa\\UpdateNotification.tsx:38:9\n  36 |     useEffect(() => {\n  37 |         if (!isUpdating) return;\n> 38 |         setProgress(0);\n     |         ^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  39 |         const steps = [15, 35, 55, 75, 90, 100];\n  40 |         const timers: ReturnType<typeof setTimeout>[] = [];\n  41 |         steps.forEach((p, i) => {",
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\components\\pwa\\UpdateNotification.tsx:55:9\n  53 |     useEffect(() => {\n  54 |         if (!isMandatory || !show) return;\n> 55 |         setCountdown(5);\n     |         ^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  56 |         const interval = setInterval(() => {\n  57 |             setCountdown(prev => {\n  58 |                 if (prev === null || prev <= 1) {"
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\components\\seo\\JsonLd.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\components\\ui\\custom\\AddressForm.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\components\\ui\\custom\\CartReminder.tsx",
+    "errs": [
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\components\\ui\\custom\\CartReminder.tsx:20:13\n  18 |             return () => clearTimeout(showTimer);\n  19 |         } else {\n> 20 |             setIsVisible(false);\n     |             ^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  21 |         }\n  22 |     }, [items.length, isDismissed]);\n  23 |"
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\components\\ui\\custom\\ProductFilters.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\contexts\\AuthContext.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useAnalytics.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useBackgroundFetch.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useBanners.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useCategories.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useCoupons.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useDeviceAdaptation.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useDeviceAdaptation.ts:28:13\n  26 |         const conn = (navigator as any).connection;\n  27 |         if (conn) {\n> 28 |             setSpecs(prev => ({ ...prev, saveData: conn.saveData }));\n     |             ^^^^^^^^ Avoid calling setState() directly within an effect\n  29 |         }\n  30 |\n  31 |         void logForensic({",
+      "react-hooks/exhaustive-deps: React Hook useEffect has a missing dependency: 'specs'. Either include it or remove the dependency array."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useFavorites.ts",
+    "errs": [
+      "react-hooks/exhaustive-deps: React Hook useEffect has a missing dependency: 'dbFavoriteIds'. Either include it or remove the dependency array."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useIdleMaintenance.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useInstallPrompt.ts",
+    "errs": [
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useInstallPrompt.ts:56:13\n  54 |     useEffect(() => {\n  55 |         if (isStandalone) {\n> 56 |             setIsInstalled(true);\n     |             ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  57 |             return;\n  58 |         }\n  59 |"
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useLiquidIntelligence.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useLocalStorage.ts",
+    "errs": [
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useLocalStorage.ts:33:7\n  31 |       // Wrap in setTimeout to move out of the render cycle and suppress lint warnings\n  32 |       // about cascading renders if this update happens synchronously.\n> 33 |       setStoredValue(prev => {\n     |       ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  34 |         if (JSON.stringify(prev) !== JSON.stringify(newValue)) {\n  35 |           return newValue;\n  36 |         }"
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useNeuralInjection.ts",
+    "errs": [
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useNeuralInjection.ts:15:13\n  13 |         // @ts-ignore\n  14 |         if ('ml' in navigator || 'neuralNetwork' in navigator) {\n> 15 |             setIsNNReady(true);\n     |             ^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  16 |             console.log('[Neural-Unbound] NPU/WebNN Engine detected. Hardware acceleration active.');\n  17 |         }\n  18 |     }, []);"
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useNotifications.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useOrders.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useProducts.ts",
+    "errs": [
+      "react-hooks/exhaustive-deps: React Hook useCallback has an unnecessary dependency: 'user.id'. Either exclude it or remove the dependency array."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\usePushNotifications.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useQuestions.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useRecentlyViewed.ts",
+    "errs": [
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useRecentlyViewed.ts:14:7\n  12 |     const stored = localStorage.getItem(RECENTLY_VIEWED_KEY);\n  13 |     if (stored) {\n> 14 |       setRecentlyViewed(JSON.parse(stored));\n     |       ^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  15 |     }\n  16 |     setIsLoaded(true);\n  17 |   }, []);"
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useReviews.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useSQLiteForensics.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useSQLiteForensics.ts:20:13\n  18 |     useEffect(() => {\n  19 |         if (globalDb) {\n> 20 |             setDb(globalDb);\n     |             ^^^^^ Avoid calling setState() directly within an effect\n  21 |             setIsReady(true);\n  22 |             return;\n  23 |         }",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useStorageEstimate.ts",
+    "errs": [
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useStorageEstimate.ts:61:9\n  59 |\n  60 |     useEffect(() => {\n> 61 |         refresh();\n     |         ^^^^^^^ Avoid calling setState() directly within an effect\n  62 |         // Re-check every 5 minutes\n  63 |         const interval = setInterval(refresh, 5 * 60 * 1000);\n  64 |         return () => clearInterval(interval);"
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useStoreConfig.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useTemporalFold.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useTemporalFold.ts:29:9\n  27 |     // Sync with initialState changes to prevent zumbie reality\n  28 |     useEffect(() => {\n> 29 |         setReality(prev => {\n     |         ^^^^^^^^^^ Avoid calling setState() directly within an effect\n  30 |             const currentConsensus = JSON.stringify(prev.consensus);\n  31 |             const nextInitial = JSON.stringify(initialState);\n  32 |"
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useUpdateMetrics.ts",
+    "errs": [
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useUpdateMetrics.ts:115:17\n  113 |             // Check if current version matches expected new version (update was applied)\n  114 |             if (history[0].deployVersion !== __APP_VERSION__) {\n> 115 |                 recordUpdateApplied(true);\n      |                 ^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  116 |             }\n  117 |         }\n  118 |     }, [recordUpdateApplied]);"
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useVOR.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useWebGPULogs.ts",
+    "errs": [
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useWebGPULogs.ts:14:13\n  12 |     useEffect(() => {\n  13 |         if ('gpu' in navigator) {\n> 14 |             setIsGPUAvailable(true);\n     |             ^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  15 |             console.log('[WebGPU-Void] GPU Compute Engine detected.');\n  16 |         }\n  17 |     }, []);",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useWebTransport.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\hooks\\useWorkerState.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\lib\\mappers.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\main.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\state-worker.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\sw\\sw.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\types\\canvas-confetti.d.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\utils\\truth_gate.ts",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\admin\\AdminAnalyticsView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\admin\\AdminBannersView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\admin\\AdminCouponsView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\admin\\AdminCustomersView.tsx",
+    "errs": [
+      "react-hooks/exhaustive-deps: React Hook useEffect has a missing dependency: 'fetchCustomers'. Either include it or remove the dependency array.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\admin\\AdminDashboardView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\admin\\AdminOrdersView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\admin\\AdminOrdersView.tsx:61:5\n  59 |\n  60 |   useEffect(() => {\n> 61 |     setCurrentPage(0);\n     |     ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  62 |   }, [searchQuery, filter, dateRange]);\n  63 |\n  64 |   if (!isLoaded) {"
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\admin\\AdminProductFormView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\admin\\AdminPushView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "react-hooks/exhaustive-deps: React Hook useEffect has a missing dependency: 'calculateReach'. Either include it or remove the dependency array.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\admin\\AdminQAView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\admin\\AdminSettingsView.tsx",
+    "errs": [
+      "react-hooks/set-state-in-effect: Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\nc:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\admin\\AdminSettingsView.tsx:27:17\n  25 |\n  26 |             if (configString !== currentString) {\n> 27 |                 setFormData(config);\n     |                 ^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  28 |             }\n  29 |         }\n  30 |     }, [config, isLoaded]);",
+      "react-hooks/exhaustive-deps: React Hook useEffect has a missing dependency: 'formData'. Either include it or remove the dependency array."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\admin\\AdminUserDetailView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "react-hooks/exhaustive-deps: React Hook useEffect has a missing dependency: 'fetchUserData'. Either include it or remove the dependency array.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\customer\\AccountSettingsView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\customer\\CheckoutView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\customer\\OrderDetailsView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type.",
+      "react-hooks/exhaustive-deps: React Hook useEffect has a missing dependency: 'orders'. Either include it or remove the dependency array."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\customer\\ProductView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  },
+  {
+    "file": "c:\\Users\\Gabriel\\Downloads\\Kimi_Agent_Atualização v4\\app_mkt\\src\\views\\customer\\SearchView.tsx",
+    "errs": [
+      "@typescript-eslint/no-explicit-any: Unexpected any. Specify a different type."
+    ]
+  }
+]

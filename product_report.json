@@ -1,0 +1,128 @@
+[
+  {
+    "nome": "Escova Elétrica De Limpeza - 7 em 1",
+    "codigo": "001",
+    "desc_preview": "A escova elétrica de limpeza recarregável USB é um dispositivo multifuncional projetado para facilit",
+    "custo": "15.90",
+    "preco_venda": "34.90"
+  },
+  {
+    "nome": "Mini barbeador shaver",
+    "codigo": "002",
+    "desc_preview": "Mini barbeador elétrico portátil, um dispositivo ultracompacto projetado para praticidade e eficiênc",
+    "custo": "10.68",
+    "preco_venda": "21.90"
+  },
+  {
+    "nome": "Tirar Bolinha Roupa Papa Bolinhas EléTrico",
+    "codigo": "003",
+    "desc_preview": "O papa-bolinhas elétrico é um aparelho portátil e moderno projetado para remover fiapos, pelos e as ",
+    "custo": "8.24",
+    "preco_venda": "19.90"
+  },
+  {
+    "nome": "kit de adesivos 3d de microcenas",
+    "codigo": "004",
+    "desc_preview": "20 cenas ,60 paginas",
+    "custo": "22.73",
+    "preco_venda": "38.90"
+  },
+  {
+    "nome": "Escova De Limpeza Elétrica 9 Em 1 Multifuncional Giratória",
+    "codigo": "005",
+    "desc_preview": "O esfregão 9 em 1 é um dispositivo de limpeza elétrico e multifuncional que combina as funções de um",
+    "custo": "44.90",
+    "preco_venda": "76.90"
+  },
+  {
+    "nome": "caderno adesivo 3d, 20 cenarios",
+    "codigo": "006",
+    "desc_preview": "caderno adesivo 3d, 20 cenarios",
+    "custo": "16.94",
+    "preco_venda": "34.90"
+  },
+  {
+    "nome": "Tesoura de Sobrancelha com Pente",
+    "codigo": "007",
+    "desc_preview": "Tesoura de Sobrancelha com Pente",
+    "custo": "18.33",
+    "preco_venda": "24.90"
+  },
+  {
+    "nome": "Louças Escova De Limpeza Recipiente Para Detergente",
+    "codigo": "007",
+    "desc_preview": "Louças Escova De Limpeza Recipiente Para Detergente",
+    "custo": "6.92",
+    "preco_venda": "14.90"
+  },
+  {
+    "nome": "copo De Alce Água Portátil 600ml Infantil ",
+    "codigo": "009",
+    "desc_preview": "copo De Alce Água Portátil 600ml Infantil ",
+    "custo": "11.28",
+    "preco_venda": "21.90"
+  },
+  {
+    "nome": " Bolhas de Sabão com Pistola Lançadora",
+    "codigo": "010",
+    "desc_preview": "### 🫧 Bolhas de Sabão com Pistola Lançadora: A Magia das Bolhas que Você Pode Tocar!\n\nEsqueça tudo o",
+    "custo": "38.94",
+    "preco_venda": "68.90"
+  },
+  {
+    "nome": "Umidificador Difusor de Óleo Essencial",
+    "codigo": "011",
+    "desc_preview": "### 🍃 Umidificador e Difusor de Óleos Essenciais: Respire Bem e Relaxe!\n\nTransforme qualquer cômodo ",
+    "custo": "12.36",
+    "preco_venda": "24.90"
+  },
+  {
+    "nome": "Organizador Sapateira Multiuso",
+    "codigo": "012",
+    "desc_preview": "### 👟 Organizador Sapateira Multiuso 4 Andares: O Fim da Bagunça!\n\nCansado de tropeçar em sapatos es",
+    "custo": "21.52",
+    "preco_venda": "39.90"
+  },
+  {
+    "nome": "Ventilador de teto com controle remoto",
+    "codigo": "013",
+    "desc_preview": "### 🌬️ Ventilador de Teto com LED 60W e Controle Remoto: Refresco e Praticidade!\n\nChega de passar ca",
+    "custo": "34.32",
+    "preco_venda": "69.90"
+  },
+  {
+    "nome": "caneta 3d",
+    "codigo": "014",
+    "desc_preview": "### 🖊️ Caneta 3D: Dê Vida à Sua Imaginação em 3 Dimensões!\n\nJá imaginou tirar os seus desenhos do pa",
+    "custo": "28.55",
+    "preco_venda": "59.90"
+  },
+  {
+    "nome": "livro de colorir capivara",
+    "codigo": "015",
+    "desc_preview": "### 🤎 Livro de Colorir Capivara: A Vibe Mais Relaxante para a Sua Arte!\n\nSe existe um animalzinho qu",
+    "custo": "14.29",
+    "preco_venda": "29.90"
+  },
+  {
+    "nome": "livro de colorir stitch",
+    "codigo": "016",
+    "desc_preview": "### 👽 Livro de Colorir Stitch: Magia e Fofura em Cada Página!\n\nTraga a diversão e a fofura do aliení",
+    "custo": "15.50",
+    "preco_venda": "27.90"
+  },
+  {
+    "nome": "maleta canetas 120",
+    "codigo": "017",
+    "desc_preview": "🎨 Maleta Premium 120 Cores: O Combo Perfeito para Seus Livros de Colorir!\n\nTransforme seus momentos ",
+    "custo": "62.08",
+    "preco_venda": "89.90"
+  },
+  {
+    "nome": "Bobbie Goods",
+    "codigo": "017",
+    "desc_preview": "### 👽 Livro de Colorir Stitch: Magia e Fofura em Cada Página!\n\nTraga a diversão e a fofura do aliení",
+    "custo": "0.01",
+    "preco_venda": "12.90"
+  }
+]

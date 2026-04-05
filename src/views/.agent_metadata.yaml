@@ -1,0 +1,11 @@
+domain: frontend
+sub_domain: ui_components
+linkage_version: 4.0.4
+passive_triggers:
+  - senior-architect.md: "GEN 16"
+  - frontend-specialist.md
+  - ui-ux-pro-max: " premium-vibe"
+
+atomic_directives:
+  - itensor_ui_flux: enabled
+  - fluid_interactions: true

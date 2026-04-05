@@ -1,0 +1,1242 @@
+﻿[
+  {
+    "tablename": "answers",
+    "policyname": "Answers are viewable by everyone",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "marketplace_orders",
+    "policyname": "Order visibility",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "marketplace_orders",
+    "policyname": "Order management",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": "((auth.uid() = user_id) OR is_admin())"
+  },
+  {
+    "tablename": "vor_receipts",
+    "policyname": "Admins can view all VOR receipts",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "cart_items",
+    "policyname": "Admins can view all cart items",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "store_config",
+    "policyname": "Admins can update config",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "marketplace_ai_state",
+    "policyname": "Admins can manage AI state",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "marketplace_order_items",
+    "policyname": "order_items_select_policy",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(is_admin() OR (EXISTS ( SELECT 1\n   FROM marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_items.order_id) AND (mo.user_id = auth.uid())))))",
+    "with_check": null
+  },
+  {
+    "tablename": "answers",
+    "policyname": "Only admins can manage answers",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "marketplace_order_history",
+    "policyname": "order_history_select_policy",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(is_admin() OR (EXISTS ( SELECT 1\n   FROM marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_history.order_id) AND (mo.user_id = auth.uid())))))",
+    "with_check": null
+  },
+  {
+    "tablename": "marketplace_orders",
+    "policyname": "marketplace_orders_select_policy",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "marketplace_orders",
+    "policyname": "marketplace_orders_admin_all_policy",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "produtos",
+    "policyname": "Public view active products",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(ativo = true)",
+    "with_check": null
+  },
+  {
+    "tablename": "banners",
+    "policyname": "Public Read Banners",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "banners",
+    "policyname": "Authenticated Insert Banners",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "true"
+  },
+  {
+    "tablename": "banners",
+    "policyname": "Authenticated Update Banners",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "banners",
+    "policyname": "Authenticated Delete Banners",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "notificacoes",
+    "policyname": "Admins only insert notifications",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "coupons",
+    "policyname": "Public Read Coupons",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "coupons",
+    "policyname": "Authenticated Insert Coupons",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "true"
+  },
+  {
+    "tablename": "companies",
+    "policyname": "Authenticated users can view companies",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "companies",
+    "policyname": "Users can update their company",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.company_id = companies.id) AND (profiles.id = auth.uid()))))",
+    "with_check": null
+  },
+  {
+    "tablename": "coupons",
+    "policyname": "Authenticated Update Coupons",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "coupons",
+    "policyname": "Authenticated Delete Coupons",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "questions",
+    "policyname": "Users can create questions",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "tablename": "marketplace_order_history",
+    "policyname": "Admins have full access to order history",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "marketplace_order_history",
+    "policyname": "Users can view history of their orders",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(EXISTS ( SELECT 1\n   FROM marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_history.order_id) AND (mo.user_id = auth.uid()))))",
+    "with_check": null
+  },
+  {
+    "tablename": "categorias",
+    "policyname": "Admins full access on categorias",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "marketplace_orders",
+    "policyname": "No direct deletes on orders",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "store_config",
+    "policyname": "Public check store config",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "store_config",
+    "policyname": "Admin update store config",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "questions",
+    "policyname": "Questions are viewable by everyone",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "alertas",
+    "policyname": "SoloNinja Admin Full Access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "configuracoes",
+    "policyname": "SoloNinja Admin Full Access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "fluxo_caixa",
+    "policyname": "SoloNinja Admin Full Access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "fornecedores",
+    "policyname": "SoloNinja Admin Full Access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "kanban_cards",
+    "policyname": "SoloNinja Admin Full Access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "cart_items",
+    "policyname": "Users can manage their own cart items",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "tablename": "metas",
+    "policyname": "SoloNinja Admin Full Access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "retiradas",
+    "policyname": "SoloNinja Admin Full Access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "vendas",
+    "policyname": "SoloNinja Admin Full Access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "historico_precos",
+    "policyname": "SoloNinja Admin Full Access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "notificacoes",
+    "policyname": "Admins manage notificacoes",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "notificacoes",
+    "policyname": "Users view own notifications",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(auth.uid() = usuario_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "answers",
+    "policyname": "Public can read answers",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "answers",
+    "policyname": "Authenticated users can answer",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(auth.role() = 'authenticated'::text)"
+  },
+  {
+    "tablename": "favorites",
+    "policyname": "Manage own favorites",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "tablename": "coupons",
+    "policyname": "Anyone can view active coupons",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(is_admin() OR ((active = true) AND ((usage_limit IS NULL) OR (used_count < usage_limit))))",
+    "with_check": null
+  },
+  {
+    "tablename": "banners",
+    "policyname": "Public can read banners",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "((active = true) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "banners",
+    "policyname": "Admins manage banners",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "notificacoes",
+    "policyname": "Admins manage notifications",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "notificacoes",
+    "policyname": "Users read own notifications",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((usuario_id = auth.uid()) OR (usuario_id IS NULL) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "push_notifications_log",
+    "policyname": "SoloNinja Admin Full Access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "reviews",
+    "policyname": "Public read reviews",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "reviews",
+    "policyname": "Manage own reviews",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": "((auth.uid() = user_id) OR is_admin())"
+  },
+  {
+    "tablename": "push_subscriptions",
+    "policyname": "push_subscriptions_owner_policy",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": "((auth.uid() = user_id) OR is_admin())"
+  },
+  {
+    "tablename": "reviews",
+    "policyname": "public_view_reviews",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "reviews",
+    "policyname": "auth_insert_reviews",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "tablename": "reviews",
+    "policyname": "owner_admin_update_reviews",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": "((auth.uid() = user_id) OR is_admin())"
+  },
+  {
+    "tablename": "reviews",
+    "policyname": "admin_delete_reviews",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "questions",
+    "policyname": "public_view_questions",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "pedidos",
+    "policyname": "Admin only access pedidos",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "pedido_itens",
+    "policyname": "Admin only access pedido_itens",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "questions",
+    "policyname": "auth_insert_questions",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "tablename": "questions",
+    "policyname": "owner_admin_update_questions",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": "((auth.uid() = user_id) OR is_admin())"
+  },
+  {
+    "tablename": "questions",
+    "policyname": "admin_delete_questions",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "answers",
+    "policyname": "public_view_answers",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "answers",
+    "policyname": "admin_manage_answers",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "analytics_events",
+    "policyname": "admin_view_analytics",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "analytics_events",
+    "policyname": "public_insert_analytics",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(((auth.uid() IS NULL) AND (user_id IS NULL)) OR (auth.uid() = user_id))"
+  },
+  {
+    "tablename": "analytics_events",
+    "policyname": "Public insert analytics",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "true"
+  },
+  {
+    "tablename": "analytics_events",
+    "policyname": "Admin read analytics",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "notificacoes",
+    "policyname": "Users update own notifications",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(usuario_id = auth.uid())",
+    "with_check": "(usuario_id = auth.uid())"
+  },
+  {
+    "tablename": "vor_receipts",
+    "policyname": "Admins can insert VOR receipts",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = auth.uid()) AND (profiles.role = 'admin'::text))))"
+  },
+  {
+    "tablename": "fornecedores",
+    "policyname": "Admin only access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "vendas",
+    "policyname": "Admin only access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "fluxo_caixa",
+    "policyname": "Admin only access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "retiradas",
+    "policyname": "Admin only access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "metas",
+    "policyname": "Admin only access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "historico_precos",
+    "policyname": "Admin only access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "marketplace_orders",
+    "policyname": "Users can view their own orders",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "product_variants",
+    "policyname": "Admins full access on product variants",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "kanban_cards",
+    "policyname": "Admin only access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "configuracoes",
+    "policyname": "Admin only access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "alertas",
+    "policyname": "Admin only access",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "marketplace_orders",
+    "policyname": "Admins can insert orders",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "marketplace_orders",
+    "policyname": "Admins can update orders",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "coupons",
+    "policyname": "Admins full access on coupons",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "questions",
+    "policyname": "Users can delete own questions",
+    "roles": "{public}",
+    "cmd": "DELETE",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "answers",
+    "policyname": "Public view answers",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "answers",
+    "policyname": "Admins only insert answers",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "answers",
+    "policyname": "Admins manage answers",
+    "roles": "{public}",
+    "cmd": "UPDATE",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "answers",
+    "policyname": "Admins/Owners delete answers",
+    "roles": "{public}",
+    "cmd": "DELETE",
+    "qual": "(is_admin() OR (auth.uid() = user_id))",
+    "with_check": null
+  },
+  {
+    "tablename": "reviews",
+    "policyname": "Users can delete own reviews",
+    "roles": "{public}",
+    "cmd": "DELETE",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "vendas",
+    "policyname": "Admin only vendas",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "pedidos",
+    "policyname": "Admin only pedidos",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "fornecedores",
+    "policyname": "Admin only fornecedores",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "marketplace_orders",
+    "policyname": "Select Orders: Owner or Admin",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "marketplace_orders",
+    "policyname": "DML Orders: Admin Only",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": "is_admin()"
+  },
+  {
+    "tablename": "reviews",
+    "policyname": "Users can delete their own reviews",
+    "roles": "{public}",
+    "cmd": "DELETE",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "reviews",
+    "policyname": "Admins can delete any review",
+    "roles": "{public}",
+    "cmd": "DELETE",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "notificacoes",
+    "policyname": "Users can read own or global notifications",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = usuario_id) OR (usuario_id IS NULL) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "notificacoes",
+    "policyname": "Users can update own notifications",
+    "roles": "{public}",
+    "cmd": "UPDATE",
+    "qual": "((auth.uid() = usuario_id) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "notificacoes",
+    "policyname": "Users can delete own notifications",
+    "roles": "{public}",
+    "cmd": "DELETE",
+    "qual": "((auth.uid() = usuario_id) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "fornecedores",
+    "policyname": "Admins only access",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "vendas",
+    "policyname": "Admins only access",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "pedidos",
+    "policyname": "Admins only access",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "pedido_itens",
+    "policyname": "Admins only access",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "questions",
+    "policyname": "Public view QA",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "fluxo_caixa",
+    "policyname": "Admins only access",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "retiradas",
+    "policyname": "Admins only access",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "metas",
+    "policyname": "Admins only access",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "historico_precos",
+    "policyname": "Admins only access",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "kanban_cards",
+    "policyname": "Admins only access",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "configuracoes",
+    "policyname": "Admins only access",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "alertas",
+    "policyname": "Admins only access",
+    "roles": "{public}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "analytics_events",
+    "policyname": "auth_insert_analytics",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(auth.uid() IS NOT NULL)"
+  },
+  {
+    "tablename": "analytics_events",
+    "policyname": "admin_select_analytics",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "questions",
+    "policyname": "Users ask questions",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "tablename": "banners",
+    "policyname": "Public can view active banners",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(active = true)",
+    "with_check": null
+  },
+  {
+    "tablename": "banners",
+    "policyname": "Admins can view all banners",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "check_is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "banners",
+    "policyname": "Admins can insert banners",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "check_is_admin()"
+  },
+  {
+    "tablename": "banners",
+    "policyname": "Admins can update banners",
+    "roles": "{public}",
+    "cmd": "UPDATE",
+    "qual": "check_is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "marketplace_ai_state",
+    "policyname": "Admins full access on marketplace_ai_state",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "store_config",
+    "policyname": "Admins full access on store_config",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "store_config",
+    "policyname": "Public can read config",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "banners",
+    "policyname": "Admins can delete banners",
+    "roles": "{public}",
+    "cmd": "DELETE",
+    "qual": "check_is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "produtos",
+    "policyname": "Public can view active produtos",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(ativo = true)",
+    "with_check": null
+  },
+  {
+    "tablename": "produtos",
+    "policyname": "Admins can view all produtos",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "check_is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "produtos",
+    "policyname": "Admins can insert produtos",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "check_is_admin()"
+  },
+  {
+    "tablename": "produtos",
+    "policyname": "Admins can update produtos",
+    "roles": "{public}",
+    "cmd": "UPDATE",
+    "qual": "check_is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "produtos",
+    "policyname": "Admins can delete produtos",
+    "roles": "{public}",
+    "cmd": "DELETE",
+    "qual": "check_is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "profiles",
+    "policyname": "profiles_select_policy",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = id) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "profiles",
+    "policyname": "profiles_update_policy",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "((auth.uid() = id) OR is_admin())",
+    "with_check": "((auth.uid() = id) OR is_admin())"
+  },
+  {
+    "tablename": "notificacoes",
+    "policyname": "Final notification protection",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((auth.uid() = usuario_id) OR is_admin())"
+  },
+  {
+    "tablename": "product_variants",
+    "policyname": "Public can view active variants",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(active = true)",
+    "with_check": null
+  },
+  {
+    "tablename": "product_variants",
+    "policyname": "Admins can view all variants",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "check_is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "product_variants",
+    "policyname": "Admins can insert variants",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "check_is_admin()"
+  },
+  {
+    "tablename": "product_variants",
+    "policyname": "Admins can update variants",
+    "roles": "{public}",
+    "cmd": "UPDATE",
+    "qual": "check_is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "product_variants",
+    "policyname": "Admins can delete variants",
+    "roles": "{public}",
+    "cmd": "DELETE",
+    "qual": "check_is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "favorites",
+    "policyname": "Users can view their own favorites",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "favorites",
+    "policyname": "Users can insert their own favorites",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "tablename": "favorites",
+    "policyname": "Users can update their own favorites",
+    "roles": "{public}",
+    "cmd": "UPDATE",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "favorites",
+    "policyname": "Users can delete their own favorites",
+    "roles": "{public}",
+    "cmd": "DELETE",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "tablename": "coupons",
+    "policyname": "Admins can insert coupons",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "check_is_admin()"
+  },
+  {
+    "tablename": "coupons",
+    "policyname": "Admins can update coupons",
+    "roles": "{public}",
+    "cmd": "UPDATE",
+    "qual": "check_is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "coupons",
+    "policyname": "Admins can delete coupons",
+    "roles": "{public}",
+    "cmd": "DELETE",
+    "qual": "check_is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "coupons",
+    "policyname": "Admins can view all coupons",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "check_is_admin()",
+    "with_check": null
+  },
+  {
+    "tablename": "user_addresses",
+    "policyname": "user_addresses_select_policy",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "marketplace_orders",
+    "policyname": "Users can see own orders",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((user_id = auth.uid()) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "categorias",
+    "policyname": "Categorias are viewable by everyone",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "tablename": "user_addresses",
+    "policyname": "user_addresses_insert_policy",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((auth.uid() = user_id) OR is_admin())"
+  },
+  {
+    "tablename": "user_addresses",
+    "policyname": "user_addresses_update_policy",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": "((auth.uid() = user_id) OR is_admin())"
+  },
+  {
+    "tablename": "user_addresses",
+    "policyname": "user_addresses_delete_policy",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((auth.uid() = user_id) OR is_admin())",
+    "with_check": null
+  },
+  {
+    "tablename": "store_config",
+    "policyname": "ConfiguraÃ§Ã£o da loja publicamente legÃ­vel",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  }
+]

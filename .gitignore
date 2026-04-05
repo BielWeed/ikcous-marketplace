@@ -1,0 +1,38 @@
+.vercel
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+.env.vercel.test
+.env.production
+vapid_keys.json
+
+
+# Build outputs & artifacts
+dist/
+build/
+
+# Log files accumulated during development
+*.log
+*.txt
+build_*.txt
+build_*.log
+lint_*.txt
+lint_*.log
+lint_*.json
+tsc_*.txt
+tsc_*.log
+vite_*.txt
+vite_errors*
+errors.txt
+output*.txt
+verify_output*.txt
+final_tsc_report*.txt
+
+# Lighthouse reports (large JSON)
+lighthouse-report*.json
+
+# Cache
+*.tsbuildinfo
+node_modules/

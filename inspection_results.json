@@ -1,0 +1,178 @@
+{
+  "products": [
+    {
+      "id": "d6d7d5b8-d590-4a9d-b258-f4129e1756cc",
+      "nome": " Bolhas de Sabão com Pistola Lançadora",
+      "preco_venda": 68.9,
+      "custo": 38.94,
+      "ativo": true,
+      "categoria": "brinquedo",
+      "estoque": 1000
+    },
+    {
+      "id": "47ed8e5c-9c02-4fd9-b0cd-d3a3ac137ca9",
+      "nome": "Bobbie Goods",
+      "preco_venda": 12.9,
+      "custo": 0.01,
+      "ativo": true,
+      "categoria": "brinquedo",
+      "estoque": 1000
+    },
+    {
+      "id": "9f614022-8b44-4eac-94d8-6d280f96cb27",
+      "nome": "caderno adesivo 3d, 20 cenarios",
+      "preco_venda": 34.9,
+      "custo": 16.94,
+      "ativo": true,
+      "categoria": "brinquedo",
+      "estoque": 1000
+    },
+    {
+      "id": "c2277cd9-8dc7-41d0-a04b-a76ced8f3ee4",
+      "nome": "caneta 3d",
+      "preco_venda": 59.9,
+      "custo": 28.55,
+      "ativo": true,
+      "categoria": "brinquedo",
+      "estoque": 998
+    },
+    {
+      "id": "3d145e39-3063-45d0-ab50-0a68465d73b6",
+      "nome": "copo De Alce Água Portátil 600ml Infantil ",
+      "preco_venda": 21.9,
+      "custo": 11.28,
+      "ativo": true,
+      "categoria": "Utilidade",
+      "estoque": 1000
+    },
+    {
+      "id": "af47d6b2-b903-49f5-aa2c-fc7a60a206bf",
+      "nome": "Escova De Limpeza Elétrica 9 Em 1 Multifuncional Giratória",
+      "preco_venda": 76.9,
+      "custo": 44.9,
+      "ativo": true,
+      "categoria": "Utilidade",
+      "estoque": 1000
+    },
+    {
+      "id": "d0f818ff-fa24-41b9-bd84-5f99ac26bee9",
+      "nome": "Escova Elétrica De Limpeza - 7 em 1",
+      "preco_venda": 34.9,
+      "custo": 15.9,
+      "ativo": true,
+      "categoria": "Utilidade",
+      "estoque": 1000
+    },
+    {
+      "id": "1181da15-5e04-40aa-8843-8b296634d732",
+      "nome": "kit de adesivos 3d de microcenas",
+      "preco_venda": 38.9,
+      "custo": 22.73,
+      "ativo": true,
+      "categoria": "brinquedo",
+      "estoque": 1000
+    },
+    {
+      "id": "f8be11b0-9a71-4fbc-891f-c9a77ddbc12d",
+      "nome": "livro de colorir capivara",
+      "preco_venda": 29.9,
+      "custo": 14.29,
+      "ativo": true,
+      "categoria": "brinquedo",
+      "estoque": 1000
+    },
+    {
+      "id": "57f5be49-bd0a-419b-8a6d-e433b45b5dd4",
+      "nome": "livro de colorir stitch",
+      "preco_venda": 27.9,
+      "custo": 15.5,
+      "ativo": true,
+      "categoria": "brinquedo",
+      "estoque": 1000
+    },
+    {
+      "id": "c7b692e4-1e18-4d51-97ba-889a6266d58e",
+      "nome": "Louças Escova De Limpeza Recipiente Para Detergente",
+      "preco_venda": 14.9,
+      "custo": 6.92,
+      "ativo": true,
+      "categoria": "Utilidade",
+      "estoque": 1000
+    },
+    {
+      "id": "4b2f3ef9-0eb4-49ff-af5f-4d0a08551891",
+      "nome": "maleta canetas 120",
+      "preco_venda": 89.9,
+      "custo": 62.08,
+      "ativo": true,
+      "categoria": "brinquedo",
+      "estoque": 998
+    },
+    {
+      "id": "8bd0188d-74d2-4f51-bd42-c20b8265b339",
+      "nome": "Mini barbeador shaver",
+      "preco_venda": 21.9,
+      "custo": 10.68,
+      "ativo": true,
+      "categoria": "Auto Cuidado",
+      "estoque": 1000
+    },
+    {
+      "id": "aeb02119-c3bc-4b2b-ba03-45d6b751bb4d",
+      "nome": "Organizador Sapateira Multiuso",
+      "preco_venda": 39.9,
+      "custo": 21.52,
+      "ativo": true,
+      "categoria": "Utilidade",
+      "estoque": 1000
+    },
+    {
+      "id": "f7a9a77b-7745-421b-baf4-489fb627682f",
+      "nome": "Tesoura de Sobrancelha com Pente",
+      "preco_venda": 24.9,
+      "custo": 18.33,
+      "ativo": true,
+      "categoria": "Auto Cuidado",
+      "estoque": 1000
+    },
+    {
+      "id": "554f9398-d0a6-4059-9a02-c1fc42dbe1da",
+      "nome": "Tirar Bolinha Roupa Papa Bolinhas EléTrico",
+      "preco_venda": 19.9,
+      "custo": 8.24,
+      "ativo": true,
+      "categoria": "Utilidade",
+      "estoque": 1000
+    },
+    {
+      "id": "e58ec747-d92a-4b25-9ed6-fa61b00e1d5f",
+      "nome": "Umidificador Difusor de Óleo Essencial",
+      "preco_venda": 24.9,
+      "custo": 12.36,
+      "ativo": true,
+      "categoria": "Utilidade",
+      "estoque": 998
+    },
+    {
+      "id": "b3f584cc-14cd-490d-8c9a-c11d9895b5a7",
+      "nome": "Ventilador de teto com controle remoto",
+      "preco_venda": 69.9,
+      "custo": 34.32,
+      "ativo": true,
+      "categoria": "Utilidade",
+      "estoque": 998
+    }
+  ],
+  "admins": [],
+  "errors": [
+    {
+      "type": "profiles",
+      "error": {
+        "code": "42703",
+        "details": null,
+        "hint": null,
+        "message": "column profiles.email does not exist"
+      }
+    }
+  ]
+}

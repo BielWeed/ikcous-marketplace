@@ -1,0 +1,152 @@
+﻿[
+  {
+    "proname": "answer_question_atomic"
+  },
+  {
+    "proname": "answer_question_atomic"
+  },
+  {
+    "proname": "check_is_admin"
+  },
+  {
+    "proname": "check_stock_v1"
+  },
+  {
+    "proname": "decrement_stock"
+  },
+  {
+    "proname": "ensure_role_protection"
+  },
+  {
+    "proname": "get_admin_analytics_v2"
+  },
+  {
+    "proname": "get_admin_customers_paged"
+  },
+  {
+    "proname": "get_admin_dashboard_stats"
+  },
+  {
+    "proname": "get_admin_dashboard_summary"
+  },
+  {
+    "proname": "get_admin_executive_summary"
+  },
+  {
+    "proname": "get_admin_list_paginated"
+  },
+  {
+    "proname": "get_category_analytics"
+  },
+  {
+    "proname": "get_coupon_stats"
+  },
+  {
+    "proname": "get_customer_intelligence"
+  },
+  {
+    "proname": "get_inventory_health"
+  },
+  {
+    "proname": "get_my_complete_profile"
+  },
+  {
+    "proname": "get_orders_by_whatsapp"
+  },
+  {
+    "proname": "get_orders_by_whatsapp_v2"
+  },
+  {
+    "proname": "get_orders_by_whatsapp_v3"
+  },
+  {
+    "proname": "get_product_optimization_data"
+  },
+  {
+    "proname": "get_product_recommendations"
+  },
+  {
+    "proname": "get_product_stats"
+  },
+  {
+    "proname": "get_retention_analytics"
+  },
+  {
+    "proname": "get_retention_analytics"
+  },
+  {
+    "proname": "get_retention_rate"
+  },
+  {
+    "proname": "get_sales_analytics"
+  },
+  {
+    "proname": "get_sales_analytics"
+  },
+  {
+    "proname": "get_segmented_push_targets"
+  },
+  {
+    "proname": "handle_default_address"
+  },
+  {
+    "proname": "handle_new_user"
+  },
+  {
+    "proname": "handle_order_item_stock"
+  },
+  {
+    "proname": "handle_updated_at"
+  },
+  {
+    "proname": "increment_helpful"
+  },
+  {
+    "proname": "is_admin"
+  },
+  {
+    "proname": "prevent_role_change"
+  },
+  {
+    "proname": "record_vor_action"
+  },
+  {
+    "proname": "reply_review_atomic"
+  },
+  {
+    "proname": "reply_review_atomic"
+  },
+  {
+    "proname": "swap_banner_order"
+  },
+  {
+    "proname": "sync_cart_atomic"
+  },
+  {
+    "proname": "sync_cart_atomic"
+  },
+  {
+    "proname": "test_lang"
+  },
+  {
+    "proname": "tr_prevent_role_change"
+  },
+  {
+    "proname": "update_my_profile_secure"
+  },
+  {
+    "proname": "update_order_status_atomic"
+  },
+  {
+    "proname": "update_order_status_atomic"
+  },
+  {
+    "proname": "upsert_store_config"
+  },
+  {
+    "proname": "validate_coupon_secure"
+  },
+  {
+    "proname": "validate_coupon_secure_v2"
+  }
+]

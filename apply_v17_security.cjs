@@ -1,0 +1,30 @@
+const { Client } = require('pg');
+const fs = require('node:fs');
+const path = require('path');
+
+async function applyMigration() {
+    const connectionString = process.env.DATABASE_URL || `postgresql://postgres:${encodeURIComponent(process.env.DB_PASSWORD || 'PLACEHOLDER')}@db.cafkrminfnokvgjqtkle.supabase.co:5432/postgres`;
+    const client = new Client({ connectionString });
+
+    try {
+        await client.connect();
+        const sqlPath = path.join(__dirname, 'supabase', 'migrations', '20240305000000_security_hardening_v17.sql');
+
+        if (!fs.existsSync(sqlPath)) {
+            console.error('Migration file not found at:', sqlPath);
+            return;
+        }
+
+        const sql = fs.readFileSync(sqlPath, 'utf8');
+
+        console.log('Applying migration v17 (Security Hardening)...');
+        await client.query(sql);
+        console.log('Migration v17 applied successfully!');
+    } catch (err) {
+        console.error('Error applying migration:', err);
+    } finally {
+        await client.end();
+    }
+}
+
+applyMigration();

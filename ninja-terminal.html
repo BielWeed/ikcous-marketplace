@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NINJA SHELL | ELITE TERMINAL</title>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #050505;
+            --glass-bg: rgba(15, 15, 20, 0.7);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --accent-primary: #00f2ff;
+            --accent-secondary: #7000ff;
+            --text-color: #e0e0e0;
+            --font-mono: 'Fira Code', monospace;
+            --font-sans: 'Inter', sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 20% 30%, rgba(0, 242, 255, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 80% 70%, rgba(112, 0, 255, 0.05) 0%, transparent 40%);
+            color: var(--text-color);
+            font-family: var(--font-sans);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Glassmorphism Header */
+        header {
+            padding: 20px 40px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .logo {
+            font-weight: 700;
+            font-size: 1.2rem;
+            letter-spacing: 2px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ff4747;
+        }
+
+        .dot.online { background: #47ff7e; box-shadow: 0 0 10px #47ff7e; }
+
+        /* Main Terminal Area */
+        main {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .terminal-container {
+            flex: 1;
+            background: var(--glass-bg);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+
+        #output {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            font-family: var(--font-mono);
+            font-size: 0.95rem;
+            line-height: 1.5;
+            mask-image: linear-gradient(to bottom, transparent 0%, black 50px);
+        }
+
+        /* Input Area */
+        .input-wrapper {
+            padding: 20px;
+            background: rgba(0,0,0,0.3);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .prompt {
+            color: var(--accent-primary);
+            font-family: var(--font-mono);
+            font-weight: 500;
+        }
+
+        #cmd-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #fff;
+            font-family: var(--font-mono);
+            font-size: 1rem;
+        }
+
+        /* Lines & Decorations */
+        .line { margin-bottom: 4px; white-space: pre-wrap; }
+        .line.stderr { color: #ff6b6b; }
+        .line.system { color: #888; font-style: italic; font-size: 0.85rem; }
+        .line.command { color: var(--accent-primary); border-left: 2px solid var(--accent-primary); padding-left: 10px; margin: 10px 0; }
+
+        /* Animations */
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        .cursor { display: inline-block; width: 8px; height: 18px; background: var(--accent-primary); animation: pulse 1s infinite; vertical-align: middle; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">Ninja Shell v8.6.1</div>
+        <div class="status">
+            <span id="status-dot" class="dot"></span>
+            <span id="status-text">DISCONNECTED</span>
+        </div>
+    </header>
+
+    <main>
+        <div class="terminal-container">
+            <div id="output">
+                <div class="line system">Initializing Elite Secure Connection...</div>
+            </div>
+            <div class="input-wrapper">
+                <span class="prompt">ninja@sovereign:~$</span>
+                <input type="text" id="cmd-input" placeholder="Execute elite command..." autofocus>
+                <span class="cursor"></span>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const output = document.getElementById('output');
+        const input = document.getElementById('cmd-input');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+
+        const GATEWAY_URL = 'http://localhost:3031';
+
+        function appendLine(text, type = 'stdout') {
+            const div = document.createElement('div');
+            div.className = `line ${type}`;
+            div.textContent = text;
+            output.appendChild(div);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        // SSE Connection
+        function connect() {
+            const es = new EventSource(`${GATEWAY_URL}/events`);
+            
+            es.onopen = () => {
+                statusDot.classList.add('online');
+                statusText.textContent = 'SYSTEMS ONLINE (SSE)';
+                appendLine('Connection established. Ready for elite operations.', 'system');
+            };
+
+            es.onerror = () => {
+                statusDot.classList.remove('online');
+                statusText.textContent = 'GATEWAY UNREACHABLE';
+                appendLine('Disconnected from gateway. Retrying...', 'system');
+            };
+
+            es.onmessage = (e) => {
+                const msg = JSON.parse(e.data);
+                if (msg.type === 'stdout' || msg.type === 'stderr') {
+                    // Se for JSON aninhado (MCP result), tenta limpar
+                    try {
+                        const parsed = JSON.parse(msg.data);
+                        if (parsed.result && parsed.result.content) {
+                            parsed.result.content.forEach(c => appendLine(c.text, msg.type));
+                        } else {
+                            appendLine(msg.data, msg.type);
+                        }
+                    } catch {
+                        appendLine(msg.data, msg.type);
+                    }
+                } else if (msg.type === 'log') {
+                    appendLine(`[NEXUS] ${msg.message}`, 'system');
+                }
+            };
+        }
+
+        async function execute(cmd) {
+            appendLine(cmd, 'command');
+            try {
+                const resp = await fetch(`${GATEWAY_URL}/call`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        domain: 'ninja-shell',
+                        method: 'tools/call',
+                        params: {
+                            name: 'ninja_run',
+                            arguments: { command: cmd }
+                        }
+                    })
+                });
+                const data = await resp.json();
+                if (data.error) appendLine(`Execution Error: ${data.error}`, 'stderr');
+            } catch (err) {
+                appendLine(`Gateway Error: ${err.message}`, 'stderr');
+            }
+        }
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && input.value.trim()) {
+                const cmd = input.value;
+                input.value = '';
+                execute(cmd);
+            }
+        });
+
+        // Start
+        connect();
+    </script>
+</body>
+</html>

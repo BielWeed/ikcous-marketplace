@@ -1,0 +1,389 @@
+/* View Transitions API: smooth cross-fade between PWA pages */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+::view-transition-old(root) {
+  animation: 120ms ease-in both fade-out;
+}
+
+::view-transition-new(root) {
+  animation: 180ms ease-out both fade-in;
+}
+
+/* Critical CSS for loading state */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: #ffffff;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Loading spinner */
+.loading-spinner {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #000;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* Silent Guardian Premium Loader - GHOST PURGE v11.5 (Premium Aesthetics) */
+/* Silent Guardian v13.1: OMNIVERSE AURA (Light Theme Fluid) */
+#silent-guardian-loader {
+  position: fixed;
+  inset: 0;
+  background-color: #fafafa;
+  /* Zinc 50 for a clean light background */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  transition: opacity 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+html.splash-shown #silent-guardian-loader {
+  display: none !important;
+}
+
+/* Fluid Mesh Gradient Aura */
+.aura-mesh {
+  position: absolute;
+  width: 150vw;
+  height: 150vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  filter: blur(80px) saturate(140%);
+  opacity: 0.8;
+  /* Slightly higher base opacity for light mode */
+  animation: aura-breathe 15s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+  z-index: 1;
+}
+
+.aura-orb {
+  position: absolute;
+  border-radius: 50%;
+  mix-blend-mode: multiply;
+  /* Multiply works better on light backgrounds */
+}
+
+.orb-1 {
+  width: 60vw;
+  height: 60vw;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
+  /* Indigo */
+  animation: orb-float-1 20s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.orb-2 {
+  width: 50vw;
+  height: 50vw;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.15) 0%, transparent 70%);
+  /* Sky */
+  animation: orb-float-2 25s cubic-bezier(0.4, 0, 0.2, 1) infinite reverse;
+}
+
+.orb-3 {
+  width: 70vw;
+  height: 70vw;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.1) 0%, transparent 70%);
+  /* Pink */
+  animation: orb-float-3 22s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Frosted Glass Core (Squircle) */
+.glass-core {
+  position: relative;
+  width: 240px;
+  height: 100px;
+  border-radius: 32px;
+  /* Wider squircle feeling */
+  background: rgba(255, 255, 255, 0.6);
+  /* More white for light mode glass */
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  /* Brighter border to catch light */
+  box-shadow:
+    0 20px 40px rgba(0, 0, 0, 0.06),
+    /* Softer subtle shadow for light theme */
+    inset 0 1px 1px rgba(255, 255, 255, 1);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+  animation: glass-float 6s ease-in-out infinite;
+}
+
+/* Logo Container inside Glass */
+.guardian-logo-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  animation: organic-pulse-light 3s ease-in-out infinite alternate;
+}
+
+/* Cinematic Typography */
+.cinematic-text {
+  position: absolute;
+  bottom: 20%;
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  /* slightly thicker for light bg */
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.4);
+  /* Dark text instead of white */
+  z-index: 10;
+  opacity: 0;
+  animation: text-fade-in 2s cubic-bezier(0.19, 1, 0.22, 1) forwards 1s;
+}
+
+/* Ambient Stardust */
+.stardust {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  background: black;
+  border-radius: 50%;
+  opacity: 0.2;
+}
+
+.guardian-logo-icon {
+  width: 44px;
+  height: 44px;
+  background-color: #18181b;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+}
+
+.guardian-logo-icon span {
+  color: #ffffff;
+  font-weight: 900;
+  font-style: italic;
+  font-size: 22px;
+  font-family: 'Inter', -apple-system, sans-serif;
+}
+
+.guardian-brand-text {
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: -0.05em;
+  color: #18181b;
+  font-family: 'Inter', -apple-system, sans-serif;
+}
+
+.sd-1 {
+  top: 20%;
+  left: 30%;
+  animation: twinkle 4s infinite;
+}
+
+.sd-2 {
+  top: 70%;
+  left: 20%;
+  animation: twinkle 6s infinite 1s;
+}
+
+.sd-3 {
+  top: 40%;
+  left: 80%;
+  animation: twinkle 5s infinite 2s;
+}
+
+.sd-4 {
+  top: 80%;
+  left: 70%;
+  animation: twinkle 7s infinite 0.5s;
+}
+
+/* Keyframes */
+@keyframes aura-breathe {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+
+  100% {
+    transform: scale(1.1);
+    opacity: 0.9;
+  }
+}
+
+@keyframes glass-float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.06), inset 0 1px 1px rgba(255, 255, 255, 1);
+  }
+
+  50% {
+    transform: translateY(-10px);
+    box-shadow: 0 30px 50px rgba(0, 0, 0, 0.04), inset 0 1px 1px rgba(255, 255, 255, 1);
+  }
+}
+
+@keyframes organic-pulse-light {
+  0% {
+    transform: scale(0.98);
+    filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.02));
+  }
+
+  100% {
+    transform: scale(1.02);
+    filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.05));
+  }
+}
+
+@keyframes text-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Premium Progress Bar */
+.progress-track {
+  position: absolute;
+  bottom: 15%;
+  width: 160px;
+  height: 2px;
+  background: rgba(0, 0, 0, 0.08);
+  /* Light subtle track */
+  border-radius: 4px;
+  overflow: hidden;
+  opacity: 0;
+  animation: text-fade-in 1.5s cubic-bezier(0.19, 1, 0.22, 1) forwards 1.2s;
+}
+
+.progress-fill {
+  width: 0%;
+  height: 100%;
+  background: #18181b;
+  /* Dark fill */
+  border-radius: 4px;
+  transition: width 0.15s ease-out;
+}
+
+/* Percentage Text */
+.progress-percentage {
+  position: absolute;
+  bottom: 12%;
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  animation: text-fade-in 1.5s cubic-bezier(0.19, 1, 0.22, 1) forwards 1.2s;
+}
+
+@keyframes twinkle {
+
+  0%,
+  100% {
+    opacity: 0.05;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes orb-float-1 {
+
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  33% {
+    transform: translate(15vw, -10vh);
+  }
+
+  66% {
+    transform: translate(-10vw, 15vh);
+  }
+}
+
+@keyframes orb-float-2 {
+
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  33% {
+    transform: translate(-20vw, -15vh);
+  }
+
+  66% {
+    transform: translate(10vw, 20vh);
+  }
+}
+
+@keyframes orb-float-3 {
+
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  33% {
+    transform: translate(10vw, 20vh);
+  }
+
+  66% {
+    transform: translate(-15vw, -10vh);
+  }
+}
+
+/* PWA Debug Banner */
+#pwa-debug-banner {
+  position: fixed;
+}

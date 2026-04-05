@@ -1,0 +1,49 @@
+{
+    "name": "Ickous Marketplace SROS Manifest",
+    "version": "1.0.0",
+    "generation": 19,
+    "protocol": "Manus v2.1",
+    "identity": "Sovereign Marketplace Node",
+    "capabilities": {
+        "search": {
+            "endpoint": "/search",
+            "method": "GET",
+            "params": [
+                "query",
+                "category"
+            ],
+            "semantic_role": "epistemic_foraging"
+        },
+        "catalog": {
+            "endpoint": "/products",
+            "method": "RPC",
+            "schema": "public.produtos",
+            "description": "Acessa o banco de dados de produtos protegidos por Truth Gate"
+        },
+        "cart_management": {
+            "actions": [
+                "add",
+                "remove",
+                "update"
+            ],
+            "state_key": "ickous_cart_v2"
+        },
+        "checkout": {
+            "protocol": "deterministic_execution",
+            "required_fields": [
+                "address",
+                "payment_method",
+                "haptics_confirmed"
+            ]
+        }
+    },
+    "axioms": {
+        "price_non_negative": true,
+        "stock_limit": 10000,
+        "delivery_restriction": "Monte Carmelo, MG"
+    },
+    "verification": {
+        "runtime": "VOR G17",
+        "receipts_enabled": true
+    }
+}

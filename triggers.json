@@ -1,0 +1,7 @@
+[
+  {
+    "trigger_name": "on_order_item_created",
+    "event_object_table": "marketplace_order_items",
+    "action_statement": "EXECUTE FUNCTION handle_order_item_stock()"
+  }
+]
