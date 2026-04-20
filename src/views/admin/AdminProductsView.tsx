@@ -12,8 +12,7 @@ import {
   TrendingUp,
   DollarSign,
   Wallet,
-  ArrowUpRight,
-  LayoutGrid
+  ArrowUpRight
 } from 'lucide-react';
 import { useProducts } from '@/hooks/useProducts';
 import type { View } from '@/types';
@@ -34,7 +33,7 @@ interface AdminProductsViewProps {
   onNavigate: (view: View, id?: string) => void;
 }
 
-export function AdminProductsView({ onNavigate }: AdminProductsViewProps) {
+export function AdminProductsView({ onNavigate }: Readonly<AdminProductsViewProps>) {
   const { products, loading, deleteProduct, toggleProductStatus } = useProducts();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
@@ -73,7 +72,7 @@ export function AdminProductsView({ onNavigate }: AdminProductsViewProps) {
         toast.success("Ativo Removido", {
           description: "O produto foi excluído com sucesso do portfólio.",
         });
-      } catch (_error) {
+      } catch {
         toast.error("Erro na Exclusão", {
           description: "Não foi possível remover o ativo.",
         });
@@ -98,148 +97,114 @@ export function AdminProductsView({ onNavigate }: AdminProductsViewProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--admin-bg)] py-6 sm:p-6 md:p-10 space-y-12 animate-in fade-in duration-1000">
+    <div className="min-h-screen bg-[var(--admin-bg)] text-white pb-32 animate-in fade-in duration-1000">
 
       {/* Header & Main Actions */}
-      <div className="flex flex-col md:flex-row justify-between items-end gap-8 px-4 sm:px-0 pb-4 border-b border-white/5">
-        <div className="space-y-2">
+      <div className="px-4 sm:px-6 flex flex-col md:flex-row justify-between items-center md:items-end gap-8 pt-8 pb-2">
+        <div className="w-full flex justify-center md:justify-start">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-admin-gold to-amber-600 flex items-center justify-center shadow-[0_0_30px_rgba(234,179,8,0.3)]">
               <Package className="text-black w-6 h-6 stroke-[2.5]" />
             </div>
-            <h1 className="text-5xl font-black tracking-tighter leading-none">
-              Gestão <span className="text-zinc-700 italic font-medium">Ativos</span>
-            </h1>
+            <div className="flex flex-col">
+              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tighter uppercase leading-none drop-shadow-md">
+                Gestão <span className="text-zinc-500 italic">de Produtos</span>
+              </h1>
+            </div>
           </div>
-          <p className="text-[10px] font-bold text-[var(--admin-gold)] uppercase tracking-[0.3em] mt-1 opacity-80">
-            Portfólio de Ativos e Controle Financeiro
-          </p>
         </div>
 
-        <div className="flex items-center gap-4 relative z-10">
-          <Button
-            className="bg-admin-gold text-white hover:bg-admin-gold/90 rounded-2xl h-14 px-10 font-black text-[10px] uppercase tracking-widest shadow-[0_10px_30px_rgba(234,179,8,0.2)] transition-all duration-500 hover:-translate-y-1 active:scale-95"
-            onClick={() => onNavigate('admin-product-form')}
-          >
-            <Plus className="w-4 h-4 mr-3 stroke-[3]" /> Novo Produto
-          </Button>
-        </div>
+
       </div>
 
+      <div className="px-4 sm:px-6 mt-6 space-y-6 sm:space-y-12">
       {/* Financial Overview Tiles */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="admin-glass p-6 sm:p-8 sm:rounded-[2.5rem] border-y sm:border-x border-white/5 flex flex-col justify-between group hover:border-emerald-500/30 transition-all duration-500 relative overflow-hidden">
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-emerald-500/0 via-emerald-500/20 to-emerald-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="flex justify-between items-start relative z-10">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-              <Wallet className="w-6 h-6 text-emerald-400" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+        {[
+          { label: 'Capital Alocado', value: `R$ ${financialStats.invested.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: Wallet, accent: 'text-emerald-500', subValue: "Capital Líquido" },
+          { label: 'Lucro Potencial', value: `R$ ${financialStats.potential.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: TrendingUp, accent: 'text-admin-gold', subValue: "Margem Bruta" },
+          { label: 'ROI do Portfólio', value: `${financialStats.avgRoi.toFixed(2)}%`, icon: DollarSign, accent: 'text-blue-500', subValue: "Rendimento %" },
+          { label: 'Ativos Operação', value: `${financialStats.activeCount} / ${financialStats.totalCount}`, icon: Package, accent: 'text-purple-500', subValue: "Slots Ativos" },
+        ].map((stat) => (
+            <div key={stat.label} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group hover:border-[var(--admin-gold)]/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)] transition-all duration-500" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
+                <div className="flex items-center gap-3 mb-4">
+                    <div className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center border border-white/5 shadow-inner bg-zinc-950",
+                        stat.accent
+                    )}>
+                        <stat.icon className="w-4 h-4 flex-shrink-0" />
+                    </div>
+                    <p className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 leading-tight">
+                        {stat.label}
+                    </p>
+                </div>
+                <div className="flex flex-col xl:flex-row xl:items-baseline gap-1 xl:gap-2 relative z-10">
+                    <h3 className="text-xl sm:text-2xl font-black tracking-tighter text-white leading-none whitespace-nowrap">
+                        {stat.value}
+                    </h3>
+                    <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-tight truncate xl:whitespace-nowrap opacity-80">
+                        {stat.subValue}
+                    </p>
+                </div>
             </div>
-            <div className="flex flex-col items-end">
-              <ArrowUpRight className="w-4 h-4 text-zinc-600 group-hover:text-emerald-400 transition-colors" />
-              <span className="text-[9px] font-black text-emerald-500/50 mt-1 uppercase tracking-tighter">Capital Líquido</span>
-            </div>
-          </div>
-          <div className="mt-8 relative z-10">
-            <p className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-2">Capital Alocado</p>
-            <h3 className="admin-stat-value text-3xl">
-              R$ {financialStats.invested.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-            </h3>
-          </div>
-        </div>
-
-        <div className="admin-glass p-6 sm:p-8 sm:rounded-[2.5rem] border-y sm:border-x border-white/5 flex flex-col justify-between group hover:border-admin-gold/30 transition-all duration-500 relative overflow-hidden">
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-admin-gold/0 via-admin-gold/20 to-admin-gold/0 opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="flex justify-between items-start relative z-10">
-            <div className="w-12 h-12 rounded-2xl bg-admin-gold/10 border border-admin-gold/20 flex items-center justify-center">
-              <TrendingUp className="w-6 h-6 text-admin-gold" />
-            </div>
-            <div className="flex flex-col items-end">
-              <TrendingUp className="w-4 h-4 text-zinc-600 group-hover:text-admin-gold transition-colors" />
-              <span className="text-[9px] font-black text-admin-gold/50 mt-1 uppercase tracking-tighter">Margem Bruta</span>
-            </div>
-          </div>
-          <div className="mt-8 relative z-10">
-            <p className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-2">Lucro Potencial</p>
-            <h3 className="admin-stat-value text-3xl">
-              R$ {financialStats.potential.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-            </h3>
-          </div>
-        </div>
-
-        <div className="admin-glass p-6 sm:p-8 sm:rounded-[2.5rem] border-y sm:border-x border-white/5 flex flex-col justify-between group hover:border-blue-500/30 transition-all duration-500 relative overflow-hidden">
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-blue-500/0 via-blue-500/20 to-blue-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="flex justify-between items-start relative z-10">
-            <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-              <DollarSign className="w-6 h-6 text-blue-400" />
-            </div>
-            <div className="flex flex-col items-end">
-              <ArrowUpRight className="w-4 h-4 text-zinc-600 group-hover:text-blue-400 transition-colors" />
-              <span className="text-[9px] font-black text-blue-500/50 mt-1 uppercase tracking-tighter">Rendimento %</span>
-            </div>
-          </div>
-          <div className="mt-8 relative z-10">
-            <p className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-2">ROI do Portfólio</p>
-            <h3 className="admin-stat-value text-3xl">
-              {financialStats.avgRoi.toFixed(2)}%
-            </h3>
-          </div>
-        </div>
-
-        <div className="admin-glass p-6 sm:p-8 sm:rounded-[2.5rem] border-y sm:border-x border-white/5 flex flex-col justify-between group hover:border-purple-500/30 transition-all duration-500 relative overflow-hidden">
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-purple-500/0 via-purple-500/20 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="flex justify-between items-start relative z-10">
-            <div className="w-12 h-12 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
-              <Package className="w-6 h-6 text-purple-400" />
-            </div>
-            <div className="flex flex-col items-end">
-              <LayoutGrid className="w-4 h-4 text-zinc-600 group-hover:text-purple-400 transition-colors" />
-              <span className="text-[9px] font-black text-purple-500/50 mt-1 uppercase tracking-tighter">Slots Ativos</span>
-            </div>
-          </div>
-          <div className="mt-8 relative z-10">
-            <p className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-2">Ativos em Operação</p>
-            <h3 className="admin-stat-value text-3xl">
-              {financialStats.activeCount} <span className="text-sm text-zinc-700 font-medium">/ {financialStats.totalCount}</span>
-            </h3>
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Control Bar */}
-      <div className="admin-glass p-6 sm:rounded-[2rem] border-y sm:border-x border-white/5 flex flex-col md:flex-row gap-6 items-center justify-between shadow-2xl">
-        <div className="relative w-full md:max-w-xl group">
-          <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600 group-focus-within:text-admin-gold transition-colors" />
-          <label htmlFor="search-assets" className="sr-only">Buscar ativos</label>
-          <Input
-            id="search-assets"
-            name="search-assets"
-            placeholder="Buscar por nome ou ID do ativo..."
-            className="bg-black/40 border-white/5 text-white pl-14 h-14 rounded-2xl focus:ring-admin-gold/20 focus:border-admin-gold/30 transition-all placeholder:text-zinc-700 font-bold text-sm"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
+      {/* Unified Control Bar Compacta */}
+      <div className="pt-8 border-t border-white/5 relative flex flex-col mb-8 mt-4">
+        <div className="flex flex-col md:flex-row md:items-center gap-6 relative z-20">
+            <div className="flex items-center gap-4 w-full flex-1">
+                <div className="relative group w-full">
+                    <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                        <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-[var(--admin-gold)] transition-colors" />
+                    </div>
+                    <label htmlFor="search-assets" className="sr-only">Buscar ativos</label>
+                    <Input
+                        id="search-assets"
+                        name="search-assets"
+                        placeholder="Buscar por nome ou ID do ativo..."
+                        className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-[var(--admin-gold)]/20 focus:border-[var(--admin-gold)]/50 transition-all font-bold text-sm w-full"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        autoComplete="off"
+                    />
+                </div>
+                
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 hover:border-[var(--admin-gold)]/50 group transition-all shrink-0">
+                        <Filter className="w-5 h-5 text-zinc-500 group-hover:text-[var(--admin-gold)] transition-colors" />
+                    </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="bg-zinc-950 border-zinc-800/50 p-2 rounded-2xl backdrop-blur-3xl w-56 mt-2 shadow-2xl">
+                    {categories.map(cat => (
+                        <DropdownMenuItem
+                        key={cat}
+                        onClick={() => setFilterCategory(cat)}
+                        className="capitalize text-zinc-400 focus:text-white focus:bg-white/5 rounded-xl px-4 py-3 cursor-pointer transition-all font-bold text-xs mb-1 last:mb-0"
+                        >
+                        {cat === 'all' ? 'Todas as Categorias' : cat}
+                        </DropdownMenuItem>
+                    ))}
+                    </DropdownMenuContent>
+                </DropdownMenu>
 
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="admin-glass border-white/10 text-zinc-400 h-14 px-6 rounded-2xl hover:text-white transition-all font-black text-[10px] uppercase tracking-widest">
-                <Filter className="w-4 h-4 mr-3" />
-                {filterCategory === 'all' ? 'Filtrar Categoria' : filterCategory}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-zinc-950 border-white/10 p-2 rounded-2xl backdrop-blur-3xl">
-              {categories.map(cat => (
-                <DropdownMenuItem
-                  key={cat}
-                  onClick={() => setFilterCategory(cat)}
-                  className="capitalize text-zinc-400 focus:text-white focus:bg-white/5 rounded-xl px-4 py-3 cursor-pointer transition-all font-bold text-xs mb-1 last:mb-0"
+                <Button
+                    className="h-14 px-6 rounded-2xl bg-admin-gold text-black hover:bg-admin-gold/90 font-black text-[10px] uppercase tracking-widest shadow-[0_0_15px_rgba(234,179,8,0.2)] hover:scale-105 active:scale-95 transition-all shrink-0 items-center justify-center hidden sm:flex"
+                    onClick={() => onNavigate('admin-product-form')}
                 >
-                  {cat === 'all' ? 'Todas as Categorias' : cat}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                    <Plus className="w-4 h-4 mr-2 stroke-[3] shrink-0" />
+                    <span className="truncate">Novo Produto</span>
+                </Button>
+                {/* Mobile version */}
+                <Button
+                    size="icon"
+                    className="h-14 w-14 rounded-2xl bg-admin-gold text-black hover:bg-admin-gold/90 shadow-[0_0_15px_rgba(234,179,8,0.2)] active:scale-95 transition-all shrink-0 sm:hidden flex items-center justify-center"
+                    onClick={() => onNavigate('admin-product-form')}
+                >
+                    <Plus className="w-5 h-5 stroke-[3]" />
+                </Button>
+            </div>
         </div>
       </div>
 
@@ -327,7 +292,12 @@ export function AdminProductsView({ onNavigate }: AdminProductsViewProps) {
                     <div className="p-4 bg-zinc-900/50 rounded-2xl border border-white/5 group-hover:border-white/10 transition-colors">
                       <p className="text-[8px] text-zinc-600 uppercase font-black tracking-[0.2em] mb-2">Margem de Lucro</p>
                       <div className="flex items-center justify-between">
-                        <span className={`text-lg font-black tracking-tighter ${margin >= 40 ? 'text-emerald-500' : margin >= 20 ? 'text-admin-gold' : 'text-rose-500'}`}>
+                        <span className={cn(
+                          "text-lg font-black tracking-tighter",
+                          margin >= 40 && 'text-emerald-500',
+                          margin >= 20 && margin < 40 && 'text-admin-gold',
+                          margin < 20 && 'text-rose-500'
+                        )}>
                           {margin.toFixed(1)}%
                         </span>
                         <div className={cn(
@@ -341,7 +311,12 @@ export function AdminProductsView({ onNavigate }: AdminProductsViewProps) {
                     <div className="p-4 bg-zinc-900/50 rounded-2xl border border-white/5 group-hover:border-white/10 transition-colors">
                       <p className="text-[8px] text-zinc-600 uppercase font-black tracking-[0.2em] mb-2">ROI de Rendimento</p>
                       <div className="flex items-center justify-between">
-                        <span className={`text-lg font-black tracking-tighter ${roi >= 100 ? 'text-emerald-500' : roi >= 50 ? 'text-admin-gold' : 'text-rose-500'}`}>
+                        <span className={cn(
+                          "text-lg font-black tracking-tighter",
+                          roi >= 100 && 'text-emerald-500',
+                          roi >= 50 && roi < 100 && 'text-admin-gold',
+                          roi < 50 && 'text-rose-500'
+                        )}>
                           {roi.toFixed(1)}%
                         </span>
                         <div className="w-6 h-6 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center">
@@ -408,14 +383,15 @@ export function AdminProductsView({ onNavigate }: AdminProductsViewProps) {
           <h3 className="text-xl font-black text-white uppercase italic tracking-tighter mb-2">Nenhum Registro Detectado</h3>
           <p className="text-sm font-medium text-zinc-500 uppercase tracking-widest max-w-xs mx-auto mb-8">O sistema de inteligência não localizou ativos para os parâmetros definidos.</p>
           <Button
-            variant="outline"
+            variant="ghost"
             onClick={() => { setSearchTerm(''); setFilterCategory('all'); }}
-            className="bg-black/40 border-white/5 text-[10px] font-black uppercase tracking-[0.2em] rounded-2xl px-10 h-14 hover:bg-[var(--admin-gold)] hover:text-black transition-all"
+            className="bg-black/40 border border-white/5 text-[10px] font-black uppercase tracking-[0.2em] rounded-2xl px-10 h-14 hover:bg-[var(--admin-gold)] hover:text-black transition-all"
           >
             Resetar Filtros Mestres
           </Button>
         </div>
       )}
+      </div>
     </div>
 
   );

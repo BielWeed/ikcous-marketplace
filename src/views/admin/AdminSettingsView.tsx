@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Save, Ticket, Image as ImageIcon } from 'lucide-react';
+import { Save, Ticket, Image as ImageIcon, Truck, Headset, Boxes, Bell, Settings } from 'lucide-react';
 
 import { useStore } from '@/hooks/useStore';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,7 @@ interface AdminSettingsViewProps {
     onNavigate: (view: View) => void;
 }
 
-export function AdminSettingsView({ onNavigate }: AdminSettingsViewProps) {
+export function AdminSettingsView({ onNavigate }: Readonly<AdminSettingsViewProps>) {
     const { config, isLoaded, updateConfig } = useStore();
     const [formData, setFormData] = useState(config);
 
@@ -31,7 +31,7 @@ export function AdminSettingsView({ onNavigate }: AdminSettingsViewProps) {
             return;
         }
 
-        const cleanWhatsApp = formData.whatsappNumber.replace(/\D/g, '');
+        const cleanWhatsApp = formData.whatsappNumber.replaceAll(/\D/g, '');
         if (cleanWhatsApp.length < 10) {
             toast.error('WhatsApp inválido');
             return;
@@ -51,15 +51,9 @@ export function AdminSettingsView({ onNavigate }: AdminSettingsViewProps) {
     return (
         <div className="min-h-screen bg-[var(--admin-bg)] pb-20 animate-in fade-in duration-700">
             {/* Elite Header */}
-            <div className="admin-glass px-6 py-5 sticky top-0 z-50 border-b border-white/5 backdrop-blur-3xl shadow-2xl">
+            <div className="px-6 pt-6 pb-2">
                 <div className="flex items-center justify-between max-w-4xl mx-auto w-full">
                     <div className="flex items-center gap-5">
-                        <button
-                            onClick={() => onNavigate('admin-dashboard')}
-                            className="w-11 h-11 flex items-center justify-center bg-white/5 border border-white/5 text-white rounded-xl hover:bg-white/10 active:scale-95 transition-all p-0 shadow-lg"
-                        >
-                            <ArrowLeft className="w-5 h-5" />
-                        </button>
                         <div className="flex flex-col">
                             <h2 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] leading-none mb-1.5 flex items-center gap-2">
                                 SISTEMA GLOBAL
@@ -78,12 +72,12 @@ export function AdminSettingsView({ onNavigate }: AdminSettingsViewProps) {
                 </div>
             </div>
 
-            <div className="py-4 sm:p-4 space-y-12 max-w-2xl mx-auto pt-10">
+            <div className="px-4 mt-6 space-y-12 max-w-2xl mx-auto pb-10">
                 {/* Entregas Section */}
                 <div className="space-y-6">
                     <div className="flex items-center gap-4 px-2">
                         <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-                            <span className="text-[11px] font-black text-emerald-500">01</span>
+                            <Truck className="w-5 h-5 text-emerald-500" strokeWidth={2.5} />
                         </div>
                         <h2 className="text-xs font-black text-white uppercase tracking-[0.2em]">Logística & Entregas</h2>
                     </div>
@@ -138,7 +132,7 @@ export function AdminSettingsView({ onNavigate }: AdminSettingsViewProps) {
                 <div className="space-y-6">
                     <div className="flex items-center gap-4 px-2">
                         <div className="w-10 h-10 rounded-xl bg-[var(--admin-gold)]/10 flex items-center justify-center border border-[var(--admin-gold)]/20 shadow-[0_0_15px_rgba(212,175,55,0.1)]">
-                            <span className="text-[11px] font-black text-[var(--admin-gold)]">02</span>
+                            <Headset className="w-5 h-5 text-[var(--admin-gold)]" strokeWidth={2.5} />
                         </div>
                         <h2 className="text-xs font-black text-white uppercase tracking-[0.2em]">Canais de Atendimento</h2>
                     </div>
@@ -184,7 +178,7 @@ export function AdminSettingsView({ onNavigate }: AdminSettingsViewProps) {
                 <div className="space-y-6">
                     <div className="flex items-center gap-4 px-2">
                         <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.1)]">
-                            <span className="text-[11px] font-black text-blue-400">03</span>
+                            <Boxes className="w-5 h-5 text-blue-400" strokeWidth={2.5} />
                         </div>
                         <h2 className="text-xs font-black text-white uppercase tracking-[0.2em]">Módulos de Sistema</h2>
                     </div>
@@ -198,7 +192,7 @@ export function AdminSettingsView({ onNavigate }: AdminSettingsViewProps) {
                             <Switch
                                 checked={formData.enableReviews}
                                 onCheckedChange={(checked) => setFormData({ ...formData, enableReviews: checked })}
-                                className="data-[state=checked]:bg-[var(--admin-gold)]"
+                                className="data-[state=checked]:bg-admin-gold"
                             />
                         </div>
                         <div className="flex items-center justify-between p-5 bg-white/5 rounded-[2rem] border border-white/5 hover:border-white/10 transition-colors">
@@ -209,7 +203,7 @@ export function AdminSettingsView({ onNavigate }: AdminSettingsViewProps) {
                             <Switch
                                 checked={formData.enableCoupons}
                                 onCheckedChange={(checked) => setFormData({ ...formData, enableCoupons: checked })}
-                                className="data-[state=checked]:bg-[var(--admin-gold)]"
+                                className="data-[state=checked]:bg-admin-gold"
                             />
                         </div>
                     </div>
@@ -219,7 +213,7 @@ export function AdminSettingsView({ onNavigate }: AdminSettingsViewProps) {
                 <div className="space-y-6">
                     <div className="flex items-center gap-4 px-2">
                         <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center border border-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.1)]">
-                            <span className="text-[11px] font-black text-purple-400">04</span>
+                            <Bell className="w-5 h-5 text-purple-400" strokeWidth={2.5} />
                         </div>
                         <h2 className="text-xs font-black text-white uppercase tracking-[0.2em]">Inteligência de Notificação</h2>
                     </div>
@@ -244,7 +238,7 @@ export function AdminSettingsView({ onNavigate }: AdminSettingsViewProps) {
                             <Switch
                                 checked={formData.pushMarketingEnabled}
                                 onCheckedChange={(checked) => setFormData({ ...formData, pushMarketingEnabled: checked })}
-                                className="data-[state=checked]:bg-[var(--admin-gold)]"
+                                className="data-[state=checked]:bg-admin-gold"
                             />
                         </div>
                         {/* Decoration */}
@@ -255,7 +249,7 @@ export function AdminSettingsView({ onNavigate }: AdminSettingsViewProps) {
                 <div className="space-y-6">
                     <div className="flex items-center gap-4 px-2">
                         <div className="w-10 h-10 rounded-xl bg-[var(--admin-gold)]/10 flex items-center justify-center border border-[var(--admin-gold)]/20 shadow-[0_0_15px_rgba(212,175,55,0.1)]">
-                            <span className="text-[11px] font-black text-[var(--admin-gold)]">05</span>
+                            <Settings className="w-5 h-5 text-[var(--admin-gold)]" strokeWidth={2.5} />
                         </div>
                         <h2 className="text-xs font-black text-white uppercase tracking-[0.2em]">Gestão & Atalhos</h2>
                     </div>

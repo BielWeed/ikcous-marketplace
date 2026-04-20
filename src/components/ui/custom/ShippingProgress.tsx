@@ -37,87 +37,76 @@ export function ShippingProgress({
 
     return (
         <div className={cn(
-            "px-6 py-7 sm:px-8 text-white shadow-2xl relative overflow-hidden group transition-all duration-700 rounded-none mb-0",
+            "mx-4 sm:mx-6 mt-4 mb-2 p-4 sm:p-5 rounded-[2rem] relative overflow-hidden transition-all duration-700 border",
             shipping === 0
-                ? "bg-gradient-to-br from-emerald-600 to-emerald-900 shadow-emerald-200/20"
-                : "bg-zinc-950 shadow-zinc-200/10"
+                ? "bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 border-emerald-100 shadow-[0_8px_30px_-10px_rgba(16,185,129,0.15)]"
+                : "bg-white border-zinc-200/60 shadow-[0_8px_30px_-10px_rgba(0,0,0,0.06)]"
         )}>
-            {/* Animated Background Orbs */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl group-hover:bg-white/10 transition-all duration-1000" />
-            <div className="absolute bottom-0 left-0 w-48 h-48 bg-emerald-500/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-3xl" />
+            {/* Animated Orbs for Premium Vibe */}
+            {shipping === 0 && (
+                <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-400/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+            )}
 
-            {/* Top: Premium Header & Status */}
-            <div className="flex items-center justify-between mb-8 relative z-10 h-14">
-                {/* Visual Spotlight behind the title */}
-                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-white/5 blur-[80px] pointer-events-none rounded-full" />
-
-                {/* Left: Premium Icon Badge */}
+            {/* Top Row: Icon + Title + Savings */}
+            <div className="flex items-center gap-3 mb-4 relative z-10">
                 <motion.div 
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    whileHover={{ scale: 1.05 }}
                     className={cn(
-                        "relative w-12 h-12 rounded-[1.25rem] flex items-center justify-center transition-all duration-500 z-10 shadow-2xl overflow-hidden",
+                        "w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm transition-colors duration-500",
                         shipping === 0 
-                            ? "bg-emerald-500/10 border border-emerald-500/30 shadow-emerald-500/10" 
-                            : "bg-white/5 border border-white/10 backdrop-blur-md"
+                            ? "bg-gradient-to-b from-emerald-400 to-emerald-600 text-white shadow-emerald-500/30" 
+                            : "bg-zinc-100 text-zinc-900 border border-zinc-200"
                     )}
                 >
-                    {/* Subtle glass reflection */}
-                    <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-50 pointer-events-none" />
-                    
-                    {shipping === 0 ? (
-                        <SparklesIcon className="w-6 h-6 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]" />
-                    ) : (
-                        <Truck className="w-5 h-5 text-zinc-400" />
-                    )}
+                    {shipping === 0 ? <SparklesIcon className="w-5 h-5 drop-shadow-md" /> : <Truck className="w-5 h-5" />}
                 </motion.div>
 
-                {/* Center: Metallic Title Section */}
-                <div className="absolute left-1/2 -translate-x-1/2 text-center w-full pointer-events-none px-12 sm:px-16 z-10 flex flex-col items-center">
-                    <h3 className="text-lg sm:text-2xl font-black uppercase tracking-tighter sm:tracking-tight leading-none">
-                        <span className="bg-gradient-to-b from-white via-white to-white/40 bg-clip-text text-transparent drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
-                            {shipping === 0 ? "Frete VIP Liberado" : "Meta Frete Grátis"}
-                        </span>
+                <div className="flex-1 min-w-0">
+                    <h3 className={cn(
+                        "text-sm font-black uppercase tracking-tight truncate transition-colors",
+                        shipping === 0 ? "text-emerald-700" : "text-zinc-900"
+                    )}>
+                        {shipping === 0 ? "Frete VIP Liberado" : "Meta Frete Grátis"}
                     </h3>
-                    <div className="flex items-center gap-1.5 mt-1.5 opacity-40">
-                        <div className={cn("w-1 h-1 rounded-full", shipping === 0 ? "bg-emerald-400 animate-pulse" : "bg-zinc-500")} />
-                        <span className="text-[7px] font-bold tracking-[0.2em] text-white uppercase">Premium Delivery Service</span>
+                    <p className={cn(
+                        "text-[10px] font-bold uppercase tracking-widest mt-0.5",
+                        shipping === 0 ? "text-emerald-600/70" : "text-zinc-400"
+                    )}>
+                        {shipping === 0 ? "Premium Service Ativado" : "Benefício exclusivo"}
+                    </p>
+                </div>
+                
+                {savings > 0 && (
+                    <div className="text-right flex flex-col items-end animate-in fade-in slide-in-from-right-4">
+                        <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600/70 mb-0.5">Economia</span>
+                        <span className="text-xs sm:text-sm font-black text-emerald-600 tracking-tighter shrink-0 bg-emerald-100/50 px-2 py-0.5 rounded-lg">
+                           + {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(savings)}
+                        </span>
                     </div>
-                </div>
-
-                {/* Right: Minimalist Savings Area */}
-                <div className="flex flex-col items-end min-w-[48px] z-10">
-                    {savings > 0 && (
-                        <div className="flex flex-col items-end gap-0.5 text-emerald-400 animate-in fade-in slide-in-from-right-4">
-                            <span className="text-[8px] font-bold uppercase tracking-widest text-zinc-500 leading-none">Economia</span>
-                            <span className="text-xs font-black uppercase tracking-tighter leading-none">R$ {savings.toFixed(2).replace('.', ',')}</span>
-                        </div>
-                    )}
-                </div>
+                )}
             </div>
 
-            {/* Progress System */}
-            <div className="mb-8 relative z-10">
-                <div className="flex justify-between items-end mb-3 px-1">
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1">Seu Progresso</span>
-                        <span className={cn(
-                            "text-2xl font-black tracking-tighter leading-none transition-colors duration-500",
-                            shipping === 0 ? "text-emerald-400" : isNearlyThere ? "text-amber-400" : "text-white"
-                        )}>
-                            {Math.floor(progressPercent)}%
-                        </span>
-                    </div>
+            {/* Progress Bar System */}
+            <div className="relative z-10">
+                <div className="flex justify-between items-end mb-1.5 px-0.5">
+                    <span className={cn(
+                        "text-sm font-black tracking-tighter transition-colors",
+                        shipping === 0 ? "text-emerald-600" : "text-zinc-900"
+                    )}>
+                        {Math.floor(progressPercent)}%
+                    </span>
                     {shipping > 0 && (
-                        <div className="flex flex-col items-end">
-                            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Faltam apenas</span>
-                            <span className="text-sm font-black text-white leading-none">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amountToFree)}</span>
-                        </div>
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                            Faltam <strong className="text-zinc-900 font-black tracking-tight">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amountToFree)}</strong>
+                        </span>
                     )}
                 </div>
 
-                <div className="h-3 w-full bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5 relative">
+                <div className={cn(
+                    "h-2.5 w-full rounded-full overflow-hidden p-[2px]",
+                    shipping === 0 ? "bg-emerald-100" : "bg-zinc-100"
+                )}>
                     <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${progressPercent}%` }}
@@ -125,30 +114,26 @@ export function ShippingProgress({
                         className={cn(
                             "h-full rounded-full relative transition-colors duration-1000",
                             shipping === 0
-                                ? "bg-gradient-to-r from-emerald-400 to-emerald-300"
+                                ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
                                 : isNearlyThere
-                                    ? "bg-gradient-to-r from-amber-500 to-amber-200"
-                                    : "bg-gradient-to-r from-zinc-700 via-zinc-400 to-white"
+                                    ? "bg-amber-400"
+                                    : "bg-zinc-900"
                         )}
-                    >
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-shimmer" />
-                    </motion.div>
+                    />
                 </div>
-
             </div>
 
-            {/* Free Shipping Catalog Section */}
+            {/* Free Shipping Catalog Section (Compact) */}
             {shipping > 0 && freeShippingProducts.length > 0 && (
-                <div className="mb-8 relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-                    <div className="flex items-center justify-between mb-4">
-                        <h4 className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-500 flex items-center gap-2">
-                            <SparklesIcon className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />
+                <div className="mt-5 pt-4 border-t border-zinc-100 border-dashed relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                    <div className="flex items-center justify-between mb-3 px-1">
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-500 flex items-center gap-1.5">
+                            <SparklesIcon className="w-3.5 h-3.5 text-amber-500" />
                             Atinja a Meta
                         </h4>
-                        <div className="h-px flex-1 bg-white/5 mx-4" />
                     </div>
 
-                    <div className="flex gap-4 overflow-x-auto pb-4 -mx-6 px-6 sm:-mx-8 sm:px-8 no-scrollbar scroll-smooth">
+                    <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 sm:-mx-5 sm:px-5 no-scrollbar scroll-smooth">
                         {freeShippingProducts.map((p: Product) => (
                             <div
                                 key={p.id}
@@ -156,58 +141,51 @@ export function ShippingProgress({
                                     haptic.light();
                                     window.location.href = `?product=${p.id}`;
                                 }}
-                                className="w-36 flex-shrink-0 group/card cursor-pointer"
+                                className="w-[124px] flex-shrink-0 group/card cursor-pointer bg-zinc-50 rounded-2xl p-2 border border-zinc-100 hover:border-zinc-300 transition-colors"
                             >
-                                <div className="relative aspect-[4/5] bg-zinc-900 rounded-3xl overflow-hidden mb-3 border border-white/10 group-hover/card:border-white/30 transition-all duration-500 shadow-xl">
+                                <div className="relative aspect-square bg-white rounded-xl overflow-hidden mb-2 shadow-sm border border-black/[0.03]">
                                     <img
                                         src={p.images[0]}
                                         alt={p.name}
-                                        className="w-full h-full object-cover group-hover/card:scale-110 transition-transform duration-700"
+                                        className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-500"
                                     />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
                                 </div>
-                                <div className="px-1">
-                                    <div className="h-8 flex items-start mb-1">
-                                        <p className="text-[10px] font-black leading-snug text-zinc-400 line-clamp-2 group-hover/card:text-white transition-colors uppercase tracking-tight">
-                                            {p.name}
-                                        </p>
-                                    </div>
-                                    <div className="flex flex-col gap-3">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <p className="text-[13px] font-black text-white tracking-tighter shrink-0">
-                                                R$ {p.price.toFixed(2).replace('.', ',')}
-                                            </p>
-                                            
-                                            <div className="flex items-center gap-1.5 bg-white/5 rounded-xl border border-white/5 p-0.5 ml-auto">
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); updateQuantity(p.id, -1); }}
-                                                    className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-white/50 hover:text-white active:scale-90"
-                                                >
-                                                    <Minus className="w-3 h-3" />
-                                                </button>
-                                                <span className="text-[11px] font-black text-white w-4 text-center">
-                                                    {getQuantity(p.id)}
-                                                </span>
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); updateQuantity(p.id, 1); }}
-                                                    className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-white/50 hover:text-white active:scale-90"
-                                                >
-                                                    <Plus className="w-3 h-3" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                haptic.medium();
-                                                onAddToCart?.(p, getQuantity(p.id));
-                                            }}
-                                            className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 transition-all duration-300 flex items-center justify-center gap-2 border border-white/10 hover:border-emerald-300 group/btn active:scale-95 shadow-lg shadow-emerald-500/20"
+                                <div className="px-0.5">
+                                    <p className="text-[9px] font-black leading-snug text-zinc-600 line-clamp-2 uppercase tracking-tight mb-1">
+                                        {p.name}
+                                    </p>
+                                    <p className="text-[11px] font-black text-zinc-900 tracking-tighter mb-2">
+                                        R$ {p.price.toFixed(2).replace('.', ',')}
+                                    </p>
+                                    
+                                    <div className="flex items-center justify-between gap-1 mb-2 bg-white rounded-lg border border-zinc-200 p-0.5">
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); updateQuantity(p.id, -1); }}
+                                            className="w-5 h-5 flex items-center justify-center rounded-md bg-zinc-50 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 active:scale-95"
                                         >
-                                            <ShoppingCart className="w-3.5 h-3.5 text-white group-hover/btn:scale-110 transition-transform" />
-                                            <span className="text-[10px] font-black text-white uppercase tracking-widest">Adicionar</span>
+                                            <Minus className="w-3 h-3" />
+                                        </button>
+                                        <span className="text-[10px] font-black text-zinc-900 flex-1 text-center">
+                                            {getQuantity(p.id)}
+                                        </span>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); updateQuantity(p.id, 1); }}
+                                            className="w-5 h-5 flex items-center justify-center rounded-md bg-zinc-50 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 active:scale-95"
+                                        >
+                                            <Plus className="w-3 h-3" />
                                         </button>
                                     </div>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            haptic.medium();
+                                            onAddToCart?.(p, getQuantity(p.id));
+                                        }}
+                                        className="w-full py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white transition-colors flex items-center justify-center gap-1.5 active:scale-95 shadow-sm"
+                                    >
+                                        <ShoppingCart className="w-3 h-3" />
+                                        <span className="text-[9px] font-black uppercase tracking-widest">Adicionar</span>
+                                    </button>
                                 </div>
                             </div>
                         ))}

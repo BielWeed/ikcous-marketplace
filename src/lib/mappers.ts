@@ -118,14 +118,21 @@ export function mapOrderFromDB(
             neighborhood: addressSource.neighborhood || customerData.neighborhood || '',
             reference: addressSource.reference || customerData.reference || ''
         },
-        items: row.items?.map(item => ({
-            productId: item.product_id || '',
-            variantId: (item as any).variant_id || item.variant_id || undefined,
-            name: item.product_name || '',
-            price: Number(item.price || 0),
-            quantity: Number(item.quantity || 1),
-            image: item.image_url || ''
-        })) || [],
+        items: row.items?.map(item => {
+            const productData = (item as any).product;
+            const fallbackImage = (productData?.imagem_urls && productData.imagem_urls.length > 0) 
+                ? productData.imagem_urls[0] 
+                : (productData?.imagem_url || item.image_url || '');
+
+            return {
+                productId: item.product_id || '',
+                variantId: (item as any).variant_id || item.variant_id || undefined,
+                name: item.product_name || '',
+                price: Number(item.price || 0),
+                quantity: Number(item.quantity || 1),
+                image: fallbackImage
+            };
+        }) || [],
         total: Number(row.total ?? (row as any).total_amount ?? 0),
         subtotal: Number(row.subtotal || 0),
         shipping: Number(row.shipping || 0),

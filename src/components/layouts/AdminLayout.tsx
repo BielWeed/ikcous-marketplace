@@ -25,7 +25,7 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
         { icon: Activity, label: 'Geral', view: 'admin-dashboard' },
         { icon: Package, label: 'Pedidos', view: 'admin-orders' },
         { icon: ShoppingBag, label: 'Produtos', view: 'admin-products' },
-        { icon: Users, label: 'Alvos', view: 'admin-customers' },
+        { icon: Users, label: 'Clientes', view: 'admin-customers' },
         { icon: Settings, label: 'Ajustes', view: 'admin-settings' },
     ];
 

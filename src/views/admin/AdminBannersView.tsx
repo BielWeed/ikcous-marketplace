@@ -119,7 +119,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
     return (
         <div className="min-h-screen bg-[var(--admin-bg)] text-white pb-32 font-sans selection:bg-[var(--admin-gold)]/30">
             {/* Header Elite */}
-            <div className="admin-glass px-6 py-8 sticky top-0 z-50 border-b border-white/5 backdrop-blur-xl bg-black/40">
+            <div className="px-6 py-8">
                 <div className="max-w-7xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-6">
                         <button

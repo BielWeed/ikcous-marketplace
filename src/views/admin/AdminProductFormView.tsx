@@ -5,7 +5,7 @@ import type { View, ProductVariant } from '@/types';
 import { useProducts } from '@/hooks/useProducts';
 import { useCategories } from '@/hooks/useCategories';
 import { toast } from 'sonner';
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 interface AdminProductFormViewProps {
   productId?: string;
   onNavigate: (view: View) => void;
@@ -30,7 +30,7 @@ const itemVariants = {
 
 export function AdminProductFormView({ productId, onNavigate, onBack }: AdminProductFormViewProps) {
   const { addProduct, updateProduct, addVariant, updateVariant, deleteVariant, uploadProductImages, fetchProduct } = useProducts({ autoFetch: false });
-  const { categories: dbCategories } = useCategories();
+  const { categories: dbCategories, addCategory } = useCategories();
 
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -63,6 +63,8 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
     active: true
   });
   const [currentProduct, setCurrentProduct] = useState<any>(null);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
 
   useEffect(() => {
     if (productId) {
@@ -248,6 +250,84 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
       </div>
 
       <AnimatePresence>
+        {showCategoryForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-zinc-900 border border-white/10 rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 p-8 opacity-5">
+                <Layers className="w-24 h-24 text-white" />
+              </div>
+
+              <div className="flex items-center gap-4 mb-8 relative z-10">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+                  <Layers className="w-6 h-6 text-emerald-500" />
+                </div>
+                <div>
+                  <h3 className="font-black text-xl tracking-tight">Nova Categoria</h3>
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest leading-none mt-1">Classificação de Estoque</p>
+                </div>
+              </div>
+
+              <div className="space-y-6 relative z-10">
+                <div className="space-y-2">
+                  <label htmlFor="cat-name" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Nome do Setor / Categoria</label>
+                  <input
+                    id="cat-name"
+                    autoFocus
+                    type="text"
+                    value={newCategoryName}
+                    onChange={e => setNewCategoryName(e.target.value)}
+                    className="w-full px-5 py-4 bg-zinc-950 border border-white/5 rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all"
+                    placeholder="Ex: Vestuário"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-8 relative z-10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCategoryForm(false);
+                    setNewCategoryName('');
+                    setFormData(prev => ({ ...prev, category: formData.category || '' }));
+                  }}
+                  className="flex-1 py-5 text-xs font-black text-zinc-500 uppercase tracking-widest hover:text-white transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (newCategoryName.trim()) {
+                      const loadingId = toast.loading('Criando categoria...');
+                      try {
+                        await addCategory({ name: newCategoryName.trim(), description: '', isActive: true });
+                        setFormData(prev => ({ ...prev, category: newCategoryName.trim() }));
+                        toast.success('Categoria criada com sucesso!', { id: loadingId });
+                        setShowCategoryForm(false);
+                        setNewCategoryName('');
+                      } catch (err) {
+                        toast.error('Erro ao salvar categoria', { id: loadingId });
+                      }
+                    }
+                  }}
+                  className="flex-[2] py-5 bg-emerald-500 text-emerald-950 rounded-2xl text-xs font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(16,185,129,0.3)] hover:scale-105 active:scale-95 transition-all"
+                >
+                  Criar Setor
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
         {showVariantForm && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -342,12 +422,8 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
         )}
       </AnimatePresence>
 
-      {/* Header */}
-      <header className="sticky top-0 z-[60] backdrop-blur-2xl bg-zinc-950/80 border-b border-white/5 px-6 py-6 overflow-hidden">
-        {/* Glow Line */}
-        <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent" />
-
-        <div className="flex items-center justify-between max-w-screen-xl mx-auto">
+      <header className="px-6 py-6 pb-2">
+        <div className="flex items-center justify-between mx-auto max-w-5xl">
           <div className="flex items-center gap-5">
             <button
               onClick={() => onBack ? onBack() : onNavigate('admin-products')}
@@ -391,7 +467,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
           <div className="lg:col-span-8 space-y-8">
 
             {/* Visual Media Section */}
-            <motion.section variants={itemVariants} className="bg-zinc-900/40 border border-white/10 rounded-[3rem] p-8 shadow-2xl relative overflow-hidden group">
+            <motion.section variants={itemVariants} className="relative group">
               <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
                 <ImageIcon className="w-24 h-24 text-white" />
               </div>
@@ -400,7 +476,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                 <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
                   <Camera className="w-5 h-5 text-emerald-500" />
                 </div>
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">Ativos Visuais</h3>
+                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">Fotos do Produto</h3>
               </div>
 
               <div className="flex flex-wrap gap-6">
@@ -433,43 +509,43 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                 <label className="flex-shrink-0 w-36 h-36 rounded-3xl border-2 border-dashed border-white/10 border-emerald-500/10 flex flex-col items-center justify-center cursor-pointer hover:bg-emerald-500/5 hover:border-emerald-500/30 transition-all group/upload relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-emerald-500/5" />
                   <Plus className="w-8 h-8 text-zinc-600 group-hover/upload:text-emerald-500 group-hover/upload:scale-110 transition-all mb-1 relative z-10" />
-                  <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest relative z-10 group-hover/upload:text-emerald-400">Append Media</span>
+                  <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest relative z-10 group-hover/upload:text-emerald-400">Adicionar Imagem</span>
                   <input type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" />
                 </label>
               </div>
             </motion.section>
 
             {/* Content Section */}
-            <motion.section variants={itemVariants} className="bg-zinc-900/40 border border-white/10 rounded-[3rem] p-8 space-y-8 shadow-2xl">
+            <motion.section variants={itemVariants} className="pt-12 border-t border-white/5 space-y-8">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
                   <Info className="w-5 h-5 text-blue-500" />
                 </div>
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">Metadados de Identificação</h3>
+                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">Dados do Produto</h3>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="md:col-span-2 space-y-3">
-                  <label htmlFor="product-name" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Nomenclatura Técnica *</label>
+                  <label htmlFor="product-name" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Nome do Produto *</label>
                   <input
                     id="product-name"
                     name="product-name"
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="Ex: IPHONE 16 CARBON BLACK - 256GB"
+                    placeholder="Ex: Camiseta Básica Preta - Tamanho M"
                     className="w-full px-6 py-5 bg-zinc-950/50 border border-white/5 rounded-2xl text-base font-black text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all placeholder:text-zinc-800"
                   />
                 </div>
 
                 <div className="md:col-span-2 space-y-3">
-                  <label htmlFor="product-description" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Descrição do Ativo *</label>
+                  <label htmlFor="product-description" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Descrição do Produto *</label>
                   <textarea
                     id="product-description"
                     name="product-description"
                     value={formData.description}
                     onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Detalhamento técnico e comercial do produto..."
+                    placeholder="Digite os detalhes e informações do produto..."
                     rows={6}
                     className="w-full px-6 py-5 bg-zinc-950/50 border border-white/5 rounded-3xl text-sm font-medium text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all resize-none placeholder:text-zinc-800 leading-relaxed"
                   />
@@ -478,24 +554,39 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                 <div className="space-y-3">
                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Setor / Categoria *</label>
                   <div className="relative group">
-                    <select
-                      value={formData.category}
-                      onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                      className="w-full px-6 py-5 bg-zinc-950/50 border border-white/5 rounded-2xl text-sm font-black text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all appearance-none cursor-pointer hover:bg-zinc-900/50 hover:border-white/10"
+                    <Select
+                      value={formData.category || ""}
+                      onValueChange={async (val) => {
+                        if (val === 'NEW_CATEGORY') {
+                          setShowCategoryForm(true);
+                        } else {
+                          setFormData(prev => ({ ...prev, category: val }));
+                        }
+                      }}
                     >
-                      <option value="" className="bg-zinc-900">Selecionar Setor</option>
-                      {dbCategories.map((category) => (
-                        <option key={category.id} value={category.name} className="bg-zinc-900 text-zinc-400">{category.name.toUpperCase()}</option>
-                      ))}
-                    </select>
-                    <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-600 group-hover:text-emerald-500 transition-colors">
+                      <SelectTrigger className="w-full px-6 py-5 h-auto bg-zinc-950/50 border border-white/5 rounded-2xl text-sm font-black text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all hover:bg-zinc-900/50 hover:border-white/10 [&>svg]:opacity-50">
+                        <SelectValue placeholder="Selecionar Setor" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-zinc-900/95 border-white/10 backdrop-blur-xl rounded-xl p-2 shadow-[0_10px_40px_rgba(0,0,0,0.8)]">
+                        {dbCategories.map((category) => (
+                          <SelectItem key={category.id} value={category.name} className="py-3 px-4 rounded-lg cursor-pointer font-bold text-zinc-300 focus:bg-white/5 focus:text-emerald-400">
+                            {category.name.toUpperCase()}
+                          </SelectItem>
+                        ))}
+                        <div className="h-px bg-white/10 my-2 mx-1" />
+                        <SelectItem value="NEW_CATEGORY" className="py-3 px-4 rounded-lg cursor-pointer font-black text-emerald-500 focus:bg-emerald-500/10 focus:text-emerald-400">
+                          <span className="flex items-center gap-2">➕ CRIAR NOVA CATEGORIA</span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="absolute right-12 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-600 group-hover:text-emerald-500 transition-colors">
                       <Layers className="w-5 h-5" />
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-3">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Estoque Consolidado *</label>
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Quantidade em Estoque *</label>
                   <div className="relative group">
                     <input
                       type="number"
@@ -513,17 +604,14 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
             </motion.section>
 
             {/* Pricing Section */}
-            <motion.section variants={itemVariants} className="bg-zinc-900/40 border border-white/10 rounded-[3rem] p-8 space-y-8 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-8 opacity-5">
-                <DollarSign className="w-24 h-24 text-white" />
-              </div>
+            <motion.section variants={itemVariants} className="pt-12 border-t border-white/5 space-y-8 relative">
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
                     <DollarSign className="w-5 h-5 text-emerald-500" />
                   </div>
-                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">Engenharia Financeira</h3>
+                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">Precificação do Produto</h3>
                 </div>
 
                 {formData.price && formData.costPrice && (
@@ -551,7 +639,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-3">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Preço de Custo (AQSC)</label>
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Preço de Custo</label>
                   <div className="relative group">
                     <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-bold text-sm">R$</span>
                     <input
@@ -566,7 +654,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                 </div>
 
                 <div className="space-y-3">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Preço de Oferta</label>
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Preço de Venda</label>
                   <div className="relative group">
                     <span className="absolute left-6 top-1/2 -translate-y-1/2 text-emerald-500/50 font-bold text-sm">R$</span>
                     <input
@@ -581,7 +669,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                 </div>
 
                 <div className="space-y-3">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Markup (Ancoragem)</label>
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Preço Original (Sem Desconto)</label>
                   <div className="relative group">
                     <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-bold text-sm">R$</span>
                     <input
@@ -614,19 +702,19 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                       </div>
                       
                       <div className="flex flex-col">
-                        <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.3em] mb-1.5 opacity-80">Profit Distribution Analysis</p>
+                        <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.3em] mb-1.5 opacity-80">Análise de Lucro</p>
                         <div className="flex items-baseline gap-2.5">
                           <span className="text-3xl font-black text-white tracking-tighter tabular-nums drop-shadow-sm">
                             R$ {(Number.parseFloat(formData.price) - Number.parseFloat(formData.costPrice)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </span>
-                          <span className="text-[10px] font-black text-emerald-500/40 uppercase tracking-widest italic">/ unidade bruta</span>
+                          <span className="text-[10px] font-black text-emerald-500/40 uppercase tracking-widest italic">/ por unidade</span>
                         </div>
                       </div>
                     </div>
 
                     <div className="flex flex-col items-center md:items-end gap-3 w-full md:w-auto pt-4 md:pt-0 border-t md:border-t-0 border-white/5">
                       <div className="flex flex-col items-center md:items-end">
-                        <span className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-1.5">Score de Viabilidade</span>
+                        <span className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] mb-1.5">Análise do Sistema</span>
                         <div className="relative group/badge">
                           <div className="absolute inset-0 bg-emerald-500/40 blur-md rounded-xl opacity-0 group-hover/roi:opacity-100 transition-opacity" />
                           <div className="px-5 py-2.5 bg-emerald-500 text-emerald-950 rounded-xl font-black text-[11px] uppercase tracking-wider shadow-[0_10px_20px_rgba(16,185,129,0.3)] relative z-10 flex items-center gap-2 group-hover/roi:scale-105 transition-transform duration-500">
@@ -649,7 +737,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
           <div className="lg:col-span-4 space-y-8">
 
             {/* Status & Options */}
-            <motion.section variants={itemVariants} className="bg-zinc-900 border border-white/10 rounded-[2.5rem] p-8 space-y-6 shadow-2xl">
+            <motion.section variants={itemVariants} className="space-y-6">
               <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 mb-2">Configurações de Exibição</h3>
 
               <div className="space-y-4">
@@ -674,52 +762,13 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
               </div>
             </motion.section>
 
-            {/* SEO Control */}
-            <motion.section variants={itemVariants} className="bg-zinc-900/40 border border-white/10 rounded-[2.5rem] p-8 space-y-8 shadow-2xl">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-orange-500" />
-                </div>
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">Indexação Engine (SEO)</h3>
-              </div>
-
-              <div className="space-y-6">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between ml-1">
-                    <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Meta Title Pro</label>
-                    <span className={`text-[9px] font-black ${formData.metaTitle.length > 60 ? 'text-orange-500' : 'text-zinc-600'}`}>{formData.metaTitle.length}/60</span>
-                  </div>
-                  <input
-                    type="text"
-                    value={formData.metaTitle}
-                    onChange={(e) => setFormData(prev => ({ ...prev, metaTitle: e.target.value }))}
-                    className="w-full px-5 py-4 bg-zinc-950/50 border border-white/5 rounded-2xl text-xs font-bold text-zinc-300 focus:ring-1 focus:ring-orange-500/30 focus:outline-none transition-all hover:border-white/10"
-                    placeholder="Título otimizado para busca"
-                  />
-                </div>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between ml-1">
-                    <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Snippet Preview</label>
-                    <span className={`text-[9px] font-black ${formData.metaDescription.length > 160 ? 'text-orange-500' : 'text-zinc-600'}`}>{formData.metaDescription.length}/160</span>
-                  </div>
-                  <textarea
-                    value={formData.metaDescription}
-                    onChange={(e) => setFormData(prev => ({ ...prev, metaDescription: e.target.value }))}
-                    rows={4}
-                    className="w-full px-5 py-4 bg-zinc-950/50 border border-white/5 rounded-2xl text-[11px] font-medium text-zinc-400 transition-all resize-none leading-relaxed hover:border-white/10 focus:ring-1 focus:ring-orange-500/30 focus:outline-none"
-                    placeholder="Descrição para conversão orgânica..."
-                  />
-                </div>
-              </div>
-            </motion.section>
-
             {/* Variants Grade */}
             {productId && (
-              <motion.section variants={itemVariants} className="space-y-4">
+              <motion.section variants={itemVariants} className="pt-12 border-t border-white/5 space-y-4">
                 <div className="flex items-center justify-between px-2">
                   <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-2">
                     <Layers className="w-4 h-4" />
-                    Grade Operacional
+                    Variações do Produto
                   </h3>
                   <button
                     type="button"
@@ -733,7 +782,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                 <div className="space-y-3">
                   {formData.variants.length === 0 ? (
                     <div className="bg-zinc-900 border border-dashed border-white/5 rounded-3xl p-8 text-center">
-                      <p className="text-[10px] font-black text-zinc-700 uppercase tracking-[0.3em]">Grade Vazia</p>
+                      <p className="text-[10px] font-black text-zinc-700 uppercase tracking-[0.3em]">Nenhuma Variação Adicionada</p>
                     </div>
                   ) : (
                     formData.variants.map((v) => (
@@ -800,9 +849,9 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
         >
           <div className="bg-zinc-900 border border-white/10 rounded-[2.5rem] p-3 shadow-[0_30px_60px_rgba(0,0,0,0.8)] backdrop-blur-xl flex items-center gap-4 pointer-events-auto">
             <div className="hidden md:flex flex-col ml-6 max-w-[200px]">
-              <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest leading-tight">Status de Emissão</span>
+              <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest leading-tight">Status de Preenchimento</span>
               <span className={`text-[10px] font-bold uppercase truncate ${isValid ? 'text-emerald-500' : 'text-zinc-400'}`}>
-                {isValid ? 'Pronto para Sincronização' : 'Aguardando Metadados Obligatórios'}
+                {isValid ? 'Pronto para Salvar' : 'Aguardando Campos Obrigatórios'}
               </span>
             </div>
 
@@ -816,12 +865,12 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
               ) : showSuccess ? (
                 <>
                   <Check className="w-5 h-5" />
-                  Sincronizado com Sucesso
+                  Salvo com Sucesso
                 </>
               ) : (
                 <>
                   {productId ? <Edit2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                  {productId ? 'Confirmar Atualização de Inventário' : 'Publicar Novo Ativo no Catálogo'}
+                  {productId ? 'Salvar Edição do Produto' : 'Publicar Novo Produto na Loja'}
                 </>
               )}
             </button>

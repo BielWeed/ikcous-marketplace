@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '@/hooks/useCart';
 import { useStore } from '@/contexts/StoreContext';
+import { useAuth } from '@/hooks/useAuth';
 
 interface CartReminderProps {
     onAction: () => void;
@@ -11,6 +12,7 @@ interface CartReminderProps {
 export function CartReminder({ onAction }: CartReminderProps) {
     const { cart: items, getCartCount } = useCart();
     const { config } = useStore();
+    const { user } = useAuth();
     const [isVisible, setIsVisible] = useState(false);
     const [isDismissed, setIsDismissed] = useState(false);
 
@@ -62,7 +64,7 @@ export function CartReminder({ onAction }: CartReminderProps) {
                         <div className="absolute top-0 left-0 right-0 h-[2px] bg-white/5">
                             <motion.div
                                 initial={{ width: 0 }}
-                                animate={{ width: `${progress}%` }}
+                                animate={{ width: `${user ? progress : 0}%` }}
                                 className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] transition-all duration-1000"
                             />
                         </div>
@@ -89,7 +91,11 @@ export function CartReminder({ onAction }: CartReminderProps) {
                                 <span className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-500">Premium Delivery</span>
                                 <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                             </div>
-                            {isFree ? (
+                            {!user ? (
+                                <p className="text-[10px] font-bold text-zinc-400 leading-tight">
+                                    Faça login para liberar o <span className="text-emerald-500 italic">Frete VIP</span>
+                                </p>
+                            ) : isFree ? (
                                 <div className="flex items-center gap-1 text-[10px] font-black text-emerald-400 uppercase tracking-tighter">
                                     <Truck className="w-3 h-3" />
                                     <span>Frete VIP Liberado</span>

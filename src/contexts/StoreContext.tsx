@@ -33,7 +33,7 @@ interface StoreContextType {
 // eslint-disable-next-line react-refresh/only-export-components
 export const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-export function StoreProvider({ children }: { children: React.ReactNode }) {
+export function StoreProvider({ children }: Readonly<{ children: React.ReactNode }>) {
     const { user, isAdmin } = useAuth();
     const [config, setConfig] = useState<StoreConfig>(defaultStoreConfig);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -216,8 +216,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }, [user, mapConfig, applyBranding, config.minAppVersion]);
 
     const calculateShipping = useCallback((cart: CartItem[]) => {
-        const totalAmount = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-        if (totalAmount >= config.freeShippingMin) return 0;
+        if (cart.length === 0) return 0;
+        
+        const hasFreeShippingItem = cart.some(item => item.product.freeShipping);
+        if (hasFreeShippingItem) return 0;
+
+        const totalAmount = cart.reduce((sum, item) => {
+            const price = item.variantId
+                ? item.product.variants?.find(v => v.id === item.variantId)?.priceOverride || item.product.price
+                : item.product.price;
+            return sum + (price * item.quantity);
+        }, 0);
+
+        if (config.freeShippingMin > 0 && totalAmount >= config.freeShippingMin) return 0;
+        
         return config.shippingFee;
     }, [config.freeShippingMin, config.shippingFee]);
 

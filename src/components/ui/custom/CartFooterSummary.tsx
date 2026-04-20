@@ -1,4 +1,5 @@
 import { ArrowRight, Sparkles as SparklesIcon } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import type { View } from '@/types';
 
@@ -11,7 +12,11 @@ interface CartFooterSummaryProps {
 
 export function CartFooterSummary({ cartCount, shipping, total, onNavigate }: CartFooterSummaryProps) {
     return (
-        <div
+        <motion.div
+            initial={{ y: '100%', opacity: 0.5 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: '100%', opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300, mass: 0.8 }}
             className="fixed bottom-[calc(64px+env(safe-area-inset-bottom,0px))] left-0 right-0 z-[60] bg-white border-t border-zinc-100 shadow-[0_-10px_40px_-5px_rgba(0,0,0,0.08)] md:bottom-24 md:max-w-screen-md md:mx-auto md:rounded-[2.5rem] md:border"
         >
             <div className="px-4 py-4 xs:px-6 flex items-center justify-between gap-2 xs:gap-4 max-w-screen-xl mx-auto">
@@ -71,6 +76,6 @@ export function CartFooterSummary({ cartCount, shipping, total, onNavigate }: Ca
 
             {/* Bottom Safe Area Padding for Mobile Header-style feeling */}
             <div className="h-[env(safe-area-inset-bottom,0px)] bg-white" />
-        </div>
+        </motion.div>
     );
 }

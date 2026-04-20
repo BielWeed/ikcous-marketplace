@@ -36,7 +36,7 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
         .from('marketplace_orders')
         .select(`
           *,
-          items:marketplace_order_items(*),
+          items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)),
           address:user_addresses(*)
         `)
         .eq('user_id', user.id)
@@ -68,7 +68,7 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
         .from('marketplace_orders')
         .select(`
           *,
-          items:marketplace_order_items(*),
+          items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)),
           address:user_addresses(*)
         `, { count: 'exact' })
         .order('created_at', { ascending: false })
@@ -107,7 +107,7 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
   const handleRealtimeInsert = useCallback(async (newPayload: any) => {
     const { data, error } = await supabase
       .from('marketplace_orders')
-      .select('*, items:marketplace_order_items(*), address:user_addresses(*)')
+      .select('*, items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)), address:user_addresses(*)')
       .eq('id', newPayload.id)
       .single();
 

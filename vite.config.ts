@@ -1,4 +1,4 @@
-import path from "path"
+import path from "node:path"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 import { inspectAttr } from 'kimi-plugin-inspect-react'
@@ -7,6 +7,14 @@ import { VitePWA } from 'vite-plugin-pwa'
 // https://vite.dev/config/
 export default defineConfig({
   base: '/',
+  server: {
+    host: true,
+    port: 5173,
+    strictPort: true,
+    hmr: {
+      clientPort: 5173,
+    },
+  },
   define: {
     __APP_VERSION__: JSON.stringify(Date.now().toString()),
   },
@@ -105,7 +113,7 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024
       },
       devOptions: {
-        enabled: true,
+        enabled: false,
         type: 'module',
         navigateFallback: 'index.html'
       }
@@ -133,6 +141,8 @@ export default defineConfig({
           ],
           'vendor-charts': ['recharts'],
           'vendor-date': ['date-fns'],
+          'vendor-motion': ['framer-motion'],
+          'vendor-supabase': ['@supabase/supabase-js'],
         },
       },
     },

@@ -105,7 +105,6 @@ export function AdminDashboardView({
             {/* Strategic Intelligence Section */}
             <div className="animate-in fade-in slide-in-from-bottom-6 duration-700 delay-150 px-0 sm:px-6">
                 <StrategicIntelligenceBlocks 
-                    stats={stats}
                     categoryData={categoryData}
                     loading={analyticsLoading}
                 />

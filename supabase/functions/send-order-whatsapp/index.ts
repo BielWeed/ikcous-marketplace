@@ -53,7 +53,7 @@ serve(async (req: Request) => {
         const { data: config, error: configError } = await supabaseClient
             .from('store_config')
             .select('whatsapp_api_url, whatsapp_api_key, whatsapp_api_instance')
-            .eq('id', 1)
+            .limit(1)
             .single()
 
         if (configError) throw configError

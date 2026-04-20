@@ -224,47 +224,40 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         return () => { isMounted = false; };
     }, [user, authLoading]); // Added authLoading to deps
 
+    const syncPending = useRef(false);
+    const lastSyncedCart = useRef<string>('');
+
     // Sync back to Supabase (Atomic-ish Strategy)
-    const syncToDB = useCallback(async (currentCart: CartItem[]) => {
+    const syncToDB = useCallback(async (currentCart: CartItem[], immediate = false) => {
         if (!user || authLoading || isInitialLoad.current || syncLocked.current) return;
 
-        try {
-            console.log('[CartContext] 📤 Force Syncing to Supabase...');
+        const cartHash = JSON.stringify(currentCart);
+        if (cartHash === lastSyncedCart.current && !immediate) return;
 
-            // Format items for the RPC
-            // Standardize to empty string for DB NOT NULL constraint, and group by product/variant to be safe
+        syncPending.current = true;
+        try {
+            console.log('[CartContext] 📤 Syncing to Supabase...');
             const itemMap = new Map<string, any>();
-            
             currentCart.forEach(item => {
                 const variantId = item.variantId || '';
                 const key = `${item.product.id}-${variantId}`;
-                
                 if (itemMap.has(key)) {
-                    const existing = itemMap.get(key);
-                    existing.quantity += item.quantity;
+                    itemMap.get(key).quantity += item.quantity;
                 } else {
-                    itemMap.set(key, {
-                        product_id: item.product.id,
-                        variant_id: variantId,
-                        quantity: item.quantity
-                    });
+                    itemMap.set(key, { product_id: item.product.id, variant_id: variantId, quantity: item.quantity });
                 }
             });
 
-            const formattedItems = Array.from(itemMap.values());
-
-            console.log('[CartContext] 📊 Syncing payload:', formattedItems);
-
-            // Call the new atomic RPC to prevent data loss on network failure
             const { error: syncError } = await (supabase.rpc as any)('sync_cart_atomic', {
-                p_cart_items: formattedItems
+                p_cart_items: Array.from(itemMap.values())
             });
 
             if (syncError) throw syncError;
-
-            console.log('[CartContext] ✨ DB Sync Success');
+            lastSyncedCart.current = cartHash;
+            syncPending.current = false;
         } catch (err) {
             console.error('[CartContext] ❌ DB Sync Failed:', err);
+            syncPending.current = false;
         }
     }, [user, authLoading]);
 
@@ -272,21 +265,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         if (isInitialLoad.current || syncLocked.current) return;
 
         const timer = setTimeout(() => {
-            syncToDB(cart);
-        }, 1000); // Reduced debounce to 1s for better responsiveness
+            if (!syncPending.current) {
+                syncToDB(cart);
+            }
+        }, 1000);
 
-        const handleBeforeUnload = () => {
-            // Attempt an emergency sync if the user leaves
-            syncToDB(cart);
-        };
-
-        window.addEventListener('beforeunload', handleBeforeUnload);
-
-        return () => {
-            clearTimeout(timer);
-            window.removeEventListener('beforeunload', handleBeforeUnload);
-        };
-    }, [cart, user, syncToDB]);
+        return () => clearTimeout(timer);
+    }, [cart, syncToDB]);
 
     const addToCart = useCallback((product: Product, quantity: number = 1, variantIdInput?: string) => {
         // Session check removed to allow Guest Cart

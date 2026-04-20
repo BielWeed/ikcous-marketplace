@@ -164,7 +164,7 @@ export function AdminPushView({ onNavigate }: AdminPushViewProps) {
     return (
         <div className="min-h-screen bg-zinc-50/30 pb-32">
             {/* Header Executivo */}
-            <div className="admin-glass px-6 py-6 sticky top-0 z-50 border-b border-white/5">
+            <div className="px-6 py-6">
                 <div className="max-w-4xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <button

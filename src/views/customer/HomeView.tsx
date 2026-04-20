@@ -48,7 +48,7 @@ export function HomeView({
   const [sortBy, setSortBy] = useState<SortOption>('default');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const { categories, isLoading: isLoadingCategories } = useCategories();
-  const { getBannersByPosition } = useBanners();
+  const { getBannersByPosition, isLoaded: bannersLoaded } = useBanners();
   const { config } = useStore();
 
   const topBanners = getBannersByPosition('home_top');
@@ -150,7 +150,11 @@ export function HomeView({
       </div>
 
       {/* Top Banners - Full Width */}
-      {topBanners.length > 0 && (
+      {!bannersLoaded && topBanners.length === 0 ? (
+        <div className="w-full mb-2 h-[200px] sm:h-[400px] bg-zinc-100 animate-pulse flex items-center justify-center">
+          <div className="w-8 h-8 border-4 border-zinc-200 border-t-primary rounded-full animate-spin" />
+        </div>
+      ) : topBanners.length > 0 ? (
         <div className="w-full mb-2 relative">
           <BannerCarousel banners={topBanners} autoPlay={true} interval={5000} />
 
@@ -159,7 +163,7 @@ export function HomeView({
             <FreeShippingBlock onNavigate={onNavigate} />
           </InfoBlockCarousel>
         </div>
-      )}
+      ) : null}
 
       {/* Recently Viewed - Removed and moved to Profile */}
 
@@ -214,10 +218,16 @@ export function HomeView({
       )}
 
       {/* Middle Banners - Full Width */}
-      {middleBanners.length > 0 && !searchQuery && selectedCategory === 'Todas' && (
-        <div className="w-full py-4">
-          <BannerCarousel banners={middleBanners} autoPlay={false} />
-        </div>
+      {!searchQuery && selectedCategory === 'Todas' && (
+        !bannersLoaded && middleBanners.length === 0 ? (
+          <div className="w-full py-4 mx-4">
+            <div className="h-[120px] sm:h-[200px] bg-zinc-100 animate-pulse rounded-[2rem] w-[calc(100%-2rem)]" />
+          </div>
+        ) : middleBanners.length > 0 ? (
+          <div className="w-full py-4">
+            <BannerCarousel banners={middleBanners} autoPlay={false} />
+          </div>
+        ) : null
       )}
 
       {/* All Products */}
@@ -228,11 +238,11 @@ export function HomeView({
 
         {/* Integrated Filter Bar - Premium Glassmorphism & STICKY */}
         <div className={cn(
-          "sticky top-0 z-40 -mx-4 px-4 pb-3 pt-1 bg-white flex flex-col gap-2 transition-[box-shadow,border-color] duration-200 mb-4",
-          scrollProgress > 20 ? "shadow-sm border-b border-zinc-100/50" : "border-b border-transparent"
+          "sticky top-0 z-40 -mx-4 px-4 pb-1.5 pt-0 bg-white/95 backdrop-blur flex flex-col transition-all duration-200 mb-1.5",
+          scrollProgress > 20 ? "shadow-sm border-b border-zinc-200/60" : "border-b border-transparent"
         )}>
           {/* Interactive Header Bar */}
-          <div className="flex items-center gap-3 py-2">
+          <div className="flex items-center gap-3 py-1">
             <div className="flex-1 min-w-0">
               {isLoading ? (
                 <div className="h-9 w-full bg-zinc-100 animate-pulse rounded-full" />
@@ -307,7 +317,7 @@ export function HomeView({
         </div>
 
         {
-          filteredProducts.length === 0 ? (
+          (filteredProducts.length === 0 && !isLoading) ? (
             <div className="text-center py-20 px-4 bg-zinc-50/50 rounded-[2.5rem] mt-16 border border-zinc-100 italic relative z-10">
               <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm ring-1 ring-zinc-100">
                 <PackageSearch className="w-10 h-10 text-zinc-300" />

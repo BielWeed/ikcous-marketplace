@@ -260,7 +260,7 @@ export function AdminQAView({ onNavigate }: AdminQAViewProps) {
     return (
         <div className="min-h-screen bg-[#09090b] text-zinc-100 selection:bg-emerald-500/30">
             {/* Header Sticky */}
-            <header className="sticky top-0 z-[60] w-full border-b border-white/5 bg-[#09090b]/80 backdrop-blur-xl">
+            <header className="w-full">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <motion.button

@@ -9,7 +9,14 @@ const sw = self as any;
 
 // A variável __APP_VERSION__ é injetada pelo Vite (definida em vite.config.ts)
 declare const __APP_VERSION__: string;
-const CACHE_NAME = `app-cache-${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'fallback'}`;
+const getVersion = () => {
+    try {
+        return __APP_VERSION__;
+    } catch {
+        return 'fallback';
+    }
+};
+const CACHE_NAME = `app-cache-${getVersion()}`;
 
 // self.__WB_MANIFEST is the injection point for the precache manifest
 // We must include it even if we handle caching manually to satisfy Workbox.
@@ -30,13 +37,11 @@ sw.addEventListener('activate', (event: any) => {
             sw.clients.claim(),
             // CACHE PURGE: Deleta caches antigos
             caches.keys().then((cacheNames) => {
+                const cachesToDelete = cacheNames.filter((name) => name !== CACHE_NAME);
                 return Promise.all(
-                    cacheNames.map((name) => {
-                        if (name !== CACHE_NAME) {
-                            console.log(`[SW] Purging old cache: ${name}`);
-                            return caches.delete(name);
-                        }
-                        return null;
+                    cachesToDelete.map((name) => {
+                        console.log(`[SW] Purging old cache: ${name}`);
+                        return caches.delete(name);
                     })
                 );
             })
@@ -46,6 +51,9 @@ sw.addEventListener('activate', (event: any) => {
 
 sw.addEventListener('fetch', (event: any) => {
     const url = new URL(event.request.url);
+
+    // Ignorar requisições de extensões do Chrome, DevTools e protocolos não-http
+    if (!url.protocol.startsWith('http')) return;
 
     // 1. FILTRAGEM ESTRITA: Ignorar o que não deve ser cacheado
     // Ignorar requisições que não sejam GET (POST, PUT, etc)
@@ -84,11 +92,11 @@ sw.addEventListener('fetch', (event: any) => {
             const fetchPromise = fetch(event.request).then((networkResponse) => {
                 // Só cachear se for uma resposta válida, de sucesso e do tipo basic/cors
                 // Evitamos cachear respostas opaque (status 0) que podem estar corrompidas
-                if (networkResponse && networkResponse.status === 200) {
+                if (networkResponse?.status === 200) {
                     try {
                         // Robust cache update: only cache valid, successful responses
                 const responseToCache = networkResponse.clone();
-                if (responseToCache && responseToCache.status === 200 && responseToCache.type === 'basic') {
+                if (responseToCache?.status === 200 && responseToCache.type === 'basic') {
                     caches.open(CACHE_NAME).then((cache) => {
                         cache.put(event.request, responseToCache);
                     });
@@ -123,13 +131,13 @@ sw.addEventListener('message', (event: any) => {
     }
 
     // Workbox generic skipWaiting support
-    if (event.data && event.data.type === 'SKIP_WAITING') {
+    if (event.data?.type === 'SKIP_WAITING') {
         console.log('[SW] SKIP_WAITING received. Activating new version.');
         sw.skipWaiting();
     }
 
     // Manual cache purge support
-    if (event.data && event.data.type === 'MANUAL_PURGE') {
+    if (event.data?.type === 'MANUAL_PURGE') {
         caches.keys().then((cacheNames) => {
             Promise.all(cacheNames.map((name) => caches.delete(name))).then(() => {
                 const bc = new BroadcastChannel('sw-messages');

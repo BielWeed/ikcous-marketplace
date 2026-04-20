@@ -3,36 +3,41 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Header } from '@/components/ui/custom/Header';
 import { BottomNav } from '@/components/ui/custom/BottomNav';
 import { HomeView } from '@/views/customer/HomeView';
-import { CartView } from '@/views/customer/CartView';
-import { ProductView } from '@/views/customer/ProductView';
-import { CheckoutView } from '@/views/customer/CheckoutView';
-import { NotificationsView } from '@/views/customer/NotificationsView';
-import { OrderSuccessView } from '@/views/customer/OrderSuccessView';
-import { ProfileView } from '@/views/customer/ProfileView';
-import { AdminDashboardView as AdminDashboard } from '@/views/admin/AdminDashboardView';
-import AdminProducts from '@/views/admin/AdminProductsView';
-import { AdminProductFormView as AdminProductForm } from '@/views/admin/AdminProductFormView';
-import { AdminOrdersView as AdminOrders } from '@/views/admin/AdminOrdersView';
-import { AdminCouponsView as AdminCoupons } from '@/views/admin/AdminCouponsView';
-import { cn } from '@/lib/utils';
-import { AdminBannersView as AdminBanners } from '@/views/admin/AdminBannersView';
-import { AdminSettingsView as AdminSettings } from '@/views/admin/AdminSettingsView';
-import { AdminReviewsView as AdminReviews } from '@/views/admin/AdminReviewsView';
-import { AdminQAView as AdminQA } from '@/views/admin/AdminQAView';
-import { AdminCustomersView as AdminCustomers } from '@/views/admin/AdminCustomersView';
-import { AdminUserDetailView as AdminUserDetail } from '@/views/admin/AdminUserDetailView';
-import { AdminPushView as AdminPush } from '@/views/admin/AdminPushView';
-import { AuthView } from '@/views/shared/AuthView';
-import { AddressFormView } from '@/views/customer/AddressFormView';
-import { AdminLoginView as AdminLogin } from '@/views/admin/AdminLoginView';
-import { AccountSettingsView as AccountSettings } from '@/views/customer/AccountSettingsView';
-import { OrderDetailsView } from '@/views/customer/OrderDetailsView';
-import { SearchView } from '@/views/customer/SearchView';
-import { RecentlyViewedView } from '@/views/customer/RecentlyViewedView';
-import { CompareView } from '@/views/customer/CompareView';
-import { FavoritesView } from '@/views/customer/FavoritesView';
+const CartView = React.lazy(() => import('@/views/customer/CartView').then(m => ({ default: m.CartView })));
+const ProductView = React.lazy(() => import('@/views/customer/ProductView').then(m => ({ default: m.ProductView })));
+const CheckoutView = React.lazy(() => import('@/views/customer/CheckoutView').then(m => ({ default: m.CheckoutView })));
+const NotificationsView = React.lazy(() => import('@/views/customer/NotificationsView').then(m => ({ default: m.NotificationsView })));
+const OrderSuccessView = React.lazy(() => import('@/views/customer/OrderSuccessView').then(m => ({ default: m.OrderSuccessView })));
+const ProfileView = React.lazy(() => import('@/views/customer/ProfileView').then(m => ({ default: m.ProfileView })));
 
-import { AdminLayout } from '@/components/layouts/AdminLayout';
+// --- LAZY LOADED ADMIN VIEWS ---
+import { cn } from '@/lib/utils';
+const AdminDashboard = React.lazy(() => import('@/views/admin/AdminDashboardView').then(m => ({ default: m.AdminDashboardView })));
+const AdminProducts = React.lazy(() => import('@/views/admin/AdminProductsView').then(m => ({ default: m.default })));
+const AdminProductForm = React.lazy(() => import('@/views/admin/AdminProductFormView').then(m => ({ default: m.AdminProductFormView })));
+const AdminOrders = React.lazy(() => import('@/views/admin/AdminOrdersView').then(m => ({ default: m.AdminOrdersView })));
+const AdminCoupons = React.lazy(() => import('@/views/admin/AdminCouponsView').then(m => ({ default: m.AdminCouponsView })));
+const AdminBanners = React.lazy(() => import('@/views/admin/AdminBannersView').then(m => ({ default: m.AdminBannersView })));
+const AdminSettings = React.lazy(() => import('@/views/admin/AdminSettingsView').then(m => ({ default: m.AdminSettingsView })));
+const AdminReviews = React.lazy(() => import('@/views/admin/AdminReviewsView').then(m => ({ default: m.AdminReviewsView })));
+const AdminQA = React.lazy(() => import('@/views/admin/AdminQAView').then(m => ({ default: m.AdminQAView })));
+const AdminCustomers = React.lazy(() => import('@/views/admin/AdminCustomersView').then(m => ({ default: m.AdminCustomersView })));
+const AdminUserDetail = React.lazy(() => import('@/views/admin/AdminUserDetailView').then(m => ({ default: m.AdminUserDetailView })));
+const AdminPush = React.lazy(() => import('@/views/admin/AdminPushView').then(m => ({ default: m.AdminPushView })));
+const AdminLogin = React.lazy(() => import('@/views/admin/AdminLoginView').then(m => ({ default: m.AdminLoginView })));
+
+// --- LAZY LOADED CUSTOMER VIEWS ---
+const AuthView = React.lazy(() => import('@/views/shared/AuthView').then(m => ({ default: m.AuthView })));
+const AddressFormView = React.lazy(() => import('@/views/customer/AddressFormView').then(m => ({ default: m.AddressFormView })));
+const AccountSettings = React.lazy(() => import('@/views/customer/AccountSettingsView').then(m => ({ default: m.AccountSettingsView })));
+const OrderDetailsView = React.lazy(() => import('@/views/customer/OrderDetailsView').then(m => ({ default: m.OrderDetailsView })));
+const SearchView = React.lazy(() => import('@/views/customer/SearchView').then(m => ({ default: m.SearchView })));
+const RecentlyViewedView = React.lazy(() => import('@/views/customer/RecentlyViewedView').then(m => ({ default: m.RecentlyViewedView })));
+const CompareView = React.lazy(() => import('@/views/customer/CompareView').then(m => ({ default: m.CompareView })));
+const FavoritesView = React.lazy(() => import('@/views/customer/FavoritesView').then(m => ({ default: m.FavoritesView })));
+
+const AdminLayout = React.lazy(() => import('@/components/layouts/AdminLayout').then(m => ({ default: m.AdminLayout })));
+const DebugPanel = React.lazy(() => import('@/components/debug/DebugPanel').then(m => ({ default: m.DebugPanel })));
 import { toast } from 'sonner';
 
 declare global {
@@ -41,7 +46,6 @@ declare global {
   }
 }
 
-import { DebugPanel } from '@/components/debug/DebugPanel';
 import { useAuth } from '@/hooks/useAuth';
 import { useProducts } from '@/hooks/useProducts';
 
@@ -239,7 +243,15 @@ const AppContent = () => {
     const handleScroll = () => {
       if (!mainElement) return;
       const progress = mainElement.scrollTop;
-      setScrollProgress(progress);
+      setScrollProgress(prev => {
+        // Optimize: Only re-render if crossing the 20px threshold!
+        const currentlyScrolled = progress > 20;
+        const prevScrolled = prev > 20;
+        
+        if (currentlyScrolled && !prevScrolled) return 21; // Any number > 20
+        if (!currentlyScrolled && prevScrolled) return 0;  // Any number <= 20
+        return prev; // No rendering triggering
+      });
     };
 
     if (mainElement) {
@@ -637,6 +649,7 @@ const AppContent = () => {
             onAddToCart={handleAddToCart}
             onQuickBuy={handleQuickBuy}
             scrollProgress={scrollProgress}
+            isLoading={productsLoading}
           />
         );
 
@@ -655,9 +668,7 @@ const AppContent = () => {
               currentView !== 'cart' &&
               currentView !== 'profile' &&
               currentView !== 'auth' &&
-              currentView !== 'login' &&
-              currentView !== 'orders' &&
-              currentView !== 'account-settings'
+              currentView !== 'login'
             }
             onBack={handleBack}
             onOpenNotifications={() => handleNavigate('notifications')}
@@ -679,7 +690,9 @@ const AppContent = () => {
         <AnimatePresence mode="wait">
           <div 
             key={currentView.startsWith('admin') ? 'admin-layout' : currentView}
-            className={cn(!currentView.startsWith('admin') && "h-full")}
+            className={cn(!currentView.startsWith('admin') && "h-full", "!outline-none focus:!outline-none")}
+            tabIndex={-1}
+            style={{ WebkitTapHighlightColor: 'transparent', outline: 'none' }}
           >
             <React.Suspense fallback={<ViewLoadingFallback />}>
               {currentView.startsWith('admin') ? (
@@ -712,10 +725,12 @@ const AppContent = () => {
         </div>
       )}
 
-      <DebugPanel
-        isOpen={isDebugOpen}
-        onClose={() => setIsDebugOpen(false)}
-      />
+      <React.Suspense fallback={null}>
+        <DebugPanel
+          isOpen={isDebugOpen}
+          onClose={() => setIsDebugOpen(false)}
+        />
+      </React.Suspense>
 
       <UpdateNotification
         show={updateAvailable}

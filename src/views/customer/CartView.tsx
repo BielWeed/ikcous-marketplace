@@ -57,28 +57,47 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => {
     if (!item?.product?.price) return sum;
-    return sum + (item.product.price * (item.quantity || 0));
+    const price = item.variantId
+        ? item.product.variants?.find(v => v.id === item.variantId)?.priceOverride || item.product.price
+        : item.product.price;
+    return sum + (price * (item.quantity || 0));
   }, 0), [cart]);
 
   const cartCount = useMemo(() => cart.reduce((sum, item) => sum + (item.quantity || 0), 0), [cart]);
 
+  const hasFreeShippingItem = useMemo(() => cart.some(item => item?.product?.freeShipping), [cart]);
+
   const { progressPercent, amountToFree, shipping, total, savings, isNearlyThere } = useMemo(() => {
-    const progress = config.freeShippingMin > 0 ? Math.min((subtotal / config.freeShippingMin) * 100, 100) : 100;
-    const diff = Math.max(0, config.freeShippingMin - subtotal);
-    const ship = subtotal >= config.freeShippingMin ? 0 : config.shippingFee;
+    if (cart.length === 0) return { progressPercent: 0, amountToFree: 0, shipping: 0, total: 0, savings: 0, isNearlyThere: false };
+    
+    if (hasFreeShippingItem) {
+        return {
+          progressPercent: 100,
+          amountToFree: 0,
+          shipping: 0,
+          total: subtotal,
+          savings: config.shippingFee || 0,
+          isNearlyThere: false
+        };
+    }
+
+    const isRuleActive = (config.freeShippingMin || 0) > 0;
+    const progress = isRuleActive ? Math.min((subtotal / config.freeShippingMin) * 100, 100) : 0;
+    const diff = isRuleActive ? Math.max(0, config.freeShippingMin - subtotal) : 0;
+    const ship = (isRuleActive && subtotal >= config.freeShippingMin) ? 0 : (config.shippingFee || 0);
     const tot = subtotal + ship;
-    const save = ship === 0 ? config.shippingFee : 0;
-    const nearly = progress >= 70 && progress < 100;
+    const save = ship === 0 ? (config.shippingFee || 0) : 0;
+    const nearly = Boolean(isRuleActive && progress >= 70 && progress < 100);
 
     return {
-      progressPercent: progress,
+      progressPercent: isRuleActive ? progress : 0,
       amountToFree: diff,
       shipping: ship,
       total: tot,
       savings: save,
       isNearlyThere: nearly
     };
-  }, [subtotal, config.shippingFee, config.freeShippingMin]);
+  }, [subtotal, config.shippingFee, config.freeShippingMin, hasFreeShippingItem, cart.length]);
 
   const freeShippingProducts = getFreeShippingEligibleProducts(cart.filter(i => i?.product?.id).map(i => i.product.id));
 
@@ -187,8 +206,8 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
                         </div>
                         
                         <p className="text-zinc-400 text-xs leading-relaxed font-medium mb-8 max-w-[240px]">
-                          Finalize seu pedido agora mesmo sem precisar de cadastro. 
-                          <span className="text-zinc-100 block mt-1">Simples, seguro e extremamente veloz.</span>
+                          Finalize seu pedido agora mesmo sem precisar de cadastro.
+                          <span className="text-zinc-100 block mt-1"> Simples, seguro e extremamente veloz.</span>
                         </p>
 
                         <div className="flex flex-col gap-4">
@@ -229,22 +248,18 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
 
             {cart.length > 0 && (
               <>
-                <ShippingProgress
-                  shipping={shipping}
-                  savings={savings}
-                  progressPercent={progressPercent}
-                  amountToFree={amountToFree}
-                  isNearlyThere={isNearlyThere}
-                  freeShippingProducts={freeShippingProducts}
-                  onAddToCart={onAddToCart}
-                />
+                {user && (
+                  <ShippingProgress
+                    shipping={shipping}
+                    savings={savings}
+                    progressPercent={progressPercent}
+                    amountToFree={amountToFree}
+                    isNearlyThere={isNearlyThere}
+                    freeShippingProducts={freeShippingProducts}
+                    onAddToCart={onAddToCart}
+                  />
+                )}
 
-                <CartFooterSummary
-                  cartCount={cartCount}
-                  shipping={shipping}
-                  total={total}
-                  onNavigate={onNavigate}
-                />
               </>
             )}
           </motion.div>
@@ -269,6 +284,17 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
               isGuest={!user}
             />
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {activeTab === 'cart' && cart.length > 0 && (
+          <CartFooterSummary
+            cartCount={cartCount}
+            shipping={shipping}
+            total={total}
+            onNavigate={onNavigate}
+          />
         )}
       </AnimatePresence>
     </div>

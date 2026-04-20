@@ -14,7 +14,7 @@ interface CartItemCardProps {
     onRemove: (productId: string) => void;
 }
 
-function CartItemCard({ item, removingId, onUpdateQuantity, onRemove }: CartItemCardProps) {
+function CartItemCard({ item, removingId, onUpdateQuantity, onRemove }: Readonly<CartItemCardProps>) {
     // Removed unused config destructuring
     useStore();
     const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -89,10 +89,15 @@ function CartItemCard({ item, removingId, onUpdateQuantity, onRemove }: CartItem
                         <div className="flex items-start justify-between gap-2">
                             <div className="space-y-0.5">
                                 <h3 className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-1">
-                                    {item.product.category}
+                            {item.product.category}
                                 </h3>
                                 <h2 className="text-sm font-black text-zinc-900 line-clamp-2 leading-tight group-hover:text-primary transition-colors">
                                     {item.product.name}
+                                    {item.variantId && item.product.variants && (
+                                        <span className="block text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5">
+                                            Variação: {item.product.variants.find(v => v.id === item.variantId)?.name}
+                                        </span>
+                                    )}
                                 </h2>
                             </div>
                             <button
@@ -110,7 +115,11 @@ function CartItemCard({ item, removingId, onUpdateQuantity, onRemove }: CartItem
                     <div className="flex items-center justify-between mt-3">
                         <div className="flex flex-col">
                             <p className="text-xl font-black text-zinc-900 tracking-tighter leading-none">
-                                R$ {item.product.price.toFixed(2).replace('.', ',')}
+{(() => {
+    const variant = item.variantId ? item.product.variants?.find(v => v.id === item.variantId) : null;
+    const price = variant?.priceOverride || item.product.price;
+    return `R$ ${price.toFixed(2).replace('.', ',')}`;
+})()}
                             </p>
                         </div>
 
@@ -137,7 +146,7 @@ interface CartItemsListProps {
     handleClearCart: () => void;
 }
 
-export function CartItemsList({ cart, removingId, onUpdateQuantity, onRemove, handleClearCart }: CartItemsListProps) {
+export function CartItemsList({ cart, removingId, onUpdateQuantity, onRemove, handleClearCart }: Readonly<CartItemsListProps>) {
     const cartCount = cart.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
     return (
