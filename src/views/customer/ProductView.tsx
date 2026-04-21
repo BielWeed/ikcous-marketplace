@@ -93,6 +93,7 @@ export function ProductView({
 
   const currentPrice = selectedVariantObjects.reduce((acc, v) => v?.priceOverride || acc, product.price);
   const currentStock = product.stock + selectedVariantObjects.reduce((acc, v) => acc + (v?.stockIncrement || 0), 0);
+  const variantImage = selectedVariantObjects.find(v => v?.imageUrl)?.imageUrl;
 
   const isLowStock = currentStock <= 3;
   const isOutOfStock = currentStock === 0;
@@ -189,7 +190,7 @@ export function ProductView({
       <div className="relative aspect-square bg-[#F8F9FA] group">
         <div className="flex justify-center items-center w-full h-full lg:h-[70vh] overflow-hidden">
           <img
-            src={product.images[currentImageIndex]}
+            src={variantImage || product.images[currentImageIndex]}
             alt={product.name}
             className="w-auto h-full max-w-full object-contain transition-opacity duration-500"
             loading="eager"
@@ -199,7 +200,7 @@ export function ProductView({
         </div>
 
         {/* Navigation Arrows */}
-        {product.images.length > 1 && (
+        {product.images.length > 1 && !variantImage && (
           <div className="absolute inset-0 flex items-center justify-between px-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
             <button
               onClick={prevImage}
@@ -217,7 +218,7 @@ export function ProductView({
         )}
 
         {/* Image Indicators - Glass Pill */}
-        {product.images.length > 1 && (
+        {product.images.length > 1 && !variantImage && (
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-1.5 px-4 py-2 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 shadow-2xl">
             {product.images.map((_, index) => (
               <button
@@ -253,7 +254,7 @@ export function ProductView({
         <div className="max-w-screen-md mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <img src={product.images[0]} className="w-10 h-10 rounded-xl object-cover shadow-sm ring-1 ring-black/5" alt={product.name} />
+              <img src={variantImage || product.images[0]} className="w-10 h-10 rounded-xl object-cover shadow-sm ring-1 ring-black/5" alt={product.name} />
               {discount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[7px] font-black px-1 rounded-full">{discount}%</span>}
             </div>
             <div className="flex flex-col">
@@ -342,12 +343,15 @@ export function ProductView({
                     <button
                       key={v.id}
                       onClick={() => setSelectedVariants(prev => ({ ...prev, [name]: v.value }))}
-                      className={`min-w-[64px] px-6 py-4 text-xs font-black rounded-3xl border-2 transition-all duration-500 active:scale-90 ${selectedVariants[name] === v.value
+                      className={`min-w-[64px] px-6 py-4 text-xs font-black rounded-3xl border-2 transition-all duration-500 active:scale-90 flex flex-col items-center gap-2 ${selectedVariants[name] === v.value
                         ? 'border-zinc-900 bg-zinc-900 text-white shadow-2xl shadow-zinc-200 scale-105'
                         : 'border-zinc-100 bg-zinc-50/50 text-zinc-400 hover:border-zinc-200 hover:bg-white hover:text-zinc-900'
                         }`}
                     >
-                      {v.value}
+                      {v.imageUrl && (
+                        <img src={v.imageUrl} className="w-8 h-8 rounded-full object-cover shadow-sm bg-white" />
+                      )}
+                      <span>{v.value}</span>
                     </button>
                   ))}
                 </div>

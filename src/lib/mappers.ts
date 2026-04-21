@@ -91,7 +91,8 @@ export function mapVariantFromDB(row: VariantRow): ProductVariant {
         value: row.value || '',
         stockIncrement: Number(row.stock_increment) || 0,
         priceOverride: row.price_override ? Number(row.price_override) : undefined,
-        active: row.active ?? true
+        active: row.active ?? true,
+        imageUrl: (row as any).image_url || undefined
     };
 }
 

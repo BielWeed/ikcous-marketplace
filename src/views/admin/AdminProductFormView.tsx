@@ -60,7 +60,8 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
     sku: '',
     stockIncrement: '0',
     priceOverride: '',
-    active: true
+    active: true,
+    imageUrl: ''
   });
   const [currentProduct, setCurrentProduct] = useState<any>(null);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
@@ -136,7 +137,8 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
         sku: variantFormData.sku,
         stockIncrement: parseInt(variantFormData.stockIncrement) || 0,
         priceOverride: parsedPriceOverride !== undefined ? Math.max(0, parsedPriceOverride) : undefined,
-        active: variantFormData.active
+        active: variantFormData.active,
+        imageUrl: variantFormData.imageUrl || undefined
       };
 
       if (!productId) {
@@ -166,7 +168,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
       setShowVariantForm(false);
       setEditingVariant(null);
       setVariantFormData({
-        name: '', value: '', sku: '', stockIncrement: '0', priceOverride: '', active: true
+        name: '', value: '', sku: '', stockIncrement: '0', priceOverride: '', active: true, imageUrl: ''
       });
     } catch (_err) {
       console.error('Variant error:', _err);
@@ -407,6 +409,40 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                       className="w-full px-5 py-4 bg-zinc-950 border border-white/5 rounded-2xl text-sm font-black focus:outline-none transition-all"
                       placeholder="Auto"
                     />
+                  </div>
+                </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Imagem da Variante (Opcional)</label>
+                  <div className="flex items-center gap-4">
+                    {variantFormData.imageUrl ? (
+                      <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-white/10 group/vimg">
+                        <img src={variantFormData.imageUrl} className="w-full h-full object-cover" />
+                        <button type="button" onClick={() => setVariantFormData(p => ({ ...p, imageUrl: '' }))} className="absolute inset-0 bg-red-500/80 flex items-center justify-center opacity-0 group-hover/vimg:opacity-100 transition-opacity">
+                          <Trash2 className="w-4 h-4 text-white" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="w-16 h-16 rounded-xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center cursor-pointer hover:bg-white/5 transition-all">
+                        <Plus className="w-5 h-5 text-zinc-500" />
+                        <input type="file" accept="image/*" onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const loadingToast = toast.loading('Enviando imagem...');
+                          try {
+                            const [url] = await uploadProductImages([file]);
+                            if (url) {
+                              setVariantFormData(p => ({ ...p, imageUrl: url }));
+                              toast.success('Imagem anexada!', { id: loadingToast });
+                            }
+                          } catch (err) {
+                            toast.error('Erro no upload', { id: loadingToast });
+                          }
+                        }} className="hidden" />
+                      </label>
+                    )}
+                    <span className="text-[10px] text-zinc-500 leading-tight flex-1">Facilita a visualização do produto na tela de checkout e na seleção de atributos.</span>
                   </div>
                 </div>
               </div>
@@ -797,6 +833,12 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                   ) : (
                     formData.variants.map((v) => (
                       <div key={v.id} className="bg-zinc-900 border border-white/5 rounded-2xl p-4 flex items-center justify-between group hover:border-emerald-500/30 transition-all">
+                        <div className="flex items-center gap-3">
+                          {v.imageUrl && (
+                            <div className="w-12 h-12 rounded-lg overflow-hidden border border-white/5 shrink-0">
+                              <img src={v.imageUrl} className="w-full h-full object-cover" />
+                            </div>
+                          )}
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-xs font-black text-white uppercase italic tracking-tight">{v.name}: {v.value}</span>
@@ -815,6 +857,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                             )}
                           </div>
                         </div>
+                        </div>
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
@@ -826,7 +869,8 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                                 sku: v.sku || '',
                                 stockIncrement: v.stockIncrement.toString(),
                                 priceOverride: v.priceOverride?.toString() || '',
-                                active: v.active
+                                active: v.active,
+                                imageUrl: v.imageUrl || ''
                               });
                               setShowVariantForm(true);
                             }}

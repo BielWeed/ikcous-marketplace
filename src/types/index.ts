@@ -33,6 +33,7 @@ export interface ProductVariant {
   stock?: number;
   priceOverride?: number;
   active: boolean;
+  imageUrl?: string;
 }
 
 export interface Category {

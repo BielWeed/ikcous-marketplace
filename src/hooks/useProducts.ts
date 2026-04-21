@@ -167,7 +167,8 @@ export function useProducts({ autoFetch = true } = {}) {
             sku: v.sku,
             stock_increment: v.stockIncrement,
             price_override: v.priceOverride,
-            active: v.active
+            active: v.active,
+            image_url: v.imageUrl || null
           }));
           const { error: varErr } = await supabase.from('product_variants').insert(variantsToInsert);
           if (varErr) console.error('Error adding variants on creation:', varErr);
@@ -462,7 +463,8 @@ export function useProducts({ autoFetch = true } = {}) {
           sku: variantData.sku,
           stock_increment: variantData.stockIncrement,
           price_override: variantData.priceOverride,
-          active: variantData.active
+          active: variantData.active,
+          image_url: variantData.imageUrl || null
         } as any)
         .select()
         .single();
@@ -478,7 +480,8 @@ export function useProducts({ autoFetch = true } = {}) {
           stockIncrement: data.stock_increment,
           priceOverride: data.price_override,
           active: data.active,
-          sku: data.sku
+          sku: data.sku,
+          imageUrl: data.image_url
         } as ProductVariant;
 
         // Update products
@@ -503,6 +506,7 @@ export function useProducts({ autoFetch = true } = {}) {
       if (updates.stockIncrement !== undefined) dbUpdates.stock_increment = updates.stockIncrement;
       if (updates.priceOverride !== undefined) dbUpdates.price_override = updates.priceOverride;
       if (updates.active !== undefined) dbUpdates.active = updates.active;
+      if (updates.imageUrl !== undefined) dbUpdates.image_url = updates.imageUrl;
 
       const { data, error } = await supabase
         .from('product_variants')
