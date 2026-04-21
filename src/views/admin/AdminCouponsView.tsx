@@ -25,7 +25,7 @@ interface AdminCouponsViewProps {
 }
 
 export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
-    const { coupons, loading, addCoupon, updateCoupon, deleteCoupon } = useCoupons();
+    const { coupons, loading, addCoupon, updateCoupon, deleteCoupon } = useCoupons(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
     const [formData, setFormData] = useState<Partial<Coupon>>({
