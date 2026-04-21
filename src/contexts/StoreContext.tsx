@@ -30,7 +30,7 @@ interface StoreContextType {
     calculateShipping: (cart: CartItem[]) => number;
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
+ 
 export const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export function StoreProvider({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -254,7 +254,7 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
     );
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
+ 
 export const useStore = () => {
     const context = useContext(StoreContext);
     if (context === undefined) {

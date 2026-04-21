@@ -146,6 +146,7 @@ const AppContent = () => {
   const [backOverride, setBackOverride] = useState<(() => void) | null>(null);
   const mainRef = useRef<HTMLElement>(null);
   const backOverrideRef = useRef<(() => void) | null>(null);
+  const isTransitioningRef = useRef(false);
 
   // Sync ref with state to avoid listener closure issues
   useEffect(() => {
@@ -153,6 +154,18 @@ const AppContent = () => {
   }, [backOverride]);
 
   const handleNavigate = useCallback((view: View, id?: string) => {
+    if (isTransitioningRef.current && currentView !== view) {
+      console.warn('[App] Navigation throttled to prevent animation race conditions');
+      return;
+    }
+
+    if (currentView !== view) {
+      isTransitioningRef.current = true;
+      setTimeout(() => {
+        isTransitioningRef.current = false;
+      }, 300); // 200ms framer duration + 100ms safe buffer
+    }
+
     const fromView = currentView;
     setSelectedProductId(id || null);
     setCurrentView(view);
@@ -314,7 +327,20 @@ const AppContent = () => {
     };
 
     syncWithUrl();
-    globalThis.addEventListener('popstate', (e) => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (isTransitioningRef.current) {
+        console.warn('[App] Popstate blocked by transition lock. Reverting history to maintain sync.');
+        // Re-push the state to prevent URL getting out of sync with current locked view
+        const path = currentView === 'home' ? '/' : `/${currentView}`;
+        globalThis.history.pushState(globalThis.history.state || { view: currentView }, '', path);
+        return;
+      }
+      
+      isTransitioningRef.current = true;
+      setTimeout(() => {
+        isTransitioningRef.current = false;
+      }, 300);
+
       // 1. PRIORITY: Execute any registered override (e.g., closing a modal)
       // We use the Ref to ensure we always have the latest function without re-adding the listener
       if (backOverrideRef.current) {
@@ -330,7 +356,13 @@ const AppContent = () => {
 
       // 3. Sync state with current URL
       syncWithUrl();
-    });
+    };
+
+    globalThis.addEventListener('popstate', handlePopState);
+    
+    return () => {
+      globalThis.removeEventListener('popstate', handlePopState);
+    };
   }, [currentView]);
 
   // Clear search query when navigating to non-search views
@@ -412,9 +444,9 @@ const AppContent = () => {
     toggleFavorite(product);
   }, [toggleFavorite]);
 
-  const handleAddToCart = useCallback((product: Product, quantity: number = 1, variantId?: string) => {
+  const handleAddToCart = useCallback((product: Product, quantity: number = 1, variantId?: string, variantNames?: string) => {
     console.log('[App-Trace] handleAddToCart Attempt');
-    addToCart(product, quantity, variantId);
+    addToCart(product, quantity, variantId, variantNames);
     haptic.success();
   }, [addToCart]);
 
@@ -517,7 +549,7 @@ const AppContent = () => {
             isFavorite={favorites.some(f => f.id === product.id)}
             onToggleFavorite={() => handleToggleFavorite(product)}
             onBack={handleBack}
-            onAddToCart={(q, vId) => handleAddToCart(product, q, vId)}
+            onAddToCart={(q, vId, vNames) => handleAddToCart(product, q, vId, vNames)}
             onProductClick={handleProductClick}
           />
         );

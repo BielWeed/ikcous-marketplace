@@ -82,7 +82,7 @@ export function AdminPushView({ onNavigate }: AdminPushViewProps) {
             await subscribe();
             setIsTestSubscribed(true);
             fetchSubscribers();
-        } catch (error) {
+        } catch (_error) {
             // Error handled in hook
         }
     };

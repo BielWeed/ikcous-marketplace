@@ -162,8 +162,8 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
       if (updatedProduct) {
         setFormData(prev => ({ ...prev, variants: updatedProduct.variants || [] }));
       }
-    } catch (err) {
-      console.error('Variant error:', err);
+    } catch (_err) {
+      console.error('Variant error:', _err);
     }
   };
 
@@ -314,7 +314,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                         toast.success('Categoria criada com sucesso!', { id: loadingId });
                         setShowCategoryForm(false);
                         setNewCategoryName('');
-                      } catch (err) {
+                      } catch (_err) {
                         toast.error('Erro ao salvar categoria', { id: loadingId });
                       }
                     }

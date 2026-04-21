@@ -231,12 +231,15 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
     const observations = notes || undefined;
 
     if (!user) {
-      if (!data.cep || !data.street || !data.number || !data.neighborhood) {
+      if (!data.cep || !data.street || !data.number || !data.neighborhood || !data.city || !data.state) {
         toast.error('Por favor, preencha todos os campos obrigatórios do endereço.');
         setIsSubmitting(false);
         return;
       }
     }
+
+    const variantNotes = cart.filter(item => item.variantNames).map(item => `${item.product.name}: ${item.variantNames}`).join('\n');
+    const finalNotes = observations ? (variantNotes ? `${observations}\n\nVariantes Selecionadas:\n${variantNotes}` : observations) : (variantNotes ? `Variantes Selecionadas:\n${variantNotes}` : undefined);
 
     const orderData: any = {
       customer: customerInfo,
@@ -260,7 +263,7 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
       },
 
       couponCode: appliedCoupon?.code,
-      notes: observations,
+      notes: finalNotes,
       status: 'pending'
     };
 

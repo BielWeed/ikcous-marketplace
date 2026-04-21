@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { useTheme } from "next-themes"
 
 // Format: { THEME_NAME: CSS_SELECTOR }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const THEMES = { light: "", dark: ".dark" } as const
 
 export type ChartConfig = {

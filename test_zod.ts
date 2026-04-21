@@ -1,5 +1,6 @@
 import * as z from 'zod';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const addressSchema = z.object({
     street: z.string().min(1, 'Logradouro é obrigatória'),
     number: z.string().min(1, 'Número é obrigatório'),

@@ -19,7 +19,7 @@ interface AuthContextType {
     setIsPasswordRecovery: (value: boolean) => void;
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
+ 
 export const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 // Shared semaphore and state for all Auth instances (prevents redundant parallel checks)
@@ -36,42 +36,76 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const checkAdmin = async (u: User | null | undefined) => {
         if (!u) {
             setIsAdmin(false);
+            localStorage.removeItem('ikcous_is_admin');
             return;
         }
 
-        // Use global checking lock to prevent race conditions
-        if (checkingLock) return checkingLock;
+        // Fast Path 1: JWT Metadata (Zero latency, cryptographically secure if synced)
+        const jwtRole = u.app_metadata?.role || u.user_metadata?.role;
+        if (jwtRole === 'admin') {
+            setIsAdmin(true);
+            localStorage.setItem('ikcous_is_admin', 'true');
+            // We can return early without hitting the DB
+            return;
+        }
 
-        checkingLock = (async () => {
-            try {
-                // First try direct RPC (fastest, most secure)
-                const { data, error } = await supabase.rpc('is_admin');
-                if (!error && typeof data === 'boolean') {
-                    setIsAdmin(data);
-                    return;
-                }
+        // Fast Path 2: Optimistic Local Cache
+        const cachedAdmin = localStorage.getItem('ikcous_is_admin') === 'true';
+        if (cachedAdmin) {
+            setIsAdmin(true);
+        }
 
-                // Fallback: check profiles table (Strict RLS will protect this)
-                const { data: profile, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('role')
-                    .eq('id', u.id)
-                    .single();
-
-                if (!profileError && profile?.role === 'admin') {
-                    setIsAdmin(true);
-                } else {
-                    setIsAdmin(false);
-                }
-            } catch (err) {
-                console.error('[Auth] Error checking admin status:', err);
-                setIsAdmin(false);
-            } finally {
-                checkingLock = null;
+        // Network validation (Heavy)
+        const networkCheck = async () => {
+            if (checkingLock) {
+                await checkingLock;
+                return;
             }
-        })();
 
-        return checkingLock;
+            checkingLock = (async () => {
+                try {
+                    // First try direct RPC (fastest, most secure)
+                    const { data, error } = await supabase.rpc('is_admin');
+                    if (!error && typeof data === 'boolean') {
+                        setIsAdmin(data);
+                        if (data) localStorage.setItem('ikcous_is_admin', 'true');
+                        else localStorage.removeItem('ikcous_is_admin');
+                        return;
+                    }
+
+                    // Fallback: check profiles table
+                    const { data: profile, error: profileError } = await supabase
+                        .from('profiles')
+                        .select('role')
+                        .eq('id', u.id)
+                        .single();
+
+                    if (!profileError && profile?.role === 'admin') {
+                        setIsAdmin(true);
+                        localStorage.setItem('ikcous_is_admin', 'true');
+                    } else {
+                        setIsAdmin(false);
+                        localStorage.removeItem('ikcous_is_admin');
+                    }
+                } catch (err) {
+                    console.error('[Auth] Error checking admin status:', err);
+                    setIsAdmin(false);
+                    localStorage.removeItem('ikcous_is_admin');
+                } finally {
+                    checkingLock = null;
+                }
+            })();
+            
+            await checkingLock;
+        };
+
+        // For non-cached users, we resolve immediately to unblock the UI and do network in background.
+        // For cached admins, we await the network to verify they weren't demodded before showing admin views.
+        if (cachedAdmin) {
+            await networkCheck();
+        } else {
+            networkCheck().catch(err => console.error('[Auth] Background admin check failed:', err));
+        }
     };
 
     useEffect(() => {

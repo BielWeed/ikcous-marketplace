@@ -378,8 +378,8 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
       // e usa o 'p_total_amount' como um Checksum para garantir integridade.
       const { data, error } = await (supabase as any).rpc('create_marketplace_order_v22', {
         p_items: orderData.items.map((item: any) => ({
-          product_id: item.productId,
-          variant_id: item.variantId || null,
+          product_id: item.product_id || item.productId,
+          variant_id: item.variant_id || item.variantId || null,
           quantity: item.quantity
         })),
         p_total_amount: orderData.totalAmount, 

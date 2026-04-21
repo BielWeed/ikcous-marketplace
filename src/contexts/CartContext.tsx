@@ -25,7 +25,7 @@ interface CartContextType {
     isLoading: boolean;
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
+ 
 export const CartContext = createContext<CartContextType | undefined>(undefined);
 
 const CART_STORAGE_KEY = 'marketplace_cart_v1';
@@ -172,6 +172,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                             quantity: dbItem.quantity
                         };
                         if (dbItem.variant_id) item.variantId = dbItem.variant_id;
+                        if (dbItem.variant_names) item.variantNames = dbItem.variant_names;
                         return item;
                     }).filter((item): item is CartItem => item !== null);
 
@@ -244,7 +245,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 if (itemMap.has(key)) {
                     itemMap.get(key).quantity += item.quantity;
                 } else {
-                    itemMap.set(key, { product_id: item.product.id, variant_id: variantId, quantity: item.quantity });
+                    itemMap.set(key, { product_id: item.product.id, variant_id: variantId, quantity: item.quantity, variant_names: item.variantNames || null });
                 }
             });
 
@@ -273,7 +274,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         return () => clearTimeout(timer);
     }, [cart, syncToDB]);
 
-    const addToCart = useCallback((product: Product, quantity: number = 1, variantIdInput?: string) => {
+    const addToCart = useCallback((product: Product, quantity: number = 1, variantIdInput?: string, variantNamesInput?: string) => {
         // Session check removed to allow Guest Cart
         // Guest cart will be synced to DB once user logs in via syncFromDB logic
         if (!user || !user.id) {
@@ -282,6 +283,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         
         const qToAdd = Math.max(Number(quantity) || 1, 1);
         const variantId = (variantIdInput === '' || variantIdInput === null) ? undefined : variantIdInput;
+        const variantNames = variantNamesInput || undefined;
         
         console.log(`[CartContext-Trace] 🛒 addToCart confirmed for ${product.id}.`);
 
@@ -318,7 +320,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 toast.error(`Apenas ${availableStock} unidades disponíveis.`);
             }
 
-            return [...prev, { product, quantity: validatedQuantity, variantId }];
+            return [...prev, { product, quantity: validatedQuantity, variantId, variantNames }];
         });
         toast.success('Produto adicionado ao carrinho!');
     }, [user]);
@@ -393,7 +395,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 }
 
 
-// eslint-disable-next-line react-refresh/only-export-components
+ 
 export const useCartContext = () => {
     const context = React.useContext(CartContext);
     if (context === undefined) {

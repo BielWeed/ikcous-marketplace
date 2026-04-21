@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -340,9 +340,15 @@ export function useProducts({ autoFetch = true } = {}) {
     } catch (err) {
       console.error('Error fetching recommendations:', err);
       // Fallback to local filter if RPC fails (failsafe)
-      return products
-        .filter(p => p.id !== productId && p.isActive && p.stock > 0)
-        .slice(0, limit);
+      // Fallback: Optimized local loop to prevent processing entire cache
+      const fallback: Product[] = [];
+      for (const p of products) {
+        if (p.id !== productId && p.isActive && p.stock > 0) {
+          fallback.push(p);
+          if (fallback.length >= limit) break;
+        }
+      }
+      return fallback;
     }
   }, [products]);
 
@@ -390,24 +396,36 @@ export function useProducts({ autoFetch = true } = {}) {
   // Deprecated: Synchronous version for backward compatibility
   // Prioritize fetchRecommendations
   const getRecommendations = (productId: string, limit = 4) => {
-    return products
-      .filter(p => p.id !== productId && p.isActive && p.stock > 0)
-      .slice(0, limit);
+    const res: Product[] = [];
+    for (const p of products) {
+      if (p.id !== productId && p.isActive && p.stock > 0) {
+        res.push(p);
+        if (res.length >= limit) break;
+      }
+    }
+    return res;
   };
 
   const getCartRecommendations = (cartProductIds: string[], limit = 4) => {
-    return products
-      .filter(p => !cartProductIds.includes(p.id) && p.isActive && p.stock > 0)
-      .slice(0, limit);
+    const res: Product[] = [];
+    for (const p of products) {
+      if (!cartProductIds.includes(p.id) && p.isActive && p.stock > 0) {
+        res.push(p);
+        if (res.length >= limit) break;
+      }
+    }
+    return res;
   };
 
   const getFreeShippingEligibleProducts = (cartProductIds: string[], limit = 10) => {
-    return products
-      .filter(p => {
-        // Use a safe profit estimate since 'custo' is gone from public view
-        return !cartProductIds.includes(p.id) && p.isActive && p.stock > 0;
-      })
-      .slice(0, limit);
+    const res: Product[] = [];
+    for (const p of products) {
+      if (!cartProductIds.includes(p.id) && p.isActive && p.stock > 0) {
+        res.push(p);
+        if (res.length >= limit) break;
+      }
+    }
+    return res;
   };
 
   // Track Recommendation Click

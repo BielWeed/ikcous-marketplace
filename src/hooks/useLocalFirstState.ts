@@ -25,7 +25,7 @@ export function useLocalFirstState<T>(key: string, initialValue: T) {
             queueMicrotask(() => {
                 try {
                     localStorage.setItem(`zenith_state_${key}`, JSON.stringify(resolvedValue));
-                } catch (e) {
+                } catch (_e) {
                     console.warn('[LocalFirst] Storage quota exceeded or blocked.');
                 }
             });

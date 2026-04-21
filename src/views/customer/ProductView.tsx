@@ -25,7 +25,7 @@ interface ProductViewProps {
   product: Product;
   isFavorite: boolean;
   onToggleFavorite: () => void;
-  onAddToCart: (quantity: number, variantId?: string) => void;
+  onAddToCart: (quantity: number, variantId?: string, variantNames?: string) => void;
   onBack: () => void;
   onProductClick?: (productId: string) => void;
   scrollProgress?: number;
@@ -104,7 +104,8 @@ export function ProductView({
   const isEligibleForFreeShipping = config.freeShippingMin > 0;
 
   const handleAddToCart = () => {
-    onAddToCart(quantity, selectedVariantObjects[0]?.id);
+    const variantNames = Object.entries(selectedVariants).map(([name, value]) => `${name}: ${value}`).join(', ');
+    onAddToCart(quantity, selectedVariantObjects[0]?.id, variantNames);
     setShowAddedToast(true);
     setTimeout(() => setShowAddedToast(false), 2000);
   };
@@ -119,7 +120,7 @@ export function ProductView({
     if (navigator.share) {
       try {
         await navigator.share(shareData);
-      } catch (err) {
+      } catch (_err) {
         console.log('Share cancelled');
       }
     } else {

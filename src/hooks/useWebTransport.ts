@@ -46,7 +46,7 @@ export function useWebTransport() {
             streamRef.current = writable.getWriter();
 
             console.log('[WebTransport] Stream connection established via HTTP/3');
-        } catch (err) {
+        } catch (_err) {
             // Captura falhas de conexão (como ERR_QUIC_PROTOCOL_ERROR) e as trata como debug
             console.debug('[WebTransport] Connection suppressed. Endpoint likely inactive or QUIC unavailable.');
         }

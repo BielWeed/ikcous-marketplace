@@ -135,9 +135,9 @@ export function useUpdateCheck() {
             
             // Prevent duplicate toasts if already shown
             if (notifiedUpdateRef.current !== 'PROMPT_SHOWN') {
-                toast.success('Nova atualização disponível!', {
-                    description: 'Clique em atualizar para carregar as melhorias.',
-                    duration: 10000,
+                toast.success('Sincronizando Sistema', {
+                    description: 'Aplicando melhorias automaticamente. Aguarde um instante...',
+                    duration: 3000,
                 });
                 notifiedUpdateRef.current = 'PROMPT_SHOWN';
             }

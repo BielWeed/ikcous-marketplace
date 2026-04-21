@@ -1,4 +1,20 @@
-
+CREATE OR REPLACE FUNCTION public.create_marketplace_order_v22(
+    p_items jsonb, 
+    p_total_amount numeric, 
+    p_shipping_cost numeric, 
+    p_payment_method text, 
+    p_address_id uuid, 
+    p_coupon_code text, 
+    p_customer_name text, 
+    p_customer_phone text, 
+    p_observation text,
+    p_address_data jsonb DEFAULT NULL
+)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
 DECLARE
     v_user_id uuid := auth.uid();
     v_order_id uuid;
@@ -19,11 +35,11 @@ DECLARE
     v_store_config RECORD;
     v_shipping_validated numeric;
 BEGIN
-    -- 0. Auth Check
-    IF v_user_id IS NULL THEN RAISE EXCEPTION 'Não autenticado.'; END IF;
+    -- 0. Auth Check (REMOVED for Guest Checkout)
+    -- IF v_user_id IS NULL THEN RAISE EXCEPTION 'Não autenticado.'; END IF;
 
-    -- 1. Address Ownership Check
-    IF p_address_id IS NOT NULL THEN
+    -- 1. Address Ownership Check (Only if user is logged in)
+    IF p_address_id IS NOT NULL AND v_user_id IS NOT NULL THEN
         IF NOT EXISTS (SELECT 1 FROM user_addresses WHERE id = p_address_id AND user_id = v_user_id) THEN
             RAISE EXCEPTION 'Endereço inválido ou não pertence ao usuário.';
         END IF;
@@ -48,13 +64,13 @@ BEGIN
             JOIN public.product_variants v ON v.product_id = p.id
             WHERE v.id = v_variant_id AND p.id = v_product_id
               AND v.active = true AND p.ativo = true
-            FOR NO KEY UPDATE OF v; -- Lock row for duration of transaction
+            FOR NO KEY UPDATE OF v; 
         ELSE
             SELECT preco_venda, estoque, nome
             INTO v_db_price, v_db_stock, v_item_name
             FROM public.produtos
             WHERE id = v_product_id AND ativo = true
-            FOR NO KEY UPDATE; -- Lock row for duration of transaction
+            FOR NO KEY UPDATE; 
         END IF;
 
         IF v_db_price IS NULL THEN RAISE EXCEPTION 'Produto % não disponível.', COALESCE(v_item_name, 'não encontrado'); END IF;
@@ -81,7 +97,7 @@ BEGIN
           AND (valid_until IS NULL OR valid_until > now())
           AND (usage_limit IS NULL OR usage_count < usage_limit)
           AND (min_purchase IS NULL OR v_calculated_subtotal >= min_purchase)
-          FOR SHARE;
+          FOR UPDATE;
           
         IF v_coupon_id IS NULL THEN
             RAISE EXCEPTION 'Cupom % inválido ou expirado.', p_coupon_code;
@@ -103,7 +119,7 @@ BEGIN
     ) VALUES (
         v_user_id, v_calculated_total, v_shipping_validated, p_payment_method, p_address_id, 
         v_coupon_id, 'pending', p_observation, p_customer_name,
-        jsonb_build_object('whatsapp', p_customer_phone, 'address_id', p_address_id),
+        jsonb_build_object('whatsapp', p_customer_phone, 'address_id', p_address_id, 'address', p_address_data),
         v_calculated_subtotal, v_discount_amount, p_coupon_code
     ) RETURNING id INTO v_order_id;
 
@@ -115,7 +131,6 @@ BEGIN
         v_quantity := (v_item->>'quantity')::integer;
         
         IF v_variant_id IS NOT NULL THEN
-            -- ATOMIC SHIELD: Update with condition and Row Count verification
             UPDATE public.product_variants 
             SET stock_increment = stock_increment - v_quantity 
             WHERE id = v_variant_id AND stock_increment >= v_quantity;
@@ -132,7 +147,6 @@ BEGIN
             JOIN public.product_variants v ON v.product_id = p.id 
             WHERE v.id = v_variant_id;
         ELSE
-            -- ATOMIC SHIELD: Update with condition and Row Count verification
             UPDATE public.produtos 
             SET estoque = estoque - v_quantity 
             WHERE id = v_product_id AND estoque >= v_quantity;
@@ -160,3 +174,4 @@ BEGIN
 
     RETURN v_order_id;
 END;
+$function$;
