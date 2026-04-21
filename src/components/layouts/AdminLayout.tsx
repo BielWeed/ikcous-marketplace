@@ -29,6 +29,14 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
         { icon: Settings, label: 'Ajustes', view: 'admin-settings' },
     ];
 
+    const adminMainRef = React.useRef<HTMLElement>(null);
+
+    React.useEffect(() => {
+        if (adminMainRef.current) {
+            adminMainRef.current.scrollTop = 0;
+        }
+    }, [currentView]);
+
     return (
         <div className="h-[100dvh] w-screen overflow-hidden bg-[#09090b] flex flex-col font-sans text-zinc-50">
             <Helmet>
@@ -66,7 +74,7 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
             </header>
 
             {/* Main Content Area */}
-            <main className="flex-1 overflow-y-auto overflow-x-hidden w-full bg-[#09090b] pb-20 lg:pb-8">
+            <main ref={adminMainRef} className="flex-1 overflow-y-auto overflow-x-hidden w-full bg-[#09090b] pb-20 lg:pb-8">
                 <div className="w-full max-w-7xl mx-auto py-0">
                     {children}
                 </div>
