@@ -126,13 +126,11 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
   }, []);
 
   const handleVariantSubmit = async () => {
-    if (!productId) return;
-
     try {
       const parsedPriceOverride = variantFormData.priceOverride ? parseFloat(variantFormData.priceOverride) : undefined;
 
       const vData = {
-        productId,
+        productId: productId || '',
         name: variantFormData.name,
         value: variantFormData.value,
         sku: variantFormData.sku,
@@ -141,27 +139,35 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
         active: variantFormData.active
       };
 
-      if (editingVariant) {
-        await updateVariant(editingVariant.id, vData);
+      if (!productId) {
+        if (editingVariant) {
+          setFormData(prev => ({
+            ...prev,
+            variants: prev.variants.map(v => v.id === editingVariant.id ? { ...v, ...vData } : v)
+          }));
+        } else {
+          setFormData(prev => ({
+            ...prev,
+            variants: [...prev.variants, { ...vData, id: `temp-${Date.now()}` } as any]
+          }));
+        }
       } else {
-        await addVariant(vData);
+        if (editingVariant) {
+          await updateVariant(editingVariant.id, vData);
+        } else {
+          await addVariant(vData);
+        }
+        const updatedProduct = await fetchProduct(productId);
+        if (updatedProduct) {
+          setFormData(prev => ({ ...prev, variants: updatedProduct.variants || [] }));
+        }
       }
 
       setShowVariantForm(false);
       setEditingVariant(null);
       setVariantFormData({
-        name: '',
-        value: '',
-        sku: '',
-        stockIncrement: '0',
-        priceOverride: '',
-        active: true
+        name: '', value: '', sku: '', stockIncrement: '0', priceOverride: '', active: true
       });
-
-      const updatedProduct = await fetchProduct(productId);
-      if (updatedProduct) {
-        setFormData(prev => ({ ...prev, variants: updatedProduct.variants || [] }));
-      }
     } catch (_err) {
       console.error('Variant error:', _err);
     }
@@ -169,8 +175,12 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
 
   const handleDeleteVariant = async (vId: string) => {
     if (globalThis.confirm('Excluir esta variante?')) {
+      if (!productId) {
+        setFormData(prev => ({ ...prev, variants: prev.variants.filter(v => v.id !== vId) }));
+        return;
+      }
       await deleteVariant(vId);
-      const updatedProduct = await fetchProduct(productId!);
+      const updatedProduct = await fetchProduct(productId);
       if (updatedProduct) {
         setFormData(prev => ({ ...prev, variants: updatedProduct.variants || [] }));
       }
@@ -200,6 +210,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
       isActive: formData.isActive,
       metaTitle: formData.metaTitle,
       metaDescription: formData.metaDescription,
+      variants: formData.variants,
       sold: productId ? (currentProduct?.sold || 0) : 0,
     };
 
@@ -763,8 +774,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
             </motion.section>
 
             {/* Variants Grade */}
-            {productId && (
-              <motion.section variants={itemVariants} className="pt-12 border-t border-white/5 space-y-4">
+            <motion.section variants={itemVariants} className="pt-12 border-t border-white/5 space-y-4">
                 <div className="flex items-center justify-between px-2">
                   <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-2">
                     <Layers className="w-4 h-4" />
@@ -837,7 +847,6 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                   )}
                 </div>
               </motion.section>
-            )}
           </div>
         </div>
 

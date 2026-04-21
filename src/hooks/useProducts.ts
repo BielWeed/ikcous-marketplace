@@ -122,7 +122,7 @@ export function useProducts({ autoFetch = true } = {}) {
     return products.find(p => p.id === id);
   }, [products]);
 
-  const addProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'rating' | 'reviewCount' | 'variants'>) => {
+  const addProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'rating' | 'reviewCount'>) => {
     if (!isAdmin) {
       toast.error('Permissão negada');
       return;
@@ -158,6 +158,21 @@ export function useProducts({ autoFetch = true } = {}) {
 
       if (data) {
         const newProduct = mapProductFromDB(data);
+
+        if (productData.variants && productData.variants.length > 0) {
+          const variantsToInsert = productData.variants.map(v => ({
+            product_id: data.id,
+            name: v.name,
+            value: v.value,
+            sku: v.sku,
+            stock_increment: v.stockIncrement,
+            price_override: v.priceOverride,
+            active: v.active
+          }));
+          const { error: varErr } = await supabase.from('product_variants').insert(variantsToInsert);
+          if (varErr) console.error('Error adding variants on creation:', varErr);
+        }
+
         await refreshContext();
         toast.success('Produto cadastrado com sucesso!');
         return newProduct;
