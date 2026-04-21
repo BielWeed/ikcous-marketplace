@@ -296,11 +296,11 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
 
             {/* Dialog Elite */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="w-[95vw] sm:w-full sm:max-w-2xl bg-zinc-950 border-white/5 text-white p-0 overflow-x-hidden overflow-y-auto max-h-[90vh] rounded-[2rem] sm:rounded-[3.5rem] shadow-[0_0_80px_rgba(0,0,0,0.9)] mx-auto custom-scrollbar">
+                <DialogContent className="w-[95vw] sm:w-full sm:max-w-2xl bg-zinc-950 border-white/5 text-white p-0 overflow-x-hidden overflow-y-auto max-h-[85vh] sm:max-h-[90vh] rounded-[2rem] sm:rounded-[3.5rem] shadow-[0_0_80px_rgba(0,0,0,0.9)] mx-auto custom-scrollbar">
                     <div className="absolute -top-40 -right-40 w-80 h-80 bg-admin-gold/5 blur-[120px] rounded-full pointer-events-none" />
                     <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-emerald-500/5 blur-[120px] rounded-full pointer-events-none" />
 
-                    <div className="p-6 sm:p-12 space-y-8 sm:space-y-10 relative z-10 w-full overflow-hidden">
+                    <div className="p-6 pb-24 sm:pb-12 sm:p-12 space-y-8 sm:space-y-10 relative z-10 w-full overflow-hidden">
                         <DialogHeader>
                             <DialogTitle className="text-xl sm:text-3xl font-black text-white tracking-widest uppercase italic flex items-center gap-3 sm:gap-4 truncate">
                                 <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-admin-gold shrink-0" />
