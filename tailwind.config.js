@@ -39,6 +39,10 @@ module.exports = {
           dark: "#996515",
         },
         "admin-gold": "hsl(var(--admin-gold))",
+        "admin-bg": "hsl(var(--admin-bg))",
+        "admin-card": "hsl(var(--admin-card))",
+        "admin-border": "hsl(var(--admin-border))",
+        "admin-accent": "hsl(var(--admin-accent))",
         blackTier: {
           DEFAULT: "#ffffff",
           glow: "rgba(255, 255, 255, 0.4)",
