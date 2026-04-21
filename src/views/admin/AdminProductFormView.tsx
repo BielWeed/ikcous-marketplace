@@ -411,7 +411,6 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                     />
                   </div>
                 </div>
-                </div>
                 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Imagem da Variante (Opcional)</label>

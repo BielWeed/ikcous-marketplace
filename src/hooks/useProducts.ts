@@ -481,7 +481,7 @@ export function useProducts({ autoFetch = true } = {}) {
           priceOverride: data.price_override,
           active: data.active,
           sku: data.sku,
-          imageUrl: data.image_url
+          imageUrl: (data as any).image_url
         } as ProductVariant;
 
         // Update products
