@@ -296,24 +296,24 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
 
             {/* Dialog Elite */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="sm:max-w-2xl bg-zinc-950 border-white/5 text-white p-0 overflow-y-auto max-h-[90vh] rounded-[3.5rem] shadow-[0_0_80px_rgba(0,0,0,0.9)] mx-auto custom-scrollbar">
+                <DialogContent className="w-[95vw] sm:w-full sm:max-w-2xl bg-zinc-950 border-white/5 text-white p-0 overflow-x-hidden overflow-y-auto max-h-[90vh] rounded-[2rem] sm:rounded-[3.5rem] shadow-[0_0_80px_rgba(0,0,0,0.9)] mx-auto custom-scrollbar">
                     <div className="absolute -top-40 -right-40 w-80 h-80 bg-admin-gold/5 blur-[120px] rounded-full pointer-events-none" />
                     <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-emerald-500/5 blur-[120px] rounded-full pointer-events-none" />
 
-                    <div className="p-8 sm:p-12 space-y-10 relative z-10 w-full">
+                    <div className="p-6 sm:p-12 space-y-8 sm:space-y-10 relative z-10 w-full overflow-hidden">
                         <DialogHeader>
-                            <DialogTitle className="text-3xl font-black text-white tracking-widest uppercase italic flex items-center gap-4">
-                                <Sparkles className="w-8 h-8 text-admin-gold" />
-                                {editingBanner ? 'Optimize Asset' : 'Blueprint Creation'}
+                            <DialogTitle className="text-xl sm:text-3xl font-black text-white tracking-widest uppercase italic flex items-center gap-3 sm:gap-4 truncate">
+                                <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-admin-gold shrink-0" />
+                                <span className="truncate">{editingBanner ? 'Optimize Asset' : 'Blueprint Creation'}</span>
                             </DialogTitle>
-                            <DialogDescription className="text-zinc-500 font-bold uppercase text-[11px] tracking-[0.3em] mt-3">
+                            <DialogDescription className="text-zinc-500 font-bold uppercase text-[9px] sm:text-[11px] tracking-[0.2em] sm:tracking-[0.3em] mt-3">
                                 Structural Design & Protocol Configuration
                             </DialogDescription>
                         </DialogHeader>
 
-                        <div className="space-y-8">
+                        <div className="space-y-6 sm:space-y-8">
                             <div className="space-y-4">
-                                <Label className="text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic opacity-80">Visual Source Control</Label>
+                                <Label className="text-[10px] sm:text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic opacity-80">Visual Source Control</Label>
                                 <div className="flex flex-col gap-6">
                                     {formData.imageUrl ? (
                                         <div className="group relative w-full aspect-[21/9] rounded-[2.5rem] overflow-hidden border border-white/10 bg-zinc-900 shadow-2xl">
@@ -344,9 +344,9 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-8">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8">
                                 <div className="space-y-4">
-                                    <Label className="text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Spatial Position</Label>
+                                    <Label className="text-[10px] sm:text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Spatial Position</Label>
                                     <Select
                                         value={formData.position}
                                         onValueChange={(value: any) => setFormData({ ...formData, position: value })}
@@ -373,42 +373,42 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                             </div>
 
                             <div className="space-y-4">
-                                <Label className="text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Redirect Logic (Endpoint)</Label>
+                                <Label className="text-[10px] sm:text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Redirect Logic (Endpoint)</Label>
                                 <Input
                                     value={formData.link || ''}
                                     onChange={(e) => setFormData({ ...formData, link: e.target.value })}
                                     placeholder="/elite/curated-selection"
-                                    className="h-16 bg-zinc-900/50 border-white/10 rounded-2xl focus:ring-admin-gold focus:border-admin-gold/50 text-xs font-black font-mono tracking-widest placeholder:text-zinc-700 transition-all opacity-80"
+                                    className="h-14 sm:h-16 bg-zinc-900/50 border-white/10 rounded-xl sm:rounded-2xl focus:ring-admin-gold focus:border-admin-gold/50 text-[10px] sm:text-xs font-black font-mono tracking-[0.1em] sm:tracking-widest placeholder:text-zinc-700 transition-all opacity-80"
                                 />
                             </div>
 
-                            <div className="flex items-center justify-between p-8 bg-black/40 rounded-[2.5rem] border border-white/5 shadow-inner">
-                                <div className="space-y-2">
-                                    <Label className="text-[12px] font-black text-white uppercase tracking-widest flex items-center gap-3 italic">
-                                        Active Protocol <Zap className="w-4 h-4 text-admin-gold" />
+                            <div className="flex items-center justify-between p-6 sm:p-8 bg-black/40 rounded-[1.5rem] sm:rounded-[2.5rem] border border-white/5 shadow-inner">
+                                <div className="space-y-1 sm:space-y-2">
+                                    <Label className="text-[10px] sm:text-[12px] font-black text-white uppercase tracking-[0.1em] sm:tracking-widest flex items-center gap-2 sm:gap-3 italic">
+                                        Active Protocol <Zap className="w-3 h-3 sm:w-4 sm:h-4 text-admin-gold" />
                                     </Label>
-                                    <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Enable immediate global visibility</p>
+                                    <p className="text-[8px] sm:text-[10px] font-bold text-zinc-600 uppercase tracking-wider sm:tracking-widest">Enable immediate global visibility</p>
                                 </div>
                                 <Switch
                                     checked={formData.active}
                                     onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
-                                    className="data-[state=checked]:bg-admin-gold"
+                                    className="data-[state=checked]:bg-admin-gold scale-75 sm:scale-100"
                                 />
                             </div>
                         </div>
 
-                        <div className="flex gap-6 pt-6">
+                        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 pt-6">
                             <Button
                                 variant="ghost"
                                 onClick={() => setIsDialogOpen(false)}
-                                className="h-16 flex-1 rounded-2xl text-zinc-500 hover:text-white hover:bg-white/5 text-[11px] font-black uppercase tracking-[0.3em] transition-all"
+                                className="h-14 sm:h-16 flex-1 rounded-xl sm:rounded-2xl text-zinc-500 hover:text-white hover:bg-white/5 text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] transition-all"
                             >
                                 Abort
                             </Button>
                             <Button
                                 onClick={handleSubmit}
                                 disabled={uploading}
-                                className="flex-[2] h-16 rounded-2xl bg-admin-gold text-black hover:bg-white text-[11px] font-black uppercase tracking-[0.3em] shadow-[0_20px_40px_rgba(212,175,55,0.2)] transition-all active:scale-95"
+                                className="flex-[2] h-14 sm:h-16 rounded-xl sm:rounded-2xl bg-admin-gold text-black hover:bg-white text-[9px] sm:text-[11px] font-black uppercase tracking-[0.1em] sm:tracking-[0.3em] shadow-[0_20px_40px_rgba(212,175,55,0.2)] transition-all active:scale-95"
                             >
                                 {uploading ? 'Processing Architecture...' : 'Syndicate Global Asset'}
                             </Button>
