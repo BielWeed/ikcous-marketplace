@@ -152,7 +152,7 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
             {/* Header / Actions */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-6">
                 <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="icon" onClick={onBack} className="rounded-2xl h-12 w-12 bg-zinc-950/80 border border-zinc-800 shadow-inner hover:bg-zinc-800 hover:border-[var(--admin-gold)]/50 transition-all text-zinc-400 hover:text-white">
+                    <Button variant="ghost" size="icon" onClick={onBack} className="rounded-2xl h-12 w-12 bg-zinc-950/80 border border-zinc-800 shadow-inner hover:bg-zinc-800 hover:border-admin-gold/50 transition-all text-zinc-400 hover:text-white">
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                     <div>
@@ -185,7 +185,7 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 relative">
                 {/* Glow Background Global */}
-                <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[600px] bg-[var(--admin-gold)]/5 blur-[120px] pointer-events-none rounded-full" />
+                <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[600px] bg-admin-gold/5 blur-[120px] pointer-events-none rounded-full" />
 
                 {/* Left Column: Profile Card */}
                 <Card className="lg:col-span-4 h-fit border border-zinc-800/80 shadow-2xl bg-zinc-900/40 backdrop-blur-3xl rounded-[2rem] overflow-hidden relative group/card">
@@ -194,13 +194,13 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                     
                     <CardHeader className="flex flex-col items-center pb-0 relative z-10 pt-10">
                         <div className="relative group">
-                            <Avatar className="h-28 w-28 border-4 border-zinc-950 shadow-[0_0_30px_rgba(0,0,0,0.5)] ring-2 ring-zinc-800 group-hover:ring-[var(--admin-gold)]/50 transition-all duration-500 relative z-10">
+                            <Avatar className="h-28 w-28 border-4 border-zinc-950 shadow-[0_0_30px_rgba(0,0,0,0.5)] ring-2 ring-zinc-800 group-hover:ring-admin-gold/50 transition-all duration-500 relative z-10">
                                 <AvatarImage src={profile?.avatar_url || undefined} className="object-cover" />
                                 <AvatarFallback className="text-3xl font-black bg-gradient-to-br from-zinc-800 to-zinc-950 text-zinc-500 border border-zinc-700/50">
                                     {profile?.full_name?.substring(0, 2).toUpperCase() || 'CX'}
                                 </AvatarFallback>
                             </Avatar>
-                            <div className="absolute -inset-2 bg-gradient-to-r from-[var(--admin-gold)] to-yellow-600 rounded-full blur-xl opacity-0 group-hover:opacity-20 transition-opacity duration-500 z-0" />
+                            <div className="absolute -inset-2 bg-gradient-to-r from-admin-gold to-yellow-600 rounded-full blur-xl opacity-0 group-hover:opacity-20 transition-opacity duration-500 z-0" />
                             {profile?.whatsapp && (
                                 <div className="absolute bottom-1 right-1 w-7 h-7 bg-green-500 rounded-full flex items-center justify-center border-2 border-zinc-950 shadow-[0_0_15px_rgba(34,197,94,0.4)] z-20">
                                     <Phone className="w-3 h-3 text-zinc-950 fill-zinc-950" />
@@ -210,7 +210,7 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                         
                         <div className="mt-5 text-center flex flex-col items-center w-full px-4 pt-2">
                             <CardTitle className="text-xl sm:text-2xl font-black tracking-tight text-white">{profile?.full_name || 'Usuário Não-Nomeado'}</CardTitle>
-                            <Badge className={`mt-3 uppercase tracking-[0.2em] font-black text-[9px] px-3 py-1 rounded-md border ${profile?.role === 'admin' ? 'bg-[var(--admin-gold)] text-black border-[var(--admin-gold)]/50' : 'bg-black text-zinc-500 border-zinc-800'}`}>
+                            <Badge className={`mt-3 uppercase tracking-[0.2em] font-black text-[9px] px-3 py-1 rounded-md border ${profile?.role === 'admin' ? 'bg-admin-gold text-black border-admin-gold/50' : 'bg-black text-zinc-500 border-zinc-800'}`}>
                                 {profile?.role || 'Cliente'}
                             </Badge>
                         </div>
@@ -220,7 +220,7 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                         {/* Info List */}
                         <div className="space-y-2">
                             <div className="flex items-center gap-4 text-sm p-4 rounded-2xl bg-zinc-950/50 border border-zinc-800/50 hover:border-zinc-700/80 transition-colors group">
-                                <div className="w-10 h-10 shrink-0 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 group-hover:text-[var(--admin-gold)] transition-colors shadow-inner">
+                                <div className="w-10 h-10 shrink-0 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 group-hover:text-admin-gold transition-colors shadow-inner">
                                     <Mail className="h-4 w-4" />
                                 </div>
                                 <div className="flex flex-col min-w-0">
@@ -230,7 +230,7 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                             </div>
 
                             <div className="flex items-center gap-4 text-sm p-4 rounded-2xl bg-zinc-950/50 border border-zinc-800/50 hover:border-zinc-700/80 transition-colors group">
-                                <div className="w-10 h-10 shrink-0 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 group-hover:text-[var(--admin-gold)] transition-colors shadow-inner">
+                                <div className="w-10 h-10 shrink-0 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 group-hover:text-admin-gold transition-colors shadow-inner">
                                     <Phone className="h-4 w-4" />
                                 </div>
                                 <div className="flex flex-col min-w-0">
@@ -240,7 +240,7 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                             </div>
 
                             <div className="flex items-center gap-4 text-sm p-4 rounded-2xl bg-zinc-950/50 border border-zinc-800/50 hover:border-zinc-700/80 transition-colors group">
-                                <div className="w-10 h-10 shrink-0 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 group-hover:text-[var(--admin-gold)] transition-colors shadow-inner">
+                                <div className="w-10 h-10 shrink-0 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 group-hover:text-admin-gold transition-colors shadow-inner">
                                     <Calendar className="h-4 w-4" />
                                 </div>
                                 <div className="flex flex-col min-w-0">
@@ -253,7 +253,7 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                         {/* Addresses Area */}
                         <div className="pt-6 border-t border-zinc-800/50 space-y-4">
                             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-2 pl-1">
-                                <MapPin className="h-3.5 w-3.5 text-[var(--admin-gold)]/70" /> Destinos de Entrega
+                                <MapPin className="h-3.5 w-3.5 text-admin-gold/70" /> Destinos de Entrega
                             </h3>
                             {addresses.length === 0 ? (
                                 <div className="p-6 text-center border border-dashed border-zinc-800 rounded-2xl bg-zinc-950/30 flex flex-col items-center justify-center">
@@ -264,10 +264,10 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                                 <div className="space-y-3">
                                     {addresses.map(addr => (
                                         <div key={addr.id} className="p-4 rounded-2xl bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-colors shadow-inner relative overflow-hidden group">
-                                            {addr.is_default && <div className="absolute top-0 right-0 w-12 h-12 overflow-hidden pointer-events-none before:content-[''] before:absolute before:border-[16px] before:border-transparent before:border-t-[var(--admin-gold)]/20 before:border-r-[var(--admin-gold)]/20 before:-top-2 before:-right-2" />}
+                                            {addr.is_default && <div className="absolute top-0 right-0 w-12 h-12 overflow-hidden pointer-events-none before:content-[''] before:absolute before:border-[16px] before:border-transparent before:border-t-admin-gold/20 before:border-r-admin-gold/20 before:-top-2 before:-right-2" />}
                                             <div className="font-black text-white flex items-center justify-between mb-2">
                                                 <span className="truncate pr-2">{addr.name}</span>
-                                                {addr.is_default && <Badge className="bg-[var(--admin-gold)] text-black font-black uppercase tracking-widest text-[8px] h-4 px-1.5 border-none shadow-[0_0_10px_rgba(255,191,0,0.3)]">VIP</Badge>}
+                                                {addr.is_default && <Badge className="bg-admin-gold text-black font-black uppercase tracking-widest text-[8px] h-4 px-1.5 border-none shadow-[0_0_10px_rgba(255,191,0,0.3)]">VIP</Badge>}
                                             </div>
                                             <div className="space-y-0.5 mt-2">
                                                 <p className="text-xs text-zinc-400 font-medium">
@@ -288,8 +288,8 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                     {/* Quick Stats Banner */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         {/* LTV Card */}
-                        <div className="bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 p-6 rounded-[2rem] flex flex-col items-center sm:items-start relative overflow-hidden group hover:border-[var(--admin-gold)]/50 transition-colors shadow-inner">
-                            <div className="w-12 h-12 rounded-xl bg-zinc-950 border border-[var(--admin-gold)]/20 shadow-[0_0_15px_rgba(212,175,55,0.1)] flex items-center justify-center mb-4 text-[var(--admin-gold)] group-hover:scale-110 transition-transform">
+                        <div className="bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 p-6 rounded-[2rem] flex flex-col items-center sm:items-start relative overflow-hidden group hover:border-admin-gold/50 transition-colors shadow-inner">
+                            <div className="w-12 h-12 rounded-xl bg-zinc-950 border border-admin-gold/20 shadow-[0_0_15px_rgba(212,175,55,0.1)] flex items-center justify-center mb-4 text-admin-gold group-hover:scale-110 transition-transform">
                                 <CreditCard className="w-5 h-5" />
                             </div>
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-1">LTV Total</p>
@@ -329,7 +329,7 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                                 <TabsTrigger value="orders" className="flex items-center gap-2 py-3 sm:py-4 rounded-[1.5rem] text-[10px] sm:text-xs font-black uppercase tracking-widest text-zinc-500 data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all">
                                     <Package className="h-4 w-4" /> Arquivo de Pedidos
                                 </TabsTrigger>
-                                <TabsTrigger value="cart" className="flex items-center gap-2 py-3 sm:py-4 rounded-[1.5rem] text-[10px] sm:text-xs font-black uppercase tracking-widest text-zinc-500 data-[state=active]:bg-[var(--admin-gold)]/10 data-[state=active]:text-[var(--admin-gold)] data-[state=active]:border data-[state=active]:border-[var(--admin-gold)]/20 data-[state=active]:shadow-[0_0_15px_rgba(212,175,55,0.1)] transition-all">
+                                <TabsTrigger value="cart" className="flex items-center gap-2 py-3 sm:py-4 rounded-[1.5rem] text-[10px] sm:text-xs font-black uppercase tracking-widest text-zinc-500 data-[state=active]:bg-admin-gold/10 data-[state=active]:text-admin-gold data-[state=active]:border data-[state=active]:border-admin-gold/20 data-[state=active]:shadow-[0_0_15px_rgba(212,175,55,0.1)] transition-all">
                                     <ShoppingCart className="h-4 w-4" /> Status do Carrinho
                                 </TabsTrigger>
                             </TabsList>
@@ -379,7 +379,7 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                                                                     {order.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                                                 </TableCell>
                                                                 <TableCell className="text-right py-5 px-6">
-                                                                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-zinc-500 hover:text-[var(--admin-gold)] hover:bg-[var(--admin-gold)]/10">
+                                                                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-zinc-500 hover:text-admin-gold hover:bg-admin-gold/10">
                                                                         <ExternalLink className="h-4 w-4" />
                                                                     </Button>
                                                                 </TableCell>
@@ -446,7 +446,7 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                                                                             </Avatar>
                                                                             <div className="flex flex-col min-w-0">
                                                                                 <span className="font-bold text-sm text-white truncate w-[150px] sm:w-[250px] leading-tight">{item.product.name}</span>
-                                                                                {variant && <span className="text-[9px] text-[var(--admin-gold)] uppercase tracking-widest font-black mt-1 bg-[var(--admin-gold)]/10 px-1.5 py-0.5 rounded w-fit">{variant.name}: {variant.value}</span>}
+                                                                                {variant && <span className="text-[9px] text-admin-gold uppercase tracking-widest font-black mt-1 bg-admin-gold/10 px-1.5 py-0.5 rounded w-fit">{variant.name}: {variant.value}</span>}
                                                                             </div>
                                                                         </div>
                                                                     </TableCell>

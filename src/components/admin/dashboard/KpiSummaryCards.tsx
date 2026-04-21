@@ -50,7 +50,7 @@ export function KpiSummaryCards({ stats, loading }: KpiSummaryCardsProps) {
         <div className="px-0 sm:px-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
             {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group hover:border-[var(--admin-gold)]/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)] transition-all duration-500 space-y-3 sm:space-y-4" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
+                    <div key={i} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)] transition-all duration-500 space-y-3 sm:space-y-4" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
                         <div className="flex items-center gap-3">
                             <Skeleton className="w-10 h-10 rounded-xl bg-white/5" />
                             <Skeleton className="h-3 w-20 bg-white/5" />
@@ -63,7 +63,7 @@ export function KpiSummaryCards({ stats, loading }: KpiSummaryCardsProps) {
                 ))
             ) : (
                 kpiCards.map((stat, index) => (
-                    <div key={index} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group hover:border-[var(--admin-gold)]/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)] transition-all duration-500" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
+                    <div key={index} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)] transition-all duration-500" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
                         <div className="flex items-center gap-3 mb-4">
                             <div className={cn(
                                 "w-10 h-10 rounded-xl flex items-center justify-center border border-white/5 shadow-inner bg-zinc-950",

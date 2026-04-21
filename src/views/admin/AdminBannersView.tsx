@@ -117,25 +117,25 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
     ];
 
     return (
-        <div className="min-h-screen bg-[var(--admin-bg)] text-white pb-32 font-sans selection:bg-[var(--admin-gold)]/30">
+        <div className="min-h-screen bg-admin-bg text-white pb-32 font-sans selection:bg-admin-gold/30">
             {/* Header Elite */}
             <div className="px-6 py-8">
                 <div className="max-w-7xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-6">
                         <button
                             onClick={handleBack}
-                            className="w-12 h-12 flex items-center justify-center bg-zinc-950/50 text-zinc-400 rounded-2xl hover:bg-[var(--admin-gold)] hover:text-black transition-all active:scale-95 border border-white/5 group shadow-2xl"
+                            className="w-12 h-12 flex items-center justify-center bg-zinc-950/50 text-zinc-400 rounded-2xl hover:bg-admin-gold hover:text-black transition-all active:scale-95 border border-white/5 group shadow-2xl"
                         >
                             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
                         </button>
                         <div>
                             <div className="flex items-center gap-3 mb-1">
-                                <Layout className="w-5 h-5 text-[var(--admin-gold)] animate-pulse" />
+                                <Layout className="w-5 h-5 text-admin-gold animate-pulse" />
                                 <h1 className="text-2xl font-black tracking-tighter uppercase italic bg-gradient-to-r from-white via-zinc-400 to-zinc-600 bg-clip-text text-transparent">
                                     Visual Engine
                                 </h1>
                             </div>
-                            <p className="text-[10px] font-bold text-[var(--admin-gold)] uppercase tracking-[0.3em] opacity-80">
+                            <p className="text-[10px] font-bold text-admin-gold uppercase tracking-[0.3em] opacity-80">
                                 Premium Banners Curatorship
                             </p>
                         </div>
@@ -155,9 +155,9 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
             <div className="max-w-7xl mx-auto p-8 space-y-12">
                 {/* Stats Dashboard */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 p-8 rounded-[2.5rem] flex items-center gap-8 overflow-hidden hover:border-[var(--admin-gold)]/30 transition-all duration-500 shadow-2xl">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--admin-gold)]/5 blur-[60px] rounded-full -mr-16 -mt-16 group-hover:bg-[var(--admin-gold)]/10 transition-all" />
-                        <div className="w-20 h-20 bg-zinc-900 rounded-3xl flex items-center justify-center border border-white/5 text-[var(--admin-gold)] shadow-inner relative z-10">
+                    <div className="group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 p-8 rounded-[2.5rem] flex items-center gap-8 overflow-hidden hover:border-admin-gold/30 transition-all duration-500 shadow-2xl">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-admin-gold/5 blur-[60px] rounded-full -mr-16 -mt-16 group-hover:bg-admin-gold/10 transition-all" />
+                        <div className="w-20 h-20 bg-zinc-900 rounded-3xl flex items-center justify-center border border-white/5 text-admin-gold shadow-inner relative z-10">
                             <Eye className="w-10 h-10 animate-pulse" />
                         </div>
                         <div className="relative z-10">
@@ -180,9 +180,9 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                 {!isLoaded ? (
                     <div className="text-center py-32 flex flex-col items-center justify-center">
                         <div className="relative w-20 h-20 mb-6">
-                            <div className="absolute inset-0 border-4 border-[var(--admin-gold)]/10 rounded-full" />
-                            <div className="absolute inset-0 border-4 border-t-[var(--admin-gold)] rounded-full animate-spin" />
-                            <Layout className="absolute inset-0 m-auto w-8 h-8 text-[var(--admin-gold)] animate-pulse" />
+                            <div className="absolute inset-0 border-4 border-admin-gold/10 rounded-full" />
+                            <div className="absolute inset-0 border-4 border-t-admin-gold rounded-full animate-spin" />
+                            <Layout className="absolute inset-0 m-auto w-8 h-8 text-admin-gold animate-pulse" />
                         </div>
                         <p className="text-[11px] font-black text-zinc-500 uppercase tracking-[0.5em] animate-pulse">Sincronizando Galeria de Elite...</p>
                     </div>
@@ -207,7 +207,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                             {positionBanners.map(banner => (
                                                 <div
                                                     key={banner.id}
-                                                    className={`group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[3.5rem] p-8 transition-all duration-700 hover:border-[var(--admin-gold)]/30 hover:shadow-[0_40px_100px_rgba(0,0,0,0.6)] ${!banner.active ? 'opacity-30 grayscale' : ''}`}
+                                                    className={`group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[3.5rem] p-8 transition-all duration-700 hover:border-admin-gold/30 hover:shadow-[0_40px_100px_rgba(0,0,0,0.6)] ${!banner.active ? 'opacity-30 grayscale' : ''}`}
                                                 >
                                                     <div className="flex flex-col xl:flex-row gap-10 items-center">
                                                         {/* Preview Imagem Premium */}
@@ -219,7 +219,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                                             />
                                                             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-80" />
                                                             {!banner.active && (
-                                                                <div className="absolute inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center text-[12px] font-black uppercase tracking-[0.5em] text-white/50 italic border border-[var(--admin-gold)]/20 rounded-[2.5rem]">
+                                                                <div className="absolute inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center text-[12px] font-black uppercase tracking-[0.5em] text-white/50 italic border border-admin-gold/20 rounded-[2.5rem]">
                                                                     Protocol Suspended
                                                                 </div>
                                                             )}
@@ -234,7 +234,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                                                     </h3>
                                                                     <div className="flex items-center gap-3">
                                                                         <div className="px-3 py-1 bg-zinc-900 border border-white/5 rounded-full">
-                                                                            <p className="text-[10px] font-bold text-[var(--admin-gold)] uppercase tracking-widest">
+                                                                            <p className="text-[10px] font-bold text-admin-gold uppercase tracking-widest">
                                                                                 Deployment Order: <span className="text-white">#{banner.order}</span>
                                                                             </p>
                                                                         </div>
@@ -243,13 +243,13 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                                                 <div className="flex gap-3">
                                                                     <button
                                                                         onClick={() => moveBanner(banner, 'up')}
-                                                                        className="w-12 h-12 bg-zinc-900/50 text-zinc-500 rounded-2xl flex items-center justify-center hover:bg-[var(--admin-gold)] hover:text-black disabled:opacity-20 border border-white/5 shadow-xl transition-all active:scale-90"
+                                                                        className="w-12 h-12 bg-zinc-900/50 text-zinc-500 rounded-2xl flex items-center justify-center hover:bg-admin-gold hover:text-black disabled:opacity-20 border border-white/5 shadow-xl transition-all active:scale-90"
                                                                     >
                                                                         <ArrowUp className="w-5 h-5" />
                                                                     </button>
                                                                     <button
                                                                         onClick={() => moveBanner(banner, 'down')}
-                                                                        className="w-12 h-12 bg-zinc-900/50 text-zinc-500 rounded-2xl flex items-center justify-center hover:bg-[var(--admin-gold)] hover:text-black disabled:opacity-20 border border-white/5 shadow-xl transition-all active:scale-90"
+                                                                        className="w-12 h-12 bg-zinc-900/50 text-zinc-500 rounded-2xl flex items-center justify-center hover:bg-admin-gold hover:text-black disabled:opacity-20 border border-white/5 shadow-xl transition-all active:scale-90"
                                                                     >
                                                                         <ArrowDown className="w-5 h-5" />
                                                                     </button>
@@ -258,7 +258,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
 
                                                             <div className="flex flex-wrap items-center gap-6 py-6 border-y border-white/5">
                                                                 <div className="px-6 py-3 bg-zinc-900/50 rounded-2xl border border-white/5 text-[10px] font-black uppercase tracking-widest text-zinc-500 flex items-center gap-3 group/link cursor-default max-w-full overflow-hidden">
-                                                                    <ExternalLink className="w-4 h-4 text-[var(--admin-gold)] group-hover/link:scale-110 transition-transform shrink-0" />
+                                                                    <ExternalLink className="w-4 h-4 text-admin-gold group-hover/link:scale-110 transition-transform shrink-0" />
                                                                     Redirect: <span className="text-white font-mono truncate">{banner.link || 'Root'}</span>
                                                                 </div>
                                                                 <div className={`px-6 py-3 rounded-2xl border text-[10px] font-black uppercase tracking-widest flex items-center gap-3 ${banner.active ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
@@ -270,7 +270,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                                             <div className="flex items-center gap-4 pt-2">
                                                                 <button
                                                                     onClick={() => handleOpenDialog(banner)}
-                                                                    className="flex-1 h-14 px-8 bg-zinc-900/80 border border-white/5 rounded-2xl text-[11px] font-black uppercase tracking-widest text-zinc-400 hover:bg-[var(--admin-gold)] hover:text-black hover:border-[var(--admin-gold)] transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95"
+                                                                    className="flex-1 h-14 px-8 bg-zinc-900/80 border border-white/5 rounded-2xl text-[11px] font-black uppercase tracking-widest text-zinc-400 hover:bg-admin-gold hover:text-black hover:border-admin-gold transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95"
                                                                 >
                                                                     <Edit className="w-4 h-4" /> Finalize Asset
                                                                 </button>
@@ -297,13 +297,13 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
             {/* Dialog Elite */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent className="sm:max-w-2xl bg-zinc-950 border-white/5 text-white p-0 overflow-y-auto max-h-[90vh] rounded-[3.5rem] shadow-[0_0_80px_rgba(0,0,0,0.9)] mx-auto custom-scrollbar">
-                    <div className="absolute -top-40 -right-40 w-80 h-80 bg-[var(--admin-gold)]/5 blur-[120px] rounded-full pointer-events-none" />
+                    <div className="absolute -top-40 -right-40 w-80 h-80 bg-admin-gold/5 blur-[120px] rounded-full pointer-events-none" />
                     <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-emerald-500/5 blur-[120px] rounded-full pointer-events-none" />
 
                     <div className="p-8 sm:p-12 space-y-10 relative z-10 w-full">
                         <DialogHeader>
                             <DialogTitle className="text-3xl font-black text-white tracking-widest uppercase italic flex items-center gap-4">
-                                <Sparkles className="w-8 h-8 text-[var(--admin-gold)]" />
+                                <Sparkles className="w-8 h-8 text-admin-gold" />
                                 {editingBanner ? 'Optimize Asset' : 'Blueprint Creation'}
                             </DialogTitle>
                             <DialogDescription className="text-zinc-500 font-bold uppercase text-[11px] tracking-[0.3em] mt-3">
@@ -319,13 +319,13 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                         <div className="group relative w-full aspect-[21/9] rounded-[2.5rem] overflow-hidden border border-white/10 bg-zinc-900 shadow-2xl">
                                             <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                <Label htmlFor="banner-upload" className="cursor-pointer px-8 py-3 bg-[var(--admin-gold)] text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all">Change Master Asset</Label>
+                                                <Label htmlFor="banner-upload" className="cursor-pointer px-8 py-3 bg-admin-gold text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all">Change Master Asset</Label>
                                             </div>
                                         </div>
                                     ) : (
                                         <div className="relative">
-                                            <Label htmlFor="banner-upload" className="cursor-pointer w-full h-40 flex flex-col items-center justify-center gap-4 bg-zinc-900/50 border-2 border-dashed border-white/5 rounded-[2.5rem] text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600 hover:bg-zinc-900 hover:border-[var(--admin-gold)]/30 transition-all group">
-                                                <Upload className="w-10 h-10 group-hover:text-[var(--admin-gold)] transition-colors" />
+                                            <Label htmlFor="banner-upload" className="cursor-pointer w-full h-40 flex flex-col items-center justify-center gap-4 bg-zinc-900/50 border-2 border-dashed border-white/5 rounded-[2.5rem] text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600 hover:bg-zinc-900 hover:border-admin-gold/30 transition-all group">
+                                                <Upload className="w-10 h-10 group-hover:text-admin-gold transition-colors" />
                                                 <span>Deploy Main Image</span>
                                             </Label>
                                         </div>
@@ -340,7 +340,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                     value={formData.title || ''}
                                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                                     placeholder="EX: CORE_SUMMER_COLLECTION"
-                                    className="h-16 bg-zinc-900/50 border-white/10 rounded-2xl focus:ring-[var(--admin-gold)] focus:border-[var(--admin-gold)]/50 text-xl font-black tracking-widest uppercase italic transition-all"
+                                    className="h-16 bg-zinc-900/50 border-white/10 rounded-2xl focus:ring-admin-gold focus:border-admin-gold/50 text-xl font-black tracking-widest uppercase italic transition-all"
                                 />
                             </div>
 
@@ -351,7 +351,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                         value={formData.position}
                                         onValueChange={(value: any) => setFormData({ ...formData, position: value })}
                                     >
-                                        <SelectTrigger className="h-16 bg-zinc-900/50 border-white/10 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] focus:ring-[var(--admin-gold)]">
+                                        <SelectTrigger className="h-16 bg-zinc-900/50 border-white/10 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] focus:ring-admin-gold">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent className="bg-zinc-950 border-white/10 text-white">
@@ -367,7 +367,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                         type="number"
                                         value={formData.order ?? ''}
                                         onChange={(e) => setFormData({ ...formData, order: Number(e.target.value) })}
-                                        className="h-16 bg-zinc-900/50 border-white/10 rounded-2xl text-xl font-black focus:ring-[var(--admin-gold)]"
+                                        className="h-16 bg-zinc-900/50 border-white/10 rounded-2xl text-xl font-black focus:ring-admin-gold"
                                     />
                                 </div>
                             </div>
@@ -378,21 +378,21 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                     value={formData.link || ''}
                                     onChange={(e) => setFormData({ ...formData, link: e.target.value })}
                                     placeholder="/elite/curated-selection"
-                                    className="h-16 bg-zinc-900/50 border-white/10 rounded-2xl focus:ring-[var(--admin-gold)] focus:border-[var(--admin-gold)]/50 text-xs font-black font-mono tracking-widest placeholder:text-zinc-700 transition-all opacity-80"
+                                    className="h-16 bg-zinc-900/50 border-white/10 rounded-2xl focus:ring-admin-gold focus:border-admin-gold/50 text-xs font-black font-mono tracking-widest placeholder:text-zinc-700 transition-all opacity-80"
                                 />
                             </div>
 
                             <div className="flex items-center justify-between p-8 bg-black/40 rounded-[2.5rem] border border-white/5 shadow-inner">
                                 <div className="space-y-2">
                                     <Label className="text-[12px] font-black text-white uppercase tracking-widest flex items-center gap-3 italic">
-                                        Active Protocol <Zap className="w-4 h-4 text-[var(--admin-gold)]" />
+                                        Active Protocol <Zap className="w-4 h-4 text-admin-gold" />
                                     </Label>
                                     <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Enable immediate global visibility</p>
                                 </div>
                                 <Switch
                                     checked={formData.active}
                                     onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
-                                    className="data-[state=checked]:bg-[var(--admin-gold)]"
+                                    className="data-[state=checked]:bg-admin-gold"
                                 />
                             </div>
                         </div>
@@ -408,7 +408,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                             <Button
                                 onClick={handleSubmit}
                                 disabled={uploading}
-                                className="flex-[2] h-16 rounded-2xl bg-[var(--admin-gold)] text-black hover:bg-white text-[11px] font-black uppercase tracking-[0.3em] shadow-[0_20px_40px_rgba(212,175,55,0.2)] transition-all active:scale-95"
+                                className="flex-[2] h-16 rounded-2xl bg-admin-gold text-black hover:bg-white text-[11px] font-black uppercase tracking-[0.3em] shadow-[0_20px_40px_rgba(212,175,55,0.2)] transition-all active:scale-95"
                             >
                                 {uploading ? 'Processing Architecture...' : 'Syndicate Global Asset'}
                             </Button>

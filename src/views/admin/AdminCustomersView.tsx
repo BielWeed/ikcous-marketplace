@@ -117,27 +117,27 @@ export function AdminCustomersView({ onNavigate }: Readonly<AdminCustomersViewPr
     if (loading) {
         return (
             <div className="min-h-screen bg-black flex flex-col items-center justify-center p-10">
-                <div className="w-12 h-12 border-2 border-zinc-800 border-t-[var(--admin-gold)] rounded-full animate-spin mb-6 shadow-[0_0_15px_rgba(255,191,0,0.3)]" />
+                <div className="w-12 h-12 border-2 border-zinc-800 border-t-admin-gold rounded-full animate-spin mb-6 shadow-[0_0_15px_rgba(255,191,0,0.3)]" />
                 <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.3em] animate-pulse">Sincronizando Base de Clientes...</p>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-black text-white selection:bg-[var(--admin-gold)]/30 pb-32">
+        <div className="min-h-screen bg-black text-white selection:bg-admin-gold/30 pb-32">
             {/* Header */}
             <div className="px-4 sm:px-8 pt-6 pb-2 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-black text-white tracking-tighter flex items-center gap-3 group">
-                        <div className="w-10 h-10 rounded-xl bg-zinc-950 flex items-center justify-center shadow-[0_0_20px_rgba(212,175,55,0.15)] border border-white/5 group-hover:scale-110 group-hover:border-[var(--admin-gold)]/50 transition-all">
-                            <Users className="w-5 h-5 text-[var(--admin-gold)]" />
+                        <div className="w-10 h-10 rounded-xl bg-zinc-950 flex items-center justify-center shadow-[0_0_20px_rgba(212,175,55,0.15)] border border-white/5 group-hover:scale-110 group-hover:border-admin-gold/50 transition-all">
+                            <Users className="w-5 h-5 text-admin-gold" />
                         </div>
                         <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-zinc-500">
                             Clientes
                         </span>
                     </h1>
                     <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-2 pl-[3.25rem]">
-                        Gestão da Base <span className="text-[var(--admin-gold)]">({totalCustomers} Perfis)</span>
+                        Gestão da Base <span className="text-admin-gold">({totalCustomers} Perfis)</span>
                     </p>
                 </div>
             </div>
@@ -150,7 +150,7 @@ export function AdminCustomersView({ onNavigate }: Readonly<AdminCustomersViewPr
                         { label: 'Ticket Médio', value: `R$ ${((globalStats?.global_ltv || 0) / (globalStats?.total_customers || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, icon: Wallet, accent: '#3b82f6' },
                         { label: 'Pedidos Totais', value: globalStats?.global_orders || 0, icon: ShoppingBag, accent: '#f59e0b' }
                     ].map((stat) => (
-                        <div key={stat.label} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group hover:border-[var(--admin-gold)]/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)] transition-all duration-500" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
+                        <div key={stat.label} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)] transition-all duration-500" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
                             <div className="flex items-center gap-3 mb-4">
                                 <div className="w-10 h-10 rounded-xl flex items-center justify-center border border-white/5 shadow-inner bg-zinc-950" style={{ color: stat.accent }}>
                                     <stat.icon className="w-4 h-4 flex-shrink-0" />
@@ -174,25 +174,25 @@ export function AdminCustomersView({ onNavigate }: Readonly<AdminCustomersViewPr
                         <div className="flex items-center gap-4 w-full flex-1">
                             <div className="relative group w-full">
                                 <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                                    <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-[var(--admin-gold)] transition-colors" />
+                                    <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-admin-gold transition-colors" />
                                 </div>
                                 <Input
                                     type="text"
                                     placeholder="Buscar cliente premium..."
-                                    className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-[var(--admin-gold)]/20 focus:border-[var(--admin-gold)]/50 transition-all font-bold text-sm w-full"
+                                    className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all font-bold text-sm w-full"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     autoComplete="off"
                                 />
                             </div>
-                            <Button variant="outline" size="icon" className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/60 hover:border-[var(--admin-gold)]/50 group transition-all shrink-0">
-                                <Filter className="w-5 h-5 text-zinc-500 group-hover:text-[var(--admin-gold)]" />
+                            <Button variant="outline" size="icon" className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/60 hover:border-admin-gold/50 group transition-all shrink-0">
+                                <Filter className="w-5 h-5 text-zinc-500 group-hover:text-admin-gold" />
                             </Button>
                             <Button
                                 variant="outline"
                                 size="icon"
                                 onClick={() => fetchCustomers()}
-                                className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/50 hover:bg-[var(--admin-gold)] hover:border-[var(--admin-gold)] group transition-all shrink-0"
+                                className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/50 hover:bg-admin-gold hover:border-admin-gold group transition-all shrink-0"
                             >
                                 <RefreshCw className="w-5 h-5 text-zinc-500 group-hover:text-black transition-colors" />
                             </Button>
@@ -202,25 +202,25 @@ export function AdminCustomersView({ onNavigate }: Readonly<AdminCustomersViewPr
                     {/* Data List (Responsive Grid/Cards) */}
                     <div className="relative group/table w-full p-2 sm:p-0">
                         {/* Glow Decoration */}
-                        <div className="absolute -top-24 -left-24 w-48 h-48 bg-[var(--admin-gold)]/5 blur-[100px] pointer-events-none" />
+                        <div className="absolute -top-24 -left-24 w-48 h-48 bg-admin-gold/5 blur-[100px] pointer-events-none" />
 
                         <div className="relative z-10 flex flex-col w-full">
                             {/* Desktop Headers */}
                             <div className="hidden md:grid grid-cols-12 gap-4 px-8 py-5 border-b border-zinc-800/50 bg-zinc-900/60 sticky top-0 z-20 shadow-sm">
                                 <div className="col-span-4 flex items-center gap-2 cursor-pointer group/th" onClick={() => handleSort('full_name')}>
-                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 group-hover/th:text-[var(--admin-gold)] transition-colors">Cliente</span>
-                                    <ArrowUpDown className="w-3 h-3 text-zinc-600 group-hover/th:text-[var(--admin-gold)] group-hover/th:translate-y-0.5 transition-all" />
+                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 group-hover/th:text-admin-gold transition-colors">Cliente</span>
+                                    <ArrowUpDown className="w-3 h-3 text-zinc-600 group-hover/th:text-admin-gold group-hover/th:translate-y-0.5 transition-all" />
                                 </div>
                                 <div className="col-span-3 flex items-center gap-2 cursor-pointer group/th" onClick={() => handleSort('role')}>
-                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 group-hover/th:text-[var(--admin-gold)] transition-colors">Contato / Role</span>
-                                    <ArrowUpDown className="w-3 h-3 text-zinc-600 group-hover/th:text-[var(--admin-gold)] group-hover/th:translate-y-0.5 transition-all" />
+                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 group-hover/th:text-admin-gold transition-colors">Contato / Role</span>
+                                    <ArrowUpDown className="w-3 h-3 text-zinc-600 group-hover/th:text-admin-gold group-hover/th:translate-y-0.5 transition-all" />
                                 </div>
                                 <div className="col-span-2 flex items-center gap-2 cursor-pointer group/th justify-end" onClick={() => handleSort('total_spent')}>
-                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 group-hover/th:text-[var(--admin-gold)] transition-colors">LTV (Gasto)</span>
-                                    <ArrowUpDown className="w-3 h-3 text-zinc-600 group-hover/th:text-[var(--admin-gold)] group-hover/th:translate-y-0.5 transition-all" />
+                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 group-hover/th:text-admin-gold transition-colors">LTV (Gasto)</span>
+                                    <ArrowUpDown className="w-3 h-3 text-zinc-600 group-hover/th:text-admin-gold group-hover/th:translate-y-0.5 transition-all" />
                                 </div>
                                 <div className="col-span-1 flex items-center gap-2 cursor-pointer group/th justify-center" onClick={() => handleSort('orders_count')}>
-                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 group-hover/th:text-[var(--admin-gold)] transition-colors">Pedidos</span>
+                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 group-hover/th:text-admin-gold transition-colors">Pedidos</span>
                                 </div>
                                 <div className="col-span-2 flex items-center justify-end">
                                     <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Gestão</span>
@@ -249,25 +249,25 @@ export function AdminCustomersView({ onNavigate }: Readonly<AdminCustomersViewPr
                                             {/* Column 1: Client Info (md:col-span-4) */}
                                             <div className="flex items-center gap-4 md:col-span-4 pr-10 md:pr-0">
                                                 <div className="relative group-hover:scale-105 transition-transform duration-300 shrink-0">
-                                                    <Avatar className="h-12 w-12 sm:h-14 sm:w-14 border-2 border-zinc-800/60 group-hover:border-[var(--admin-gold)]/50 transition-colors shadow-2xl">
+                                                    <Avatar className="h-12 w-12 sm:h-14 sm:w-14 border-2 border-zinc-800/60 group-hover:border-admin-gold/50 transition-colors shadow-2xl">
                                                         <AvatarImage src={customer.avatar_url} className="object-cover" />
                                                         <AvatarFallback className="bg-zinc-950 text-zinc-400 font-black text-xs border border-zinc-800/50">
                                                             {customer.full_name?.substring(0, 2).toUpperCase() || 'CX'}
                                                         </AvatarFallback>
                                                     </Avatar>
                                                     {customer.is_push_subscribed && (
-                                                        <div className="absolute -bottom-1 -right-1 w-5 h-5 sm:w-6 sm:h-6 bg-gradient-to-br from-[var(--admin-gold)] to-yellow-600 rounded-full flex items-center justify-center border-2 border-black shadow-[0_0_15px_rgba(255,191,0,0.4)]">
+                                                        <div className="absolute -bottom-1 -right-1 w-5 h-5 sm:w-6 sm:h-6 bg-gradient-to-br from-admin-gold to-yellow-600 rounded-full flex items-center justify-center border-2 border-black shadow-[0_0_15px_rgba(255,191,0,0.4)]">
                                                             <Zap className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-black fill-black" />
                                                         </div>
                                                     )}
                                                 </div>
                                                 <div className="flex flex-col justify-center min-w-0">
                                                     <div className="flex items-center gap-2 flex-wrap">
-                                                        <h4 className="text-sm sm:text-base font-black text-white leading-none truncate group-hover:text-[var(--admin-gold)] transition-colors">
+                                                        <h4 className="text-sm sm:text-base font-black text-white leading-none truncate group-hover:text-admin-gold transition-colors">
                                                             {customer.full_name || 'Usuário'}
                                                         </h4>
                                                         <Badge className={`px-2 py-0.5 rounded-md text-[8px] sm:text-[9px] font-black tracking-widest uppercase border ${customer.role === 'admin'
-                                                            ? 'bg-[var(--admin-gold)] text-black border-[var(--admin-gold)]/50'
+                                                            ? 'bg-admin-gold text-black border-admin-gold/50'
                                                             : 'bg-zinc-950 text-zinc-500 border-zinc-800/80 shadow-inner'
                                                             }`}>
                                                             {customer.role === 'admin' && <Shield className="w-2.5 h-2.5 mr-1 hidden md:block inline-flex" />}
@@ -288,7 +288,7 @@ export function AdminCustomersView({ onNavigate }: Readonly<AdminCustomersViewPr
                                             {/* Column 2: Contact Info (md:col-span-3) */}
                                             <div className="flex flex-col gap-2.5 md:col-span-3 overflow-hidden">
                                                 <div className="flex items-center gap-3 w-full">
-                                                    <div className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-[0.6rem] bg-zinc-950/80 border border-zinc-800/80 flex items-center justify-center shadow-inner group-hover:border-[var(--admin-gold)]/30 group-hover:text-[var(--admin-gold)] text-zinc-500 transition-colors">
+                                                    <div className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-[0.6rem] bg-zinc-950/80 border border-zinc-800/80 flex items-center justify-center shadow-inner group-hover:border-admin-gold/30 group-hover:text-admin-gold text-zinc-500 transition-colors">
                                                         <Mail className="w-3.5 h-3.5" />
                                                     </div>
                                                     <span className="text-[11px] sm:text-xs font-semibold text-zinc-300 truncate tracking-wide">
@@ -297,7 +297,7 @@ export function AdminCustomersView({ onNavigate }: Readonly<AdminCustomersViewPr
                                                 </div>
                                                 {customer.phone && (
                                                     <div className="flex items-center gap-3 w-full">
-                                                        <div className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-[0.6rem] bg-zinc-950/80 border border-zinc-800/80 flex items-center justify-center shadow-inner group-hover:border-[var(--admin-gold)]/30 group-hover:text-[var(--admin-gold)] text-zinc-500 transition-colors">
+                                                        <div className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-[0.6rem] bg-zinc-950/80 border border-zinc-800/80 flex items-center justify-center shadow-inner group-hover:border-admin-gold/30 group-hover:text-admin-gold text-zinc-500 transition-colors">
                                                             <Phone className="w-3.5 h-3.5" />
                                                         </div>
                                                         <span className="text-[11px] sm:text-xs font-semibold text-zinc-400 truncate tracking-wider">
@@ -315,7 +315,7 @@ export function AdminCustomersView({ onNavigate }: Readonly<AdminCustomersViewPr
                                                 {/* Desktop: LTV | Mobile: Col 1 */}
                                                 <div className="flex flex-col items-start md:items-end gap-1.5 md:w-full">
                                                     <span className="text-zinc-600 text-[8px] font-black uppercase tracking-[0.2em] md:hidden">LTV Total</span>
-                                                    <div className="text-sm xl:text-base font-black text-white px-3 py-2 rounded-xl bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800/80 shadow-inner group-hover:border-[var(--admin-gold)]/30 transition-colors flex items-center gap-1.5 min-w-[100px] md:min-w-[0px]">
+                                                    <div className="text-sm xl:text-base font-black text-white px-3 py-2 rounded-xl bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800/80 shadow-inner group-hover:border-admin-gold/30 transition-colors flex items-center gap-1.5 min-w-[100px] md:min-w-[0px]">
                                                         <span className="text-[10px] text-zinc-500 leading-none">R$</span>
                                                         <span className="leading-none">{Number(customer.total_spent || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                                     </div>
@@ -324,7 +324,7 @@ export function AdminCustomersView({ onNavigate }: Readonly<AdminCustomersViewPr
                                                 {/* Desktop: Orders | Mobile: Col 2 */}
                                                 <div className="flex flex-col items-end md:items-center gap-1.5">
                                                     <span className="text-zinc-600 text-[8px] font-black uppercase tracking-[0.2em] md:hidden text-right">Pedidos</span>
-                                                    <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-[0.8rem] bg-gradient-to-b from-zinc-900 to-zinc-950 border border-zinc-800/80 flex items-center justify-center shadow-inner group-hover:border-[var(--admin-gold)]/50 group-hover:text-[var(--admin-gold)] group-hover:bg-black transition-colors shrink-0">
+                                                    <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-[0.8rem] bg-gradient-to-b from-zinc-900 to-zinc-950 border border-zinc-800/80 flex items-center justify-center shadow-inner group-hover:border-admin-gold/50 group-hover:text-admin-gold group-hover:bg-black transition-colors shrink-0">
                                                         <span className="text-xs sm:text-sm font-black text-white">{customer.orders_count || 0}</span>
                                                     </div>
                                                 </div>
@@ -333,7 +333,7 @@ export function AdminCustomersView({ onNavigate }: Readonly<AdminCustomersViewPr
                                             {/* Column 5: Desktop Date (hidden on mobile, inline above) */}
                                             <div className="hidden md:flex flex-col items-end gap-1.5 md:col-span-1">
                                                 <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest bg-zinc-950/80 px-2.5 py-1.5 flex items-center justify-center rounded-lg border border-zinc-800/80 whitespace-nowrap overflow-hidden text-ellipsis w-full shadow-inner" title={customer.last_order_date ? new Date(customer.last_order_date).toLocaleDateString() : 'Nenhuma'}>
-                                                    <Calendar className="w-3 h-3 mr-1.5 text-[var(--admin-gold)]/50 shrink-0" />
+                                                    <Calendar className="w-3 h-3 mr-1.5 text-admin-gold/50 shrink-0" />
                                                     {customer.last_order_date ? new Date(customer.last_order_date).toLocaleDateString() : '--'}
                                                 </div>
                                             </div>
@@ -343,7 +343,7 @@ export function AdminCustomersView({ onNavigate }: Readonly<AdminCustomersViewPr
                                                 <div onClick={(e) => e.stopPropagation()}>
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-12 sm:w-12 md:h-10 md:w-10 rounded-[0.8rem] bg-zinc-950/80 md:bg-zinc-900/50 backdrop-blur-md border border-zinc-800/80 hover:bg-[var(--admin-gold)] hover:border-[var(--admin-gold)] text-zinc-400 hover:text-white transition-all shadow-xl md:shadow-none group-hover:border-zinc-700">
+                                                            <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-12 sm:w-12 md:h-10 md:w-10 rounded-[0.8rem] bg-zinc-950/80 md:bg-zinc-900/50 backdrop-blur-md border border-zinc-800/80 hover:bg-admin-gold hover:border-admin-gold text-zinc-400 hover:text-white transition-all shadow-xl md:shadow-none group-hover:border-zinc-700">
                                                                 <MoreHorizontal className="w-5 h-5 flex-shrink-0" />
                                                             </Button>
                                                         </DropdownMenuTrigger>
@@ -351,14 +351,14 @@ export function AdminCustomersView({ onNavigate }: Readonly<AdminCustomersViewPr
                                                             <DropdownMenuLabel className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500 p-3">Gestão de Cliente</DropdownMenuLabel>
                                                             <DropdownMenuSeparator className="bg-zinc-800/50" />
                                                             <DropdownMenuItem
-                                                                className="rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer focus:bg-[var(--admin-gold)] focus:text-black p-3 transition-colors"
+                                                                className="rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer focus:bg-admin-gold focus:text-black p-3 transition-colors"
                                                                 onClick={() => onNavigate('admin-user-detail', customer.id)}
                                                             >
                                                                 <Shield className="w-3.5 h-3.5 mr-2 opacity-70" />
                                                                 Ver Perfil Elite
                                                             </DropdownMenuItem>
                                                             <DropdownMenuItem
-                                                                className="rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer focus:bg-[var(--admin-gold)] focus:text-black p-3 transition-colors"
+                                                                className="rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer focus:bg-admin-gold focus:text-black p-3 transition-colors"
                                                                 onClick={() => onNavigate('admin-push')}
                                                             >
                                                                 <Zap className="w-3.5 h-3.5 mr-2 opacity-70" />
@@ -385,19 +385,19 @@ export function AdminCustomersView({ onNavigate }: Readonly<AdminCustomersViewPr
                                 size="icon"
                                 onClick={() => setPage(prev => Math.max(0, prev - 1))}
                                 disabled={page === 0}
-                                className="h-10 w-10 rounded-xl border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-[var(--admin-gold)]/50 disabled:opacity-30"
+                                className="h-10 w-10 rounded-xl border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-admin-gold/50 disabled:opacity-30"
                             >
                                 <ArrowLeft className="h-4 w-4" />
                             </Button>
                             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-                                Segmento <span className="text-[var(--admin-gold)]">{page + 1}</span> de <span className="text-white">{totalPages}</span>
+                                Segmento <span className="text-admin-gold">{page + 1}</span> de <span className="text-white">{totalPages}</span>
                             </span>
                             <Button
                                 variant="outline"
                                 size="icon"
                                 onClick={() => setPage(prev => Math.min(totalPages - 1, prev + 1))}
                                 disabled={page === totalPages - 1}
-                                className="h-10 w-10 rounded-xl border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-[var(--admin-gold)]/50 disabled:opacity-30"
+                                className="h-10 w-10 rounded-xl border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-admin-gold/50 disabled:opacity-30"
                             >
                                 <ArrowLeft className="h-4 w-4 rotate-180" />
                             </Button>

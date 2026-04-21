@@ -97,7 +97,7 @@ export function AdminProductsView({ onNavigate }: Readonly<AdminProductsViewProp
   }
 
   return (
-    <div className="min-h-screen bg-[var(--admin-bg)] text-white pb-32 animate-in fade-in duration-1000">
+    <div className="min-h-screen bg-admin-bg text-white pb-32 animate-in fade-in duration-1000">
 
       {/* Header & Main Actions */}
       <div className="px-4 sm:px-6 flex flex-col md:flex-row justify-between items-center md:items-end gap-8 pt-8 pb-2">
@@ -126,7 +126,7 @@ export function AdminProductsView({ onNavigate }: Readonly<AdminProductsViewProp
           { label: 'ROI do Portfólio', value: `${financialStats.avgRoi.toFixed(2)}%`, icon: DollarSign, accent: 'text-blue-500', subValue: "Rendimento %" },
           { label: 'Ativos Operação', value: `${financialStats.activeCount} / ${financialStats.totalCount}`, icon: Package, accent: 'text-purple-500', subValue: "Slots Ativos" },
         ].map((stat) => (
-            <div key={stat.label} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group hover:border-[var(--admin-gold)]/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)] transition-all duration-500" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
+            <div key={stat.label} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)] transition-all duration-500" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
                 <div className="flex items-center gap-3 mb-4">
                     <div className={cn(
                         "w-10 h-10 rounded-xl flex items-center justify-center border border-white/5 shadow-inner bg-zinc-950",
@@ -156,14 +156,14 @@ export function AdminProductsView({ onNavigate }: Readonly<AdminProductsViewProp
             <div className="flex items-center gap-4 w-full flex-1">
                 <div className="relative group w-full">
                     <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                        <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-[var(--admin-gold)] transition-colors" />
+                        <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-admin-gold transition-colors" />
                     </div>
                     <label htmlFor="search-assets" className="sr-only">Buscar ativos</label>
                     <Input
                         id="search-assets"
                         name="search-assets"
                         placeholder="Buscar por nome ou ID do ativo..."
-                        className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-[var(--admin-gold)]/20 focus:border-[var(--admin-gold)]/50 transition-all font-bold text-sm w-full"
+                        className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all font-bold text-sm w-full"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         autoComplete="off"
@@ -172,8 +172,8 @@ export function AdminProductsView({ onNavigate }: Readonly<AdminProductsViewProp
                 
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 hover:border-[var(--admin-gold)]/50 group transition-all shrink-0">
-                        <Filter className="w-5 h-5 text-zinc-500 group-hover:text-[var(--admin-gold)] transition-colors" />
+                    <Button variant="outline" size="icon" className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 hover:border-admin-gold/50 group transition-all shrink-0">
+                        <Filter className="w-5 h-5 text-zinc-500 group-hover:text-admin-gold transition-colors" />
                     </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="bg-zinc-950 border-zinc-800/50 p-2 rounded-2xl backdrop-blur-3xl w-56 mt-2 shadow-2xl">
@@ -385,7 +385,7 @@ export function AdminProductsView({ onNavigate }: Readonly<AdminProductsViewProp
           <Button
             variant="ghost"
             onClick={() => { setSearchTerm(''); setFilterCategory('all'); }}
-            className="bg-black/40 border border-white/5 text-[10px] font-black uppercase tracking-[0.2em] rounded-2xl px-10 h-14 hover:bg-[var(--admin-gold)] hover:text-black transition-all"
+            className="bg-black/40 border border-white/5 text-[10px] font-black uppercase tracking-[0.2em] rounded-2xl px-10 h-14 hover:bg-admin-gold hover:text-black transition-all"
           >
             Resetar Filtros Mestres
           </Button>

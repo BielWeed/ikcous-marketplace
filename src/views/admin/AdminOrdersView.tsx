@@ -181,11 +181,11 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
 
   if (!isLoaded) {
     return (
-      <div className="min-h-screen bg-[var(--admin-bg)] flex items-center justify-center">
+      <div className="min-h-screen bg-admin-bg flex items-center justify-center">
         <div className="relative w-20 h-20 mb-6">
-          <div className="absolute inset-0 border-4 border-[var(--admin-gold)]/10 rounded-full" />
-          <div className="absolute inset-0 border-4 border-t-[var(--admin-gold)] rounded-full animate-spin" />
-          <ShoppingCart className="absolute inset-0 m-auto w-8 h-8 text-[var(--admin-gold)] animate-pulse" />
+          <div className="absolute inset-0 border-4 border-admin-gold/10 rounded-full" />
+          <div className="absolute inset-0 border-4 border-t-admin-gold rounded-full animate-spin" />
+          <ShoppingCart className="absolute inset-0 m-auto w-8 h-8 text-admin-gold animate-pulse" />
         </div>
       </div>
     );
@@ -203,18 +203,18 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
   }
 
   return (
-    <div className="min-h-screen bg-[var(--admin-bg)] text-white pb-32 font-sans selection:bg-[var(--admin-gold)]/30">
+    <div className="min-h-screen bg-admin-bg text-white pb-32 font-sans selection:bg-admin-gold/30">
 
       {/* Header Elite */}
       <div className="px-6 flex items-center justify-between pt-6 pb-2">
           <div>
             <div className="flex items-center gap-3 mb-1">
-              <ShoppingCart className="w-5 h-5 text-[var(--admin-gold)] animate-pulse" />
+              <ShoppingCart className="w-5 h-5 text-admin-gold animate-pulse" />
               <h1 className="text-2xl font-black tracking-tighter uppercase italic bg-gradient-to-r from-white via-zinc-400 to-zinc-600 bg-clip-text text-transparent">
                 Inteligência de Pedidos
               </h1>
             </div>
-            <p className="text-[10px] font-bold text-[var(--admin-gold)] uppercase tracking-[0.3em] opacity-80">
+            <p className="text-[10px] font-bold text-admin-gold uppercase tracking-[0.3em] opacity-80">
               {orders.length === 0 ? 'Limpo' : `${orders.length} Transmissões Ativas`}
             </p>
           </div>
@@ -232,10 +232,10 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
           {[
             { label: 'Receita Hoje', value: `R$ ${operationalStats.revenueDay.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: DollarSign, accent: 'text-emerald-500', subValue: 'Finanças' },
             { label: 'Ações Pendentes', value: operationalStats.pending.toString(), icon: Clock, accent: 'text-amber-500', subValue: operationalStats.pending > 0 ? 'Urgente' : 'Limpo' },
-            { label: 'Ticket Médio', value: `R$ ${operationalStats.avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: TrendingUp, accent: 'text-[var(--admin-gold)]', subValue: 'Rendimento' },
+            { label: 'Ticket Médio', value: `R$ ${operationalStats.avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: TrendingUp, accent: 'text-admin-gold', subValue: 'Rendimento' },
             { label: 'Total Concluído', value: operationalStats.completed.toString(), icon: CheckCircle2, accent: 'text-sky-500', subValue: 'Concluído' },
           ].map((stat) => (
-            <div key={stat.label} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group hover:border-[var(--admin-gold)]/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)] transition-all duration-500" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
+            <div key={stat.label} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)] transition-all duration-500" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
                 <div className="flex items-center gap-3 mb-4">
                     <div className={cn(
                         "w-10 h-10 rounded-xl flex items-center justify-center border border-white/5 shadow-inner bg-zinc-950",
@@ -265,11 +265,11 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
             <div className="flex items-center gap-4 w-full flex-1">
                 <div className="relative group w-full">
                     <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                        <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-[var(--admin-gold)] transition-colors" />
+                        <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-admin-gold transition-colors" />
                     </div>
                     <Input
                         placeholder="Pesquisar protocolo (Nome, ID, WhatsApp)..."
-                        className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-[var(--admin-gold)]/20 focus:border-[var(--admin-gold)]/50 transition-all font-bold text-sm w-full"
+                        className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all font-bold text-sm w-full"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         autoComplete="off"
@@ -278,8 +278,8 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
                 
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 hover:border-[var(--admin-gold)]/50 group transition-all shrink-0 focus-visible:ring-0 focus-visible:ring-offset-0">
-                        <Filter className="w-5 h-5 text-zinc-500 group-hover:text-[var(--admin-gold)] transition-colors" />
+                    <Button variant="outline" size="icon" className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 hover:border-admin-gold/50 group transition-all shrink-0 focus-visible:ring-0 focus-visible:ring-offset-0">
+                        <Filter className="w-5 h-5 text-zinc-500 group-hover:text-admin-gold transition-colors" />
                     </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-80 bg-zinc-950 border-zinc-800/50 p-4 rounded-3xl backdrop-blur-3xl mt-2 shadow-2xl">
@@ -289,20 +289,20 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
                                 <div className="relative group">
                                     <Input
                                     type="date"
-                                    className="bg-black/40 border-zinc-800 text-white h-14 rounded-2xl focus:ring-[var(--admin-gold)]/20 focus:border-[var(--admin-gold)]/50 transition-all [color-scheme:dark] px-4 pt-5 pb-1 text-xs font-bold w-full"
+                                    className="bg-black/40 border-zinc-800 text-white h-14 rounded-2xl focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all [color-scheme:dark] px-4 pt-5 pb-1 text-xs font-bold w-full"
                                     value={dateRange.start}
                                     onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
                                     />
-                                    <span className="absolute top-2 left-4 text-[7px] font-black uppercase text-zinc-600 tracking-widest pointer-events-none group-focus-within:text-[var(--admin-gold)] transition-colors">Início</span>
+                                    <span className="absolute top-2 left-4 text-[7px] font-black uppercase text-zinc-600 tracking-widest pointer-events-none group-focus-within:text-admin-gold transition-colors">Início</span>
                                 </div>
                                 <div className="relative group">
                                     <Input
                                     type="date"
-                                    className="bg-black/40 border-zinc-800 text-white h-14 rounded-2xl focus:ring-[var(--admin-gold)]/20 focus:border-[var(--admin-gold)]/50 transition-all [color-scheme:dark] px-4 pt-5 pb-1 text-xs font-bold w-full"
+                                    className="bg-black/40 border-zinc-800 text-white h-14 rounded-2xl focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all [color-scheme:dark] px-4 pt-5 pb-1 text-xs font-bold w-full"
                                     value={dateRange.end}
                                     onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
                                     />
-                                    <span className="absolute top-2 left-4 text-[7px] font-black uppercase text-zinc-600 tracking-widest pointer-events-none group-focus-within:text-[var(--admin-gold)] transition-colors">Fim</span>
+                                    <span className="absolute top-2 left-4 text-[7px] font-black uppercase text-zinc-600 tracking-widest pointer-events-none group-focus-within:text-admin-gold transition-colors">Fim</span>
                                 </div>
                             </div>
                             {(dateRange.start || dateRange.end) && (
@@ -354,7 +354,7 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
         <div className="space-y-8 relative">
           {paginatedOrders.length === 0 ? (
             <div className="bg-zinc-950/40 backdrop-blur-md p-20 rounded-[4rem] border border-white/5 text-center relative overflow-hidden">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-[var(--admin-gold)]/5 blur-[100px] rounded-full" />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-admin-gold/5 blur-[100px] rounded-full" />
               <div className="relative z-10">
                 <div className="w-24 h-24 bg-zinc-900/50 rounded-[3rem] flex items-center justify-center mx-auto mb-8 border border-white/5 shadow-2xl">
                   <Package className="w-12 h-12 text-zinc-700" />
@@ -364,7 +364,7 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
                 <Button
                   variant="outline"
                   onClick={() => { setSearchQuery(''); setFilter('all'); setDateRange({ start: '', end: '' }); }}
-                  className="border-[var(--admin-gold)]/50 text-[var(--admin-gold)] hover:bg-[var(--admin-gold)] hover:text-black font-black uppercase text-[10px] tracking-widest rounded-xl hover:scale-105 transition-all"
+                  className="border-admin-gold/50 text-admin-gold hover:bg-admin-gold hover:text-black font-black uppercase text-[10px] tracking-widest rounded-xl hover:scale-105 transition-all"
                 >
                   Resetar Filtros de Segurança
                 </Button>
@@ -377,8 +377,8 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
                   <div
                     key={order.id}
                   className={cn(
-                    "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[3rem] p-8 transition-all duration-500 hover:shadow-[0_20px_60px_rgba(0,0,0,0.5)] active:scale-[0.98] focus-within:ring-2 focus-within:ring-[var(--admin-gold)] focus-within:ring-offset-2 focus-within:ring-offset-zinc-950",
-                    "border-white/5 hover:border-[var(--admin-gold)]/30"
+                    "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[3rem] p-8 transition-all duration-500 hover:shadow-[0_20px_60px_rgba(0,0,0,0.5)] active:scale-[0.98] focus-within:ring-2 focus-within:ring-admin-gold focus-within:ring-offset-2 focus-within:ring-offset-zinc-950",
+                    "border-white/5 hover:border-admin-gold/30"
                   )}
                 >
                   {/* Native Click Target for Accessibility */}
@@ -390,7 +390,7 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
                   />
                   
                   {/* Glow Background */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-[var(--admin-gold)]/0 via-transparent to-[var(--admin-gold)]/0 group-hover:from-[var(--admin-gold)]/5 group-hover:to-transparent rounded-[3rem] transition-all duration-700 pointer-events-none z-0" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 group-hover:from-admin-gold/5 group-hover:to-transparent rounded-[3rem] transition-all duration-700 pointer-events-none z-0" />
 
                   <div className="flex items-center justify-between mb-8 relative z-10">
                     <div className="flex items-center gap-3">
@@ -409,7 +409,7 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
                         )}
                       </div>
                       <div>
-                        <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] block mb-1 group-hover:text-[var(--admin-gold)] transition-colors">#{order.id.slice(-6).toUpperCase()}</span>
+                        <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] block mb-1 group-hover:text-admin-gold transition-colors">#{order.id.slice(-6).toUpperCase()}</span>
                         <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest flex items-center gap-2">
                           <Calendar className="w-3 h-3" />
                           {new Date(order.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
@@ -421,7 +421,7 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
 
                   <div className="space-y-6 relative z-10">
                     <div>
-                      <h4 className="text-lg sm:text-xl font-black text-white group-hover:text-[var(--admin-gold)] transition-colors truncate mb-2">
+                      <h4 className="text-lg sm:text-xl font-black text-white group-hover:text-admin-gold transition-colors truncate mb-2">
                         {(() => {
                           if (!order.items || order.items.length === 0) return 'Pedido Vazio';
                           if (order.items.length === 1) return order.items[0].name;
@@ -462,7 +462,7 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
                         >
                           <MessageCircle className="w-5 h-5" />
                         </button>
-                        <button className="w-12 h-12 flex items-center justify-center bg-white/5 text-zinc-500 rounded-2xl hover:bg-[var(--admin-gold)] hover:text-black transition-all border border-white/5 shadow-xl">
+                        <button className="w-12 h-12 flex items-center justify-center bg-white/5 text-zinc-500 rounded-2xl hover:bg-admin-gold hover:text-black transition-all border border-white/5 shadow-xl">
                           <Eye className="w-5 h-5" />
                         </button>
                       </div>
@@ -487,19 +487,19 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
               variant="ghost"
               onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
               disabled={currentPage === 0}
-              className="w-16 h-16 bg-zinc-950/50 border border-white/5 text-zinc-500 rounded-3xl hover:bg-[var(--admin-gold)] hover:text-black transition-all disabled:opacity-20 group"
+              className="w-16 h-16 bg-zinc-950/50 border border-white/5 text-zinc-500 rounded-3xl hover:bg-admin-gold hover:text-black transition-all disabled:opacity-20 group"
             >
               <ChevronLeft className="w-6 h-6 group-hover:-translate-x-1 transition-transform" />
             </Button>
             <div className="flex flex-col items-center gap-1">
               <span className="text-[10px] font-black text-white uppercase tracking-[0.4em]">Perfil do Setor</span>
-              <span className="text-[11px] font-bold text-[var(--admin-gold)] tabular-nums uppercase tracking-widest">{currentPage + 1} <span className="text-zinc-700">/</span> {totalPages}</span>
+              <span className="text-[11px] font-bold text-admin-gold tabular-nums uppercase tracking-widest">{currentPage + 1} <span className="text-zinc-700">/</span> {totalPages}</span>
             </div>
             <Button
               variant="ghost"
               onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
               disabled={currentPage === totalPages - 1}
-              className="w-16 h-16 bg-zinc-950/50 border border-white/5 text-zinc-500 rounded-3xl hover:bg-[var(--admin-gold)] hover:text-black transition-all disabled:opacity-20 group"
+              className="w-16 h-16 bg-zinc-950/50 border border-white/5 text-zinc-500 rounded-3xl hover:bg-admin-gold hover:text-black transition-all disabled:opacity-20 group"
             >
               <ChevronRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
             </Button>

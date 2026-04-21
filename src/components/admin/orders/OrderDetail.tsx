@@ -29,7 +29,7 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
     const nextStatus = getNextStatus(order.status);
 
     return (
-        <div className="min-h-screen bg-[var(--admin-bg)] pb-12 animate-in fade-in duration-500">
+        <div className="min-h-screen bg-admin-bg pb-12 animate-in fade-in duration-500">
             {/* Elite Sticky Header */}
             <div className="admin-glass sticky top-0 z-[60] border-b border-white/5 backdrop-blur-3xl shadow-2xl">
                 <div className="px-6 py-5 flex items-center justify-between">
@@ -47,7 +47,7 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                                 <div className="w-1 h-1 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                             </h2>
                             <h1 className="text-xl font-bold text-white tracking-tighter">
-                                Pedido <span className="text-[var(--admin-gold)]">#{order.id.slice(-6)}</span>
+                                Pedido <span className="text-admin-gold">#{order.id.slice(-6)}</span>
                             </h1>
                         </div>
                     </div>
@@ -146,7 +146,7 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                                             </div>
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-bold text-white group-hover/item:text-[var(--admin-gold)] transition-colors truncate">{item.name}</p>
+                                            <p className="text-sm font-bold text-white group-hover/item:text-admin-gold transition-colors truncate">{item.name}</p>
                                             <div className="flex items-center gap-3 mt-1.5">
                                                 <span className="text-[10px] font-bold text-zinc-500 border border-white/5 bg-white/5 px-2 py-0.5 rounded uppercase tracking-tighter">
                                                     UN: R$ {item.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -170,7 +170,7 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                         <div className="bg-zinc-950 rounded-[2.5rem] p-8 text-white shadow-2xl border border-white/10 relative overflow-hidden group">
                             <div className="flex items-center justify-between mb-8">
                                 <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Consolidado Financeiro</h3>
-                                <DollarSign className="w-5 h-5 text-[var(--admin-gold)]" />
+                                <DollarSign className="w-5 h-5 text-admin-gold" />
                             </div>
 
                             <div className="space-y-5 relative z-10">
@@ -188,7 +188,7 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                                         <div>
                                             <span className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em] block mb-2">Montante Final</span>
                                             <span className="text-4xl font-black tracking-tighter text-white">
-                                                <span className="text-xl text-[var(--admin-gold)] mr-1">R$</span>
+                                                <span className="text-xl text-admin-gold mr-1">R$</span>
                                                 {(order?.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                             </span>
                                         </div>
@@ -213,7 +213,7 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                             </div>
 
                             {/* Decorative Background Glow */}
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--admin-gold)] opacity-5 blur-[100px]" />
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-admin-gold opacity-5 blur-[100px]" />
                         </div>
 
                         {/* Action Intelligence Card */}
