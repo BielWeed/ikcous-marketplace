@@ -1,0 +1,33 @@
+version: 4.1.0
+schema_type: Scientific Metadata Linkage (Causal)
+description: Defines trajectories and causal links between files and rules.
+
+rules:
+  passive_triggers: true
+  inheritance_depth: 3
+  
+binding_map:
+  domains:
+    frontend:
+      path_pattern: "**/src/views/**"
+      required_rules: ["senior-architect.md", "frontend-specialist.md"]
+      required_skills: ["frontend-design", "ui-ux-pro-max"]
+    backend:
+      path_pattern: "**/src/api/**"
+      required_rules: ["senior-architect.md", "backend-specialist.md"]
+      required_skills: ["api-patterns", "database-design"]
+    infra:
+      path_pattern: "**/.agent/**"
+      required_rules: ["senior-architect.md"]
+      required_skills: ["deployment-procedures"]
+
+trajectories:
+  mode: hydrodynamic
+  fusion_rules:
+    - DRAM_bypass: enabled
+    - itensor_v41_encoding: true
+
+metadata_tags:
+  - atomic_evolution
+  - genotype_v16
+  - titans_ttt_enabled

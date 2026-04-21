@@ -1,0 +1,46 @@
+{
+  "@context": "/contexts/Message",
+  "@id": "/messages/69ce59c1f2c79f9bb3a4d1c7",
+  "@type": "Message",
+  "id": "69ce59c1f2c79f9bb3a4d1c7",
+  "msgid": "<0100019d4e0e980f-755347ae-d757-4ba6-a805-519057a7b1b0-000000@email.amazonses.com>",
+  "from": {
+    "address": "team@everify.arena.ai",
+    "name": "Arena"
+  },
+  "to": [
+    {
+      "address": "ninja_mnhf77wt_5oz2im@sharebot.net",
+      "name": ""
+    }
+  ],
+  "cc": [],
+  "bcc": [],
+  "subject": "Confirm Your Signup",
+  "intro": "Arena AI VERIFY YOUR EMAIL Welcome to Arena! Please confirm your email address to continue. Verify Email How it Works About Us…",
+  "seen": false,
+  "flagged": false,
+  "isDeleted": false,
+  "verifications": {
+    "tls": {
+      "name": "TLS_AES_256_GCM_SHA384",
+      "standardName": "TLS_AES_256_GCM_SHA384",
+      "version": "TLSv1.3"
+    },
+    "spf": false,
+    "dkim": false
+  },
+  "retention": true,
+  "retentionDate": "2026-04-09T11:57:53+00:00",
+  "text": "Arena AI [https://cdn.lmarena.ai/email-circle-logo.png]\n\n\nVERIFY YOUR EMAIL\n\nWelcome to Arena! Please confirm your email address to continue.\n\nVerify Email\n[https://arena.ai/nextjs-api/callback/email?token=pkce_79c87a94656dda0d49d1018c0eba7b92839cac7cc3f7d74990789194&type=email&signup_intent_id=d478cc6d-d04d-401f-b608-d3c00ea2cbee]\nHow it Works [https://arena.ai/how-it-works] About Us [https://arena.ai/about]\nOur Blog [https://arena.ai/blog]\nLMArena [https://cdn.lmarena.ai/email-wordmark-logo.png]",
+  "html": [
+    "<!doctype html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"UTF-8\" />\r\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\r\n    <title>Verify Your Email - Arena</title>\r\n    <style>\r\n       \r\n      * {\r\n        margin: 0;\r\n        padding: 0;\r\n        box-sizing: border-box;\r\n      }\r\n\r\n      body {\r\n        font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Arial, sans-serif;\r\n        background-color: #f5f5f5;\r\n        color: #333;\r\n        line-height: 1.6;\r\n        padding: 40px 20px;\r\n      }\r\n\r\n      .email-container {\r\n        max-width: 600px;\r\n        margin: 0 auto;\r\n        background-color: #ffffff;\r\n        border-radius: 8px;\r\n        overflow: hidden;\r\n        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);\r\n      }\r\n\r\n      .header {\r\n        background-color: #ffffff;\r\n        padding: 60px 40px;\r\n        text-align: center;\r\n      }\r\n\r\n      .logo-icon {\r\n        width: 50px;\r\n        height: 50px;\r\n        margin: 0 auto 20px;\r\n        display: flex;\r\n        align-items: center;\r\n        justify-content: center;\r\n      }\r\n\r\n      .main-title {\r\n        font-size: 42px;\r\n        font-weight: 500;\r\n        color: #333333;\r\n        margin-bottom: 30px;\r\n        letter-spacing: -0.5px;\r\n      }\r\n\r\n      .subtitle {\r\n        font-size: 18px;\r\n        color: #666666;\r\n        margin-bottom: 40px;\r\n        line-height: 1.5;\r\n        max-width: 450px;\r\n        margin-left: auto;\r\n        margin-right: auto;\r\n      }\r\n\r\n      .cta-button {\r\n        display: inline-block;\r\n        background-color: #000000;\r\n        color: #ffffff !important;\r\n        padding: 16px 32px;\r\n        text-decoration: none;\r\n        border-radius: 6px;\r\n        font-size: 16px;\r\n        font-weight: 500;\r\n        transition: background-color 0.2s ease;\r\n      }\r\n\r\n      .cta-button:hover {\r\n        background-color: #333333;\r\n        color: #ffffff !important;\r\n      }\r\n\r\n      .footer {\r\n        padding: 40px;\r\n        text-align: center;\r\n        background-color: #ffffff;\r\n        border-top: 1px solid #f0f0f0;\r\n      }\r\n\r\n      .footer-nav {\r\n        display: flex;\r\n        justify-content: center;\r\n        gap: 40px;\r\n        margin-bottom: 40px;\r\n      }\r\n\r\n      .footer-nav a {\r\n        color: #000000 !important;\r\n        text-decoration: none;\r\n        font-size: 18px;\r\n        font-weight: 500;\r\n      }\r\n\r\n      .footer-nav a:hover {\r\n        color: #333333 !important;\r\n      }\r\n\r\n      .footer-logo {\r\n        display: flex;\r\n        align-items: center;\r\n        justify-content: center;\r\n        margin: 0 auto;\r\n      }\r\n\r\n       \r\n      @media (max-width: 600px) {\r\n        .email-container {\r\n          margin: 0;\r\n          border-radius: 0;\r\n        }\r\n\r\n        .header {\r\n          padding: 40px 20px;\r\n        }\r\n\r\n        .main-title {\r\n          font-size: 32px;\r\n        }\r\n\r\n        .subtitle {\r\n          font-size: 16px;\r\n          padding: 0 10px;\r\n        }\r\n\r\n        .footer {\r\n          padding: 30px 20px;\r\n        }\r\n\r\n        .footer-nav {\r\n          flex-direction: column;\r\n          gap: 20px;\r\n        }\r\n\r\n        .footer-nav a {\r\n          font-size: 16px;\r\n        }\r\n      }\r\n    </style>\r\n  </head>\r\n  <body>\r\n    <div class=\"email-container\">\r\n      <div class=\"header\">\r\n        <div class=\"logo-icon\">\r\n          <img\r\n            src=\"https://cdn.lmarena.ai/email-circle-logo.png\"\r\n            alt=\"Arena AI\"\r\n            width=\"50\"\r\n            height=\"50\"\r\n            style=\"display: block\"\r\n          />\r\n        </div>\r\n\r\n        <h1 class=\"main-title\">Verify Your Email</h1>\r\n\r\n        <p class=\"subtitle\">Welcome to Arena! Please confirm your email address to continue.</p>\r\n\r\n        <a\r\n          href=\"https://arena.ai/nextjs-api/callback/email?token=pkce_79c87a94656dda0d49d1018c0eba7b92839cac7cc3f7d74990789194&type=email&signup_intent_id=d478cc6d-d04d-401f-b608-d3c00ea2cbee\"\r\n          class=\"cta-button\"\r\n          >Verify Email</a\r\n        >\r\n      </div>\r\n\r\n      <div class=\"footer\">\r\n        <nav class=\"footer-nav\">\r\n          <a href=\"https://arena.ai/how-it-works\">How it Works</a>\r\n          <a href=\"https://arena.ai/about\">About Us</a>\r\n          <a href=\"https://arena.ai/blog\">Our Blog</a>\r\n        </nav>\r\n\r\n        <div class=\"footer-logo\">\r\n          <img\r\n            src=\"https://cdn.lmarena.ai/email-wordmark-logo.png\"\r\n            alt=\"LMArena\"\r\n            style=\"width: 102px; height: 20px; display: block\"\r\n          />\r\n        </div>\r\n      </div>\r\n    </div>\r\n  </body>\r\n</html>"
+  ],
+  "hasAttachments": false,
+  "size": 7456,
+  "downloadUrl": "/messages/69ce59c1f2c79f9bb3a4d1c7/download",
+  "sourceUrl": "/sources/69ce59c1f2c79f9bb3a4d1c7",
+  "createdAt": "2026-04-02T11:57:52+00:00",
+  "updatedAt": "2026-04-02T11:57:53+00:00",
+  "accountId": "/accounts/69ce59b46e8712a59800a901"
+}

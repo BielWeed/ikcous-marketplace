@@ -1,0 +1,32 @@
+{
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@supabase/supabase-js": "^2.95.3",
+    "axios": "^1.14.0",
+    "chalk": "^5.6.2",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "exa-js": "^2.10.2",
+    "express": "^5.2.1",
+    "imap-simple": "^5.1.0",
+    "mailparser": "^3.9.6",
+    "playwright": "^1.59.1",
+    "zod": "^4.3.6"
+  },
+  "scripts": {
+    "mkt:dev": "cd app_mkt && npm run dev",
+    "mkt:build": "cd app_mkt && npm run build",
+    "mkt:lint": "cd app_mkt && npm run lint",
+    "mkt:preview": "cd app_mkt && npm run preview",
+    "db:ninja": "node scripts/deploy_ninja.js"
+  },
+  "devDependencies": {
+    "fs": "^0.0.1-security",
+    "glob": "^13.0.6",
+    "path": "^0.12.7",
+    "pg": "^8.18.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "supabase": "^2.76.11"
+  }
+}

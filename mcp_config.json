@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "antigravity-nexus-hub": {
+      "command": "node",
+      "args": [
+        "C:/Users/Gabriel/.gemini/antigravity/mcp_modules/ninja-gateway-shim.cjs"
+      ]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+domain: infra
+sub_domain: agent_core
+linkage_version: 24.2.0-Stitch-Ninja
+passive_triggers:
+  - senior-architect.md: "GEN 16"
+  - autonomous-ops
+
+atomic_directives:
+  - titans_ttt: enabled
+  - uccl_ep_interconnect: active
+  - toxic_skills_shield: sentinel_v7

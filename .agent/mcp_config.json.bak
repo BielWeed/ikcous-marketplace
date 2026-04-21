@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "shell-ninja": {
+      "command": "node",
+      "args": ["C:/Users/Gabriel/.gemini/antigravity/mcp_modules/ninja-monolith.cjs"],
+      "env": { "NODE_PATH": "C:/Users/Gabriel/.gemini/antigravity/mcp_modules/node_modules" }
+    },
+    "memory-ninja": {
+      "command": "node",
+      "args": ["C:/Users/Gabriel/.gemini/antigravity/mcp_modules/ninja-monolith.cjs"],
+      "env": { "NODE_PATH": "C:/Users/Gabriel/.gemini/antigravity/mcp_modules/node_modules" }
+    },
+    "omega-ninja": {
+      "command": "node",
+      "args": ["C:/Users/Gabriel/.gemini/antigravity/mcp_modules/ninja-monolith.cjs"],
+      "env": { "NODE_PATH": "C:/Users/Gabriel/.gemini/antigravity/mcp_modules/node_modules" }
+    }
+  }
+}
