@@ -29,7 +29,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
     });
 
     useEffect(() => {
-        refreshBanners(false);
+        refreshBanners(false, true);
     }, [refreshBanners]);
 
     const handleBack = () => onNavigate('admin-dashboard');
@@ -80,7 +80,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
             } else {
                 await addBanner(formData as Required<Omit<Banner, 'id'>>);
             }
-            await refreshBanners(false);
+            await refreshBanners(false, true);
             setIsDialogOpen(false);
             toast.success(editingBanner ? 'Banner atualizado' : 'Banner criado');
         } catch {
@@ -91,7 +91,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
     const handleDelete = async (id: string, imageUrl: string) => {
         if (confirm('Tem certeza que deseja excluir este banner?')) {
             await deleteBanner(id, imageUrl);
-            await refreshBanners(false);
+            await refreshBanners(false, true);
             toast.success('Banner removido');
         }
     };
