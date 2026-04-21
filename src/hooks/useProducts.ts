@@ -164,7 +164,7 @@ export function useProducts({ autoFetch = true } = {}) {
             product_id: data.id,
             name: v.name,
             value: v.value,
-            sku: v.sku,
+            sku: v.sku || null,
             stock_increment: v.stockIncrement,
             price_override: v.priceOverride,
             active: v.active,
@@ -460,7 +460,7 @@ export function useProducts({ autoFetch = true } = {}) {
           product_id: variantData.productId,
           name: variantData.name,
           value: variantData.value,
-          sku: variantData.sku,
+          sku: variantData.sku || null,
           stock_increment: variantData.stockIncrement,
           price_override: variantData.priceOverride,
           active: variantData.active,
@@ -502,7 +502,7 @@ export function useProducts({ autoFetch = true } = {}) {
       const dbUpdates: any = {};
       if (updates.name !== undefined) dbUpdates.name = updates.name;
       if (updates.value !== undefined) dbUpdates.value = updates.value;
-      if (updates.sku !== undefined) dbUpdates.sku = updates.sku;
+      if (updates.sku !== undefined) dbUpdates.sku = updates.sku || null;
       if (updates.stockIncrement !== undefined) dbUpdates.stock_increment = updates.stockIncrement;
       if (updates.priceOverride !== undefined) dbUpdates.price_override = updates.priceOverride;
       if (updates.active !== undefined) dbUpdates.active = updates.active;

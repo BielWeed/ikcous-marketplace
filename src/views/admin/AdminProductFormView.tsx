@@ -170,8 +170,9 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
       setVariantFormData({
         name: '', value: '', sku: '', stockIncrement: '0', priceOverride: '', active: true, imageUrl: ''
       });
-    } catch (_err) {
+    } catch (_err: any) {
       console.error('Variant error:', _err);
+      toast.error(_err?.message || 'Erro ao efetivar variante. Verifique os dados e tente novamente.');
     }
   };
 
