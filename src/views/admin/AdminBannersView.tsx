@@ -143,11 +143,11 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
 
                     <button
                         onClick={() => handleOpenDialog()}
-                        className="group relative flex items-center gap-3 px-8 py-4 bg-[var(--admin-gold)] text-black rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(212,175,55,0.3)] overflow-hidden"
+                        className="group relative flex items-center gap-3 px-8 py-4 bg-[#FFBF00] text-black rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(212,175,55,0.3)] border border-[#FFBF00]/50 overflow-hidden"
                     >
                         <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
-                        <Plus className="w-4 h-4 relative z-10" />
-                        <span className="relative z-10">New Visual Asset</span>
+                        <Plus className="w-4 h-4 relative z-10 text-black" />
+                        <span className="relative z-10 text-black">New Visual Asset</span>
                     </button>
                 </div>
             </div>
@@ -228,8 +228,8 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                                         {/* Infos & Controles */}
                                                         <div className="flex-1 space-y-6 w-full relative z-10">
                                                             <div className="flex items-center justify-between">
-                                                                <div>
-                                                                    <h3 className="text-3xl font-black text-white uppercase italic tracking-tighter leading-none mb-2 bg-gradient-to-r from-white to-zinc-500 bg-clip-text text-transparent">
+                                                                <div className="min-w-0">
+                                                                    <h3 className="text-3xl font-black text-white uppercase italic tracking-tighter leading-none mb-2 bg-gradient-to-r from-white to-zinc-500 bg-clip-text text-transparent truncate w-full">
                                                                         {banner.title || 'Untitled Campaign'}
                                                                     </h3>
                                                                     <div className="flex items-center gap-3">
@@ -257,9 +257,9 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                                             </div>
 
                                                             <div className="flex flex-wrap items-center gap-6 py-6 border-y border-white/5">
-                                                                <div className="px-6 py-3 bg-zinc-900/50 rounded-2xl border border-white/5 text-[10px] font-black uppercase tracking-widest text-zinc-500 flex items-center gap-3 group/link cursor-default">
-                                                                    <ExternalLink className="w-4 h-4 text-[var(--admin-gold)] group-hover/link:scale-110 transition-transform" />
-                                                                    Redirect: <span className="text-white font-mono">{banner.link || 'Root'}</span>
+                                                                <div className="px-6 py-3 bg-zinc-900/50 rounded-2xl border border-white/5 text-[10px] font-black uppercase tracking-widest text-zinc-500 flex items-center gap-3 group/link cursor-default max-w-full overflow-hidden">
+                                                                    <ExternalLink className="w-4 h-4 text-[var(--admin-gold)] group-hover/link:scale-110 transition-transform shrink-0" />
+                                                                    Redirect: <span className="text-white font-mono truncate">{banner.link || 'Root'}</span>
                                                                 </div>
                                                                 <div className={`px-6 py-3 rounded-2xl border text-[10px] font-black uppercase tracking-widest flex items-center gap-3 ${banner.active ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
                                                                     <div className={`w-2 h-2 rounded-full ${banner.active ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)] animate-pulse' : 'bg-red-500'}`} />
@@ -296,11 +296,11 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
 
             {/* Dialog Elite */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="sm:max-w-2xl bg-zinc-950 border-white/5 text-white p-0 overflow-hidden rounded-[3.5rem] shadow-[0_0_80px_rgba(0,0,0,0.9)] mx-auto">
-                    <div className="absolute -top-40 -right-40 w-80 h-80 bg-[var(--admin-gold)]/5 blur-[120px] rounded-full" />
-                    <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-emerald-500/5 blur-[120px] rounded-full" />
+                <DialogContent className="sm:max-w-2xl bg-zinc-950 border-white/5 text-white p-0 overflow-y-auto max-h-[90vh] rounded-[3.5rem] shadow-[0_0_80px_rgba(0,0,0,0.9)] mx-auto custom-scrollbar">
+                    <div className="absolute -top-40 -right-40 w-80 h-80 bg-[var(--admin-gold)]/5 blur-[120px] rounded-full pointer-events-none" />
+                    <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-emerald-500/5 blur-[120px] rounded-full pointer-events-none" />
 
-                    <div className="p-12 space-y-10 relative z-10">
+                    <div className="p-8 sm:p-12 space-y-10 relative z-10 w-full">
                         <DialogHeader>
                             <DialogTitle className="text-3xl font-black text-white tracking-widest uppercase italic flex items-center gap-4">
                                 <Sparkles className="w-8 h-8 text-[var(--admin-gold)]" />

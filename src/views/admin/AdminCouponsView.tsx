@@ -166,8 +166,8 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
 
                                         {/* Coupon Header */}
                                         <div className="flex items-center justify-between mb-8">
-                                            <div className="px-4 py-2 bg-white/[0.05] rounded-2xl border border-white/10 ring-1 ring-white/5">
-                                                <span className="font-black text-2xl text-white tracking-tighter uppercase italic">
+                                            <div className="px-4 py-2 bg-white/[0.05] rounded-2xl border border-white/10 ring-1 ring-white/5 max-w-[60%] flex-1 mr-4 min-w-0">
+                                                <span className="font-black text-2xl text-white tracking-tighter uppercase italic truncate block">
                                                     {coupon.code}
                                                 </span>
                                             </div>
@@ -242,8 +242,8 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="bg-[#09090b] border-white/10 text-white max-w-lg p-0 overflow-hidden rounded-[2.5rem]">
-                    <div className="p-8 bg-gradient-to-b from-white/[0.02] to-transparent">
+                <DialogContent className="bg-[#09090b] border-white/10 text-white sm:max-w-xl p-0 overflow-y-auto max-h-[90vh] rounded-[2.5rem] custom-scrollbar">
+                    <div className="p-8 sm:p-10 bg-gradient-to-b from-white/[0.02] to-transparent w-full">
                         <DialogHeader className="mb-8">
                             <div className="flex items-center gap-4 mb-2">
                                 <div className="p-3 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
@@ -257,13 +257,13 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
                         </DialogHeader>
 
                         <div className="space-y-6">
-                            <div className="space-y-2">
+                            <div className="space-y-2 w-full">
                                 <Label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Código Promocional</Label>
                                 <Input
                                     value={formData.code}
                                     onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
                                     placeholder="EX: VERÃO2026"
-                                    className="h-14 bg-white/[0.03] border-white/10 rounded-2xl text-lg font-black tracking-tight focus:ring-emerald-500/20 focus:border-emerald-500/30 transition-all uppercase italic"
+                                    className="h-14 bg-white/[0.03] border-white/10 rounded-2xl text-lg font-black tracking-tight focus:ring-emerald-500/20 focus:border-emerald-500/30 transition-all uppercase italic w-full"
                                 />
                             </div>
 

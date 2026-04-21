@@ -16,7 +16,7 @@ const cartItemSchema = z.object({
 
 interface CartContextType {
     cart: CartItem[];
-    addToCart: (product: Product, quantity?: number, variantId?: string) => void;
+    addToCart: (product: Product, quantity?: number, variantId?: string, variantNames?: string) => void;
     removeFromCart: (productId: string, variantId?: string) => void;
     updateQuantity: (productId: string, quantity: number, variantId?: string) => void;
     clearCart: () => void;
@@ -172,7 +172,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                             quantity: dbItem.quantity
                         };
                         if (dbItem.variant_id) item.variantId = dbItem.variant_id;
-                        if (dbItem.variant_names) item.variantNames = dbItem.variant_names;
+                        if ((dbItem as any).variant_names) item.variantNames = (dbItem as any).variant_names;
                         return item;
                     }).filter((item): item is CartItem => item !== null);
 
