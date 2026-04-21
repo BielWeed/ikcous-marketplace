@@ -127,10 +127,10 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
 
         <div className="flex p-1 bg-zinc-100/50 rounded-2xl relative overflow-hidden">
           <motion.div
-            layoutId="activeTabBg"
             className="absolute inset-y-1 bg-white rounded-xl shadow-sm border border-zinc-200/50"
+            initial={false}
             animate={{
-              x: activeTab === 'cart' ? 0 : '100%',
+              x: activeTab === 'cart' ? '0%' : '100%',
               width: '50%'
             }}
             transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
