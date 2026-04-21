@@ -119,23 +119,23 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
     return (
         <div className="min-h-screen bg-admin-bg text-white pb-32 font-sans selection:bg-admin-gold/30">
             {/* Header Elite */}
-            <div className="px-6 py-8">
-                <div className="max-w-7xl mx-auto flex items-center justify-between">
-                    <div className="flex items-center gap-6">
+        <div className="px-4 sm:px-6 py-6 sm:py-8">
+                <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
+                    <div className="flex items-center gap-4 sm:gap-6">
                         <button
                             onClick={handleBack}
-                            className="w-12 h-12 flex items-center justify-center bg-zinc-950/50 text-zinc-400 rounded-2xl hover:bg-admin-gold hover:text-black transition-all active:scale-95 border border-white/5 group shadow-2xl"
+                            className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 flex items-center justify-center bg-zinc-950/50 text-zinc-400 rounded-2xl hover:bg-admin-gold hover:text-black transition-all active:scale-95 border border-white/5 group shadow-2xl"
                         >
-                            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+                            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 group-hover:-translate-x-1 transition-transform" />
                         </button>
-                        <div>
-                            <div className="flex items-center gap-3 mb-1">
-                                <Layout className="w-5 h-5 text-admin-gold animate-pulse" />
-                                <h1 className="text-2xl font-black tracking-tighter uppercase italic bg-gradient-to-r from-white via-zinc-400 to-zinc-600 bg-clip-text text-transparent">
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2 sm:gap-3 mb-1">
+                                <Layout className="w-4 h-4 sm:w-5 sm:h-5 text-admin-gold animate-pulse shrink-0" />
+                                <h1 className="text-xl sm:text-2xl font-black tracking-tighter uppercase italic bg-gradient-to-r from-white via-zinc-400 to-zinc-600 bg-clip-text text-transparent truncate">
                                     Visual Engine
                                 </h1>
                             </div>
-                            <p className="text-[10px] font-bold text-admin-gold uppercase tracking-[0.3em] opacity-80">
+                            <p className="text-[9px] sm:text-[10px] font-bold text-admin-gold uppercase tracking-[0.2em] sm:tracking-[0.3em] opacity-80 truncate">
                                 Premium Banners Curatorship
                             </p>
                         </div>
@@ -143,7 +143,7 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
 
                     <button
                         onClick={() => handleOpenDialog()}
-                        className="group relative flex items-center gap-3 px-8 py-4 bg-[#FFBF00] text-black rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(212,175,55,0.3)] border border-[#FFBF00]/50 overflow-hidden"
+                        className="group relative flex items-center justify-center gap-2 sm:gap-3 px-6 sm:px-8 py-3 sm:py-4 bg-[#FFBF00] text-black rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(212,175,55,0.3)] border border-[#FFBF00]/50 overflow-hidden w-full sm:w-auto mt-2 sm:mt-0"
                     >
                         <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
                         <Plus className="w-4 h-4 relative z-10 text-black" />
@@ -207,11 +207,11 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                             {positionBanners.map(banner => (
                                                 <div
                                                     key={banner.id}
-                                                    className={`group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[3.5rem] p-8 transition-all duration-700 hover:border-admin-gold/30 hover:shadow-[0_40px_100px_rgba(0,0,0,0.6)] ${!banner.active ? 'opacity-30 grayscale' : ''}`}
+                                                    className={`group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[2rem] sm:rounded-[3.5rem] p-4 sm:p-8 transition-all duration-700 hover:border-admin-gold/30 hover:shadow-[0_40px_100px_rgba(0,0,0,0.6)] ${!banner.active ? 'opacity-30 grayscale' : ''}`}
                                                 >
-                                                    <div className="flex flex-col xl:flex-row gap-10 items-center">
+                                                    <div className="flex flex-col xl:flex-row gap-6 sm:gap-10 items-center w-full">
                                                         {/* Preview Imagem Premium */}
-                                                        <div className="relative w-full xl:w-[550px] aspect-[21/9] rounded-[2.5rem] overflow-hidden border border-white/5 shadow-[0_20px_50px_rgba(0,0,0,0.5)] bg-zinc-900 group-hover:scale-[1.02] transition-transform duration-700">
+                                                        <div className="relative w-full xl:w-[550px] aspect-[21/9] rounded-[1.5rem] sm:rounded-[2.5rem] overflow-hidden border border-white/5 shadow-[0_20px_50px_rgba(0,0,0,0.5)] bg-zinc-900 group-hover:scale-[1.02] transition-transform duration-700 shrink-0">
                                                             <img
                                                                 src={banner.imageUrl}
                                                                 alt={banner.title || 'Banner'}
@@ -219,66 +219,66 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                                             />
                                                             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-80" />
                                                             {!banner.active && (
-                                                                <div className="absolute inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center text-[12px] font-black uppercase tracking-[0.5em] text-white/50 italic border border-admin-gold/20 rounded-[2.5rem]">
+                                                                <div className="absolute inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center text-[10px] sm:text-[12px] font-black uppercase tracking-[0.4em] sm:tracking-[0.5em] text-white/50 italic border border-admin-gold/20 rounded-[1.5rem] sm:rounded-[2.5rem] text-center px-4">
                                                                     Protocol Suspended
                                                                 </div>
                                                             )}
                                                         </div>
 
                                                         {/* Infos & Controles */}
-                                                        <div className="flex-1 space-y-6 w-full relative z-10">
-                                                            <div className="flex items-center justify-between">
-                                                                <div className="min-w-0">
-                                                                    <h3 className="text-3xl font-black text-white uppercase italic tracking-tighter leading-none mb-2 bg-gradient-to-r from-white to-zinc-500 bg-clip-text text-transparent truncate w-full">
+                                                        <div className="flex-1 space-y-4 sm:space-y-6 w-full relative z-10 min-w-0">
+                                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                                <div className="min-w-0 w-full">
+                                                                    <h3 className="text-xl sm:text-3xl font-black text-white uppercase italic tracking-tighter leading-none mb-2 bg-gradient-to-r from-white to-zinc-500 bg-clip-text text-transparent truncate w-full">
                                                                         {banner.title || 'Untitled Campaign'}
                                                                     </h3>
                                                                     <div className="flex items-center gap-3">
-                                                                        <div className="px-3 py-1 bg-zinc-900 border border-white/5 rounded-full">
-                                                                            <p className="text-[10px] font-bold text-admin-gold uppercase tracking-widest">
-                                                                                Deployment Order: <span className="text-white">#{banner.order}</span>
+                                                                        <div className="px-2 sm:px-3 py-1 bg-zinc-900 border border-white/5 rounded-full shrink-0">
+                                                                            <p className="text-[9px] sm:text-[10px] font-bold text-admin-gold uppercase tracking-widest truncate">
+                                                                                Order: <span className="text-white">#{banner.order}</span>
                                                                             </p>
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                                <div className="flex gap-3">
+                                                                <div className="flex gap-2 sm:gap-3 shrink-0">
                                                                     <button
                                                                         onClick={() => moveBanner(banner, 'up')}
-                                                                        className="w-12 h-12 bg-zinc-900/50 text-zinc-500 rounded-2xl flex items-center justify-center hover:bg-admin-gold hover:text-black disabled:opacity-20 border border-white/5 shadow-xl transition-all active:scale-90"
+                                                                        className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 bg-zinc-900/50 text-zinc-500 rounded-xl sm:rounded-2xl flex items-center justify-center hover:bg-admin-gold hover:text-black disabled:opacity-20 border border-white/5 shadow-xl transition-all active:scale-90"
                                                                     >
-                                                                        <ArrowUp className="w-5 h-5" />
+                                                                        <ArrowUp className="w-4 h-4 sm:w-5 h-5" />
                                                                     </button>
                                                                     <button
                                                                         onClick={() => moveBanner(banner, 'down')}
-                                                                        className="w-12 h-12 bg-zinc-900/50 text-zinc-500 rounded-2xl flex items-center justify-center hover:bg-admin-gold hover:text-black disabled:opacity-20 border border-white/5 shadow-xl transition-all active:scale-90"
+                                                                        className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 bg-zinc-900/50 text-zinc-500 rounded-xl sm:rounded-2xl flex items-center justify-center hover:bg-admin-gold hover:text-black disabled:opacity-20 border border-white/5 shadow-xl transition-all active:scale-90"
                                                                     >
-                                                                        <ArrowDown className="w-5 h-5" />
+                                                                        <ArrowDown className="w-4 h-4 sm:w-5 sm:h-5" />
                                                                     </button>
                                                                 </div>
                                                             </div>
 
-                                                            <div className="flex flex-wrap items-center gap-6 py-6 border-y border-white/5">
-                                                                <div className="px-6 py-3 bg-zinc-900/50 rounded-2xl border border-white/5 text-[10px] font-black uppercase tracking-widest text-zinc-500 flex items-center gap-3 group/link cursor-default max-w-full overflow-hidden">
-                                                                    <ExternalLink className="w-4 h-4 text-admin-gold group-hover/link:scale-110 transition-transform shrink-0" />
+                                                            <div className="flex flex-wrap items-center gap-3 sm:gap-6 py-4 sm:py-6 border-y border-white/5">
+                                                                <div className="px-4 sm:px-6 py-2 sm:py-3 bg-zinc-900/50 rounded-xl sm:rounded-2xl border border-white/5 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-zinc-500 flex items-center gap-2 sm:gap-3 group/link cursor-default max-w-full overflow-hidden w-full sm:w-auto">
+                                                                    <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 text-admin-gold group-hover/link:scale-110 transition-transform shrink-0" />
                                                                     Redirect: <span className="text-white font-mono truncate">{banner.link || 'Root'}</span>
                                                                 </div>
-                                                                <div className={`px-6 py-3 rounded-2xl border text-[10px] font-black uppercase tracking-widest flex items-center gap-3 ${banner.active ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
-                                                                    <div className={`w-2 h-2 rounded-full ${banner.active ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)] animate-pulse' : 'bg-red-500'}`} />
+                                                                <div className={`px-4 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl border text-[9px] sm:text-[10px] font-black uppercase tracking-widest flex items-center gap-2 sm:gap-3 w-full sm:w-auto ${banner.active ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
+                                                                    <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full shrink-0 ${banner.active ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)] animate-pulse' : 'bg-red-500'}`} />
                                                                     {banner.active ? 'Operational' : 'Off-line'}
                                                                 </div>
                                                             </div>
 
-                                                            <div className="flex items-center gap-4 pt-2">
+                                                            <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 pt-2">
                                                                 <button
                                                                     onClick={() => handleOpenDialog(banner)}
-                                                                    className="flex-1 h-14 px-8 bg-zinc-900/80 border border-white/5 rounded-2xl text-[11px] font-black uppercase tracking-widest text-zinc-400 hover:bg-admin-gold hover:text-black hover:border-admin-gold transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95"
+                                                                    className="w-full sm:flex-1 h-12 sm:h-14 px-6 sm:px-8 bg-zinc-900/80 border border-white/5 rounded-xl sm:rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-zinc-400 hover:bg-admin-gold hover:text-black hover:border-admin-gold transition-all flex items-center justify-center gap-2 sm:gap-3 shadow-xl active:scale-95"
                                                                 >
-                                                                    <Edit className="w-4 h-4" /> Finalize Asset
+                                                                    <Edit className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" /> Finalize Asset
                                                                 </button>
                                                                 <button
                                                                     onClick={() => handleDelete(banner.id, banner.imageUrl)}
-                                                                    className="h-14 px-8 bg-red-500/10 border border-red-500/20 rounded-2xl text-[11px] font-black uppercase tracking-widest text-red-500 hover:bg-red-500 hover:text-white transition-all flex items-center gap-3 shadow-xl active:scale-95"
+                                                                    className="w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-8 bg-red-500/10 border border-red-500/20 rounded-xl sm:rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-red-500 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2 sm:gap-3 shadow-xl active:scale-95"
                                                                 >
-                                                                    <Trash className="w-4 h-4" /> Purge
+                                                                    <Trash className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" /> Purge
                                                                 </button>
                                                             </div>
                                                         </div>
