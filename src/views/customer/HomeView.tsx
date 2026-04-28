@@ -3,10 +3,10 @@ import { cn } from '@/lib/utils';
 import type { Product, View } from '@/types';
 import { CategoryFilter } from '@/components/ui/custom/CategoryFilter';
 import { BannerCarousel } from '@/components/ui/custom/BannerCarousel';
-import { SlidersHorizontal, TrendingUp, ArrowDown, ArrowUp, Sparkles, Clock, MapPin, PackageSearch } from 'lucide-react';
+import { SlidersHorizontal, TrendingUp, ArrowDown, ArrowUp, Sparkles, PackageSearch } from 'lucide-react';
 import { useBanners } from '@/hooks/useBanners';
 import { useCategories } from '@/hooks/useCategories';
-import { useStore } from '@/contexts/StoreContext';
+
 import { haptic } from '@/utils/haptic';
 import { CartReminder } from '@/components/ui/custom/CartReminder';
 import { ProductCarousel } from '@/components/ui/custom/ProductCarousel';
@@ -49,7 +49,7 @@ export function HomeView({
   const [showSortMenu, setShowSortMenu] = useState(false);
   const { categories, isLoading: isLoadingCategories } = useCategories();
   const { getBannersByPosition, isLoaded: bannersLoaded } = useBanners();
-  const { config } = useStore();
+
 
   const topBanners = getBannersByPosition('home_top');
   const middleBanners = getBannersByPosition('home_middle');
@@ -144,10 +144,7 @@ export function HomeView({
         </script>
       </Helmet>
 
-      {/* Exchange Banner */}
-      <div className="bg-black text-white text-center py-2 px-4 text-xs font-medium">
-        Troca garantida em até 24h após entrega
-      </div>
+
 
       {/* Top Banners - Full Width */}
       {!bannersLoaded && topBanners.length === 0 ? (
@@ -232,8 +229,8 @@ export function HomeView({
 
       {/* All Products */}
       <div className="px-3 sm:px-4 py-3 sm:py-4">
-        <h2 className="text-2xl font-bold tracking-tight text-zinc-900 leading-none mb-6">
-          {searchQuery ? 'Resultados da busca' : 'Todos os Produtos'}
+        <h2 className="text-3xl font-black tracking-tighter text-zinc-900 leading-none mb-8">
+          {searchQuery ? 'Resultados da busca' : 'Catálogo Supremo'}
         </h2>
 
         {/* Integrated Filter Bar - Premium Glassmorphism & STICKY */}
@@ -351,33 +348,6 @@ export function HomeView({
         )
       }
 
-      {/* Location Footer */}
-      <div className="px-6 py-12 mt-12 bg-zinc-900 rounded-[3rem] mx-4 mb-4 text-white overflow-hidden relative group">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl group-hover:bg-white/10 transition-colors duration-700" />
-
-        <div className="relative z-10 flex flex-col items-center text-center">
-          <div className="w-12 h-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center mb-6 border border-white/10">
-            <MapPin className="w-6 h-6 text-white" />
-          </div>
-
-          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 mb-2">Exclusividade Local</span>
-          <h2 className="text-2xl font-black tracking-tighter mb-4">Monte Carmelo, MG</h2>
-
-          <p className="text-sm text-zinc-400 max-w-[240px] leading-relaxed mb-8 font-medium">
-            Focamos em oferecer a melhor experiência de entrega ultra-rápida para nossa cidade.
-          </p>
-
-          <div className="flex flex-col gap-2 p-4 bg-white/5 backdrop-blur-md rounded-2xl border border-white/5 w-full max-w-[280px]">
-            <div className="flex items-center justify-between text-[10px] uppercase font-black tracking-widest text-zinc-500">
-              <div className="flex items-center gap-2">
-                <Clock className="w-3 h-3" />
-                <span>Horário</span>
-              </div>
-              <span className="text-white">{config.businessHours.split('das')[1]?.trim() || 'Comercial'}</span>
-            </div>
-          </div>
-        </div>
-      </div>
 
       <CartReminder onAction={() => onNavigate('cart')} />
     </div >
