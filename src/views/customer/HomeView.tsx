@@ -230,7 +230,7 @@ export function HomeView({
       {/* All Products */}
       <div className="px-3 sm:px-4 py-3 sm:py-4">
         <h2 className="text-3xl font-black tracking-tighter text-zinc-900 leading-none mb-8">
-          {searchQuery ? 'Resultados da busca' : 'Catálogo Supremo'}
+          {searchQuery ? 'Resultados da busca' : 'Catálogo'}
         </h2>
 
         {/* Integrated Filter Bar - Premium Glassmorphism & STICKY */}
