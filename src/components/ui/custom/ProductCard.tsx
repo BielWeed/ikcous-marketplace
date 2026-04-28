@@ -118,7 +118,7 @@ export const ProductCard = memo(function ProductCard({
         </div>
 
         {/* Rating and Price */}
-        <div className="flex items-end justify-between mt-1 gap-2">
+        <div className="flex items-end justify-between mt-auto pt-1 gap-2">
           <div className="flex flex-col min-w-0">
             {product.originalPrice && product.originalPrice > product.price && (
               <span className="text-[10px] text-slate-400 line-through font-bold truncate">
