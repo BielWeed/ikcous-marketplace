@@ -140,10 +140,12 @@ export function ProductView({
   };
 
   const nextImage = () => {
+    if (!product.images?.length) return;
     setCurrentImageIndex((prev) => (prev + 1) % product.images.length);
   };
 
   const prevImage = () => {
+    if (!product.images?.length) return;
     setCurrentImageIndex((prev) => (prev - 1 + product.images.length) % product.images.length);
   };
 
@@ -176,10 +178,10 @@ export function ProductView({
     <div className="min-h-full bg-white pb-32">
       <Helmet>
         <title>{product.metaTitle || `${product.name} | Loja`}</title>
-        <meta name="description" content={product.metaDescription || product.description.substring(0, 150)} />
+        <meta name="description" content={product.metaDescription || product.description?.substring(0, 150) || ''} />
         <meta property="og:title" content={product.metaTitle || product.name} />
-        <meta property="og:description" content={product.metaDescription || product.description.substring(0, 150)} />
-        <meta property="og:image" content={product.images[0]} />
+        <meta property="og:description" content={product.metaDescription || product.description?.substring(0, 150) || ''} />
+        <meta property="og:image" content={product.images?.[0] || ''} />
         <meta property="og:type" content="product" />
         <script type="application/ld+json">
           {JSON.stringify(structuredData)}
@@ -190,7 +192,7 @@ export function ProductView({
       <div className="relative aspect-square bg-[#F8F9FA] group">
         <div className="flex justify-center items-center w-full h-full lg:h-[70vh] overflow-hidden">
           <img
-            src={variantImage || product.images[currentImageIndex]}
+            src={variantImage || product.images?.[currentImageIndex] || ''}
             alt={product.name}
             className="w-auto h-full max-w-full object-contain transition-opacity duration-500"
             loading="eager"
@@ -200,7 +202,7 @@ export function ProductView({
         </div>
 
         {/* Navigation Arrows */}
-        {product.images.length > 1 && !variantImage && (
+        {(product.images?.length || 0) > 1 && !variantImage && (
           <div className="absolute inset-0 flex items-center justify-between px-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
             <button
               onClick={prevImage}
@@ -218,9 +220,9 @@ export function ProductView({
         )}
 
         {/* Image Indicators - Glass Pill */}
-        {product.images.length > 1 && !variantImage && (
+        {(product.images?.length || 0) > 1 && !variantImage && (
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-1.5 px-4 py-2 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 shadow-2xl">
-            {product.images.map((_, index) => (
+            {product.images?.map((_, index) => (
               <button
                 key={index}
                 onClick={() => setCurrentImageIndex(index)}
@@ -254,7 +256,7 @@ export function ProductView({
         <div className="max-w-screen-md mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <img src={variantImage || product.images[0]} className="w-10 h-10 rounded-xl object-cover shadow-sm ring-1 ring-black/5" alt={product.name} />
+              <img src={variantImage || product.images?.[0] || ''} className="w-10 h-10 rounded-xl object-cover shadow-sm ring-1 ring-black/5" alt={product.name} />
               {discount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[7px] font-black px-1 rounded-full">{discount}%</span>}
             </div>
             <div className="flex flex-col">
@@ -403,7 +405,7 @@ export function ProductView({
         {/* Tab Content */}
         {activeTab === 'description' && (
           <div className="mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <MarkdownRenderer content={product.description} />
+            <MarkdownRenderer content={product.description || ''} />
 
             {/* Benefits */}
             <div className="space-y-3 mt-6">
