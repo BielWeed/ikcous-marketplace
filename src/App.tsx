@@ -155,8 +155,11 @@ const AppContent = () => {
 
   const handleNavigate = useCallback((view: View, id?: string) => {
     if (isTransitioningRef.current && currentView !== view) {
-      console.warn('[App] Navigation throttled to prevent animation race conditions');
-      return;
+      // Exceções para redirecionamentos programáticos críticos (Auth e Fallbacks)
+      if (!['auth', 'login', 'home'].includes(view)) {
+        console.warn(`[App] Navigation to ${view} throttled to prevent animation race conditions`);
+        return;
+      }
     }
 
     if (currentView !== view) {
