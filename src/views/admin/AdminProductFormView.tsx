@@ -449,6 +449,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
 
               <div className="flex gap-4 pt-8">
                 <button
+                  type="button"
                   onClick={() => {
                     setShowVariantForm(false);
                     setEditingVariant(null);
@@ -458,7 +459,11 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                   Cancelar
                 </button>
                 <button
-                  onClick={handleVariantSubmit}
+                  type="button"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    await handleVariantSubmit();
+                  }}
                   className="flex-[2] py-5 bg-emerald-500 text-emerald-950 rounded-2xl text-xs font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(16,185,129,0.3)] hover:scale-105 active:scale-95 transition-all"
                 >
                   {editingVariant ? 'Salvar Protocolo' : 'Efetivar Variante'}

@@ -39,9 +39,9 @@ export function CategoryFilter({ categories, selectedCategory, onCategoryChange,
             }}
             aria-label={`Selecionar categoria ${category.name}`}
             aria-pressed={selectedCategory === category.name}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-300 ${selectedCategory === category.name
-              ? 'bg-zinc-900 text-white shadow-lg shadow-zinc-200 scale-105'
-              : 'bg-white text-zinc-500 border border-zinc-100 hover:bg-zinc-50 hover:text-zinc-900'
+            className={`flex-shrink-0 px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${selectedCategory === category.name
+              ? 'bg-zinc-900 text-white shadow-lg shadow-zinc-300 scale-105'
+              : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900'
               }`}
           >
             {category.name}

@@ -186,7 +186,7 @@ export function AccountSettingsView() {
                         </div>
                     </div>
 
-                    <form onSubmit={handleChangePassword} className="space-y-4">
+                    <form onSubmit={handleChangePassword} action="#" className="space-y-4">
                         <div className="space-y-2">
                             <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 ml-1">E-mail (Login)</label>
                             <div className="relative">

@@ -283,7 +283,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                             <Sparkles className="w-32 h-32 text-zinc-900" />
                         </div>
 
-                        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+                        <form onSubmit={handleSubmit} action="#" className="space-y-4 sm:space-y-6">
                             {viewMode === 'signup' && (
                                 <>
                                     <motion.div variants={itemVariants} className="space-y-2">

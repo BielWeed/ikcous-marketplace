@@ -129,22 +129,9 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
-          'vendor-radix': [
-            '@radix-ui/react-dialog',
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-tabs',
-            '@radix-ui/react-select',
-            '@radix-ui/react-popover',
-            '@radix-ui/react-tooltip',
-            '@radix-ui/react-checkbox',
-            '@radix-ui/react-scroll-area',
-          ],
-          'vendor-icons': ['lucide-react'],
-          'vendor-ui': ['sonner', 'embla-carousel-react', 'vaul', 'react-day-picker', 'clsx', 'tailwind-merge', 'class-variance-authority'],
           'vendor-form': ['react-hook-form', '@hookform/resolvers', 'zod'],
           'vendor-charts': ['recharts'],
           'vendor-date': ['date-fns'],
-          'vendor-motion': ['framer-motion'],
           'vendor-supabase': ['@supabase/supabase-js'],
         },
       },

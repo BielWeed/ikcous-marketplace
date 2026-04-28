@@ -68,7 +68,7 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} action="#" className="space-y-4">
             <div>
               <label htmlFor="admin-email" className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2 ml-1">
                 Email

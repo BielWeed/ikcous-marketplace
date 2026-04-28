@@ -104,13 +104,33 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
     }, [isAdmin, mapConfig, applyBranding]);
 
     const fetchProducts = useCallback(async () => {
-        setLoadingProducts(true);
+        const cacheKey = 'ikcous_products_cache';
+        
+        // 1. Tentar carregar do cache para renderização instantânea (Stale-While-Revalidate)
+        if (products.length === 0) {
+            try {
+                const cached = localStorage.getItem(cacheKey);
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        setProducts(parsed);
+                        setLoadingProducts(false);
+                    }
+                } else {
+                    setLoadingProducts(true);
+                }
+            } catch (e) {
+                console.error('[StoreContext] Cache parse error', e);
+            }
+        }
+
         try {
+            // 2. Buscar dados da nuvem com limite para evitar travamento da UI
             let query: any;
             if (isAdmin) {
-                query = supabase.from('produtos').select('*');
+                query = supabase.from('produtos').select('*').limit(200).order('data_cadastro', { ascending: false });
             } else {
-                query = supabase.from('vw_produtos_public').select('*');
+                query = supabase.from('vw_produtos_public').select('*').limit(200).order('data_cadastro', { ascending: false });
             }
             
             const { data, error } = await query;
@@ -130,7 +150,10 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
                     ...item,
                     product_variants: variants?.filter(v => v.product_id === item.id) || []
                 }));
+                
                 setProducts(mapped);
+                // 3. Atualizar cache com dados frescos
+                localStorage.setItem(cacheKey, JSON.stringify(mapped));
             } else {
                 setProducts([]);
             }
@@ -139,7 +162,7 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
         } finally {
             setLoadingProducts(false);
         }
-    }, [isAdmin]);
+    }, [isAdmin, products.length]);
 
     const updateConfig = useCallback(async (updates: Partial<StoreConfig>) => {
         try {

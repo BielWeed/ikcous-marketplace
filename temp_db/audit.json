@@ -1,0 +1,1086 @@
+{
+  "tables": [
+    {
+      "table_name": "refresh_tokens",
+      "row_count": "206"
+    },
+    {
+      "table_name": "_ninja_migrations",
+      "row_count": "130"
+    },
+    {
+      "table_name": "schema_migrations",
+      "row_count": "76"
+    },
+    {
+      "table_name": "schema_migrations",
+      "row_count": "69"
+    },
+    {
+      "table_name": "migrations",
+      "row_count": "59"
+    },
+    {
+      "table_name": "marketplace_orders",
+      "row_count": "50"
+    },
+    {
+      "table_name": "marketplace_order_items",
+      "row_count": "49"
+    },
+    {
+      "table_name": "marketplace_order_history",
+      "row_count": "43"
+    },
+    {
+      "table_name": "objects",
+      "row_count": "30"
+    },
+    {
+      "table_name": "http_request_queue",
+      "row_count": "24"
+    },
+    {
+      "table_name": "produtos",
+      "row_count": "18"
+    },
+    {
+      "table_name": "schema_migrations",
+      "row_count": "18"
+    },
+    {
+      "table_name": "mfa_amr_claims",
+      "row_count": "11"
+    },
+    {
+      "table_name": "sessions",
+      "row_count": "11"
+    },
+    {
+      "table_name": "push_subscriptions",
+      "row_count": "8"
+    },
+    {
+      "table_name": "profiles",
+      "row_count": "7"
+    },
+    {
+      "table_name": "users",
+      "row_count": "7"
+    },
+    {
+      "table_name": "identities",
+      "row_count": "7"
+    },
+    {
+      "table_name": "banners",
+      "row_count": "4"
+    },
+    {
+      "table_name": "one_time_tokens",
+      "row_count": "3"
+    },
+    {
+      "table_name": "buckets",
+      "row_count": "3"
+    },
+    {
+      "table_name": "categorias",
+      "row_count": "3"
+    },
+    {
+      "table_name": "user_addresses",
+      "row_count": "2"
+    },
+    {
+      "table_name": "analytics_events",
+      "row_count": "2"
+    },
+    {
+      "table_name": "vendas",
+      "row_count": "2"
+    },
+    {
+      "table_name": "cart_items",
+      "row_count": "2"
+    },
+    {
+      "table_name": "product_variants",
+      "row_count": "2"
+    },
+    {
+      "table_name": "subscription",
+      "row_count": "2"
+    },
+    {
+      "table_name": "fluxo_caixa",
+      "row_count": "2"
+    },
+    {
+      "table_name": "marketplace_ai_state",
+      "row_count": "1"
+    },
+    {
+      "table_name": "store_config",
+      "row_count": "1"
+    },
+    {
+      "table_name": "app_settings",
+      "row_count": "1"
+    },
+    {
+      "table_name": "favorites",
+      "row_count": "1"
+    },
+    {
+      "table_name": "v_store_config",
+      "row_count": "1"
+    },
+    {
+      "table_name": "configuracoes",
+      "row_count": "1"
+    },
+    {
+      "table_name": "companies",
+      "row_count": "0"
+    },
+    {
+      "table_name": "vor_receipts",
+      "row_count": "0"
+    },
+    {
+      "table_name": "push_notifications_log",
+      "row_count": "0"
+    },
+    {
+      "table_name": "messages_2026_04_21",
+      "row_count": "0"
+    },
+    {
+      "table_name": "oauth_client_states",
+      "row_count": "0"
+    },
+    {
+      "table_name": "messages_2026_04_18",
+      "row_count": "0"
+    },
+    {
+      "table_name": "otp_verifications",
+      "row_count": "0"
+    },
+    {
+      "table_name": "s3_multipart_uploads",
+      "row_count": "0"
+    },
+    {
+      "table_name": "questions",
+      "row_count": "0"
+    },
+    {
+      "table_name": "reviews",
+      "row_count": "0"
+    },
+    {
+      "table_name": "messages_2026_04_23",
+      "row_count": "0"
+    },
+    {
+      "table_name": "buckets_vectors",
+      "row_count": "0"
+    },
+    {
+      "table_name": "messages",
+      "row_count": "0"
+    },
+    {
+      "table_name": "answers",
+      "row_count": "0"
+    },
+    {
+      "table_name": "oauth_consents",
+      "row_count": "0"
+    },
+    {
+      "table_name": "custom_oauth_providers",
+      "row_count": "0"
+    },
+    {
+      "table_name": "mfa_challenges",
+      "row_count": "0"
+    },
+    {
+      "table_name": "messages_2026_04_22",
+      "row_count": "0"
+    },
+    {
+      "table_name": "vector_indexes",
+      "row_count": "0"
+    },
+    {
+      "table_name": "audit_log_entries",
+      "row_count": "0"
+    },
+    {
+      "table_name": "notificacoes",
+      "row_count": "0"
+    },
+    {
+      "table_name": "coupons",
+      "row_count": "0"
+    },
+    {
+      "table_name": "buckets_analytics",
+      "row_count": "0"
+    },
+    {
+      "table_name": "webauthn_credentials",
+      "row_count": "0"
+    },
+    {
+      "table_name": "flow_state",
+      "row_count": "0"
+    },
+    {
+      "table_name": "messages_2026_04_24",
+      "row_count": "0"
+    },
+    {
+      "table_name": "fornecedores",
+      "row_count": "0"
+    },
+    {
+      "table_name": "secrets",
+      "row_count": "0"
+    },
+    {
+      "table_name": "oauth_clients",
+      "row_count": "0"
+    },
+    {
+      "table_name": "sso_providers",
+      "row_count": "0"
+    },
+    {
+      "table_name": "metas",
+      "row_count": "0"
+    },
+    {
+      "table_name": "sso_domains",
+      "row_count": "0"
+    },
+    {
+      "table_name": "s3_multipart_uploads_parts",
+      "row_count": "0"
+    },
+    {
+      "table_name": "historico_precos",
+      "row_count": "0"
+    },
+    {
+      "table_name": "saml_providers",
+      "row_count": "0"
+    },
+    {
+      "table_name": "instances",
+      "row_count": "0"
+    },
+    {
+      "table_name": "pedidos",
+      "row_count": "0"
+    },
+    {
+      "table_name": "kanban_cards",
+      "row_count": "0"
+    },
+    {
+      "table_name": "alertas",
+      "row_count": "0"
+    },
+    {
+      "table_name": "saml_relay_states",
+      "row_count": "0"
+    },
+    {
+      "table_name": "_http_response",
+      "row_count": "0"
+    },
+    {
+      "table_name": "pedido_itens",
+      "row_count": "0"
+    },
+    {
+      "table_name": "seed_files",
+      "row_count": "0"
+    },
+    {
+      "table_name": "messages_2026_04_19",
+      "row_count": "0"
+    },
+    {
+      "table_name": "mfa_factors",
+      "row_count": "0"
+    },
+    {
+      "table_name": "messages_2026_04_20",
+      "row_count": "0"
+    },
+    {
+      "table_name": "retiradas",
+      "row_count": "0"
+    },
+    {
+      "table_name": "oauth_authorizations",
+      "row_count": "0"
+    },
+    {
+      "table_name": "webauthn_challenges",
+      "row_count": "0"
+    }
+  ],
+  "missing_fk_indexes": [
+    {
+      "table_name": "auth.mfa_challenges",
+      "constraint_name": "mfa_challenges_auth_factor_id_fkey",
+      "column_name": "factor_id"
+    },
+    {
+      "table_name": "auth.saml_relay_states",
+      "constraint_name": "saml_relay_states_flow_state_id_fkey",
+      "column_name": "flow_state_id"
+    },
+    {
+      "table_name": "auth.oauth_authorizations",
+      "constraint_name": "oauth_authorizations_client_id_fkey",
+      "column_name": "client_id"
+    },
+    {
+      "table_name": "auth.oauth_authorizations",
+      "constraint_name": "oauth_authorizations_user_id_fkey",
+      "column_name": "user_id"
+    },
+    {
+      "table_name": "storage.s3_multipart_uploads_parts",
+      "constraint_name": "s3_multipart_uploads_parts_upload_id_fkey",
+      "column_name": "upload_id"
+    },
+    {
+      "table_name": "storage.s3_multipart_uploads_parts",
+      "constraint_name": "s3_multipart_uploads_parts_bucket_id_fkey",
+      "column_name": "bucket_id"
+    },
+    {
+      "table_name": "storage.vector_indexes",
+      "constraint_name": "vector_indexes_bucket_id_fkey",
+      "column_name": "bucket_id"
+    },
+    {
+      "table_name": "push_notifications_log",
+      "constraint_name": "push_notifications_log_created_by_fkey",
+      "column_name": "created_by"
+    },
+    {
+      "table_name": "marketplace_order_history",
+      "constraint_name": "marketplace_order_history_order_id_fkey",
+      "column_name": "order_id"
+    },
+    {
+      "table_name": "user_addresses",
+      "constraint_name": "user_addresses_user_id_fkey",
+      "column_name": "user_id"
+    },
+    {
+      "table_name": "marketplace_orders",
+      "constraint_name": "fk_marketplace_orders_address",
+      "column_name": "address_id"
+    },
+    {
+      "table_name": "marketplace_order_items",
+      "constraint_name": "marketplace_order_items_variant_id_fkey",
+      "column_name": "variant_id"
+    },
+    {
+      "table_name": "marketplace_orders",
+      "constraint_name": "marketplace_orders_coupon_id_fkey",
+      "column_name": "coupon_id"
+    },
+    {
+      "table_name": "marketplace_order_history",
+      "constraint_name": "marketplace_order_history_created_by_fkey",
+      "column_name": "created_by"
+    }
+  ],
+  "unused_indexes": [
+    {
+      "schemaname": "net",
+      "table_name": "_http_response",
+      "index_name": "_http_response_created_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "analytics_events",
+      "index_name": "idx_analytics_events_user_id",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "answers",
+      "index_name": "idx_answers_question_id",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "audit_log_entries",
+      "index_name": "audit_logs_instance_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "banners",
+      "index_name": "idx_banners_active_order",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "storage",
+      "table_name": "buckets",
+      "index_name": "bname",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "storage",
+      "table_name": "buckets_analytics",
+      "index_name": "buckets_analytics_unique_name_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "custom_oauth_providers",
+      "index_name": "custom_oauth_providers_provider_type_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "custom_oauth_providers",
+      "index_name": "custom_oauth_providers_created_at_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "custom_oauth_providers",
+      "index_name": "custom_oauth_providers_enabled_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "custom_oauth_providers",
+      "index_name": "custom_oauth_providers_identifier_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "flow_state",
+      "index_name": "flow_state_created_at_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "flow_state",
+      "index_name": "idx_user_id_auth_method",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "flow_state",
+      "index_name": "idx_auth_code",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "marketplace_orders",
+      "index_name": "idx_marketplace_orders_user_id",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "realtime",
+      "table_name": "messages_2026_04_18",
+      "index_name": "messages_2026_04_18_inserted_at_topic_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "realtime",
+      "table_name": "messages_2026_04_19",
+      "index_name": "messages_2026_04_19_inserted_at_topic_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "realtime",
+      "table_name": "messages_2026_04_20",
+      "index_name": "messages_2026_04_20_inserted_at_topic_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "realtime",
+      "table_name": "messages_2026_04_21",
+      "index_name": "messages_2026_04_21_inserted_at_topic_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "realtime",
+      "table_name": "messages_2026_04_22",
+      "index_name": "messages_2026_04_22_inserted_at_topic_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "realtime",
+      "table_name": "messages_2026_04_23",
+      "index_name": "messages_2026_04_23_inserted_at_topic_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "realtime",
+      "table_name": "messages_2026_04_24",
+      "index_name": "messages_2026_04_24_inserted_at_topic_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "mfa_amr_claims",
+      "index_name": "amr_id_pk",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "mfa_challenges",
+      "index_name": "mfa_challenge_created_at_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "mfa_factors",
+      "index_name": "mfa_factors_user_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "mfa_factors",
+      "index_name": "mfa_factors_user_friendly_name_unique",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "mfa_factors",
+      "index_name": "factor_id_created_at_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "oauth_authorizations",
+      "index_name": "oauth_auth_pending_exp_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "oauth_client_states",
+      "index_name": "idx_oauth_client_states_created_at",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "oauth_clients",
+      "index_name": "oauth_clients_deleted_at_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "oauth_consents",
+      "index_name": "oauth_consents_user_client_unique",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "oauth_consents",
+      "index_name": "oauth_consents_active_user_client_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "oauth_consents",
+      "index_name": "oauth_consents_user_order_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "oauth_consents",
+      "index_name": "oauth_consents_active_client_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "storage",
+      "table_name": "objects",
+      "index_name": "idx_objects_bucket_id_name",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "storage",
+      "table_name": "objects",
+      "index_name": "name_prefix_search",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "one_time_tokens",
+      "index_name": "one_time_tokens_relates_to_hash_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "otp_verifications",
+      "index_name": "idx_otp_email",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "pedido_itens",
+      "index_name": "idx_pedido_itens_pedido_id",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "pedidos",
+      "index_name": "idx_pedidos_fornecedor_id",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "produtos",
+      "index_name": "idx_produtos_categoria",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "produtos",
+      "index_name": "idx_produtos_fornecedor_id",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "profiles",
+      "index_name": "idx_profiles_company_id",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "push_notifications_log",
+      "index_name": "idx_push_log_sent_at",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "push_subscriptions",
+      "index_name": "idx_push_subs_created_at",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "push_subscriptions",
+      "index_name": "idx_push_subscriptions_user_id",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "refresh_tokens",
+      "index_name": "refresh_tokens_parent_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "refresh_tokens",
+      "index_name": "refresh_tokens_updated_at_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "refresh_tokens",
+      "index_name": "refresh_tokens_instance_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "refresh_tokens",
+      "index_name": "refresh_tokens_instance_id_user_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "storage",
+      "table_name": "s3_multipart_uploads",
+      "index_name": "idx_multipart_uploads_list",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "saml_providers",
+      "index_name": "saml_providers_sso_provider_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "saml_relay_states",
+      "index_name": "saml_relay_states_created_at_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "saml_relay_states",
+      "index_name": "saml_relay_states_sso_provider_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "saml_relay_states",
+      "index_name": "saml_relay_states_for_email_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "vault",
+      "table_name": "secrets",
+      "index_name": "secrets_name_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "sessions",
+      "index_name": "sessions_user_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "sessions",
+      "index_name": "sessions_oauth_client_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "sessions",
+      "index_name": "user_id_created_at_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "sessions",
+      "index_name": "sessions_not_after_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "sso_domains",
+      "index_name": "sso_domains_sso_provider_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "sso_domains",
+      "index_name": "sso_domains_domain_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "sso_providers",
+      "index_name": "sso_providers_resource_id_pattern_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "sso_providers",
+      "index_name": "sso_providers_resource_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "realtime",
+      "table_name": "subscription",
+      "index_name": "pk_subscription",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "users",
+      "index_name": "email_change_token_new_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "users",
+      "index_name": "email_change_token_current_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "users",
+      "index_name": "reauthentication_token_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "users",
+      "index_name": "recovery_token_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "users",
+      "index_name": "users_instance_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "users",
+      "index_name": "confirmation_token_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "users",
+      "index_name": "users_is_anonymous_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "storage",
+      "table_name": "vector_indexes",
+      "index_name": "vector_indexes_name_bucket_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "vendas",
+      "index_name": "idx_vendas_produto_id",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "webauthn_challenges",
+      "index_name": "webauthn_challenges_expires_at_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "webauthn_challenges",
+      "index_name": "webauthn_challenges_user_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    },
+    {
+      "schemaname": "auth",
+      "table_name": "webauthn_credentials",
+      "index_name": "webauthn_credentials_user_id_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0"
+    }
+  ],
+  "duplicate_indexes": [
+    {
+      "table_name": "storage.objects",
+      "indexes": "{storage.bucketid_objname,storage.idx_objects_bucket_id_name}"
+    },
+    {
+      "table_name": "auth.custom_oauth_providers",
+      "indexes": "{auth.custom_oauth_providers_identifier_key,auth.custom_oauth_providers_identifier_idx}"
+    },
+    {
+      "table_name": "marketplace_orders",
+      "indexes": "{idx_marketplace_orders_user_id,idx_marketplace_orders_user_role_lookup}"
+    },
+    {
+      "table_name": "auth.oauth_consents",
+      "indexes": "{auth.oauth_consents_user_client_unique,auth.oauth_consents_active_user_client_idx}"
+    }
+  ],
+  "custom_triggers": [
+    {
+      "table_name": "user_addresses",
+      "trigger_name": "on_address_default_update",
+      "event": "INSERT",
+      "action_statement": "EXECUTE FUNCTION handle_default_address()"
+    },
+    {
+      "table_name": "user_addresses",
+      "trigger_name": "on_address_default_update",
+      "event": "UPDATE",
+      "action_statement": "EXECUTE FUNCTION handle_default_address()"
+    },
+    {
+      "table_name": "cart_items",
+      "trigger_name": "set_updated_at",
+      "event": "UPDATE",
+      "action_statement": "EXECUTE FUNCTION handle_updated_at()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "tr_prevent_role_change",
+      "event": "UPDATE",
+      "action_statement": "EXECUTE FUNCTION prevent_role_change()"
+    },
+    {
+      "table_name": "marketplace_orders",
+      "trigger_name": "on_order_created_whatsapp",
+      "event": "INSERT",
+      "action_statement": "EXECUTE FUNCTION handle_new_order_whatsapp()"
+    },
+    {
+      "table_name": "profiles",
+      "trigger_name": "tr_ensure_role_protection",
+      "event": "UPDATE",
+      "action_statement": "EXECUTE FUNCTION ensure_role_protection()"
+    }
+  ]
+}
