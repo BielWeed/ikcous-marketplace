@@ -49,11 +49,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             return;
         }
 
-        // Fast Path 2: Optimistic Local Cache
+        // Fast Path 2: Local Cache (Used only to block UI while verifying, NEVER to grant access)
         const cachedAdmin = localStorage.getItem('ikcous_is_admin') === 'true';
-        if (cachedAdmin) {
-            setIsAdmin(true);
-        }
 
         // Network validation (Heavy)
         const networkCheck = async () => {
