@@ -16,6 +16,7 @@ interface ProductCardProps {
   onQuickBuy?: (e: React.MouseEvent) => void;
   onClick: () => void;
   className?: string;
+  priority?: boolean;
 }
 
 export const ProductCard = memo(function ProductCard({
@@ -25,7 +26,8 @@ export const ProductCard = memo(function ProductCard({
   onAddToCart,
   onQuickBuy,
   onClick,
-  className
+  className,
+  priority = false
 }: Readonly<ProductCardProps>) {
   const { config } = useStore();
   const discount = product.originalPrice
@@ -46,7 +48,7 @@ export const ProductCard = memo(function ProductCard({
         }
       }}
       className={cn(
-        "group bg-white rounded-[2.5rem] overflow-hidden premium-shadow hover:-translate-y-2 hover:shadow-2xl hover:shadow-slate-200/40 hover:ring-1 hover:ring-primary/5 transition-all duration-500 cursor-pointer border border-slate-100/50 flex flex-col relative active:scale-[0.97] hover-glow",
+        "group bg-zinc-50/30 rounded-[2.5rem] overflow-hidden hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] hover:bg-white transition-all duration-500 cursor-pointer border border-zinc-200/60 flex flex-col relative active:scale-[0.98] h-full",
         className
       )}
     >
@@ -56,7 +58,9 @@ export const ProductCard = memo(function ProductCard({
           src={product.images[0]}
           alt={product.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out"
-          loading="lazy"
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
+          decoding={priority ? "sync" : "async"}
         />
 
         {/* Action Buttons */}
@@ -134,14 +138,14 @@ export const ProductCard = memo(function ProductCard({
         <div className="flex flex-wrap sm:flex-nowrap gap-1.5 mt-2">
           <button
             onClick={onAddToCart}
-            className="flex-1 min-w-[70px] bg-slate-900 hover:bg-zinc-800 text-white py-1.5 px-1.5 rounded-xl text-[9px] font-bold uppercase tracking-wide transition-all active:scale-[0.98] shadow-lg shadow-slate-200 flex items-center justify-center gap-1"
+            className="flex-1 min-w-[70px] bg-zinc-900 hover:bg-black text-white py-2 px-1.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] shadow-[0_4px_10px_rgba(0,0,0,0.1)] flex items-center justify-center gap-1"
           >
             <ShoppingCart className="w-3 h-3 shrink-0" />
-            <span className="truncate">Adicionar</span>
+            <span className="truncate">Carrinho</span>
           </button>
           <button
             onClick={onQuickBuy}
-            className="flex-1 min-w-[50px] border border-slate-200 hover:bg-slate-50 text-slate-900 py-1.5 px-1.5 rounded-xl text-[9px] font-bold uppercase tracking-wide transition-all active:scale-[0.98] flex items-center justify-center truncate"
+            className="flex-1 min-w-[50px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/50 py-2 px-1.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] flex items-center justify-center truncate"
           >
             Comprar
           </button>

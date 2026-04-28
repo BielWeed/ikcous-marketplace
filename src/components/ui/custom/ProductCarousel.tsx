@@ -60,10 +60,10 @@ export function ProductCarousel({
     if (products.length === 0) return null;
 
     return (
-        <div className={cn("px-6 py-1 overflow-hidden", className)}>
-            <div className="flex flex-col mb-2">
+        <div className={cn("px-5 sm:px-6 py-4 overflow-hidden", className)}>
+            <div className="flex flex-col mb-6">
                 {subtitle && (
-                    <div className="flex items-center gap-2 mb-0.5">
+                    <div className="flex items-center gap-2 mb-1.5">
                         {icon}
                         <span className={cn(
                             "text-[10px] font-black uppercase tracking-[0.3em]",
@@ -73,7 +73,7 @@ export function ProductCarousel({
                         </span>
                     </div>
                 )}
-                <h2 className="text-3xl font-black tracking-tighter text-zinc-900 leading-none">{title}</h2>
+                <h2 className="text-3xl sm:text-4xl font-black tracking-tighter text-zinc-950 leading-[0.9]">{title}</h2>
             </div>
 
             <div className="relative -mx-6">
@@ -100,7 +100,7 @@ export function ProductCarousel({
                         <div
                             key={product.id}
                             className={cn(
-                                "flex-shrink-0 w-[260px] py-2",
+                                "flex-shrink-0 w-[260px] py-2 h-full flex flex-col",
                                 index === 0 ? "snap-start" : "snap-center"
                             )}
                         >
@@ -124,6 +124,7 @@ export function ProductCarousel({
                                     e.stopPropagation();
                                     onQuickBuy?.(product);
                                 }}
+                                priority={index < 3}
                             />
                         </div>
                     ))}

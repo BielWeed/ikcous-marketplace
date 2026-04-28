@@ -61,7 +61,7 @@ export function ProductList({
                             animationDelay: `${(index % 8) * 50}ms`,
                             animationFillMode: 'both'
                         }}
-                        className="animate-fade-in"
+                        className="animate-fade-in h-full flex flex-col"
                     >
                         <ProductCard
                             product={product}
@@ -85,6 +85,7 @@ export function ProductList({
                                 haptic.success();
                                 onQuickBuy?.(product);
                             }}
+                            priority={index < 4}
                         />
                     </div>
                 ))}
