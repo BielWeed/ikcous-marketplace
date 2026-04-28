@@ -130,8 +130,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         try {
             const { data, error } = await supabase.rpc('get_my_complete_profile');
             if (!error && data) {
-                const profileObj = Array.isArray(data) ? data[0] : data;
-                setProfile(profileObj);
+                setProfile(prev => {
+                    // Impede mudança de referência se os dados forem idênticos (previne re-renderização em cascata)
+                    if (prev && JSON.stringify(prev) === JSON.stringify(profileObj)) return prev;
+                    return profileObj;
+                });
                 if (profileObj) console.log('[Auth] Profile fetched:', profileObj.full_name);
             } else if (error) {
                 console.error('[Auth] Error fetching profile:', error);
@@ -241,9 +244,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             });
 
             setUser(prev => {
-                if (event === 'INITIAL_SESSION' && !session && prev) return prev;
-                if (event === 'INITIAL_SESSION' && prev?.id === session?.user?.id) return prev;
-                return session?.user ?? null;
+                if (!session) return prev && event === 'INITIAL_SESSION' ? prev : null;
+                if (prev?.id === session?.user?.id) return prev; // PREVENT INFINITE EFFECT LOOPS
+                return session.user;
             });
 
             if (event === 'PASSWORD_RECOVERY') {
