@@ -223,7 +223,7 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
                             <div className="h-px flex-1 bg-zinc-800" />
                           </div>
                           <button 
-                             onClick={() => { haptic.light(); }}
+                             onClick={() => { haptic.light(); onNavigate('checkout'); }}
                              className="w-full py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest text-zinc-400 border border-zinc-800 hover:text-zinc-200 transition-colors"
                           >
                             Comprar como Convidado
