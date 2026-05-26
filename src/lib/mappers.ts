@@ -27,6 +27,9 @@ export function mapProductFromDB(
         const freeShipping = !!(row.frete_gratis ?? row.free_shipping);
         const isBestseller = !!(row.is_bestseller ?? row.is_bestseller); // Same name usually
 
+        const createdAt = row.data_cadastro || row.created_at || '1970-01-01T00:00:00.000Z';
+        const createdTime = new Date(createdAt).getTime();
+
         return {
             id: row.id,
             name: (name === 'boobie goods' || name === 'Boobie Goods') ? 'Bobbie Goods' : name,
@@ -47,7 +50,8 @@ export function mapProductFromDB(
             isActive,
             isBestseller,
             freeShipping,
-            createdAt: row.data_cadastro || row.created_at || '1970-01-01T00:00:00.000Z',
+            createdAt,
+            createdTime,
             rating: row.rating ? Number(row.rating) : 5,
             reviewCount: row.review_count ? Number(row.review_count) : 0,
             tags: Array.isArray(row.tags) ? row.tags : [],
@@ -71,6 +75,7 @@ export function mapProductFromDB(
             isBestseller: false,
             freeShipping: false,
             createdAt: '1970-01-01T00:00:00.000Z',
+            createdTime: 0,
             rating: 0,
             reviewCount: 0,
             tags: [],

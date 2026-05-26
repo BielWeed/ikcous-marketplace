@@ -130,12 +130,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         try {
             const { data, error } = await supabase.rpc('get_my_complete_profile');
             if (!error && data) {
-                setProfile(prev => {
+                const profileData = Array.isArray(data) ? data[0] : data;
+                setProfile((prev: any) => {
                     // Impede mudança de referência se os dados forem idênticos (previne re-renderização em cascata)
-                    if (prev && JSON.stringify(prev) === JSON.stringify(profileObj)) return prev;
-                    return profileObj;
+                    if (prev && JSON.stringify(prev) === JSON.stringify(profileData)) return prev;
+                    return profileData;
                 });
-                if (profileObj) console.log('[Auth] Profile fetched:', profileObj.full_name);
+                if (profileData) console.log('[Auth] Profile fetched:', profileData.full_name);
             } else if (error) {
                 console.error('[Auth] Error fetching profile:', error);
             }

@@ -6,7 +6,7 @@ import { useEffect, useCallback } from 'react';
  * Implementa um modelo de Cadeia de Markov local para prever a próxima navegação do usuário.
  * Aprende com o histórico da sessão e otimiza o prefetch proativo.
  */
-export function useBehavioralPrefetch(currentPath: string) {
+export function useBehavioralPrefetch(currentPath: string, prefetchCallback?: (view: string) => void) {
     const updateMarkovChain = useCallback((path: string) => {
         try {
             const historyRaw = localStorage.getItem('pwa_nav_history');
@@ -54,8 +54,9 @@ export function useBehavioralPrefetch(currentPath: string) {
         const prediction = getPrediction();
         if (prediction && prediction !== currentPath) {
             console.log(`[Omnipotence-Markov] High probability path detected: ${prediction}. Prefetching...`);
-            // No marketplace IKCOUS, prefetching é simulado via warming
-            // mas podemos injetar o prefetch nativo se for uma URL real
+            if (prefetchCallback) {
+                prefetchCallback(prediction);
+            }
         }
-    }, [currentPath, updateMarkovChain, getPrediction]);
+    }, [currentPath, updateMarkovChain, getPrediction, prefetchCallback]);
 }

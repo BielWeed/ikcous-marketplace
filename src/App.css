@@ -2,11 +2,11 @@
 
 /* Safe area for mobile */
 .safe-area-bottom {
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-bottom: var(--safe-area-bottom, 0px);
 }
 
 .h-safe-area-inset-bottom {
-  height: env(safe-area-inset-bottom, 0);
+  height: var(--safe-area-bottom, 0px);
 }
 
 /* Global scrollbar hiding utility */

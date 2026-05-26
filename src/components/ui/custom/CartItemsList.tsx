@@ -17,30 +17,56 @@ interface CartItemCardProps {
 function CartItemCard({ item, removingId, onUpdateQuantity, onRemove }: Readonly<CartItemCardProps>) {
     // Removed unused config destructuring
     useStore();
-    const [touchStart, setTouchStart] = useState<number | null>(null);
+    const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
     const [touchOffset, setTouchOffset] = useState(0);
+    const [isSwipingHorizontal, setIsSwipingHorizontal] = useState<boolean | null>(null);
 
     const handleTouchStart = (e: React.TouchEvent) => {
-        setTouchStart(e.targetTouches[0].clientX);
+        setTouchStart({
+            x: e.targetTouches[0].clientX,
+            y: e.targetTouches[0].clientY
+        });
+        setIsSwipingHorizontal(null);
     };
 
     const handleTouchMove = (e: React.TouchEvent) => {
         if (touchStart === null) return;
-        const currentTouch = e.targetTouches[0].clientX;
-        const diff = touchStart - currentTouch;
-        if (diff > 0) {
-            setTouchOffset(Math.min(diff, 100));
+        const currentX = e.targetTouches[0].clientX;
+        const currentY = e.targetTouches[0].clientY;
+        const diffX = touchStart.x - currentX;
+        const diffY = touchStart.y - currentY;
+
+        if (isSwipingHorizontal === null) {
+            const absX = Math.abs(diffX);
+            const absY = Math.abs(diffY);
+            if (absX > 5 || absY > 5) {
+                if (absX > absY) {
+                    setIsSwipingHorizontal(true);
+                } else {
+                    setIsSwipingHorizontal(false);
+                }
+            }
+            return;
+        }
+
+        if (isSwipingHorizontal === false) {
+            return;
+        }
+
+        if (diffX > 0) {
+            setTouchOffset(Math.min(diffX, 100));
         } else {
             setTouchOffset(0);
         }
     };
 
     const handleTouchEnd = () => {
-        if (touchOffset > 80) {
+        if (isSwipingHorizontal && touchOffset > 80) {
             onRemove(item.product.id);
         }
         setTouchOffset(0);
         setTouchStart(null);
+        setIsSwipingHorizontal(null);
     };
 
     return (
@@ -65,7 +91,7 @@ function CartItemCard({ item, removingId, onUpdateQuantity, onRemove }: Readonly
                 animate={{ x: -touchOffset }}
                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
                 className={cn(
-                    "flex gap-6 bg-white p-5 rounded-[2.5rem] border border-zinc-100/50 shadow-sm relative z-10",
+                    "flex gap-6 bg-white p-5 rounded-[2.5rem] border border-zinc-100/50 shadow-sm relative z-10 touch-pan-y",
                     removingId === item.product.id && "opacity-50"
                 )}
             >

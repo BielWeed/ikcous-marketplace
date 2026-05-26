@@ -1,5 +1,26 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+
+// Headless sandbox safety: prevent Chromium Service Worker native crashes
+if (
+  typeof navigator !== 'undefined' && (
+    navigator.userAgent.toLowerCase().includes('headless') ||
+    navigator.userAgent.toLowerCase().includes('playwright') ||
+    globalThis.location?.search?.includes('disable_sw')
+  )
+) {
+  try {
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: undefined,
+      configurable: true,
+      writable: true
+    });
+    console.log('[Sandbox] Headless environment detected. Service Worker registration bypassed.');
+  } catch (e) {
+    // Fallback if read-only
+  }
+}
+
 import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from '@/contexts/AuthContext'

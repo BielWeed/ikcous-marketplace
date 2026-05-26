@@ -17,6 +17,8 @@ const getVersion = () => {
     }
 };
 const CACHE_NAME = `app-cache-${getVersion()}`;
+const IMAGE_CACHE_NAME = 'supabase-images-cache';
+const MAX_IMAGE_ENTRIES = 100;
 
 // self.__WB_MANIFEST is the injection point for the precache manifest
 // We must include it even if we handle caching manually to satisfy Workbox.
@@ -24,7 +26,15 @@ declare const self: any;
 const precacheManifest = self.__WB_MANIFEST || [];
 console.log('[SW] Precache Manifest received:', precacheManifest.length);
 
-sw.addEventListener('install', () => {
+sw.addEventListener('install', (event: any) => {
+    // Cache precacheManifest files
+    event.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => {
+            const urls = precacheManifest.map((entry: any) => entry.url);
+            console.log('[SW] Caching precache manifest URLs:', urls.length);
+            return cache.addAll(urls).catch((err) => console.warn('[SW] Precache failed:', err));
+        })
+    );
     // Força a ativação imediata após a instalação
     sw.skipWaiting();
     console.log('[SW] Installing new version and skipping waiting...');
@@ -37,7 +47,7 @@ sw.addEventListener('activate', (event: any) => {
             sw.clients.claim(),
             // CACHE PURGE: Deleta caches antigos
             caches.keys().then((cacheNames) => {
-                const cachesToDelete = cacheNames.filter((name) => name !== CACHE_NAME);
+                const cachesToDelete = cacheNames.filter((name) => name !== CACHE_NAME && name !== IMAGE_CACHE_NAME);
                 return Promise.all(
                     cachesToDelete.map((name) => {
                         console.log(`[SW] Purging old cache: ${name}`);
@@ -48,6 +58,8 @@ sw.addEventListener('activate', (event: any) => {
         ])
     );
 });
+
+let networkQuality = 'fast';
 
 sw.addEventListener('fetch', (event: any) => {
     const url = new URL(event.request.url);
@@ -83,12 +95,42 @@ sw.addEventListener('fetch', (event: any) => {
         return;
     }
 
-    // Ignorar Supabase API (não cachear dados dinâmicos aqui)
-    if (url.hostname.includes('supabase.co')) return;
+    // Se for Supabase, ignorar exceto se for imagens (Storage)
+    if (url.hostname.includes('supabase.co')) {
+        const isSupabaseImage = url.pathname.includes('/storage/v1/object/') || url.pathname.includes('/storage/v1/render/');
+        if (!isSupabaseImage) return;
+
+        event.respondWith(
+            caches.open(IMAGE_CACHE_NAME).then((cache) => {
+                return cache.match(event.request).then((cachedResponse) => {
+                    const fetchPromise = fetch(event.request)
+                        .then((networkResponse) => {
+                            if (networkResponse && networkResponse.status === 200) {
+                                const responseToCache = networkResponse.clone();
+                                cache.put(event.request, responseToCache);
+                                cleanOldImageCache(cache);
+                            }
+                            return networkResponse;
+                        })
+                        .catch((err) => {
+                            console.warn('[SW] Supabase image fetch failed:', err);
+                            if (cachedResponse) return cachedResponse;
+                            throw err;
+                        });
+                    return cachedResponse || fetchPromise;
+                });
+            })
+        );
+        return;
+    }
 
     // 3. STALE-WHILE-REVALIDATE: Assets estáticos (JS, CSS, Imagens)
     event.respondWith(
         caches.match(event.request).then((cachedResponse) => {
+            if (cachedResponse && (networkQuality === 'slow' || networkQuality === 'offline')) {
+                console.log('[SW] Network is slow/offline. Serving from Cache only (no background fetch):', event.request.url);
+                return cachedResponse;
+            }
             const fetchPromise = fetch(event.request).then((networkResponse) => {
                 // Só cachear se for uma resposta válida, de sucesso e do tipo basic/cors
                 // Evitamos cachear respostas opaque (status 0) que podem estar corrompidas
@@ -96,7 +138,7 @@ sw.addEventListener('fetch', (event: any) => {
                     try {
                         // Robust cache update: only cache valid, successful responses
                 const responseToCache = networkResponse.clone();
-                if (responseToCache?.status === 200 && responseToCache.type === 'basic') {
+                if (responseToCache?.status === 200 && (responseToCache.type === 'basic' || responseToCache.type === 'cors')) {
                     caches.open(CACHE_NAME).then((cache) => {
                         cache.put(event.request, responseToCache);
                     });
@@ -146,9 +188,45 @@ sw.addEventListener('message', (event: any) => {
             });
         });
     }
+
+    if (event.data?.type === 'WARM_CACHE') {
+        const urls = event.data.urls || [];
+        console.log('[SW] WARM_CACHE received. Warming:', urls.length, 'URLs');
+        caches.open(CACHE_NAME).then((cache) => {
+            urls.forEach((url: string) => {
+                fetch(url)
+                    .then((res) => {
+                        if (res.ok && res.status === 200) {
+                            cache.put(url, res);
+                        }
+                    })
+                    .catch((err) => console.warn('[SW] Warm fetch failed for:', url, err));
+            });
+        });
+    }
+
+    if (event.data?.type === 'SET_NETWORK_QUALITY') {
+        networkQuality = event.data.quality || 'fast';
+        console.log('[SW] Network quality updated to:', networkQuality);
+    }
 });
 
 // Auto-ping a cada 30s para manter o worker ativo em alguns navegadores
 setInterval(() => {
     // Keep alive logic
 }, 30000);
+
+async function cleanOldImageCache(cache: Cache) {
+    try {
+        const keys = await cache.keys();
+        if (keys.length > MAX_IMAGE_ENTRIES) {
+            const keysToDelete = keys.slice(0, keys.length - MAX_IMAGE_ENTRIES);
+            for (const key of keysToDelete) {
+                console.log('[SW] Cache limit reached. Deleting old image:', key.url);
+                await cache.delete(key);
+            }
+        }
+    } catch (e) {
+        console.warn('[SW] Image cache cleaning failed:', e);
+    }
+}

@@ -1,9 +1,11 @@
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { ArrowLeft, Search as SearchIcon, SlidersHorizontal, Sparkles, PackageSearch } from 'lucide-react';
 import { useSearch } from '@/hooks/useSearch';
 import { useProducts } from '@/hooks/useProducts';
 import { useFavorites } from '@/hooks/useFavorites';
 import { ProductCard } from '@/components/ui/custom/ProductCard';
+import { useStore } from '@/contexts/StoreContext';
+import { usePrefetchOnHover } from '@/hooks/usePrefetchOnHover';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -15,7 +17,43 @@ interface SearchViewProps {
     onBack: () => void;
 }
 
-export function SearchView({ onNavigate, initialQuery = '', onBack }: SearchViewProps) {
+interface SearchInputProps {
+    value: string;
+    onChange: (value: string) => void;
+}
+
+const SearchInput = React.memo(function SearchInput({ value, onChange }: SearchInputProps) {
+    const [localValue, setLocalValue] = useState(value);
+
+    useEffect(() => {
+        setLocalValue(value);
+    }, [value]);
+
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            onChange(localValue);
+        }, 300);
+        return () => clearTimeout(handler);
+    }, [localValue, onChange]);
+
+    return (
+        <div className="flex-1 relative group">
+            <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 group-focus-within:text-zinc-900 transition-colors" />
+            <Input
+                id="search-input"
+                name="q"
+                value={localValue}
+                onChange={(e) => setLocalValue(e.target.value)}
+                placeholder="O que você deseja hoje?"
+                className="h-12 bg-zinc-50 border-zinc-100 rounded-2xl pl-11 pr-4 text-sm focus:ring-black/5 focus:border-zinc-200 transition-all placeholder:text-zinc-400"
+            />
+        </div>
+    );
+});
+
+export const SearchView = React.memo(function SearchView({ onNavigate, initialQuery = '', onBack }: SearchViewProps) {
+    const { config } = useStore();
+    const { prefetchView } = usePrefetchOnHover();
     const { products: allProducts } = useProducts();
     const {
         query, setQuery,
@@ -28,8 +66,38 @@ export function SearchView({ onNavigate, initialQuery = '', onBack }: SearchView
     } = useSearch(allProducts);
 
     const { isFavorite, toggleFavorite } = useFavorites();
-    const [isFilterOpen, setIsFilterOpen] = useState(false);
+    const handleProductClick = useCallback((id: string) => {
+        onNavigate('product-detail', id);
+    }, [onNavigate]);
 
+    const handlePrefetchProductDetail = useCallback(() => {
+        prefetchView('product-detail');
+    }, [prefetchView]);
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
+    const [visibleCount, setVisibleCount] = useState(8);
+    const observerTarget = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting && visibleCount < filteredProducts.length) {
+                    setVisibleCount(prev => Math.min(prev + 8, filteredProducts.length));
+                }
+            },
+            { threshold: 0.1, rootMargin: '200px' }
+        );
+
+        if (observerTarget.current) {
+            observer.observe(observerTarget.current);
+        }
+
+        return () => observer.disconnect();
+    }, [visibleCount, filteredProducts.length]);
+
+    // Reset pagination when any query filters change
+    useEffect(() => {
+        setVisibleCount(8);
+    }, [query, category, minPrice, maxPrice, sort]);
     // Get trending products for empty state
     const trendingProducts = allProducts.slice(0, 4);
 
@@ -70,17 +138,7 @@ export function SearchView({ onNavigate, initialQuery = '', onBack }: SearchView
                         >
                             <ArrowLeft className="w-5 h-5 text-zinc-900" />
                         </button>
-                        <div className="flex-1 relative group">
-                            <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 group-focus-within:text-zinc-900 transition-colors" />
-                            <Input
-                                id="search-input"
-                                name="q"
-                                value={query}
-                                onChange={(e) => setQuery(e.target.value)}
-                                placeholder="O que você deseja hoje?"
-                                className="h-12 bg-zinc-50 border-zinc-100 rounded-2xl pl-11 pr-4 text-sm focus:ring-black/5 focus:border-zinc-200 transition-all placeholder:text-zinc-400"
-                            />
-                        </div>
+                        <SearchInput value={query} onChange={setQuery} />
                     </div>
 
                     {/* Quick Filters - Pill Style */}
@@ -188,19 +246,34 @@ export function SearchView({ onNavigate, initialQuery = '', onBack }: SearchView
                             </div>
                         </div>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-                            {filteredProducts.map((product) => (
-                                <ProductCard
+                            {filteredProducts.slice(0, visibleCount).map((product, index) => (
+                                <div
                                     key={product.id}
-                                    product={product}
-                                    isFavorite={isFavorite(product.id)}
-                                    onToggleFavorite={(e) => {
-                                        e.stopPropagation();
-                                        toggleFavorite(product);
+                                    style={{
+                                        animationDelay: `${(index % 8) * 50}ms`,
+                                        animationFillMode: 'both'
                                     }}
-                                    onClick={() => onNavigate('product-detail', product.id)}
-                                />
+                                    className="animate-fade-in h-full flex flex-col"
+                                >
+                                    <ProductCard
+                                        product={product}
+                                        isFavorite={isFavorite(product.id)}
+                                        onToggleFavorite={toggleFavorite}
+                                        onClick={handleProductClick}
+                                        isEligibleForFreeShipping={config.freeShippingMin > 0}
+                                        onMouseEnter={handlePrefetchProductDetail}
+                                        onTouchStart={handlePrefetchProductDetail}
+                                        priority={index < 4}
+                                    />
+                                </div>
                             ))}
                         </div>
+
+                        {visibleCount < filteredProducts.length && (
+                            <div ref={observerTarget} className="h-20 flex items-center justify-center">
+                                <div className="w-6 h-6 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
+                            </div>
+                        )}
                     </div>
                 ) : (
                     /* Smart Empty State */
@@ -235,11 +308,11 @@ export function SearchView({ onNavigate, initialQuery = '', onBack }: SearchView
                                         key={product.id}
                                         product={product}
                                         isFavorite={isFavorite(product.id)}
-                                        onToggleFavorite={(e) => {
-                                            e.stopPropagation();
-                                            toggleFavorite(product);
-                                        }}
-                                        onClick={() => onNavigate('product-detail', product.id)}
+                                        onToggleFavorite={toggleFavorite}
+                                        onClick={handleProductClick}
+                                        isEligibleForFreeShipping={config.freeShippingMin > 0}
+                                        onMouseEnter={handlePrefetchProductDetail}
+                                        onTouchStart={handlePrefetchProductDetail}
                                     />
                                 ))}
                             </div>
@@ -249,4 +322,4 @@ export function SearchView({ onNavigate, initialQuery = '', onBack }: SearchView
             </div>
         </div>
     );
-}
+});

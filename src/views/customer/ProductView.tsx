@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   Heart, Share2, MessageCircle, Truck, ShieldCheck, Flame,
@@ -21,6 +21,39 @@ import { ProductCard } from '@/components/ui/custom/ProductCard';
 import { ProductCardSkeleton } from '@/components/ui/custom/ProductCardSkeleton';
 import { MarkdownRenderer } from '@/components/ui/custom/MarkdownRenderer';
 
+const RECS_CACHE_KEY_PREFIX = 'ikcous_recs_cache_';
+const memoryRecsCache = new Map<string, Product[]>();
+
+const getRecsCache = (productId: string): Product[] | null => {
+  if (memoryRecsCache.has(productId)) {
+    return memoryRecsCache.get(productId)!;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(`${RECS_CACHE_KEY_PREFIX}${productId}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        memoryRecsCache.set(productId, parsed);
+        return parsed;
+      }
+    } catch (e) {
+      console.error('Failed to parse recommendations cache', e);
+    }
+  }
+  return null;
+};
+
+const updateRecsCache = (productId: string, newRecs: Product[]) => {
+  memoryRecsCache.set(productId, newRecs);
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(`${RECS_CACHE_KEY_PREFIX}${productId}`, JSON.stringify(newRecs));
+    } catch (e) {
+      console.error('Failed to update recommendations cache', e);
+    }
+  }
+};
+
 interface ProductViewProps {
   product: Product;
   isFavorite: boolean;
@@ -28,17 +61,19 @@ interface ProductViewProps {
   onAddToCart: (quantity: number, variantId?: string, variantNames?: string) => void;
   onBack: () => void;
   onProductClick?: (productId: string) => void;
-  scrollProgress?: number;
+  onAddToCartProduct?: (product: Product, quantity: number, variantId?: string, variantNames?: string) => void;
+  onQuickBuy?: (product: Product, variantId?: string) => void;
 }
 
-export function ProductView({
+export const ProductView = React.memo(function ProductView({
   product,
   isFavorite,
   onToggleFavorite,
   onAddToCart,
   onBack,
   onProductClick,
-  scrollProgress = 0
+  onAddToCartProduct,
+  onQuickBuy
 }: ProductViewProps) {
   const [quantity, setQuantity] = useState(1);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -53,30 +88,139 @@ export function ProductView({
   const { isFavorite: checkFavorite, toggleFavorite } = useFavorites();
   const { user } = useAuth();
 
-  const [recommendations, setRecommendations] = useState<Product[]>([]);
-  const [loadingRecs, setLoadingRecs] = useState(true);
+  const handleToggleFavorite = useCallback((p: Product) => {
+    toggleFavorite(p);
+  }, [toggleFavorite]);
 
-  const scrolled = scrollProgress > 400;
+  const handleAddToCartFromCard = useCallback((p: Product, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (onAddToCartProduct) {
+      onAddToCartProduct(p, 1);
+    } else {
+      onAddToCart(1, undefined);
+    }
+    setShowAddedToast(true);
+    setTimeout(() => setShowAddedToast(false), 2000);
+  }, [onAddToCart, onAddToCartProduct]);
+
+  const handleQuickBuyFromCard = useCallback((p: Product, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (onQuickBuy) {
+      onQuickBuy(p, undefined);
+    }
+  }, [onQuickBuy]);
+
+  const handleProductClick = useCallback((productId: string) => {
+    trackRecommendationClick(productId, 'product_view');
+    if (onProductClick) {
+      onProductClick(productId);
+    } else {
+      globalThis.location.href = `?product=${productId}`;
+    }
+  }, [onProductClick, trackRecommendationClick]);
+
+  const [recommendations, setRecommendations] = useState<Product[]>(() => {
+    return getRecsCache(product.id) || [];
+  });
+  const [loadingRecs, setLoadingRecs] = useState(() => {
+    return !getRecsCache(product.id);
+  });
+
+  const [scrolled, setScrolled] = useState(false);
+  const stickySentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getReviewsByProduct(product.id);
-  }, [product.id, getReviewsByProduct]);
+    const sentinel = stickySentinelRef.current;
+    if (!sentinel) return;
+
+    const mainElement = document.querySelector('main');
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setScrolled(!entry.isIntersecting);
+      },
+      {
+        root: mainElement,
+        threshold: 0,
+      }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [product.id]);
+
+  const recsRef = useRef<HTMLDivElement>(null);
+  const [recsVisible, setRecsVisible] = useState(false);
 
   useEffect(() => {
-    const loadRecs = async () => {
-      setLoadingRecs(true);
-      const recs = await fetchRecommendations(product.id);
-      setRecommendations(recs);
+    setRecsVisible(false);
+  }, [product.id]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setRecsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.01, rootMargin: '300px' }
+    );
+
+    const currentRef = recsRef.current;
+    if (currentRef) {
+      observer.observe(currentRef);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [product.id]);
+
+  useEffect(() => {
+    if (activeTab === 'reviews') {
+      getReviewsByProduct(product.id);
+    }
+  }, [product.id, activeTab, getReviewsByProduct]);
+
+  useEffect(() => {
+    if (!recsVisible) return;
+
+    // 1. Initial SWR cache sync
+    const cached = getRecsCache(product.id);
+    if (cached) {
+      setRecommendations(cached);
       setLoadingRecs(false);
+    } else {
+      setRecommendations([]);
+      setLoadingRecs(true);
+    }
+
+    // 2. Fetch fresh data in background
+    let isMounted = true;
+    const loadRecs = async () => {
+      const recs = await fetchRecommendations(product.id);
+      if (isMounted) {
+        setRecommendations(recs);
+        updateRecsCache(product.id, recs);
+        setLoadingRecs(false);
+      }
     };
     loadRecs();
-  }, [product.id, fetchRecommendations]);
 
-  // Calculate average rating and count on the fly based on fetched reviews
-  const reviewCount = reviews.length;
-  const averageRating = reviewCount > 0
-    ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviewCount
-    : 0;
+    return () => {
+      isMounted = false;
+    };
+  }, [product.id, fetchRecommendations, recsVisible]);
+
+  // Calculate average rating and count on the fly based on fetched reviews, with fallbacks from mapped product view
+  const reviewCount = reviews.length > 0 ? reviews.length : (product.reviewCount ?? 0);
+  const averageRating = reviews.length > 0
+    ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length
+    : (product.rating ?? 5);
 
   // Group variants by name
   const variantGroups = product.variants?.reduce((acc, v) => {
@@ -175,7 +319,20 @@ export function ProductView({
   };
 
   return (
-    <div className="min-h-full bg-white pb-32">
+    <div className="relative min-h-full bg-white">
+      {/* Sticky Top Bar Sentinel */}
+      <div 
+        ref={stickySentinelRef} 
+        style={{ 
+          position: 'absolute', 
+          top: '400px', 
+          left: 0, 
+          width: '1px', 
+          height: '1px', 
+          pointerEvents: 'none', 
+          opacity: 0 
+        }} 
+      />
       <Helmet>
         <title>{product.metaTitle || `${product.name} | Loja`}</title>
         <meta name="description" content={product.metaDescription || product.description?.substring(0, 150) || ''} />
@@ -521,7 +678,7 @@ export function ProductView({
         )}
 
         {/* Recommendations - Magazine Style */}
-        <div className="mt-20 pt-10 border-t border-zinc-100">
+        <div ref={recsRef} className="mt-20 pt-10 border-t border-zinc-100">
           <div className="flex flex-col items-center text-center mb-10">
             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400 mb-3">Curadoria Especial</span>
             <h3 className="text-3xl font-black tracking-tighter text-zinc-900 leading-none">Você também pode gostar</h3>
@@ -535,22 +692,10 @@ export function ProductView({
                   key={p.id}
                   product={p}
                   isFavorite={checkFavorite(p.id)}
-                  onToggleFavorite={(e) => {
-                    e.stopPropagation();
-                    toggleFavorite(p);
-                  }}
-                  onAddToCart={(e) => {
-                    e.stopPropagation();
-                    onAddToCart(1, undefined);
-                  }}
-                  onClick={() => {
-                    trackRecommendationClick(p.id, 'product_view');
-                    if (onProductClick) {
-                      onProductClick(p.id);
-                    } else {
-                      globalThis.location.href = `?product=${p.id}`;
-                    }
-                  }}
+                  onToggleFavorite={handleToggleFavorite}
+                  onAddToCart={handleAddToCartFromCard}
+                  onQuickBuy={handleQuickBuyFromCard}
+                  onClick={handleProductClick}
                 />
               ))
             )}
@@ -558,8 +703,11 @@ export function ProductView({
         </div>
       </div>
 
+      {/* Spacer to prevent overlap by the sticky bottom actions */}
+      <div className="h-[240px] w-full flex-shrink-0" aria-hidden="true" />
+
       {/* Bottom Actions */}
-      <div className="fixed bottom-16 md:bottom-20 left-0 right-0 bg-white/80 backdrop-blur-2xl border-t border-zinc-100 p-4 z-40 shadow-2xl rounded-t-[2.5rem]">
+      <div className="fixed bottom-[calc(64px+var(--safe-area-bottom,0px))] left-0 right-0 bg-white/80 backdrop-blur-2xl border-t border-zinc-100 p-4 z-40 shadow-2xl rounded-t-[2.5rem] md:bottom-24 md:max-w-screen-md md:mx-auto md:rounded-[2.5rem] md:border">
         <div className="max-w-screen-md mx-auto">
           {/* Quantity Selector */}
           {!isOutOfStock && (
@@ -611,4 +759,4 @@ export function ProductView({
       )}
     </div>
   );
-}
+});

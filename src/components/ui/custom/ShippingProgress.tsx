@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ShoppingCart, Truck, Sparkles as SparklesIcon, Minus, Plus } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { haptic } from '@/utils/haptic';
 import type { Product } from '@/types';
 
@@ -81,7 +81,7 @@ export function ShippingProgress({
                     <div className="text-right flex flex-col items-end animate-in fade-in slide-in-from-right-4">
                         <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600/70 mb-0.5">Economia</span>
                         <span className="text-xs sm:text-sm font-black text-emerald-600 tracking-tighter shrink-0 bg-emerald-100/50 px-2 py-0.5 rounded-lg">
-                           + {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(savings)}
+                           + {formatCurrency(savings)}
                         </span>
                     </div>
                 )}
@@ -98,7 +98,7 @@ export function ShippingProgress({
                     </span>
                     {shipping > 0 && (
                         <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                            Faltam <strong className="text-zinc-900 font-black tracking-tight">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amountToFree)}</strong>
+                            Faltam <strong className="text-zinc-900 font-black tracking-tight">{formatCurrency(amountToFree)}</strong>
                         </span>
                     )}
                 </div>

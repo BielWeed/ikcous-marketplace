@@ -34,6 +34,11 @@ DECLARE
     
     v_store_config RECORD;
     v_shipping_validated numeric;
+    v_frete_gratis boolean;
+    v_has_free_shipping_item boolean := false;
+
+    v_coupon_type text;
+    v_coupon_val numeric;
 BEGIN
     -- 0. Auth Check (REMOVED for Guest Checkout)
     -- IF v_user_id IS NULL THEN RAISE EXCEPTION 'Não autenticado.'; END IF;
@@ -58,16 +63,16 @@ BEGIN
         IF v_quantity <= 0 THEN RAISE EXCEPTION 'Quantidade inválida para um dos itens.'; END IF;
 
         IF v_variant_id IS NOT NULL THEN
-            SELECT COALESCE(v.price_override, p.preco_venda), v.stock_increment, p.nome
-            INTO v_db_price, v_db_stock, v_item_name
+            SELECT COALESCE(v.price_override, p.preco_venda), v.stock_increment, p.nome, p.frete_gratis
+            INTO v_db_price, v_db_stock, v_item_name, v_frete_gratis
             FROM public.produtos p
             JOIN public.product_variants v ON v.product_id = p.id
             WHERE v.id = v_variant_id AND p.id = v_product_id
               AND v.active = true AND p.ativo = true
             FOR NO KEY UPDATE OF v; 
         ELSE
-            SELECT preco_venda, estoque, nome
-            INTO v_db_price, v_db_stock, v_item_name
+            SELECT preco_venda, estoque, nome, frete_gratis
+            INTO v_db_price, v_db_stock, v_item_name, v_frete_gratis
             FROM public.produtos
             WHERE id = v_product_id AND ativo = true
             FOR NO KEY UPDATE; 
@@ -79,10 +84,13 @@ BEGIN
         END IF;
 
         v_calculated_subtotal := v_calculated_subtotal + (v_db_price * v_quantity);
+        IF v_frete_gratis = true THEN
+            v_has_free_shipping_item := true;
+        END IF;
     END LOOP;
 
     -- 4. Shipping Calculation
-    IF v_calculated_subtotal >= COALESCE(v_store_config.free_shipping_min, 999999) THEN
+    IF v_has_free_shipping_item = true OR v_calculated_subtotal >= COALESCE(v_store_config.free_shipping_min, 999999) THEN
         v_shipping_validated := 0;
     ELSE
         v_shipping_validated := COALESCE(v_store_config.shipping_fee, 0);
@@ -90,7 +98,7 @@ BEGIN
 
     -- 5. Coupon Validation
     IF p_coupon_code IS NOT NULL AND p_coupon_code != '' THEN
-        SELECT id, value INTO v_coupon_id, v_discount_amount
+        SELECT id, value, type INTO v_coupon_id, v_coupon_val, v_coupon_type
         FROM public.coupons
         WHERE UPPER(code) = UPPER(p_coupon_code) 
           AND active = true 
@@ -101,6 +109,17 @@ BEGIN
           
         IF v_coupon_id IS NULL THEN
             RAISE EXCEPTION 'Cupom % inválido ou expirado.', p_coupon_code;
+        END IF;
+
+        IF v_coupon_type = 'percentage' THEN
+            v_discount_amount := (v_calculated_subtotal * v_coupon_val) / 100;
+        ELSE
+            v_discount_amount := v_coupon_val;
+        END IF;
+
+        -- Cap discount at subtotal
+        IF v_discount_amount > v_calculated_subtotal THEN
+            v_discount_amount := v_calculated_subtotal;
         END IF;
     END IF;
 

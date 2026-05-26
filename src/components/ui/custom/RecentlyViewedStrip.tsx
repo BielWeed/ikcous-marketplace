@@ -1,5 +1,6 @@
 import { Clock, ChevronRight } from 'lucide-react';
 import type { Product, View } from '@/types';
+import { LazyImage } from '@/components/LazyImage';
 
 interface RecentlyViewedStripProps {
   products: Product[];
@@ -36,7 +37,7 @@ export function RecentlyViewedStrip({ products, onProductClick, onNavigate }: Re
             className="flex-shrink-0 w-24 text-left group"
           >
             <div className="w-24 h-24 rounded-3xl overflow-hidden bg-zinc-50 mb-3 group-hover:shadow-xl group-hover:shadow-zinc-200 transition-all duration-500 group-hover:-translate-y-1">
-              <img
+              <LazyImage
                 src={product.images[0]}
                 alt={product.name}
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"

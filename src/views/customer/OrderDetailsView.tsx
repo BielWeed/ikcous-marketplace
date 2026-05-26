@@ -367,7 +367,7 @@ export function OrderDetailsView({ orderId, onBack, onNavigate }: OrderDetailsVi
                 </div>
 
                 {/* Actions Bar */}
-                <div className="fixed bottom-[calc(64px+env(safe-area-inset-bottom,0px))] left-0 right-0 z-50 px-6 py-6 md:px-8 md:py-6 bg-white/95 backdrop-blur-xl border-t border-zinc-100 shadow-[0_-20px_40px_rgba(0,0,0,0.05)] md:max-w-screen-md md:mx-auto md:rounded-t-[3rem] md:border-x">
+                <div className="fixed bottom-[calc(64px+var(--safe-area-bottom,0px))] left-0 right-0 z-50 px-6 py-6 md:px-8 md:py-6 bg-white/95 backdrop-blur-xl border-t border-zinc-100 shadow-[0_-20px_40px_rgba(0,0,0,0.05)] md:max-w-screen-md md:mx-auto md:rounded-t-[3rem] md:border-x">
                     <div className="flex gap-4">
                         <button
                             onClick={() => { haptic.light(); onBack(); }}

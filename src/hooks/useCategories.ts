@@ -3,13 +3,45 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import type { Category } from '@/types';
 
-export function useCategories() {
-    const [categories, setCategories] = useState<Category[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
+let cachedCategories: Category[] | null = null;
+const CACHE_KEY = 'ikcous_categories_cache';
 
-    const fetchCategories = useCallback(async () => {
+const updateCache = (newCategories: Category[]) => {
+    cachedCategories = newCategories;
+    try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(newCategories));
+    } catch (e) {
+        console.error('Failed to update categories cache', e);
+    }
+};
+
+export function useCategories() {
+    const [categories, setCategories] = useState<Category[]>(() => {
+        if (cachedCategories) return cachedCategories;
+        if (typeof window !== 'undefined') {
+            try {
+                const stored = localStorage.getItem(CACHE_KEY);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    cachedCategories = parsed;
+                    return parsed;
+                }
+            } catch (e) {
+                console.error('Failed to parse categories cache', e);
+            }
+        }
+        return [];
+    });
+
+    const [isLoading, setIsLoading] = useState(() => {
+        return cachedCategories ? false : true;
+    });
+
+    const fetchCategories = useCallback(async (isSilent = false) => {
         try {
-            setIsLoading(true);
+            if (!isSilent) {
+                setIsLoading(true);
+            }
             const { data, error } = await supabase
                 .from('categorias')
                 .select('*')
@@ -27,6 +59,7 @@ export function useCategories() {
             }));
 
             setCategories(adaptedCategories);
+            updateCache(adaptedCategories);
         } catch (error) {
             console.error('Error fetching categories:', error);
             toast.error('Erro ao carregar categorias');
@@ -36,10 +69,9 @@ export function useCategories() {
     }, []);
 
     useEffect(() => {
-        if (categories.length === 0) {
-            fetchCategories();
-        }
-    }, [fetchCategories, categories.length]);
+        const hasCache = !!cachedCategories;
+        fetchCategories(hasCache);
+    }, [fetchCategories]);
 
     const generateSlug = (name: string) => {
         return name
@@ -62,7 +94,11 @@ export function useCategories() {
             createdAt: new Date().toISOString()
         };
 
-        setCategories(prev => [...prev, newCategory]);
+        setCategories(prev => {
+            const next = [...prev, newCategory];
+            updateCache(next);
+            return next;
+        });
 
         try {
             const { data, error } = await supabase
@@ -78,19 +114,27 @@ export function useCategories() {
 
             if (error) throw error;
 
-            setCategories(prev => prev.map(c => c.id === tempId ? {
-                id: data.id,
-                name: data.nome,
-                slug: data.slug || '',
-                description: data.descricao || '',
-                isActive: data.ativo ?? true,
-                createdAt: data.created_at
-            } : c));
+            setCategories(prev => {
+                const final = prev.map(c => c.id === tempId ? {
+                    id: data.id,
+                    name: data.nome,
+                    slug: data.slug || '',
+                    description: data.descricao || '',
+                    isActive: data.ativo ?? true,
+                    createdAt: data.created_at
+                } : c);
+                updateCache(final);
+                return final;
+            });
 
             toast.success('Categoria criada com sucesso!');
             return data;
         } catch (error) {
-            setCategories(prev => prev.filter(c => c.id !== tempId));
+            setCategories(prev => {
+                const reverted = prev.filter(c => c.id !== tempId);
+                updateCache(reverted);
+                return reverted;
+            });
             console.error('Error adding category:', error);
             toast.error('Erro ao criar categoria');
             throw error;
@@ -98,16 +142,20 @@ export function useCategories() {
     }, []);
 
     const updateCategory = useCallback(async (id: string, updates: Partial<Omit<Category, 'id' | 'createdAt' | 'slug'>>) => {
-        const previousCategories = [...categories];
-
-        setCategories(prev => prev.map(c => {
-            if (c.id === id) {
-                const next = { ...c, ...updates };
-                if (updates.name) next.slug = generateSlug(updates.name);
-                return next;
-            }
-            return c;
-        }));
+        let previousCategories: Category[] = [];
+        setCategories(prev => {
+            previousCategories = [...prev];
+            const next = prev.map(c => {
+                if (c.id === id) {
+                    const nextItem = { ...c, ...updates };
+                    if (updates.name) nextItem.slug = generateSlug(updates.name);
+                    return nextItem;
+                }
+                return c;
+            });
+            updateCache(next);
+            return next;
+        });
 
         try {
             const updateData: any = {};
@@ -126,16 +174,24 @@ export function useCategories() {
             if (error) throw error;
             toast.success('Categoria atualizada com sucesso!');
         } catch (error) {
-            setCategories(previousCategories);
+            setCategories(() => {
+                updateCache(previousCategories);
+                return previousCategories;
+            });
             console.error('Error updating category:', error);
             toast.error('Erro ao atualizar categoria');
             throw error;
         }
-    }, [categories]);
+    }, []);
 
     const deleteCategory = useCallback(async (id: string) => {
-        const previousCategories = [...categories];
-        setCategories(prev => prev.filter(c => c.id !== id));
+        let previousCategories: Category[] = [];
+        setCategories(prev => {
+            previousCategories = [...prev];
+            const next = prev.filter(c => c.id !== id);
+            updateCache(next);
+            return next;
+        });
 
         try {
             const { error } = await supabase
@@ -146,12 +202,15 @@ export function useCategories() {
             if (error) throw error;
             toast.success('Categoria removida com sucesso!');
         } catch (error) {
-            setCategories(previousCategories);
+            setCategories(() => {
+                updateCache(previousCategories);
+                return previousCategories;
+            });
             console.error('Error deleting category:', error);
             toast.error('Erro ao remover categoria');
             throw error;
         }
-    }, [categories]);
+    }, []);
 
     return {
         categories,

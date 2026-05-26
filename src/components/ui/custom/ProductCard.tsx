@@ -5,18 +5,21 @@ import { StarRating } from './StarRating';
 import { Badge } from '@/components/ui/badge';
 import { StockStatus } from './StockStatus';
 import { UrgencyBadge } from './UrgencyBadge';
-import { cn } from '@/lib/utils';
-import { useStore } from '@/contexts/StoreContext';
+import { cn, formatCurrency } from '@/lib/utils';
+import { LazyImage } from '@/components/LazyImage';
 
 interface ProductCardProps {
   product: Product;
   isFavorite: boolean;
-  onToggleFavorite: (e: React.MouseEvent) => void;
-  onAddToCart?: (e: React.MouseEvent) => void;
-  onQuickBuy?: (e: React.MouseEvent) => void;
-  onClick: () => void;
+  onToggleFavorite: (product: Product, e: React.MouseEvent) => void;
+  onAddToCart?: (product: Product, e: React.MouseEvent) => void;
+  onQuickBuy?: (product: Product, e: React.MouseEvent) => void;
+  onClick: (productId: string) => void;
+  onMouseEnter?: (productId: string) => void;
+  onTouchStart?: (productId: string) => void;
   className?: string;
   priority?: boolean;
+  isEligibleForFreeShipping?: boolean;
 }
 
 export const ProductCard = memo(function ProductCard({
@@ -26,25 +29,27 @@ export const ProductCard = memo(function ProductCard({
   onAddToCart,
   onQuickBuy,
   onClick,
+  onMouseEnter,
+  onTouchStart,
   className,
-  priority = false
+  priority = false,
+  isEligibleForFreeShipping = false
 }: Readonly<ProductCardProps>) {
-  const { config } = useStore();
   const discount = product.originalPrice
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
     : 0;
-
-  const isEligibleForFreeShipping = config.freeShippingMin > 0;
 
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={onClick}
+      onClick={() => onClick(product.id)}
+      onMouseEnter={onMouseEnter ? () => onMouseEnter(product.id) : undefined}
+      onTouchStart={onTouchStart ? () => onTouchStart(product.id) : undefined}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          onClick();
+          onClick(product.id);
         }
       }}
       className={cn(
@@ -54,19 +59,20 @@ export const ProductCard = memo(function ProductCard({
     >
       {/* Image Container */}
       <div className="relative aspect-[4/5] overflow-hidden bg-slate-50">
-        <img
+        <LazyImage
           src={product.images[0]}
           alt={product.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out"
-          loading={priority ? "eager" : "lazy"}
-          fetchPriority={priority ? "high" : "auto"}
-          decoding={priority ? "sync" : "async"}
+          priority={priority}
         />
 
         {/* Action Buttons */}
         <div className="absolute top-3 right-3 flex flex-col gap-2 translate-x-12 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all duration-500 ease-out">
           <button
-            onClick={onToggleFavorite}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite(product, e);
+            }}
             className={cn(
               "p-2.5 rounded-full glass transition-all active:scale-75",
               isFavorite ? "bg-red-500 text-white border-red-500/20 shadow-lg shadow-red-200/50" : "text-slate-600 hover:text-red-500"
@@ -122,11 +128,11 @@ export const ProductCard = memo(function ProductCard({
           <div className="flex flex-col min-w-0">
             {product.originalPrice && product.originalPrice > product.price && (
               <span className="text-[10px] text-slate-400 line-through font-bold truncate">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.originalPrice)}
+                {formatCurrency(product.originalPrice)}
               </span>
             )}
             <span className="text-[16px] font-black text-slate-900 tracking-tight truncate leading-none mt-0.5">
-              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.price)}
+              {formatCurrency(product.price)}
             </span>
           </div>
           <div className="shrink-0 mb-0.5">
@@ -137,14 +143,20 @@ export const ProductCard = memo(function ProductCard({
         {/* Action Buttons */}
         <div className="flex flex-wrap sm:flex-nowrap gap-1.5 mt-2">
           <button
-            onClick={onAddToCart}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddToCart?.(product, e);
+            }}
             className="flex-1 min-w-[70px] bg-zinc-900 hover:bg-black text-white py-2 px-1.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] shadow-[0_4px_10px_rgba(0,0,0,0.1)] flex items-center justify-center gap-1"
           >
             <ShoppingCart className="w-3 h-3 shrink-0" />
             <span className="truncate">Carrinho</span>
           </button>
           <button
-            onClick={onQuickBuy}
+            onClick={(e) => {
+              e.stopPropagation();
+              onQuickBuy?.(product, e);
+            }}
             className="flex-1 min-w-[50px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/50 py-2 px-1.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] flex items-center justify-center truncate"
           >
             Comprar
@@ -154,4 +166,3 @@ export const ProductCard = memo(function ProductCard({
     </div>
   );
 });
-

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import type { Review } from '@/types';
@@ -10,15 +10,60 @@ export interface AdminReview extends Review {
   merchantReply?: string;
 }
 
+const REVIEWS_CACHE_KEY_PREFIX = 'ikcous_reviews_cache_';
+const memoryReviewsCache = new Map<string, Review[]>();
+
+const getReviewsCache = (productId: string): Review[] | null => {
+  if (memoryReviewsCache.has(productId)) {
+    return memoryReviewsCache.get(productId)!;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(`${REVIEWS_CACHE_KEY_PREFIX}${productId}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        memoryReviewsCache.set(productId, parsed);
+        return parsed;
+      }
+    } catch (e) {
+      console.error('Failed to parse reviews cache', e);
+    }
+  }
+  return null;
+};
+
+const updateReviewsCache = (productId: string, newReviews: Review[]) => {
+  memoryReviewsCache.set(productId, newReviews);
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(`${REVIEWS_CACHE_KEY_PREFIX}${productId}`, JSON.stringify(newReviews));
+    } catch (e) {
+      console.error('Failed to update reviews cache', e);
+    }
+  }
+};
+
 export function useReviews() {
   const { user } = useAuth();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [adminReviews, setAdminReviews] = useState<AdminReview[]>([]);
   const [loading, setLoading] = useState(false);
+  const latestProductIdRef = useRef<string | null>(null);
 
   const getReviewsByProduct = useCallback(async (productId: string) => {
-    try {
+    latestProductIdRef.current = productId;
+
+    // 1. SWR Cache Sync
+    const cached = getReviewsCache(productId);
+    if (cached) {
+      setReviews(cached);
+      setLoading(false);
+    } else {
+      setReviews([]); // Clear previous product reviews if not cached
       setLoading(true);
+    }
+
+    try {
       const { data, error } = await supabase
         .from('reviews' as any)
         .select(`
@@ -41,12 +86,17 @@ export function useReviews() {
         createdAt: item.created_at,
       }));
 
-      setReviews(formattedReviews);
+      if (latestProductIdRef.current === productId) {
+        setReviews(formattedReviews);
+      }
+      updateReviewsCache(productId, formattedReviews);
     } catch (error: any) {
       console.error('Error fetching reviews:', error);
       toast.error('Erro ao carregar avaliações.');
     } finally {
-      setLoading(false);
+      if (latestProductIdRef.current === productId) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -109,25 +159,38 @@ export function useReviews() {
       }
 
       // Optimistic update
-      setReviews(current =>
-        current.map(review =>
+      let pId: string | undefined;
+      setReviews(current => {
+        const reviewObj = current.find(r => r.id === reviewId);
+        pId = reviewObj?.productId;
+        const updated = current.map(review =>
           review.id === reviewId
             ? { ...review, helpful: review.helpful + 1 }
             : review
-        )
-      );
+        );
+        if (pId) {
+          updateReviewsCache(pId, updated);
+        }
+        return updated;
+      });
 
       const { error } = await supabase.rpc('increment_helpful' as any, { review_id: reviewId });
 
       if (error) {
         // Revert on error
-        setReviews(current =>
-          current.map(review =>
+        setReviews(current => {
+          const reviewObj = current.find(r => r.id === reviewId);
+          const productId = reviewObj?.productId;
+          const reverted = current.map(review =>
             review.id === reviewId
               ? { ...review, helpful: review.helpful - 1 }
               : review
-          )
-        );
+          );
+          if (productId) {
+            updateReviewsCache(productId, reverted);
+          }
+          return reverted;
+        });
         throw error;
       }
     } catch (error) {

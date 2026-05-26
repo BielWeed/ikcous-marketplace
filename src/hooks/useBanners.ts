@@ -3,8 +3,20 @@ import type { Banner } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
-// Module-level cache to persist banners across component remounts
-let cachedBanners: Banner[] = [];
+const BANNERS_CACHE_KEY = 'ikcous_banners_cache';
+let cachedBanners: Banner[] = (() => {
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(BANNERS_CACHE_KEY);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error('Failed to parse banners cache', e);
+    }
+  }
+  return [];
+})();
 let isInitialLoadDone = false;
 let globalFetchPromise: Promise<void> | null = null;
 
@@ -13,7 +25,7 @@ import { useAuth } from '@/hooks/useAuth';
 export function useBanners() {
   const { isAdmin } = useAuth();
   const [banners, setBanners] = useState<Banner[]>(cachedBanners);
-  const [isLoaded, setIsLoaded] = useState(isInitialLoadDone);
+  const [isLoaded, setIsLoaded] = useState(cachedBanners.length > 0);
 
   const fetchBanners = useCallback(async (onlyActive = true, forceRefresh = false) => {
     // If already fetching, wait for the same promise
@@ -56,6 +68,11 @@ export function useBanners() {
             }));
 
           cachedBanners = mappedBanners;
+          try {
+            localStorage.setItem(BANNERS_CACHE_KEY, JSON.stringify(mappedBanners));
+          } catch (e) {
+            console.error('Failed to save banners cache', e);
+          }
           setBanners(mappedBanners);
         }
         isInitialLoadDone = true;
@@ -124,6 +141,24 @@ export function useBanners() {
 
       if (error) throw error;
 
+      const newBanner: Banner = {
+        id: data.id,
+        imageUrl: data.image_url,
+        title: data.title || '',
+        link: data.link || undefined,
+        position: data.position as "home_top" | "home_middle" | "home_bottom",
+        active: data.active ?? true,
+        order: data.order || 0
+      };
+
+      cachedBanners = [...cachedBanners, newBanner];
+      try {
+        localStorage.setItem(BANNERS_CACHE_KEY, JSON.stringify(cachedBanners));
+      } catch (e) {
+        console.error('Failed to save banners cache', e);
+      }
+      setBanners(cachedBanners);
+
       isInitialLoadDone = false; // Force re-fetch to update cache correctly
       return data;
     } catch (error) {
@@ -149,6 +184,15 @@ export function useBanners() {
         .eq('id', id);
 
       if (error) throw error;
+
+      cachedBanners = cachedBanners.map(b => b.id === id ? { ...b, ...updates } : b);
+      try {
+        localStorage.setItem(BANNERS_CACHE_KEY, JSON.stringify(cachedBanners));
+      } catch (e) {
+        console.error('Failed to save banners cache', e);
+      }
+      setBanners(cachedBanners);
+
       isInitialLoadDone = false;
     } catch (error) {
       console.error('Error updating banner:', error);
@@ -181,6 +225,13 @@ export function useBanners() {
 
       // Sort by order
       newBanners.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      
+      cachedBanners = newBanners;
+      try {
+        localStorage.setItem(BANNERS_CACHE_KEY, JSON.stringify(newBanners));
+      } catch (e) {
+        console.error('Failed to save banners cache', e);
+      }
       setBanners(newBanners);
     }
 
@@ -194,6 +245,12 @@ export function useBanners() {
       if (error) throw error;
       isInitialLoadDone = false;
     } catch (error) {
+      cachedBanners = previousBanners;
+      try {
+        localStorage.setItem(BANNERS_CACHE_KEY, JSON.stringify(previousBanners));
+      } catch (e) {
+        console.error('Failed to save banners cache', e);
+      }
       setBanners(previousBanners);
       console.error('Error reordering banners:', error);
     }
@@ -224,6 +281,11 @@ export function useBanners() {
         }
       }
       cachedBanners = cachedBanners.filter(b => b.id !== id);
+      try {
+        localStorage.setItem(BANNERS_CACHE_KEY, JSON.stringify(cachedBanners));
+      } catch (e) {
+        console.error('Failed to save banners cache', e);
+      }
       setBanners(prev => prev.filter(b => b.id !== id));
     } catch (error) {
       console.error('Error deleting banner:', error);

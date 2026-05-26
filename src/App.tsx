@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Header } from '@/components/ui/custom/Header';
 import { BottomNav } from '@/components/ui/custom/BottomNav';
-import { HomeView } from '@/views/customer/HomeView';
+const HomeView = React.lazy(() => import('@/views/customer/HomeView').then(m => ({ default: m.HomeView })));
 const CartView = React.lazy(() => import('@/views/customer/CartView').then(m => ({ default: m.CartView })));
 const ProductView = React.lazy(() => import('@/views/customer/ProductView').then(m => ({ default: m.ProductView })));
 const CheckoutView = React.lazy(() => import('@/views/customer/CheckoutView').then(m => ({ default: m.CheckoutView })));
@@ -53,6 +53,11 @@ import { useFavorites } from '@/hooks/useFavorites';
 import { useRecentlyViewed } from '@/hooks/useRecentlyViewed';
 import { useAppBadge } from '@/hooks/useAppBadge';
 import { useUpdateCheck } from '@/hooks/useUpdateCheck';
+import { useCacheWarmer } from '@/hooks/useCacheWarmer';
+import { useNetworkAdaptive } from '@/hooks/useNetworkAdaptive';
+import { usePredictiveNavigation } from '@/hooks/usePredictiveNavigation';
+import { useBehavioralPrefetch } from '@/hooks/useBehavioralPrefetch';
+import { usePrefetchOnHover } from '@/hooks/usePrefetchOnHover';
 
 function ViewLoadingFallback() {
   return (
@@ -90,10 +95,11 @@ function AdminAccessDenied({ onNavigate }: { readonly onNavigate: (view: View) =
   return <AdminRouteLoading />;
 }
 import { useRealtimeUpdate } from '@/hooks/useRealtimeUpdate';
-import { StoreProvider, useStore } from '@/contexts/StoreContext';
+import { StoreProvider } from '@/contexts/StoreContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { CartProvider } from '@/contexts/CartContext';
+import { FavoritesProvider } from '@/contexts/FavoritesContext';
 import { useCart } from '@/hooks/useCart';
 import { HelmetProvider } from 'react-helmet-async';
 import { haptic } from '@/utils/haptic';
@@ -115,7 +121,9 @@ export default function App() {
         <AuthProvider>
           <NotificationProvider>
             <CartProvider>
-              <AppContent />
+              <FavoritesProvider>
+                <AppContent />
+              </FavoritesProvider>
             </CartProvider>
           </NotificationProvider>
         </AuthProvider>
@@ -129,14 +137,10 @@ const getProductById = (products: Product[], id: string) => products.find(p => p
 const AppContent = () => {
   const { user, isAdmin, loading: authLoading } = useAuth();
   const { products, loading: productsLoading } = useProducts();
-  const { cart, addToCart, getCartCount, getCartTotal, clearCart, updateQuantity, removeFromCart } = useCart();
+  const { cart, addToCart, cartCount, cartTotal, shippingFee, clearCart, updateQuantity, removeFromCart } = useCart();
   const { favorites, toggleFavorite } = useFavorites();
-  const { calculateShipping } = useStore();
-  const { addToRecentlyViewed, getRecentlyViewedProducts } = useRecentlyViewed();
+  const { addToRecentlyViewed, getRecentlyViewedProducts, clearRecentlyViewed } = useRecentlyViewed();
   const recentlyViewedProducts = React.useMemo(() => getRecentlyViewedProducts(products), [getRecentlyViewedProducts, products]);
-
-  const { setBadge, clearBadge } = useAppBadge();
-  const { checkUpdate, updateAvailable, newVersion, performNuclearPurge } = useUpdateCheck();
 
   const [currentView, setCurrentView] = useState<View>('home');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -145,8 +149,18 @@ const AppContent = () => {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [backOverride, setBackOverride] = useState<(() => void) | null>(null);
   const mainRef = useRef<HTMLElement>(null);
+  const scrollSentinelRef = useRef<HTMLDivElement>(null);
   const backOverrideRef = useRef<(() => void) | null>(null);
   const isTransitioningRef = useRef(false);
+
+  const { setBadge, clearBadge } = useAppBadge();
+  const { checkUpdate, updateAvailable, newVersion, performNuclearPurge } = useUpdateCheck();
+
+  const { prefetchView } = usePrefetchOnHover();
+  useCacheWarmer();
+  useNetworkAdaptive();
+  usePredictiveNavigation(currentView);
+  useBehavioralPrefetch(currentView, prefetchView);
 
   // Sync ref with state to avoid listener closure issues
   useEffect(() => {
@@ -202,6 +216,10 @@ const AppContent = () => {
     globalThis.scrollTo(0, 0);
   }, []);
 
+  const handleOpenNotifications = useCallback(() => {
+    handleNavigate('notifications');
+  }, [handleNavigate]);
+
 
   // ==============================
   // PWA Reload Reason Consumption
@@ -254,32 +272,32 @@ const AppContent = () => {
       setTimeout(lockSafeAreas, 300);
     };
 
-    // Scroll tracking for HomeView and header components
-    const mainElement = document.querySelector('main');
-    const handleScroll = () => {
-      if (!mainElement) return;
-      const progress = mainElement.scrollTop;
-      setScrollProgress(prev => {
-        // Optimize: Only re-render if crossing the 20px threshold!
-        const currentlyScrolled = progress > 20;
-        const prevScrolled = prev > 20;
-        
-        if (currentlyScrolled && !prevScrolled) return 21; // Any number > 20
-        if (!currentlyScrolled && prevScrolled) return 0;  // Any number <= 20
-        return prev; // No rendering triggering
-      });
-    };
+    // IntersectionObserver scroll tracking for HomeView and header components
+    const mainElement = mainRef.current;
+    const sentinel = scrollSentinelRef.current;
+    let observer: IntersectionObserver | undefined;
 
-    if (mainElement) {
-      mainElement.addEventListener('scroll', handleScroll, { passive: true });
+    if (mainElement && sentinel) {
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          // If intersecting is true, the sentinel (at 20px) is visible, meaning scrollTop <= 20px.
+          // If intersecting is false, the sentinel is scrolled out of view, meaning scrollTop > 20px.
+          setScrollProgress(entry.isIntersecting ? 0 : 21);
+        },
+        {
+          root: mainElement,
+          threshold: 0,
+        }
+      );
+      observer.observe(sentinel);
     }
 
     globalThis.addEventListener('orientationchange', handleOrientation);
     return () => {
       clearTimeout(timer);
       globalThis.removeEventListener('orientationchange', handleOrientation);
-      if (mainElement) {
-        mainElement.removeEventListener('scroll', handleScroll);
+      if (observer) {
+        observer.disconnect();
       }
     };
   }, []);
@@ -400,13 +418,12 @@ const AppContent = () => {
 
   // Sync PWA Badge with cart count
   useEffect(() => {
-    const count = getCartCount();
-    if (count > 0) {
-      setBadge(count);
+    if (cartCount > 0) {
+      setBadge(cartCount);
     } else {
       clearBadge();
     }
-  }, [getCartCount, setBadge, clearBadge]);
+  }, [cartCount, setBadge, clearBadge]);
 
   // Real-time updates for deployment
   const handleUpdate = useCallback(() => {
@@ -554,18 +571,18 @@ const AppContent = () => {
             onBack={handleBack}
             onAddToCart={(q, vId, vNames) => handleAddToCart(product, q, vId, vNames)}
             onProductClick={handleProductClick}
+            onAddToCartProduct={handleAddToCart}
+            onQuickBuy={handleQuickBuy}
           />
         );
       }
       case 'checkout': {
-        const shipping = calculateShipping(cart);
-        const subtotal = getCartTotal();
         return (
           <CheckoutView
             cart={cart}
-            subtotal={subtotal}
-            shipping={shipping}
-            total={subtotal + shipping}
+            subtotal={cartTotal}
+            shipping={shippingFee}
+            total={cartTotal + shippingFee}
             onClearCart={clearCart}
             onNavigate={handleNavigate}
             onSetBackOverride={setBackOverride}
@@ -644,7 +661,7 @@ const AppContent = () => {
             onToggleFavorite={handleToggleFavorite}
             onProductClick={handleProductClick}
             onNavigate={handleNavigate}
-            onClear={() => { }}
+            onClear={clearRecentlyViewed}
           />
         );
 
@@ -706,7 +723,7 @@ const AppContent = () => {
               currentView !== 'login'
             }
             onBack={handleBack}
-            onOpenNotifications={() => handleNavigate('notifications')}
+            onOpenNotifications={handleOpenNotifications}
             hideSearch={['address-form', 'account-settings', 'order-details', 'checkout'].includes(currentView)}
             searchQuery={searchQuery}
             onSearch={setSearchQuery}
@@ -718,14 +735,28 @@ const AppContent = () => {
       <main
         ref={mainRef}
         className={cn(
-          "flex-1 flex flex-col overflow-y-auto overflow-x-hidden overscroll-behavior-y-contain [-webkit-overflow-scrolling:touch]",
+          "relative flex-1 flex flex-col overflow-y-auto overflow-x-hidden overscroll-behavior-y-contain [-webkit-overflow-scrolling:touch]",
           currentView.startsWith('admin') && "h-full pt-0"
         )}
       >
+        {/* Scroll Sentinel for header visual transitions */}
+        <div
+          ref={scrollSentinelRef}
+          style={{
+            position: 'absolute',
+            top: '20px',
+            left: 0,
+            width: '1px',
+            height: '1px',
+            pointerEvents: 'none',
+            opacity: 0,
+          }}
+        />
+
         <AnimatePresence mode="wait">
           <div 
             key={currentView.startsWith('admin') ? 'admin-layout' : currentView}
-            className={cn(!currentView.startsWith('admin') && "h-full", "!outline-none focus:!outline-none")}
+            className={cn(!currentView.startsWith('admin') && "min-h-full flex flex-col", "!outline-none focus:!outline-none")}
             tabIndex={-1}
             style={{ WebkitTapHighlightColor: 'transparent', outline: 'none' }}
           >
@@ -755,7 +786,7 @@ const AppContent = () => {
           <BottomNav
             currentView={currentView}
             onNavigate={handleNavigate}
-            cartCount={getCartCount()}
+            cartCount={cartCount}
           />
         </div>
       )}

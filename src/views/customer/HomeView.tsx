@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import type { Product, View } from '@/types';
 import { CategoryFilter } from '@/components/ui/custom/CategoryFilter';
@@ -31,7 +31,7 @@ interface HomeViewProps {
 
 type SortOption = 'default' | 'price-asc' | 'price-desc' | 'sold';
 
-export function HomeView({
+export const HomeView = React.memo(function HomeView({
   products,
   favorites,
   recentlyViewedProducts,
@@ -100,7 +100,7 @@ export function HomeView({
 
   const newArrivals = useMemo(() => {
     return [...products]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .sort((a, b) => (b.createdTime ?? 0) - (a.createdTime ?? 0))
       .slice(0, 6);
   }, [products]);
 
@@ -182,49 +182,55 @@ export function HomeView({
 
       {/* Recommended "For You" Section */}
       {!searchQuery && recommendedProducts.length > 0 && (
-        <ProductCarousel
-          title="Especialmente Para Você"
-          subtitle="Baseado no seu estilo"
-          products={recommendedProducts}
-          favorites={favorites}
-          onToggleFavorite={onToggleFavorite}
-          onProductClick={onProductClick}
-          onAddToCart={onAddToCart}
-          onQuickBuy={onQuickBuy}
-          icon={<Sparkles className="w-5 h-5 text-emerald-500" />}
-          accentColor="emerald"
-          className="bg-gradient-to-b from-transparent to-zinc-50/50"
-        />
+        <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 450px' } as React.CSSProperties}>
+          <ProductCarousel
+            title="Especialmente Para Você"
+            subtitle="Baseado no seu estilo"
+            products={recommendedProducts}
+            favorites={favorites}
+            onToggleFavorite={onToggleFavorite}
+            onProductClick={onProductClick}
+            onAddToCart={onAddToCart}
+            onQuickBuy={onQuickBuy}
+            icon={<Sparkles className="w-5 h-5 text-emerald-500" />}
+            accentColor="emerald"
+            className="bg-gradient-to-b from-transparent to-zinc-50/50"
+          />
+        </div>
       )}
 
       {/* Bestsellers Section - Converted to Carousel! */}
       {!searchQuery && selectedCategory === 'Todas' && products.some(p => p.isBestseller) && (
-        <ProductCarousel
-          title="Destaques em Alta"
-          subtitle="Favoritos da Comunidade"
-          products={products.filter(p => p.isBestseller).slice(0, 10)}
-          favorites={favorites}
-          onToggleFavorite={onToggleFavorite}
-          onProductClick={onProductClick}
-          onAddToCart={onAddToCart}
-          onQuickBuy={onQuickBuy}
-          icon={<TrendingUp className="w-5 h-5 text-zinc-900" />}
-          accentColor="zinc"
-          className="bg-zinc-50/50"
-        />
+        <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 450px' } as React.CSSProperties}>
+          <ProductCarousel
+            title="Destaques em Alta"
+            subtitle="Favoritos da Comunidade"
+            products={products.filter(p => p.isBestseller).slice(0, 10)}
+            favorites={favorites}
+            onToggleFavorite={onToggleFavorite}
+            onProductClick={onProductClick}
+            onAddToCart={onAddToCart}
+            onQuickBuy={onQuickBuy}
+            icon={<TrendingUp className="w-5 h-5 text-zinc-900" />}
+            accentColor="zinc"
+            className="bg-zinc-50/50"
+          />
+        </div>
       )}
 
       {/* Middle Banners - Full Width */}
       {!searchQuery && selectedCategory === 'Todas' && (
-        !bannersLoaded && middleBanners.length === 0 ? (
-          <div className="w-full py-4 mx-4">
-            <div className="h-[120px] sm:h-[200px] bg-zinc-100 animate-pulse rounded-[2rem] w-[calc(100%-2rem)]" />
-          </div>
-        ) : middleBanners.length > 0 ? (
-          <div className="w-full py-4">
-            <BannerCarousel banners={middleBanners} autoPlay={false} />
-          </div>
-        ) : null
+        <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 160px' } as React.CSSProperties}>
+          {!bannersLoaded && middleBanners.length === 0 ? (
+            <div className="w-full py-4 mx-4">
+              <div className="h-[120px] sm:h-[200px] bg-zinc-100 animate-pulse rounded-[2rem] w-[calc(100%-2rem)]" />
+            </div>
+          ) : middleBanners.length > 0 ? (
+            <div className="w-full py-4">
+              <BannerCarousel banners={middleBanners} autoPlay={false} />
+            </div>
+          ) : null}
+        </div>
       )}
 
       {/* All Products */}
@@ -327,22 +333,24 @@ export function HomeView({
               </p>
             </div>
           ) : (
-            <ProductList
-              products={filteredProducts}
-              isLoading={isLoading}
-              favorites={favorites}
-              onToggleFavorite={onToggleFavorite}
-              onProductClick={onProductClick}
-              onAddToCart={onAddToCart}
-              onQuickBuy={onQuickBuy}
-            />
+            <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 500px' } as React.CSSProperties}>
+              <ProductList
+                products={filteredProducts}
+                isLoading={isLoading}
+                favorites={favorites}
+                onToggleFavorite={onToggleFavorite}
+                onProductClick={onProductClick}
+                onAddToCart={onAddToCart}
+                onQuickBuy={onQuickBuy}
+              />
+            </div>
           )
         }
       </div >
 
       {
         bottomBanners.length > 0 && !searchQuery && selectedCategory === 'Todas' && (
-          <div className="w-full py-4">
+          <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 200px' } as React.CSSProperties} className="w-full py-4">
             <BannerCarousel banners={bottomBanners} autoPlay={true} interval={8000} />
           </div>
         )
@@ -352,4 +360,4 @@ export function HomeView({
       <CartReminder onAction={() => onNavigate('cart')} />
     </div >
   );
-}
+});

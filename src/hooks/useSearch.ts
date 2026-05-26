@@ -35,7 +35,7 @@ export function useSearch(products: Product[]) {
                 case 'price_asc': return a.price - b.price;
                 case 'price_desc': return b.price - a.price;
                 case 'name_asc': return a.name.localeCompare(b.name);
-                case 'newest': return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                case 'newest': return (b.createdTime ?? 0) - (a.createdTime ?? 0);
                 default: return 0;
             }
         });

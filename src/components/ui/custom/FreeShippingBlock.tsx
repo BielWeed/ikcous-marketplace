@@ -2,8 +2,8 @@ import { Truck, ArrowRight } from 'lucide-react';
 import { useStore } from '@/contexts/StoreContext';
 import { useCartContext } from '@/contexts/CartContext';
 import { useAuth } from '@/hooks/useAuth';
-import { useMemo } from 'react';
 import type { View } from '@/types';
+import { formatCurrency } from '@/lib/utils';
 
 interface FreeShippingBlockProps {
     onNavigate?: (view: View) => void;
@@ -11,13 +11,10 @@ interface FreeShippingBlockProps {
 
 export function FreeShippingBlock({ onNavigate }: FreeShippingBlockProps) {
     const { config } = useStore();
-    const { cart } = useCartContext();
+    const { cartTotal } = useCartContext();
     const { user } = useAuth();
 
-    const totalCartValue = useMemo(() => cart.reduce((sum, item) => {
-        if (!item?.product) return sum;
-        return sum + (item.product.price * (item.quantity || 0));
-    }, 0), [cart]);
+    const totalCartValue = cartTotal;
 
     const progressPercent = config.freeShippingMin > 0 ? Math.min((totalCartValue / config.freeShippingMin) * 100, 100) : 0;
 
@@ -73,7 +70,7 @@ export function FreeShippingBlock({ onNavigate }: FreeShippingBlockProps) {
                     </h3>
 
                     <p className="text-[10px] font-medium text-zinc-400 leading-tight">
-                        Acumule <span className="text-zinc-100 font-bold">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(config.freeShippingMin)}</span> em itens <span className="text-emerald-500/80 font-semibold italic">no carrinho</span>.
+                        Acumule <span className="text-zinc-100 font-bold">{formatCurrency(config.freeShippingMin)}</span> em itens <span className="text-emerald-500/80 font-semibold italic">no carrinho</span>.
                     </p>
                 </div>
 
@@ -84,7 +81,7 @@ export function FreeShippingBlock({ onNavigate }: FreeShippingBlockProps) {
                     </div>
                     <div className="text-right">
                         <p className="text-[12px] font-black text-white leading-none">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalCartValue)}
+                            {formatCurrency(totalCartValue)}
                         </p>
                         <p className="text-[7px] font-black text-zinc-600 uppercase tracking-widest">No Carrinho</p>
                     </div>

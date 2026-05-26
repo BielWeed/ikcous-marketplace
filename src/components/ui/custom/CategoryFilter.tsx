@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Category } from '@/types';
 import { haptic } from '@/utils/haptic';
 
@@ -8,7 +9,7 @@ interface CategoryFilterProps {
   isLoading?: boolean;
 }
 
-export function CategoryFilter({ categories, selectedCategory, onCategoryChange, isLoading }: CategoryFilterProps) {
+export const CategoryFilter = memo(function CategoryFilter({ categories, selectedCategory, onCategoryChange, isLoading }: CategoryFilterProps) {
   // "Todas" is a virtual category, so we handle it separately in the UI
   const allCategories = [
     { id: 'all', name: 'Todas' },
@@ -50,4 +51,4 @@ export function CategoryFilter({ categories, selectedCategory, onCategoryChange,
       </div>
     </div>
   );
-}
+});

@@ -8,23 +8,30 @@ interface LazyImageProps {
     className?: string;
     placeholderClassName?: string;
     objectFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
+    priority?: boolean;
 }
 
 export function LazyImage({
     src,
     alt,
-    width = '100%',
-    height = 'auto',
+    width,
+    height,
     className = '',
     placeholderClassName = '',
     objectFit = 'cover',
+    priority = false,
 }: LazyImageProps) {
     const [isLoaded, setIsLoaded] = useState(false);
-    const [isInView, setIsInView] = useState(false);
+    const [isInView, setIsInView] = useState(priority);
     const [hasError, setHasError] = useState(false);
     const imgRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
+        if (priority) {
+            setIsInView(true);
+            return;
+        }
+
         const observer = new IntersectionObserver(
             ([entry]) => {
                 if (entry.isIntersecting) {
@@ -43,13 +50,17 @@ export function LazyImage({
         }
 
         return () => observer.disconnect();
-    }, []);
+    }, [priority]);
+
+    const style: React.CSSProperties = {};
+    if (width !== undefined) style.width = width;
+    if (height !== undefined) style.height = height;
 
     return (
         <div
             ref={imgRef}
             className={`relative overflow-hidden bg-zinc-100 ${className}`}
-            style={{ width, height }}
+            style={style}
         >
             {/* Placeholder skeleton */}
             {!isLoaded && !hasError && (

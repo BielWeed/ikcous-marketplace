@@ -1,6 +1,9 @@
+import React, { useCallback } from 'react';
 import { ArrowLeft, Clock, Trash2 } from 'lucide-react';
 import type { Product, View } from '@/types';
 import { ProductCard } from '@/components/ui/custom/ProductCard';
+import { useStore } from '@/contexts/StoreContext';
+import { usePrefetchOnHover } from '@/hooks/usePrefetchOnHover';
 
 interface RecentlyViewedViewProps {
   products: Product[];
@@ -11,7 +14,7 @@ interface RecentlyViewedViewProps {
   onClear: () => void;
 }
 
-export function RecentlyViewedView({
+export const RecentlyViewedView = React.memo(function RecentlyViewedView({
   products,
   favorites,
   onToggleFavorite,
@@ -19,6 +22,12 @@ export function RecentlyViewedView({
   onNavigate,
   onClear
 }: RecentlyViewedViewProps) {
+  const { config } = useStore();
+  const { prefetchView } = usePrefetchOnHover();
+
+  const handlePrefetchProductDetail = useCallback(() => {
+    prefetchView('product-detail');
+  }, [prefetchView]);
   if (products.length === 0) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-4 pb-24">
@@ -71,15 +80,15 @@ export function RecentlyViewedView({
               key={product.id}
               product={product}
               isFavorite={favorites.includes(product.id)}
-              onToggleFavorite={(e) => {
-                e.stopPropagation();
-                onToggleFavorite(product);
-              }}
-              onClick={() => onProductClick(product.id)}
+              onToggleFavorite={onToggleFavorite}
+              onClick={onProductClick}
+              isEligibleForFreeShipping={config.freeShippingMin > 0}
+              onMouseEnter={handlePrefetchProductDetail}
+              onTouchStart={handlePrefetchProductDetail}
             />
           ))}
         </div>
       </div>
     </div>
   );
-}
+});

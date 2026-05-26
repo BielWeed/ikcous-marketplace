@@ -1,8 +1,10 @@
-import { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import type { Product } from '@/types';
 import { ProductCard } from './ProductCard';
 import { haptic } from '@/utils/haptic';
+import { usePrefetchOnHover } from '@/hooks/usePrefetchOnHover';
+import { useStore } from '@/contexts/StoreContext';
 
 interface ProductCarouselProps {
     title: string;
@@ -18,7 +20,7 @@ interface ProductCarouselProps {
     className?: string;
 }
 
-export function ProductCarousel({
+export const ProductCarousel = React.memo(function ProductCarousel({
     title,
     subtitle,
     products,
@@ -31,6 +33,8 @@ export function ProductCarousel({
     accentColor = "amber",
     className
 }: ProductCarouselProps) {
+    const { config } = useStore();
+    const { prefetchView } = usePrefetchOnHover();
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [showLeftVignette, setShowLeftVignette] = useState(false);
     const [showRightVignette, setShowRightVignette] = useState(false);
@@ -56,6 +60,28 @@ export function ProductCarousel({
             resizeObserver.disconnect();
         };
     }, [products.length]);
+
+    const handleToggleFavorite = useCallback((product: Product) => {
+        haptic.medium();
+        onToggleFavorite(product);
+    }, [onToggleFavorite]);
+
+    const handleProductClick = useCallback((id: string) => {
+        haptic.light();
+        onProductClick(id);
+    }, [onProductClick]);
+
+    const handleAddToCart = useCallback((product: Product) => {
+        onAddToCart?.(product);
+    }, [onAddToCart]);
+
+    const handleQuickBuy = useCallback((product: Product) => {
+        onQuickBuy?.(product);
+    }, [onQuickBuy]);
+
+    const handlePrefetchProductDetail = useCallback(() => {
+        prefetchView('product-detail');
+    }, [prefetchView]);
 
     if (products.length === 0) return null;
 
@@ -107,24 +133,14 @@ export function ProductCarousel({
                             <ProductCard
                                 product={product}
                                 isFavorite={favorites.includes(product.id)}
-                                onToggleFavorite={(e) => {
-                                    e.stopPropagation();
-                                    haptic.medium();
-                                    onToggleFavorite(product);
-                                }}
-                                onClick={() => {
-                                    haptic.light();
-                                    onProductClick(product.id);
-                                }}
-                                onAddToCart={(e) => {
-                                    e.stopPropagation();
-                                    onAddToCart?.(product);
-                                }}
-                                onQuickBuy={(e) => {
-                                    e.stopPropagation();
-                                    onQuickBuy?.(product);
-                                }}
+                                onToggleFavorite={handleToggleFavorite}
+                                onClick={handleProductClick}
+                                onAddToCart={handleAddToCart}
+                                onQuickBuy={handleQuickBuy}
+                                onMouseEnter={handlePrefetchProductDetail}
+                                onTouchStart={handlePrefetchProductDetail}
                                 priority={index < 3}
+                                isEligibleForFreeShipping={config.freeShippingMin > 0}
                             />
                         </div>
                     ))}
@@ -132,4 +148,4 @@ export function ProductCarousel({
             </div>
         </div>
     );
-}
+});

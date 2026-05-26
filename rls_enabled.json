@@ -16,6 +16,10 @@
     "relrowsecurity": true
   },
   {
+    "relname": "app_settings",
+    "relrowsecurity": false
+  },
+  {
     "relname": "banners",
     "relrowsecurity": true
   },
@@ -65,7 +69,7 @@
   },
   {
     "relname": "marketplace_order_history",
-    "relrowsecurity": false
+    "relrowsecurity": true
   },
   {
     "relname": "marketplace_order_items",
@@ -82,6 +86,10 @@
   {
     "relname": "notificacoes",
     "relrowsecurity": true
+  },
+  {
+    "relname": "otp_verifications",
+    "relrowsecurity": false
   },
   {
     "relname": "pedido_itens",
@@ -130,6 +138,10 @@
   {
     "relname": "user_addresses",
     "relrowsecurity": true
+  },
+  {
+    "relname": "v_store_config",
+    "relrowsecurity": false
   },
   {
     "relname": "vendas",

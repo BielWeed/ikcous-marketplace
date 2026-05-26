@@ -2,6 +2,11 @@
   "constraints": [
     {
       "table": "produtos",
+      "conname": "check_estoque_positivo",
+      "def": "CHECK ((estoque >= 0))"
+    },
+    {
+      "table": "produtos",
       "conname": "produtos_fornecedor_id_fkey",
       "def": "FOREIGN KEY (fornecedor_id) REFERENCES fornecedores(id)"
     },
@@ -27,6 +32,11 @@
     },
     {
       "table": "product_variants",
+      "conname": "check_stock_increment_positivo",
+      "def": "CHECK ((stock_increment >= 0))"
+    },
+    {
+      "table": "product_variants",
       "conname": "product_variants_pkey",
       "def": "PRIMARY KEY (id)"
     },
@@ -41,5 +51,5 @@
       "def": "UNIQUE (sku)"
     }
   ],
-  "coupon_func": "CREATE OR REPLACE FUNCTION public.validate_coupon_secure(p_code text, p_subtotal numeric)\n RETURNS TABLE(is_valid boolean, discount_amount numeric, discount_type text, error_message text)\n LANGUAGE plpgsql\n SECURITY DEFINER\nAS $function$\r\nDECLARE\r\n    v_coupon RECORD;\r\nBEGIN\r\n    SELECT * INTO v_coupon FROM public.coupons \r\n    WHERE UPPER(code) = UPPER(p_code) AND active = true\r\n    FOR UPDATE; -- Prevent race conditions during usage increment\r\n\r\n    IF NOT FOUND THEN\r\n        RETURN QUERY SELECT false, 0::NUMERIC, NULL::TEXT, 'Cupom inválido ou inexistente.'::TEXT;\r\n        RETURN;\r\n    END IF;\r\n\r\n    IF v_coupon.valid_until IS NOT NULL AND v_coupon.valid_until < NOW() THEN\r\n        RETURN QUERY SELECT false, 0::NUMERIC, v_coupon.type, 'Cupom expirado.'::TEXT;\r\n        RETURN;\r\n    END IF;\r\n\r\n    IF v_coupon.usage_limit IS NOT NULL AND v_coupon.usage_count >= v_coupon.usage_limit THEN\r\n        RETURN QUERY SELECT false, 0::NUMERIC, v_coupon.type, 'Limite de uso atingido.'::TEXT;\r\n        RETURN;\r\n    END IF;\r\n\r\n    IF v_coupon.min_purchase IS NOT NULL AND p_subtotal < v_coupon.min_purchase THEN\r\n        RETURN QUERY SELECT false, 0::NUMERIC, v_coupon.type, 'Valor mínimo de R$ ' || v_coupon.min_purchase || ' não atingido.'::TEXT;\r\n        RETURN;\r\n    END IF;\r\n\r\n    -- Calculate Discount\r\n    IF v_coupon.type = 'percentage' THEN\r\n        RETURN QUERY SELECT true, (p_subtotal * v_coupon.value / 100.0), 'percentage'::TEXT, NULL::TEXT;\r\n    ELSE\r\n        RETURN QUERY SELECT true, LEAST(v_coupon.value, p_subtotal), 'fixed'::TEXT, NULL::TEXT;\r\n    END IF;\r\nEND;\r\n$function$\n"
+  "coupon_func": "CREATE OR REPLACE FUNCTION public.validate_coupon_secure(p_code text, p_subtotal numeric)\n RETURNS TABLE(is_valid boolean, discount_amount numeric, discount_type text, error_message text)\n LANGUAGE plpgsql\n SECURITY DEFINER\nAS $function$\nDECLARE\n    v_coupon RECORD;\nBEGIN\n    SELECT * INTO v_coupon FROM public.coupons \n    WHERE UPPER(code) = UPPER(p_code) AND active = true\n    FOR SHARE;\n\n    IF NOT FOUND THEN\n        RETURN QUERY SELECT false, 0::NUMERIC, NULL::TEXT, 'Cupom inválido ou inexistente.'::TEXT;\n        RETURN;\n    END IF;\n\n    IF v_coupon.valid_until IS NOT NULL AND v_coupon.valid_until < NOW() THEN\n        RETURN QUERY SELECT false, 0::NUMERIC, v_coupon.type, 'Cupom expirado.'::TEXT;\n        RETURN;\n    END IF;\n\n    IF v_coupon.usage_limit IS NOT NULL AND v_coupon.usage_count >= v_coupon.usage_limit THEN\n        RETURN QUERY SELECT false, 0::NUMERIC, v_coupon.type, 'Limite de uso atingido.'::TEXT;\n        RETURN;\n    END IF;\n\n    IF v_coupon.min_purchase IS NOT NULL AND p_subtotal < v_coupon.min_purchase THEN\n        RETURN QUERY SELECT false, 0::NUMERIC, v_coupon.type, 'Valor mínimo não atingido.'::TEXT;\n        RETURN;\n    END IF;\n\n    IF v_coupon.type = 'percentage' THEN\n        RETURN QUERY SELECT true, (p_subtotal * v_coupon.value / 100.0), 'percentage'::TEXT, NULL::TEXT;\n    ELSE\n        RETURN QUERY SELECT true, LEAST(v_coupon.value, p_subtotal), 'fixed'::TEXT, NULL::TEXT;\n    END IF;\nEND;\n$function$\n"
 }

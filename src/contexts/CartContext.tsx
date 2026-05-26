@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { mapProductFromDB } from '@/lib/mappers';
+import { useStore } from '@/contexts/StoreContext';
 import type { Product, CartItem } from '@/types';
 import { toast } from 'sonner';
 
@@ -23,6 +24,9 @@ interface CartContextType {
     getCartTotal: () => number;
     getCartCount: () => number;
     isLoading: boolean;
+    cartTotal: number;
+    cartCount: number;
+    shippingFee: number;
 }
 
  
@@ -32,6 +36,7 @@ const CART_STORAGE_KEY = 'marketplace_cart_v1';
 
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
+    const { config } = useStore();
     const { user, loading: authLoading } = useAuth();
     console.log('[CartContext-Trace] Init - Auth User:', user?.id || 'null');
     const [cart, setCart] = useState<CartItem[]>(() => {
@@ -363,7 +368,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
 
-    const getCartTotal = useCallback(() => {
+    const cartTotal = React.useMemo(() => {
         return cart.reduce((total, item) => {
             const price = item.variantId
                 ? item.product.variants?.find(v => v.id === item.variantId)?.priceOverride || item.product.price
@@ -372,9 +377,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }, 0);
     }, [cart]);
 
-    const getCartCount = useCallback(() => {
+    const cartCount = React.useMemo(() => {
         return cart.reduce((count, item) => count + item.quantity, 0);
     }, [cart]);
+
+    const shippingFee = React.useMemo(() => {
+        if (cart.length === 0) return 0;
+        
+        const hasFreeShippingItem = cart.some(item => item.product.freeShipping);
+        if (hasFreeShippingItem) return 0;
+
+        if (config.freeShippingMin > 0 && cartTotal >= config.freeShippingMin) return 0;
+        
+        return config.shippingFee;
+    }, [cart, cartTotal, config.freeShippingMin, config.shippingFee]);
+
+    const getCartTotal = useCallback(() => cartTotal, [cartTotal]);
+
+    const getCartCount = useCallback(() => cartCount, [cartCount]);
 
     const contextValue = React.useMemo(() => ({
         cart,
@@ -384,8 +404,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         clearCart,
         getCartTotal,
         getCartCount,
-        isLoading
-    }), [cart, addToCart, removeFromCart, updateQuantity, clearCart, getCartTotal, getCartCount, isLoading]);
+        isLoading,
+        cartTotal,
+        cartCount,
+        shippingFee
+    }), [
+        cart,
+        addToCart,
+        removeFromCart,
+        updateQuantity,
+        clearCart,
+        getCartTotal,
+        getCartCount,
+        isLoading,
+        cartTotal,
+        cartCount,
+        shippingFee
+    ]);
 
     return (
         <CartContext.Provider value={contextValue}>

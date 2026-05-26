@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
@@ -24,14 +24,59 @@ export interface Answer {
     role?: string;
 }
 
+const QUESTIONS_CACHE_KEY_PREFIX = 'ikcous_questions_cache_';
+const memoryQuestionsCache = new Map<string, Question[]>();
+
+const getQuestionsCache = (productId: string): Question[] | null => {
+  if (memoryQuestionsCache.has(productId)) {
+    return memoryQuestionsCache.get(productId)!;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(`${QUESTIONS_CACHE_KEY_PREFIX}${productId}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        memoryQuestionsCache.set(productId, parsed);
+        return parsed;
+      }
+    } catch (e) {
+      console.error('Failed to parse questions cache', e);
+    }
+  }
+  return null;
+};
+
+const updateQuestionsCache = (productId: string, newQuestions: Question[]) => {
+  memoryQuestionsCache.set(productId, newQuestions);
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(`${QUESTIONS_CACHE_KEY_PREFIX}${productId}`, JSON.stringify(newQuestions));
+    } catch (e) {
+      console.error('Failed to update questions cache', e);
+    }
+  }
+};
+
 export function useQuestions() {
     const { user } = useAuth();
     const [questions, setQuestions] = useState<Question[]>([]);
     const [loading, setLoading] = useState(false);
+    const latestProductIdRef = useRef<string | null>(null);
 
     const getQuestionsByProduct = useCallback(async (productId: string) => {
-        try {
+        latestProductIdRef.current = productId;
+
+        // 1. SWR Cache Sync
+        const cached = getQuestionsCache(productId);
+        if (cached) {
+            setQuestions(cached);
+            setLoading(false);
+        } else {
+            setQuestions([]); // Clear previous product questions if not cached
             setLoading(true);
+        }
+
+        try {
             const { data, error } = await supabase
                 .from('questions' as any)
                 .select(`
@@ -79,12 +124,17 @@ export function useQuestions() {
                 })).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
             }));
 
-            setQuestions(formattedQuestions);
+            if (latestProductIdRef.current === productId) {
+                setQuestions(formattedQuestions);
+            }
+            updateQuestionsCache(productId, formattedQuestions);
         } catch (error: any) {
             console.error('Error fetching questions:', error);
             toast.error('Erro ao carregar perguntas.');
         } finally {
-            setLoading(false);
+            if (latestProductIdRef.current === productId) {
+                setLoading(false);
+            }
         }
     }, []);
 

@@ -11,6 +11,7 @@ export default defineConfig({
     host: true,
     port: 5173,
     strictPort: true,
+    allowedHosts: true,
     hmr: {
       clientPort: 5173,
     },
@@ -127,12 +128,61 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom'],
-          'vendor-form': ['react-hook-form', '@hookform/resolvers', 'zod'],
-          'vendor-charts': ['recharts'],
-          'vendor-date': ['date-fns'],
-          'vendor-supabase': ['@supabase/supabase-js'],
+        manualChunks(id) {
+          const normalizedId = id.replace(/\\/g, '/');
+          if (normalizedId.includes('commonjsHelpers')) {
+            return 'vendor-react';
+          }
+          if (id.includes('node_modules')) {
+            if (normalizedId.includes('react-router-dom') || normalizedId.includes('@remix-run/router')) {
+              return 'vendor-router';
+            }
+            if (normalizedId.includes('embla-carousel-react') || normalizedId.includes('embla-carousel')) {
+              return 'vendor-carousel';
+            }
+            if (normalizedId.includes('react-day-picker') || normalizedId.includes('date-fns')) {
+              return 'vendor-date';
+            }
+            if (
+              normalizedId.includes('vaul') ||
+              normalizedId.includes('cmdk') ||
+              normalizedId.includes('sonner') ||
+              normalizedId.includes('canvas-confetti')
+            ) {
+              return 'vendor-ui-helpers';
+            }
+            if (normalizedId.includes('react-resizable-panels')) {
+              return 'vendor-panels';
+            }
+            if (normalizedId.includes('react-helmet-async')) {
+              return 'vendor-helmet';
+            }
+            if (normalizedId.includes('lucide-react')) {
+              return 'vendor-lucide';
+            }
+            if (normalizedId.includes('react-hook-form') || normalizedId.includes('zod') || normalizedId.includes('@hookform')) {
+              return 'vendor-form';
+            }
+            if (normalizedId.includes('@radix-ui')) {
+              return 'vendor-radix';
+            }
+            if (normalizedId.includes('framer-motion')) {
+              return 'vendor-motion';
+            }
+            if (normalizedId.includes('@supabase')) {
+              return 'vendor-supabase';
+            }
+            if (normalizedId.includes('recharts') || normalizedId.includes('d3')) {
+              return 'vendor-charts';
+            }
+            if (
+              normalizedId.includes('/node_modules/react/') ||
+              normalizedId.includes('/node_modules/react-dom/') ||
+              normalizedId.includes('/node_modules/scheduler/')
+            ) {
+              return 'vendor-react';
+            }
+          }
         },
       },
     },

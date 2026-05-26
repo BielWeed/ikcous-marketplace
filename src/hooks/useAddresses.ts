@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { Address } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
@@ -9,9 +9,40 @@ export function useAddresses() {
     const [addresses, setAddresses] = useState<Address[]>([]);
     const [loading, setLoading] = useState(false);
 
+    // Synchronously load cache on mount or when user changes
+    useEffect(() => {
+        if (!user?.id) {
+            setAddresses([]);
+            return;
+        }
+        const cacheKey = `ikcous_addresses_cache_${user.id}`;
+        try {
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed)) {
+                    setAddresses(parsed);
+                }
+            }
+        } catch (e) {
+            console.error('Error loading cached addresses:', e);
+        }
+    }, [user?.id]);
+
     const fetchAddresses = useCallback(async () => {
         if (!user) return;
-        setLoading(true);
+        const cacheKey = `ikcous_addresses_cache_${user.id}`;
+        let hasCache = false;
+        try {
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                hasCache = true;
+            }
+        } catch (e) {}
+
+        if (!hasCache) {
+            setLoading(true);
+        }
         try {
             const { data, error } = await supabase
                 .from('user_addresses')
@@ -21,7 +52,7 @@ export function useAddresses() {
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            setAddresses((data || []).map(a => ({
+            const mapped = (data || []).map(a => ({
                 id: a.id,
                 user_id: a.user_id,
                 name: a.name,
@@ -35,7 +66,9 @@ export function useAddresses() {
                 state: a.state,
                 reference: a.reference,
                 is_default: a.is_default || false
-            })));
+            }));
+            setAddresses(mapped);
+            localStorage.setItem(cacheKey, JSON.stringify(mapped));
         } catch (error) {
             console.error('Error fetching addresses:', error);
             toast.error('Erro ao carregar endereços');
@@ -80,11 +113,15 @@ export function useAddresses() {
             };
 
             setAddresses(prev => {
+                let updated;
                 // If new address is default, update others
                 if (formattedAddress.is_default) {
-                    return [formattedAddress, ...prev.map(a => ({ ...a, is_default: false }))];
+                    updated = [formattedAddress, ...prev.map(a => ({ ...a, is_default: false }))];
+                } else {
+                    updated = [...prev, formattedAddress];
                 }
-                return [...prev, formattedAddress];
+                localStorage.setItem(`ikcous_addresses_cache_${user.id}`, JSON.stringify(updated));
+                return updated;
             });
 
             toast.success('Endereço adicionado com sucesso');
@@ -126,12 +163,16 @@ export function useAddresses() {
             };
 
             setAddresses(prev => {
+                let updated;
                 if (updates.is_default) {
-                    return prev.map(a =>
+                    updated = prev.map(a =>
                         a.id === id ? formattedAddress : { ...a, is_default: false }
                     ).sort((a, b) => (a.is_default === b.is_default ? 0 : a.is_default ? -1 : 1));
+                } else {
+                    updated = prev.map(a => a.id === id ? formattedAddress : a);
                 }
-                return prev.map(a => a.id === id ? formattedAddress : a);
+                localStorage.setItem(`ikcous_addresses_cache_${user.id}`, JSON.stringify(updated));
+                return updated;
             });
 
             toast.success('Endereço atualizado');
@@ -154,7 +195,11 @@ export function useAddresses() {
 
             if (error) throw error;
 
-            setAddresses(prev => prev.filter(a => a.id !== id));
+            setAddresses(prev => {
+                const updated = prev.filter(a => a.id !== id);
+                localStorage.setItem(`ikcous_addresses_cache_${user.id}`, JSON.stringify(updated));
+                return updated;
+            });
             toast.success('Endereço removido');
             return true;
         } catch (error) {

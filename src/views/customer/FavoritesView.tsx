@@ -1,8 +1,11 @@
+import React, { useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, ShoppingBag, ArrowRight, Sparkles } from 'lucide-react';
 import type { Product, View } from '@/types';
 import { ProductCard } from '@/components/ui/custom/ProductCard';
 import { haptic } from '@/utils/haptic';
+import { useStore } from '@/contexts/StoreContext';
+import { usePrefetchOnHover } from '@/hooks/usePrefetchOnHover';
 
 interface FavoritesViewProps {
   favorites: Product[];
@@ -11,12 +14,28 @@ interface FavoritesViewProps {
   onNavigate: (view: View) => void;
 }
 
-export function FavoritesView({
+export const FavoritesView = React.memo(function FavoritesView({
   favorites,
   onToggleFavorite,
   onProductClick,
   onNavigate
 }: FavoritesViewProps) {
+  const { config } = useStore();
+  const { prefetchView } = usePrefetchOnHover();
+
+  const handleToggleFavorite = useCallback((product: Product) => {
+    haptic.light();
+    onToggleFavorite(product);
+  }, [onToggleFavorite]);
+
+  const handleProductClick = useCallback((productId: string) => {
+    haptic.medium();
+    onProductClick(productId);
+  }, [onProductClick]);
+
+  const handlePrefetchProductDetail = useCallback(() => {
+    prefetchView('product-detail');
+  }, [prefetchView]);
   if (favorites.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center px-6 pt-4 pb-20 bg-white relative overflow-hidden">
@@ -147,15 +166,11 @@ export function FavoritesView({
                 <ProductCard
                   product={product}
                   isFavorite={true}
-                  onToggleFavorite={(e) => {
-                    e.stopPropagation();
-                    haptic.light();
-                    onToggleFavorite(product);
-                  }}
-                  onClick={() => {
-                    haptic.medium();
-                    onProductClick(product.id);
-                  }}
+                  onToggleFavorite={handleToggleFavorite}
+                  onClick={handleProductClick}
+                  isEligibleForFreeShipping={config.freeShippingMin > 0}
+                  onMouseEnter={handlePrefetchProductDetail}
+                  onTouchStart={handlePrefetchProductDetail}
                 />
               </motion.div>
             ))}
@@ -192,4 +207,4 @@ export function FavoritesView({
       </div>
     </div>
   );
-}
+});

@@ -27,11 +27,42 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
   const [loading, setLoading] = useState(false);
   const [totalOrders, setTotalOrders] = useState(0);
 
+  // Synchronously load cache on mount or when user changes
+  useEffect(() => {
+    if (!user?.id || isAdmin) {
+      setOrders([]);
+      return;
+    }
+    const cacheKey = `ikcous_orders_cache_${user.id}`;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          setOrders(parsed);
+        }
+      }
+    } catch (e) {
+      console.error('Error loading cached orders:', e);
+    }
+  }, [user?.id, isAdmin]);
+
   // Fetch orders for the logged-in user
   const fetchUserOrders = useCallback(async () => {
     if (!user || !enabled) return [];
+    const cacheKey = `ikcous_orders_cache_${user.id}`;
+    let hasCache = false;
     try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        hasCache = true;
+      }
+    } catch (e) {}
+
+    if (!hasCache) {
       setLoading(true);
+    }
+    try {
       const { data, error } = await supabase
         .from('marketplace_orders')
         .select(`
@@ -47,6 +78,7 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
       if (data) {
         const mappedOrders = data.map(item => mapOrderFromDB(item as any));
         setOrders(mappedOrders);
+        localStorage.setItem(cacheKey, JSON.stringify(mappedOrders));
         return mappedOrders;
       }
       return [];
@@ -116,7 +148,12 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
       const newOrder = mapOrderFromDB(data as any);
       setOrders(prev => {
         if (prev.some(o => o.id === newOrder.id)) return prev;
-        return [newOrder, ...prev];
+        const updated = [newOrder, ...prev];
+        if (user?.id) {
+          const cacheKey = `ikcous_orders_cache_${user.id}`;
+          localStorage.setItem(cacheKey, JSON.stringify(updated));
+        }
+        return updated;
       });
       toast.info(`Novo pedido recebido! #${newOrder.id.slice(0, 8)}`);
     }
@@ -124,16 +161,30 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
 
   const handleRealtimeUpdate = useCallback((updatedOrder: any) => {
     if (!updatedOrder.id) return;
-    setOrders(prev => prev.map(o =>
-      o.id === updatedOrder.id ? { ...o, status: updatedOrder.status, trackingCode: updatedOrder.tracking_code } : o
-    ));
-  }, []);
+    setOrders(prev => {
+      const updated = prev.map(o =>
+        o.id === updatedOrder.id ? { ...o, status: updatedOrder.status, trackingCode: updatedOrder.tracking_code } : o
+      );
+      if (user?.id) {
+        const cacheKey = `ikcous_orders_cache_${user.id}`;
+        localStorage.setItem(cacheKey, JSON.stringify(updated));
+      }
+      return updated;
+    });
+  }, [user?.id]);
 
   const handleRealtimeDelete = useCallback((oldId: string | undefined) => {
     if (oldId) {
-      setOrders(prev => prev.filter(o => o.id !== oldId));
+      setOrders(prev => {
+        const updated = prev.filter(o => o.id !== oldId);
+        if (user?.id) {
+          const cacheKey = `ikcous_orders_cache_${user.id}`;
+          localStorage.setItem(cacheKey, JSON.stringify(updated));
+        }
+        return updated;
+      });
     }
-  }, []);
+  }, [user?.id]);
 
   // Realtime subscription for orders
   useEffect(() => {
@@ -310,16 +361,23 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
 
       if (error) throw error;
 
-      setOrders(prev => prev.map(order =>
-        order.id === orderId ? { ...order, status } : order
-      ));
+      setOrders(prev => {
+        const updated = prev.map(order =>
+          order.id === orderId ? { ...order, status } : order
+        );
+        if (user?.id) {
+          const cacheKey = `ikcous_orders_cache_${user.id}`;
+          localStorage.setItem(cacheKey, JSON.stringify(updated));
+        }
+        return updated;
+      });
       if (!silent) toast.success('Status atualizado com sucesso');
     } catch (err: any) {
       console.error('Error updating status:', err);
       if (!silent) toast.error(err.message || 'Erro ao atualizar status');
       throw err;
     }
-  }, [isAdmin, orders]);
+  }, [isAdmin, orders, user?.id]);
 
   const fetchOrderHistory = useCallback(async (orderId: string) => {
     try {

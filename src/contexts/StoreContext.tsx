@@ -35,8 +35,32 @@ export const StoreContext = createContext<StoreContextType | undefined>(undefine
 
 export function StoreProvider({ children }: Readonly<{ children: React.ReactNode }>) {
     const { user, isAdmin } = useAuth();
-    const [config, setConfig] = useState<StoreConfig>(defaultStoreConfig);
-    const [isLoaded, setIsLoaded] = useState(false);
+    const [config, setConfig] = useState<StoreConfig>(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const cached = localStorage.getItem('ikcous_store_config_cache');
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (parsed.primaryColor) {
+                        document.documentElement.style.setProperty('--primary', parsed.primaryColor);
+                    }
+                    return { ...defaultStoreConfig, ...parsed };
+                }
+            } catch (e) {
+                console.error('[StoreContext] Failed to parse cached config', e);
+            }
+        }
+        if (typeof window !== 'undefined' && defaultStoreConfig.primaryColor) {
+            document.documentElement.style.setProperty('--primary', defaultStoreConfig.primaryColor);
+        }
+        return defaultStoreConfig;
+    });
+    const [isLoaded, setIsLoaded] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('ikcous_store_config_cache') !== null;
+        }
+        return false;
+    });
     const [products, setProducts] = useState<Product[]>([]);
     const [loadingProducts, setLoadingProducts] = useState(true);
 
@@ -45,6 +69,12 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
             document.documentElement.style.setProperty('--primary', primaryColor);
         }
     }, []);
+
+    useEffect(() => {
+        if (config.primaryColor) {
+            applyBranding(config.primaryColor);
+        }
+    }, [config.primaryColor, applyBranding]);
 
     const mapConfig = useCallback((data: any): StoreConfig => {
         return {
@@ -89,12 +119,14 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
                         const mapped = mapConfig(newData);
                         setConfig(mapped);
                         applyBranding(mapped.primaryColor);
+                        localStorage.setItem('ikcous_store_config_cache', JSON.stringify(mapped));
                     }
                 }
             } else if (data) {
                 const mapped = mapConfig(data);
                 setConfig(mapped);
                 applyBranding(mapped.primaryColor);
+                localStorage.setItem('ikcous_store_config_cache', JSON.stringify(mapped));
             }
         } catch (err) {
             console.error('[StoreContext] Config error:', err);
@@ -107,21 +139,29 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
         const cacheKey = 'ikcous_products_cache';
         
         // 1. Tentar carregar do cache para renderização instantânea (Stale-While-Revalidate)
-        if (products.length === 0) {
-            try {
-                const cached = localStorage.getItem(cacheKey);
-                if (cached) {
-                    const parsed = JSON.parse(cached);
-                    if (Array.isArray(parsed) && parsed.length > 0) {
-                        setProducts(parsed);
-                        setLoadingProducts(false);
+        let needsLoading = false;
+        setProducts(prev => {
+            if (prev.length === 0) {
+                try {
+                    const cached = localStorage.getItem(cacheKey);
+                    if (cached) {
+                        const parsed = JSON.parse(cached);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            setLoadingProducts(false);
+                            return parsed;
+                        }
                     }
-                } else {
-                    setLoadingProducts(true);
+                    needsLoading = true;
+                } catch (e) {
+                    console.error('[StoreContext] Cache parse error', e);
+                    needsLoading = true;
                 }
-            } catch (e) {
-                console.error('[StoreContext] Cache parse error', e);
             }
+            return prev;
+        });
+
+        if (needsLoading) {
+            setLoadingProducts(true);
         }
 
         try {
@@ -162,7 +202,7 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
         } finally {
             setLoadingProducts(false);
         }
-    }, [isAdmin, products.length]);
+    }, [isAdmin]);
 
     const updateConfig = useCallback(async (updates: Partial<StoreConfig>) => {
         try {
@@ -195,7 +235,11 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
 
             if (error) throw error;
 
-            setConfig(prev => ({ ...prev, ...updates }));
+            setConfig(prev => {
+                const newConfig = { ...prev, ...updates };
+                localStorage.setItem('ikcous_store_config_cache', JSON.stringify(newConfig));
+                return newConfig;
+            });
             if (updates.primaryColor) applyBranding(updates.primaryColor);
             toast.success('Configurações salvas');
         } catch (err) {
@@ -229,6 +273,7 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
                     }
                     setConfig(mapped);
                     applyBranding(mapped.primaryColor);
+                    localStorage.setItem('ikcous_store_config_cache', JSON.stringify(mapped));
                 }
             })
             .subscribe();
@@ -256,19 +301,21 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
         return config.shippingFee;
     }, [config.freeShippingMin, config.shippingFee]);
 
+    const refresh = useCallback(async () => {
+        await fetchConfig();
+        await fetchProducts();
+    }, [fetchConfig, fetchProducts]);
+
     const contextValue = React.useMemo(() => ({
         config,
         isLoaded,
         products,
         loadingProducts,
         updateConfig,
-        refresh: async () => {
-            await fetchConfig();
-            await fetchProducts();
-        },
+        refresh,
         fetchProducts,
         calculateShipping
-    }), [config, isLoaded, products, loadingProducts, updateConfig, fetchConfig, fetchProducts, calculateShipping]);
+    }), [config, isLoaded, products, loadingProducts, updateConfig, refresh, fetchProducts, calculateShipping]);
 
     return (
         <StoreContext.Provider value={contextValue}>

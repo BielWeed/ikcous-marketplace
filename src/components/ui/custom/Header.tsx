@@ -1,5 +1,5 @@
 import { ArrowLeft, Bell } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import type { View } from '@/types';
 import { haptic } from '@/utils/haptic';
 import { cn } from '@/lib/utils';
@@ -19,7 +19,7 @@ interface HeaderProps {
   scrollProgress?: number;
 }
 
-export function Header({
+export const Header = memo(function Header({
   onNavigate,
   showBackButton,
   onBack,
@@ -168,4 +168,4 @@ export function Header({
         </div>
       </header>
   );
-}
+});

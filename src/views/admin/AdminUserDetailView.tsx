@@ -31,6 +31,7 @@ import { ptBR } from 'date-fns/locale';
 import { mapOrderFromDB, mapProductFromDB } from '@/lib/mappers';
 import type { Order, CartItem, Address, View } from '@/types';
 import { toast } from 'sonner';
+import { formatCurrency } from '@/lib/utils';
 
 interface Profile {
     id: string;
@@ -294,7 +295,7 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                             </div>
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-1">LTV Total</p>
                             <div className="text-2xl lg:text-3xl font-black text-white tracking-tighter">
-                                {totalSpent.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                {formatCurrency(totalSpent)}
                             </div>
                         </div>
 
@@ -376,7 +377,7 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                                                                     </div>
                                                                 </TableCell>
                                                                 <TableCell className="text-right font-black text-white tracking-tight py-5">
-                                                                    {order.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                                    {formatCurrency(order.total)}
                                                                 </TableCell>
                                                                 <TableCell className="text-right py-5 px-6">
                                                                     <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-zinc-500 hover:text-admin-gold hover:bg-admin-gold/10">
@@ -456,10 +457,10 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                                                                         </div>
                                                                     </TableCell>
                                                                     <TableCell className="text-xs font-bold text-zinc-400 py-4">
-                                                                        {unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                                        {formatCurrency(unitPrice)}
                                                                     </TableCell>
                                                                     <TableCell className="text-right font-black text-green-500 tracking-tight text-sm py-4 px-6">
-                                                                        {(unitPrice * item.quantity).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                                        {formatCurrency(unitPrice * item.quantity)}
                                                                     </TableCell>
                                                                 </TableRow>
                                                             );
@@ -467,10 +468,10 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                                                         <TableRow className="bg-gradient-to-r from-transparent via-green-500/5 to-green-500/10 hover:bg-transparent border-t border-green-500/20">
                                                             <TableCell colSpan={3} className="text-right py-6 font-black uppercase tracking-[0.2em] text-[10px] text-zinc-400">Total Previsível do Retido</TableCell>
                                                             <TableCell className="text-right font-black text-xl lg:text-2xl text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-green-600 px-6 py-6 tracking-tighter">
-                                                                {cartItems.reduce((acc, item) => {
+                                                                {formatCurrency(cartItems.reduce((acc, item) => {
                                                                     const variant = item.variantId ? item.product.variants?.find(v => v.id === item.variantId) : null;
                                                                     return acc + (variant?.priceOverride || item.product.price) * item.quantity;
-                                                                }, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                                }, 0))}
                                                             </TableCell>
                                                         </TableRow>
                                                     </TableBody>

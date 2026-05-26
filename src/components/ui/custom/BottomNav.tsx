@@ -1,8 +1,9 @@
 import { Home, Heart, ShoppingCart, User } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 import { haptic } from '@/utils/haptic';
 import { cn } from '@/lib/utils';
 import type { View } from '@/types';
+import { usePrefetchOnHover } from '@/hooks/usePrefetchOnHover';
 
 interface BottomNavProps {
   currentView: View;
@@ -10,7 +11,8 @@ interface BottomNavProps {
   cartCount: number;
 }
 
-export function BottomNav({ currentView, onNavigate, cartCount }: Readonly<BottomNavProps>) {
+export const BottomNav = memo(function BottomNav({ currentView, onNavigate, cartCount }: Readonly<BottomNavProps>) {
+  const { prefetchView } = usePrefetchOnHover();
   const isAdminView = currentView.startsWith('admin');
 
   const navItems = useMemo(() => [
@@ -42,6 +44,12 @@ export function BottomNav({ currentView, onNavigate, cartCount }: Readonly<Botto
                 haptic.light();
                 onNavigate(item.view);
               }}
+              onMouseEnter={() => {
+                prefetchView(item.view);
+              }}
+              onTouchStart={() => {
+                prefetchView(item.view);
+              }}
               className={cn(
                 "flex flex-col items-center justify-center py-1 px-4 rounded-xl relative group active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-[color,background-color,transform] duration-300",
                 isActive ? "text-primary" : "text-slate-400 hover:text-primary/70"
@@ -67,4 +75,4 @@ export function BottomNav({ currentView, onNavigate, cartCount }: Readonly<Botto
       </div>
     </nav >
   );
-}
+});

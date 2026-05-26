@@ -1,25 +1,23 @@
 import { ShoppingCart, ChevronRight, Truck } from 'lucide-react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '@/hooks/useCart';
 import { useStore } from '@/contexts/StoreContext';
 import { useAuth } from '@/hooks/useAuth';
+import { formatCurrency } from '@/lib/utils';
 
 interface CartReminderProps {
     onAction: () => void;
 }
 
 export function CartReminder({ onAction }: CartReminderProps) {
-    const { cart: items, getCartCount } = useCart();
+    const { cart: items, getCartCount, cartTotal } = useCart();
     const { config } = useStore();
     const { user } = useAuth();
     const [isVisible, setIsVisible] = useState(false);
     const [isDismissed, setIsDismissed] = useState(false);
 
-    const totalAmount = useMemo(() => items.reduce((sum, item) => {
-        if (!item?.product) return sum;
-        return sum + (item.product.price * (item.quantity || 0));
-    }, 0), [items]);
+    const totalAmount = cartTotal;
 
     const isFree = totalAmount >= config.freeShippingMin;
     const amountToFree = Math.max(0, config.freeShippingMin - totalAmount);
@@ -102,7 +100,7 @@ export function CartReminder({ onAction }: CartReminderProps) {
                                 </div>
                             ) : (
                                 <p className="text-[10px] font-bold text-zinc-400 leading-tight">
-                                    Faltam <span className="text-white">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amountToFree)}</span> para o <span className="text-emerald-500 italic">Frete VIP</span>
+                                    Faltam <span className="text-white">{formatCurrency(amountToFree)}</span> para o <span className="text-emerald-500 italic">Frete VIP</span>
                                 </p>
                             )}
                         </div>

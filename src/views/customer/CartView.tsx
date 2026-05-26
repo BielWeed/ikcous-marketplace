@@ -54,6 +54,37 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
     }
   }, [user, fetchUserOrders, activeTab]);
 
+  useEffect(() => {
+    const getScrollElement = () => document.querySelector('main');
+    
+    const initialMain = getScrollElement();
+    if (initialMain) {
+      initialMain.scrollTop = 0;
+    }
+    
+    // Handle micro-delays for React lazy-load mounts and Framer-Motion transition settle times
+    const rafHandle = requestAnimationFrame(() => {
+      const el = getScrollElement();
+      if (el) el.scrollTop = 0;
+    });
+
+    const timer1 = setTimeout(() => {
+      const el = getScrollElement();
+      if (el) el.scrollTop = 0;
+    }, 50);
+
+    const timer2 = setTimeout(() => {
+      const el = getScrollElement();
+      if (el) el.scrollTop = 0;
+    }, 150);
+
+    return () => {
+      cancelAnimationFrame(rafHandle);
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
+  }, [activeTab]);
+
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => {
     if (!item?.product?.price) return sum;
@@ -99,7 +130,9 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
     };
   }, [subtotal, config.shippingFee, config.freeShippingMin, hasFreeShippingItem, cart.length]);
 
-  const freeShippingProducts = getFreeShippingEligibleProducts(cart.filter(i => i?.product?.id).map(i => i.product.id));
+  const freeShippingProducts = useMemo(() => {
+    return getFreeShippingEligibleProducts(cart.filter(i => i?.product?.id).map(i => i.product.id));
+  }, [cart, getFreeShippingEligibleProducts]);
 
   const handleClearCart = () => {
     if (globalThis.confirm('Deseja realmente limpar todo o carrinho?')) {
@@ -116,12 +149,8 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
       setRemovingId(null);
     }, 300);
   };
-
   return (
-    <div className={cn(
-      "bg-zinc-50/30 overflow-hidden transition-all duration-300 flex flex-col min-h-[calc(100dvh-140px)]",
-      activeTab === 'cart' && cart.length > 0 ? "pb-[152px]" : "pb-20"
-    )}>
+    <div className="bg-zinc-50/30 transition-all duration-300 flex flex-col min-h-full">
       {/* Tab Switcher Premium */}
       <div className="px-4 xs:px-6 pt-4 xs:pt-6 pb-3 xs:pb-4 bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-zinc-100 flex flex-col gap-2 xs:gap-4">
 
@@ -248,20 +277,28 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
 
             {cart.length > 0 && (
               <>
-                {user && (
-                  <ShippingProgress
-                    shipping={shipping}
-                    savings={savings}
-                    progressPercent={progressPercent}
-                    amountToFree={amountToFree}
-                    isNearlyThere={isNearlyThere}
-                    freeShippingProducts={freeShippingProducts}
-                    onAddToCart={onAddToCart}
-                  />
-                )}
+                <ShippingProgress
+                  shipping={shipping}
+                  savings={savings}
+                  progressPercent={progressPercent}
+                  amountToFree={amountToFree}
+                  isNearlyThere={isNearlyThere}
+                  freeShippingProducts={freeShippingProducts}
+                  onAddToCart={onAddToCart}
+                />
 
               </>
             )}
+
+            {/* Spacer to prevent overlap by the sticky bottom actions */}
+            <div 
+              style={{
+                height: cart.length > 0 
+                  ? 'calc(180px + var(--safe-area-bottom, 0px))' 
+                  : 'calc(80px + var(--safe-area-bottom, 0px))'
+              }} 
+              aria-hidden="true" 
+            />
           </motion.div>
         ) : (
           <motion.div
@@ -282,6 +319,14 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
               isLoadingOrders={isLoadingOrders}
               onNavigate={onNavigate}
               isGuest={!user}
+            />
+
+            {/* Spacer to prevent overlap by the sticky bottom actions */}
+            <div 
+              style={{
+                height: 'calc(80px + var(--safe-area-bottom, 0px))'
+              }} 
+              aria-hidden="true" 
             />
           </motion.div>
         )}

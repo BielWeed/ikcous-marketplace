@@ -67,6 +67,8 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
     defaultValues: {
       name: profile?.full_name || user?.user_metadata?.name || '',
       whatsapp: getDefaultWhatsApp(),
+      city: 'Monte Carmelo',
+      state: 'MG',
     },
     mode: 'onChange'
   });
@@ -131,10 +133,13 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
 
   useEffect(() => {
     if (profile) {
-      form.setValue('name', profile.full_name || '');
-      form.setValue('whatsapp', profile.whatsapp ? formatWhatsApp(profile.whatsapp) : '');
+      form.setValue('name', profile.full_name || '', { shouldValidate: true });
+      form.setValue('whatsapp', profile.whatsapp ? formatWhatsApp(profile.whatsapp) : '', { shouldValidate: true });
+      form.trigger();
+    } else if (user) {
+      form.trigger();
     }
-  }, [profile, form]);
+  }, [profile, user, form]);
 
   useEffect(() => {
     if (user) {
@@ -227,11 +232,19 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
 
     setIsSubmitting(true);
 
+    if (user && !selectedAddressId) {
+      toast.error('Por favor, adicione ou selecione um endereço de entrega.');
+      setIsSubmitting(false);
+      return;
+    }
+
     const customerInfo = data as unknown as Customer;
     const observations = notes || undefined;
 
     if (!user) {
-      if (!data.cep || !data.street || !data.number || !data.neighborhood || !data.city || !data.state) {
+      const city = data.city || 'Monte Carmelo';
+      const state = data.state || 'MG';
+      if (!data.cep || !data.street || !data.number || !data.neighborhood || !city || !state) {
         toast.error('Por favor, preencha todos os campos obrigatórios do endereço.');
         setIsSubmitting(false);
         return;
@@ -257,8 +270,8 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
         street: data.street,
         number: data.number,
         neighborhood: data.neighborhood,
-        city: data.city,
-        state: data.state,
+        city: data.city || 'Monte Carmelo',
+        state: data.state || 'MG',
         complement: data.complement
       },
 
@@ -316,7 +329,7 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
   }
 
   return (
-    <div className="min-h-screen pb-56 md:pb-56 bg-gray-50/10 pt-4">
+    <div className="min-h-screen pb-10 bg-gray-50/10 pt-4">
 
       <div className="px-6 space-y-8">
 
@@ -547,11 +560,20 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
 
       </div>
 
-      {/* Spacer to prevent overlap by the sticky footer on mobile */}
-      <div className="h-24 lg:hidden" aria-hidden="true" />
+      {/* Spacer to prevent overlap by the sticky footer and bottom nav */}
+      <div 
+        className="hidden md:block" 
+        style={{ height: '280px' }} 
+        aria-hidden="true" 
+      />
+      <div 
+        className="block md:hidden" 
+        style={{ height: 'calc(340px + var(--safe-area-bottom, 0px))' }} 
+        aria-hidden="true" 
+      />
 
       {/* Order Summary - Fixed Bottom Bar */}
-      <div className="fixed bottom-[calc(64px+env(safe-area-inset-bottom,0px))] left-0 right-0 bg-white/95 backdrop-blur-3xl border-t border-zinc-100 p-4 pb-8 md:bottom-24 md:max-w-screen-md md:mx-auto md:rounded-[2.5rem] md:border md:pb-12 z-[55] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] rounded-t-[2.5rem]">
+      <div className="fixed bottom-[calc(64px+var(--safe-area-bottom,0px))] left-0 right-0 bg-white/95 backdrop-blur-3xl border-t border-zinc-100 p-4 pb-8 md:bottom-24 md:max-w-screen-md md:mx-auto md:rounded-[2.5rem] md:border md:pb-12 z-[55] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] rounded-t-[2.5rem]">
         <div className="max-w-screen-md mx-auto">
           <div className="flex items-center justify-between mb-4 px-1">
             <div className="flex flex-col">
@@ -607,7 +629,7 @@ interface SuccessViewProps {
 function SuccessView({ orderId, appliedCoupon, discount, onNavigate }: Readonly<SuccessViewProps>) {
 
   return (
-    <div className="min-h-full bg-white flex flex-col pb-44">
+    <div className="min-h-full bg-white flex flex-col pb-44 items-center justify-center text-center px-6">
       <div className="relative mb-12 group">
         <div className="absolute inset-0 bg-emerald-100 rounded-2xl scale-[2.5] blur-3xl opacity-30 group-hover:opacity-50 transition-opacity duration-1000" />
         <div className="relative w-32 h-32 bg-emerald-50 rounded-2xl flex items-center justify-center border-4 border-white shadow-2xl group-hover:scale-110 transition-transform duration-700">
@@ -618,7 +640,7 @@ function SuccessView({ orderId, appliedCoupon, discount, onNavigate }: Readonly<
       </div>
 
       <h2 className="text-4xl font-black text-zinc-900 mb-4 tracking-tighter leading-tight animate-in slide-in-from-bottom-4 duration-700">
-        Pedido Celebreado!
+        Pedido Celebrado!
       </h2>
 
       <div className="space-y-4 mb-12 animate-in fade-in slide-in-from-bottom-8 duration-1000">

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ThumbsUp, Check, User } from 'lucide-react';
 import { StarRating } from './StarRating';
 import type { Review } from '@/types';
+import { LazyImage } from '@/components/LazyImage';
 
 interface ReviewCardProps {
   review: Review;
@@ -59,7 +60,7 @@ export function ReviewCard({ review, onHelpful }: ReviewCardProps) {
         <div className="flex gap-3 mb-4 overflow-x-auto pb-2 scrollbar-hide">
           {review.images.map((image, index) => (
             <div key={index} className="relative group/img overflow-hidden rounded-2xl">
-              <img
+              <LazyImage
                 src={image}
                 alt={`Review ${index + 1}`}
                 className="w-20 h-20 object-cover flex-shrink-0 group-hover/img:scale-110 transition-transform duration-500"

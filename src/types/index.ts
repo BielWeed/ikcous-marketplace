@@ -15,6 +15,7 @@ export interface Product {
   isBestseller: boolean;
   freeShipping: boolean;
   createdAt: string;
+  createdTime?: number;
   rating?: number;
   reviewCount?: number;
   tags?: string[];

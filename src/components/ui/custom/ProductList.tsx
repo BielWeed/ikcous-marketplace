@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Product } from '@/types';
 import { ProductCard } from './ProductCard';
 import { ProductCardSkeleton } from './Skeletons';
 import { haptic } from '@/utils/haptic';
+import { usePrefetchOnHover } from '@/hooks/usePrefetchOnHover';
+import { useStore } from '@/contexts/StoreContext';
 
 interface ProductListProps {
     products: Product[];
@@ -14,7 +16,7 @@ interface ProductListProps {
     onQuickBuy?: (product: Product) => void;
 }
 
-export function ProductList({
+export const ProductList = React.memo(function ProductList({
     products,
     isLoading,
     favorites,
@@ -23,6 +25,8 @@ export function ProductList({
     onAddToCart,
     onQuickBuy
 }: ProductListProps) {
+    const { config } = useStore();
+    const { prefetchView } = usePrefetchOnHover();
     const [visibleCount, setVisibleCount] = useState(8);
     const observerTarget = useRef<HTMLDivElement>(null);
 
@@ -42,6 +46,30 @@ export function ProductList({
 
         return () => observer.disconnect();
     }, [visibleCount, products.length]);
+
+    const handleToggleFavorite = useCallback((product: Product) => {
+        haptic.medium();
+        onToggleFavorite(product);
+    }, [onToggleFavorite]);
+
+    const handleProductClick = useCallback((id: string) => {
+        haptic.light();
+        onProductClick(id);
+    }, [onProductClick]);
+
+    const handleAddToCart = useCallback((product: Product) => {
+        haptic.success();
+        onAddToCart?.(product);
+    }, [onAddToCart]);
+
+    const handleQuickBuy = useCallback((product: Product) => {
+        haptic.success();
+        onQuickBuy?.(product);
+    }, [onQuickBuy]);
+
+    const handlePrefetchProductDetail = useCallback(() => {
+        prefetchView('product-detail');
+    }, [prefetchView]);
 
     if (isLoading) {
         return (
@@ -66,26 +94,14 @@ export function ProductList({
                         <ProductCard
                             product={product}
                             isFavorite={favorites.includes(product.id)}
-                            onToggleFavorite={(e) => {
-                                e.stopPropagation();
-                                haptic.medium();
-                                onToggleFavorite(product);
-                            }}
-                            onClick={() => {
-                                haptic.light();
-                                onProductClick(product.id);
-                            }}
-                            onAddToCart={(e) => {
-                                e.stopPropagation();
-                                haptic.success();
-                                onAddToCart?.(product);
-                            }}
-                            onQuickBuy={(e) => {
-                                e.stopPropagation();
-                                haptic.success();
-                                onQuickBuy?.(product);
-                            }}
+                            onToggleFavorite={handleToggleFavorite}
+                            onClick={handleProductClick}
+                            onAddToCart={handleAddToCart}
+                            onQuickBuy={handleQuickBuy}
+                            onMouseEnter={handlePrefetchProductDetail}
+                            onTouchStart={handlePrefetchProductDetail}
                             priority={index < 4}
+                            isEligibleForFreeShipping={config.freeShippingMin > 0}
                         />
                     </div>
                 ))}
@@ -98,4 +114,4 @@ export function ProductList({
             )}
         </div>
     );
-}
+});

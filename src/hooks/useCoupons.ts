@@ -64,7 +64,7 @@ export function useCoupons(autoFetch: boolean = false) {
 
       if (error) throw error;
 
-      const result = (data as any)?.[0];
+      const result = data as any;
       if (!result) return { valid: false, discount: 0, message: 'Erro ao validar cupom' };
 
       return {
