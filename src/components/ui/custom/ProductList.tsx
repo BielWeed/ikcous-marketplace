@@ -27,25 +27,45 @@ export const ProductList = React.memo(function ProductList({
 }: ProductListProps) {
     const { config } = useStore();
     const { prefetchView } = usePrefetchOnHover();
-    const [visibleCount, setVisibleCount] = useState(8);
-    const observerTarget = useRef<HTMLDivElement>(null);
+    const [visibleCount, setVisibleCount] = useState(12);
+    const observerRef = useRef<IntersectionObserver | null>(null);
 
     useEffect(() => {
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries[0].isIntersecting && visibleCount < products.length) {
-                    setVisibleCount(prev => Math.min(prev + 8, products.length));
-                }
-            },
-            { threshold: 0.1, rootMargin: '200px' }
-        );
+        setVisibleCount(12);
+    }, [products]);
 
-        if (observerTarget.current) {
-            observer.observe(observerTarget.current);
+    const observerTargetRef = useCallback((node: HTMLDivElement | null) => {
+        if (observerRef.current) {
+            observerRef.current.disconnect();
+            observerRef.current = null;
         }
 
-        return () => observer.disconnect();
-    }, [visibleCount, products.length]);
+        if (node) {
+            const mainContainer = node.closest('main') || null;
+            const observer = new IntersectionObserver(
+                (entries) => {
+                    if (entries[0].isIntersecting) {
+                        setVisibleCount(prev => Math.min(prev + 12, products.length));
+                    }
+                },
+                {
+                    root: mainContainer,
+                    threshold: 0.1,
+                    rootMargin: '300px'
+                }
+            );
+            observer.observe(node);
+            observerRef.current = observer;
+        }
+    }, [products.length]);
+
+    useEffect(() => {
+        return () => {
+            if (observerRef.current) {
+                observerRef.current.disconnect();
+            }
+        };
+    }, []);
 
     const handleToggleFavorite = useCallback((product: Product) => {
         haptic.medium();
@@ -108,7 +128,7 @@ export const ProductList = React.memo(function ProductList({
             </div>
 
             {visibleCount < products.length && (
-                <div ref={observerTarget} className="h-20 flex items-center justify-center">
+                <div ref={observerTargetRef} className="h-20 flex items-center justify-center">
                     <div className="w-6 h-6 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
                 </div>
             )}

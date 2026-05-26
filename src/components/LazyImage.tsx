@@ -32,6 +32,7 @@ export function LazyImage({
             return;
         }
 
+        const container = imgRef.current?.closest('main') || null;
         const observer = new IntersectionObserver(
             ([entry]) => {
                 if (entry.isIntersecting) {
@@ -40,7 +41,8 @@ export function LazyImage({
                 }
             },
             {
-                rootMargin: '100px', // Slightly larger margin for smoother experience
+                root: container,
+                rootMargin: '200px',
                 threshold: 0.01,
             }
         );

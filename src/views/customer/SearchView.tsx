@@ -74,29 +74,45 @@ export const SearchView = React.memo(function SearchView({ onNavigate, initialQu
         prefetchView('product-detail');
     }, [prefetchView]);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
-    const [visibleCount, setVisibleCount] = useState(8);
-    const observerTarget = useRef<HTMLDivElement>(null);
+    const [visibleCount, setVisibleCount] = useState(12);
+    const observerRef = useRef<IntersectionObserver | null>(null);
 
-    useEffect(() => {
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries[0].isIntersecting && visibleCount < filteredProducts.length) {
-                    setVisibleCount(prev => Math.min(prev + 8, filteredProducts.length));
-                }
-            },
-            { threshold: 0.1, rootMargin: '200px' }
-        );
-
-        if (observerTarget.current) {
-            observer.observe(observerTarget.current);
+    const observerTargetRef = useCallback((node: HTMLDivElement | null) => {
+        if (observerRef.current) {
+            observerRef.current.disconnect();
+            observerRef.current = null;
         }
 
-        return () => observer.disconnect();
-    }, [visibleCount, filteredProducts.length]);
+        if (node) {
+            const mainContainer = node.closest('main') || null;
+            const observer = new IntersectionObserver(
+                (entries) => {
+                    if (entries[0].isIntersecting) {
+                        setVisibleCount(prev => Math.min(prev + 12, filteredProducts.length));
+                    }
+                },
+                {
+                    root: mainContainer,
+                    threshold: 0.1,
+                    rootMargin: '300px'
+                }
+            );
+            observer.observe(node);
+            observerRef.current = observer;
+        }
+    }, [filteredProducts.length]);
+
+    useEffect(() => {
+        return () => {
+            if (observerRef.current) {
+                observerRef.current.disconnect();
+            }
+        };
+    }, []);
 
     // Reset pagination when any query filters change
     useEffect(() => {
-        setVisibleCount(8);
+        setVisibleCount(12);
     }, [query, category, minPrice, maxPrice, sort]);
     // Get trending products for empty state
     const trendingProducts = allProducts.slice(0, 4);
@@ -270,7 +286,7 @@ export const SearchView = React.memo(function SearchView({ onNavigate, initialQu
                         </div>
 
                         {visibleCount < filteredProducts.length && (
-                            <div ref={observerTarget} className="h-20 flex items-center justify-center">
+                            <div ref={observerTargetRef} className="h-20 flex items-center justify-center">
                                 <div className="w-6 h-6 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
                             </div>
                         )}

@@ -122,7 +122,7 @@ export const HomeView = React.memo(function HomeView({
 
 
   return (
-    <div className="min-h-full pb-24">
+    <div className="min-h-full pb-28 pb-safe">
       <Helmet>
         <title>IKCOUS Marketplace | Monte Carmelo, MG</title>
         <meta name="description" content="O melhor marketplace de Monte Carmelo com entrega ultrarrápida e troca garantida." />
@@ -182,45 +182,41 @@ export const HomeView = React.memo(function HomeView({
 
       {/* Recommended "For You" Section */}
       {!searchQuery && recommendedProducts.length > 0 && (
-        <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 450px' } as React.CSSProperties}>
-          <ProductCarousel
-            title="Especialmente Para Você"
-            subtitle="Baseado no seu estilo"
-            products={recommendedProducts}
-            favorites={favorites}
-            onToggleFavorite={onToggleFavorite}
-            onProductClick={onProductClick}
-            onAddToCart={onAddToCart}
-            onQuickBuy={onQuickBuy}
-            icon={<Sparkles className="w-5 h-5 text-emerald-500" />}
-            accentColor="emerald"
-            className="bg-gradient-to-b from-transparent to-zinc-50/50"
-          />
-        </div>
+        <ProductCarousel
+          title="Especialmente Para Você"
+          subtitle="Baseado no seu estilo"
+          products={recommendedProducts}
+          favorites={favorites}
+          onToggleFavorite={onToggleFavorite}
+          onProductClick={onProductClick}
+          onAddToCart={onAddToCart}
+          onQuickBuy={onQuickBuy}
+          icon={<Sparkles className="w-5 h-5 text-emerald-500" />}
+          accentColor="emerald"
+          className="bg-gradient-to-b from-transparent to-zinc-50/50"
+        />
       )}
 
       {/* Bestsellers Section - Converted to Carousel! */}
       {!searchQuery && selectedCategory === 'Todas' && products.some(p => p.isBestseller) && (
-        <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 450px' } as React.CSSProperties}>
-          <ProductCarousel
-            title="Destaques em Alta"
-            subtitle="Favoritos da Comunidade"
-            products={products.filter(p => p.isBestseller).slice(0, 10)}
-            favorites={favorites}
-            onToggleFavorite={onToggleFavorite}
-            onProductClick={onProductClick}
-            onAddToCart={onAddToCart}
-            onQuickBuy={onQuickBuy}
-            icon={<TrendingUp className="w-5 h-5 text-zinc-900" />}
-            accentColor="zinc"
-            className="bg-zinc-50/50"
-          />
-        </div>
+        <ProductCarousel
+          title="Destaques em Alta"
+          subtitle="Favoritos da Comunidade"
+          products={products.filter(p => p.isBestseller).slice(0, 10)}
+          favorites={favorites}
+          onToggleFavorite={onToggleFavorite}
+          onProductClick={onProductClick}
+          onAddToCart={onAddToCart}
+          onQuickBuy={onQuickBuy}
+          icon={<TrendingUp className="w-5 h-5 text-zinc-900" />}
+          accentColor="zinc"
+          className="bg-zinc-50/50"
+        />
       )}
 
       {/* Middle Banners - Full Width */}
       {!searchQuery && selectedCategory === 'Todas' && (
-        <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 160px' } as React.CSSProperties}>
+        <>
           {!bannersLoaded && middleBanners.length === 0 ? (
             <div className="w-full py-4 mx-4">
               <div className="h-[120px] sm:h-[200px] bg-zinc-100 animate-pulse rounded-[2rem] w-[calc(100%-2rem)]" />
@@ -230,7 +226,7 @@ export const HomeView = React.memo(function HomeView({
               <BannerCarousel banners={middleBanners} autoPlay={false} />
             </div>
           ) : null}
-        </div>
+        </>
       )}
 
       {/* All Products */}
@@ -333,7 +329,6 @@ export const HomeView = React.memo(function HomeView({
               </p>
             </div>
           ) : (
-            <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 500px' } as React.CSSProperties}>
               <ProductList
                 products={filteredProducts}
                 isLoading={isLoading}
@@ -343,14 +338,13 @@ export const HomeView = React.memo(function HomeView({
                 onAddToCart={onAddToCart}
                 onQuickBuy={onQuickBuy}
               />
-            </div>
           )
         }
       </div >
 
       {
         bottomBanners.length > 0 && !searchQuery && selectedCategory === 'Todas' && (
-          <div style={{ contentVisibility: 'auto', containIntrinsicSize: '0 200px' } as React.CSSProperties} className="w-full py-4">
+          <div className="w-full py-4">
             <BannerCarousel banners={bottomBanners} autoPlay={true} interval={8000} />
           </div>
         )

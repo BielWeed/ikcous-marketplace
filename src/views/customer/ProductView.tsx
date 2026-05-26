@@ -160,6 +160,7 @@ export const ProductView = React.memo(function ProductView({
   }, [product.id]);
 
   useEffect(() => {
+    const mainElement = document.querySelector('main');
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
@@ -167,7 +168,7 @@ export const ProductView = React.memo(function ProductView({
           observer.disconnect();
         }
       },
-      { threshold: 0.01, rootMargin: '300px' }
+      { root: mainElement, threshold: 0.01, rootMargin: '300px' }
     );
 
     const currentRef = recsRef.current;

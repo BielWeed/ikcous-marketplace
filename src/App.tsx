@@ -735,7 +735,7 @@ const AppContent = () => {
       <main
         ref={mainRef}
         className={cn(
-          "relative flex-1 flex flex-col overflow-y-auto overflow-x-hidden overscroll-behavior-y-contain [-webkit-overflow-scrolling:touch]",
+          "relative flex-1 flex flex-col overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch]",
           currentView.startsWith('admin') && "h-full pt-0"
         )}
       >
