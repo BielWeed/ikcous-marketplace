@@ -23,7 +23,22 @@ const validateStatusUpdate = (order: Order | undefined, isAdmin: boolean, status
 
 export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
   const { user } = useAuth();
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<Order[]>(() => {
+    if (typeof window === 'undefined' || !user?.id || isAdmin) return [];
+    try {
+      const cacheKey = `ikcous_orders_cache_${user.id}`;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error('Error loading cached orders:', e);
+    }
+    return [];
+  });
   const [loading, setLoading] = useState(false);
   const [totalOrders, setTotalOrders] = useState(0);
 

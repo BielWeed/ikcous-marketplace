@@ -1,4 +1,4 @@
-import { ArrowLeft, Bell } from 'lucide-react';
+import { ArrowLeft, Bell, ShoppingCart } from 'lucide-react';
 import { useState, useEffect, useRef, memo } from 'react';
 import type { View } from '@/types';
 import { haptic } from '@/utils/haptic';
@@ -17,6 +17,7 @@ interface HeaderProps {
   searchQuery?: string;
   onSearch?: (query: string) => void;
   scrollProgress?: number;
+  cartCount?: number;
 }
 
 export const Header = memo(function Header({
@@ -28,6 +29,7 @@ export const Header = memo(function Header({
   searchQuery = '',
   onSearch = () => { },
   scrollProgress = 0,
+  cartCount = 0,
 }: Readonly<HeaderProps>) {
   const { config } = useStore();
   const { unreadCount } = useNotificationCenter();
@@ -152,6 +154,20 @@ export const Header = memo(function Header({
           <div className="flex items-center gap-2 flex-shrink-0 z-[70]">
 
 
+
+            <button
+              id="header-cart"
+              onClick={() => { haptic.light(); onNavigate('cart'); }}
+              className="relative w-10 h-10 md:flex hidden items-center justify-center rounded-full bg-zinc-50 hover:bg-zinc-100 transition-colors active:scale-90"
+              aria-label="Carrinho"
+            >
+              <ShoppingCart className="w-5 h-5 text-zinc-700" />
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-zinc-900 text-white text-[10px] font-bold h-4 w-4 flex items-center justify-center rounded-full shadow-sm">
+                  {cartCount}
+                </span>
+              )}
+            </button>
 
             <button
               onClick={() => { haptic.light(); onOpenNotifications?.(); }}

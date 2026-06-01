@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Lock, Mail, Eye, EyeOff, ArrowRight, Loader2, ArrowLeft, Sparkles, User, Smartphone } from 'lucide-react';
 import { motion, type Variants } from 'framer-motion';
 import type { View } from '@/types';
@@ -35,7 +35,7 @@ const itemVariants: Variants = {
 };
 
 export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
-    const { login, signUp, resetPassword, updatePassword, isPasswordRecovery, setIsPasswordRecovery } = useAuth();
+    const { user, login, signUp, resetPassword, updatePassword, isPasswordRecovery, setIsPasswordRecovery } = useAuth();
     const [viewMode, setViewMode] = useState<'login' | 'signup' | 'forgot' | 'reset-prompt' | 'new-password'>(
         isPasswordRecovery ? 'new-password' : 'login'
     );
@@ -43,6 +43,14 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
+
+    useEffect(() => {
+        if (user) {
+            console.log('[AuthView] User session detected. Redirecting to success.');
+            if (onSuccess) onSuccess();
+            else onNavigate('profile');
+        }
+    }, [user, onSuccess, onNavigate]);
     const [phone, setPhone] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ArrowLeft, CreditCard, Banknote, Smartphone, Check, MapPin, User, Phone, FileText, Tag, Plus, AlertCircle, Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { CartItem, PaymentMethod, View, Customer, Address } from '@/types';
@@ -62,11 +62,71 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
     return whatsapp ? formatWhatsApp(whatsapp) : '';
   };
 
+  const dynamicSchema = useMemo(() => {
+    return z.object({
+      name: z.string().min(1, 'Nome é obrigatório'),
+      whatsapp: z.string().min(14, 'WhatsApp inválido'),
+      cep: z.string().optional(),
+      street: z.string().optional(),
+      number: z.string().optional(),
+      neighborhood: z.string().optional(),
+      city: z.string().optional(),
+      state: z.string().optional(),
+      complement: z.string().optional(),
+    }).superRefine((data, ctx) => {
+      if (!user) {
+        if (!data.cep || data.cep.length < 8) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'CEP inválido',
+            path: ['cep'],
+          });
+        }
+        if (!data.street || data.street.trim() === '') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Rua é obrigatória',
+            path: ['street'],
+          });
+        }
+        if (!data.number || data.number.trim() === '') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Número é obrigatório',
+            path: ['number'],
+          });
+        }
+        if (!data.neighborhood || data.neighborhood.trim() === '') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Bairro é obrigatório',
+            path: ['neighborhood'],
+          });
+        }
+        if (!data.city || data.city.trim() === '') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Cidade é obrigatória',
+            path: ['city'],
+          });
+        }
+        if (!data.state || data.state.trim() === '') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Estado inválido',
+            path: ['state'],
+          });
+        }
+      }
+    });
+  }, [user]);
+
   const form = useForm<CheckoutFormValues>({
-    resolver: zodResolver(checkoutSchema),
+    resolver: zodResolver(dynamicSchema),
     defaultValues: {
       name: profile?.full_name || user?.user_metadata?.name || '',
       whatsapp: getDefaultWhatsApp(),
+      cep: '38500-000',
       city: 'Monte Carmelo',
       state: 'MG',
     },
@@ -224,11 +284,13 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
   };
 
   const handleSubmitEvent = async () => {
-    const data = form.getValues();
-    if (!isValid) {
-      form.trigger();
+    const isFormValid = await form.trigger();
+    if (!isFormValid) {
+      toast.error('Por favor, preencha todos os campos obrigatórios corretamente.');
       return;
     }
+
+    const data = form.getValues();
 
     setIsSubmitting(true);
 
@@ -241,15 +303,7 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
     const customerInfo = data as unknown as Customer;
     const observations = notes || undefined;
 
-    if (!user) {
-      const city = data.city || 'Monte Carmelo';
-      const state = data.state || 'MG';
-      if (!data.cep || !data.street || !data.number || !data.neighborhood || !city || !state) {
-        toast.error('Por favor, preencha todos os campos obrigatórios do endereço.');
-        setIsSubmitting(false);
-        return;
-      }
-    }
+
 
     const variantNotes = cart.filter(item => item.variantNames).map(item => `${item.product.name}: ${item.variantNames}`).join('\n');
     const finalNotes = observations ? (variantNotes ? `${observations}\n\nVariantes Selecionadas:\n${variantNotes}` : observations) : (variantNotes ? `Variantes Selecionadas:\n${variantNotes}` : undefined);
@@ -396,22 +450,91 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2 md:col-span-1">
                     <label htmlFor="guest-cep" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 mb-2 ml-1">CEP</label>
-                    <input id="guest-cep" {...form.register('cep')} placeholder="00000-000" className="w-full px-6 py-4 bg-zinc-50 rounded-2xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white transition-all outline-none" />
+                    <input
+                      id="guest-cep"
+                      {...form.register('cep')}
+                      readOnly
+                      placeholder="38500-000"
+                      className="w-full px-5 py-4 bg-zinc-100 rounded-2xl text-sm font-black border-2 border-transparent text-zinc-500 cursor-not-allowed outline-none"
+                    />
+                    {form.formState.errors.cep && (
+                      <p className="text-red-500 text-[10px] uppercase font-bold mt-2 ml-1">
+                        {form.formState.errors.cep.message}
+                      </p>
+                    )}
                   </div>
                   <div className="col-span-2 md:col-span-1">
                     <label htmlFor="guest-neighborhood" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 mb-2 ml-1">Bairro</label>
-                    <input id="guest-neighborhood" {...form.register('neighborhood')} placeholder="Seu bairro" className="w-full px-6 py-4 bg-zinc-50 rounded-2xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white transition-all outline-none" />
+                    <input
+                      id="guest-neighborhood"
+                      {...form.register('neighborhood')}
+                      placeholder="Seu bairro"
+                      className="w-full px-6 py-4 bg-zinc-50 rounded-2xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white transition-all outline-none"
+                    />
+                    {form.formState.errors.neighborhood && (
+                      <p className="text-red-500 text-[10px] uppercase font-bold mt-2 ml-1">
+                        {form.formState.errors.neighborhood.message}
+                      </p>
+                    )}
                   </div>
                   <div className="col-span-2 md:col-span-1">
                     <label htmlFor="guest-street" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 mb-2 ml-1">Rua</label>
-                    <input id="guest-street" {...form.register('street')} placeholder="Nome da rua" className="w-full px-6 py-4 bg-zinc-50 rounded-2xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white transition-all outline-none" />
+                    <input
+                      id="guest-street"
+                      {...form.register('street')}
+                      placeholder="Nome da rua"
+                      className="w-full px-6 py-4 bg-zinc-50 rounded-2xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white transition-all outline-none"
+                    />
+                    {form.formState.errors.street && (
+                      <p className="text-red-500 text-[10px] uppercase font-bold mt-2 ml-1">
+                        {form.formState.errors.street.message}
+                      </p>
+                    )}
                   </div>
                   <div className="col-span-1 md:col-span-1">
                     <label htmlFor="guest-number" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 mb-2 ml-1">Número</label>
-                    <input id="guest-number" {...form.register('number')} placeholder="123" className="w-full px-6 py-4 bg-zinc-50 rounded-2xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white transition-all outline-none" />
+                    <input
+                      id="guest-number"
+                      {...form.register('number')}
+                      placeholder="123"
+                      className="w-full px-6 py-4 bg-zinc-50 rounded-2xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white transition-all outline-none"
+                    />
+                    {form.formState.errors.number && (
+                      <p className="text-red-500 text-[10px] uppercase font-bold mt-2 ml-1">
+                        {form.formState.errors.number.message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="col-span-1 md:col-span-1">
+                    <label htmlFor="guest-city" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 mb-2 ml-1">Cidade</label>
+                    <input
+                      id="guest-city"
+                      {...form.register('city')}
+                      readOnly
+                      placeholder="Monte Carmelo"
+                      className="w-full px-5 py-4 bg-zinc-100 rounded-2xl text-sm font-black border-2 border-transparent text-zinc-500 cursor-not-allowed outline-none"
+                    />
+                  </div>
+                  <div className="col-span-1 md:col-span-1">
+                    <label htmlFor="guest-state" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 mb-2 ml-1">Estado</label>
+                    <input
+                      id="guest-state"
+                      {...form.register('state')}
+                      readOnly
+                      placeholder="MG"
+                      className="w-full px-5 py-4 bg-zinc-100 rounded-2xl text-sm font-black border-2 border-transparent text-zinc-500 cursor-not-allowed outline-none"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label htmlFor="guest-complement" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 mb-2 ml-1">Complemento (Opcional)</label>
+                    <input
+                      id="guest-complement"
+                      {...form.register('complement')}
+                      placeholder="Apto, Bloco, Fundos, etc."
+                      className="w-full px-6 py-4 bg-zinc-50 rounded-2xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white transition-all outline-none"
+                    />
                   </div>
                 </div>
-
               </div>
             )}
           </div>
@@ -573,7 +696,7 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
       />
 
       {/* Order Summary - Fixed Bottom Bar */}
-      <div className="fixed bottom-[calc(64px+var(--safe-area-bottom,0px))] left-0 right-0 bg-white/95 backdrop-blur-3xl border-t border-zinc-100 p-4 pb-8 md:bottom-24 md:max-w-screen-md md:mx-auto md:rounded-[2.5rem] md:border md:pb-12 z-[55] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] rounded-t-[2.5rem]">
+      <div className="fixed bottom-safe-navigation left-0 right-0 bg-white/95 backdrop-blur-3xl border-t border-zinc-100 p-4 pb-8 md:bottom-24 md:max-w-screen-md md:mx-auto md:rounded-[2.5rem] md:border md:pb-12 z-[55] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] rounded-t-[2.5rem]">
         <div className="max-w-screen-md mx-auto">
           <div className="flex items-center justify-between mb-4 px-1">
             <div className="flex flex-col">

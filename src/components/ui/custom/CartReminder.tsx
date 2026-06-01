@@ -45,7 +45,7 @@ export function CartReminder({ onAction }: CartReminderProps) {
     const itemCount = getCartCount();
 
     return (
-        <div className="fixed bottom-[calc(64px+var(--safe-area-bottom,0px))] left-0 right-0 z-40 flex justify-center pointer-events-none">
+        <div className="fixed bottom-safe-navigation left-0 right-0 z-40 flex justify-center pointer-events-none">
             <AnimatePresence>
                 {isVisible && (
                     <motion.div

@@ -38,13 +38,13 @@ export const FavoritesView = React.memo(function FavoritesView({
   }, [prefetchView]);
   if (favorites.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center px-6 pt-4 pb-20 bg-white relative overflow-hidden">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 pt-4 pb-32 bg-white relative overflow-hidden">
         {/* Abstract Background Elements */}
         <div className="absolute top-[-10%] left-[-10%] w-[400px] h-[400px] bg-red-50/30 rounded-full blur-[120px] -z-10" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[300px] h-[300px] bg-zinc-100 rounded-full blur-[100px] -z-10" />
 
-        {/* Top/Center Container - Illustration & Text */}
-        <div className="flex-1 flex flex-col items-center justify-center text-center max-w-xs w-full">
+        {/* Center Container - Illustration, Text & Action Button */}
+        <div className="flex flex-col items-center justify-center text-center max-w-xs w-full">
           <motion.div
             initial={{ opacity: 0, scale: 0.8, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -77,7 +77,7 @@ export const FavoritesView = React.memo(function FavoritesView({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="space-y-4"
+            className="space-y-4 mb-8 sm:mb-10"
           >
             <h2 className="text-3xl sm:text-5xl font-black text-zinc-900 tracking-tighter leading-none italic uppercase">
               Lista <br />
@@ -88,14 +88,13 @@ export const FavoritesView = React.memo(function FavoritesView({
               para não perdê-los de vista!
             </p>
           </motion.div>
-        </div>
 
-        {/* Bottom Container - Action Button */}
-        <div className="w-full max-w-xs mt-auto">
+          {/* Action Button inside Center Container */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
+            className="w-full"
           >
             <button
               onClick={() => {

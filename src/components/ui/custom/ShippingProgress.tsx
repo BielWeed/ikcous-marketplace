@@ -13,6 +13,7 @@ interface ShippingProgressProps {
     isNearlyThere: boolean;
     freeShippingProducts: Product[];
     onAddToCart?: (product: Product, quantity?: number) => void;
+    deferred?: boolean;
 }
 
 export function ShippingProgress({
@@ -22,7 +23,8 @@ export function ShippingProgress({
     amountToFree,
     isNearlyThere,
     freeShippingProducts,
-    onAddToCart
+    onAddToCart,
+    deferred = false
 }: ShippingProgressProps) {
     const [quantities, setQuantities] = useState<Record<string, number>>({});
 
@@ -52,6 +54,7 @@ export function ShippingProgress({
                 <motion.div 
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.25, ease: 'easeOut' }}
                     className={cn(
                         "w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm transition-colors duration-500",
                         shipping === 0 
@@ -108,11 +111,12 @@ export function ShippingProgress({
                     shipping === 0 ? "bg-emerald-100" : "bg-zinc-100"
                 )}>
                     <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${progressPercent}%` }}
-                        transition={{ duration: 1.5, ease: "circOut" }}
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: progressPercent / 100 }}
+                        transition={{ duration: 1.2, ease: "circOut" }}
+                        style={{ originX: 0 }}
                         className={cn(
-                            "h-full rounded-full relative transition-colors duration-1000",
+                            "h-full w-full rounded-full relative transition-colors duration-1000",
                             shipping === 0
                                 ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
                                 : isNearlyThere
@@ -124,7 +128,7 @@ export function ShippingProgress({
             </div>
 
             {/* Free Shipping Catalog Section (Compact) */}
-            {shipping > 0 && freeShippingProducts.length > 0 && (
+            {shipping > 0 && freeShippingProducts.length > 0 && !deferred && (
                 <div className="mt-5 pt-4 border-t border-zinc-100 border-dashed relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-1000">
                     <div className="flex items-center justify-between mb-3 px-1">
                         <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-500 flex items-center gap-1.5">

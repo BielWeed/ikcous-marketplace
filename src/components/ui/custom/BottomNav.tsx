@@ -39,6 +39,7 @@ export const BottomNav = memo(function BottomNav({ currentView, onNavigate, cart
           return (
             <button
               key={item.view}
+              id={item.view === 'cart' ? 'bottom-nav-cart' : undefined}
               type="button"
               onClick={() => {
                 haptic.light();

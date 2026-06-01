@@ -174,9 +174,6 @@ export interface StoreConfig {
   realTimeSalesAlerts?: boolean;
   pushMarketingEnabled?: boolean;
   minAppVersion?: string;
-  whatsappApiUrl?: string;
-  whatsappApiKey?: string;
-  whatsappApiInstance?: string;
 }
 
 export interface WaitlistItem {

@@ -6,7 +6,22 @@ import { toast } from 'sonner';
 
 export function useAddresses() {
     const { user } = useAuth();
-    const [addresses, setAddresses] = useState<Address[]>([]);
+    const [addresses, setAddresses] = useState<Address[]>(() => {
+        if (typeof window === 'undefined' || !user?.id) return [];
+        try {
+            const cacheKey = `ikcous_addresses_cache_${user.id}`;
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed)) {
+                    return parsed;
+                }
+            }
+        } catch (e) {
+            console.error('Error loading cached addresses:', e);
+        }
+        return [];
+    });
     const [loading, setLoading] = useState(false);
 
     // Synchronously load cache on mount or when user changes

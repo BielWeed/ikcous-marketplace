@@ -20,6 +20,8 @@ import { useStore } from '@/contexts/StoreContext';
 import { ProductCard } from '@/components/ui/custom/ProductCard';
 import { ProductCardSkeleton } from '@/components/ui/custom/ProductCardSkeleton';
 import { MarkdownRenderer } from '@/components/ui/custom/MarkdownRenderer';
+import { cn } from '@/lib/utils';
+import { triggerFlyingCartAnimation } from '@/utils/cartAnimation';
 
 const RECS_CACHE_KEY_PREFIX = 'ikcous_recs_cache_';
 const memoryRecsCache = new Map<string, Product[]>();
@@ -77,7 +79,9 @@ export const ProductView = React.memo(function ProductView({
 }: ProductViewProps) {
   const [quantity, setQuantity] = useState(1);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [showAddedToast, setShowAddedToast] = useState(false);
+  const [cartStatus, setCartStatus] = useState<'idle' | 'loading' | 'success'>('idle');
+
+
   const [activeTab, setActiveTab] = useState<'description' | 'reviews' | 'questions'>('description');
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
@@ -99,8 +103,6 @@ export const ProductView = React.memo(function ProductView({
     } else {
       onAddToCart(1, undefined);
     }
-    setShowAddedToast(true);
-    setTimeout(() => setShowAddedToast(false), 2000);
   }, [onAddToCart, onAddToCartProduct]);
 
   const handleQuickBuyFromCard = useCallback((p: Product, e?: React.MouseEvent) => {
@@ -240,7 +242,7 @@ export const ProductView = React.memo(function ProductView({
   const currentStock = product.stock + selectedVariantObjects.reduce((acc, v) => acc + (v?.stockIncrement || 0), 0);
   const variantImage = selectedVariantObjects.find(v => v?.imageUrl)?.imageUrl;
 
-  const isLowStock = currentStock <= 3;
+  const isLowStock = currentStock <= 3 && currentStock > 0;
   const isOutOfStock = currentStock === 0;
   const discount = product.originalPrice
     ? Math.round(((product.originalPrice - currentPrice) / product.originalPrice) * 100)
@@ -249,11 +251,26 @@ export const ProductView = React.memo(function ProductView({
   // Um produto é elegível para frete grátis se o frete grátis estiver habilitado na loja
   const isEligibleForFreeShipping = config.freeShippingMin > 0;
 
-  const handleAddToCart = () => {
+  const handleAddToCart = (e?: React.MouseEvent<HTMLButtonElement>) => {
+    if (cartStatus !== 'idle') return;
+
     const variantNames = Object.entries(selectedVariants).map(([name, value]) => `${name}: ${value}`).join(', ');
+    const imgSrc = variantImage || product.images?.[0] || '';
+
+    setCartStatus('loading');
+
+    if (e?.currentTarget) {
+      triggerFlyingCartAnimation(e.currentTarget, imgSrc);
+    }
+
     onAddToCart(quantity, selectedVariantObjects[0]?.id, variantNames);
-    setShowAddedToast(true);
-    setTimeout(() => setShowAddedToast(false), 2000);
+
+    setTimeout(() => {
+      setCartStatus('success');
+      setTimeout(() => {
+        setCartStatus('idle');
+      }, 1500);
+    }, 750);
   };
 
   const handleShare = async () => {
@@ -320,7 +337,7 @@ export const ProductView = React.memo(function ProductView({
   };
 
   return (
-    <div className="relative min-h-full bg-white">
+    <div className="relative min-h-full bg-white pb-32">
       {/* Sticky Top Bar Sentinel */}
       <div 
         ref={stickySentinelRef} 
@@ -410,7 +427,7 @@ export const ProductView = React.memo(function ProductView({
       </div>
 
       {/* Sticky Top Bar on Scroll */}
-      <div className={`fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-2xl border-b border-zinc-100/30 p-4 z-50 transition-all duration-500 transform ${scrolled ? 'translate-y-0 opacity-100 shadow-2xl shadow-black/5' : '-translate-y-full opacity-0'}`}>
+      <div className={`fixed top-[calc(var(--header-height)+var(--safe-area-top))] left-0 right-0 bg-white/80 backdrop-blur-2xl border-b border-zinc-100/30 p-4 z-50 transition-all duration-500 transform ${scrolled ? 'translate-y-0 opacity-100 shadow-2xl shadow-black/5' : '-translate-y-full opacity-0'}`}>
         <div className="max-w-screen-md mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -424,9 +441,21 @@ export const ProductView = React.memo(function ProductView({
           </div>
           <button
             onClick={handleAddToCart}
-            className="bg-zinc-900 text-white px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-zinc-200 hover:bg-black"
+            className={cn(
+              "text-[10px] font-black uppercase tracking-widest transition-all duration-300 flex items-center justify-center",
+              cartStatus === 'idle'
+                ? "bg-zinc-900 text-white px-6 py-2.5 rounded-2xl hover:bg-black active:scale-95 shadow-xl shadow-zinc-200"
+                : "bg-zinc-800 text-white p-2 rounded-full shadow-md w-9 h-9",
+              cartStatus === 'success' && "bg-emerald-600 shadow-emerald-200"
+            )}
           >
-            Adicionar ao Carrinho
+            {cartStatus === 'loading' ? (
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : cartStatus === 'success' ? (
+              <Check className="w-4 h-4" />
+            ) : (
+              "Adicionar ao Carrinho"
+            )}
           </button>
         </div>
       </div>
@@ -520,10 +549,21 @@ export const ProductView = React.memo(function ProductView({
           </div>
         )}
 
-        {/* Stock Info */}
-        <div className={`flex items-center gap-1.5 sm:gap-2 mb-3 sm:mb-4 p-2.5 sm:p-3 rounded-lg ${isLowStock ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'
-          }`}>
-          {isLowStock ? (
+        <div className={`flex items-center gap-1.5 sm:gap-2 mb-3 sm:mb-4 p-2.5 sm:p-3 rounded-lg ${
+          isOutOfStock 
+            ? 'bg-zinc-100 text-zinc-500' 
+            : isLowStock 
+              ? 'bg-red-50 text-red-700' 
+              : 'bg-green-50 text-green-700'
+        }`}>
+          {isOutOfStock ? (
+            <>
+              <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-400" />
+              <span className="text-xs sm:text-sm font-medium">
+                Produto esgotado
+              </span>
+            </>
+          ) : isLowStock ? (
             <>
               <Flame className="w-4 h-4 sm:w-5 sm:h-5" />
               <span className="text-xs sm:text-sm font-medium">
@@ -538,6 +578,60 @@ export const ProductView = React.memo(function ProductView({
               </span>
             </>
           )}
+        </div>
+
+        {/* Purchase Actions Container */}
+        <div className="w-full bg-white border border-zinc-100 p-4 rounded-3xl shadow-sm mb-6">
+          {/* Quantity Selector */}
+          {!isOutOfStock && (
+            <div className="flex items-center justify-between mb-4 px-1">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Quantidade</span>
+              <QuantitySelector
+                quantity={quantity}
+                maxQuantity={currentStock}
+                onChange={setQuantity}
+              />
+            </div>
+          )}
+
+          {/* Buttons */}
+          <div className="flex gap-3">
+            <button
+              onClick={handleWhatsApp}
+              className="flex-shrink-0 w-14 h-14 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-all duration-500 active:scale-90 border border-emerald-100"
+            >
+              <MessageCircle className="w-6 h-6" />
+            </button>
+
+            <button
+              onClick={handleAddToCart}
+              disabled={isOutOfStock || cartStatus !== 'idle'}
+              style={{
+                maxWidth: cartStatus === 'idle' ? '100%' : '56px'
+              }}
+              className={cn(
+                "flex-1 h-14 text-white text-xs font-black uppercase tracking-[0.2em] rounded-3xl transition-all duration-500 flex items-center justify-center gap-2 overflow-hidden",
+                cartStatus === 'idle'
+                  ? "bg-zinc-900 hover:bg-black shadow-xl shadow-zinc-200 active:scale-[0.98]"
+                  : "bg-zinc-800 shadow-md",
+                cartStatus === 'success' && "bg-emerald-600 shadow-emerald-200",
+                isOutOfStock && "bg-zinc-100 text-zinc-300 cursor-not-allowed hover:bg-zinc-100 shadow-none active:scale-100"
+              )}
+            >
+              {isOutOfStock ? (
+                'Esgotado'
+              ) : cartStatus === 'loading' ? (
+                <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+              ) : cartStatus === 'success' ? (
+                <Check className="w-5 h-5 flex-shrink-0 animate-in zoom-in duration-300" />
+              ) : (
+                <>
+                  <ShoppingCart className="w-5 h-5 flex-shrink-0" />
+                  <span className="whitespace-nowrap">Adicionar ao Carrinho</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Luxury Segmented Tabs - iOS Style */}
@@ -704,60 +798,9 @@ export const ProductView = React.memo(function ProductView({
         </div>
       </div>
 
-      {/* Spacer to prevent overlap by the sticky bottom actions */}
-      <div className="h-[240px] w-full flex-shrink-0" aria-hidden="true" />
 
-      {/* Bottom Actions */}
-      <div className="fixed bottom-[calc(64px+var(--safe-area-bottom,0px))] left-0 right-0 bg-white/80 backdrop-blur-2xl border-t border-zinc-100 p-4 z-40 shadow-2xl rounded-t-[2.5rem] md:bottom-24 md:max-w-screen-md md:mx-auto md:rounded-[2.5rem] md:border">
-        <div className="max-w-screen-md mx-auto">
-          {/* Quantity Selector */}
-          {!isOutOfStock && (
-            <div className="flex items-center justify-between mb-4 px-1">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Quantidade</span>
-              <QuantitySelector
-                quantity={quantity}
-                maxQuantity={currentStock}
-                onChange={setQuantity}
-              />
-            </div>
-          )}
 
-          {/* Buttons */}
-          <div className="flex gap-3">
-            <button
-              onClick={handleWhatsApp}
-              className="flex-shrink-0 w-14 h-14 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-all duration-500 active:scale-90 border border-emerald-100"
-            >
-              <MessageCircle className="w-6 h-6" />
-            </button>
 
-            <button
-              onClick={handleAddToCart}
-              disabled={isOutOfStock}
-              className="flex-1 h-14 bg-zinc-900 text-white text-xs font-black uppercase tracking-[0.2em] rounded-3xl hover:bg-black disabled:bg-zinc-100 disabled:text-zinc-300 disabled:cursor-not-allowed transition-all duration-500 active:scale-[0.98] shadow-2xl shadow-zinc-200 flex items-center justify-center gap-2"
-            >
-              {isOutOfStock ? (
-                'Esgotado'
-              ) : (
-                <>
-                  <ShoppingCart className="w-5 h-5" />
-                  Adicionar ao Carrinho
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Added to Cart Toast */}
-      {showAddedToast && (
-        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black text-white px-6 py-3 rounded-xl shadow-lg z-50 animate-in fade-in zoom-in duration-200">
-          <div className="flex items-center gap-2">
-            <Check className="w-5 h-5 text-green-400" />
-            <span className="font-medium">Adicionado ao carrinho!</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 });

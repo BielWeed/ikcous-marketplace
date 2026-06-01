@@ -53,12 +53,10 @@ interface OrderStatusBadgeProps {
 
 export function OrderStatusBadge({ status, className }: Readonly<OrderStatusBadgeProps>) {
     const cfg = statusConfig[status || 'pending'] || statusConfig.pending;
-    const Icon = cfg.icon;
 
     return (
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border ${cfg.borderColor} ${cfg.bgColor} backdrop-blur-md shadow-sm transition-all duration-300 ${className}`}>
-            <Icon className={`w-3.5 h-3.5 ${cfg.color}`} />
-            <span className={`text-[10px] font-black uppercase tracking-[0.1em] ${cfg.color}`}>
+        <div className={`flex items-center px-2 py-0.5 rounded-full ${cfg.bgColor} ${className}`}>
+            <span className={`text-[9px] font-black uppercase tracking-[0.1em] ${cfg.color}`}>
                 {cfg.label}
             </span>
         </div>

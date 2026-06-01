@@ -122,7 +122,7 @@ export const HomeView = React.memo(function HomeView({
 
 
   return (
-    <div className="min-h-full pb-28 pb-safe">
+    <div className="min-h-full pb-safe-home">
       <Helmet>
         <title>IKCOUS Marketplace | Monte Carmelo, MG</title>
         <meta name="description" content="O melhor marketplace de Monte Carmelo com entrega ultrarrápida e troca garantida." />

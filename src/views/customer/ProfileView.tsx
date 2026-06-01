@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import {
     User,
     Settings,
@@ -22,6 +23,30 @@ import { Button } from '@/components/ui/button';
 import { useOrders } from '@/hooks/useOrders';
 import { OrderTimeline } from '@/components/ui/custom/OrderTimeline';
 import { ProfileSkeleton } from '@/components/ui/custom/Skeletons';
+
+const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+        opacity: 1,
+        transition: {
+            staggerChildren: 0.05,
+            delayChildren: 0.05
+        }
+    }
+} as const;
+
+const itemVariants = {
+    hidden: { opacity: 0, y: 15 },
+    visible: {
+        opacity: 1,
+        y: 0,
+        transition: {
+            type: "spring",
+            stiffness: 260,
+            damping: 24
+        }
+    }
+} as const;
 
 // Novas importações de refatoração Solo-Ninja
 
@@ -63,9 +88,14 @@ export function ProfileView({ onNavigate, recentlyViewedProducts = [], onProduct
 
     return (
         <div className="min-h-full pb-24 bg-gradient-to-b from-white to-zinc-50/50">
-            <div className="max-w-md mx-auto px-4 py-6 space-y-6">
+            <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                className="max-w-md mx-auto px-4 py-6 space-y-6"
+            >
                 {/* Header Info */}
-                <div className="flex flex-col items-center justify-center py-4">
+                <motion.div variants={itemVariants} className="flex flex-col items-center justify-center py-4">
                     <div className="relative group">
                         <div className="w-24 h-24 rounded-[24px] flex items-center justify-center mb-4 border-4 shadow-premium overflow-hidden transition-all duration-700 group-hover:scale-105 bg-white border-white">
                             <User className="w-12 h-12 text-zinc-300" />
@@ -78,9 +108,8 @@ export function ProfileView({ onNavigate, recentlyViewedProducts = [], onProduct
                         {user.email}
                     </p>
 
-
                     {isAdmin && (
-                        <div className="mt-6 w-full p-4 rounded-[1.5rem] border animate-in slide-in-from-top-4 duration-1000 bg-zinc-900 text-white border-zinc-800">
+                        <div className="mt-6 w-full p-4 rounded-[1.5rem] border bg-zinc-900 text-white border-zinc-800">
                             <div className="flex items-center justify-between gap-4">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/10 text-white">
@@ -101,39 +130,23 @@ export function ProfileView({ onNavigate, recentlyViewedProducts = [], onProduct
                             </div>
                         </div>
                     )}
-                </div>
-
+                </motion.div>
 
                 {/* Recently Viewed Strip */}
-                <div className="-mx-4">
-                    <RecentlyViewedStrip
-                        products={recentlyViewedProducts}
-                        onProductClick={onProductClick}
-                        onNavigate={onNavigate}
-                    />
-                </div>
+                {recentlyViewedProducts && recentlyViewedProducts.length > 0 && (
+                    <motion.div variants={itemVariants} className="-mx-4">
+                        <RecentlyViewedStrip
+                            products={recentlyViewedProducts}
+                            onProductClick={onProductClick}
+                            onNavigate={onNavigate}
+                        />
+                    </motion.div>
+                )}
 
-                {/* Account Settings Menu Item */}
-                <div className="bg-white rounded-[2.5rem] border border-zinc-100 overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    <button
-                        onClick={() => onNavigate('account-settings')}
-                        className="w-full p-6 flex items-center justify-between hover:bg-zinc-50 transition-colors group"
-                    >
-                        <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-zinc-900 rounded-2xl flex items-center justify-center shadow-lg shadow-zinc-200 group-hover:bg-black transition-colors">
-                                <Shield className="w-5 h-5 text-white" />
-                            </div>
-                            <div className="text-left">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">Segurança e Conta</p>
-                                <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Alterar senha e dados pessoais</p>
-                            </div>
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-zinc-300 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                </div>
+
 
                 {/* Delivery Addresses */}
-                <div className="bg-white rounded-[2.5rem] border border-zinc-100 overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
+                <motion.div variants={itemVariants} className="bg-white rounded-[2.5rem] border border-zinc-100 overflow-hidden shadow-sm">
                     <div className="p-6 border-b border-zinc-50 bg-zinc-50/50 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <MapPin className="w-4 h-4 text-zinc-400" />
@@ -151,8 +164,20 @@ export function ProfileView({ onNavigate, recentlyViewedProducts = [], onProduct
                     </div>
                     <div className="p-6">
                         {addressesLoading ? (
-                            <div className="flex justify-center py-4">
-                                <Loader2 className="w-6 h-6 animate-spin text-zinc-300" />
+                            <div className="space-y-4 animate-pulse">
+                                <div className="bg-zinc-50/50 p-6 rounded-3xl border border-transparent h-28 flex flex-col justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-2xl bg-zinc-100" />
+                                        <div className="space-y-2 flex-1">
+                                            <div className="h-4 bg-zinc-100 rounded w-1/3" />
+                                            <div className="h-3 bg-zinc-100 rounded w-1/4" />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <div className="h-3 bg-zinc-100 rounded w-3/4" />
+                                        <div className="h-3 bg-zinc-100 rounded w-1/2" />
+                                    </div>
+                                </div>
                             </div>
                         ) : (
                             <AddressList
@@ -164,11 +189,11 @@ export function ProfileView({ onNavigate, recentlyViewedProducts = [], onProduct
                             />
                         )}
                     </div>
-                </div>
+                </motion.div>
 
                 {/* Active Orders */}
                 {activeOrders.length > 0 && (
-                    <div className="bg-white rounded-[2.5rem] border border-zinc-100 overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
+                    <motion.div variants={itemVariants} className="bg-white rounded-[2.5rem] border border-zinc-100 overflow-hidden shadow-sm">
                         <div className="p-6 border-b border-zinc-50 bg-zinc-50/50 flex items-center gap-3">
                             <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
                             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Pedidos em Andamento</span>
@@ -206,11 +231,11 @@ export function ProfileView({ onNavigate, recentlyViewedProducts = [], onProduct
                                 </div>
                             ))}
                         </div>
-                    </div>
+                    </motion.div>
                 )}
 
                 {/* Order History & Menu */}
-                <div className="bg-white rounded-[2.5rem] border border-zinc-100 overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
+                <motion.div variants={itemVariants} className="bg-white rounded-[2.5rem] border border-zinc-100 overflow-hidden shadow-sm">
                     <button
                         onClick={() => onNavigate('orders')}
                         className="w-full p-6 flex items-center justify-between border-b border-zinc-50 hover:bg-zinc-50 transition-colors group"
@@ -222,6 +247,22 @@ export function ProfileView({ onNavigate, recentlyViewedProducts = [], onProduct
                             <div className="text-left">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">Histórico de Pedidos</p>
                                 <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Ver todos os seus pedidos</p>
+                            </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-zinc-300 group-hover:translate-x-1 transition-transform" />
+                    </button>
+
+                    <button
+                        onClick={() => onNavigate('account-settings')}
+                        className="w-full p-6 flex items-center justify-between border-b border-zinc-50 hover:bg-zinc-50 transition-colors group"
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-zinc-50 rounded-2xl flex items-center justify-center group-hover:bg-white transition-colors">
+                                <Shield className="w-5 h-5 text-zinc-400" />
+                            </div>
+                            <div className="text-left">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">Segurança e Conta</p>
+                                <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Alterar senha e dados pessoais</p>
                             </div>
                         </div>
                         <ChevronRight className="w-4 h-4 text-zinc-300 group-hover:translate-x-1 transition-transform" />
@@ -262,8 +303,8 @@ export function ProfileView({ onNavigate, recentlyViewedProducts = [], onProduct
                         </div>
                         <ChevronRight className="w-4 h-4 text-red-200 group-hover:translate-x-1 transition-transform" />
                     </button>
-                </div>
-            </div>
+                </motion.div>
+            </motion.div>
         </div>
     );
 }

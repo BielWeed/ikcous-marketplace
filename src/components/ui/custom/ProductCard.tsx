@@ -1,5 +1,5 @@
-import { memo } from 'react';
-import { Heart, Truck, Flame, ShoppingCart } from 'lucide-react';
+import { memo, useState } from 'react';
+import { Heart, Truck, Flame, ShoppingCart, Check, Loader2 } from 'lucide-react';
 import type { Product } from '@/types';
 import { StarRating } from './StarRating';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +7,7 @@ import { StockStatus } from './StockStatus';
 import { UrgencyBadge } from './UrgencyBadge';
 import { cn, formatCurrency } from '@/lib/utils';
 import { LazyImage } from '@/components/LazyImage';
+import { triggerFlyingCartAnimation } from '@/utils/cartAnimation';
 
 interface ProductCardProps {
   product: Product;
@@ -38,6 +39,29 @@ export const ProductCard = memo(function ProductCard({
   const discount = product.originalPrice
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
     : 0;
+
+  const [cartStatus, setCartStatus] = useState<'idle' | 'loading' | 'success'>('idle');
+
+  const handleAddToCartClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (cartStatus !== 'idle') return;
+
+    setCartStatus('loading');
+
+    if (onAddToCart) {
+      onAddToCart(product, e);
+    }
+
+    const startEl = (e.currentTarget as HTMLElement) || document.body;
+    triggerFlyingCartAnimation(startEl, product.images[0]);
+
+    setTimeout(() => {
+      setCartStatus('success');
+      setTimeout(() => {
+        setCartStatus('idle');
+      }, 1500);
+    }, 600);
+  };
 
   return (
     <div
@@ -143,21 +167,42 @@ export const ProductCard = memo(function ProductCard({
         {/* Action Buttons */}
         <div className="flex flex-wrap sm:flex-nowrap gap-1.5 mt-2">
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddToCart?.(product, e);
-            }}
-            className="flex-1 min-w-[70px] bg-zinc-900 hover:bg-black text-white py-2 px-1.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] shadow-[0_4px_10px_rgba(0,0,0,0.1)] flex items-center justify-center gap-1"
+            onClick={handleAddToCartClick}
+            disabled={product.stock <= 0 || cartStatus !== 'idle'}
+            className={cn(
+              "flex-1 min-w-[70px] py-2 px-1.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] shadow-[0_4px_10px_rgba(0,0,0,0.1)] flex items-center justify-center gap-1",
+              product.stock <= 0 
+                ? "bg-zinc-100 text-zinc-400 cursor-not-allowed shadow-none" 
+                : cartStatus === 'success' 
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
+                  : "bg-zinc-900 hover:bg-black text-white"
+            )}
           >
-            <ShoppingCart className="w-3 h-3 shrink-0" />
-            <span className="truncate">Carrinho</span>
+            {cartStatus === 'loading' && <Loader2 className="w-3 h-3 animate-spin shrink-0" />}
+            {cartStatus === 'success' && <Check className="w-3 h-3 shrink-0" />}
+            {cartStatus === 'idle' && product.stock > 0 && <ShoppingCart className="w-3 h-3 shrink-0" />}
+            <span className="truncate">
+              {product.stock <= 0 
+                ? 'Esgotado' 
+                : cartStatus === 'idle' 
+                  ? 'Carrinho' 
+                  : cartStatus === 'loading' 
+                    ? 'Salvando...' 
+                    : 'Salvo!'}
+            </span>
           </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onQuickBuy?.(product, e);
             }}
-            className="flex-1 min-w-[50px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/50 py-2 px-1.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] flex items-center justify-center truncate"
+            disabled={product.stock <= 0}
+            className={cn(
+              "flex-1 min-w-[50px] py-2 px-1.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] flex items-center justify-center truncate",
+              product.stock <= 0
+                ? "bg-zinc-50 text-zinc-300 border border-zinc-100 cursor-not-allowed"
+                : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/50"
+            )}
           >
             Comprar
           </button>

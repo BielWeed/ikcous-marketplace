@@ -8,17 +8,14 @@ import {
     CheckCircle,
     Clock,
     XCircle,
-    ChevronLeft,
     Copy,
-    MessageCircle,
-    TrendingUp
+    MessageCircle
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useOrders } from '@/hooks/useOrders';
 import type { Order, OrderItem, OrderStatus, View } from '@/types';
 import { cn } from '@/lib/utils';
 import { haptic } from '@/utils/haptic';
-import { useCart } from '@/hooks/useCart';
 import { useStore } from '@/contexts/StoreContext';
 import { toast } from 'sonner';
 
@@ -66,9 +63,8 @@ const statusConfig: Record<OrderStatus, { label: string; icon: LucideIcon; color
     }
 };
 
-export function OrderDetailsView({ orderId, onBack, onNavigate }: OrderDetailsViewProps) {
+export function OrderDetailsView({ orderId, onBack, onNavigate: _onNavigate }: OrderDetailsViewProps) {
     const { orders, fetchUserOrders } = useOrders(true, false);
-    const { addToCart } = useCart();
     const { config } = useStore();
     const [order, setOrder] = useState<Order | null>(null);
     const [loading, setLoading] = useState(true);
@@ -78,7 +74,22 @@ export function OrderDetailsView({ orderId, onBack, onNavigate }: OrderDetailsVi
         if (orders.length === 0) {
             currentOrders = await fetchUserOrders();
         }
-        const found = currentOrders.find(o => o.id === orderId);
+        let found = currentOrders.find(o => o.id === orderId);
+
+        if (!found) {
+            try {
+                const guestCached = sessionStorage.getItem('guest_tracked_orders');
+                if (guestCached) {
+                    const parsed = JSON.parse(guestCached);
+                    if (Array.isArray(parsed)) {
+                        found = parsed.find(o => o.id === orderId);
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading guest orders from sessionStorage:', e);
+            }
+        }
+
         setOrder(found || null);
         setLoading(false);
     }, [orderId, fetchUserOrders, orders]);
@@ -99,29 +110,6 @@ export function OrderDetailsView({ orderId, onBack, onNavigate }: OrderDetailsVi
         globalThis.open(url, '_blank');
         haptic.light();
     };
-
-    const handleBuyAgain = useCallback(() => {
-        if (!order) return;
-        order.items.forEach((item: OrderItem) => {
-            addToCart({
-                id: item.productId,
-                name: item.name,
-                price: item.price,
-                images: [item.image],
-                category: '',
-                stock: 99,
-                isActive: true,
-                description: '',
-                sold: 0,
-                freeShipping: false,
-                createdAt: '',
-                isBestseller: false
-            }, item.quantity);
-        });
-        haptic.success();
-        toast.success('Itens adicionados ao carrinho!');
-        onNavigate('cart');
-    }, [order, addToCart, onNavigate]);
 
     if (loading) {
         return (
@@ -158,21 +146,15 @@ export function OrderDetailsView({ orderId, onBack, onNavigate }: OrderDetailsVi
     return (
         <div className="min-h-full bg-zinc-50/50 pb-24">
             {/* Header Sticky */}
-            <div className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-zinc-100 px-6 pt-12 pb-6">
-                <div className="flex items-center justify-between mb-6">
-                    <button
-                        onClick={() => { haptic.light(); onBack(); }}
-                        className="w-11 h-11 flex items-center justify-center bg-zinc-100 rounded-2xl text-zinc-900 active:scale-90 transition-all"
-                    >
-                        <ChevronLeft className="w-5 h-5" />
-                    </button>
-                    <div className="flex flex-col items-center">
+            <div className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-zinc-100 px-6 pt-8 pb-4">
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex flex-col items-start">
                         <span className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-400 leading-none mb-1">Status em Tempo Real</span>
-                        <h1 className="text-lg font-black tracking-tighter text-zinc-900 uppercase">Detalhes da <span className="text-zinc-400">Entrega</span></h1>
+                        <h1 className="text-base font-black tracking-tighter text-zinc-900 uppercase">Detalhes da <span className="text-zinc-400">Entrega</span></h1>
                     </div>
                     <button
                         onClick={handleWhatsAppSupport}
-                        className="w-11 h-11 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-2xl active:scale-90 transition-all border border-emerald-100/50"
+                        className="w-10 h-10 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-2xl active:scale-90 transition-all border border-emerald-100/50"
                     >
                         <MessageCircle className="w-5 h-5" />
                     </button>
@@ -364,25 +346,6 @@ export function OrderDetailsView({ orderId, onBack, onNavigate }: OrderDetailsVi
                             </div>
                         </div>
                     </motion.div>
-                </div>
-
-                {/* Actions Bar */}
-                <div className="fixed bottom-[calc(64px+var(--safe-area-bottom,0px))] left-0 right-0 z-50 px-6 py-6 md:px-8 md:py-6 bg-white/95 backdrop-blur-xl border-t border-zinc-100 shadow-[0_-20px_40px_rgba(0,0,0,0.05)] md:max-w-screen-md md:mx-auto md:rounded-t-[3rem] md:border-x">
-                    <div className="flex gap-4">
-                        <button
-                            onClick={() => { haptic.light(); onBack(); }}
-                            className="flex-1 h-14 bg-zinc-100 text-zinc-900 rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all border border-zinc-200/50 flex items-center justify-center gap-2"
-                        >
-                            Ver Meus Pedidos
-                        </button>
-                        <button
-                            onClick={handleBuyAgain}
-                            className="flex-[1.5] h-14 bg-zinc-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] active:scale-95 transition-all shadow-xl shadow-zinc-200 flex items-center justify-center gap-3 group"
-                        >
-                            <TrendingUp className="w-4 h-4 group-hover:rotate-12 transition-transform" />
-                            Comprar Novamente
-                        </button>
-                    </div>
                 </div>
             </div>
         </div>

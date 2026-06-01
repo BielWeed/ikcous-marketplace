@@ -71,7 +71,7 @@ function CartItemCard({ item, removingId, onUpdateQuantity, onRemove }: Readonly
 
     return (
         <motion.div
-            layout
+            layout={removingId !== null}
             initial={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0, marginBottom: 0, overflow: 'hidden' }}
             transition={{ duration: 0.3, ease: 'easeInOut' }}

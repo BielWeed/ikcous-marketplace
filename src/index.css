@@ -189,6 +189,14 @@
     padding-top: var(--safe-area-top);
   }
 
+  .bottom-safe-navigation {
+    bottom: calc(64px + var(--safe-area-bottom, 0px));
+  }
+
+  .pb-safe-home {
+    padding-bottom: calc(112px + var(--safe-area-bottom, 0px));
+  }
+
   /* Utility classes to explicitly hide scrollbars (redundant now but kept for specificity) */
   .no-scrollbar::-webkit-scrollbar {
     display: none;
@@ -456,4 +464,20 @@
   .custom-scrollbar-hidden::-webkit-scrollbar {
     display: none;
   }
+}
+
+@keyframes cartPop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.cart-pop {
+  animation: cartPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
 }

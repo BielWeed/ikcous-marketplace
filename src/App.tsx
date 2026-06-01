@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Header } from '@/components/ui/custom/Header';
 import { BottomNav } from '@/components/ui/custom/BottomNav';
@@ -39,6 +39,7 @@ const FavoritesView = React.lazy(() => import('@/views/customer/FavoritesView').
 const AdminLayout = React.lazy(() => import('@/components/layouts/AdminLayout').then(m => ({ default: m.AdminLayout })));
 const DebugPanel = React.lazy(() => import('@/components/debug/DebugPanel').then(m => ({ default: m.DebugPanel })));
 import { toast } from 'sonner';
+import { Toaster } from '@/components/ui/sonner';
 
 declare global {
   interface Window {
@@ -152,6 +153,8 @@ const AppContent = () => {
   const scrollSentinelRef = useRef<HTMLDivElement>(null);
   const backOverrideRef = useRef<(() => void) | null>(null);
   const isTransitioningRef = useRef(false);
+  const scrollPositionsRef = useRef<Record<string, number>>({});
+  const prevViewRef = useRef<View>('home');
 
   const { setBadge, clearBadge } = useAppBadge();
   const { checkUpdate, updateAvailable, newVersion, performNuclearPurge } = useUpdateCheck();
@@ -176,7 +179,12 @@ const AppContent = () => {
       }
     }
 
-    if (currentView !== view) {
+    let targetView = view;
+    if ((view === 'profile' || view === 'account-settings' || view === 'address-form') && !authLoading && !user) {
+      targetView = 'auth';
+    }
+
+    if (currentView !== targetView) {
       isTransitioningRef.current = true;
       setTimeout(() => {
         isTransitioningRef.current = false;
@@ -185,25 +193,22 @@ const AppContent = () => {
 
     const fromView = currentView;
     setSelectedProductId(id || null);
-    setCurrentView(view);
+    setCurrentView(targetView);
     setBackOverride(null); // Reset override on navigation
 
 
     // Sync URL without full reload
-    const path = view === 'home' ? '/' : `/${view}`;
+    const path = targetView === 'home' ? '/' : `/${targetView}`;
     if (globalThis.location.pathname !== path) {
-      globalThis.history.pushState({ view, id, from: fromView }, '', path);
+      globalThis.history.pushState({ view: targetView, id, from: fromView }, '', path);
     }
-
-    if (mainRef.current) mainRef.current.scrollTop = 0;
-  }, [currentView]);
+  }, [currentView, authLoading, user]);
 
 
   const handleProductClick = useCallback((productId: string) => {
     handleNavigate('product-detail', productId);
     addToRecentlyViewed(productId);
     haptic.light();
-    if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [handleNavigate, addToRecentlyViewed]);
 
   const handleBack = useCallback(() => {
@@ -328,19 +333,27 @@ const AppContent = () => {
         'admin-settings', 'admin-reviews', 'admin-qa', 'admin-customers', 'admin-user-detail', 'admin-push', 'address-form'
       ];
       if (validViews.includes(path as View)) {
-        setCurrentView(path as View);
+        let targetView = path as View;
+        if ((targetView === 'profile' || targetView === 'account-settings' || targetView === 'address-form') && !authLoading && !user) {
+          targetView = 'auth';
+          if (globalThis.location.pathname !== '/auth') {
+            globalThis.history.replaceState({ view: 'auth' }, '', '/auth');
+          }
+        }
+
+        setCurrentView(targetView);
         // Restore selected product ID if it's in the history state
         const stateId = globalThis.history.state?.id;
         if (stateId) {
           setSelectedProductId(stateId);
-        } else if (path !== 'product-detail' && path !== 'order-details' && path !== 'admin-product-form' && path !== 'admin-user-detail') {
+        } else if (targetView !== 'product-detail' && targetView !== 'order-details' && targetView !== 'admin-product-form' && targetView !== 'admin-user-detail') {
           // Clear selected product if we moved away from a detail view and have no state
           setSelectedProductId(null);
         }
 
         // History Trap for Home: If we are on home and this is the last entry, 
         // push a fake one to prevent closing the app on back button
-        if (path === 'home' && !globalThis.history.state?.trap) {
+        if (targetView === 'home' && !globalThis.history.state?.trap) {
           globalThis.history.replaceState({ view: 'home', trap: true, isBase: true }, '', '/');
           globalThis.history.pushState({ view: 'home', trap: true }, '', '/');
         }
@@ -384,7 +397,7 @@ const AppContent = () => {
     return () => {
       globalThis.removeEventListener('popstate', handlePopState);
     };
-  }, [currentView]);
+  }, [currentView, authLoading, user]);
 
   // Clear search query when navigating to non-search views
   useEffect(() => {
@@ -408,11 +421,37 @@ const AppContent = () => {
     }
   }, [currentView, selectedProductId, products, authLoading, productsLoading]);
 
-  // Reset scroll on view change
-  useEffect(() => {
+  // Centralized Scroll Restoration and View-Change Reset
+  useLayoutEffect(() => {
+    const prevView = prevViewRef.current;
+    const nextView = currentView;
+    prevViewRef.current = nextView;
+
+    if (prevView === nextView) return;
+
+    // Save scroll position of the previous view before it's destroyed/swapped
     if (mainRef.current) {
-      mainRef.current.scrollTop = 0;
+      const currentScroll = mainRef.current.scrollTop;
+      scrollPositionsRef.current[prevView] = currentScroll;
     }
+
+    // Restore scroll position for the next view.
+    // Restore immediately, after 160ms (exit animation end), and after 300ms (safe fallback for lazy chunks)
+    const restoreScroll = () => {
+      if (mainRef.current) {
+        const savedScroll = scrollPositionsRef.current[nextView] || 0;
+        mainRef.current.scrollTop = savedScroll;
+      }
+    };
+
+    restoreScroll();
+    const timer1 = setTimeout(restoreScroll, 160);
+    const timer2 = setTimeout(restoreScroll, 300);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
   }, [currentView]);
 
 
@@ -552,6 +591,7 @@ const AppContent = () => {
       case 'cart':
         return (
           <CartView
+            key={user?.id ? `cart-${user.id}` : 'cart-guest'}
             cart={cart}
             onUpdateQuantity={updateQuantity}
             onRemove={removeFromCart}
@@ -579,6 +619,7 @@ const AppContent = () => {
       case 'checkout': {
         return (
           <CheckoutView
+            key={user?.id ? `checkout-${user.id}` : 'checkout-guest'}
             cart={cart}
             subtotal={cartTotal}
             shipping={shippingFee}
@@ -592,8 +633,10 @@ const AppContent = () => {
       case 'profile':
         return (
           <ProfileView
+            key={user?.id ? `profile-${user.id}` : 'profile-guest'}
             onNavigate={handleNavigate}
             onProductClick={handleProductClick}
+            recentlyViewedProducts={recentlyViewedProducts}
           />
         );
       case 'notifications':
@@ -620,11 +663,12 @@ const AppContent = () => {
         );
 
       case 'account-settings':
-        return <AccountSettings />;
+        return <AccountSettings key={user?.id ? `account-settings-${user.id}` : 'account-settings-guest'} />;
 
       case 'orders':
         return (
           <CartView
+            key={user?.id ? `orders-${user.id}` : 'orders-guest'}
             cart={cart}
             onUpdateQuantity={updateQuantity}
             onRemove={removeFromCart}
@@ -637,6 +681,7 @@ const AppContent = () => {
       case 'order-details':
         return (
           <OrderDetailsView
+            key={user?.id ? `order-details-${user.id}` : 'order-details-guest'}
             orderId={selectedProductId || ''}
             onBack={() => handleNavigate('orders')}
             onNavigate={handleNavigate}
@@ -646,6 +691,7 @@ const AppContent = () => {
       case 'favorites':
         return (
           <FavoritesView
+            key={user?.id ? `favorites-${user.id}` : 'favorites-guest'}
             favorites={favorites}
             onToggleFavorite={handleToggleFavorite}
             onProductClick={handleProductClick}
@@ -656,6 +702,7 @@ const AppContent = () => {
       case 'recently-viewed':
         return (
           <RecentlyViewedView
+            key={user?.id ? `recently-viewed-${user.id}` : 'recently-viewed-guest'}
             products={recentlyViewedProducts}
             favorites={favorites.map(f => f.id)}
             onToggleFavorite={handleToggleFavorite}
@@ -666,7 +713,7 @@ const AppContent = () => {
         );
 
       case 'address-form':
-        return <AddressFormView addressId={selectedProductId} onBack={handleBack} />;
+        return <AddressFormView key={user?.id ? `address-form-${user.id}` : 'address-form-guest'} addressId={selectedProductId} onBack={handleBack} />;
 
       case 'compare':
         return (
@@ -728,6 +775,7 @@ const AppContent = () => {
             searchQuery={searchQuery}
             onSearch={setSearchQuery}
             scrollProgress={scrollProgress}
+            cartCount={cartCount}
           />
         </div>
       )}
@@ -754,30 +802,31 @@ const AppContent = () => {
         />
 
         <AnimatePresence mode="wait">
-          <div 
-            key={currentView.startsWith('admin') ? 'admin-layout' : currentView}
-            className={cn(!currentView.startsWith('admin') && "min-h-full flex flex-col", "!outline-none focus:!outline-none")}
-            tabIndex={-1}
-            style={{ WebkitTapHighlightColor: 'transparent', outline: 'none' }}
-          >
-            <React.Suspense fallback={<ViewLoadingFallback />}>
-              {currentView.startsWith('admin') ? (
-                <div>
-                  {renderView()}
-                </div>
-              ) : (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="min-h-full flex flex-col"
-                >
-                  {renderView()}
-                </motion.div>
-              )}
-            </React.Suspense>
-          </div>
+          {currentView.startsWith('admin') ? (
+            <div 
+              key="admin-layout"
+              className="h-full pt-0"
+            >
+              <React.Suspense fallback={<ViewLoadingFallback />}>
+                {renderView()}
+              </React.Suspense>
+            </div>
+          ) : (
+            <motion.div
+              key={currentView}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex-1 flex flex-col !outline-none focus:!outline-none"
+              tabIndex={-1}
+              style={{ WebkitTapHighlightColor: 'transparent', outline: 'none' }}
+            >
+              <React.Suspense fallback={<ViewLoadingFallback />}>
+                {renderView()}
+              </React.Suspense>
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
@@ -803,6 +852,7 @@ const AppContent = () => {
         onUpdate={() => performNuclearPurge(true)}
         newVersion={newVersion}
       />
+      <Toaster />
     </div>
   );
 };

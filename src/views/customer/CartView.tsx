@@ -16,6 +16,7 @@ import { OrderList } from '@/components/ui/custom/OrderList';
 import { ShippingProgress } from '@/components/ui/custom/ShippingProgress';
 import { CartFooterSummary } from '@/components/ui/custom/CartFooterSummary';
 import { EmptyCart } from '@/components/ui/custom/EmptyCart';
+import { useDeferredRender } from '@/hooks/useDeferredRender';
 
 interface CartViewProps {
   cart: CartItem[];
@@ -30,6 +31,7 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
   const { getFreeShippingEligibleProducts } = useProducts();
   const { fetchUserOrders } = useOrders(true, false);
   const { user } = useAuth();
+  const isReady = useDeferredRender(250);
 
   const [activeTab, setActiveTab] = useState<'cart' | 'orders'>(initialTab);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -40,6 +42,7 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
   const [orderViewMode, setOrderViewMode] = useState<'user' | 'guest'>(user ? 'user' : 'guest');
 
   useEffect(() => {
+    if (!isReady) return;
     if (activeTab === 'orders') {
       if (user) {
         setIsLoadingOrders(true);
@@ -50,9 +53,20 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
         });
       } else {
         setOrderViewMode('guest');
+        try {
+          const cached = sessionStorage.getItem('guest_tracked_orders');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setOrders(parsed);
+            }
+          }
+        } catch (e) {
+          console.error('Error loading guest orders from sessionStorage:', e);
+        }
       }
     }
-  }, [user, fetchUserOrders, activeTab]);
+  }, [user, fetchUserOrders, activeTab, isReady]);
 
   useEffect(() => {
     const getScrollElement = () => document.querySelector('main');
@@ -200,6 +214,7 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
             className="flex-1 flex flex-col"
           >
             {!user && cart.length === 0 ? (
@@ -285,6 +300,7 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
                   isNearlyThere={isNearlyThere}
                   freeShippingProducts={freeShippingProducts}
                   onAddToCart={onAddToCart}
+                  deferred={!isReady}
                 />
 
               </>
@@ -311,6 +327,9 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
             {orderViewMode === 'guest' && (
               <OrderSearch
                 onNavigate={onNavigate}
+                onOrdersFound={(foundOrders) => {
+                  setOrders(foundOrders);
+                }}
               />
             )}
 
@@ -333,7 +352,7 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
       </AnimatePresence>
 
       <AnimatePresence>
-        {activeTab === 'cart' && cart.length > 0 && (
+        {activeTab === 'cart' && cart.length > 0 && isReady && (
           <CartFooterSummary
             cartCount={cartCount}
             shipping={shipping}

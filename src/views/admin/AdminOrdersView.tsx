@@ -1,7 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search,
-  Eye,
   MessageCircle,
   Package,
   ChevronLeft,
@@ -58,8 +57,40 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
   });
   const [filter, setFilter] = useState<OrderStatus | 'all'>('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [savedScrollPosition, setSavedScrollPosition] = useState(0);
+  const prevSelectedOrderRef = useRef<Order | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const itemsPerPage = 12;
+
+  const handleSelectOrder = (order: Order) => {
+    const container = document.querySelector('main main') || document.querySelector('main');
+    if (container) {
+      setSavedScrollPosition(container.scrollTop);
+    }
+    setSelectedOrder(order);
+  };
+
+  useEffect(() => {
+    const container = document.querySelector('main main') || document.querySelector('main');
+    if (!container) return;
+
+    const prev = prevSelectedOrderRef.current;
+    prevSelectedOrderRef.current = selectedOrder;
+
+    if (selectedOrder && !prev) {
+      // Opened details page: scroll container to top
+      container.scrollTop = 0;
+    } else if (!selectedOrder && prev) {
+      // Returned to list view: restore scroll position
+      if (savedScrollPosition > 0) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            container.scrollTop = savedScrollPosition;
+          });
+        });
+      }
+    }
+  }, [selectedOrder, savedScrollPosition]);
 
   // Removidas funções bulk status e toggle selecionados para evitar erros de compilação.
 
@@ -376,18 +407,20 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
                 return (
                   <div
                     key={order.id}
-                  className={cn(
-                    "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[3rem] p-8 transition-all duration-500 hover:shadow-[0_20px_60px_rgba(0,0,0,0.5)] active:scale-[0.98] focus-within:ring-2 focus-within:ring-admin-gold focus-within:ring-offset-2 focus-within:ring-offset-zinc-950",
-                    "border-white/5 hover:border-admin-gold/30"
-                  )}
-                >
-                  {/* Native Click Target for Accessibility */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedOrder(order)}
-                    className="absolute inset-0 w-full h-full rounded-[3rem] opacity-0 z-0 cursor-pointer focus:outline-none"
-                    aria-label={`Ver detalhes do pedido ${order.id.slice(-6).toUpperCase()}`}
-                  />
+                    onClick={() => handleSelectOrder(order)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleSelectOrder(order);
+                      }
+                    }}
+                    className={cn(
+                      "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[3rem] p-8 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_20px_60px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950",
+                      "border-white/5"
+                    )}
+                  >
                   
                   {/* Glow Background */}
                   <div className="absolute inset-0 bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 group-hover:from-admin-gold/5 group-hover:to-transparent rounded-[3rem] transition-all duration-700 pointer-events-none z-0" />
@@ -452,19 +485,19 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
                           {(order.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         </p>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 items-center">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleWhatsApp(order);
                           }}
-                          className="w-12 h-12 flex items-center justify-center bg-emerald-500/10 text-emerald-500 rounded-2xl hover:bg-emerald-500 hover:text-black transition-all border border-emerald-500/20 shadow-xl"
+                          className="w-12 h-12 flex items-center justify-center bg-emerald-500/10 text-emerald-500 rounded-2xl hover:bg-emerald-500 hover:text-black transition-all border border-emerald-500/20 shadow-xl relative z-10"
                         >
                           <MessageCircle className="w-5 h-5" />
                         </button>
-                        <button className="w-12 h-12 flex items-center justify-center bg-white/5 text-zinc-500 rounded-2xl hover:bg-admin-gold hover:text-black transition-all border border-white/5 shadow-xl">
-                          <Eye className="w-5 h-5" />
-                        </button>
+                        <div className="w-12 h-12 flex items-center justify-center text-zinc-500 group-hover:text-admin-gold transition-all duration-300">
+                          <ChevronRight className="w-6 h-6 transform transition-transform duration-300 group-hover:translate-x-1 filter group-hover:drop-shadow-[0_0_8px_rgba(212,175,55,0.5)]" />
+                        </div>
                       </div>
                     </div>
                   </div>

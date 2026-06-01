@@ -91,9 +91,6 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
             realTimeSalesAlerts: data.real_time_sales_alerts ?? defaultStoreConfig.realTimeSalesAlerts,
             pushMarketingEnabled: data.push_marketing_enabled ?? defaultStoreConfig.pushMarketingEnabled,
             minAppVersion: data.min_app_version,
-            whatsappApiUrl: data.whatsapp_api_url,
-            whatsappApiKey: data.whatsapp_api_key,
-            whatsappApiInstance: data.whatsapp_api_instance,
         };
     }, []);
 
@@ -225,9 +222,6 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
             if (updates.realTimeSalesAlerts !== undefined) dbUpdates.real_time_sales_alerts = updates.realTimeSalesAlerts;
             if (updates.pushMarketingEnabled !== undefined) dbUpdates.push_marketing_enabled = updates.pushMarketingEnabled;
             if (updates.minAppVersion !== undefined) dbUpdates.min_app_version = updates.minAppVersion;
-            if (updates.whatsappApiUrl !== undefined) dbUpdates.whatsapp_api_url = updates.whatsappApiUrl;
-            if (updates.whatsappApiKey !== undefined) dbUpdates.whatsapp_api_key = updates.whatsappApiKey;
-            if (updates.whatsappApiInstance !== undefined) dbUpdates.whatsapp_api_instance = updates.whatsappApiInstance;
 
             const { error } = await (supabase.rpc as any)('upsert_store_config', {
                 config_json: dbUpdates

@@ -302,6 +302,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             const variant = variantId ? product.variants?.find(v => v.id === variantId) : undefined;
             const availableStock = variant && variant.stock !== undefined ? variant.stock : (product.stock || 0);
 
+            if (availableStock <= 0) {
+                toast.error('Este produto está esgotado.');
+                return prev;
+            }
+
             if (existingIndex > -1) {
                 const existing = prev[existingIndex];
                 console.log(`[CartContext-Trace] ➕ Updating existing item. Current: ${existing.quantity}, Adding: ${qToAdd}`);
@@ -327,7 +332,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
             return [...prev, { product, quantity: validatedQuantity, variantId, variantNames }];
         });
-        toast.success('Produto adicionado ao carrinho!');
     }, [user]);
 
     const removeFromCart = useCallback((productId: string, variantIdInput?: string) => {
@@ -352,7 +356,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 const nextQuantity = Math.min(quantity, availableStock, MAX_ITEM_QUANTITY);
 
                 if (quantity > availableStock) {
-                    toast.error(`Limite de estoque atingido (${availableStock} unidades).`);
+                    if (availableStock <= 0) {
+                        toast.error('Este produto está esgotado.');
+                    } else {
+                        toast.error(`Limite de estoque atingido (${availableStock} unidades).`);
+                    }
                 }
 
                 return { ...item, quantity: nextQuantity };
