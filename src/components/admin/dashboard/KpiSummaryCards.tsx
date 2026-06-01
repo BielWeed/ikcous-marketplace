@@ -15,7 +15,7 @@ export function KpiSummaryCards({ stats, loading }: KpiSummaryCardsProps) {
         { 
             label: 'Volume Mensal', 
             value: `R$ ${(stats?.month?.revenue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-            subValue: "Acumulado do mês", 
+            subValue: "Últimos 30 dias", 
             icon: ShoppingBag,
             accent: "text-admin-gold",
             trend: stats?.month?.revenueTrend !== undefined ? `${stats.month.revenueTrend > 0 ? '+' : ''}${stats.month.revenueTrend}%` : "0%"
@@ -23,7 +23,7 @@ export function KpiSummaryCards({ stats, loading }: KpiSummaryCardsProps) {
         { 
             label: 'Pedidos do Mês', 
             value: (stats?.month?.count || 0).toString(), 
-            subValue: "Total de vendas", 
+            subValue: "Últimos 30 dias", 
             icon: TrendingUp,
             accent: "text-emerald-500",
             trend: stats?.month?.countTrend !== undefined ? `${stats.month.countTrend > 0 ? '+' : ''}${stats.month.countTrend}%` : "0%"

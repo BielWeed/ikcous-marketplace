@@ -92,18 +92,18 @@ BEGIN
     FROM public.marketplace_orders
     WHERE status in ('pending', 'new', 'processing');
 
-    -- 2. month vs Previous Month
+    -- 2. month vs Previous Month (Rolling 30 Days)
     SELECT COALESCE(SUM(total), 0), COUNT(*)
     INTO month_revenue, month_count
     FROM public.marketplace_orders
-    WHERE created_at >= date_trunc('month', now())
+    WHERE created_at >= now() - interval '30 days'
     AND status NOT IN ('cancelled', 'returned');
 
     SELECT COALESCE(SUM(total), 0), COUNT(*)
     INTO prev_month_revenue, prev_month_count
     FROM public.marketplace_orders
-    WHERE created_at >= date_trunc('month', now() - interval '1 month')
-    AND created_at < date_trunc('month', now())
+    WHERE created_at >= now() - interval '60 days'
+    AND created_at < now() - interval '30 days'
     AND status NOT IN ('cancelled', 'returned');
 
     month_rev_trend := CASE WHEN prev_month_revenue > 0 THEN ((month_revenue - prev_month_revenue) / prev_month_revenue) * 100 ELSE (CASE WHEN month_revenue > 0 THEN 100 ELSE 0 END) END;
