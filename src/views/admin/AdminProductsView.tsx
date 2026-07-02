@@ -47,10 +47,11 @@ import { useDebounce } from '@/hooks/useDebounce';
 
 interface AdminProductsViewProps {
   onNavigate: (view: View, id?: string) => void;
+  active?: boolean;
 }
 
-export function AdminProductsView({ onNavigate }: Readonly<AdminProductsViewProps>) {
-  const { products, loading, deleteProduct, toggleProductStatus, addProduct } = useProducts();
+export function AdminProductsView({ onNavigate, active }: Readonly<AdminProductsViewProps>) {
+  const { products, loading, deleteProduct, toggleProductStatus, addProduct, fetchProducts } = useProducts();
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [filterCategory, setFilterCategory] = useState('all');
@@ -62,6 +63,12 @@ export function AdminProductsView({ onNavigate }: Readonly<AdminProductsViewProp
   useEffect(() => {
     localStorage.setItem('admin_products_view_mode', viewMode);
   }, [viewMode]);
+
+  useEffect(() => {
+    if (active) {
+      fetchProducts();
+    }
+  }, [active, fetchProducts]);
 
   const [expandedHelp, setExpandedHelp] = useState<Record<string, boolean>>({});
   const [helpTab, setHelpTab] = useState<'concepts' | 'simulator'>('concepts');

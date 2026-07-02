@@ -25,6 +25,7 @@ import type { View } from '@/types';
 
 interface AdminDashboardViewProps {
   onNavigate: (view: View, id?: string) => void;
+  active?: boolean;
 }
 
 interface CategoryData {
@@ -35,7 +36,8 @@ interface CategoryData {
 }
 
 export function AdminDashboardView({
-  onNavigate
+  onNavigate,
+  active
 }: Readonly<AdminDashboardViewProps>) {
   const { session } = useAuth();
   const { 
@@ -79,10 +81,10 @@ export function AdminDashboardView({
   }, [fetchExecutiveSummary, fetchCategoryAnalytics]);
 
   useEffect(() => {
-    if (session) {
+    if (session && active) {
       loadDashboardData();
     }
-  }, [loadDashboardData, session]);
+  }, [loadDashboardData, session, active]);
 
   return (
     <div className="bg-[#09090b] text-white selection:bg-emerald-500/30 w-full overflow-x-hidden pb-10">

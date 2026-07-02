@@ -12,10 +12,11 @@ import type { View } from '@/types';
 
 interface AdminSettingsViewProps {
     onNavigate: (view: View) => void;
+    active?: boolean;
 }
 
-export function AdminSettingsView({ onNavigate }: Readonly<AdminSettingsViewProps>) {
-    const { config, isLoaded, updateConfig } = useStore();
+export function AdminSettingsView({ onNavigate, active }: Readonly<AdminSettingsViewProps>) {
+    const { config, isLoaded, updateConfig, refresh } = useStore();
     const [formData, setFormData] = useState(config);
     const [showHelpModal, setShowHelpModal] = useState(false);
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -38,6 +39,12 @@ export function AdminSettingsView({ onNavigate }: Readonly<AdminSettingsViewProp
             setFormData(config);
         }
     }, [config, isLoaded]);
+
+    useEffect(() => {
+        if (active) {
+            refresh();
+        }
+    }, [active, refresh]);
 
     const handleSubmit = async () => {
         // Basic validation

@@ -85,6 +85,33 @@ export function AdminCustomersView({ onNavigate, active }: Readonly<AdminCustome
         localStorage.setItem('admin_customers_view_mode', viewMode);
     }, [viewMode]);
 
+    const fetchCustomers = useCallback(async (pageToFetch = page) => {
+        try {
+            setLoading(true);
+
+            const { data, error } = await (supabase.rpc as any)('get_admin_customers_paged', {
+                p_search: debouncedSearchTerm,
+                p_sort_field: sortField,
+                p_sort_direction: sortDirection,
+                p_page: pageToFetch,
+                p_page_size: PAGE_SIZE
+            });
+
+            if (error) throw error;
+
+            if (data) {
+                setCustomers(data.data || []);
+                setTotalCustomers(data.total_count || 0);
+                setGlobalStats(data.stats);
+            }
+        } catch (error) {
+            console.error('Error fetching customers:', error);
+            toast.error('Erro ao carregar clientes');
+        } finally {
+            setLoading(false);
+        }
+    }, [debouncedSearchTerm, sortField, sortDirection, page, PAGE_SIZE]);
+
     const prevSearch = useRef(debouncedSearchTerm);
     const prevSortField = useRef(sortField);
     const prevSortDirection = useRef(sortDirection);
@@ -110,35 +137,8 @@ export function AdminCustomersView({ onNavigate, active }: Readonly<AdminCustome
             }
         }
 
-        const fetchCustomers = async () => {
-            try {
-                setLoading(true);
-
-                const { data, error } = await (supabase.rpc as any)('get_admin_customers_paged', {
-                    p_search: debouncedSearchTerm,
-                    p_sort_field: sortField,
-                    p_sort_direction: sortDirection,
-                    p_page: pageToFetch,
-                    p_page_size: PAGE_SIZE
-                });
-
-                if (error) throw error;
-
-                if (data) {
-                    setCustomers(data.data || []);
-                    setTotalCustomers(data.total_count || 0);
-                    setGlobalStats(data.stats);
-                }
-            } catch (error) {
-                console.error('Error fetching customers:', error);
-                toast.error('Erro ao carregar clientes');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchCustomers();
-    }, [debouncedSearchTerm, sortField, sortDirection, page, active, PAGE_SIZE]);
+        fetchCustomers(pageToFetch);
+    }, [debouncedSearchTerm, sortField, sortDirection, page, active, fetchCustomers]);
 
     const kpiCards = useMemo<readonly KpiCardConfig[]>(() => [
         { label: 'Total Clientes', value: globalStats?.total_customers || 0, icon: Users, accent: 'text-admin-gold', subValue: 'Base de Clientes' },
