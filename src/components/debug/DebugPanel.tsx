@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, RefreshCw, Trash2, Wifi, WifiOff, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useStore } from '@/hooks/useStore';
+import { useStore } from '@/contexts/StoreContext';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 

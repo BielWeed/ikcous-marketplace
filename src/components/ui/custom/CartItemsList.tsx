@@ -140,13 +140,23 @@ function CartItemCard({ item, removingId, onUpdateQuantity, onRemove }: Readonly
 
                     <div className="flex items-center justify-between mt-3">
                         <div className="flex flex-col">
-                            <p className="text-xl font-black text-zinc-900 tracking-tighter leading-none">
-{(() => {
-    const variant = item.variantId ? item.product.variants?.find(v => v.id === item.variantId) : null;
-    const price = variant?.priceOverride || item.product.price;
-    return `R$ ${price.toFixed(2).replace('.', ',')}`;
-})()}
-                            </p>
+                            {(() => {
+                                const variant = item.variantId ? item.product.variants?.find(v => v.id === item.variantId) : null;
+                                const price = variant?.priceOverride || item.product.price;
+                                const hasDiscount = item.product.originalPrice && item.product.originalPrice > price;
+                                return (
+                                    <>
+                                        {hasDiscount && (
+                                            <span className="text-[10px] text-zinc-400 line-through font-bold leading-none mb-1">
+                                                R$ {item.product.originalPrice!.toFixed(2).replace('.', ',')}
+                                            </span>
+                                        )}
+                                        <p className="text-xl font-black text-zinc-900 tracking-tighter leading-none">
+                                            R$ {price.toFixed(2).replace('.', ',')}
+                                        </p>
+                                    </>
+                                );
+                            })()}
                         </div>
 
                         <div className="flex items-center gap-2">

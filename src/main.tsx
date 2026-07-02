@@ -16,7 +16,7 @@ if (
       writable: true
     });
     console.log('[Sandbox] Headless environment detected. Service Worker registration bypassed.');
-  } catch (e) {
+  } catch {
     // Fallback if read-only
   }
 }

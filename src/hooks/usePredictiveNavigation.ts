@@ -14,9 +14,9 @@ export function usePredictiveNavigation(currentView: string) {
         let predictions: string[] = [];
 
         if (currentView === 'home') {
-            predictions = ['cart', 'favorites'];
+            predictions = ['cart', 'favorites', 'product-detail'];
         } else if (currentView === 'product-detail') {
-            predictions = ['cart'];
+            predictions = ['cart', 'checkout'];
         } else if (currentView === 'cart') {
             predictions = ['checkout'];
         }

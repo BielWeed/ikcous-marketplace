@@ -1,8 +1,10 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { mapProductFromDB } from '@/lib/mappers';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { DataVault } from '@/lib/dataVault';
+import { useSyncListener } from '@/hooks/useDataVault';
 import type { StoreConfig, Product, CartItem } from '@/types';
 
 const defaultStoreConfig: StoreConfig = {
@@ -34,35 +36,56 @@ interface StoreContextType {
 export const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export function StoreProvider({ children }: Readonly<{ children: React.ReactNode }>) {
-    const { user, isAdmin } = useAuth();
-    const [config, setConfig] = useState<StoreConfig>(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const cached = localStorage.getItem('ikcous_store_config_cache');
-                if (cached) {
-                    const parsed = JSON.parse(cached);
-                    if (parsed.primaryColor) {
-                        document.documentElement.style.setProperty('--primary', parsed.primaryColor);
-                    }
-                    return { ...defaultStoreConfig, ...parsed };
-                }
-            } catch (e) {
-                console.error('[StoreContext] Failed to parse cached config', e);
-            }
-        }
-        if (typeof window !== 'undefined' && defaultStoreConfig.primaryColor) {
-            document.documentElement.style.setProperty('--primary', defaultStoreConfig.primaryColor);
-        }
-        return defaultStoreConfig;
-    });
-    const [isLoaded, setIsLoaded] = useState(() => {
-        if (typeof window !== 'undefined') {
-            return localStorage.getItem('ikcous_store_config_cache') !== null;
-        }
-        return false;
-    });
+    const { isAdmin } = useAuth();
+    const vaultRef = useRef<DataVault | null>(null);
+    const [config, setConfig] = useState<StoreConfig>(defaultStoreConfig);
+    const [isLoaded, setIsLoaded] = useState(false);
     const [products, setProducts] = useState<Product[]>([]);
     const [loadingProducts, setLoadingProducts] = useState(true);
+
+    // ── DataVault: Load config from IDB on mount (instant, <5ms) ──
+    useEffect(() => {
+        let cancelled = false;
+        const loadFromVault = async () => {
+            try {
+                const vault = await DataVault.init();
+                vaultRef.current = vault;
+
+                // Load config from IDB
+                const cachedConfig = await vault.getById<any>('store_config', 'singleton');
+                if (cachedConfig && !cancelled) {
+                    const { id: _id, ...configData } = cachedConfig;
+                    const merged = { ...defaultStoreConfig, ...configData };
+                    setConfig(merged);
+                    setIsLoaded(true);
+                    // Apply branding immediately
+                    if (merged.primaryColor) {
+                        document.documentElement.style.setProperty('--primary', merged.primaryColor);
+                    }
+                    if (merged.themeMode === 'dark' || merged.themeMode === 'glass') {
+                        document.documentElement.classList.add('dark');
+                        if (merged.themeMode === 'glass') {
+                            document.documentElement.setAttribute('data-theme-mode', 'glass');
+                        }
+                    } else {
+                        document.documentElement.classList.remove('dark');
+                        document.documentElement.removeAttribute('data-theme-mode');
+                    }
+                }
+
+                // Load products from IDB
+                const cachedProducts = await vault.getAll<Product>('products');
+                if (cachedProducts.length > 0 && !cancelled) {
+                    setProducts(cachedProducts);
+                    setLoadingProducts(false);
+                }
+            } catch (err) {
+                console.error('[StoreContext] DataVault load failed, will fetch from network:', err);
+            }
+        };
+        loadFromVault();
+        return () => { cancelled = true; };
+    }, []);
 
     const applyBranding = useCallback((primaryColor?: string) => {
         if (primaryColor) {
@@ -74,7 +97,22 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
         if (config.primaryColor) {
             applyBranding(config.primaryColor);
         }
-    }, [config.primaryColor, applyBranding]);
+        
+        // Sync theme mode with DOM
+        if (config.themeMode) {
+            const root = document.documentElement;
+            if (config.themeMode === 'dark') {
+                root.classList.add('dark');
+                root.removeAttribute('data-theme-mode');
+            } else if (config.themeMode === 'glass') {
+                root.classList.add('dark');
+                root.setAttribute('data-theme-mode', 'glass');
+            } else {
+                root.classList.remove('dark');
+                root.removeAttribute('data-theme-mode');
+            }
+        }
+    }, [config.primaryColor, config.themeMode, applyBranding]);
 
     const mapConfig = useCallback((data: any): StoreConfig => {
         return {
@@ -108,7 +146,7 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
                     // Initialize if missing (admin only)
                     const { data: newData, error: insertError } = await supabase
                         .from('store_config')
-                        .insert([ { ...defaultStoreConfig, free_shipping_min: 350, shipping_fee: 15 } ])
+                        .insert([ { id: 1, ...defaultStoreConfig, free_shipping_min: 350, shipping_fee: 15 } as any ])
                         .select()
                         .single() as any;
 
@@ -116,14 +154,16 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
                         const mapped = mapConfig(newData);
                         setConfig(mapped);
                         applyBranding(mapped.primaryColor);
-                        localStorage.setItem('ikcous_store_config_cache', JSON.stringify(mapped));
+                        // Persist to DataVault
+                        vaultRef.current?.put('store_config', { id: 'singleton', ...mapped }).catch(() => {});
                     }
                 }
             } else if (data) {
                 const mapped = mapConfig(data);
                 setConfig(mapped);
                 applyBranding(mapped.primaryColor);
-                localStorage.setItem('ikcous_store_config_cache', JSON.stringify(mapped));
+                // Persist to DataVault
+                vaultRef.current?.put('store_config', { id: 'singleton', ...mapped }).catch(() => {});
             }
         } catch (err) {
             console.error('[StoreContext] Config error:', err);
@@ -133,39 +173,13 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
     }, [isAdmin, mapConfig, applyBranding]);
 
     const fetchProducts = useCallback(async () => {
-        const cacheKey = 'ikcous_products_cache';
-        
-        // 1. Tentar carregar do cache para renderização instantânea (Stale-While-Revalidate)
-        let needsLoading = false;
-        setProducts(prev => {
-            if (prev.length === 0) {
-                try {
-                    const cached = localStorage.getItem(cacheKey);
-                    if (cached) {
-                        const parsed = JSON.parse(cached);
-                        if (Array.isArray(parsed) && parsed.length > 0) {
-                            setLoadingProducts(false);
-                            return parsed;
-                        }
-                    }
-                    needsLoading = true;
-                } catch (e) {
-                    console.error('[StoreContext] Cache parse error', e);
-                    needsLoading = true;
-                }
-            }
-            return prev;
-        });
-
-        if (needsLoading) {
-            setLoadingProducts(true);
-        }
+        // Stale-While-Revalidate: IDB data already loaded in mount effect.
+        // This function always fetches fresh data from Supabase (background revalidation).
 
         try {
-            // 2. Buscar dados da nuvem com limite para evitar travamento da UI
             let query: any;
             if (isAdmin) {
-                query = supabase.from('produtos').select('*').limit(200).order('data_cadastro', { ascending: false });
+                query = supabase.from('produtos').select('*').is('deleted_at', null).limit(200).order('data_cadastro', { ascending: false });
             } else {
                 query = supabase.from('vw_produtos_public').select('*').limit(200).order('data_cadastro', { ascending: false });
             }
@@ -189,8 +203,10 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
                 }));
                 
                 setProducts(mapped);
-                // 3. Atualizar cache com dados frescos
-                localStorage.setItem(cacheKey, JSON.stringify(mapped));
+                // Persist to DataVault (non-blocking)
+                vaultRef.current?.replaceAll('products', mapped).then(() => {
+                    vaultRef.current?.setLastSync('products');
+                }).catch(() => {});
             } else {
                 setProducts([]);
             }
@@ -231,7 +247,8 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
 
             setConfig(prev => {
                 const newConfig = { ...prev, ...updates };
-                localStorage.setItem('ikcous_store_config_cache', JSON.stringify(newConfig));
+                // Persist to DataVault
+                vaultRef.current?.put('store_config', { id: 'singleton', ...newConfig }).catch(() => {});
                 return newConfig;
             });
             if (updates.primaryColor) applyBranding(updates.primaryColor);
@@ -248,34 +265,27 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
         fetchProducts();
     }, [fetchConfig, fetchProducts, isAdmin]);
 
-    // Config Realtime
-    useEffect(() => {
-        if (!user) return;
-        
-        const channel = supabase
-            .channel('store_config_changes')
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'store_config'
-            }, (payload) => {
-                if (payload.new) {
-                    const mapped = mapConfig(payload.new);
-                    // Verificação proativa de versão mínima
-                    if (mapped.minAppVersion && mapped.minAppVersion !== config.minAppVersion) {
-                        console.log('[StoreContext] New mandatory version detected via Realtime!');
-                    }
-                    setConfig(mapped);
-                    applyBranding(mapped.primaryColor);
-                    localStorage.setItem('ikcous_store_config_cache', JSON.stringify(mapped));
-                }
-            })
-            .subscribe();
+    // ── Realtime Sync: Listen for changes applied by RealtimeSyncEngine ──
+    useSyncListener(['store_config'], useCallback((event) => {
+        if (event.store === 'store_config' && event.newRecord) {
+            const mapped = mapConfig(event.newRecord);
+            if (mapped.minAppVersion && mapped.minAppVersion !== config.minAppVersion) {
+                console.log('[StoreContext] New mandatory version detected via Realtime!');
+            }
+            setConfig(mapped);
+            applyBranding(mapped.primaryColor);
+        }
+    }, [mapConfig, applyBranding, config.minAppVersion]));
 
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [user, mapConfig, applyBranding, config.minAppVersion]);
+    useSyncListener(['products'], useCallback(async () => {
+        // Re-read products from DataVault when Realtime updates them
+        if (vaultRef.current) {
+            const freshProducts = await vaultRef.current.getAll<Product>('products');
+            if (freshProducts.length > 0) {
+                setProducts(freshProducts);
+            }
+        }
+    }, []));
 
     const calculateShipping = useCallback((cart: CartItem[]) => {
         if (cart.length === 0) return 0;

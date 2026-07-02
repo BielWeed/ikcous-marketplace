@@ -73,7 +73,8 @@ export const Header = memo(function Header({
         )}
         style={{
           paddingTop: 'var(--safe-area-top)',
-        }}
+          viewTransitionName: 'app-header',
+        } as React.CSSProperties}
       >
         <div className="h-[var(--header-height)] px-4 flex items-center justify-between gap-4 relative">
 

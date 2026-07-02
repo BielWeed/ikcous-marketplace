@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import type { Product } from '@/types';
 import { ProductCard } from './ProductCard';
 import { ProductCardSkeleton } from './Skeletons';
@@ -14,6 +15,7 @@ interface ProductListProps {
     onProductClick: (productId: string) => void;
     onAddToCart?: (product: Product) => void;
     onQuickBuy?: (product: Product) => void;
+    selectedProductId?: string;
 }
 
 export const ProductList = React.memo(function ProductList({
@@ -23,7 +25,8 @@ export const ProductList = React.memo(function ProductList({
     onToggleFavorite,
     onProductClick,
     onAddToCart,
-    onQuickBuy
+    onQuickBuy,
+    selectedProductId
 }: ProductListProps) {
     const { config } = useStore();
     const { prefetchView } = usePrefetchOnHover();
@@ -103,13 +106,17 @@ export const ProductList = React.memo(function ProductList({
         <div className="space-y-8">
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                 {products.slice(0, visibleCount).map((product, index) => (
-                    <div
+                    <motion.div
                         key={product.id}
-                        style={{
-                            animationDelay: `${(index % 8) * 50}ms`,
-                            animationFillMode: 'both'
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{
+                            type: 'spring',
+                            stiffness: 300,
+                            damping: 30
                         }}
-                        className="animate-fade-in h-full flex flex-col"
+                        className="h-full flex flex-col"
                     >
                         <ProductCard
                             product={product}
@@ -122,8 +129,9 @@ export const ProductList = React.memo(function ProductList({
                             onTouchStart={handlePrefetchProductDetail}
                             priority={index < 4}
                             isEligibleForFreeShipping={config.freeShippingMin > 0}
+                            selectedProductId={selectedProductId}
                         />
-                    </div>
+                    </motion.div>
                 ))}
             </div>
 

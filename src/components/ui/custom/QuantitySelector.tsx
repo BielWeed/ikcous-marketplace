@@ -1,4 +1,5 @@
 import { Minus, Plus } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface QuantitySelectorProps {
   quantity: number;
@@ -36,9 +37,20 @@ export function QuantitySelector({ quantity, maxQuantity, onChange, size = 'md' 
         <Minus className={`${iconSize} text-zinc-600`} />
       </button>
 
-      <span className={`${size === 'sm' ? 'w-8' : 'w-12'} text-center font-black text-sm text-zinc-800`}>
-        {quantity}
-      </span>
+      <div className={`relative overflow-hidden flex items-center justify-center ${size === 'sm' ? 'w-8 h-7' : 'w-12 h-9'}`}>
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.span
+            key={quantity}
+            initial={{ y: 8, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -8, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+            className="absolute font-black text-sm text-zinc-800"
+          >
+            {quantity}
+          </motion.span>
+        </AnimatePresence>
+      </div>
 
       <button
         onClick={handleIncrease}
@@ -53,3 +65,4 @@ export function QuantitySelector({ quantity, maxQuantity, onChange, size = 'md' 
     </div>
   );
 }
+

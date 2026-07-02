@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeft, CreditCard, Banknote, Smartphone, Check, MapPin, User, Phone, FileText, Tag, Plus, AlertCircle, Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { CartItem, PaymentMethod, View, Customer, Address } from '@/types';
@@ -17,20 +18,17 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 
-const checkoutSchema = z.object({
-  name: z.string().min(1, 'Nome é obrigatório'),
-  whatsapp: z.string().min(14, 'WhatsApp inválido'),
-  // Address fields for guests
-  cep: z.string().optional(),
-  street: z.string().optional(),
-  number: z.string().optional(),
-  neighborhood: z.string().optional(),
-  city: z.string().optional(),
-  state: z.string().optional(),
-  complement: z.string().optional(),
-});
-
-type CheckoutFormValues = z.infer<typeof checkoutSchema>;
+interface CheckoutFormValues {
+  name: string;
+  whatsapp: string;
+  cep?: string;
+  street?: string;
+  number?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  complement?: string;
+}
 
 interface CheckoutViewProps {
   readonly cart: CartItem[];
@@ -612,9 +610,9 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
           </div>
           <div className="p-8 grid grid-cols-1 gap-4">
             {[
-              { value: 'pix' as PaymentMethod, label: 'Pix Instantâneo', icon: Smartphone, color: 'text-emerald-500 bg-emerald-50' },
-              { value: 'card' as PaymentMethod, label: 'Cartão de Crédito', icon: CreditCard, color: 'text-blue-500 bg-blue-50' },
-              { value: 'cash' as PaymentMethod, label: 'Dinheiro em Mãos', icon: Banknote, color: 'text-amber-500 bg-amber-50' },
+              { value: 'pix' as PaymentMethod, label: 'Pix na Entrega', icon: Smartphone, color: 'text-emerald-500 bg-emerald-50' },
+              { value: 'card' as PaymentMethod, label: 'Cartão na Entrega', icon: CreditCard, color: 'text-blue-500 bg-blue-50' },
+              { value: 'cash' as PaymentMethod, label: 'Dinheiro na Entrega', icon: Banknote, color: 'text-amber-500 bg-amber-50' },
             ].map((option) => {
               const Icon = option.icon;
               return (
@@ -696,46 +694,49 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
       />
 
       {/* Order Summary - Fixed Bottom Bar */}
-      <div className="fixed bottom-safe-navigation left-0 right-0 bg-white/95 backdrop-blur-3xl border-t border-zinc-100 p-4 pb-8 md:bottom-24 md:max-w-screen-md md:mx-auto md:rounded-[2.5rem] md:border md:pb-12 z-[55] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] rounded-t-[2.5rem]">
-        <div className="max-w-screen-md mx-auto">
-          <div className="flex items-center justify-between mb-4 px-1">
-            <div className="flex flex-col">
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 leading-none mb-1">Total a Pagar</span>
-              <span className="text-2xl font-black tracking-tighter text-zinc-900 leading-none">
-                R$ {finalTotal.toFixed(2).replace('.', ',')}
-              </span>
-            </div>
-            {discount > 0 && (
-              <div className="px-3 py-1 bg-red-500 text-white text-[10px] font-black rounded-full uppercase tracking-wider">
-                -R$ {discount.toFixed(2).replace('.', ',')} OFF
+      {typeof document !== 'undefined' && document.body && createPortal(
+        <div className="fixed bottom-safe-navigation left-0 right-0 bg-white/95 backdrop-blur-3xl border-t border-zinc-100 p-4 pb-8 md:bottom-[88px] md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-full md:max-w-md md:rounded-t-2xl md:rounded-b-none md:border-t md:border-x md:border-b-0 md:border-zinc-200/60 md:pb-8 z-[110] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] rounded-t-[2.5rem]">
+          <div className="max-w-screen-md mx-auto">
+            <div className="flex items-center justify-between mb-4 px-1">
+              <div className="flex flex-col">
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 leading-none mb-1">Total a Pagar</span>
+                <span className="text-2xl font-black tracking-tighter text-zinc-900 leading-none">
+                  R$ {finalTotal.toFixed(2).replace('.', ',')}
+                </span>
               </div>
-            )}
-          </div>
+              {discount > 0 && (
+                <div className="px-3 py-1 bg-red-500 text-white text-[10px] font-black rounded-full uppercase tracking-wider">
+                  -R$ {discount.toFixed(2).replace('.', ',')} OFF
+                </div>
+              )}
+            </div>
 
-          <button
-            onClick={() => {
-              haptic.medium();
-              handleSubmitEvent();
-            }}
-            disabled={!isValid || isSubmitting}
-            className={cn(
-              "w-full h-14 transition-all duration-500 active:scale-[0.98] shadow-2xl flex items-center justify-center gap-2 rounded-3xl uppercase tracking-[0.2em] font-black text-xs",
-              (!isValid || isSubmitting)
-                ? "bg-zinc-200 text-zinc-500 cursor-not-allowed border border-zinc-300 shadow-none opacity-100"
-                : "bg-zinc-900 text-white hover:bg-black shadow-zinc-200"
-            )}
-          >
-            {isSubmitting ? (
-              <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-            ) : (
-              <>
-                Finalizar Pedido
-                <ArrowLeft className="w-5 h-5 rotate-180" />
-              </>
-            )}
-          </button>
-        </div>
-      </div>
+            <button
+              onClick={() => {
+                haptic.medium();
+                handleSubmitEvent();
+              }}
+              disabled={!isValid || isSubmitting}
+              className={cn(
+                "w-full h-14 transition-all duration-500 active:scale-[0.98] shadow-2xl flex items-center justify-center gap-2 rounded-3xl uppercase tracking-[0.2em] font-black text-xs",
+                (!isValid || isSubmitting)
+                  ? "bg-zinc-200 text-zinc-500 cursor-not-allowed border border-zinc-300 shadow-none opacity-100"
+                  : "bg-zinc-900 text-white hover:bg-black shadow-zinc-200"
+              )}
+            >
+              {isSubmitting ? (
+                <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  Finalizar Pedido
+                  <ArrowLeft className="w-5 h-5 rotate-180" />
+                </>
+              )}
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

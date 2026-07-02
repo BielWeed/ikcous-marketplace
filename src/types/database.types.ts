@@ -35,33 +35,6 @@ export type Database = {
         }
         Relationships: []
       }
-      alertas: {
-        Row: {
-          data: string
-          id: string
-          lida: boolean | null
-          mensagem: string | null
-          tipo: string | null
-          titulo: string
-        }
-        Insert: {
-          data?: string
-          id?: string
-          lida?: boolean | null
-          mensagem?: string | null
-          tipo?: string | null
-          titulo: string
-        }
-        Update: {
-          data?: string
-          id?: string
-          lida?: boolean | null
-          mensagem?: string | null
-          tipo?: string | null
-          titulo?: string
-        }
-        Relationships: []
-      }
       analytics_events: {
         Row: {
           created_at: string | null
@@ -123,6 +96,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "vw_questions_with_answers_count"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "answers_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -137,6 +117,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      app_settings: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          key: string
+          updated_at: string | null
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          key: string
+          updated_at?: string | null
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          key?: string
+          updated_at?: string | null
+          value?: string
+        }
+        Relationships: []
       }
       banners: {
         Row: {
@@ -180,6 +184,7 @@ export type Database = {
           updated_at: string
           user_id: string
           variant_id: string
+          variant_names: string | null
         }
         Insert: {
           created_at?: string
@@ -189,6 +194,7 @@ export type Database = {
           updated_at?: string
           user_id: string
           variant_id?: string
+          variant_names?: string | null
         }
         Update: {
           created_at?: string
@@ -198,6 +204,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           variant_id?: string
+          variant_names?: string | null
         }
         Relationships: []
       }
@@ -225,66 +232,6 @@ export type Database = {
           id?: string
           nome?: string
           slug?: string | null
-        }
-        Relationships: []
-      }
-      companies: {
-        Row: {
-          cnpj: string | null
-          created_at: string | null
-          email: string | null
-          endereco: Json | null
-          id: string
-          nome: string
-          telefone: string | null
-          website: string | null
-        }
-        Insert: {
-          cnpj?: string | null
-          created_at?: string | null
-          email?: string | null
-          endereco?: Json | null
-          id?: string
-          nome: string
-          telefone?: string | null
-          website?: string | null
-        }
-        Update: {
-          cnpj?: string | null
-          created_at?: string | null
-          email?: string | null
-          endereco?: Json | null
-          id?: string
-          nome?: string
-          telefone?: string | null
-          website?: string | null
-        }
-        Relationships: []
-      }
-      configuracoes: {
-        Row: {
-          dias_sem_venda_alerta: number | null
-          estoque_minimo_alerta: number | null
-          id: string
-          moeda: string | null
-          notificacoes_ativas: boolean | null
-          tema: string | null
-        }
-        Insert: {
-          dias_sem_venda_alerta?: number | null
-          estoque_minimo_alerta?: number | null
-          id?: string
-          moeda?: string | null
-          notificacoes_ativas?: boolean | null
-          tema?: string | null
-        }
-        Update: {
-          dias_sem_venda_alerta?: number | null
-          estoque_minimo_alerta?: number | null
-          id?: string
-          moeda?: string | null
-          notificacoes_ativas?: boolean | null
-          tema?: string | null
         }
         Relationships: []
       }
@@ -351,147 +298,6 @@ export type Database = {
         }
         Relationships: []
       }
-      fluxo_caixa: {
-        Row: {
-          categoria: string | null
-          data: string
-          descricao: string | null
-          id: string
-          relacionado_id: string | null
-          tipo: string | null
-          valor: number
-        }
-        Insert: {
-          categoria?: string | null
-          data?: string
-          descricao?: string | null
-          id?: string
-          relacionado_id?: string | null
-          tipo?: string | null
-          valor: number
-        }
-        Update: {
-          categoria?: string | null
-          data?: string
-          descricao?: string | null
-          id?: string
-          relacionado_id?: string | null
-          tipo?: string | null
-          valor?: number
-        }
-        Relationships: []
-      }
-      fornecedores: {
-        Row: {
-          ativo: boolean | null
-          confiabilidade: number | null
-          contato: string | null
-          created_at: string
-          email: string | null
-          id: string
-          nome: string
-          prazo_medio: number | null
-          telefone: string | null
-        }
-        Insert: {
-          ativo?: boolean | null
-          confiabilidade?: number | null
-          contato?: string | null
-          created_at?: string
-          email?: string | null
-          id?: string
-          nome: string
-          prazo_medio?: number | null
-          telefone?: string | null
-        }
-        Update: {
-          ativo?: boolean | null
-          confiabilidade?: number | null
-          contato?: string | null
-          created_at?: string
-          email?: string | null
-          id?: string
-          nome?: string
-          prazo_medio?: number | null
-          telefone?: string | null
-        }
-        Relationships: []
-      }
-      historico_precos: {
-        Row: {
-          data: string
-          id: string
-          motivo: string | null
-          preco_antigo: number | null
-          preco_novo: number | null
-          produto_id: string | null
-        }
-        Insert: {
-          data?: string
-          id?: string
-          motivo?: string | null
-          preco_antigo?: number | null
-          preco_novo?: number | null
-          produto_id?: string | null
-        }
-        Update: {
-          data?: string
-          id?: string
-          motivo?: string | null
-          preco_antigo?: number | null
-          preco_novo?: number | null
-          produto_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "historico_precos_produto_id_fkey"
-            columns: ["produto_id"]
-            isOneToOne: false
-            referencedRelation: "produtos"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "historico_precos_produto_id_fkey"
-            columns: ["produto_id"]
-            isOneToOne: false
-            referencedRelation: "vw_produtos_public"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      kanban_cards: {
-        Row: {
-          data_criacao: string
-          data_limite: string | null
-          descricao: string | null
-          id: string
-          prioridade: string | null
-          status: string | null
-          tags: string[] | null
-          titulo: string
-        }
-        Insert: {
-          data_criacao?: string
-          data_limite?: string | null
-          descricao?: string | null
-          id?: string
-          prioridade?: string | null
-          status?: string | null
-          tags?: string[] | null
-          titulo: string
-        }
-        Update: {
-          data_criacao?: string
-          data_limite?: string | null
-          descricao?: string | null
-          id?: string
-          prioridade?: string | null
-          status?: string | null
-          tags?: string[] | null
-          titulo?: string
-        }
-        Relationships: []
-      }
       marketplace_ai_state: {
         Row: {
           component_name: string
@@ -513,6 +319,7 @@ export type Database = {
       marketplace_order_history: {
         Row: {
           created_at: string | null
+          created_by: string | null
           id: string
           new_status: string
           notes: string | null
@@ -521,6 +328,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          created_by?: string | null
           id?: string
           new_status: string
           notes?: string | null
@@ -529,6 +337,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          created_by?: string | null
           id?: string
           new_status?: string
           notes?: string | null
@@ -612,96 +421,90 @@ export type Database = {
       }
       marketplace_orders: {
         Row: {
+          address_id: string | null
           coupon_code: string | null
+          coupon_id: string | null
           created_at: string
           customer_data: Json
           customer_name: string
+          customer_phone: string | null
           discount: number | null
           id: string
           notes: string | null
+          observation: string | null
           payment_method: string | null
           shipping: number | null
+          shipping_cost: number | null
           status: string | null
           subtotal: number
           total: number
+          total_amount: number | null
           tracking_code: string | null
           updated_at: string
           user_id: string | null
         }
         Insert: {
+          address_id?: string | null
           coupon_code?: string | null
+          coupon_id?: string | null
           created_at?: string
           customer_data: Json
           customer_name: string
+          customer_phone?: string | null
           discount?: number | null
           id?: string
           notes?: string | null
+          observation?: string | null
           payment_method?: string | null
           shipping?: number | null
+          shipping_cost?: number | null
           status?: string | null
           subtotal: number
           total: number
+          total_amount?: number | null
           tracking_code?: string | null
           updated_at?: string
           user_id?: string | null
         }
         Update: {
+          address_id?: string | null
           coupon_code?: string | null
+          coupon_id?: string | null
           created_at?: string
           customer_data?: Json
           customer_name?: string
+          customer_phone?: string | null
           discount?: number | null
           id?: string
           notes?: string | null
+          observation?: string | null
           payment_method?: string | null
           shipping?: number | null
+          shipping_cost?: number | null
           status?: string | null
           subtotal?: number
           total?: number
+          total_amount?: number | null
           tracking_code?: string | null
           updated_at?: string
           user_id?: string | null
         }
-        Relationships: []
-      }
-      metas: {
-        Row: {
-          ativa: boolean | null
-          concluida: boolean | null
-          data_fim: string
-          data_inicio: string
-          descricao: string | null
-          id: string
-          tipo: string | null
-          titulo: string
-          valor_atual: number | null
-          valor_target: number
-        }
-        Insert: {
-          ativa?: boolean | null
-          concluida?: boolean | null
-          data_fim: string
-          data_inicio: string
-          descricao?: string | null
-          id?: string
-          tipo?: string | null
-          titulo: string
-          valor_atual?: number | null
-          valor_target: number
-        }
-        Update: {
-          ativa?: boolean | null
-          concluida?: boolean | null
-          data_fim?: string
-          data_inicio?: string
-          descricao?: string | null
-          id?: string
-          tipo?: string | null
-          titulo?: string
-          valor_atual?: number | null
-          valor_target?: number
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_marketplace_orders_address"
+            columns: ["address_id"]
+            isOneToOne: false
+            referencedRelation: "user_addresses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_orders_coupon_id_fkey"
+            columns: ["coupon_id"]
+            isOneToOne: false
+            referencedRelation: "coupons"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notificacoes: {
         Row: {
@@ -739,104 +542,42 @@ export type Database = {
         }
         Relationships: []
       }
-      pedido_itens: {
+      otp_verifications: {
         Row: {
+          created_at: string | null
+          email: string
+          expires_at: string
           id: string
-          nome_produto: string | null
-          pedido_id: string | null
-          preco_unitario: number
-          produto_id: string | null
-          quantidade: number
+          otp_code: string
+          verified: boolean | null
+          whatsapp: string
         }
         Insert: {
+          created_at?: string | null
+          email: string
+          expires_at: string
           id?: string
-          nome_produto?: string | null
-          pedido_id?: string | null
-          preco_unitario: number
-          produto_id?: string | null
-          quantidade: number
+          otp_code: string
+          verified?: boolean | null
+          whatsapp: string
         }
         Update: {
+          created_at?: string | null
+          email?: string
+          expires_at?: string
           id?: string
-          nome_produto?: string | null
-          pedido_id?: string | null
-          preco_unitario?: number
-          produto_id?: string | null
-          quantidade?: number
+          otp_code?: string
+          verified?: boolean | null
+          whatsapp?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "pedido_itens_pedido_id_fkey"
-            columns: ["pedido_id"]
-            isOneToOne: false
-            referencedRelation: "pedidos"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pedido_itens_produto_id_fkey"
-            columns: ["produto_id"]
-            isOneToOne: false
-            referencedRelation: "produtos"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pedido_itens_produto_id_fkey"
-            columns: ["produto_id"]
-            isOneToOne: false
-            referencedRelation: "vw_produtos_public"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      pedidos: {
-        Row: {
-          codigo_rastreio: string | null
-          data_entrega: string | null
-          data_pedido: string
-          data_prevista: string | null
-          fornecedor_id: string | null
-          fornecedor_nome: string | null
-          id: string
-          status: string | null
-          valor_total: number | null
-        }
-        Insert: {
-          codigo_rastreio?: string | null
-          data_entrega?: string | null
-          data_pedido?: string
-          data_prevista?: string | null
-          fornecedor_id?: string | null
-          fornecedor_nome?: string | null
-          id?: string
-          status?: string | null
-          valor_total?: number | null
-        }
-        Update: {
-          codigo_rastreio?: string | null
-          data_entrega?: string | null
-          data_pedido?: string
-          data_prevista?: string | null
-          fornecedor_id?: string | null
-          fornecedor_nome?: string | null
-          id?: string
-          status?: string | null
-          valor_total?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "pedidos_fornecedor_id_fkey"
-            columns: ["fornecedor_id"]
-            isOneToOne: false
-            referencedRelation: "fornecedores"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       product_variants: {
         Row: {
           active: boolean | null
           created_at: string
           id: string
+          image_url: string | null
           name: string
           price_override: number | null
           product_id: string
@@ -848,6 +589,7 @@ export type Database = {
           active?: boolean | null
           created_at?: string
           id?: string
+          image_url?: string | null
           name: string
           price_override?: number | null
           product_id: string
@@ -859,6 +601,7 @@ export type Database = {
           active?: boolean | null
           created_at?: string
           id?: string
+          image_url?: string | null
           name?: string
           price_override?: number | null
           product_id?: string
@@ -886,10 +629,12 @@ export type Database = {
       produtos: {
         Row: {
           ativo: boolean | null
+          calculated_points: number | null
           categoria: string | null
           codigo: string | null
           custo: number
           data_cadastro: string
+          deleted_at: string | null
           descricao: string | null
           estoque: number | null
           estoque_minimo: number | null
@@ -904,16 +649,20 @@ export type Database = {
           nome: string
           preco_original: number | null
           preco_venda: number
+          rating: number | null
+          review_count: number | null
           sold: number | null
           tags: string[] | null
           ultima_atualizacao: string
         }
         Insert: {
           ativo?: boolean | null
+          calculated_points?: number | null
           categoria?: string | null
           codigo?: string | null
           custo: number
           data_cadastro?: string
+          deleted_at?: string | null
           descricao?: string | null
           estoque?: number | null
           estoque_minimo?: number | null
@@ -928,16 +677,20 @@ export type Database = {
           nome: string
           preco_original?: number | null
           preco_venda: number
+          rating?: number | null
+          review_count?: number | null
           sold?: number | null
           tags?: string[] | null
           ultima_atualizacao?: string
         }
         Update: {
           ativo?: boolean | null
+          calculated_points?: number | null
           categoria?: string | null
           codigo?: string | null
           custo?: number
           data_cadastro?: string
+          deleted_at?: string | null
           descricao?: string | null
           estoque?: number | null
           estoque_minimo?: number | null
@@ -952,19 +705,13 @@ export type Database = {
           nome?: string
           preco_original?: number | null
           preco_venda?: number
+          rating?: number | null
+          review_count?: number | null
           sold?: number | null
           tags?: string[] | null
           ultima_atualizacao?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "produtos_fornecedor_id_fkey"
-            columns: ["fornecedor_id"]
-            isOneToOne: false
-            referencedRelation: "fornecedores"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -1000,15 +747,7 @@ export type Database = {
           updated_at?: string | null
           whatsapp?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "profiles_company_id_fkey"
-            columns: ["company_id"]
-            isOneToOne: false
-            referencedRelation: "companies"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       push_notifications_log: {
         Row: {
@@ -1123,30 +862,6 @@ export type Database = {
           },
         ]
       }
-      retiradas: {
-        Row: {
-          data: string
-          descricao: string | null
-          id: string
-          responsavel: string | null
-          valor: number
-        }
-        Insert: {
-          data?: string
-          descricao?: string | null
-          id?: string
-          responsavel?: string | null
-          valor: number
-        }
-        Update: {
-          data?: string
-          descricao?: string | null
-          id?: string
-          responsavel?: string | null
-          valor?: number
-        }
-        Relationships: []
-      }
       reviews: {
         Row: {
           comment: string | null
@@ -1240,7 +955,7 @@ export type Database = {
           enable_coupons?: boolean | null
           enable_reviews?: boolean | null
           free_shipping_min?: number | null
-          id?: number
+          id: number
           logo_url?: string | null
           min_app_version?: string | null
           primary_color?: string | null
@@ -1326,75 +1041,6 @@ export type Database = {
         }
         Relationships: []
       }
-      v_store_config: {
-        Row: {
-          free_shipping_min: number | null
-          shipping_fee: number | null
-        }
-        Insert: {
-          free_shipping_min?: number | null
-          shipping_fee?: number | null
-        }
-        Update: {
-          free_shipping_min?: number | null
-          shipping_fee?: number | null
-        }
-        Relationships: []
-      }
-      vendas: {
-        Row: {
-          canal: string | null
-          cliente: string | null
-          custo_unitario: number
-          data: string
-          id: string
-          lucro: number | null
-          preco_unitario: number
-          produto_id: string | null
-          produto_nome: string | null
-          quantidade: number
-        }
-        Insert: {
-          canal?: string | null
-          cliente?: string | null
-          custo_unitario: number
-          data?: string
-          id?: string
-          lucro?: number | null
-          preco_unitario: number
-          produto_id?: string | null
-          produto_nome?: string | null
-          quantidade: number
-        }
-        Update: {
-          canal?: string | null
-          cliente?: string | null
-          custo_unitario?: number
-          data?: string
-          id?: string
-          lucro?: number | null
-          preco_unitario?: number
-          produto_id?: string | null
-          produto_nome?: string | null
-          quantidade?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "vendas_produto_id_fkey"
-            columns: ["produto_id"]
-            isOneToOne: false
-            referencedRelation: "produtos"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "vendas_produto_id_fkey"
-            columns: ["produto_id"]
-            isOneToOne: false
-            referencedRelation: "vw_produtos_public"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       vor_receipts: {
         Row: {
           action_type: string
@@ -1461,10 +1107,69 @@ export type Database = {
         }
         Relationships: []
       }
+      v_store_config: {
+        Row: {
+          business_hours: string | null
+          created_at: string | null
+          enable_coupons: boolean | null
+          enable_reviews: boolean | null
+          free_shipping_min: number | null
+          id: number | null
+          logo_url: string | null
+          min_app_version: string | null
+          primary_color: string | null
+          push_marketing_enabled: boolean | null
+          real_time_sales_alerts: boolean | null
+          share_text: string | null
+          shipping_fee: number | null
+          theme_mode: string | null
+          updated_at: string | null
+          whatsapp_number: string | null
+        }
+        Insert: {
+          business_hours?: string | null
+          created_at?: string | null
+          enable_coupons?: boolean | null
+          enable_reviews?: boolean | null
+          free_shipping_min?: number | null
+          id?: number | null
+          logo_url?: string | null
+          min_app_version?: string | null
+          primary_color?: string | null
+          push_marketing_enabled?: boolean | null
+          real_time_sales_alerts?: boolean | null
+          share_text?: string | null
+          shipping_fee?: number | null
+          theme_mode?: string | null
+          updated_at?: string | null
+          whatsapp_number?: string | null
+        }
+        Update: {
+          business_hours?: string | null
+          created_at?: string | null
+          enable_coupons?: boolean | null
+          enable_reviews?: boolean | null
+          free_shipping_min?: number | null
+          id?: number | null
+          logo_url?: string | null
+          min_app_version?: string | null
+          primary_color?: string | null
+          push_marketing_enabled?: boolean | null
+          real_time_sales_alerts?: boolean | null
+          share_text?: string | null
+          shipping_fee?: number | null
+          theme_mode?: string | null
+          updated_at?: string | null
+          whatsapp_number?: string | null
+        }
+        Relationships: []
+      }
       vw_produtos_public: {
         Row: {
           ativo: boolean | null
+          calculated_points: number | null
           categoria: string | null
+          codigo: string | null
           data_cadastro: string | null
           descricao: string | null
           estoque: number | null
@@ -1478,14 +1183,14 @@ export type Database = {
           nome: string | null
           preco_original: number | null
           preco_venda: number | null
-          rating: number | null
-          review_count: number | null
           sold: number | null
           tags: string[] | null
         }
         Insert: {
           ativo?: boolean | null
+          calculated_points?: number | null
           categoria?: string | null
+          codigo?: string | null
           data_cadastro?: string | null
           descricao?: string | null
           estoque?: number | null
@@ -1504,7 +1209,9 @@ export type Database = {
         }
         Update: {
           ativo?: boolean | null
+          calculated_points?: number | null
           categoria?: string | null
+          codigo?: string | null
           data_cadastro?: string | null
           descricao?: string | null
           estoque?: number | null
@@ -1523,29 +1230,157 @@ export type Database = {
         }
         Relationships: []
       }
+      vw_questions_with_answers_count: {
+        Row: {
+          answers_count: number | null
+          created_at: string | null
+          id: string | null
+          product_id: string | null
+          question: string | null
+          user_id: string | null
+        }
+        Insert: {
+          answers_count?: never
+          created_at?: string | null
+          id?: string | null
+          product_id?: string | null
+          question?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          answers_count?: never
+          created_at?: string | null
+          id?: string | null
+          product_id?: string | null
+          question?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "questions_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questions_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "vw_produtos_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       answer_question_atomic:
-      | {
-        Args: { p_answer: string; p_question_id: string }
-        Returns: undefined
-      }
-      | {
-        Args: {
-          p_admin_id: string
-          p_answer: string
-          p_question_id: string
-        }
-        Returns: undefined
-      }
+        | {
+            Args: { p_answer: string; p_question_id: string }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_admin_id: string
+              p_answer: string
+              p_question_id: string
+            }
+            Returns: undefined
+          }
       check_is_admin: { Args: never; Returns: boolean }
       check_stock_v1: {
         Args: { p_product_id: string; p_quantity: number; p_variant_id: string }
         Returns: boolean
       }
+      check_user_confirmation_status: {
+        Args: { p_email: string }
+        Returns: Json
+      }
+      create_marketplace_order: {
+        Args: {
+          p_address_id: string
+          p_coupon_code?: string
+          p_customer_name?: string
+          p_customer_phone?: string
+          p_items: Json
+          p_observation?: string
+          p_payment_method: string
+        }
+        Returns: string
+      }
+      create_marketplace_order_v22: {
+        Args: {
+          p_address_data?: Json
+          p_address_id: string
+          p_coupon_code: string
+          p_customer_name: string
+          p_customer_phone: string
+          p_items: Json
+          p_observation: string
+          p_payment_method: string
+          p_shipping_cost: number
+          p_total_amount: number
+        }
+        Returns: string
+      }
       decrement_stock: {
         Args: { p_id: string; quantity: number }
         Returns: undefined
+      }
+      generate_order_otp_v1: {
+        Args: { p_email: string; p_order_fragment: string; p_whatsapp: string }
+        Returns: string
+      }
+      get_active_products_internal: {
+        Args: never
+        Returns: {
+          ativo: boolean | null
+          calculated_points: number | null
+          categoria: string | null
+          codigo: string | null
+          custo: number
+          data_cadastro: string
+          deleted_at: string | null
+          descricao: string | null
+          estoque: number | null
+          estoque_minimo: number | null
+          fornecedor_id: string | null
+          frete_gratis: boolean | null
+          id: string
+          imagem_url: string | null
+          imagem_urls: string[] | null
+          is_bestseller: boolean | null
+          meta_description: string | null
+          meta_title: string | null
+          nome: string
+          preco_original: number | null
+          preco_venda: number
+          rating: number | null
+          review_count: number | null
+          sold: number | null
+          tags: string[] | null
+          ultima_atualizacao: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "produtos"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       get_admin_analytics_v2: { Args: never; Returns: Json }
       get_admin_customers_paged: {
@@ -1571,12 +1406,19 @@ export type Database = {
         }
         Returns: Json
       }
+      get_admin_user_detail: { Args: { p_user_id: string }; Returns: Json }
       get_category_analytics: {
-        Args: { p_end_date: string; p_start_date: string }
+        Args: { end_date: string; start_date: string }
         Returns: {
+          avg_ticket: number
           name: string
+          orders: number
           value: number
         }[]
+      }
+      get_category_sales: {
+        Args: { end_date: string; start_date: string }
+        Returns: Json
       }
       get_coupon_stats: {
         Args: never
@@ -1620,6 +1462,10 @@ export type Database = {
           whatsapp: string
         }[]
       }
+      get_orders_by_otp_v1: {
+        Args: { p_email: string; p_otp: string }
+        Returns: Json
+      }
       get_orders_by_whatsapp: {
         Args: { customer_email?: string; phone_number: string }
         Returns: Json[]
@@ -1631,18 +1477,24 @@ export type Database = {
           p_phone_number: string
         }
         Returns: {
+          address_id: string | null
           coupon_code: string | null
+          coupon_id: string | null
           created_at: string
           customer_data: Json
           customer_name: string
+          customer_phone: string | null
           discount: number | null
           id: string
           notes: string | null
+          observation: string | null
           payment_method: string | null
           shipping: number | null
+          shipping_cost: number | null
           status: string | null
           subtotal: number
           total: number
+          total_amount: number | null
           tracking_code: string | null
           updated_at: string
           user_id: string | null
@@ -1660,29 +1512,7 @@ export type Database = {
           p_order_fragment: string
           p_phone_number: string
         }
-        Returns: {
-          coupon_code: string | null
-          created_at: string
-          customer_data: Json
-          customer_name: string
-          discount: number | null
-          id: string
-          notes: string | null
-          payment_method: string | null
-          shipping: number | null
-          status: string | null
-          subtotal: number
-          total: number
-          tracking_code: string | null
-          updated_at: string
-          user_id: string | null
-        }[]
-        SetofOptions: {
-          from: "*"
-          to: "marketplace_orders"
-          isOneToOne: false
-          isSetofReturn: true
-        }
+        Returns: Json[]
       }
       get_product_optimization_data: {
         Args: never
@@ -1697,10 +1527,12 @@ export type Database = {
         Args: { p_limit?: number; p_product_id: string }
         Returns: {
           ativo: boolean | null
+          calculated_points: number | null
           categoria: string | null
           codigo: string | null
           custo: number
           data_cadastro: string
+          deleted_at: string | null
           descricao: string | null
           estoque: number | null
           estoque_minimo: number | null
@@ -1715,6 +1547,8 @@ export type Database = {
           nome: string
           preco_original: number | null
           preco_venda: number
+          rating: number | null
+          review_count: number | null
           sold: number | null
           tags: string[] | null
           ultima_atualizacao: string
@@ -1727,37 +1561,38 @@ export type Database = {
         }
       }
       get_product_stats: { Args: never; Returns: Json[] }
+      get_products_with_variants: { Args: never; Returns: Json[] }
       get_retention_analytics:
-      | {
-        Args: never
-        Returns: {
-          month: string
-          retention_rate: number
-          returning_customers: number
-          total_customers: number
-        }[]
-      }
-      | { Args: { p_days?: number }; Returns: number }
+        | {
+            Args: never
+            Returns: {
+              month: string
+              retention_rate: number
+              returning_customers: number
+              total_customers: number
+            }[]
+          }
+        | { Args: { p_days?: number }; Returns: number }
       get_retention_rate: { Args: never; Returns: number }
       get_sales_analytics:
-      | {
-        Args: { end_date: string; start_date: string }
-        Returns: {
-          day: string
-          orders: number
-          revenue: number
-          ticket: number
-        }[]
-      }
-      | {
-        Args: { end_date: string; start_date: string }
-        Returns: {
-          day: string
-          orders: number
-          revenue: number
-          ticket: number
-        }[]
-      }
+        | {
+            Args: { end_date: string; start_date: string }
+            Returns: {
+              day: string
+              orders: number
+              revenue: number
+              ticket: number
+            }[]
+          }
+        | {
+            Args: { end_date: string; start_date: string }
+            Returns: {
+              day: string
+              orders: number
+              revenue: number
+              ticket: number
+            }[]
+          }
       get_segmented_push_targets: {
         Args: {
           p_days_inactive?: number
@@ -1783,33 +1618,24 @@ export type Database = {
         Returns: undefined
       }
       reply_review_atomic:
-      | { Args: { p_reply: string; p_review_id: string }; Returns: undefined }
-      | {
-        Args: { p_admin_id: string; p_reply: string; p_review_id: string }
-        Returns: undefined
-      }
+        | { Args: { p_reply: string; p_review_id: string }; Returns: undefined }
+        | {
+            Args: { p_admin_id: string; p_reply: string; p_review_id: string }
+            Returns: undefined
+          }
       swap_banner_order: {
         Args: { banner_id_1: string; banner_id_2: string }
         Returns: undefined
       }
-      sync_cart_atomic:
-      | { Args: { p_cart_items: Json; p_user_id?: string }; Returns: Json }
-      | { Args: { p_items: Json; p_user_id: string }; Returns: undefined }
+      sync_cart_atomic: { Args: { p_cart_items: Json }; Returns: undefined }
       test_lang: { Args: never; Returns: number }
       update_my_profile_secure: {
         Args: { p_full_name: string; p_whatsapp: string }
         Returns: undefined
       }
-      update_order_status_atomic:
-      | { Args: { p_new_status: string; p_order_id: string }; Returns: Json }
-      | {
-        Args: {
-          p_new_status: string
-          p_notes?: string
-          p_order_id: string
-          p_silent?: boolean
-        }
-        Returns: undefined
+      update_order_status_atomic: {
+        Args: { p_order_id: string; p_status: string }
+        Returns: Json
       }
       upsert_store_config: { Args: { config_json: Json }; Returns: Json }
       validate_coupon_secure: {
@@ -1841,119 +1667,120 @@ type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
-  | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-  | { schema: keyof DatabaseWithoutInternals },
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-  ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-    DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-  : never = never,
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-    DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
-  ? R
-  : never
+    ? R
+    : never
   : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-    DefaultSchema["Views"])
-  ? (DefaultSchema["Tables"] &
-    DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-      Row: infer R
-    }
-  ? R
-  : never
-  : never
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-  | keyof DefaultSchema["Tables"]
-  | { schema: keyof DatabaseWithoutInternals },
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-  ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-  : never = never,
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-    Insert: infer I
-  }
-  ? I
-  : never
+      Insert: infer I
+    }
+    ? I
+    : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-    Insert: infer I
-  }
-  ? I
-  : never
-  : never
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-  | keyof DefaultSchema["Tables"]
-  | { schema: keyof DatabaseWithoutInternals },
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-  ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-  : never = never,
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-    Update: infer U
-  }
-  ? U
-  : never
+      Update: infer U
+    }
+    ? U
+    : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-    Update: infer U
-  }
-  ? U
-  : never
-  : never
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-  | keyof DefaultSchema["Enums"]
-  | { schema: keyof DatabaseWithoutInternals },
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-  ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-  : never = never,
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-  ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-  : never
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-  | keyof DefaultSchema["CompositeTypes"]
-  | { schema: keyof DatabaseWithoutInternals },
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-  ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-  : never = never,
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-  ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-  : never
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
 
 export const Constants = {
   public: {
     Enums: {},
   },
 } as const
+

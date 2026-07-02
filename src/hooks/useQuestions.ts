@@ -58,7 +58,7 @@ const updateQuestionsCache = (productId: string, newQuestions: Question[]) => {
 };
 
 export function useQuestions() {
-    const { user } = useAuth();
+    const { user, isAdmin } = useAuth();
     const [questions, setQuestions] = useState<Question[]>([]);
     const [loading, setLoading] = useState(false);
     const latestProductIdRef = useRef<string | null>(null);
@@ -77,31 +77,57 @@ export function useQuestions() {
         }
 
         try {
-            const { data, error } = await supabase
-                .from('questions' as any)
-                .select(`
+            const selectQuery = isAdmin
+                ? `
           *,
           user:public_profiles(full_name),
           product:produtos(nome, imagem_url),
           answers:answers(*)
-        `)
+        `
+                : `
+          *,
+          user:public_profiles(full_name),
+          answers:answers(*)
+        `;
+
+            const { data, error } = await supabase
+                .from('questions' as any)
+                .select(selectQuery)
                 .eq('product_id', productId)
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
             if (!data) return;
 
+            // Fetch product info if guest/non-admin
+            let productInfo: { nome: string; imagem_url: string } | null = null;
+            if (!isAdmin) {
+                const { data: prodData } = await supabase
+                    .from('vw_produtos_public' as any)
+                    .select('nome, imagem_url')
+                    .eq('id', productId)
+                    .maybeSingle();
+                if (prodData) {
+                    productInfo = prodData as any;
+                }
+            }
+
             // Fetch verified status for these users/product
             const userIds = data.map((q: any) => q.user_id);
-            const { data: orders, error: ordersError } = await supabase
-                .from('marketplace_orders')
-                .select('user_id, status, order_items!inner(product_id)')
-                .in('user_id', userIds)
-                .eq('status', 'delivered')
-                .eq('order_items.product_id', productId);
+            let orders: any[] | null = null;
+            if (userIds.length > 0) {
+                const { data: ordersData, error: ordersError } = await supabase
+                    .from('marketplace_orders')
+                    .select('user_id, status, marketplace_order_items!inner(product_id)')
+                    .in('user_id', userIds)
+                    .eq('status', 'delivered')
+                    .eq('marketplace_order_items.product_id', productId);
 
-            if (ordersError) {
-                console.error('Error fetching verified status:', ordersError);
+                if (ordersError) {
+                    console.error('Error fetching verified status:', ordersError);
+                } else {
+                    orders = ordersData;
+                }
             }
 
             const verifiedUsers = new Set(orders?.map(o => o.user_id) || []);
@@ -110,8 +136,8 @@ export function useQuestions() {
                 id: item.id,
                 userId: item.user_id,
                 productId: item.product_id,
-                productName: item.product?.nome,
-                productImage: item.product?.imagem_url,
+                productName: isAdmin ? item.product?.nome : productInfo?.nome,
+                productImage: isAdmin ? item.product?.imagem_url : productInfo?.imagem_url,
                 customerName: item.user?.full_name || 'Usuário Anônimo',
                 question: item.question,
                 createdAt: item.created_at,
@@ -136,7 +162,7 @@ export function useQuestions() {
                 setLoading(false);
             }
         }
-    }, []);
+    }, [isAdmin]);
 
     const addQuestion = useCallback(async (question: { productId: string, question: string }) => {
         try {
@@ -169,6 +195,10 @@ export function useQuestions() {
     }, [getQuestionsByProduct, user]);
 
     const addAnswer = useCallback(async (answer: { questionId: string, answer: string }) => {
+        if (!isAdmin) {
+            toast.error('Permissão negada');
+            return false;
+        }
         try {
             // ZENITH v21.7: Rely on AuthContext's verified user
             if (!user) {
@@ -190,24 +220,69 @@ export function useQuestions() {
             toast.error("Erro ao responder");
             return false;
         }
-    }, [user]);
+    }, [user, isAdmin]);
 
-    const getAllQuestions = useCallback(async (page: number = 0, pageSize: number = 20, filter: 'all' | 'pending' = 'all') => {
+    const getAllQuestions = useCallback(async (page: number = 0, pageSize: number = 20, filter: 'all' | 'pending' = 'all', search?: string) => {
         try {
             setLoading(true);
-            let query = supabase
-                .from('questions' as any)
-                .select(`
+            let query: any = supabase
+                .from('vw_questions_with_answers_count' as any);
+
+            if (search) {
+                const q = `%${search}%`;
+                
+                // Pre-fetch profiles and products matching the search query to bypass PostgREST join OR limitation
+                // Limited to 25 to prevent URL length overflow (HTTP 414) in PostgREST
+                const { data: profiles } = await supabase
+                  .from('public_profiles')
+                  .select('id')
+                  .ilike('full_name', q)
+                  .limit(25);
+                const profileIds = profiles?.map((p: any) => p.id) || [];
+                const profileFilter = profileIds.length > 0 ? profileIds : ['00000000-0000-0000-0000-000000000000'];
+
+                const { data: products } = await supabase
+                  .from((isAdmin ? 'produtos' : 'vw_produtos_public') as any)
+                  .select('id')
+                  .ilike('nome', q)
+                  .limit(25);
+                const productIds = products?.map((p: any) => p.id) || [];
+                const productFilter = productIds.length > 0 ? productIds : ['00000000-0000-0000-0000-000000000000'];
+
+                const selectFields = isAdmin
+                  ? `
                   *,
                   user:public_profiles(full_name),
                   product:produtos(nome, imagem_url),
                   answers:answers(*)
-                `, { count: 'exact' });
+                `
+                  : `
+                  *,
+                  user:public_profiles(full_name),
+                  answers:answers(*)
+                `;
+
+                query = query.select(selectFields, { count: 'exact' })
+                .or(`question.ilike.${q},user_id.in.(${profileFilter.join(',')}),product_id.in.(${productFilter.join(',')})`);
+            } else {
+                const selectFields = isAdmin
+                  ? `
+                  *,
+                  user:public_profiles(full_name),
+                  product:produtos(nome, imagem_url),
+                  answers:answers(*)
+                `
+                  : `
+                  *,
+                  user:public_profiles(full_name),
+                  answers:answers(*)
+                `;
+
+                query = query.select(selectFields, { count: 'exact' });
+            }
 
             if (filter === 'pending') {
-                // Return questions that have no answers. 
-                // Using .is('answers.id', null) with a LEFT JOIN (default) filters for questions with zero answers.
-                query = query.is('answers.id', null);
+                query = query.eq('answers_count', 0);
             }
 
             const { data, error, count } = await query
@@ -216,22 +291,39 @@ export function useQuestions() {
 
             if (error) throw error;
 
-            const formatted: Question[] = (data || []).map((item: any) => ({
-                id: item.id,
-                userId: item.user_id,
-                productId: item.product_id,
-                productName: item.product?.nome || 'Produto removido',
-                productImage: item.product?.imagem_url,
-                customerName: item.user?.full_name || 'Usuário Anônimo',
-                question: item.question,
-                createdAt: item.created_at,
-                answers: (item.answers || []).map((ans: any) => ({
-                    id: ans.id,
-                    questionId: ans.question_id,
-                    answer: ans.answer,
-                    createdAt: ans.created_at,
-                })).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-            }));
+            const productMap = new Map<string, { nome: string; imagem_url: string }>();
+            if (!isAdmin && data && data.length > 0) {
+                const productIds = Array.from(new Set(data.map((q: any) => q.product_id)));
+                const { data: prodData } = await supabase
+                    .from('vw_produtos_public' as any)
+                    .select('id, nome, imagem_url')
+                    .in('id', productIds);
+                if (prodData) {
+                    prodData.forEach((p: any) => {
+                        productMap.set(p.id, { nome: p.nome, imagem_url: p.imagem_url });
+                    });
+                }
+            }
+
+            const formatted: Question[] = (data || []).map((item: any) => {
+                const prod = isAdmin ? item.product : productMap.get(item.product_id);
+                return {
+                    id: item.id,
+                    userId: item.user_id,
+                    productId: item.product_id,
+                    productName: prod?.nome || 'Produto removido',
+                    productImage: prod?.imagem_url,
+                    customerName: item.user?.full_name || 'Usuário Anônimo',
+                    question: item.question,
+                    createdAt: item.created_at,
+                    answers: (item.answers || []).map((ans: any) => ({
+                        id: ans.id,
+                        questionId: ans.question_id,
+                        answer: ans.answer,
+                        createdAt: ans.created_at,
+                    })).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                };
+            });
 
             setQuestions(formatted);
             return { questions: formatted, total: count || 0 };
@@ -242,9 +334,13 @@ export function useQuestions() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [isAdmin]);
 
     const deleteQuestion = useCallback(async (questionId: string) => {
+        if (!isAdmin) {
+            toast.error('Permissão negada');
+            return;
+        }
         try {
             const { error } = await supabase
                 .from('questions' as any)
@@ -258,9 +354,9 @@ export function useQuestions() {
             console.error('Error deleting question:', error);
             toast.error('Erro ao remover pergunta.');
         }
-    }, []);
+    }, [isAdmin]);
 
-    const subscribeToQuestions = useCallback((productId?: string) => {
+    const subscribeToQuestions = useCallback((onChange?: () => void, productId?: string) => {
         const channelId = productId ? `questions_prod_${productId}` : `questions_all`;
         console.log(`[Realtime] Subscribing to questions/answers: ${channelId}`);
         
@@ -276,7 +372,9 @@ export function useQuestions() {
                 },
                 (payload) => {
                     console.log('[Realtime] Question change:', payload.eventType);
-                    if (productId) {
+                    if (onChange) {
+                        onChange();
+                    } else if (productId) {
                         getQuestionsByProduct(productId);
                     } else {
                         getAllQuestions();
@@ -292,7 +390,9 @@ export function useQuestions() {
                 },
                 (payload) => {
                     console.log('[Realtime] Answer change:', payload.eventType);
-                    if (productId) {
+                    if (onChange) {
+                        onChange();
+                    } else if (productId) {
                         getQuestionsByProduct(productId);
                     } else {
                         getAllQuestions();

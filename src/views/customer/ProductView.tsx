@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
   Heart, Share2, MessageCircle, Truck, ShieldCheck, Flame,
@@ -22,6 +23,7 @@ import { ProductCardSkeleton } from '@/components/ui/custom/ProductCardSkeleton'
 import { MarkdownRenderer } from '@/components/ui/custom/MarkdownRenderer';
 import { cn } from '@/lib/utils';
 import { triggerFlyingCartAnimation } from '@/utils/cartAnimation';
+import { useDeferredRender } from '@/hooks/useDeferredRender';
 
 const RECS_CACHE_KEY_PREFIX = 'ikcous_recs_cache_';
 const memoryRecsCache = new Map<string, Product[]>();
@@ -77,6 +79,7 @@ export const ProductView = React.memo(function ProductView({
   onAddToCartProduct,
   onQuickBuy
 }: ProductViewProps) {
+  const isReady = useDeferredRender(220);
   const [quantity, setQuantity] = useState(1);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [cartStatus, setCartStatus] = useState<'idle' | 'loading' | 'success'>('idle');
@@ -249,7 +252,7 @@ export const ProductView = React.memo(function ProductView({
     : 0;
 
   // Um produto é elegível para frete grátis se o frete grátis estiver habilitado na loja
-  const isEligibleForFreeShipping = config.freeShippingMin > 0;
+  const isEligibleForFreeShipping = config.freeShippingMin > 0 || product.freeShipping;
 
   const handleAddToCart = (e?: React.MouseEvent<HTMLButtonElement>) => {
     if (cartStatus !== 'idle') return;
@@ -273,7 +276,9 @@ export const ProductView = React.memo(function ProductView({
     }, 750);
   };
 
-  const handleShare = async () => {
+  const handleShare = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    e?.preventDefault();
     const shareData = {
       title: product.name,
       text: `${config.shareText} ${product.name} por R$${product.price.toFixed(2)}`,
@@ -297,7 +302,11 @@ export const ProductView = React.memo(function ProductView({
   const handleWhatsApp = () => {
     const variantInfo = Object.entries(selectedVariants).map(([n, v]) => `${n}: ${v}`).join(', ');
     const message = `Olá! Tenho interesse no produto: ${product.name}${variantInfo ? ` (${variantInfo})` : ''} - R$ ${currentPrice.toFixed(2).replace('.', ',')}`;
-    const url = `https://wa.me/55${config.whatsappNumber}?text=${encodeURIComponent(message)}`;
+    let phone = (config.whatsappNumber || '').replace(/\D/g, '');
+    if (phone.length === 11 || phone.length === 10) {
+      phone = '55' + phone;
+    }
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     globalThis.open(url, '_blank');
   };
 
@@ -365,15 +374,23 @@ export const ProductView = React.memo(function ProductView({
 
       {/* Image Gallery */}
       <div className="relative aspect-square bg-[#F8F9FA] group">
-        <div className="flex justify-center items-center w-full h-full lg:h-[70vh] overflow-hidden">
-          <img
-            src={variantImage || product.images?.[currentImageIndex] || ''}
-            alt={product.name}
-            className="w-auto h-full max-w-full object-contain transition-opacity duration-500"
-            loading="eager"
-            fetchPriority="high"
-            decoding="async"
-          />
+        <div className="relative flex justify-center items-center w-full h-full lg:h-[70vh] overflow-hidden">
+          <AnimatePresence mode="popLayout" initial={false}>
+            <motion.img
+              key={currentImageIndex}
+              src={variantImage || product.images?.[currentImageIndex] || ''}
+              alt={product.name}
+              className="w-auto h-full max-w-full object-contain"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              loading="eager"
+              fetchPriority="high"
+              decoding="async"
+              style={{ viewTransitionName: 'product-image' } as React.CSSProperties}
+            />
+          </AnimatePresence>
         </div>
 
         {/* Navigation Arrows */}
@@ -412,7 +429,10 @@ export const ProductView = React.memo(function ProductView({
         {/* Action Buttons */}
         <div className="absolute top-4 right-4 flex gap-2 z-10">
           <button
-            onClick={onToggleFavorite}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite();
+            }}
             className="w-10 h-10 bg-white/80 backdrop-blur-md rounded-full flex items-center justify-center shadow-premium hover:bg-white transition-all active:scale-95"
           >
             <Heart className={`w-5 h-5 transition-colors ${isFavorite ? 'fill-red-500 text-red-500' : 'text-zinc-600'}`} />
@@ -427,7 +447,7 @@ export const ProductView = React.memo(function ProductView({
       </div>
 
       {/* Sticky Top Bar on Scroll */}
-      <div className={`fixed top-[calc(var(--header-height)+var(--safe-area-top))] left-0 right-0 bg-white/80 backdrop-blur-2xl border-b border-zinc-100/30 p-4 z-50 transition-all duration-500 transform ${scrolled ? 'translate-y-0 opacity-100 shadow-2xl shadow-black/5' : '-translate-y-full opacity-0'}`}>
+      <div className={`fixed top-[calc(var(--header-height)+var(--safe-area-top))] left-0 right-0 bg-white/80 backdrop-blur-2xl border-b border-zinc-100/30 p-4 z-50 transition-all duration-500 transform ${scrolled ? 'translate-y-0 opacity-100 shadow-2xl shadow-black/5 pointer-events-auto' : '-translate-y-full opacity-0 pointer-events-none'}`}>
         <div className="max-w-screen-md mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -474,13 +494,13 @@ export const ProductView = React.memo(function ProductView({
         {/* Badges */}
         <div className="flex flex-wrap gap-2 mb-4">
           {discount > 0 && (
-            <span className="px-3 py-1 bg-red-500 text-white text-[10px] font-black tracking-wider rounded-full shadow-sm shadow-red-200 uppercase">
+            <span className="px-4 py-2 bg-gradient-to-r from-red-600 to-red-500 text-white text-[10px] font-black tracking-wider rounded-full flex items-center justify-center border border-red-400/30 uppercase shadow-lg shadow-red-500/10">
               {discount}% OFF
             </span>
           )}
           {product.isBestseller && (
-            <span className="px-3 py-1 bg-amber-100 text-amber-800 text-[10px] font-black tracking-wider rounded-full flex items-center gap-1 uppercase border border-amber-200">
-              <Flame className="w-3 h-3 text-orange-500" />
+            <span className="px-4 py-2 bg-amber-100 text-amber-800 text-[10px] font-black tracking-wider rounded-full flex items-center gap-1.5 uppercase border border-amber-200/60 shadow-lg shadow-amber-500/5">
+              <Flame className="w-3.5 h-3.5 text-orange-500 fill-orange-500/20" />
               Hit de Vendas
             </span>
           )}
@@ -508,16 +528,24 @@ export const ProductView = React.memo(function ProductView({
         )}
 
         {/* Price */}
-        <div className="flex items-baseline gap-3 mb-6">
-          <span className="text-3xl font-black text-zinc-900 tracking-tighter">
-            R$ {currentPrice.toFixed(2).replace('.', ',')}
-          </span>
-          {product.originalPrice && (
-            <span className="text-lg text-zinc-400 line-through font-medium">
-              R$ {product.originalPrice.toFixed(2).replace('.', ',')}
+        {product.originalPrice && product.originalPrice > currentPrice ? (
+          <div className="flex flex-col gap-1 mb-6">
+            <span className="text-xs font-black uppercase tracking-widest text-zinc-400">
+              De: <span className="line-through">R$ {product.originalPrice.toFixed(2).replace('.', ',')}</span>
             </span>
-          )}
-        </div>
+            <div className="flex items-baseline gap-3">
+              <span className="text-3xl font-black text-rose-600 tracking-tighter">
+                Por: R$ {currentPrice.toFixed(2).replace('.', ',')}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-baseline gap-3 mb-6">
+            <span className="text-3xl font-black text-zinc-900 tracking-tighter">
+              R$ {currentPrice.toFixed(2).replace('.', ',')}
+            </span>
+          </div>
+        )}
 
         {/* Variant Selectors - Jewelry Style */}
         {Object.entries(variantGroups).length > 0 && (
@@ -640,18 +668,32 @@ export const ProductView = React.memo(function ProductView({
             { id: 'description', label: 'Detalhes' },
             { id: 'reviews', label: `Reviews (${reviewCount})` },
             { id: 'questions', label: 'Chat' }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex-1 py-3 px-4 rounded-[1.6rem] text-[10px] font-black uppercase tracking-widest transition-all duration-500 ${activeTab === tab.id
-                ? 'bg-white text-zinc-900 shadow-xl shadow-black/5 ring-1 ring-black/5 scale-[1.02]'
-                : 'text-zinc-400 hover:text-zinc-600'
-                }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+          ].map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className="relative flex-1 py-3 px-4 rounded-[1.6rem] text-[10px] font-black uppercase tracking-widest transition-colors duration-300 outline-none"
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="activeDetailTabPill"
+                    className="absolute inset-0 bg-white rounded-[1.4rem] shadow-xl shadow-black/5 ring-1 ring-black/5 z-0"
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
+                <span
+                  className={cn(
+                    "relative z-10 transition-colors duration-300",
+                    isActive ? "text-zinc-950" : "text-zinc-400 hover:text-zinc-600"
+                  )}
+                >
+                  {tab.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Tab Content */}
@@ -779,7 +821,7 @@ export const ProductView = React.memo(function ProductView({
             <h3 className="text-3xl font-black tracking-tighter text-zinc-900 leading-none">Você também pode gostar</h3>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 -mx-4 px-2">
-            {loadingRecs ? (
+            {!isReady || loadingRecs ? (
               Array(4).fill(0).map((_, i) => <ProductCardSkeleton key={i} />)
             ) : (
               recommendations.map(p => (

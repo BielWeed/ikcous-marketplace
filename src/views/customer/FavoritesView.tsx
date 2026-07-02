@@ -12,13 +12,15 @@ interface FavoritesViewProps {
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
   onNavigate: (view: View) => void;
+  selectedProductId?: string;
 }
 
 export const FavoritesView = React.memo(function FavoritesView({
   favorites,
   onToggleFavorite,
   onProductClick,
-  onNavigate
+  onNavigate,
+  selectedProductId
 }: FavoritesViewProps) {
   const { config } = useStore();
   const { prefetchView } = usePrefetchOnHover();
@@ -120,11 +122,7 @@ export const FavoritesView = React.memo(function FavoritesView({
     <div className="min-h-full pb-48 bg-zinc-50/30 overflow-x-hidden">
       {/* Header Premium */}
       <div className="px-6 pt-12 pb-8 bg-gradient-to-b from-white to-transparent flex flex-col mb-4">
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.8 }}
-        >
+        <div>
           <div className="flex items-center gap-2 mb-2">
             <Sparkles className="w-4 h-4 text-zinc-400 fill-zinc-400/10" />
             <span className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-400 leading-none pt-1">
@@ -140,12 +138,12 @@ export const FavoritesView = React.memo(function FavoritesView({
               {favorites.length} {favorites.length === 1 ? 'Escolha Premium' : 'Escolhas Premium'}
             </p>
           </div>
-        </motion.div>
+        </div>
       </div>
 
       {/* Products Grid with AnimatePresence */}
       <div className="px-4 py-2">
-        <AnimatePresence mode="popLayout">
+        <AnimatePresence mode="popLayout" initial={false}>
           <div className="grid grid-cols-2 gap-4 sm:gap-6">
             {favorites.map((product, index) => (
               <motion.div
@@ -170,6 +168,7 @@ export const FavoritesView = React.memo(function FavoritesView({
                   isEligibleForFreeShipping={config.freeShippingMin > 0}
                   onMouseEnter={handlePrefetchProductDetail}
                   onTouchStart={handlePrefetchProductDetail}
+                  selectedProductId={selectedProductId}
                 />
               </motion.div>
             ))}
@@ -179,10 +178,7 @@ export const FavoritesView = React.memo(function FavoritesView({
 
       {/* Futuristic Floating CTA */}
       <div className="fixed bottom-24 left-6 right-6 z-40">
-        <motion.button
-          initial={{ y: 100 }}
-          animate={{ y: 0 }}
-          transition={{ delay: 0.5, duration: 1, ease: [0.16, 1, 0.3, 1] }}
+        <button
           onClick={() => {
             haptic.medium();
             onNavigate('home');
@@ -202,7 +198,7 @@ export const FavoritesView = React.memo(function FavoritesView({
           </div>
 
           <ArrowRight className="w-4 h-4 text-zinc-500 group-hover:text-white group-hover:translate-x-1.5 transition-all" />
-        </motion.button>
+        </button>
       </div>
     </div>
   );

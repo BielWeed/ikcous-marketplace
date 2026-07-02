@@ -13,6 +13,7 @@ const cartItemSchema = z.object({
     product: z.any(),
     quantity: z.number().int().positive().max(MAX_ITEM_QUANTITY),
     variantId: z.string().optional().nullable(),
+    lastModifiedAt: z.number().optional(),
 });
 
 interface CartContextType {
@@ -33,6 +34,39 @@ interface CartContextType {
 export const CartContext = createContext<CartContextType | undefined>(undefined);
 
 const CART_STORAGE_KEY = 'marketplace_cart_v1';
+const CART_TOMBSTONES_KEY = 'marketplace_cart_tombstones_v1';
+
+/** Tombstone entry: tracks when a cart item was intentionally deleted locally */
+interface CartTombstone {
+    key: string; // productId-variantId
+    deletedAt: number; // epoch ms
+}
+
+function loadTombstones(): Map<string, CartTombstone> {
+    try {
+        const raw = localStorage.getItem(CART_TOMBSTONES_KEY);
+        if (raw) {
+            const parsed: CartTombstone[] = JSON.parse(raw);
+            const map = new Map<string, CartTombstone>();
+            const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000; // 7-day TTL
+            parsed.forEach(t => {
+                if (t.deletedAt > cutoff) map.set(t.key, t);
+            });
+            return map;
+        }
+    } catch (e) {
+        console.error('[CartContext] Failed to parse tombstones:', e);
+    }
+    return new Map();
+}
+
+function saveTombstones(map: Map<string, CartTombstone>) {
+    try {
+        localStorage.setItem(CART_TOMBSTONES_KEY, JSON.stringify(Array.from(map.values())));
+    } catch (e) {
+        console.error('[CartContext] Failed to save tombstones:', e);
+    }
+}
 
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
@@ -174,7 +208,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
                         const item: CartItem = {
                             product: mapProductFromDB(productWithVariants),
-                            quantity: dbItem.quantity
+                            quantity: dbItem.quantity,
+                            // Carry the DB timestamp for LWW conflict resolution
+                            lastModifiedAt: dbItem.updated_at ? new Date(dbItem.updated_at).getTime() : 0,
                         };
                         if (dbItem.variant_id) item.variantId = dbItem.variant_id;
                         if ((dbItem as any).variant_names) item.variantNames = (dbItem as any).variant_names;
@@ -182,34 +218,57 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                     }).filter((item): item is CartItem => item !== null);
 
                     setCart(prev => {
-                        // If local cart is empty, just take the remote one
-                        if (prev.length === 0) {
-                            console.log('[CartContext] ✅ Remote cart adopted (local was empty).');
-                            return reconstructedCart;
+                        // If local cart is empty AND no tombstones exist, adopt remote
+                        const tombstones = loadTombstones();
+                        if (prev.length === 0 && tombstones.size === 0) {
+                            console.log('[CartContext] ✅ Remote cart adopted (local was empty, no tombstones).');
+                            return reconstructedCart.map(item => ({
+                                ...item,
+                                lastModifiedAt: item.lastModifiedAt || Date.now()
+                            }));
                         }
 
                         const mergedMap = new Map<string, CartItem>();
 
-                        // Add local items (priority for recent locally added items)
+                        // Add local items first (these carry local timestamps)
                         prev.forEach(item => {
                             const key = `${item.product.id}-${item.variantId || ''}`;
-                            mergedMap.set(key, item);
+                            mergedMap.set(key, { ...item, lastModifiedAt: item.lastModifiedAt || 0 });
                         });
 
-                        // Merging remote items
+                        // Merge remote items using Last-Write-Wins with timestamps
                         reconstructedCart.forEach(remoteItem => {
                             const key = `${remoteItem.product.id}-${remoteItem.variantId || ''}`;
+                            // Derive remote timestamp from DB updated_at or fall back to 0
+                            const remoteTs = remoteItem.lastModifiedAt || 0;
+
+                            // Check tombstones: if this item was deleted locally MORE recently than the remote update, skip it
+                            const tombstone = tombstones.get(key);
+                            if (tombstone && tombstone.deletedAt > remoteTs) {
+                                console.log(`[CartContext] 🪦 Tombstone active for ${key} (deleted ${new Date(tombstone.deletedAt).toISOString()}) — skipping remote resurrection.`);
+                                return;
+                            }
+
                             if (mergedMap.has(key)) {
                                 const local = mergedMap.get(key)!;
-                                // If collision, use the larger quantity up to max to avoid losing data
-                                local.quantity = Math.min(Math.max(local.quantity, remoteItem.quantity), MAX_ITEM_QUANTITY);
+                                const localTs = local.lastModifiedAt || 0;
+
+                                if (localTs >= remoteTs) {
+                                    // Local mutation is newer — keep local state
+                                    console.log(`[CartContext] ⏱️ Local wins for ${key} (local: ${localTs}, remote: ${remoteTs})`);
+                                } else {
+                                    // Remote is newer — adopt remote state
+                                    console.log(`[CartContext] ⏱️ Remote wins for ${key} (local: ${localTs}, remote: ${remoteTs})`);
+                                    mergedMap.set(key, { ...remoteItem, lastModifiedAt: remoteTs });
+                                }
                             } else {
-                                mergedMap.set(key, remoteItem);
+                                // Item exists only remotely and has no tombstone — add it
+                                mergedMap.set(key, { ...remoteItem, lastModifiedAt: remoteTs });
                             }
                         });
 
                         const mergedArray = Array.from(mergedMap.values());
-                        console.log('[CartContext] ✅ Merge complete. Total items:', mergedArray.length);
+                        console.log('[CartContext] ✅ LWW Merge complete. Total items:', mergedArray.length);
                         return mergedArray;
                     });
                 } else {
@@ -250,7 +309,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 if (itemMap.has(key)) {
                     itemMap.get(key).quantity += item.quantity;
                 } else {
-                    itemMap.set(key, { product_id: item.product.id, variant_id: variantId, quantity: item.quantity, variant_names: item.variantNames || null });
+                    itemMap.set(key, { product_id: item.product.id, variant_id: variantId, quantity: item.quantity, variant_names: item.variantNames || null, updated_at: item.lastModifiedAt ? new Date(item.lastModifiedAt).toISOString() : new Date().toISOString() });
                 }
             });
 
@@ -319,7 +378,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 }
 
                 const newCart = [...prev];
-                newCart[existingIndex] = { ...existing, quantity: nextQuantity };
+                newCart[existingIndex] = { ...existing, quantity: nextQuantity, lastModifiedAt: Date.now() };
                 return newCart;
             }
 
@@ -330,12 +389,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 toast.error(`Apenas ${availableStock} unidades disponíveis.`);
             }
 
-            return [...prev, { product, quantity: validatedQuantity, variantId, variantNames }];
+            // Stamp mutation timestamp for offline conflict resolution
+            return [...prev, { product, quantity: validatedQuantity, variantId, variantNames, lastModifiedAt: Date.now() }];
         });
     }, [user]);
 
     const removeFromCart = useCallback((productId: string, variantIdInput?: string) => {
         const variantId = (variantIdInput === '' || variantIdInput === null) ? undefined : variantIdInput;
+        // Record tombstone so offline merge doesn't resurrect this item
+        const key = `${productId}-${variantId || ''}`;
+        const tombstones = loadTombstones();
+        tombstones.set(key, { key, deletedAt: Date.now() });
+        saveTombstones(tombstones);
         setCart(prev => prev.filter(item =>
             !(item.product.id === productId && item.variantId === variantId)
         ));
@@ -363,14 +428,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                     }
                 }
 
-                return { ...item, quantity: nextQuantity };
+                return { ...item, quantity: nextQuantity, lastModifiedAt: Date.now() };
             }
             return item;
         }));
     }, [removeFromCart]);
 
     const clearCart = useCallback(() => {
-        setCart([]);
+        // Tombstone all current items before clearing
+        setCart(prev => {
+            const tombstones = loadTombstones();
+            const now = Date.now();
+            prev.forEach(item => {
+                const key = `${item.product.id}-${item.variantId || ''}`;
+                tombstones.set(key, { key, deletedAt: now });
+            });
+            saveTombstones(tombstones);
+            return [];
+        });
         localStorage.removeItem(CART_STORAGE_KEY);
         toast.info('Carrinho limpo');
     }, []);

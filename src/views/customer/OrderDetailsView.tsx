@@ -106,7 +106,11 @@ export function OrderDetailsView({ orderId, onBack, onNavigate: _onNavigate }: O
 
     const handleWhatsAppSupport = () => {
         const message = `Olá! Tenho uma dúvida sobre meu pedido #${orderId.slice(0, 8)}.`;
-        const url = `https://wa.me/55${config.whatsappNumber}?text=${encodeURIComponent(message)}`;
+        let phone = (config.whatsappNumber || '').replace(/\D/g, '');
+        if (phone.length === 11 || phone.length === 10) {
+            phone = '55' + phone;
+        }
+        const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
         globalThis.open(url, '_blank');
         haptic.light();
     };

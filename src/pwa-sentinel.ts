@@ -5,21 +5,35 @@
  * Se o SW travar ou falhar em responder corações (heartbeats), o Sentinel intervém.
  */
 export const initSentinel = () => {
-    if (!('serviceWorker' in navigator)) return;
+    if (!navigator.serviceWorker) return;
 
     console.log('[PWA-Sentinel] Guardian active. Monitoring Service Worker health...');
 
     let lastHeartbeat = Date.now();
     const channel = new BroadcastChannel('sw-heartbeat');
 
-    channel.onmessage = (event) => {
-        if (event.data === 'HEARTBEAT_ACK') {
+    const handleHeartbeatAck = (data: any) => {
+        if (data === 'HEARTBEAT_ACK') {
             lastHeartbeat = Date.now();
         }
     };
 
+    channel.onmessage = (event) => {
+        handleHeartbeatAck(event.data);
+    };
+
+    // Standard Direct Service Worker message communication listener
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        handleHeartbeatAck(event.data);
+    });
+
     // Verificação de pulso a cada 30 segundos
     setInterval(() => {
+        if (!navigator.serviceWorker.controller) {
+            lastHeartbeat = Date.now();
+            return;
+        }
+
         const timeSinceLastPulse = Date.now() - lastHeartbeat;
 
         if (timeSinceLastPulse > 300000) { // 5 minutos sem sinal = falha crítica

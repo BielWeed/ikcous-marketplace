@@ -31,7 +31,7 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
   const { getFreeShippingEligibleProducts } = useProducts();
   const { fetchUserOrders } = useOrders(true, false);
   const { user } = useAuth();
-  const isReady = useDeferredRender(250);
+  const isReady = useDeferredRender(80);
 
   const [activeTab, setActiveTab] = useState<'cart' | 'orders'>(initialTab);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -207,7 +207,7 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
         </div>
       </div>
 
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="wait" initial={false}>
         {activeTab === 'cart' ? (
           <motion.div
             key="cart-content"

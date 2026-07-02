@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import type { Product, View } from '@/types';
+import type { Product, View, SortOption } from '@/types';
 import { CategoryFilter } from '@/components/ui/custom/CategoryFilter';
 import { BannerCarousel } from '@/components/ui/custom/BannerCarousel';
 import { SlidersHorizontal, TrendingUp, ArrowDown, ArrowUp, Sparkles, PackageSearch } from 'lucide-react';
@@ -8,7 +8,6 @@ import { useBanners } from '@/hooks/useBanners';
 import { useCategories } from '@/hooks/useCategories';
 
 import { haptic } from '@/utils/haptic';
-import { CartReminder } from '@/components/ui/custom/CartReminder';
 import { ProductCarousel } from '@/components/ui/custom/ProductCarousel';
 import { ProductList } from '@/components/ui/custom/ProductList';
 import { InfoBlockCarousel } from '@/components/ui/custom/InfoBlockCarousel';
@@ -27,9 +26,12 @@ interface HomeViewProps {
   onQuickBuy?: (product: Product, variantId?: string) => void;
   isLoading?: boolean;
   scrollProgress?: number;
+  selectedProductId?: string;
+  selectedCategory: string;
+  onCategoryChange: (category: string) => void;
+  sortBy: SortOption;
+  onSortByChange: (sort: SortOption) => void;
 }
-
-type SortOption = 'default' | 'price-asc' | 'price-desc' | 'sold';
 
 export const HomeView = React.memo(function HomeView({
   products,
@@ -42,10 +44,13 @@ export const HomeView = React.memo(function HomeView({
   onAddToCart,
   onQuickBuy,
   isLoading = false,
-  scrollProgress = 0
+  scrollProgress = 0,
+  selectedProductId,
+  selectedCategory,
+  onCategoryChange,
+  sortBy,
+  onSortByChange
 }: HomeViewProps) {
-  const [selectedCategory, setSelectedCategory] = useState('Todas');
-  const [sortBy, setSortBy] = useState<SortOption>('default');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const { categories, isLoading: isLoadingCategories } = useCategories();
   const { getBannersByPosition, isLoaded: bannersLoaded } = useBanners();
@@ -102,6 +107,12 @@ export const HomeView = React.memo(function HomeView({
     return [...products]
       .sort((a, b) => (b.createdTime ?? 0) - (a.createdTime ?? 0))
       .slice(0, 6);
+  }, [products]);
+
+  const offerProducts = useMemo(() => {
+    return products
+      .filter(p => p.originalPrice && p.originalPrice > p.price)
+      .slice(0, 10);
   }, [products]);
 
   const recommendedProducts = useMemo(() => {
@@ -177,6 +188,25 @@ export const HomeView = React.memo(function HomeView({
           onQuickBuy={onQuickBuy}
           icon={<Sparkles className="w-5 h-5 text-amber-500 fill-amber-500" />}
           accentColor="amber"
+          selectedProductId={selectedProductId}
+        />
+      )}
+
+      {/* Offers Section */}
+      {!searchQuery && selectedCategory === 'Todas' && offerProducts.length > 0 && (
+        <ProductCarousel
+          title="Ofertas Imperdíveis"
+          subtitle="Descontos Exclusivos"
+          products={offerProducts}
+          favorites={favorites}
+          onToggleFavorite={onToggleFavorite}
+          onProductClick={onProductClick}
+          onAddToCart={onAddToCart}
+          onQuickBuy={onQuickBuy}
+          icon={<Sparkles className="w-5 h-5 text-rose-500 fill-rose-500" />}
+          accentColor="rose"
+          className="bg-rose-50/20"
+          selectedProductId={selectedProductId}
         />
       )}
 
@@ -194,6 +224,7 @@ export const HomeView = React.memo(function HomeView({
           icon={<Sparkles className="w-5 h-5 text-emerald-500" />}
           accentColor="emerald"
           className="bg-gradient-to-b from-transparent to-zinc-50/50"
+          selectedProductId={selectedProductId}
         />
       )}
 
@@ -211,6 +242,7 @@ export const HomeView = React.memo(function HomeView({
           icon={<TrendingUp className="w-5 h-5 text-zinc-900" />}
           accentColor="zinc"
           className="bg-zinc-50/50"
+          selectedProductId={selectedProductId}
         />
       )}
 
@@ -237,7 +269,7 @@ export const HomeView = React.memo(function HomeView({
 
         {/* Integrated Filter Bar - Premium Glassmorphism & STICKY */}
         <div className={cn(
-          "sticky top-0 z-40 -mx-4 px-4 pb-1.5 pt-0 bg-white/95 backdrop-blur flex flex-col transition-all duration-200 mb-1.5",
+          "sticky top-0 z-40 -mx-4 px-4 pb-1.5 pt-0 bg-white/95 backdrop-blur flex flex-col transition-all duration-200 mb-1.5 gpu-accelerated",
           scrollProgress > 20 ? "shadow-sm border-b border-zinc-200/60" : "border-b border-transparent"
         )}>
           {/* Interactive Header Bar */}
@@ -249,7 +281,7 @@ export const HomeView = React.memo(function HomeView({
                 <CategoryFilter
                   categories={categories}
                   selectedCategory={selectedCategory}
-                  onCategoryChange={setSelectedCategory}
+                  onCategoryChange={onCategoryChange}
                   isLoading={isLoadingCategories}
                 />
               )}
@@ -291,7 +323,7 @@ export const HomeView = React.memo(function HomeView({
                             role="option"
                             aria-selected={sortBy === option.value}
                             onClick={() => {
-                              setSortBy(option.value);
+                              onSortByChange(option.value);
                               setShowSortMenu(false);
                             }}
                             className={`w-full flex items-center justify-between px-4 py-3 text-[10px] uppercase font-black tracking-widest rounded-2xl transition-all ${sortBy === option.value
@@ -337,6 +369,7 @@ export const HomeView = React.memo(function HomeView({
                 onProductClick={onProductClick}
                 onAddToCart={onAddToCart}
                 onQuickBuy={onQuickBuy}
+                selectedProductId={selectedProductId}
               />
           )
         }
@@ -350,8 +383,6 @@ export const HomeView = React.memo(function HomeView({
         )
       }
 
-
-      <CartReminder onAction={() => onNavigate('cart')} />
     </div >
   );
 });

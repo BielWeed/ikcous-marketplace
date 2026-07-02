@@ -35,22 +35,32 @@ const itemVariants: Variants = {
 };
 
 export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
-    const { user, login, signUp, resetPassword, updatePassword, isPasswordRecovery, setIsPasswordRecovery } = useAuth();
+    const { user, login, signUp, resetPassword, updatePassword, resendConfirmationEmail, isPasswordRecovery, setIsPasswordRecovery } = useAuth();
     const [viewMode, setViewMode] = useState<'login' | 'signup' | 'forgot' | 'reset-prompt' | 'new-password'>(
         isPasswordRecovery ? 'new-password' : 'login'
     );
+
+    // Sync viewMode if password recovery mode is detected asynchronously
+    useEffect(() => {
+        if (isPasswordRecovery) {
+            console.log('[AuthView] Async recovery mode detected. Switching to new-password view.');
+            setViewMode('new-password');
+        }
+    }, [isPasswordRecovery]);
+
     const isLogin = viewMode === 'login';
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
 
+
     useEffect(() => {
-        if (user) {
+        if (user && !isPasswordRecovery) {
             console.log('[AuthView] User session detected. Redirecting to success.');
             if (onSuccess) onSuccess();
             else onNavigate('profile');
         }
-    }, [user, onSuccess, onNavigate]);
+    }, [user, isPasswordRecovery, onSuccess, onNavigate]);
     const [phone, setPhone] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -125,9 +135,18 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                     setIsLoading(false);
                     return;
                 }
-                const success = await resetPassword(email.trim());
-                if (success) {
+                const res = await resetPassword(email.trim());
+                if (res.success) {
+                    toast.success(res.message);
                     setViewMode('reset-prompt');
+                } else {
+                    if (res.status === 'unconfirmed') {
+                        toast.warning(res.message, { duration: 6000 });
+                    } else if (res.status === 'not_found') {
+                        toast.error(res.message);
+                    } else {
+                        toast.error(res.message || 'Erro ao solicitar link de recuperação.');
+                    }
                 }
             } else if (viewMode === 'new-password') {
                 if (!password.trim() || password.length < 6) {
@@ -189,7 +208,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                             </Button>
                             
                             <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-                                Não recebeu? <button className="text-amber-600 hover:underline">Reenviar link</button>
+                                Não recebeu? <button type="button" onClick={() => resendConfirmationEmail(email.trim())} className="text-amber-600 hover:underline">Reenviar link</button>
                             </p>
                         </motion.div>
                     </div>
@@ -231,9 +250,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                         </motion.h1>
                         
                         <motion.p variants={itemVariants} className="text-xs sm:text-sm text-zinc-500 font-medium mb-8 sm:mb-10 leading-relaxed max-w-[240px] sm:max-w-none mx-auto">
-                            Se houver uma conta associada a <br/>
-                            <span className="text-zinc-900 font-bold">{email}</span>, <br/>
-                            você receberá um link de recuperação em instantes.
+                            Enviamos um link de recuperação para:<br/>
+                            <span className="text-zinc-900 font-bold">{email}</span><br/><br/>
+                            Por favor, clique no link contido no e-mail para definir sua nova senha.
                         </motion.p>
 
                         <motion.div variants={itemVariants} className="w-full">

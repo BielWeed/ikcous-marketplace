@@ -8,6 +8,7 @@ import { PieChart as PieChartIcon } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { formatCurrency } from '@/lib/utils';
+import { useDeferredRender } from '@/hooks/useDeferredRender';
 
 export interface CategoryData {
     name: string;
@@ -119,6 +120,7 @@ const CustomPieLabel = React.memo(({ viewBox, totalRevenue, fontSize }: CustomPi
 CustomPieLabel.displayName = 'CustomPieLabel';
 
 export function StrategicIntelligenceBlocks({ categoryData, loading }: StrategicIntelligenceBlocksProps) {
+    const isDeferredReady = useDeferredRender(180);
     const _isMobile = useMediaQuery('(max-width: 1023px)');
     const [activeIndex, setActiveIndex] = useState(-1);
     const [lastActiveIndex, setLastActiveIndex] = useState(-1);
@@ -256,7 +258,7 @@ export function StrategicIntelligenceBlocks({ categoryData, loading }: Strategic
         );
     }, []);
 
-    if (!mounted || (loading && (!categoryData || categoryData.length === 0))) {
+    if (!mounted || !isDeferredReady || (loading && (!categoryData || categoryData.length === 0))) {
         return (
             <div className="space-y-12 pb-10 sm:pb-20">
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">

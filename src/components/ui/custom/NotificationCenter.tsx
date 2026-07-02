@@ -48,7 +48,7 @@ export function NotificationCenter({ isOpen, onOpenChange }: Readonly<Notificati
                         <div className="divide-y divide-zinc-50">
                             {notifications.map((notif: Notification) => {
                                 const isUrgent = notif.type === 'order' || notif.type === 'delivery';
-                                const isPromo = notif.type === 'promotion';
+                                const isPromo = notif.type === 'promotion' || notif.type === 'aviso';
                                 
                                 const statusColor = isUrgent ? "bg-blue-50 text-blue-600" :
                                                    isPromo ? "bg-amber-50 text-amber-600" :

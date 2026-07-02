@@ -15,6 +15,7 @@ interface SearchViewProps {
     onNavigate: (view: View, productId?: string) => void;
     initialQuery?: string;
     onBack: () => void;
+    selectedProductId?: string;
 }
 
 interface SearchInputProps {
@@ -51,7 +52,7 @@ const SearchInput = React.memo(function SearchInput({ value, onChange }: SearchI
     );
 });
 
-export const SearchView = React.memo(function SearchView({ onNavigate, initialQuery = '', onBack }: SearchViewProps) {
+export const SearchView = React.memo(function SearchView({ onNavigate, initialQuery = '', onBack, selectedProductId }: SearchViewProps) {
     const { config } = useStore();
     const { prefetchView } = usePrefetchOnHover();
     const { products: allProducts } = useProducts();
@@ -280,6 +281,7 @@ export const SearchView = React.memo(function SearchView({ onNavigate, initialQu
                                         onMouseEnter={handlePrefetchProductDetail}
                                         onTouchStart={handlePrefetchProductDetail}
                                         priority={index < 4}
+                                        selectedProductId={selectedProductId}
                                     />
                                 </div>
                             ))}

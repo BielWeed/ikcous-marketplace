@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { ArrowRight, Sparkles as SparklesIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -11,13 +12,15 @@ interface CartFooterSummaryProps {
 }
 
 export function CartFooterSummary({ cartCount, shipping, total, onNavigate }: CartFooterSummaryProps) {
-    return (
+    if (typeof document === 'undefined' || !document.body) return null;
+
+    return createPortal(
         <motion.div
             initial={{ y: '100%', opacity: 0.5 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: '100%', opacity: 0 }}
             transition={{ duration: 0.25, ease: 'easeOut' }}
-            className="fixed bottom-safe-navigation left-0 right-0 z-[60] bg-white border-t border-zinc-100 shadow-[0_-10px_40px_-5px_rgba(0,0,0,0.08)] md:bottom-24 md:max-w-screen-md md:mx-auto md:rounded-[2.5rem] md:border"
+            className="fixed bottom-safe-navigation left-0 right-0 z-[110] bg-white border-t border-zinc-100 shadow-[0_-10px_40px_-5px_rgba(0,0,0,0.08)] md:bottom-[88px] md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-full md:max-w-md md:rounded-t-2xl md:rounded-b-none md:border-t md:border-x md:border-b-0 md:border-zinc-200/60"
         >
             <div className="px-4 py-4 xs:px-6 flex items-center justify-between gap-2 xs:gap-4 max-w-screen-xl mx-auto">
                 {/* Visual context */}
@@ -74,8 +77,7 @@ export function CartFooterSummary({ cartCount, shipping, total, onNavigate }: Ca
                 </div>
             </div>
 
-            {/* Bottom Safe Area Padding for Mobile Header-style feeling */}
-            <div className="h-[var(--safe-area-bottom,0px)] bg-white" />
-        </motion.div>
+        </motion.div>,
+        document.body
     );
 }

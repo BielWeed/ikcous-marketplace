@@ -1,5 +1,6 @@
 import { Home, Heart, ShoppingCart, User } from 'lucide-react';
 import { useMemo, memo } from 'react';
+import { motion } from 'framer-motion';
 import { haptic } from '@/utils/haptic';
 import { cn } from '@/lib/utils';
 import type { View } from '@/types';
@@ -29,7 +30,8 @@ export const BottomNav = memo(function BottomNav({ currentView, onNavigate, cart
     <nav
       role="navigation"
       aria-label="Navegação principal"
-      className="fixed bottom-0 left-0 right-0 z-[100] bg-white/95 backdrop-blur-xl border-t border-zinc-100 pb-safe shadow-[0_-4px_24px_rgba(0,0,0,0.04)] md:hidden flex-shrink-0"
+      className="fixed bottom-0 left-0 right-0 md:left-1/2 md:right-auto md:-translate-x-1/2 md:bottom-6 md:w-full md:max-w-md md:rounded-2xl md:border md:border-zinc-200/60 z-[100] bg-white/95 backdrop-blur-xl border-t border-zinc-100 pb-safe shadow-[0_-4px_24px_rgba(0,0,0,0.04)] md:shadow-[0_8px_30px_rgba(0,0,0,0.08)] flex-shrink-0"
+      style={{ viewTransitionName: 'bottom-nav' } as React.CSSProperties}
     >
       <div className="flex items-center justify-around px-2 h-[64px]">
         {navItems.map((item) => {
@@ -52,7 +54,7 @@ export const BottomNav = memo(function BottomNav({ currentView, onNavigate, cart
                 prefetchView(item.view);
               }}
               className={cn(
-                "flex flex-col items-center justify-center py-1 px-4 rounded-xl relative group active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-[color,background-color,transform] duration-300",
+                "flex flex-col items-center justify-center py-1 px-4 rounded-xl relative group active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-[color,background-color,transform] duration-150",
                 isActive ? "text-primary" : "text-slate-400 hover:text-primary/70"
               )}
             >
@@ -68,7 +70,11 @@ export const BottomNav = memo(function BottomNav({ currentView, onNavigate, cart
                 {item.label}
               </span>
               {isActive && (
-                <div className="absolute -bottom-1 w-1 h-1 bg-primary rounded-full animate-bounce-subtle" />
+                <motion.div
+                  layoutId="activeBottomNavDot"
+                  className="absolute -bottom-1 w-1.5 h-1.5 bg-primary rounded-full"
+                  transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+                />
               )}
             </button>
           );
@@ -77,3 +83,4 @@ export const BottomNav = memo(function BottomNav({ currentView, onNavigate, cart
     </nav >
   );
 });
+

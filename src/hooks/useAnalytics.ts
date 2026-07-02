@@ -30,6 +30,8 @@ export interface DashboardStats {
         full_date: string;
         revenue: number;
         orders: number;
+        profit: number;
+        cost_sold: number;
     }>;
     topProducts: Array<{
         id: string;
@@ -40,6 +42,11 @@ export interface DashboardStats {
     }>;
     inventoryAlerts: number;
     growth?: number;
+    inventory?: {
+        totalCost: number;
+        totalValue: number;
+    };
+    averageTicket?: number;
 }
 
 

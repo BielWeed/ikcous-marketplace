@@ -19,7 +19,8 @@ export function mapProductFromDB(
         const name = row.nome || row.name || 'Produto sem nome';
         const price = Number(row.preco_venda || row.price) || 0;
         const description = row.descricao || row.description || '';
-        const costPrice = Number(row.custo || row.cost_price) || 0;
+        const rawCusto = row.custo ?? row.cost_price;
+        const costPrice = (rawCusto !== null && rawCusto !== undefined) ? Number(rawCusto) : undefined;
         const stock = row.estoque !== undefined ? Number(row.estoque) : (row.stock !== undefined ? Number(row.stock) : 0);
         const images = row.imagem_urls || row.images || (row.imagem_url ? [row.imagem_url] : []);
         const category = row.categoria || row.category || 'Geral';
@@ -57,6 +58,7 @@ export function mapProductFromDB(
             tags: Array.isArray(row.tags) ? row.tags : [],
             metaTitle: row.meta_title || undefined,
             metaDescription: row.meta_description || undefined,
+            sku: row.codigo || row.sku || undefined,
             variants: Array.isArray(row.product_variants) ? row.product_variants.map(mapVariantFromDB) : []
         };
     } catch (err) {

@@ -8,6 +8,7 @@ export interface VerificationReceipt {
     timestamp: string;
     status: 'VERIFIED' | 'ABORTED';
     violations: string[];
+    warnings?: string[];
 }
 
 export const TruthGate = {
@@ -17,28 +18,33 @@ export const TruthGate = {
      */
     verifyProductAxiom: (product: any): VerificationReceipt => {
         const violations: string[] = [];
+        const warnings: string[] = [];
 
         // Axioma 1: Preço não pode ser negativo
-        if (product.price < 0) {
+        if (product.price !== undefined && product.price !== null && product.price < 0) {
             violations.push('Axiom violation: price_non_negative');
         }
 
         // Axioma 2: Estoque dentro do limite termodinâmico
-        if (product.stock > 10000) {
+        if (product.stock !== undefined && product.stock !== null && product.stock > 10000) {
             violations.push('Axiom violation: stock_limit_exceeded');
         }
 
         // Axioma 3: Nome do produto é mandatório (Identidade)
-        if (!product.name || product.name.trim().length === 0) {
+        if (product.name !== undefined && (!product.name || product.name.trim().length === 0)) {
             violations.push('Axiom violation: identity_null_error');
         }
 
         // Axioma 4: Validação Financeira
-        if (product.costPrice && product.costPrice < 0) {
+        if (product.costPrice !== undefined && product.costPrice !== null && product.costPrice < 0) {
             violations.push('Axiom violation: cost_price_negative');
         }
-        if (product.costPrice && product.price > 0 && product.costPrice >= product.price) {
-            violations.push('Axiom warning: price_margin_negative (Prejuízo detectado)');
+        if (
+            product.costPrice !== undefined && product.costPrice !== null &&
+            product.price !== undefined && product.price !== null &&
+            product.price > 0 && product.costPrice >= product.price
+        ) {
+            warnings.push('Axiom warning: price_margin_negative (Prejuízo detectado)');
         }
 
         const status = violations.length === 0 ? 'VERIFIED' : 'ABORTED';
@@ -49,7 +55,8 @@ export const TruthGate = {
             hash,
             timestamp,
             status,
-            violations
+            violations,
+            warnings
         };
 
         // Protocolo SROS: Registro de recibo para auditoria de enxame
@@ -63,3 +70,4 @@ export const TruthGate = {
         return receipt;
     }
 };
+

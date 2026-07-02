@@ -53,7 +53,9 @@ export function useAddresses() {
             if (cached) {
                 hasCache = true;
             }
-        } catch (e) {}
+        } catch (_e) {
+            // ignore localStorage issues
+        }
 
         if (!hasCache) {
             setLoading(true);

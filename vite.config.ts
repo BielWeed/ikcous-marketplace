@@ -33,7 +33,7 @@ export default defineConfig({
         short_name: 'IKCOUS',
         description: 'Marketplace local de Monte Carmelo, MG - Produtos com estoque imediato',
         theme_color: '#000000',
-        background_color: '#ffffff',
+        background_color: '#000000',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',

@@ -1,0 +1,37 @@
+- generic [ref=e3]:
+  - banner [ref=e5]:
+    - generic [ref=e6]:
+      - button "Ir para o Início" [ref=e8] [cursor=pointer]:
+        - generic [ref=e9]:
+          - generic [ref=e11]: I
+          - generic [ref=e13]:
+            - generic [ref=e14]: IKCOUS
+            - generic [ref=e15]: imports
+      - generic [ref=e19]:
+        - img [ref=e20]
+        - generic:
+          - generic:
+            - generic: O que busca hoje?
+        - textbox [ref=e23]
+      - generic [ref=e24]:
+        - button "Carrinho" [ref=e25] [cursor=pointer]:
+          - img [ref=e26]
+        - button [ref=e30] [cursor=pointer]:
+          - img [ref=e31]
+  - main [ref=e34]:
+    - paragraph [ref=e38]: Carregando...
+  - navigation "Navegação principal" [ref=e39]:
+    - generic [ref=e40]:
+      - button "Início" [ref=e41] [cursor=pointer]:
+        - img [ref=e43]
+        - generic [ref=e46]: Início
+      - button "Favoritos" [ref=e48] [cursor=pointer]:
+        - img [ref=e50]
+        - generic [ref=e52]: Favoritos
+      - button "Carrinho" [ref=e53] [cursor=pointer]:
+        - img [ref=e55]
+        - generic [ref=e59]: Carrinho
+      - button "Perfil" [ref=e60] [cursor=pointer]:
+        - img [ref=e62]
+        - generic [ref=e65]: Perfil
+  - region "Notifications alt+T"

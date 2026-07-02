@@ -1,77 +1,107 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { DataVault } from '@/lib/dataVault';
+import { useSyncListener } from '@/hooks/useDataVault';
 import type { Category } from '@/types';
-
-let cachedCategories: Category[] | null = null;
-const CACHE_KEY = 'ikcous_categories_cache';
-
-const updateCache = (newCategories: Category[]) => {
-    cachedCategories = newCategories;
-    try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify(newCategories));
-    } catch (e) {
-        console.error('Failed to update categories cache', e);
-    }
-};
+// Module-level cache to persist data across component mounts
+let globalCategoriesCache: Category[] | null = null;
+let categoriesFetchPromise: Promise<Category[]> | null = null;
+let lastCategoriesFetchTime = 0;
+const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
 
 export function useCategories() {
-    const [categories, setCategories] = useState<Category[]>(() => {
-        if (cachedCategories) return cachedCategories;
-        if (typeof window !== 'undefined') {
+    const vaultRef = useRef<DataVault | null>(null);
+    const [categories, setCategories] = useState<Category[]>(globalCategoriesCache || []);
+    const [isLoading, setIsLoading] = useState(!globalCategoriesCache);
+
+    // Persist to DataVault (non-blocking helper)
+    const persistToVault = useCallback((items: Category[]) => {
+        vaultRef.current?.replaceAll('categories', items).then(() => {
+            vaultRef.current?.setLastSync('categories');
+        }).catch(() => {});
+    }, []);
+
+    // Load from DataVault on mount (instant, <5ms)
+    useEffect(() => {
+        let cancelled = false;
+        const initVaultAndLoad = async () => {
             try {
-                const stored = localStorage.getItem(CACHE_KEY);
-                if (stored) {
-                    const parsed = JSON.parse(stored);
-                    cachedCategories = parsed;
-                    return parsed;
+                const vault = await DataVault.init();
+                vaultRef.current = vault;
+                if (!globalCategoriesCache) {
+                    const cached = await vault.getAll<Category>('categories');
+                    if (cached.length > 0 && !cancelled) {
+                        globalCategoriesCache = cached;
+                        setCategories(cached);
+                        setIsLoading(false);
+                    }
                 }
-            } catch (e) {
-                console.error('Failed to parse categories cache', e);
+            } catch (err) {
+                console.error('[useCategories] DataVault load failed:', err);
             }
+        };
+        initVaultAndLoad();
+        return () => { cancelled = true; };
+    }, []);
+
+    const fetchCategories = useCallback(async (isSilent = false, forceRefresh = false) => {
+        if (categoriesFetchPromise && !forceRefresh) {
+            try {
+                const data = await categoriesFetchPromise;
+                setCategories(data);
+                setIsLoading(false);
+            } catch { /* fallback */ }
+            return;
         }
-        return [];
-    });
 
-    const [isLoading, setIsLoading] = useState(() => {
-        return cachedCategories ? false : true;
-    });
-
-    const fetchCategories = useCallback(async (isSilent = false) => {
         try {
             if (!isSilent) {
                 setIsLoading(true);
             }
-            const { data, error } = await supabase
-                .from('categorias')
-                .select('*')
-                .order('nome');
+            
+            const queryPromise = (async () => {
+                const { data, error } = await supabase
+                    .from('categorias')
+                    .select('*')
+                    .order('nome');
 
-            if (error) throw error;
+                if (error) throw error;
 
-            const adaptedCategories: Category[] = (data || []).map((item) => ({
-                id: item.id,
-                name: item.nome,
-                slug: item.slug || '',
-                description: item.descricao || '',
-                isActive: item.ativo ?? true,
-                createdAt: item.created_at
-            }));
+                const adaptedCategories: Category[] = (data || []).map((item) => ({
+                    id: item.id,
+                    name: item.nome,
+                    slug: item.slug || '',
+                    description: item.descricao || '',
+                    isActive: item.ativo ?? true,
+                    createdAt: item.created_at
+                }));
+                globalCategoriesCache = adaptedCategories;
+                lastCategoriesFetchTime = Date.now();
+                persistToVault(adaptedCategories);
+                return adaptedCategories;
+            })();
 
-            setCategories(adaptedCategories);
-            updateCache(adaptedCategories);
+            categoriesFetchPromise = queryPromise;
+            const data = await queryPromise;
+            setCategories(data);
         } catch (error) {
             console.error('Error fetching categories:', error);
             toast.error('Erro ao carregar categorias');
         } finally {
             setIsLoading(false);
+            categoriesFetchPromise = null;
         }
-    }, []);
+    }, [persistToVault]);
 
     useEffect(() => {
-        const hasCache = !!cachedCategories;
-        fetchCategories(hasCache);
-    }, [fetchCategories]);
+        const hasCache = categories.length > 0;
+        if (!hasCache) {
+            fetchCategories(false);
+        } else if (Date.now() - lastCategoriesFetchTime > FETCH_THROTTLE) {
+            fetchCategories(true, true);
+        }
+    }, [fetchCategories, categories.length]);
 
     const generateSlug = (name: string) => {
         return name
@@ -96,7 +126,7 @@ export function useCategories() {
 
         setCategories(prev => {
             const next = [...prev, newCategory];
-            updateCache(next);
+            persistToVault(next);
             return next;
         });
 
@@ -123,7 +153,7 @@ export function useCategories() {
                     isActive: data.ativo ?? true,
                     createdAt: data.created_at
                 } : c);
-                updateCache(final);
+                persistToVault(final);
                 return final;
             });
 
@@ -132,14 +162,14 @@ export function useCategories() {
         } catch (error) {
             setCategories(prev => {
                 const reverted = prev.filter(c => c.id !== tempId);
-                updateCache(reverted);
+                persistToVault(reverted);
                 return reverted;
             });
             console.error('Error adding category:', error);
             toast.error('Erro ao criar categoria');
             throw error;
         }
-    }, []);
+    }, [persistToVault]);
 
     const updateCategory = useCallback(async (id: string, updates: Partial<Omit<Category, 'id' | 'createdAt' | 'slug'>>) => {
         let previousCategories: Category[] = [];
@@ -153,7 +183,7 @@ export function useCategories() {
                 }
                 return c;
             });
-            updateCache(next);
+            persistToVault(next);
             return next;
         });
 
@@ -175,21 +205,21 @@ export function useCategories() {
             toast.success('Categoria atualizada com sucesso!');
         } catch (error) {
             setCategories(() => {
-                updateCache(previousCategories);
+                persistToVault(previousCategories);
                 return previousCategories;
             });
             console.error('Error updating category:', error);
             toast.error('Erro ao atualizar categoria');
             throw error;
         }
-    }, []);
+    }, [persistToVault]);
 
     const deleteCategory = useCallback(async (id: string) => {
         let previousCategories: Category[] = [];
         setCategories(prev => {
             previousCategories = [...prev];
             const next = prev.filter(c => c.id !== id);
-            updateCache(next);
+            persistToVault(next);
             return next;
         });
 
@@ -203,14 +233,24 @@ export function useCategories() {
             toast.success('Categoria removida com sucesso!');
         } catch (error) {
             setCategories(() => {
-                updateCache(previousCategories);
+                persistToVault(previousCategories);
                 return previousCategories;
             });
             console.error('Error deleting category:', error);
             toast.error('Erro ao remover categoria');
             throw error;
         }
-    }, []);
+    }, [persistToVault]);
+
+    // Realtime sync: re-read from DataVault when RealtimeSyncEngine updates categories
+    useSyncListener(['categories'], useCallback(async () => {
+        if (vaultRef.current) {
+            const fresh = await vaultRef.current.getAll<Category>('categories');
+            if (fresh.length > 0) {
+                setCategories(fresh);
+            }
+        }
+    }, []));
 
     return {
         categories,

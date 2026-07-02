@@ -3,6 +3,12 @@ import { supabase } from '@/lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
 import { toast } from 'sonner';
 
+export interface ResetPasswordResult {
+    success: boolean;
+    status: 'success' | 'unconfirmed' | 'not_found' | 'error';
+    message?: string;
+}
+
 interface AuthContextType {
     session: Session | null;
     user: User | null;
@@ -11,10 +17,12 @@ interface AuthContextType {
     isAdmin: boolean;
     login: (email: string, senha: string) => Promise<{ success: boolean; error?: any }>;
     signUp: (email: string, senha: string, fullName: string, phone: string) => Promise<boolean>;
-    resetPassword: (email: string) => Promise<boolean>;
+    resetPassword: (email: string) => Promise<ResetPasswordResult>;
+    verifyRecoveryCode: (email: string, code: string) => Promise<boolean>;
+    resendConfirmationEmail: (email: string) => Promise<boolean>;
     updatePassword: (newPassword: string) => Promise<boolean>;
     logout: () => Promise<void>;
-    fetchProfile: () => Promise<void>;
+    fetchProfile: (passedUser?: User | null) => Promise<void>;
     isPasswordRecovery: boolean;
     setIsPasswordRecovery: (value: boolean) => void;
 }
@@ -24,49 +32,109 @@ export const AuthContext = createContext<AuthContextType>({} as AuthContextType)
 
 // Shared semaphore and state for all Auth instances (prevents redundant parallel checks)
 let checkingLock: Promise<void> | null = null;
+let initPromise: Promise<any> | null = null;
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-    const [session, setSession] = useState<Session | null>(null);
-    const [user, setUser] = useState<User | null>(null);
+    // Synchronously recover session from localStorage to prevent screen flash/delay on boot
+    const getCachedSession = () => {
+        try {
+            if (typeof window === 'undefined') return null;
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.includes('-auth-token')) {
+                    const item = localStorage.getItem(key);
+                    if (item) {
+                        const parsed = JSON.parse(item);
+                        const session = parsed.currentSession || parsed;
+                        if (session && session.access_token && session.user) {
+                            return session;
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[Auth] Error reading cached session:', e);
+        }
+        return null;
+    };
+
+    const cachedSession = getCachedSession();
+    const cachedIsAdmin = (() => {
+        if (!cachedSession?.user) return false;
+        if (cachedSession.user.app_metadata?.role === 'admin') return true;
+        const cacheKey = `ikcous_is_admin_${cachedSession.user.id}`;
+        return localStorage.getItem(cacheKey) === 'true';
+    })();
+
+    const [session, setSession] = useState<Session | null>(cachedSession);
+    const [user, setUser] = useState<User | null>(cachedSession ? cachedSession.user : null);
     const [profile, setProfile] = useState<any | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [isAdmin, setIsAdmin] = useState<boolean>(false);
-    const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+    const [loading, setLoading] = useState(!!cachedSession); // Non-blocking for guests, verifying for returned users
+    const [isAdmin, setIsAdmin] = useState<boolean>(cachedIsAdmin);
+    const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('type') === 'recovery' || window.location.hash.includes('type=recovery');
+        }
+        return false;
+    });
+
+    useEffect(() => {
+        if (isPasswordRecovery && typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('type');
+            window.history.replaceState({}, document.title, url.pathname + url.search);
+        }
+    }, [isPasswordRecovery]);
 
     const checkAdmin = async (u: User | null | undefined) => {
         if (!u) {
             setIsAdmin(false);
-            localStorage.removeItem('ikcous_is_admin');
             return;
         }
 
-        // Fast Path 1: JWT Metadata (Zero latency, cryptographically secure if synced)
-        const jwtRole = u.app_metadata?.role || u.user_metadata?.role;
+        const userId = u.id;
+        const cacheKey = `ikcous_is_admin_${userId}`;
+
+        // Fast Path 1: JWT Metadata (Zero latency, cryptographically secure. Rely ONLY on app_metadata, as user_metadata is client-writable)
+        const jwtRole = u.app_metadata?.role;
         if (jwtRole === 'admin') {
             setIsAdmin(true);
-            localStorage.setItem('ikcous_is_admin', 'true');
-            // We can return early without hitting the DB
+            localStorage.setItem(cacheKey, 'true');
             return;
         }
 
-        // Fast Path 2: Local Cache (Used only to block UI while verifying, NEVER to grant access)
-        const cachedAdmin = localStorage.getItem('ikcous_is_admin') === 'true';
+        // Fast Path 2: Local Cache (Immediate return for confirmed customers, keyed by user ID)
+        const cachedAdmin = localStorage.getItem(cacheKey);
+        if (cachedAdmin === 'true') {
+            setIsAdmin(true);
+            return;
+        }
+        if (cachedAdmin === 'false') {
+            setIsAdmin(false);
+            // Run background check to sync with potential admin status updates without blocking initial load
+            networkCheck().catch(err => console.error('[Auth] background networkCheck error:', err));
+            return;
+        }
 
         // Network validation (Heavy)
-        const networkCheck = async () => {
+        async function networkCheck() {
             if (checkingLock) {
-                await checkingLock;
+                try {
+                    await checkingLock;
+                } catch {
+                    // Ignore concurrent check errors
+                }
                 return;
             }
 
             checkingLock = (async () => {
-                try {
+                const queryPromise = (async () => {
                     // First try direct RPC (fastest, most secure)
                     const { data, error } = await supabase.rpc('is_admin');
                     if (!error && typeof data === 'boolean') {
                         setIsAdmin(data);
-                        if (data) localStorage.setItem('ikcous_is_admin', 'true');
-                        else localStorage.removeItem('ikcous_is_admin');
+                        localStorage.setItem(cacheKey, data ? 'true' : 'false');
                         return;
                     }
 
@@ -74,54 +142,52 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     const { data: profile, error: profileError } = await supabase
                         .from('profiles')
                         .select('role')
-                        .eq('id', u.id)
+                        .eq('id', userId)
                         .single();
 
-                    if (!profileError && profile?.role === 'admin') {
-                        setIsAdmin(true);
-                        localStorage.setItem('ikcous_is_admin', 'true');
-                    } else {
-                        setIsAdmin(false);
-                        localStorage.removeItem('ikcous_is_admin');
-                    }
-                } catch (err) {
-                    console.error('[Auth] Error checking admin status:', err);
-                    setIsAdmin(false);
-                    localStorage.removeItem('ikcous_is_admin');
-                } finally {
-                    checkingLock = null;
-                }
-            })();
-            
-            await checkingLock;
-        };
+                    const isDbAdmin = !profileError && profile?.role === 'admin';
+                    setIsAdmin(isDbAdmin);
+                    localStorage.setItem(cacheKey, isDbAdmin ? 'true' : 'false');
+                })();
 
-        // For non-cached users, we resolve immediately to unblock the UI and do network in background.
-        // For cached admins, we await the network to verify they weren't demodded before showing admin views.
-        if (cachedAdmin) {
-            await networkCheck();
-        } else {
-            networkCheck().catch(err => console.error('[Auth] Background admin check failed:', err));
+                // Add a resilient 3-second timeout limit to the network query
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Admin check timeout')), 3000)
+                );
+
+                await Promise.race([queryPromise, timeoutPromise]);
+            })();
+
+            try {
+                await checkingLock;
+            } catch (err) {
+                console.error('[Auth] Error/Timeout checking admin status:', err);
+                setIsAdmin(false);
+            } finally {
+                checkingLock = null;
+            }
         }
+
+        // Await the network check to prevent privilege bypass on client spoofing
+        await networkCheck();
     };
 
     useEffect(() => {
-        // standalone fail-safe timer (v11.x extended to 15s for mobile stability)
+        // standalone fail-safe timer (v12.x reduced to 4s for instant UX recovery)
         const safetyTimeout = setTimeout(() => {
             setLoading(current => {
                 if (current) {
-                    console.log('[Auth] Safety timeout (10s) reached. Unblocking UI forcefully.');
-                    // If we timeout, we force loading to false to unblock the app.
+                    console.log('[Auth] Safety timeout (4s) reached. Unblocking UI forcefully.');
                     return false;
                 }
                 return current;
             });
-        }, 10000); // reduced from 15s to 10s for better UX, user shouldn't wait 15s to see the app
+        }, 4000);
         return () => clearTimeout(safetyTimeout);
     }, []);
 
-    const fetchProfile = useCallback(async () => {
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
+    const fetchProfile = useCallback(async (passedUser?: User | null) => {
+        const currentUser = passedUser || (await supabase.auth.getSession()).data.session?.user;
         if (!currentUser) {
             setProfile(null);
             return;
@@ -147,6 +213,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const hasInited = useRef(false);
     const isVerifying = useRef(false);
+    const isFirstMount = useRef(true);
+    const activeUserIdRef = useRef<string | null>(cachedSession?.user?.id || null);
 
     useEffect(() => {
         // Immediate session resolution with internal timeout guard
@@ -157,14 +225,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
             try {
                 // Racing getSession against a timeout to prevent absolute hangs on mobile
-                const sessionPromise = supabase.auth.getSession();
-                const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('timeout'), 8000));
+                if (!initPromise) {
+                    initPromise = supabase.auth.getSession();
+                }
+                const sessionPromise = initPromise;
+                const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('timeout'), 3000));
 
                 const sessionRes = await Promise.race([sessionPromise, timeoutPromise]) as Awaited<typeof sessionPromise> | 'timeout';
 
-                if (sessionRes === 'timeout') {
+                 if (sessionRes === 'timeout') {
                     console.warn('[Auth] getSession timed out. Moving to listener.');
                     setLoading(false);
+                    isFirstMount.current = false;
                     return;
                 }
 
@@ -172,58 +244,67 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 console.log('[Auth] getSession result:', !!initSes);
 
                 if (initSes) {
-                    // ZENITH v21.7: Only verify if necessary. 
-                    // We lock this to prevent parallel calls from hooks during initial paint.
                     isVerifying.current = true;
+                    
+                    // Immediately hydrate session state to avoid UI loading hangs
+                    setSession(initSes);
+                    setUser(initSes.user);
+                    activeUserIdRef.current = initSes.user.id;
+                    setLoading(false);
 
-                    try {
-                        const { data: { user: verifiedUser }, error: verifyError } = await supabase.auth.getUser();
+                    // Run validation and profile/admin updates non-blockingly in the background
+                    (async () => {
+                        try {
+                            const { data: { user: verifiedUser }, error: verifyError } = await supabase.auth.getUser();
 
-                        if (verifyError) {
-                            console.error('[Auth] Session verification failed:', verifyError.message);
+                            if (verifyError) {
+                                console.error('[Auth] Session verification failed:', verifyError.message);
 
-                            // v12-vibe Resiliency: Only force signOut on absolute certainty of invalidity
-                            const isDefinitivelyInvalid = 
-                                verifyError.status === 403 || 
-                                verifyError.message.includes('not found') ||
-                                verifyError.message.includes('Invalid token');
+                                const isDefinitivelyInvalid = 
+                                    verifyError.status === 403 || 
+                                    verifyError.message.includes('not found') ||
+                                    verifyError.message.includes('Invalid token');
 
-                            if (isDefinitivelyInvalid) {
-                                console.warn('[Auth] Stale/Invalid session detected. Forcing signOut.');
-                                await supabase.auth.signOut();
-                                setSession(null);
-                                setUser(null);
-                                return;
-                            } else {
-                                // Network errors or timeouts: assume session is still potentially valid
-                                console.log('[Auth] Potential network issue. Retaining current session state.');
-                                if (initSes) {
-                                  setSession(initSes);
-                                  setUser(initSes.user);
+                                if (isDefinitivelyInvalid) {
+                                    console.warn('[Auth] Stale/Invalid session detected. Forcing signOut.');
+                                    await supabase.auth.signOut();
+                                    setSession(null);
+                                    setUser(null);
+                                    activeUserIdRef.current = null;
+                                    setIsAdmin(false);
+                                    return;
                                 }
-                                return;
                             }
-                        }
 
-                        if (verifiedUser) {
-                            setSession(initSes);
-                            setUser(verifiedUser);
-                            // Fetch profile data (Solo-Ninja)
-                            fetchProfile().catch((err: Error) => console.error('[Auth] init fetchProfile error:', err));
-                            // AWAIT initial checkAdmin to prevent transition flicker on admin routes
-                            await checkAdmin(verifiedUser).catch((err: Error) => console.error('[Auth] init checkAdmin error:', err));
-                        } else {
-                            await supabase.auth.signOut();
+                            if (verifiedUser) {
+                                setSession(initSes);
+                                setUser(verifiedUser);
+                                activeUserIdRef.current = verifiedUser.id;
+                                fetchProfile(verifiedUser).catch((err: Error) => console.error('[Auth] init fetchProfile error:', err));
+                                checkAdmin(verifiedUser).catch((err: Error) => console.error('[Auth] init checkAdmin error:', err));
+                            } else {
+                                await supabase.auth.signOut();
+                                activeUserIdRef.current = null;
+                            }
+                        } catch (err) {
+                            console.error('[Auth] Background verify exception:', err);
+                        } finally {
+                            isVerifying.current = false;
+                            isFirstMount.current = false;
                         }
-                    } finally {
-                        isVerifying.current = false;
-                    }
+                    })();
+                } else {
+                    setSession(null);
+                    setUser(null);
+                    activeUserIdRef.current = null;
+                    setIsAdmin(false);
+                    setLoading(false);
+                    isFirstMount.current = false;
                 }
             } catch (err) {
                 console.error('[Auth] initAuth error:', err);
-            } finally {
-                console.log('[Auth] initAuth finished - unblocking UI');
                 setLoading(false);
+                isFirstMount.current = false;
             }
         };
         initAuth();
@@ -236,6 +317,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             if (isVerifying.current && event === 'INITIAL_SESSION') {
                 console.log('[Auth] Guarded: Verifying in progress, ignoring INITIAL_SESSION duplicate.');
                 return;
+            }
+
+            const previousUserId = activeUserIdRef.current;
+            const currentUserId = session?.user?.id || null;
+            activeUserIdRef.current = currentUserId;
+
+            // Only set loading screen for explicit critical transitions (login/logout).
+            // Do not block UI on background events (such as TOKEN_REFRESHED) or initial load recovery.
+            // A transition is critical only if the auth state has actually changed for a different user.
+            const isCriticalTransition = 
+                (event === 'SIGNED_IN' || event === 'SIGNED_OUT') && 
+                !isFirstMount.current && 
+                previousUserId !== currentUserId;
+
+            if (isCriticalTransition) {
+                setLoading(true);
             }
 
             setSession(prev => {
@@ -256,8 +353,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
 
             if (session?.user) {
-                fetchProfile().catch((err: Error) => console.error('[Auth] event fetchProfile error:', err));
-                checkAdmin(session.user).catch((err: Error) => console.error('[Auth] background checkAdmin error:', err));
+                if (isCriticalTransition) {
+                    // For SIGNED_IN, race checkAdmin and fetchProfile against a 2.5-second timeout to unblock loading state
+                    try {
+                        const verifyPromise = Promise.all([
+                            fetchProfile(session.user).catch((err: Error) => console.error('[Auth] event fetchProfile error:', err)),
+                            checkAdmin(session.user).catch((err: Error) => console.error('[Auth] background checkAdmin error:', err))
+                        ]);
+                        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('timeout'), 2500));
+
+                        const raceResult = await Promise.race([verifyPromise, timeoutPromise]);
+                        if (raceResult === 'timeout') {
+                            console.warn('[Auth] SIGNED_IN verification process timed out (2.5s). Unblocking UI.');
+                        }
+                    } catch (err) {
+                        console.error('[Auth] SIGNED_IN verification error:', err);
+                    } finally {
+                        setLoading(false);
+                    }
+                } else {
+                    // Non-critical background event or first mount hydration
+                    Promise.all([
+                        fetchProfile(session.user).catch((err: Error) => console.error('[Auth] event fetchProfile error:', err)),
+                        checkAdmin(session.user).catch((err: Error) => console.error('[Auth] background checkAdmin error:', err))
+                    ]).catch((err) => console.error('[Auth] background operations error:', err));
+                }
             } else {
                 setProfile(null);
                 setIsAdmin(false);
@@ -266,10 +386,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     localStorage.removeItem('marketplace_cart_v1');
                     localStorage.removeItem('ikcous_recently_viewed');
                     localStorage.removeItem('ikcous_compare');
+                    localStorage.removeItem('ikcous_is_admin');
+                    for (let i = localStorage.length - 1; i >= 0; i--) {
+                        const key = localStorage.key(i);
+                        if (key && key.startsWith('ikcous_is_admin_')) {
+                            localStorage.removeItem(key);
+                        }
+                    }
+                }
+                if (isCriticalTransition) {
+                    setLoading(false);
                 }
             }
-
-            setLoading(false);
         });
 
         return () => {
@@ -323,16 +451,110 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
     }, []);
 
-    const resetPassword = useCallback(async (email: string): Promise<boolean> => {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: window.location.origin + window.location.pathname + '?type=recovery',
+    const resendConfirmationEmail = useCallback(async (email: string): Promise<boolean> => {
+        const { error } = await supabase.auth.resend({
+            type: 'signup',
+            email,
+            options: {
+                emailRedirectTo: window.location.origin
+            }
         });
         if (error) {
-            toast.error('Erro ao enviar e-mail: ' + error.message);
+            toast.error('Erro ao reenviar e-mail: ' + error.message);
             return false;
         }
-        toast.success('E-mail de recuperação enviado!');
+        toast.success('E-mail de confirmação reenviado!');
         return true;
+    }, []);
+
+    const resetPassword = useCallback(async (email: string): Promise<ResetPasswordResult> => {
+        try {
+            // Check email confirmation status via RPC
+            const { data: checkData, error: checkError } = await supabase.rpc('check_user_confirmation_status', {
+                p_email: email
+            });
+
+            if (checkError) {
+                console.error('[Auth] Error checking email status:', checkError);
+                return { success: false, status: 'error', message: checkError.message };
+            }
+
+            const checkResult = checkData as { exists?: boolean; confirmed?: boolean } | null;
+            const exists = checkResult?.exists;
+            const confirmed = checkResult?.confirmed;
+
+            if (!exists) {
+                return { 
+                    success: false, 
+                    status: 'not_found', 
+                    message: 'Este e-mail não está cadastrado. Verifique o endereço ou crie uma conta.' 
+                };
+            }
+
+            if (!confirmed) {
+                // Resend confirmation email
+                const { error: resendError } = await supabase.auth.resend({
+                    type: 'signup',
+                    email,
+                    options: {
+                        emailRedirectTo: window.location.origin
+                    }
+                });
+
+                if (resendError) {
+                    return { 
+                        success: false, 
+                        status: 'error', 
+                        message: 'E-mail não confirmado. Falha ao reenviar e-mail de confirmação: ' + resendError.message 
+                    };
+                }
+
+                return { 
+                    success: false, 
+                    status: 'unconfirmed', 
+                    message: 'Seu e-mail ainda não foi confirmado. Enviamos um novo link de confirmação para a sua caixa de entrada.' 
+                };
+            }
+
+            // Email is confirmed, send recovery link to user's email
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: window.location.origin + window.location.pathname + '?type=recovery',
+            });
+
+            if (error) {
+                return { success: false, status: 'error', message: error.message };
+            }
+
+            return { success: true, status: 'success', message: 'Link de recuperação enviado para o seu e-mail!' };
+        } catch (err: any) {
+            console.error('[Auth] resetPassword exception:', err);
+            return { success: false, status: 'error', message: err?.message || 'Erro inesperado' };
+        }
+    }, []);
+
+    const verifyRecoveryCode = useCallback(async (email: string, code: string): Promise<boolean> => {
+        try {
+            console.log('[Auth] Verifying OTP code for:', email);
+            const { error } = await supabase.auth.verifyOtp({
+                email,
+                token: code,
+                type: 'email'
+            });
+
+            if (error) {
+                console.error('[Auth] OTP verification failed:', error);
+                toast.error('Código inválido ou expirado.');
+                return false;
+            }
+
+            console.log('[Auth] OTP verified successfully. Session created.');
+            setIsPasswordRecovery(true);
+            return true;
+        } catch (err) {
+            console.error('[Auth] verifyOtp exception:', err);
+            toast.error('Erro ao verificar código.');
+            return false;
+        }
     }, []);
 
     const updatePassword = useCallback(async (newPassword: string): Promise<boolean> => {
@@ -357,12 +579,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         login,
         signUp,
         resetPassword,
+        verifyRecoveryCode,
+        resendConfirmationEmail,
         updatePassword,
         logout,
         fetchProfile,
         isPasswordRecovery,
         setIsPasswordRecovery
-    }), [session, user, profile, loading, isAdmin, login, signUp, resetPassword, updatePassword, logout, fetchProfile, isPasswordRecovery, setIsPasswordRecovery]);
+    }), [session, user, profile, loading, isAdmin, login, signUp, resetPassword, verifyRecoveryCode, resendConfirmationEmail, updatePassword, logout, fetchProfile, isPasswordRecovery, setIsPasswordRecovery]);
 
     return (
         <AuthContext.Provider value={value}>

@@ -44,7 +44,7 @@ const updateReviewsCache = (productId: string, newReviews: Review[]) => {
 };
 
 export function useReviews() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [adminReviews, setAdminReviews] = useState<AdminReview[]>([]);
   const [loading, setLoading] = useState(false);
@@ -206,23 +206,49 @@ export function useReviews() {
   ) => {
     try {
       setLoading(true);
-      let query = supabase
-        .from('reviews' as any)
-        .select(`
+      let query: any = supabase
+        .from('reviews' as any);
+
+      let profileFilter: string[] = [];
+      let productFilter: string[] = [];
+
+      if (filters?.search) {
+        const q = `%${filters.search}%`;
+        
+        // Pre-fetch profiles and products matching the search query to bypass PostgREST join OR limitation
+        // Limited to 25 to prevent URL length overflow (HTTP 414) in PostgREST
+        const { data: profiles } = await supabase
+          .from('public_profiles')
+          .select('id')
+          .ilike('full_name', q)
+          .limit(25);
+        const profileIds = profiles?.map((p: any) => p.id) || [];
+        profileFilter = profileIds.length > 0 ? profileIds : ['00000000-0000-0000-0000-000000000000'];
+
+        const { data: products } = await supabase
+          .from('produtos')
+          .select('id')
+          .ilike('nome', q)
+          .limit(25);
+        const productIds = products?.map((p: any) => p.id) || [];
+        productFilter = productIds.length > 0 ? productIds : ['00000000-0000-0000-0000-000000000000'];
+
+        query = query.select(`
+          *,
+          user:public_profiles(full_name),
+          product:produtos(nome)
+        `, { count: 'exact' })
+        .or(`comment.ilike.${q},user_id.in.(${profileFilter.join(',')}),product_id.in.(${productFilter.join(',')})`);
+      } else {
+        query = query.select(`
           *,
           user:public_profiles(full_name),
           product:produtos(nome)
         `, { count: 'exact' });
+      }
 
       if (filters?.rating && filters.rating !== 'all') {
         query = query.eq('rating', filters.rating);
-      }
-
-      if (filters?.search) {
-        const q = `%${filters.search}%`;
-        // Search in customer name, product name, or comment
-        // Note: productName and customerName are in joined tables.
-        query = query.or(`comment.ilike.${q},user.full_name.ilike.${q},product.nome.ilike.${q}`);
       }
 
       const { data, error, count } = await query
@@ -230,6 +256,26 @@ export function useReviews() {
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
       if (error) throw error;
+
+      // Compute dynamic average rating and global statistics for matching filters
+      let averageRating = 0;
+      let globalVerifiedCount = 0;
+      let globalRepliedCount = 0;
+      let avgQuery = supabase.from('reviews' as any).select('rating, verified, merchant_reply');
+      if (filters?.search) {
+        const q = `%${filters.search}%`;
+        avgQuery = avgQuery.or(`comment.ilike.${q},user_id.in.(${profileFilter.join(',')}),product_id.in.(${productFilter.join(',')})`);
+      }
+      if (filters?.rating && filters.rating !== 'all') {
+        avgQuery = avgQuery.eq('rating', filters.rating);
+      }
+      const { data: avgData, error: avgError } = await avgQuery;
+      if (!avgError && avgData && avgData.length > 0) {
+        const sum = avgData.reduce((acc: number, curr: any) => acc + curr.rating, 0);
+        averageRating = sum / avgData.length;
+        globalVerifiedCount = avgData.filter((curr: any) => curr.verified).length;
+        globalRepliedCount = avgData.filter((curr: any) => curr.merchant_reply && curr.merchant_reply.trim() !== '').length;
+      }
 
       const formatted: AdminReview[] = (data || []).map((item: any) => ({
         id: item.id,
@@ -246,17 +292,27 @@ export function useReviews() {
       }));
 
       setAdminReviews(formatted);
-      return { reviews: formatted, total: count || 0 };
+      return { 
+        reviews: formatted, 
+        total: count || 0, 
+        averageRating,
+        globalVerifiedCount,
+        globalRepliedCount
+      };
     } catch (error) {
       console.error('Error fetching all reviews:', error);
       toast.error('Erro ao carregar avaliações.');
-      return { reviews: [], total: 0 };
+      return { reviews: [], total: 0, averageRating: 0 };
     } finally {
       setLoading(false);
     }
   }, []);
 
   const deleteReview = useCallback(async (reviewId: string) => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return;
+    }
     try {
       const { error } = await supabase
         .from('reviews' as any)
@@ -271,9 +327,13 @@ export function useReviews() {
       console.error('Error deleting review:', error);
       toast.error('Erro ao remover avaliação.');
     }
-  }, []);
+  }, [isAdmin]);
 
   const toggleVerified = useCallback(async (reviewId: string, currentVerified: boolean) => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return;
+    }
     try {
       const { error } = await supabase
         .from('reviews' as any)
@@ -292,9 +352,13 @@ export function useReviews() {
       console.error('Error toggling verified:', error);
       toast.error('Erro ao atualizar avaliação.');
     }
-  }, []);
+  }, [isAdmin]);
 
   const addMerchantReply = useCallback(async (reviewId: string, reply: string) => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return false;
+    }
     try {
       // ZENITH v21.7: Rely on AuthContext's verified user
       if (!user) {
@@ -305,8 +369,7 @@ export function useReviews() {
       // 1. Execute Atomic Reply & Log via RPC
       const { error } = await (supabase.rpc as any)('reply_review_atomic', {
         p_review_id: reviewId,
-        p_reply: reply,
-        p_admin_id: user.id
+        p_reply: reply
       });
 
       if (error) throw error;
@@ -314,7 +377,7 @@ export function useReviews() {
       // 2. Optimistic Update
       setAdminReviews(prev =>
         prev.map(r =>
-          r.id === reviewId ? { ...r, merchant_reply: reply } : r
+          r.id === reviewId ? { ...r, merchantReply: reply } : r
         )
       );
 
@@ -325,7 +388,7 @@ export function useReviews() {
       toast.error('Erro ao enviar resposta.');
       return false;
     }
-  }, [user]);
+  }, [user, isAdmin]);
 
   return {
     reviews,

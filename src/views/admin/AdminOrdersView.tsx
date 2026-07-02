@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Search,
   MessageCircle,
@@ -9,15 +9,17 @@ import {
   Clock,
   CheckCircle2,
   DollarSign,
-  ShoppingCart,
   Calendar,
   User,
-  Filter
+  Filter,
+  HelpCircle,
+  LayoutGrid,
+  List
 } from 'lucide-react';
-
 import { supabase } from '@/lib/supabase';
 import type { Order, OrderStatus, View } from '@/types';
 import { useOrders } from '@/hooks/useOrders';
+import { useDebounce } from '@/hooks/useDebounce';
 import { OrderStatusBadge, statusConfig } from '@/components/admin/orders/OrderStatusBadge';
 import { OrderDetail } from '@/components/admin/orders/OrderDetail';
 import { SupportBanners } from '@/components/admin/dashboard/SupportBanners';
@@ -29,6 +31,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   pix: 'PIX Instantâneo',
@@ -46,21 +51,58 @@ const STATUS_ORDER_COLORS: Record<string, string> = {
 
 interface AdminOrdersViewProps {
   onNavigate: (view: View) => void;
+  active?: boolean;
 }
 
-export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) {
-  const { orders, fetchOrders, updateOrderStatus, isLoaded } = useOrders(true, true);
+export function AdminOrdersView({ onNavigate, active }: Readonly<AdminOrdersViewProps>) {
+  const { orders, loadOrders, updateOrderStatus, totalOrders, isLoaded, fetchDashboardSummary, subscribeToOrders } = useOrders(true, true);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const [dateRange, setDateRange] = useState({
     start: '',
     end: ''
   });
   const [filter, setFilter] = useState<OrderStatus | 'all'>('all');
+  const [viewMode, setViewMode] = useState<'detailed' | 'compact'>(() => {
+    const saved = localStorage.getItem('admin_orders_view_mode');
+    return (saved === 'detailed' || saved === 'compact') ? saved : 'compact';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('admin_orders_view_mode', viewMode);
+  }, [viewMode]);
+
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [savedScrollPosition, setSavedScrollPosition] = useState(0);
   const prevSelectedOrderRef = useRef<Order | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const itemsPerPage = 12;
+
+  const lastFilterRef = useRef<OrderStatus | 'all'>('all');
+  const lastSearchRef = useRef<string>('');
+  const lastDateRef = useRef<string>(JSON.stringify({ start: '', end: '' }));
+
+  const [stats, setStats] = useState({ revenueDay: 0, pending: 0, avgTicket: 0, completed: 0 });
+
+  const kpiCards = useMemo<readonly KpiCardConfig[]>(() => [
+    { label: 'Receita Hoje', value: `R$ ${stats.revenueDay.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: DollarSign, accent: 'text-emerald-500', subValue: 'Finanças' },
+    { label: 'Ações Pendentes', value: stats.pending.toString(), icon: Clock, accent: 'text-amber-500', subValue: stats.pending > 0 ? 'Urgente' : 'Limpo' },
+    { label: 'Ticket Médio', value: `R$ ${stats.avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: TrendingUp, accent: 'text-admin-gold', subValue: 'Rendimento' },
+    { label: 'Total Concluído', value: stats.completed.toString(), icon: CheckCircle2, accent: 'text-sky-500', subValue: 'Concluído' },
+  ], [stats]);
+
+  const loadStats = useCallback(async () => {
+    const summary = await fetchDashboardSummary();
+    if (summary) {
+      setStats({
+        revenueDay: summary.today?.revenue || 0,
+        pending: summary.today?.pending || 0,
+        avgTicket: summary.averageTicket || 0,
+        completed: summary.month?.count || 0
+      });
+    }
+  }, [fetchDashboardSummary]);
 
   const handleSelectOrder = (order: Order) => {
     const container = document.querySelector('main main') || document.querySelector('main');
@@ -94,76 +136,74 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
 
   // Removidas funções bulk status e toggle selecionados para evitar erros de compilação.
 
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+  const loadAllData = useCallback((pageToFetch: number) => {
+    loadOrders(
+      pageToFetch,
+      itemsPerPage,
+      filter,
+      debouncedSearchQuery,
+      dateRange.start || undefined,
+      dateRange.end || undefined
+    );
+    loadStats();
+  }, [loadOrders, itemsPerPage, filter, debouncedSearchQuery, dateRange, loadStats]);
 
   useEffect(() => {
-    setCurrentPage(0);
-  }, [searchQuery, filter, dateRange]);
+    if (!active) return;
 
-  // Métricas Operacionais
-  const operationalStats = useMemo(() => {
-    if (!orders) return { revenueDay: 0, pending: 0, avgTicket: 0, completed: 0 };
+    const filterChanged = 
+      lastFilterRef.current !== filter || 
+      lastSearchRef.current !== debouncedSearchQuery || 
+      lastDateRef.current !== JSON.stringify(dateRange);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    lastFilterRef.current = filter;
+    lastSearchRef.current = debouncedSearchQuery;
+    lastDateRef.current = JSON.stringify(dateRange);
 
-    const todayOrders = orders.filter(o => {
-      const d = new Date(o.createdAt);
-      d.setHours(0, 0, 0, 0);
-      return d.getTime() === today.getTime();
-    });
-
-    const revenue = todayOrders.reduce((acc, o) => acc + (o.total || 0), 0);
-    const pending = orders.filter(o => o.status === 'pending' || o.status === 'processing').length;
-    const completed = orders.filter(o => o.status === 'delivered').length;
-    const avgTicket = orders.length > 0 ? orders.reduce((acc, o) => acc + (o.total || 0), 0) / orders.length : 0;
-
-    return {
-      revenueDay: revenue,
-      pending,
-      avgTicket,
-      completed
-    };
-  }, [orders]);
-
-  const filteredOrders = orders.filter(order => {
-    if (filter !== 'all' && order.status !== filter) return false;
-
-    if (dateRange.start || dateRange.end) {
-      const orderDate = new Date(order.createdAt);
-      orderDate.setHours(0, 0, 0, 0);
-
-      if (dateRange.start) {
-        const start = new Date(dateRange.start);
-        start.setHours(0, 0, 0, 0);
-        if (orderDate < start) return false;
-      }
-
-      if (dateRange.end) {
-        const end = new Date(dateRange.end);
-        end.setHours(0, 0, 0, 0);
-        if (orderDate > end) return false;
+    let pageToFetch = currentPage;
+    if (filterChanged) {
+      pageToFetch = 0;
+      if (currentPage !== 0) {
+        setCurrentPage(0);
+        return;
       }
     }
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return (
-        (order.customer?.name || '').toLowerCase().includes(query) ||
-        (order.id || '').includes(query) ||
-        (order.customer?.whatsapp || '').includes(query)
-      );
-    }
-    return true;
-  });
+    loadAllData(pageToFetch);
+  }, [currentPage, filter, debouncedSearchQuery, dateRange, active, loadAllData]);
 
-  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
-  const paginatedOrders = filteredOrders.slice(
-    currentPage * itemsPerPage,
-    (currentPage + 1) * itemsPerPage
-  );
+  useEffect(() => {
+    if (!active) return;
+    if (subscribeToOrders) {
+      const unsubscribe = subscribeToOrders((payload) => {
+        console.log('[AdminOrdersView] Realtime event received:', payload.eventType);
+
+        // Dispara aviso Toast
+        if (payload.eventType === 'INSERT') {
+          const newId = payload.new?.id;
+          toast.info(`Novo pedido recebido! #${newId ? newId.slice(-6) : ''}`, {
+            action: {
+              label: 'Ver',
+              onClick: () => {
+                if (payload.new) handleSelectOrder(payload.new as Order);
+              }
+            }
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          const updatedId = payload.new?.id;
+          const newStatus = payload.new?.status as OrderStatus;
+          toast.info(`Pedido #${updatedId ? updatedId.slice(-6) : ''} atualizado para ${statusConfig[newStatus]?.label || newStatus}`);
+        }
+
+        // Força recarga sincronizada da listagem e dos KPIs
+        loadAllData(currentPage);
+      });
+      return () => unsubscribe();
+    }
+  }, [subscribeToOrders, active, currentPage, loadAllData]);
+
+  const totalPages = Math.ceil(totalOrders / itemsPerPage);
+  const paginatedOrders = orders;
 
   const handleStatusChange = async (orderId: string, newStatus: OrderStatus, silent: boolean = false) => {
     const order = orders?.find(o => o.id === orderId);
@@ -197,6 +237,8 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
     if (selectedOrder?.id === orderId) {
       setSelectedOrder({ ...selectedOrder, status: newStatus });
     }
+
+    loadStats();
   };
 
 
@@ -206,18 +248,35 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
       `Status: ${statusConfig[order.status].label}\n\n` +
       `Obrigado por comprar na IKCOUS!`;
 
-    const url = `https://wa.me/55${order.customer?.whatsapp?.replaceAll(/\D/g, '') || ''}?text=${encodeURIComponent(message)}`;
+    let phone = (order.customer?.whatsapp || '').replace(/\D/g, '');
+    if (phone.length === 11 || phone.length === 10) {
+      phone = '55' + phone;
+    }
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     globalThis.open(url, '_blank');
   };
 
-  if (!isLoaded) {
+  if (!isLoaded && orders.length === 0) {
     return (
-      <div className="min-h-screen bg-admin-bg flex items-center justify-center">
-        <div className="relative w-20 h-20 mb-6">
-          <div className="absolute inset-0 border-4 border-admin-gold/10 rounded-full" />
-          <div className="absolute inset-0 border-4 border-t-admin-gold rounded-full animate-spin" />
-          <ShoppingCart className="absolute inset-0 m-auto w-8 h-8 text-admin-gold animate-pulse" />
+      <div className="p-6 space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-10 w-48 bg-white/5 rounded-xl animate-pulse" />
         </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] space-y-3 sm:space-y-4 shadow-2xl">
+              <div className="flex items-center gap-3">
+                <Skeleton className="w-10 h-10 rounded-xl bg-white/5 animate-pulse" />
+                <Skeleton className="h-3 w-20 bg-white/5 animate-pulse" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Skeleton className="h-8 w-24 bg-white/5 animate-pulse" />
+                <Skeleton className="h-3 w-16 bg-white/5 animate-pulse" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <Skeleton className="h-[400px] w-full rounded-3xl bg-white/5 animate-pulse" />
       </div>
     );
   }
@@ -234,61 +293,49 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
   }
 
   return (
-    <div className="min-h-screen bg-admin-bg text-white pb-32 font-sans selection:bg-admin-gold/30">
+    <div className="min-h-screen bg-admin-bg text-white pb-32 font-sans selection:bg-admin-gold/30 animate-in fade-in duration-500">
 
       {/* Header Elite */}
-      <div className="px-6 flex items-center justify-between pt-6 pb-2">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <ShoppingCart className="w-5 h-5 text-admin-gold animate-pulse" />
-              <h1 className="text-2xl font-black tracking-tighter uppercase italic bg-gradient-to-r from-white via-zinc-400 to-zinc-600 bg-clip-text text-transparent">
-                Inteligência de Pedidos
-              </h1>
-            </div>
-            <p className="text-[10px] font-bold text-admin-gold uppercase tracking-[0.3em] opacity-80">
-              {orders.length === 0 ? 'Limpo' : `${orders.length} Transmissões Ativas`}
-            </p>
-          </div>
+      <div className="px-6 flex items-center justify-between gap-4 pt-6 pb-2">
+          <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-none select-none flex items-center gap-3 shrink-0">
+              <span className="flex items-baseline flex-nowrap whitespace-nowrap">
+                  <span className="italic text-white">Ped</span>
+                  <span className="text-admin-gold not-italic ml-0.5">idos</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowHelpModal(true)}
+                className="w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-300 active:scale-95 bg-zinc-900/60 border-white/5 text-zinc-500 hover:text-white hover:border-white/10 shrink-0"
+                title="Guia de Ajuda e Explicações"
+              >
+                <HelpCircle className="w-4.5 h-4.5" />
+              </button>
+          </h1>
           <div className="hidden md:flex items-center gap-3">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Operações ao Vivo</span>
+            <div className={cn(
+              "inline-flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300",
+              !isLoaded 
+                ? "bg-amber-500/10 border-amber-500/20 text-amber-500" 
+                : "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+            )}>
+              <div className={cn(
+                "w-1.5 h-1.5 rounded-full",
+                !isLoaded ? "bg-amber-500 animate-pulse" : "bg-emerald-500 animate-pulse"
+              )} />
+              <span className="text-[10px] font-black uppercase tracking-widest">
+                {!isLoaded ? "Sincronizando..." : "Operações ao Vivo"}
+              </span>
             </div>
           </div>
         </div>
 
       <div className="p-4 sm:p-6 lg:p-8 space-y-12">
-        {/* Elite Operational Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
-          {[
-            { label: 'Receita Hoje', value: `R$ ${operationalStats.revenueDay.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: DollarSign, accent: 'text-emerald-500', subValue: 'Finanças' },
-            { label: 'Ações Pendentes', value: operationalStats.pending.toString(), icon: Clock, accent: 'text-amber-500', subValue: operationalStats.pending > 0 ? 'Urgente' : 'Limpo' },
-            { label: 'Ticket Médio', value: `R$ ${operationalStats.avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: TrendingUp, accent: 'text-admin-gold', subValue: 'Rendimento' },
-            { label: 'Total Concluído', value: operationalStats.completed.toString(), icon: CheckCircle2, accent: 'text-sky-500', subValue: 'Concluído' },
-          ].map((stat) => (
-            <div key={stat.label} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)] transition-all duration-500" style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>
-                <div className="flex items-center gap-3 mb-4">
-                    <div className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center border border-white/5 shadow-inner bg-zinc-950",
-                        stat.accent
-                    )}>
-                        <stat.icon className="w-4 h-4 flex-shrink-0" />
-                    </div>
-                    <p className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 leading-tight">
-                        {stat.label}
-                    </p>
-                </div>
-                <div className="flex flex-col xl:flex-row xl:items-baseline gap-1 xl:gap-2 relative z-10">
-                    <h3 className="text-xl sm:text-2xl font-black tracking-tighter text-white leading-none whitespace-nowrap">
-                        {stat.value}
-                    </h3>
-                    <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-tight truncate xl:whitespace-nowrap opacity-80">
-                        {stat.subValue}
-                    </p>
-                </div>
-            </div>
-          ))}
+        {/* Support Section */}
+        <div className="animate-in fade-in slide-in-from-top-4 duration-700">
+          <SupportBanners onNavigate={onNavigate} />
         </div>
+
+        <AdminKpiCarousel cards={kpiCards} title="Métricas de Pedidos" />
 
         {/* Unified Control Bar Compacta */}
         <div className="pt-8 border-t border-white/5 relative flex flex-col mb-8 mt-4">
@@ -348,6 +395,20 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
                         </div>
                     </DropdownMenuContent>
                 </DropdownMenu>
+
+                <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setViewMode(prev => prev === 'detailed' ? 'compact' : 'detailed')}
+                    className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 hover:border-admin-gold/50 group transition-all shrink-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    title={viewMode === 'detailed' ? "Visualização Compacta" : "Visualização Detalhada"}
+                >
+                    {viewMode === 'detailed' ? (
+                        <LayoutGrid className="w-5 h-5 text-zinc-500 group-hover:text-admin-gold transition-colors" />
+                    ) : (
+                        <List className="w-5 h-5 text-zinc-500 group-hover:text-admin-gold transition-colors" />
+                    )}
+                </Button>
             </div>
           </div>
 
@@ -382,7 +443,7 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
         </div>
 
         {/* Orders List */}
-        <div className="space-y-8 relative">
+        <div className={cn("space-y-8 relative transition-opacity duration-300", !isLoaded && "opacity-50 pointer-events-none")}>
           {paginatedOrders.length === 0 ? (
             <div className="bg-zinc-950/40 backdrop-blur-md p-20 rounded-[4rem] border border-white/5 text-center relative overflow-hidden">
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-admin-gold/5 blur-[100px] rounded-full" />
@@ -401,7 +462,7 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
                 </Button>
               </div>
             </div>
-          ) : (
+          ) : viewMode === 'detailed' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {paginatedOrders.map((order) => {
                 return (
@@ -417,7 +478,7 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
                       }
                     }}
                     className={cn(
-                      "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[3rem] p-8 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_20px_60px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950",
+                      "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[3rem] p-8 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_20px_60px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto",
                       "border-white/5"
                     )}
                   >
@@ -479,7 +540,7 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
 
                     <div className="pt-6 border-t border-white/5 flex items-end justify-between">
                       <div className="space-y-1">
-                        <span className="text-[9px] font-black text-zinc-600 uppercase tracking-[0.3em]">Valor Capital</span>
+                        <span className="text-[9px] font-black text-zinc-600 uppercase tracking-[0.3em] ">Valor Capital</span>
                         <p className="text-2xl font-black text-white tracking-widest tabular-nums">
                           <span className="text-[10px] font-black text-zinc-500 mr-1 uppercase">R$</span>
                           {(order.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -505,13 +566,103 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
                 );
               })}
             </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {paginatedOrders.map((order) => {
+                return (
+                  <div
+                    key={order.id}
+                    onClick={() => handleSelectOrder(order)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleSelectOrder(order);
+                      }
+                    }}
+                    className={cn(
+                      "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[2rem] p-4 sm:p-5 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto",
+                      "border-white/5"
+                    )}
+                  >
+                  
+                  {/* Glow Background */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 group-hover:from-admin-gold/5 group-hover:to-transparent rounded-[2rem] transition-all duration-700 pointer-events-none z-0" />
+
+                  {/* Header Row: Image/ID and Status */}
+                  <div className="flex flex-col gap-2 min-[400px]:flex-row min-[400px]:items-center justify-between mb-4 relative z-10">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="relative shrink-0">
+                        {order.items?.[0]?.image ? (
+                          <img src={order.items[0].image} alt="Produto" className="w-8 h-8 rounded-lg object-cover border border-white/10 shrink-0" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-white/10 flex items-center justify-center shrink-0">
+                            <Package className="w-4 h-4 text-zinc-600" />
+                          </div>
+                        )}
+                        {order.items?.length > 1 && (
+                          <div className="absolute -top-1.5 -right-1.5 bg-admin-gold text-black text-[8px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center shadow-lg border border-zinc-900">
+                            +{order.items.length - 1}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest block group-hover:text-admin-gold transition-colors truncate">#{order.id.slice(-6).toUpperCase()}</span>
+                        <span className="text-[8px] font-bold text-zinc-600 uppercase tracking-tight block truncate">
+                          {new Date(order.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="shrink-0 flex justify-start min-[400px]:justify-end">
+                      <OrderStatusBadge status={order.status} className="px-1.5 py-0.5" />
+                    </div>
+                  </div>
+
+                  {/* Customer & Product description */}
+                  <div className="space-y-1 mb-4 relative z-10">
+                    <h4 className="text-sm font-black text-white group-hover:text-admin-gold transition-colors truncate">
+                      {order.customer?.name || 'Cliente'}
+                    </h4>
+                    <p className="text-[9px] text-zinc-500 font-bold uppercase truncate">
+                      {(() => {
+                        if (!order.items || order.items.length === 0) return 'Pedido Vazio';
+                        if (order.items.length === 1) return order.items[0].name;
+                        return `${order.items[0].name} e mais ${order.items.length - 1}`;
+                      })()}
+                    </p>
+                  </div>
+
+                  {/* Footer Row: Price and Quick WhatsApp button */}
+                  <div className="pt-3 border-t border-white/5 flex items-center justify-between relative z-10">
+                    <div className="space-y-0.5">
+                      <span className="text-[8px] font-black text-zinc-600 uppercase tracking-wider block">Valor</span>
+                      <p className="text-base font-black text-white tracking-tight tabular-nums">
+                        <span className="text-[9px] font-black text-zinc-500 mr-0.5 uppercase">R$</span>
+                        {(order.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleWhatsApp(order);
+                        }}
+                        className="w-9 h-9 flex items-center justify-center bg-emerald-500/10 text-emerald-500 rounded-xl hover:bg-emerald-500 hover:text-black transition-all border border-emerald-500/20 shadow-lg relative z-10 active:scale-90"
+                        title="WhatsApp"
+                      >
+                        <MessageCircle className="w-4.5 h-4.5" />
+                      </button>
+                      <ChevronRight className="w-4.5 h-4.5 text-zinc-500 group-hover:text-admin-gold transition-all duration-300 transform group-hover:translate-x-0.5" />
+                    </div>
+                  </div>
+                </div>
+                );
+              })}
+            </div>
           )}
         </div>
 
-        {/* Support Section */}
-        <div className="animate-in fade-in slide-in-from-bottom-10 duration-700">
-          <SupportBanners onNavigate={onNavigate} />
-        </div>
 
         {/* Elite Pagination */}
         {totalPages > 1 && (
@@ -540,7 +691,106 @@ export function AdminOrdersView({ onNavigate }: Readonly<AdminOrdersViewProps>) 
         )}
       </div>
 
+      {/* Modal de Ajuda */}
+      {showHelpModal && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
+          <div className="relative bg-zinc-950/95 border border-white/10 rounded-[2rem] sm:rounded-[2.5rem] w-full max-w-2xl p-5 sm:p-8 flex flex-col max-h-[88vh] sm:max-h-[85vh] shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden animate-in zoom-in-95 duration-300">
+            {/* Header */}
+            <div className="flex justify-between items-center pb-4 border-b border-white/5 mb-4 shrink-0">
+              <h3 className="text-sm font-black text-admin-gold uppercase tracking-[0.2em] flex items-center gap-2">
+                <HelpCircle className="w-5 h-5 text-admin-gold animate-pulse" />
+                Guia de Controle de Pedidos
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowHelpModal(false)}
+                className="w-8 h-8 rounded-xl bg-zinc-900/50 border border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all flex items-center justify-center font-bold text-sm"
+              >
+                ✕
+              </button>
+            </div>
 
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto space-y-6 pr-1 pb-6 custom-scrollbar text-zinc-300 text-sm">
+              <div className="space-y-4">
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Esta tela exibe a Central de Transmissões e Pedidos em tempo real. Aqui você pode gerenciar, auditar e atualizar o ciclo de vida dos pedidos efetuados no aplicativo.
+                </p>
+
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 border-l-2 border-admin-gold pl-2">
+                    Ciclo de Vida do Pedido
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 space-y-1">
+                      <div className="flex items-center gap-2 text-white font-bold text-xs uppercase tracking-wider">
+                        <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                        Pendente
+                      </div>
+                      <p className="text-xs text-zinc-400">
+                        A transação foi criada pelo cliente, mas o pagamento ainda não foi processado ou verificado (aguardando aprovação).
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 space-y-1">
+                      <div className="flex items-center gap-2 text-white font-bold text-xs uppercase tracking-wider">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                        Pago / Em Processamento
+                      </div>
+                      <p className="text-xs text-zinc-400">
+                        O pagamento foi validado com sucesso. O pedido está pronto para separação de estoque e embalagem.
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 space-y-1">
+                      <div className="flex items-center gap-2 text-white font-bold text-xs uppercase tracking-wider">
+                        <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+                        Enviado
+                      </div>
+                      <p className="text-xs text-zinc-400">
+                        A mercadoria já foi despachada ou entregue ao portador/motoboy para transporte até o endereço do cliente.
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 space-y-1">
+                      <div className="flex items-center gap-2 text-white font-bold text-xs uppercase tracking-wider">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                        Entregue
+                      </div>
+                      <p className="text-xs text-zinc-400">
+                        O pedido foi entregue com sucesso ao destinatário. O fluxo operacional desta compra foi finalizado.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 border-l-2 border-admin-gold pl-2">
+                    Recursos e Ações Rápidas
+                  </h4>
+                  <ul className="space-y-2 text-xs text-zinc-400 list-disc list-inside">
+                    <li><strong className="text-white">Busca Dinâmica:</strong> Pesquise pedidos instantaneamente por ID, nome do cliente ou telefone.</li>
+                    <li><strong className="text-white">Filtro por Status:</strong> Filtre a lista principal de acordo com o estado do pedido.</li>
+                    <li><strong className="text-white">Detalhes do Pedido:</strong> Clique em qualquer linha para abrir a ficha completa do pedido com lista de itens, valores, meio de pagamento e endereço de entrega.</li>
+                    <li><strong className="text-white">Contato Direto (WhatsApp):</strong> Clique no botão do WhatsApp nos detalhes do pedido para iniciar uma conversa direta com o cliente já com mensagem pré-formatada.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="pt-4 border-t border-white/5 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowHelpModal(false)}
+                className="px-5 py-2.5 rounded-xl bg-admin-gold text-black text-[10px] font-black uppercase tracking-widest hover:bg-admin-gold/90 transition-all"
+              >
+                Entendi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

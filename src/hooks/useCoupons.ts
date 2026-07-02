@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Coupon } from '@/types';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 
 export function useCoupons(autoFetch: boolean = false) {
+  const { isAdmin } = useAuth();
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(autoFetch); // Only load if autofetching
 
@@ -79,6 +81,10 @@ export function useCoupons(autoFetch: boolean = false) {
   }, []);
 
   const addCoupon = async (coupon: Omit<Coupon, 'id' | 'usageCount'>) => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return null;
+    }
     try {
       const { data, error } = await supabase
         .from('coupons')
@@ -108,6 +114,10 @@ export function useCoupons(autoFetch: boolean = false) {
   };
 
   const updateCoupon = async (id: string, updates: Partial<Coupon>) => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return;
+    }
     try {
       const { error } = await supabase
         .from('coupons')
@@ -134,6 +144,10 @@ export function useCoupons(autoFetch: boolean = false) {
   };
 
   const deleteCoupon = async (id: string) => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return;
+    }
     try {
       const { error } = await supabase
         .from('coupons')
@@ -152,6 +166,10 @@ export function useCoupons(autoFetch: boolean = false) {
   };
 
   const getCouponStats = useCallback(async () => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return null;
+    }
     try {
       const { data, error } = await (supabase.rpc as any)('get_coupon_stats');
       if (error) throw error;
@@ -160,7 +178,7 @@ export function useCoupons(autoFetch: boolean = false) {
       console.error('Error getting coupon stats:', error);
       return null;
     }
-  }, []);
+  }, [isAdmin]);
 
   return {
     coupons,

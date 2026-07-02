@@ -51,7 +51,7 @@ export function OrderReceipt({ order }: OrderReceiptProps) {
 
                 <div className="text-center mt-8 pt-4 border-t border-dashed border-black">
                     <p className="text-xs">Obrigado pela preferência!</p>
-                    <p className="text-[10px] text-gray-400 mt-2">www.ikcous.com.br</p>
+                    <p className="text-[10px] text-gray-400 mt-2">{typeof window !== 'undefined' ? window.location.hostname : ''}</p>
                 </div>
             </div>
 

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redefinição de Senha - IKCOUS Marketplace</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #fafafa;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            color: #18181b;
+            -webkit-font-smoothing: antialiased;
+        }
+        .wrapper {
+            width: 100%;
+            table-layout: fixed;
+            background-color: #fafafa;
+            padding: 40px 0;
+        }
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 24px;
+            border: 1px solid #f4f4f5;
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.04);
+            overflow: hidden;
+        }
+        .header {
+            background-color: #18181b;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .logo-text {
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            margin: 0;
+        }
+        .content {
+            padding: 40px 35px;
+            text-align: center;
+        }
+        .title {
+            font-size: 22px;
+            font-weight: 800;
+            color: #18181b;
+            margin-top: 0;
+            margin-bottom: 16px;
+            letter-spacing: -0.025em;
+        }
+        .text {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #71717a;
+            margin-bottom: 30px;
+        }
+        .button-container {
+            margin: 30px 0;
+        }
+        .btn-primary {
+            display: inline-block;
+            background-color: #d97706; /* Amber-600 */
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 16px 36px;
+            font-size: 13px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            border-radius: 14px;
+            box-shadow: 0 10px 20px -5px rgba(217, 119, 6, 0.3);
+            transition: all 0.2s ease;
+        }
+        .divider {
+            height: 1px;
+            background-color: #f4f4f5;
+            margin: 30px 0;
+        }
+        .warning-text {
+            font-size: 11px;
+            color: #a1a1aa;
+            line-height: 1.5;
+        }
+        .footer {
+            background-color: #fcfcfc;
+            padding: 30px;
+            text-align: center;
+            border-top: 1px solid #f4f4f5;
+        }
+        .footer-text {
+            font-size: 11px;
+            color: #a1a1aa;
+            margin: 0;
+        }
+        .footer-link {
+            color: #71717a;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <div class="container">
+            <!-- Header Section -->
+            <div class="header">
+                <p class="logo-text">IKCOUS MARKETPLACE</p>
+            </div>
+            
+            <!-- Content Section -->
+            <div class="content">
+                <h1 class="title">Recuperação de Senha</h1>
+                <p class="text">
+                    Olá,<br><br>
+                    Recebemos uma solicitação para redefinir a senha da sua conta vinculada ao e-mail <strong>{{ .Email }}</strong>.<br>
+                    Clique no botão abaixo para definir sua nova senha com segurança:
+                </p>
+                
+                <div class="button-container">
+                    <a href="{{ .ConfirmationURL }}" class="btn-primary" target="_blank">Redefinir Senha</a>
+                </div>
+                
+                <div class="divider"></div>
+                
+                <p class="warning-text">
+                    Se você não solicitou a alteração de senha, por favor ignore este e-mail. 
+                    O link acima é de uso único e expirará em breve.
+                </p>
+            </div>
+            
+            <!-- Footer Section -->
+            <div class="footer">
+                <p class="footer-text">
+                    Enviado automaticamente por <strong>IKCOUS Marketplace</strong>.<br>
+                    Monte Carmelo - MG.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

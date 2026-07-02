@@ -1,106 +1,148 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Banner } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-
-const BANNERS_CACHE_KEY = 'ikcous_banners_cache';
-let cachedBanners: Banner[] = (() => {
-  if (typeof window !== 'undefined') {
-    try {
-      const stored = localStorage.getItem(BANNERS_CACHE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (e) {
-      console.error('Failed to parse banners cache', e);
-    }
-  }
-  return [];
-})();
-let isInitialLoadDone = false;
-let globalFetchPromise: Promise<void> | null = null;
-
+import { DataVault } from '@/lib/dataVault';
+import { useSyncListener } from '@/hooks/useDataVault';
 import { useAuth } from '@/hooks/useAuth';
 
-export function useBanners() {
+// Module-level cache to persist data across component mounts
+let globalBannersCache: Banner[] | null = null;
+let bannersFetchPromise: Promise<Banner[]> | null = null;
+let lastBannersFetchTime = 0;
+let cacheOnlyActive: boolean | null = null;
+const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
+
+export function useBanners(adminMode: boolean = false) {
   const { isAdmin } = useAuth();
-  const [banners, setBanners] = useState<Banner[]>(cachedBanners);
-  const [isLoaded, setIsLoaded] = useState(cachedBanners.length > 0);
+  const vaultRef = useRef<DataVault | null>(null);
+  const [banners, setBanners] = useState<Banner[]>(globalBannersCache || []);
+  const [isLoaded, setIsLoaded] = useState(!!globalBannersCache);
+  const isFetchingRef = useRef(false);
 
-  const fetchBanners = useCallback(async (onlyActive = true, forceRefresh = false) => {
-    // If already fetching, wait for the same promise
-    if (globalFetchPromise !== null && !forceRefresh) return globalFetchPromise;
-
-    // If already loaded and not forcing refresh, skip
-    if (isInitialLoadDone && !forceRefresh) return;
-
-    const fetchAction = async () => {
-      try {
-        console.log('[Banners] Fetching banners...');
-        let query = supabase
-          .from('banners')
-          .select('*');
-
-        if (onlyActive) {
-          query = query.eq('active', true);
-        }
-
-        const { data, error } = await query.order('order', { ascending: true });
-
-        if (error) {
-          console.error('[Banners] Supabase error:', error);
-          throw error;
-        }
-
-        console.log(`[Banners] Found ${data?.length || 0} banners`);
-
-        if (data) {
-          const mappedBanners: Banner[] = data
-            .filter((b: any) => b.image_url || b.imagem_url) // Garantir que tem imagem
-            .map((b: any) => ({
-              id: b.id,
-              imageUrl: b.image_url || b.imagem_url,
-              title: b.title || '',
-              link: b.link || undefined,
-              position: b.position as "home_top" | "home_middle" | "home_bottom",
-              active: b.active ?? b.ativo ?? true,
-              order: b.order || 0
-            }));
-
-          cachedBanners = mappedBanners;
-          try {
-            localStorage.setItem(BANNERS_CACHE_KEY, JSON.stringify(mappedBanners));
-          } catch (e) {
-            console.error('Failed to save banners cache', e);
-          }
-          setBanners(mappedBanners);
-        }
-        isInitialLoadDone = true;
-      } catch (error: any) {
-        console.error('[Banners] Error fetching banners:', error.message);
-      } finally {
-        setIsLoaded(true);
-        globalFetchPromise = null;
-      }
-    };
-
-    globalFetchPromise = fetchAction();
-    return globalFetchPromise;
+  // Persist to DataVault (non-blocking helper)
+  const persistToVault = useCallback((items: Banner[]) => {
+    vaultRef.current?.replaceAll('banners', items).then(() => {
+      vaultRef.current?.setLastSync('banners');
+    }).catch(() => {});
   }, []);
 
+  // Load from DataVault on mount (instant, <5ms)
   useEffect(() => {
-    if (!isInitialLoadDone) {
-      fetchBanners();
+    let cancelled = false;
+    const initVaultAndLoad = async () => {
+      try {
+        const vault = await DataVault.init();
+        vaultRef.current = vault;
+        if (!globalBannersCache) {
+          const cached = await vault.getAll<Banner>('banners');
+          if (cached.length > 0 && !cancelled) {
+            globalBannersCache = cached;
+            setBanners(cached);
+            setIsLoaded(true);
+          }
+        }
+      } catch (err) {
+        console.error('[useBanners] DataVault load failed:', err);
+      }
+    };
+    initVaultAndLoad();
+    return () => { cancelled = true; };
+  }, []);
+
+  const fetchBanners = useCallback(async (onlyActive = !adminMode, forceRefresh = false) => {
+    // Prevent duplicate concurrent fetches
+    if (isFetchingRef.current && !forceRefresh) return;
+    
+    // If a network fetch is already active, wait for it
+    if (bannersFetchPromise && !forceRefresh) {
+      try {
+        const data = await bannersFetchPromise;
+        setBanners(data);
+        setIsLoaded(true);
+      } catch { /* fallback */ }
+      return;
     }
-  }, [fetchBanners]);
+
+    isFetchingRef.current = true;
+
+    const queryPromise = (async () => {
+      console.log('[Banners] Fetching banners...');
+      let query = supabase
+        .from('banners')
+        .select('*');
+
+      if (onlyActive) {
+        query = query.eq('active', true);
+      }
+
+      const { data, error } = await query.order('order', { ascending: true });
+
+      if (error) {
+        console.error('[Banners] Supabase error:', error);
+        throw error;
+      }
+
+      console.log(`[Banners] Found ${data?.length || 0} banners`);
+
+      if (data) {
+        const mappedBanners: Banner[] = data
+          .filter((b: any) => b.image_url || b.imagem_url)
+          .map((b: any) => ({
+            id: b.id,
+            imageUrl: b.image_url || b.imagem_url,
+            title: b.title || '',
+            link: b.link || undefined,
+            position: b.position as "home_top" | "home_middle" | "home_bottom",
+            active: b.active ?? b.ativo ?? true,
+            order: b.order || 0
+          }));
+
+        globalBannersCache = mappedBanners;
+        cacheOnlyActive = onlyActive;
+        lastBannersFetchTime = Date.now();
+        persistToVault(mappedBanners);
+        return mappedBanners;
+      }
+      return [];
+    })();
+
+    bannersFetchPromise = queryPromise;
+
+    try {
+      const mappedBanners = await queryPromise;
+      setBanners(mappedBanners);
+    } catch (error: any) {
+      console.error('[Banners] Error fetching banners:', error.message);
+    } finally {
+      setIsLoaded(true);
+      isFetchingRef.current = false;
+      bannersFetchPromise = null;
+    }
+  }, [persistToVault, adminMode]);
+
+  useEffect(() => {
+    const needsDifferentCacheType = cacheOnlyActive !== null && cacheOnlyActive !== !adminMode;
+    
+    // Only fetch from network if DataVault didn't have cached data or cache type mismatch
+    if (!isLoaded || needsDifferentCacheType) {
+      fetchBanners(!adminMode, true);
+    } else if (Date.now() - lastBannersFetchTime > FETCH_THROTTLE) {
+      // Stale-While-Revalidate: cached data is shown, fetch fresh in background if throttled out
+      fetchBanners(!adminMode, true);
+    }
+  }, [fetchBanners, isLoaded, adminMode]);
 
   const getBannersByPosition = useCallback((position: Banner['position']) => {
     return banners
-      .filter(b => b.position === position) // Filter by activity happened in fetchBanners
+      .filter(b => b.position === position && (adminMode || b.active))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [banners]);
+  }, [banners, adminMode]);
 
   const uploadBannerImage = async (file: File): Promise<string> => {
+    if (!isAdmin) {
+      throw new Error('Acesso negado: Apenas administradores podem fazer upload de imagens de banners.');
+    }
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
@@ -151,18 +193,16 @@ export function useBanners() {
         order: data.order || 0
       };
 
-      cachedBanners = [...cachedBanners, newBanner];
-      try {
-        localStorage.setItem(BANNERS_CACHE_KEY, JSON.stringify(cachedBanners));
-      } catch (e) {
-        console.error('Failed to save banners cache', e);
-      }
-      setBanners(cachedBanners);
+      const updatedBanners = [...banners, newBanner];
+      persistToVault(updatedBanners);
+      setBanners(updatedBanners);
 
-      isInitialLoadDone = false; // Force re-fetch to update cache correctly
+
+      toast.success('Banner adicionado com sucesso!');
       return data;
     } catch (error) {
       console.error('Error adding banner:', error);
+      toast.error('Erro ao adicionar banner.');
       throw error;
     }
   };
@@ -185,17 +225,15 @@ export function useBanners() {
 
       if (error) throw error;
 
-      cachedBanners = cachedBanners.map(b => b.id === id ? { ...b, ...updates } : b);
-      try {
-        localStorage.setItem(BANNERS_CACHE_KEY, JSON.stringify(cachedBanners));
-      } catch (e) {
-        console.error('Failed to save banners cache', e);
-      }
-      setBanners(cachedBanners);
+      const updated = banners.map(b => b.id === id ? { ...b, ...updates } : b);
+      persistToVault(updated);
+      setBanners(updated);
 
-      isInitialLoadDone = false;
+
+      toast.success('Banner atualizado com sucesso!');
     } catch (error) {
       console.error('Error updating banner:', error);
+      toast.error('Erro ao atualizar banner.');
       throw error;
     }
   };
@@ -224,33 +262,24 @@ export function useBanners() {
       newBanners[overIndex] = activeBanner;
 
       // Sort by order
-      newBanners.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      const cachedBanners = [...banners];
+      cachedBanners[activeIndex] = overBanner;
+      cachedBanners[overIndex] = activeBanner;
+      cachedBanners.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       
-      cachedBanners = newBanners;
-      try {
-        localStorage.setItem(BANNERS_CACHE_KEY, JSON.stringify(newBanners));
-      } catch (e) {
-        console.error('Failed to save banners cache', e);
-      }
-      setBanners(newBanners);
+      persistToVault(cachedBanners);
+      setBanners(cachedBanners);
     }
 
     try {
-      // 2. Atomic Swap via RPC
       const { error } = await (supabase.rpc as any)('swap_banner_order', {
         banner_id_1: activeBannerId,
         banner_id_2: overBannerId
       });
 
       if (error) throw error;
-      isInitialLoadDone = false;
     } catch (error) {
-      cachedBanners = previousBanners;
-      try {
-        localStorage.setItem(BANNERS_CACHE_KEY, JSON.stringify(previousBanners));
-      } catch (e) {
-        console.error('Failed to save banners cache', e);
-      }
+      persistToVault(previousBanners);
       setBanners(previousBanners);
       console.error('Error reordering banners:', error);
     }
@@ -280,18 +309,26 @@ export function useBanners() {
           }
         }
       }
-      cachedBanners = cachedBanners.filter(b => b.id !== id);
-      try {
-        localStorage.setItem(BANNERS_CACHE_KEY, JSON.stringify(cachedBanners));
-      } catch (e) {
-        console.error('Failed to save banners cache', e);
-      }
+      const updated = banners.filter(b => b.id !== id);
+      persistToVault(updated);
       setBanners(prev => prev.filter(b => b.id !== id));
+      toast.success('Banner excluído com sucesso!');
     } catch (error) {
       console.error('Error deleting banner:', error);
+      toast.error('Erro ao excluir banner.');
       throw error;
     }
   };
+
+  // Realtime sync: re-read from DataVault when RealtimeSyncEngine updates banners
+  useSyncListener(['banners'], useCallback(async () => {
+    if (vaultRef.current) {
+      const fresh = await vaultRef.current.getAll<Banner>('banners');
+      if (fresh.length > 0) {
+        setBanners(fresh);
+      }
+    }
+  }, []));
 
   return {
     banners,

@@ -9,6 +9,7 @@ interface LazyImageProps {
     placeholderClassName?: string;
     objectFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
     priority?: boolean;
+    style?: React.CSSProperties;
 }
 
 export function LazyImage({
@@ -20,10 +21,12 @@ export function LazyImage({
     placeholderClassName = '',
     objectFit = 'cover',
     priority = false,
+    style: imgStyle,
 }: LazyImageProps) {
     const [isLoaded, setIsLoaded] = useState(false);
     const [isInView, setIsInView] = useState(priority);
     const [hasError, setHasError] = useState(false);
+    const [showSkeleton, setShowSkeleton] = useState(false);
     const imgRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -32,7 +35,6 @@ export function LazyImage({
             return;
         }
 
-        const container = imgRef.current?.closest('main') || null;
         const observer = new IntersectionObserver(
             ([entry]) => {
                 if (entry.isIntersecting) {
@@ -41,7 +43,6 @@ export function LazyImage({
                 }
             },
             {
-                root: container,
                 rootMargin: '200px',
                 threshold: 0.01,
             }
@@ -54,6 +55,20 @@ export function LazyImage({
         return () => observer.disconnect();
     }, [priority]);
 
+    useEffect(() => {
+        if (isLoaded || hasError) {
+            setShowSkeleton(false);
+            return;
+        }
+
+        if (isInView) {
+            const timer = setTimeout(() => {
+                setShowSkeleton(true);
+            }, 150);
+            return () => clearTimeout(timer);
+        }
+    }, [isInView, isLoaded, hasError]);
+
     const style: React.CSSProperties = {};
     if (width !== undefined) style.width = width;
     if (height !== undefined) style.height = height;
@@ -65,7 +80,7 @@ export function LazyImage({
             style={style}
         >
             {/* Placeholder skeleton */}
-            {!isLoaded && !hasError && (
+            {showSkeleton && !isLoaded && !hasError && (
                 <div
                     className={`absolute inset-0 bg-zinc-200 animate-pulse ${placeholderClassName}`}
                 />
@@ -83,15 +98,19 @@ export function LazyImage({
                 <img
                     src={src}
                     alt={alt}
-                    loading="lazy"
+                    loading={priority ? 'eager' : 'lazy'}
+                    fetchPriority={priority ? 'high' : 'auto'}
                     onLoad={() => setIsLoaded(true)}
                     onError={() => {
                         setHasError(true);
                         setIsLoaded(true); // Stop skeleton
                     }}
-                    className={`w-full h-full transition-opacity duration-300 ${isLoaded && !hasError ? 'opacity-100' : 'opacity-0'
-                        }`}
-                    style={{ objectFit }}
+                    className={`w-full h-full transition-opacity duration-300 ease-out ${
+                        isLoaded && !hasError 
+                            ? 'opacity-100' 
+                            : 'opacity-0'
+                    }`}
+                    style={{ objectFit, ...imgStyle }}
                 />
             )}
         </div>

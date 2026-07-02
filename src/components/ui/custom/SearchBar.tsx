@@ -4,7 +4,7 @@ import {
     ArrowRight
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, useDeferredValue } from 'react';
 import { cn } from '@/lib/utils';
 import { haptic } from '@/utils/haptic';
 import { useProducts } from '@/hooks/useProducts';
@@ -24,6 +24,7 @@ interface ScoredProduct extends Product {
 
 export function SearchBar({ value, onChange, onProductClick, placeholder = "Buscar produtos...", className = "" }: SearchBarProps) {
     const [localValue, setLocalValue] = useState(value);
+    const deferredLocalValue = useDeferredValue(localValue);
     const [isFocused, setIsFocused] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const { products } = useProducts();
@@ -72,7 +73,7 @@ export function SearchBar({ value, onChange, onProductClick, placeholder = "Busc
 
     // Advanced Scoring Algorithm - Elite Precision
     const searchResults = useMemo<ScoredProduct[]>(() => {
-        if (!localValue.trim()) {
+        if (!deferredLocalValue.trim()) {
             // Show bestsellers or trending if no search
             return products
                 .filter(p => p.isActive && (p.isBestseller || p.stock > 0))
@@ -80,7 +81,7 @@ export function SearchBar({ value, onChange, onProductClick, placeholder = "Busc
                 .map(p => ({ ...p, score: 0 }));
         }
 
-        const query = localValue.toLowerCase().trim();
+        const query = deferredLocalValue.toLowerCase().trim();
         const scored = products
             .filter(product => product.isActive)
             .map(product => {
@@ -119,7 +120,7 @@ export function SearchBar({ value, onChange, onProductClick, placeholder = "Busc
             .slice(0, 6);
 
         return scored as ScoredProduct[];
-    }, [products, localValue]);
+    }, [products, deferredLocalValue]);
 
     const trendingProducts = useMemo<Product[]>(() => {
         const bestsellers = products.filter(p => p.isActive && p.isBestseller);

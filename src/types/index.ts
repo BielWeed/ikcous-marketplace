@@ -6,7 +6,7 @@ export interface Product {
   description: string;
   price: number;
   costPrice?: number;
-  originalPrice?: number;
+  originalPrice?: number | null;
   images: string[];
   category: string;
   stock: number;
@@ -22,6 +22,7 @@ export interface Product {
   variants?: ProductVariant[];
   metaTitle?: string;
   metaDescription?: string;
+  sku?: string;
 }
 
 export interface ProductVariant {
@@ -51,6 +52,8 @@ export interface CartItem {
   quantity: number;
   variantId?: string;
   variantNames?: string;
+  /** Epoch ms of the last local mutation — used for offline merge conflict resolution */
+  lastModifiedAt?: number;
 }
 
 export interface Customer {
@@ -187,6 +190,8 @@ export interface WaitlistItem {
 
 export type View = 'home' | 'search' | 'product' | 'cart' | 'checkout' | 'favorites' | 'profile' | 'orders' | 'order-details' | 'compare' | 'recently-viewed' | 'login' | 'admin-login' | 'auth' | 'admin-dashboard' | 'admin-products' | 'admin-product-form' | 'admin-orders' | 'admin-coupons' | 'admin-banners' | 'admin-settings' | 'admin-reviews' | 'admin-qa' | 'admin-customers' | 'admin-user-detail' | 'admin-push' | 'admin-sros' | 'referral' | 'account-settings' | 'notifications' | 'order-success' | 'admin' | 'product-detail' | 'address-form';
 
+export type SortOption = 'default' | 'price-asc' | 'price-desc' | 'sold';
+
 export interface DashboardSummary {
   today: {
     revenue: number;
@@ -218,6 +223,8 @@ export interface DashboardSummary {
     full_date: string;
     revenue: number;
     orders?: number;
+    profit?: number;
+    cost_sold?: number;
   }[];
   topProducts: {
     product_id: string;
@@ -226,13 +233,18 @@ export interface DashboardSummary {
     total: number;
     image: string;
   }[];
+  inventoryAlerts: number;
+  inventory?: {
+    totalCost: number;
+    totalValue: number;
+  };
 }
 
 export interface Notification {
   id: string;
   title: string;
   message: string;
-  type: 'order' | 'system' | 'promotion' | 'delivery';
+  type: 'order' | 'system' | 'promotion' | 'delivery' | 'aviso' | 'sucesso';
   read: boolean;
   created_at: string;
   action_url?: string;

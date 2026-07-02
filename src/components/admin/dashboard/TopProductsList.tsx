@@ -24,7 +24,7 @@ const SectionTitle = ({ title, icon: Icon }: { title: string; icon: any }) => (
 
 export function TopProductsList({ stats, loading, onNavigate }: TopProductsListProps) {
     const products = stats?.topProducts || [];
-    const maxTotal = products.length > 0 ? Math.max(...products.map(p => p.total || 0)) : 0;
+    const maxTotal = products.length > 0 ? Math.max(...products.map(p => Number(p.total || 0))) : 0;
 
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -71,8 +71,8 @@ export function TopProductsList({ stats, loading, onNavigate }: TopProductsListP
                                 animate={{ opacity: 1 }}
                                 className="text-center py-20 bg-white/[0.02] rounded-[2rem] border border-white/5"
                             >
-                                 <TrendingUp className="w-12 h-12 text-zinc-800 mx-auto mb-4" />
-                                 <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em]">Nenhum dado de vendas disponível</p>
+                                 <TrendingUp className="w-12 h-12 text-zinc-500/50 mx-auto mb-4" />
+                                 <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.3em]">Nenhum dado de vendas disponível</p>
                             </motion.div>
                         ) : (
                             <motion.div 
@@ -83,7 +83,7 @@ export function TopProductsList({ stats, loading, onNavigate }: TopProductsListP
                             >
                                 {products.map((item, idx) => {
                                     const isFirst = idx === 0;
-                                    const sharePercentage = maxTotal > 0 ? (item.total / maxTotal) * 100 : 0;
+                                    const sharePercentage = maxTotal > 0 ? (Number(item.total || 0) / maxTotal) * 100 : 0;
                                     
                                     return (
                                         <motion.div
@@ -101,18 +101,16 @@ export function TopProductsList({ stats, loading, onNavigate }: TopProductsListP
                                             <div className="absolute bottom-0 left-0 h-[2px] bg-admin-gold/10 transition-all duration-1000" style={{ width: `${sharePercentage}%` }} />
                                             
                                             <div className="flex items-center gap-5 relative z-10">
-                                                <div className="relative flex items-center justify-center">
+                                                <div className="relative flex items-center justify-center w-6 h-6">
                                                     {isFirst ? (
-                                                        <div className="absolute -top-2 -left-2 bg-admin-gold rounded-full p-1 shadow-lg shadow-admin-gold/50 z-20">
-                                                            <Star className="w-2.5 h-2.5 text-black fill-current" />
+                                                        <div className="bg-admin-gold rounded-full p-1 shadow-lg shadow-admin-gold/50 z-20 flex items-center justify-center">
+                                                            <Star className="w-3 h-3 text-black fill-current" />
                                                         </div>
-                                                    ) : null}
-                                                    <span className={cn(
-                                                        "text-[10px] font-black w-4 transition-colors",
-                                                        isFirst ? "text-admin-gold" : "text-zinc-700 group-hover:text-zinc-400"
-                                                    )}>
-                                                        {(idx + 1).toString().padStart(2, '0')}
-                                                    </span>
+                                                    ) : (
+                                                        <span className="text-[10px] font-black w-4 transition-colors text-zinc-700 group-hover:text-zinc-400 text-center">
+                                                            {(idx + 1).toString().padStart(2, '0')}
+                                                        </span>
+                                                    )}
                                                 </div>
 
                                                 <div className={cn(
@@ -124,7 +122,11 @@ export function TopProductsList({ stats, loading, onNavigate }: TopProductsListP
                                                         alt={item.name}
                                                         className="w-full h-full object-cover group-hover:opacity-80 transition-opacity"
                                                         onError={(e) => {
-                                                            (e.target as HTMLImageElement).src = `https://placehold.co/100x100/18181b/d4af37?text=${encodeURIComponent(item.name.substring(0, 2))}`;
+                                                            const target = e.target as HTMLImageElement;
+                                                            const fallback = `https://placehold.co/100x100/18181b/d4af37?text=${encodeURIComponent(item.name.substring(0, 2))}`;
+                                                            if (target.src !== fallback) {
+                                                                target.src = fallback;
+                                                            }
                                                         }}
                                                     />
                                                 </div>
@@ -158,7 +160,7 @@ export function TopProductsList({ stats, loading, onNavigate }: TopProductsListP
                                                     "text-sm sm:text-base font-black transition-transform origin-right group-hover:scale-110",
                                                     isFirst ? "text-admin-gold font-black" : "text-white"
                                                 )}>
-                                                    R$ {(item.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                    R$ {Number(item.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                 </span>
                                                 <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
                                                     <span className="text-[8px] font-black text-admin-gold uppercase tracking-[0.1em]">Analisar SKU</span>

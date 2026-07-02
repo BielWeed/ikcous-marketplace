@@ -37,3 +37,5 @@ lighthouse-report*.json
 # Cache
 *.tsbuildinfo
 node_modules/
+.env*.local
+.agents/

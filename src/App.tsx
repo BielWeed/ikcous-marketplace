@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from
 import { motion, AnimatePresence } from 'framer-motion';
 import { Header } from '@/components/ui/custom/Header';
 import { BottomNav } from '@/components/ui/custom/BottomNav';
+import { CartReminder } from '@/components/ui/custom/CartReminder';
 const HomeView = React.lazy(() => import('@/views/customer/HomeView').then(m => ({ default: m.HomeView })));
 const CartView = React.lazy(() => import('@/views/customer/CartView').then(m => ({ default: m.CartView })));
 const ProductView = React.lazy(() => import('@/views/customer/ProductView').then(m => ({ default: m.ProductView })));
@@ -59,6 +60,22 @@ import { useNetworkAdaptive } from '@/hooks/useNetworkAdaptive';
 import { usePredictiveNavigation } from '@/hooks/usePredictiveNavigation';
 import { useBehavioralPrefetch } from '@/hooks/useBehavioralPrefetch';
 import { usePrefetchOnHover } from '@/hooks/usePrefetchOnHover';
+import { useViewTransition } from '@/hooks/useViewTransition';
+import { useSwipeBack } from '@/hooks/useSwipeBack';
+import { useWebVitals } from '@/hooks/useWebVitals';
+
+function DeferredTabContent({ active, children }: { readonly active: boolean; readonly children: React.ReactNode }) {
+  const [hasBeenActive, setHasBeenActive] = useState(false);
+
+  useEffect(() => {
+    if (active) {
+      setHasBeenActive(true);
+    }
+  }, [active]);
+
+  if (!hasBeenActive) return null;
+  return <>{children}</>;
+}
 
 function ViewLoadingFallback() {
   return (
@@ -74,6 +91,31 @@ function AdminRouteLoading() {
     <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
       <div className="w-12 h-12 border-4 border-zinc-900 border-t-transparent rounded-full animate-spin"></div>
       <p className="text-muted-foreground animate-pulse font-medium">Verificando permissões...</p>
+    </div>
+  );
+}
+
+function AdminViewLoadingFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 bg-[#09090b] text-white">
+      <div className="relative w-16 h-16">
+        {/* Outer glowing ring */}
+        <div className="absolute inset-0 rounded-full border-2 border-amber-500/10 animate-ping duration-1000"></div>
+        {/* Spinner */}
+        <div className="w-16 h-16 border-2 border-amber-500/10 border-t-amber-500 rounded-full animate-spin"></div>
+        {/* Center hub */}
+        <div className="absolute inset-4 rounded-full bg-zinc-900 border border-white/5 flex items-center justify-center">
+          <span className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+        </div>
+      </div>
+      <div className="flex flex-col items-center gap-1.5 text-center">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500 animate-pulse">
+          Carregando Módulos
+        </p>
+        <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest leading-none">
+          Painel Administrativo
+        </p>
+      </div>
     </div>
   );
 }
@@ -97,14 +139,11 @@ function AdminAccessDenied({ onNavigate }: { readonly onNavigate: (view: View) =
 }
 import { useRealtimeUpdate } from '@/hooks/useRealtimeUpdate';
 import { StoreProvider } from '@/contexts/StoreContext';
-import { AuthProvider } from '@/contexts/AuthContext';
-import { NotificationProvider } from '@/contexts/NotificationContext';
 import { CartProvider } from '@/contexts/CartContext';
 import { FavoritesProvider } from '@/contexts/FavoritesContext';
 import { useCart } from '@/hooks/useCart';
-import { HelmetProvider } from 'react-helmet-async';
 import { haptic } from '@/utils/haptic';
-import type { View, Product } from '@/types';
+import type { View, Product, SortOption } from '@/types';
 import { UpdateNotification } from '@/components/pwa/UpdateNotification';
 
 export default function App() {
@@ -117,27 +156,88 @@ export default function App() {
   }, []);
 
   return (
-    <HelmetProvider>
-      <StoreProvider>
-        <AuthProvider>
-          <NotificationProvider>
-            <CartProvider>
-              <FavoritesProvider>
-                <AppContent />
-              </FavoritesProvider>
-            </CartProvider>
-          </NotificationProvider>
-        </AuthProvider>
-      </StoreProvider>
-    </HelmetProvider>
+    <StoreProvider>
+      <CartProvider>
+        <FavoritesProvider>
+          <AppContent />
+        </FavoritesProvider>
+      </CartProvider>
+    </StoreProvider>
   );
 }
 
 const getProductById = (products: Product[], id: string) => products.find(p => p.id === id);
 
+const getNavigationDirection = (from: View, to: View): 'forward' | 'back' | 'none' => {
+  // Admin tabs index checking
+  const adminTabs: Record<string, number> = {
+    'admin': 0,
+    'admin-dashboard': 0,
+    'admin-orders': 1,
+    'admin-products': 2,
+    'admin-customers': 3,
+    'admin-settings': 4
+  };
+  
+  if (from in adminTabs && to in adminTabs) {
+    return adminTabs[to] >= adminTabs[from] ? 'forward' : 'back';
+  }
+  
+  // Going from sub-page back to list
+  if (from === 'admin-product-form' && to === 'admin-products') return 'back';
+  if (from === 'admin-user-detail' && to === 'admin-customers') return 'back';
+  if (from === 'admin-push' && (to === 'admin-customers' || to === 'admin' || to === 'admin-dashboard')) return 'back';
+  
+  // Default behaviors for main customer pages
+  const mainTabs: Record<string, number> = {
+    'home': 0,
+    'favorites': 1,
+    'cart': 2,
+    'profile': 3
+  };
+  if (from in mainTabs && to in mainTabs) {
+    return mainTabs[to] >= mainTabs[from] ? 'forward' : 'back';
+  }
+  
+  // Going back to main views from detail views
+  if (from === 'product-detail' && (to === 'home' || to === 'favorites' || to === 'search' || to === 'recently-viewed')) return 'back';
+  if (from === 'checkout' && to === 'cart') return 'back';
+  if (from === 'order-details' && to === 'orders') return 'back';
+  if (from === 'address-form' && to === 'profile') return 'back';
+  if (from === 'account-settings' && to === 'profile') return 'back';
+  if (from === 'auth' && (to === 'home' || to === 'profile')) return 'back';
+  if (from === 'admin' && to === 'profile') return 'back';
+  if (from.startsWith('admin') && to === 'profile') return 'back';
+  
+  return 'forward';
+};
+
+
+const pageVariants = {
+  initial: (direction: 'forward' | 'back' | 'none') => {
+    if (direction === 'none') return { opacity: 0 };
+    return {
+      x: direction === 'forward' ? '100%' : '-30%',
+      opacity: direction === 'forward' ? 1 : 0.5,
+    };
+  },
+  animate: {
+    x: 0,
+    opacity: 1,
+  },
+  exit: (direction: 'forward' | 'back' | 'none') => {
+    if (direction === 'none') return { opacity: 0 };
+    return {
+      x: direction === 'forward' ? '-30%' : '100%',
+      opacity: direction === 'forward' ? 0.5 : 0,
+    };
+  },
+};
+
 const AppContent = () => {
   const { user, isAdmin, loading: authLoading } = useAuth();
   const { products, loading: productsLoading } = useProducts();
+  const { navigate: startTransition, isSupported: isTransitionSupported } = useViewTransition();
   const { cart, addToCart, cartCount, cartTotal, shippingFee, clearCart, updateQuantity, removeFromCart } = useCart();
   const { favorites, toggleFavorite } = useFavorites();
   const { addToRecentlyViewed, getRecentlyViewedProducts, clearRecentlyViewed } = useRecentlyViewed();
@@ -148,32 +248,49 @@ const AppContent = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDebugOpen, setIsDebugOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
+  const [isRouteLoading, setIsRouteLoading] = useState(false);
   const [backOverride, setBackOverride] = useState<(() => void) | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState('Todas');
+  const [sortBy, setSortBy] = useState<SortOption>('default');
   const mainRef = useRef<HTMLElement>(null);
   const scrollSentinelRef = useRef<HTMLDivElement>(null);
   const backOverrideRef = useRef<(() => void) | null>(null);
   const isTransitioningRef = useRef(false);
   const scrollPositionsRef = useRef<Record<string, number>>({});
-  const prevViewRef = useRef<View>('home');
+  const navigationDirectionRef = useRef<'forward' | 'back' | 'none'>('forward');
+  const swipeBackActiveRef = useRef(false);
+  const [navigationDirection, setNavigationDirection] = useState<'forward' | 'back' | 'none'>('forward');
 
   const { setBadge, clearBadge } = useAppBadge();
   const { checkUpdate, updateAvailable, newVersion, performNuclearPurge } = useUpdateCheck();
 
-  const { prefetchView } = usePrefetchOnHover();
+  const { prefetchView, prefetchAll, prefetchViewPromise } = usePrefetchOnHover();
   useCacheWarmer();
   useNetworkAdaptive();
   usePredictiveNavigation(currentView);
   useBehavioralPrefetch(currentView, prefetchView);
+  useWebVitals();
+
+  const favoriteIds = React.useMemo(() => favorites.map(p => p.id), [favorites]);
+
+  const saveCurrentScroll = useCallback(() => {
+    if (!mainRef.current) return;
+    const viewKey = currentView === 'product-detail' && selectedProductId
+      ? `product-detail-${selectedProductId}`
+      : currentView;
+    scrollPositionsRef.current[viewKey] = mainRef.current.scrollTop;
+  }, [currentView, selectedProductId]);
 
   // Sync ref with state to avoid listener closure issues
   useEffect(() => {
     backOverrideRef.current = backOverride;
   }, [backOverride]);
 
-  const handleNavigate = useCallback((view: View, id?: string) => {
+  const handleNavigate = useCallback(async (view: View, id?: string) => {
+    saveCurrentScroll();
     if (isTransitioningRef.current && currentView !== view) {
-      // Exceções para redirecionamentos programáticos críticos (Auth e Fallbacks)
-      if (!['auth', 'login', 'home'].includes(view)) {
+      // Exceções para redirecionamentos programáticos críticos (Auth, Login, Home, Profile, Admin)
+      if (!['auth', 'login', 'home', 'profile', 'admin'].includes(view)) {
         console.warn(`[App] Navigation to ${view} throttled to prevent animation race conditions`);
         return;
       }
@@ -184,25 +301,46 @@ const AppContent = () => {
       targetView = 'auth';
     }
 
+    // Prefetch chunk and show loader if necessary
+    if (currentView !== targetView) {
+      setIsRouteLoading(true);
+      try {
+        await prefetchViewPromise(targetView);
+      } catch (err) {
+        console.error('[App] Failed to prefetch route chunk:', err);
+      } finally {
+        setIsRouteLoading(false);
+      }
+    }
+
     if (currentView !== targetView) {
       isTransitioningRef.current = true;
       setTimeout(() => {
         isTransitioningRef.current = false;
-      }, 300); // 200ms framer duration + 100ms safe buffer
+      }, isTransitionSupported ? 50 : 150); // Much faster lock since view transition handles things natively
     }
 
     const fromView = currentView;
-    setSelectedProductId(id || null);
-    setCurrentView(targetView);
-    setBackOverride(null); // Reset override on navigation
+    const dir = getNavigationDirection(currentView, targetView);
+    navigationDirectionRef.current = dir;
+    setNavigationDirection(dir);
+    startTransition(() => {
+      setSelectedProductId(id || null);
+      setCurrentView(targetView);
+      setBackOverride(null); // Reset override on navigation
+    }, dir);
 
 
     // Sync URL without full reload
-    const path = targetView === 'home' ? '/' : `/${targetView}`;
-    if (globalThis.location.pathname !== path) {
+    let path = targetView === 'home' ? '/' : `/${targetView}`;
+    if (targetView === 'product-detail' && id) {
+      path = `/product-detail?id=${id}`;
+    }
+    const currentPathAndSearch = globalThis.location.pathname + globalThis.location.search;
+    if (currentPathAndSearch !== path) {
       globalThis.history.pushState({ view: targetView, id, from: fromView }, '', path);
     }
-  }, [currentView, authLoading, user]);
+  }, [currentView, authLoading, user, startTransition, isTransitionSupported, prefetchViewPromise, saveCurrentScroll]);
 
 
   const handleProductClick = useCallback((productId: string) => {
@@ -211,8 +349,53 @@ const AppContent = () => {
     haptic.light();
   }, [handleNavigate, addToRecentlyViewed]);
 
+  const handleScroll = useCallback(() => {
+    if (!mainRef.current || isTransitioningRef.current) return;
+    const viewKey = currentView === 'product-detail' && selectedProductId
+      ? `product-detail-${selectedProductId}`
+      : currentView;
+    scrollPositionsRef.current[viewKey] = mainRef.current.scrollTop;
+  }, [currentView, selectedProductId]);
+
+  useLayoutEffect(() => {
+    const mainEl = mainRef.current;
+    if (!mainEl) return;
+
+    const viewKey = currentView === 'product-detail' && selectedProductId
+      ? `product-detail-${selectedProductId}`
+      : currentView;
+
+    const savedScroll = scrollPositionsRef.current[viewKey] || 0;
+
+    const restoreScroll = () => {
+      if (mainRef.current) {
+        mainRef.current.scrollTop = savedScroll;
+      }
+    };
+
+    restoreScroll();
+
+    let rafId2: number;
+
+    const rafId1 = requestAnimationFrame(() => {
+      restoreScroll();
+      rafId2 = requestAnimationFrame(() => {
+        restoreScroll();
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(rafId1);
+      if (rafId2) {
+        cancelAnimationFrame(rafId2);
+      }
+    };
+  }, [currentView, selectedProductId]);
+
+
   const handleBack = useCallback(() => {
     haptic.light();
+    navigationDirectionRef.current = swipeBackActiveRef.current ? 'none' : 'back';
 
     // Standard behavior: just trigger browser back.
     // This fires the 'popstate' event which is handled centraly in syncWithUrl useEffect.
@@ -221,8 +404,44 @@ const AppContent = () => {
     globalThis.scrollTo(0, 0);
   }, []);
 
+  const handleSwipeBack = useCallback(() => {
+    swipeBackActiveRef.current = true;
+    handleBack();
+  }, [handleBack]);
+
+  // Swipe back gesture integration (iOS/Android native feel)
+  const canSwipeBack = currentView !== 'home' && 
+                       currentView !== 'favorites' && 
+                       currentView !== 'cart' && 
+                       currentView !== 'profile' && 
+                       currentView !== 'auth' && 
+                       currentView !== 'login' && 
+                       !currentView.startsWith('admin');
+
+  useSwipeBack({
+    onBack: handleSwipeBack,
+    active: canSwipeBack,
+    mainRef
+  });
+
   const handleOpenNotifications = useCallback(() => {
     handleNavigate('notifications');
+  }, [handleNavigate]);
+
+  const handleAuthSuccess = useCallback(() => {
+    handleNavigate('profile');
+  }, [handleNavigate]);
+
+  const handleAdminLoginSuccess = useCallback(() => {
+    handleNavigate('admin');
+  }, [handleNavigate]);
+
+  const handleAdminUserDetailBack = useCallback(() => {
+    handleNavigate('admin-customers');
+  }, [handleNavigate]);
+
+  const handleOrderDetailsBack = useCallback(() => {
+    handleNavigate('orders');
   }, [handleNavigate]);
 
 
@@ -320,6 +539,7 @@ const AppContent = () => {
 
   useEffect(() => {
     const syncWithUrl = () => {
+      saveCurrentScroll();
       let path = globalThis.location.pathname.slice(1) || 'home';
       // Normalize path (remove trailing slashes)
       path = path.replace(/\/$/, '');
@@ -341,15 +561,30 @@ const AppContent = () => {
           }
         }
 
-        setCurrentView(targetView);
-        // Restore selected product ID if it's in the history state
+        const urlParams = new URLSearchParams(globalThis.location.search);
+        const queryId = urlParams.get('id');
         const stateId = globalThis.history.state?.id;
-        if (stateId) {
-          setSelectedProductId(stateId);
-        } else if (targetView !== 'product-detail' && targetView !== 'order-details' && targetView !== 'admin-product-form' && targetView !== 'admin-user-detail') {
-          // Clear selected product if we moved away from a detail view and have no state
-          setSelectedProductId(null);
-        }
+        const nextSelectedProductId = queryId || stateId || (
+          (targetView !== 'product-detail' && targetView !== 'order-details' && targetView !== 'admin-product-form' && targetView !== 'admin-user-detail')
+            ? null
+            : selectedProductId
+        );
+
+        const isGoingBackToHomeFromProduct = (targetView === 'home' || targetView === 'favorites' || targetView === 'search') && currentView === 'product-detail';
+        const currentDir = navigationDirectionRef.current;
+        setNavigationDirection(currentDir);
+
+        startTransition(() => {
+          setCurrentView(targetView);
+          if (!isGoingBackToHomeFromProduct) {
+            setSelectedProductId(nextSelectedProductId);
+          }
+        }, currentDir, () => {
+          if (isGoingBackToHomeFromProduct) {
+            setSelectedProductId(null);
+          }
+          swipeBackActiveRef.current = false;
+        });
 
         // History Trap for Home: If we are on home and this is the last entry, 
         // push a fake one to prevent closing the app on back button
@@ -365,7 +600,11 @@ const AppContent = () => {
       if (isTransitioningRef.current) {
         console.warn('[App] Popstate blocked by transition lock. Reverting history to maintain sync.');
         // Re-push the state to prevent URL getting out of sync with current locked view
-        const path = currentView === 'home' ? '/' : `/${currentView}`;
+        const path = currentView === 'home' 
+          ? '/' 
+          : (currentView === 'product-detail' && selectedProductId 
+              ? `/product-detail?id=${selectedProductId}` 
+              : `/${currentView}`);
         globalThis.history.pushState(globalThis.history.state || { view: currentView }, '', path);
         return;
       }
@@ -373,7 +612,7 @@ const AppContent = () => {
       isTransitioningRef.current = true;
       setTimeout(() => {
         isTransitioningRef.current = false;
-      }, 300);
+      }, isTransitionSupported ? 50 : 150);
 
       // 1. PRIORITY: Execute any registered override (e.g., closing a modal)
       // We use the Ref to ensure we always have the latest function without re-adding the listener
@@ -388,8 +627,21 @@ const AppContent = () => {
         globalThis.history.pushState({ view: 'home', trap: true }, '', '/');
       }
 
+      // Detect direction for popstate (default to back)
+      if (navigationDirectionRef.current !== 'back' && !swipeBackActiveRef.current) {
+        navigationDirectionRef.current = 'back';
+      } else if (swipeBackActiveRef.current) {
+        navigationDirectionRef.current = 'none';
+      }
+
       // 3. Sync state with current URL
       syncWithUrl();
+
+      // Reset to forward for next transitions
+      setTimeout(() => {
+        navigationDirectionRef.current = 'forward';
+        setNavigationDirection('forward');
+      }, 150);
     };
 
     globalThis.addEventListener('popstate', handlePopState);
@@ -397,7 +649,7 @@ const AppContent = () => {
     return () => {
       globalThis.removeEventListener('popstate', handlePopState);
     };
-  }, [currentView, authLoading, user]);
+  }, [currentView, authLoading, user, startTransition, isTransitionSupported, selectedProductId, saveCurrentScroll]);
 
   // Clear search query when navigating to non-search views
   useEffect(() => {
@@ -421,38 +673,7 @@ const AppContent = () => {
     }
   }, [currentView, selectedProductId, products, authLoading, productsLoading]);
 
-  // Centralized Scroll Restoration and View-Change Reset
-  useLayoutEffect(() => {
-    const prevView = prevViewRef.current;
-    const nextView = currentView;
-    prevViewRef.current = nextView;
-
-    if (prevView === nextView) return;
-
-    // Save scroll position of the previous view before it's destroyed/swapped
-    if (mainRef.current) {
-      const currentScroll = mainRef.current.scrollTop;
-      scrollPositionsRef.current[prevView] = currentScroll;
-    }
-
-    // Restore scroll position for the next view.
-    // Restore immediately, after 160ms (exit animation end), and after 300ms (safe fallback for lazy chunks)
-    const restoreScroll = () => {
-      if (mainRef.current) {
-        const savedScroll = scrollPositionsRef.current[nextView] || 0;
-        mainRef.current.scrollTop = savedScroll;
-      }
-    };
-
-    restoreScroll();
-    const timer1 = setTimeout(restoreScroll, 160);
-    const timer2 = setTimeout(restoreScroll, 300);
-
-    return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-    };
-  }, [currentView]);
+  // Unified scroll restoration is handled in the consolidated useLayoutEffect hook above
 
 
   // Sync PWA Badge with cart count
@@ -498,6 +719,16 @@ const AppContent = () => {
     return () => clearTimeout(safetyTimer);
   }, [authLoading, productsLoading]);
 
+  // Preemptively prefetch all view chunks in background when network is idle
+  useEffect(() => {
+    if (!authLoading && !productsLoading) {
+      const timer = setTimeout(() => {
+        prefetchAll();
+      }, 800); // 800ms delay to ensure first paint is completely done
+      return () => clearTimeout(timer);
+    }
+  }, [authLoading, productsLoading, prefetchAll]);
+
 
   const handleToggleFavorite = useCallback((product: Product) => {
     toggleFavorite(product);
@@ -521,12 +752,86 @@ const AppContent = () => {
   }, [addToCart]);
 
   const renderAdminContent = () => {
+    const isMainTab = ['admin-dashboard', 'admin', 'admin-products', 'admin-orders', 'admin-customers', 'admin-settings'].includes(currentView);
+
+    if (isMainTab) {
+      return (
+        <div className="relative w-full min-h-[60vh]">
+          <motion.div
+            initial={false}
+            animate={
+              (currentView === 'admin-dashboard' || currentView === 'admin')
+                ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
+                : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
+            }
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="w-full top-0 left-0"
+          >
+            <DeferredTabContent active={currentView === 'admin-dashboard' || currentView === 'admin'}>
+              <AdminDashboard onNavigate={handleNavigate} active={currentView === 'admin-dashboard' || currentView === 'admin'} />
+            </DeferredTabContent>
+          </motion.div>
+          <motion.div
+            initial={false}
+            animate={
+              currentView === 'admin-products'
+                ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
+                : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
+            }
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="w-full top-0 left-0"
+          >
+            <DeferredTabContent active={currentView === 'admin-products'}>
+              <AdminProducts onNavigate={handleNavigate} active={currentView === 'admin-products'} />
+            </DeferredTabContent>
+          </motion.div>
+          <motion.div
+            initial={false}
+            animate={
+              currentView === 'admin-orders'
+                ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
+                : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
+            }
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="w-full top-0 left-0"
+          >
+            <DeferredTabContent active={currentView === 'admin-orders'}>
+              <AdminOrders onNavigate={handleNavigate} active={currentView === 'admin-orders'} />
+            </DeferredTabContent>
+          </motion.div>
+          <motion.div
+            initial={false}
+            animate={
+              currentView === 'admin-customers'
+                ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
+                : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
+            }
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="w-full top-0 left-0"
+          >
+            <DeferredTabContent active={currentView === 'admin-customers'}>
+              <AdminCustomers onNavigate={handleNavigate} active={currentView === 'admin-customers'} />
+            </DeferredTabContent>
+          </motion.div>
+          <motion.div
+            initial={false}
+            animate={
+              currentView === 'admin-settings'
+                ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
+                : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
+            }
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="w-full top-0 left-0"
+          >
+            <DeferredTabContent active={currentView === 'admin-settings'}>
+              <AdminSettings onNavigate={handleNavigate} active={currentView === 'admin-settings'} />
+            </DeferredTabContent>
+          </motion.div>
+        </div>
+      );
+    }
+
     switch (currentView) {
-      case 'admin-dashboard':
-      case 'admin':
-        return <AdminDashboard onNavigate={handleNavigate} />;
-      case 'admin-products':
-        return <AdminProducts onNavigate={handleNavigate} />;
       case 'admin-product-form':
         return (
           <AdminProductForm
@@ -534,26 +839,27 @@ const AppContent = () => {
             onNavigate={handleNavigate}
           />
         );
-      case 'admin-orders':
-        return <AdminOrders onNavigate={handleNavigate} />;
       case 'admin-coupons':
         return <AdminCoupons onNavigate={handleNavigate} />;
       case 'admin-banners':
         return <AdminBanners onNavigate={handleNavigate} />;
-      case 'admin-settings':
-        return <AdminSettings onNavigate={handleNavigate} />;
       case 'admin-reviews':
         return <AdminReviews onNavigate={handleNavigate} />;
       case 'admin-qa':
         return <AdminQA onNavigate={handleNavigate} />;
-      case 'admin-customers':
-        return <AdminCustomers onNavigate={handleNavigate} />;
       case 'admin-user-detail':
         return (
           <AdminUserDetail
             userId={selectedProductId || ''}
-            onBack={() => handleNavigate('admin-customers')}
+            onBack={handleAdminUserDetailBack}
             onNavigate={handleNavigate}
+          />
+        );
+      case 'admin-push':
+        return (
+          <AdminPush
+            onNavigate={handleNavigate}
+            targetUserId={selectedProductId || undefined}
           />
         );
       default:
@@ -562,7 +868,20 @@ const AppContent = () => {
   };
 
   const renderView = () => {
-    if (authLoading) {
+    const adminViews: View[] = [
+      'admin', 'admin-dashboard', 'admin-products', 'admin-product-form',
+      'admin-orders', 'admin-coupons', 'admin-banners', 'admin-settings',
+      'admin-reviews', 'admin-qa', 'admin-customers', 'admin-user-detail', 'admin-push'
+    ];
+
+    const privateViews: View[] = [
+      'profile', 'account-settings', 'address-form', 'checkout', 'orders', 'order-details',
+      ...adminViews
+    ];
+
+    const isPrivateView = privateViews.includes(currentView);
+
+    if (authLoading && isPrivateView) {
       return (
         <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
           <div className="w-12 h-12 border-4 border-zinc-900 border-t-transparent rounded-full animate-spin"></div>
@@ -571,18 +890,14 @@ const AppContent = () => {
       );
     }
 
-    const adminViews: View[] = [
-      'admin', 'admin-dashboard', 'admin-products', 'admin-product-form',
-      'admin-orders', 'admin-coupons', 'admin-banners', 'admin-settings',
-      'admin-reviews', 'admin-qa', 'admin-customers', 'admin-user-detail', 'admin-push'
-    ];
-
     if (adminViews.includes(currentView)) {
       if (!isAdmin) return <AdminAccessDenied onNavigate={handleNavigate} />;
 
       return (
         <AdminLayout currentView={currentView} onNavigate={handleNavigate}>
-          {renderAdminContent()}
+          <React.Suspense fallback={<AdminViewLoadingFallback />}>
+            {renderAdminContent()}
+          </React.Suspense>
         </AdminLayout>
       );
     }
@@ -650,14 +965,14 @@ const AppContent = () => {
         return (
           <AuthView
             onNavigate={handleNavigate}
-            onSuccess={() => handleNavigate('profile')}
+            onSuccess={handleAuthSuccess}
           />
         );
 
       case 'admin-login':
         return (
           <AdminLogin
-            onLogin={() => handleNavigate('admin')}
+            onLogin={handleAdminLoginSuccess}
             onNavigate={handleNavigate}
           />
         );
@@ -683,7 +998,7 @@ const AppContent = () => {
           <OrderDetailsView
             key={user?.id ? `order-details-${user.id}` : 'order-details-guest'}
             orderId={selectedProductId || ''}
-            onBack={() => handleNavigate('orders')}
+            onBack={handleOrderDetailsBack}
             onNavigate={handleNavigate}
           />
         );
@@ -696,6 +1011,7 @@ const AppContent = () => {
             onToggleFavorite={handleToggleFavorite}
             onProductClick={handleProductClick}
             onNavigate={handleNavigate}
+            selectedProductId={selectedProductId || undefined}
           />
         );
 
@@ -704,7 +1020,7 @@ const AppContent = () => {
           <RecentlyViewedView
             key={user?.id ? `recently-viewed-${user.id}` : 'recently-viewed-guest'}
             products={recentlyViewedProducts}
-            favorites={favorites.map(f => f.id)}
+            favorites={favoriteIds}
             onToggleFavorite={handleToggleFavorite}
             onProductClick={handleProductClick}
             onNavigate={handleNavigate}
@@ -732,6 +1048,7 @@ const AppContent = () => {
             onNavigate={handleNavigate}
             initialQuery={searchQuery}
             onBack={() => handleNavigate('home')}
+            selectedProductId={selectedProductId || undefined}
           />
         );
       case 'home':
@@ -739,7 +1056,7 @@ const AppContent = () => {
         return (
           <HomeView
             products={products}
-            favorites={favorites.map(p => p.id)}
+            favorites={favoriteIds}
             recentlyViewedProducts={recentlyViewedProducts}
             onToggleFavorite={handleToggleFavorite}
             onProductClick={handleProductClick}
@@ -749,6 +1066,11 @@ const AppContent = () => {
             onQuickBuy={handleQuickBuy}
             scrollProgress={scrollProgress}
             isLoading={productsLoading}
+            selectedProductId={selectedProductId || undefined}
+            selectedCategory={selectedCategory}
+            onCategoryChange={setSelectedCategory}
+            sortBy={sortBy}
+            onSortByChange={setSortBy}
           />
         );
 
@@ -756,9 +1078,10 @@ const AppContent = () => {
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] w-screen overflow-hidden bg-white">
+    <div className="flex flex-col h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
+      {isRouteLoading && <div className="route-loading-bar" />}
       {!currentView.startsWith('admin') && (
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 gpu-accelerated">
           <Header
             onNavigate={handleNavigate}
             showBackButton={
@@ -782,8 +1105,9 @@ const AppContent = () => {
 
       <main
         ref={mainRef}
+        onScroll={handleScroll}
         className={cn(
-          "relative flex-1 flex flex-col overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch]",
+          "relative flex-1 flex flex-col overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch] gpu-accelerated",
           currentView.startsWith('admin') && "h-full pt-0"
         )}
       >
@@ -801,23 +1125,35 @@ const AppContent = () => {
           }}
         />
 
-        <AnimatePresence mode="wait">
-          {currentView.startsWith('admin') ? (
-            <div 
-              key="admin-layout"
-              className="h-full pt-0"
-            >
-              <React.Suspense fallback={<ViewLoadingFallback />}>
-                {renderView()}
-              </React.Suspense>
-            </div>
-          ) : (
+        {currentView.startsWith('admin') ? (
+          <div 
+            key="admin-layout"
+            className="h-full pt-0"
+          >
+            <React.Suspense fallback={<AdminViewLoadingFallback />}>
+              {renderView()}
+            </React.Suspense>
+          </div>
+        ) : isTransitionSupported ? (
+          <div
+            className="flex-1 flex flex-col !outline-none focus:!outline-none"
+            tabIndex={-1}
+            style={{ WebkitTapHighlightColor: 'transparent', outline: 'none' }}
+          >
+            <React.Suspense fallback={<ViewLoadingFallback />}>
+              {renderView()}
+            </React.Suspense>
+          </div>
+        ) : (
+          <AnimatePresence mode="popLayout" custom={navigationDirection}>
             <motion.div
               key={currentView}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
+              custom={navigationDirection}
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={{ type: 'tween', ease: [0.16, 1, 0.3, 1], duration: 0.34 }}
               className="flex-1 flex flex-col !outline-none focus:!outline-none"
               tabIndex={-1}
               style={{ WebkitTapHighlightColor: 'transparent', outline: 'none' }}
@@ -826,12 +1162,16 @@ const AppContent = () => {
                 {renderView()}
               </React.Suspense>
             </motion.div>
-          )}
-        </AnimatePresence>
+          </AnimatePresence>
+        )}
       </main>
 
+      {currentView === 'home' && (
+        <CartReminder onAction={() => handleNavigate('cart')} />
+      )}
+
       {!currentView.startsWith('admin') && currentView !== 'order-success' && (
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 gpu-accelerated">
           <BottomNav
             currentView={currentView}
             onNavigate={handleNavigate}

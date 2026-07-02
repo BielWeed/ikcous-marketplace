@@ -45,19 +45,28 @@ serve(async (req: Request) => {
         }
 
         const payload = await req.json()
-        const { title, body, url, targetUserId } = payload
+        const { title, body, url, targetUserId, tokens, data } = payload
 
-        console.log(`Sending push notification: ${title} - ${body} (Target: ${targetUserId || 'All'})`)
+        console.log(`Sending push notification: ${title} - ${body} (Target: ${targetUserId || 'All'}, Tokens count: ${tokens?.length || 0})`)
 
-        // Fetch subscriptions (selective or all)
-        const query = supabaseClient.from('push_subscriptions').select('*')
-        if (targetUserId) {
-            query.eq('user_id', targetUserId)
+        let subscriptions: any[] = [];
+        if (tokens && Array.isArray(tokens)) {
+            subscriptions = tokens.map((t: any) => ({
+                endpoint: t.endpoint,
+                p256dh: t.keys?.p256dh || t.p256dh,
+                auth: t.keys?.auth || t.auth
+            }));
+        } else {
+            // Fetch subscriptions (selective or all)
+            const query = supabaseClient.from('push_subscriptions').select('*')
+            if (targetUserId) {
+                query.eq('user_id', targetUserId)
+            }
+
+            const { data, error: subError } = await query
+            if (subError) throw subError
+            subscriptions = data || [];
         }
-
-        const { data: subscriptions, error: subError } = await query
-
-        if (subError) throw subError
 
         const vapidKeys = {
             publicKey: Deno.env.get('VAPID_PUBLIC_KEY')!,
@@ -68,47 +77,55 @@ serve(async (req: Request) => {
             throw new Error('VAPID keys not configured in environment variables')
         }
 
-        const results = await Promise.allSettled(
-            (subscriptions || []).map(async (sub: any) => {
-                try {
-                    const pushSubscription = {
-                        endpoint: sub.endpoint,
-                        keys: {
-                            p256dh: sub.p256dh,
-                            auth: sub.auth,
+        const batchSize = 100;
+        const results: any[] = [];
+
+        for (let i = 0; i < subscriptions.length; i += batchSize) {
+            const batch = subscriptions.slice(i, i + batchSize);
+            const batchResults = await Promise.allSettled(
+                batch.map(async (sub: any) => {
+                    try {
+                        const pushSubscription = {
+                            endpoint: sub.endpoint,
+                            keys: {
+                                p256dh: sub.p256dh,
+                                auth: sub.auth,
+                            }
+                        };
+
+                        const notificationPayload = JSON.stringify({
+                            title,
+                            body,
+                            url: url || '/',
+                            data: data || null
+                        });
+
+                        await webpush.sendNotification(pushSubscription, notificationPayload, {
+                            vapidDetails: {
+                                subject: 'mailto:admin@example.org',
+                                publicKey: vapidKeys.publicKey,
+                                privateKey: vapidKeys.privateKey,
+                            },
+                        });
+
+                        return { success: true, endpoint: sub.endpoint };
+                    } catch (err: any) {
+                        console.error(`Error sending to ${sub.endpoint}:`, err);
+
+                        // If expired or invalid, we could remove it
+                        if (err.statusCode === 410 || err.statusCode === 404) {
+                            await supabaseClient.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
                         }
-                    };
 
-                    const notificationPayload = JSON.stringify({
-                        title,
-                        body,
-                        url: url || '/'
-                    });
-
-                    await webpush.sendNotification(pushSubscription, notificationPayload, {
-                        vapidDetails: {
-                            subject: 'mailto:admin@ikcous.com',
-                            publicKey: vapidKeys.publicKey,
-                            privateKey: vapidKeys.privateKey,
-                        },
-                    });
-
-                    return { success: true, endpoint: sub.endpoint };
-                } catch (err: any) {
-                    console.error(`Error sending to ${sub.endpoint}:`, err);
-
-                    // If expired or invalid, we could remove it
-                    if (err.statusCode === 410 || err.statusCode === 404) {
-                        await supabaseClient.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+                        throw err;
                     }
-
-                    throw err;
-                }
-            })
-        )
+                })
+            );
+            results.push(...batchResults);
+        }
 
         return new Response(
-            JSON.stringify({ success: true, total: (subscriptions || []).length, results }),
+            JSON.stringify({ success: true, total: subscriptions.length, results }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
     } catch (error: any) {

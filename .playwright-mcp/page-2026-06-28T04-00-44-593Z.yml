@@ -1,0 +1,137 @@
+- generic [ref=e3]:
+  - banner [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - button "Voltar" [active] [ref=e1209] [cursor=pointer]:
+          - img [ref=e1210]
+        - button "Ir para o Início" [ref=e8] [cursor=pointer]:
+          - generic [ref=e9]:
+            - generic [ref=e11]: I
+            - generic [ref=e13]:
+              - generic [ref=e14]: IKCOUS
+              - generic [ref=e15]: imports
+      - generic [ref=e19]:
+        - img [ref=e20]
+        - generic:
+          - generic:
+            - generic: O que busca hoje?
+        - textbox [ref=e23]
+      - generic [ref=e24]:
+        - button "Carrinho" [ref=e25] [cursor=pointer]:
+          - img [ref=e26]
+        - button [ref=e30] [cursor=pointer]:
+          - img [ref=e31]
+  - main [ref=e34]:
+    - generic [ref=e1212]:
+      - generic [ref=e1213]:
+        - img "maleta canetas 120" [ref=e1215]
+        - generic [ref=e1216]:
+          - button [ref=e1217] [cursor=pointer]:
+            - img [ref=e1218]
+          - button [ref=e1220] [cursor=pointer]:
+            - img [ref=e1221]
+      - generic [ref=e1228]:
+        - generic [ref=e1229]:
+          - img "maleta canetas 120" [ref=e1231]
+          - generic [ref=e1232]:
+            - heading "maleta canetas 120" [level=2] [ref=e1233]
+            - generic [ref=e1234]: R$ 89,90
+        - button "Adicionar ao Carrinho" [ref=e1235] [cursor=pointer]
+      - generic [ref=e1236]:
+        - navigation [ref=e1237]:
+          - button "Início" [ref=e1238] [cursor=pointer]
+          - img [ref=e1239]
+          - button "brinquedo" [ref=e1241] [cursor=pointer]
+          - img [ref=e1242]
+          - generic [ref=e1244]: maleta canetas 120
+        - generic [ref=e1246]:
+          - img [ref=e1247]
+          - text: Frete Grátis
+        - heading "maleta canetas 120" [level=1] [ref=e1252]
+        - generic [ref=e1254]: R$ 89,90
+        - generic [ref=e1255]:
+          - img [ref=e1256]
+          - generic [ref=e1258]: Corre, estão acabando! Apenas 2 unidades
+        - generic [ref=e1259]:
+          - generic [ref=e1260]:
+            - generic [ref=e1261]: Quantidade
+            - generic [ref=e1262]:
+              - button "Diminuir quantidade" [disabled] [ref=e1263]:
+                - img [ref=e1264]
+              - generic [ref=e1265]: "1"
+              - button "Aumentar quantidade" [ref=e1266] [cursor=pointer]:
+                - img [ref=e1267]
+          - generic [ref=e1268]:
+            - button [ref=e1269] [cursor=pointer]:
+              - img [ref=e1270]
+            - button "Adicionar ao Carrinho" [ref=e1272] [cursor=pointer]:
+              - img [ref=e1273]
+              - generic [ref=e1277]: Adicionar ao Carrinho
+        - generic [ref=e1278]:
+          - button "Detalhes" [ref=e1279] [cursor=pointer]
+          - button "Reviews (0)" [ref=e1280] [cursor=pointer]
+          - button "Chat" [ref=e1281] [cursor=pointer]
+        - generic [ref=e1282]:
+          - generic [ref=e1283]:
+            - paragraph [ref=e1284]: "🎨 Maleta Premium 120 Cores: O Combo Perfeito para Seus Livros de Colorir!"
+            - paragraph [ref=e1285]:
+              - text: Transforme seus momentos de relaxamento em verdadeiras obras de arte! Se você é fã dos adoráveis livros de colorir estilo
+              - strong [ref=e1286]: Bobbie Goods
+              - text: e ama passar o tempo dando vida a ilustrações fofas, esta maleta com 120 marcadores de ponta dupla é tudo o que você precisava.
+            - paragraph [ref=e1287]: "---"
+            - heading "✨ Por que esta maleta vai ser a sua nova queridinha?" [level=3] [ref=e1288]
+            - paragraph [ref=e1289]:
+              - text: "*"
+              - strong [ref=e1290]: "🌈 120 Tons Incríveis:"
+              - text: Diga adeus à falta de opções! De tons pastéis super delicados (perfeitos para pelúcias e cenários) a cores vibrantes e intensas, você terá a paleta exata para qualquer desenho.
+              - text: "*"
+              - strong [ref=e1291]: "🖌️ Ponta Dupla Inteligente:"
+              - text: Versatilidade em dobro. Use a ponta grossa (chanfrada) para preencher grandes áreas rapidamente e sem deixar marcas, e a ponta fina para os detalhes menores e cantinhos difíceis.
+              - text: "*"
+              - strong [ref=e1292]: "🎒 Maleta Organizadora:"
+              - text: Leve sua terapia em forma de cores para qualquer lugar. A maleta com alça mantém todos os seus 120 marcadores perfeitamente organizados e fáceis de visualizar.
+              - text: "*"
+              - strong [ref=e1293]: "💧 Cobertura Uniforme e Lisa:"
+              - text: A tinta de alta qualidade desliza suavemente pelo papel, garantindo aquele acabamento lisinho, sem manchas e com aspecto profissional que a gente tanto ama ver nos vídeos da internet.
+            - paragraph [ref=e1294]:
+              - text: ">"
+              - strong [ref=e1295]: "Dica de Artista:"
+              - text: O preenchimento uniforme destes marcadores é o segredo para deixar os seus desenhos com aquela estética perfeita e satisfatória, digna de compartilhar no TikTok e no Instagram!
+            - paragraph [ref=e1296]: "---"
+            - paragraph [ref=e1297]:
+              - strong [ref=e1298]: "Perfeito para:"
+              - text: Fãs de livros de colorir, amantes de papelaria, estudantes, ilustradores e qualquer pessoa que busque um hobby criativo para desconectar das telas e aliviar a ansiedade.
+            - paragraph [ref=e1299]:
+              - strong [ref=e1300]: "Contém na embalagem:"
+            - paragraph [ref=e1301]:
+              - text: "* 120x Marcadores de Ponta Dupla"
+              - text: "* 1x Maleta de Transporte em Tecido Resistente com Alça"
+              - text: "* 1x Base plástica interna para manter as canetas em pé"
+          - generic [ref=e1302]:
+            - generic [ref=e1303]:
+              - img [ref=e1305]
+              - generic [ref=e1308]: Troca garantida em até 24h após entrega
+            - generic [ref=e1309]:
+              - img [ref=e1311]
+              - generic [ref=e1316]: Entrega em Monte Carmelo, MG
+            - generic [ref=e1317]:
+              - img [ref=e1319]
+              - generic [ref=e1323]: Produto em estoque - Envio rápido
+        - generic [ref=e1325]:
+          - generic [ref=e1326]: Curadoria Especial
+          - heading "Você também pode gostar" [level=3] [ref=e1327]
+  - navigation "Navegação principal" [ref=e39]:
+    - generic [ref=e40]:
+      - button "Início" [ref=e41] [cursor=pointer]:
+        - img [ref=e43]
+        - generic [ref=e46]: Início
+      - button "Favoritos" [ref=e48] [cursor=pointer]:
+        - img [ref=e50]
+        - generic [ref=e52]: Favoritos
+      - button "Carrinho" [ref=e53] [cursor=pointer]:
+        - img [ref=e55]
+        - generic [ref=e59]: Carrinho
+      - button "Perfil" [ref=e60] [cursor=pointer]:
+        - img [ref=e62]
+        - generic [ref=e65]: Perfil
+  - region "Notifications alt+T"

@@ -23,6 +23,45 @@ export function useProducts({ autoFetch = true } = {}) {
     await refreshContext();
   }, [refreshContext]);
 
+  const backupStorageFile = useCallback(async (url: string): Promise<string | null> => {
+    try {
+      if (!url) return null;
+      if (url.includes('placehold.co') || url.includes('placeholder')) return url;
+
+      const parts = url.split('/public/products/');
+      if (parts.length < 2) return url;
+      const filePath = decodeURIComponent(parts[1]);
+
+      if (filePath.startsWith('backup/')) return url;
+
+      const fileParts = filePath.split('.');
+      const ext = fileParts.pop();
+      const baseName = fileParts.join('.');
+      const timestamp = Date.now();
+      const newFilePath = `backup/${baseName}_${timestamp}.${ext}`;
+
+      const { error } = await supabase.storage
+        .from('products')
+        .move(filePath, newFilePath);
+
+      if (error) {
+        console.error('[useProducts] Error moving file to backup in storage:', error, filePath, newFilePath);
+        return url;
+      } else {
+        console.log('[useProducts] Moved storage file to backup:', filePath, '->', newFilePath);
+        const { data: { publicUrl } } = supabase.storage
+          .from('products')
+          .getPublicUrl(newFilePath);
+        return publicUrl;
+      }
+    } catch (err) {
+      console.error('[useProducts] Failed to backup storage file:', err, url);
+      return url;
+    }
+  }, []);
+
+
+
   // Load products with pagination and filtering (Admin focus)
   const loadProducts = useCallback(async (page = 0, pageSize = 10, filters?: any) => {
     if (isFetchingRef.current) return null;
@@ -41,7 +80,7 @@ export function useProducts({ autoFetch = true } = {}) {
       // Use the public view for everyone else to avoid 403 Forbidden and sanitize data
       let query: any;
       if (isAdmin) {
-        query = supabase.from('produtos').select('*', { count: 'exact' });
+        query = supabase.from('produtos').select('*', { count: 'exact' }).is('deleted_at', null);
       } else {
         query = supabase.from('vw_produtos_public').select('*', { count: 'exact' });
       }
@@ -149,6 +188,7 @@ export function useProducts({ autoFetch = true } = {}) {
           meta_title: productData.metaTitle,
           meta_description: productData.metaDescription,
           tags: productData.tags || [],
+          codigo: productData.sku || null,
           sold: 0
         } as any)
         .select()
@@ -194,6 +234,12 @@ export function useProducts({ autoFetch = true } = {}) {
       // TruthGate: Security & Logic Validation
       TruthGate.verifyProductAxiom(updates);
 
+      let oldImages: string[] = [];
+      if (updates.images !== undefined) {
+        const oldProduct = products.find(p => p.id === id) || await fetchProduct(id);
+        oldImages = oldProduct?.images || [];
+      }
+
       const dbUpdates: any = {};
       if (updates.name !== undefined) dbUpdates.nome = updates.name;
       if (updates.description !== undefined) dbUpdates.descricao = updates.description;
@@ -213,6 +259,7 @@ export function useProducts({ autoFetch = true } = {}) {
       if (updates.metaDescription !== undefined) dbUpdates.meta_description = updates.metaDescription;
       if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
       if (updates.sold !== undefined) dbUpdates.sold = updates.sold;
+      if (updates.sku !== undefined) dbUpdates.codigo = updates.sku || null;
 
       const { data, error } = await supabase
         .from('produtos')
@@ -228,6 +275,16 @@ export function useProducts({ autoFetch = true } = {}) {
 
       if (data) {
         const updatedProduct = mapProductFromDB(data);
+
+        // Clean up removed images from storage
+        if (updates.images !== undefined) {
+          const newImages = updates.images;
+          const removedImages = oldImages.filter(img => !newImages.includes(img));
+          for (const img of removedImages) {
+            await backupStorageFile(img);
+          }
+        }
+
         await refreshContext();
         toast.success('Produto atualizado!');
         return updatedProduct;
@@ -245,11 +302,41 @@ export function useProducts({ autoFetch = true } = {}) {
       return;
     }
     try {
+      const product = await fetchProduct(id);
+      if (!product) {
+        throw new Error('Produto não encontrado');
+      }
+
+      // Move product images to backup
+      const backedUpImages: string[] = [];
+      if (product.images && product.images.length > 0) {
+        for (const img of product.images) {
+          const newUrl = await backupStorageFile(img);
+          backedUpImages.push(newUrl || img);
+        }
+      }
+
+      // Move variant images to backup
+      const variants = product.variants || [];
+      for (const v of variants) {
+        if (v.imageUrl) {
+          const newUrl = await backupStorageFile(v.imageUrl);
+          if (newUrl) {
+            await supabase
+              .from('product_variants')
+              .update({ image_url: newUrl } as any)
+              .eq('id', v.id);
+          }
+        }
+      }
+
       const { error } = await supabase
         .from('produtos')
         .update({
           deleted_at: new Date().toISOString(),
-          ativo: false
+          ativo: false,
+          imagem_urls: backedUpImages,
+          imagem_url: backedUpImages[0] || null
         })
         .eq('id', id);
 
@@ -267,16 +354,50 @@ export function useProducts({ autoFetch = true } = {}) {
 
   // Bulk Delete
   const deleteProducts = async (ids: string[]) => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return false;
+    }
     try {
-      const { error } = await supabase
-        .from('produtos')
-        .update({
-          deleted_at: new Date().toISOString(),
-          ativo: false
-        })
-        .in('id', ids);
+      for (const id of ids) {
+        const product = await fetchProduct(id);
+        if (!product) continue;
 
-      if (error) throw error;
+        // Move product images to backup
+        const backedUpImages: string[] = [];
+        if (product.images && product.images.length > 0) {
+          for (const img of product.images) {
+            const newUrl = await backupStorageFile(img);
+            backedUpImages.push(newUrl || img);
+          }
+        }
+
+        // Move variant images to backup
+        const variants = product.variants || [];
+        for (const v of variants) {
+          if (v.imageUrl) {
+            const newUrl = await backupStorageFile(v.imageUrl);
+            if (newUrl) {
+              await supabase
+                .from('product_variants')
+                .update({ image_url: newUrl } as any)
+                .eq('id', v.id);
+            }
+          }
+        }
+
+        const { error } = await supabase
+          .from('produtos')
+          .update({
+            deleted_at: new Date().toISOString(),
+            ativo: false,
+            imagem_urls: backedUpImages,
+            imagem_url: backedUpImages[0] || null
+          })
+          .eq('id', id);
+
+        if (error) throw error;
+      }
 
       await refreshContext();
       toast.success(`${ids.length} produtos removidos`);
@@ -290,6 +411,10 @@ export function useProducts({ autoFetch = true } = {}) {
 
   // Bulk Status Update
   const updateProductsStatus = async (ids: string[], isActive: boolean) => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return false;
+    }
     try {
       const { error } = await supabase
         .from('produtos')
@@ -376,7 +501,7 @@ export function useProducts({ autoFetch = true } = {}) {
       // Use the base table for admins to see 'custo' and other hidden fields
       let pQuery: any;
       if (isAdmin) {
-        pQuery = supabase.from('produtos').select('*').eq('id', id).single();
+        pQuery = supabase.from('produtos').select('*').eq('id', id).is('deleted_at', null).single();
       } else {
         pQuery = supabase.from('vw_produtos_public').select('*').eq('id', id).single();
       }
@@ -453,6 +578,10 @@ export function useProducts({ autoFetch = true } = {}) {
 
   // Variant Management
   const addVariant = async (variantData: Omit<ProductVariant, 'id'>) => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return;
+    }
     try {
       const { data, error } = await supabase
         .from('product_variants')
@@ -498,7 +627,21 @@ export function useProducts({ autoFetch = true } = {}) {
   };
 
   const updateVariant = async (id: string, updates: Partial<ProductVariant>) => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return;
+    }
     try {
+      let oldImageUrl: string | null = null;
+      if (updates.imageUrl !== undefined) {
+        const { data: variant } = await supabase
+          .from('product_variants')
+          .select('image_url' as any)
+          .eq('id', id)
+          .single() as any;
+        oldImageUrl = variant?.image_url || null;
+      }
+
       const dbUpdates: any = {};
       if (updates.name !== undefined) dbUpdates.name = updates.name;
       if (updates.value !== undefined) dbUpdates.value = updates.value;
@@ -518,6 +661,10 @@ export function useProducts({ autoFetch = true } = {}) {
       if (error) throw error;
 
       if (data) {
+        if (updates.imageUrl !== undefined && oldImageUrl && oldImageUrl !== updates.imageUrl) {
+          await backupStorageFile(oldImageUrl);
+        }
+
         // Update local state
         await refreshContext();
         toast.success('Variante atualizada');
@@ -530,7 +677,17 @@ export function useProducts({ autoFetch = true } = {}) {
   };
 
   const deleteVariant = async (id: string) => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return;
+    }
     try {
+      const { data: variant } = await supabase
+        .from('product_variants')
+        .select('image_url' as any)
+        .eq('id', id)
+        .single() as any;
+
       const { error } = await supabase
         .from('product_variants')
         .delete()
@@ -538,11 +695,51 @@ export function useProducts({ autoFetch = true } = {}) {
 
       if (error) throw error;
 
+      if (variant?.image_url) {
+        await backupStorageFile(variant.image_url);
+      }
+
       await refreshContext();
       toast.success('Variante removida');
     } catch (err) {
       console.error('Error deleting variant:', err);
       toast.error('Erro ao remover variante');
+      throw err;
+    }
+  };
+
+  const deleteVariants = async (ids: string[]) => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return false;
+    }
+    try {
+      const { data: variants } = await supabase
+        .from('product_variants')
+        .select('image_url' as any)
+        .in('id', ids) as any;
+
+      const { error } = await supabase
+        .from('product_variants')
+        .delete()
+        .in('id', ids);
+
+      if (error) throw error;
+
+      if (variants && variants.length > 0) {
+        for (const v of variants) {
+          if (v.image_url) {
+            await backupStorageFile(v.image_url);
+          }
+        }
+      }
+
+      await refreshContext();
+      toast.success('Variantes removidas');
+      return true;
+    } catch (err) {
+      console.error('Error deleting variants:', err);
+      toast.error('Erro ao remover variantes');
       throw err;
     }
   };
@@ -568,6 +765,7 @@ export function useProducts({ autoFetch = true } = {}) {
     addVariant,
     updateVariant,
     deleteVariant,
+    deleteVariants,
     fetchProduct,
     getFreeShippingEligibleProducts,
     toggleProductStatus

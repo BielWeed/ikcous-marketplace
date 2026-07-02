@@ -18,6 +18,7 @@ interface ProductCarouselProps {
     icon?: React.ReactNode;
     accentColor?: string;
     className?: string;
+    selectedProductId?: string;
 }
 
 export const ProductCarousel = React.memo(function ProductCarousel({
@@ -31,7 +32,8 @@ export const ProductCarousel = React.memo(function ProductCarousel({
     onQuickBuy,
     icon,
     accentColor = "amber",
-    className
+    className,
+    selectedProductId
 }: ProductCarouselProps) {
     const { config } = useStore();
     const { prefetchView } = usePrefetchOnHover();
@@ -141,6 +143,7 @@ export const ProductCarousel = React.memo(function ProductCarousel({
                                 onTouchStart={handlePrefetchProductDetail}
                                 priority={index < 3}
                                 isEligibleForFreeShipping={config.freeShippingMin > 0}
+                                selectedProductId={selectedProductId}
                             />
                         </div>
                     ))}

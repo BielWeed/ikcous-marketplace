@@ -168,8 +168,12 @@ const heartbeatChannel = new BroadcastChannel('sw-heartbeat');
 
 sw.addEventListener('message', (event: any) => {
     if (event.data === 'HEARTBEAT_PING') {
-        // Responder ao Sentinel para evitar o reload de 60s
-        heartbeatChannel.postMessage('HEARTBEAT_ACK');
+        // Responder ao Sentinel diretamente para evitar o reload de 5m
+        if (event.source) {
+            event.source.postMessage('HEARTBEAT_ACK');
+        } else {
+            heartbeatChannel.postMessage('HEARTBEAT_ACK');
+        }
     }
 
     // Workbox generic skipWaiting support
@@ -215,6 +219,52 @@ sw.addEventListener('message', (event: any) => {
 setInterval(() => {
     // Keep alive logic
 }, 30000);
+
+sw.addEventListener('push', (event: any) => {
+    if (!event.data) return;
+    try {
+        const payload = event.data.json();
+        const title = payload.title || 'Novidade!';
+        const options = {
+            body: payload.body || '',
+            icon: '/icon-192x192.png',
+            badge: '/icon-192x192.png',
+            data: {
+                url: payload.url || '/',
+                ...(payload.data || {})
+            }
+        };
+        event.waitUntil(
+            sw.registration.showNotification(title, options)
+        );
+    } catch (e) {
+        console.error('[SW] Push parse error:', e);
+        event.waitUntil(
+            sw.registration.showNotification('Notificação', {
+                body: event.data.text()
+            })
+        );
+    }
+});
+
+sw.addEventListener('notificationclick', (event: any) => {
+    event.notification.close();
+    const targetUrl = event.notification.data?.url || '/';
+
+    event.waitUntil(
+        sw.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList: any) => {
+            const absoluteUrl = new URL(targetUrl, sw.location.origin).href;
+            for (const client of clientList) {
+                if (client.url === absoluteUrl && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            if (sw.clients.openWindow) {
+                return sw.clients.openWindow(absoluteUrl);
+            }
+        })
+    );
+});
 
 async function cleanOldImageCache(cache: Cache) {
     try {

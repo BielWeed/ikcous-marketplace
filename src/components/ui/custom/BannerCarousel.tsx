@@ -75,7 +75,7 @@ export function BannerCarousel({ banners, autoPlay = true, interval = 5000 }: Ba
               <img
                 src={banner.imageUrl}
                 alt={banner.title || ''}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-&lsqb;2000ms&rsqb; cubic-bezier(0.4, 0, 0.2, 1)"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-[2000ms] cubic-bezier(0.4, 0, 0.2, 1)"
                 loading={index === 0 ? "eager" : "lazy"}
                 fetchPriority={index === 0 ? "high" : "auto"}
                 decoding="async"

@@ -1,5 +1,6 @@
-import { useState, useEffect, type ChangeEvent } from 'react';
-import { Plus, ArrowLeft, Upload, ArrowUp, ArrowDown, Layout, Sparkles, Eye, Zap, Trash, Edit, ExternalLink } from 'lucide-react';
+import { useState, useMemo, type ChangeEvent } from 'react';
+import { Plus, ArrowLeft, Upload, ArrowUp, ArrowDown, Layout, Sparkles, Eye, Zap, Trash, Edit, ExternalLink, HelpCircle, Smartphone, SlidersHorizontal } from 'lucide-react';
+import { motion, type Variants } from 'framer-motion';
 import { useBanners } from '@/hooks/useBanners';
 import type { Banner, View } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -9,16 +10,34 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
 
 interface AdminBannersViewProps {
     onNavigate: (view: View) => void;
 }
 
+const containerVariants: Variants = {
+    hidden: { opacity: 0 },
+    visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
+};
+
+const itemVariants: Variants = {
+    hidden: { opacity: 0, y: 15, scale: 0.98 },
+    visible: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 120, damping: 14 } }
+};
+
 export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
-    const { banners, isLoaded, uploadBannerImage, addBanner, updateBanner, deleteBanner, reorderBanners, refreshBanners } = useBanners();
+    const { banners, isLoaded, uploadBannerImage, addBanner, updateBanner, deleteBanner, reorderBanners, refreshBanners } = useBanners(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [showHelpModal, setShowHelpModal] = useState(false);
     const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
     const [uploading, setUploading] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [selectedTab, setSelectedTab] = useState<'all' | 'home_top' | 'home_middle' | 'home_bottom'>('all');
+    
+
+
     const [formData, setFormData] = useState<Partial<Banner>>({
         title: '',
         imageUrl: '',
@@ -28,25 +47,23 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
         order: 0
     });
 
-    useEffect(() => {
-        refreshBanners(false, true);
-    }, [refreshBanners]);
 
-    const handleBack = () => onNavigate('admin-dashboard');
+    const handleBack = () => onNavigate('admin-settings');
 
     const handleOpenDialog = (banner?: Banner) => {
-        if (banner) {
+        if (banner && banner.id) {
             setEditingBanner(banner);
             setFormData({ ...banner });
         } else {
             setEditingBanner(null);
+            const defaultPosition = banner?.position || (selectedTab !== 'all' ? selectedTab : 'home_top');
             setFormData({
                 title: '',
                 imageUrl: '',
                 link: '',
-                position: 'home_top',
+                position: defaultPosition,
                 active: true,
-                order: banners.length + 1
+                order: banners.filter(b => b.position === defaultPosition).length + 1
             });
         }
         setIsDialogOpen(true);
@@ -69,9 +86,12 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
     };
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
             if (!formData.imageUrl) {
                 toast.error('Imagem é obrigatória');
+                setIsSubmitting(false);
                 return;
             }
 
@@ -82,17 +102,32 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
             }
             await refreshBanners(false, true);
             setIsDialogOpen(false);
-            toast.success(editingBanner ? 'Banner atualizado' : 'Banner criado');
-        } catch {
-            // Error handled in hook
+        } catch (error) {
+            console.error('Erro ao salvar banner:', error);
+            toast.error('Erro ao salvar as configurações do banner.');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     const handleDelete = async (id: string, imageUrl: string) => {
         if (confirm('Tem certeza que deseja excluir este banner?')) {
-            await deleteBanner(id, imageUrl);
+            try {
+                await deleteBanner(id, imageUrl);
+                await refreshBanners(false, true);
+            } catch (error) {
+                console.error('Erro ao deletar banner:', error);
+                toast.error('Erro ao deletar o banner.');
+            }
+        }
+    };
+
+    const handleToggleActive = async (banner: Banner) => {
+        try {
+            await updateBanner(banner.id, { active: !banner.active });
             await refreshBanners(false, true);
-            toast.success('Banner removido');
+        } catch (error) {
+            console.error('Erro ao alternar status do banner:', error);
         }
     };
 
@@ -106,316 +141,706 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
 
         if (targetIndex >= 0 && targetIndex < bannersInPosition.length) {
             const targetBanner = bannersInPosition[targetIndex];
-            await reorderBanners(banner.id, targetBanner.id);
+            try {
+                await reorderBanners(banner.id, targetBanner.id);
+                await refreshBanners(false, true);
+            } catch (error) {
+                console.error('Erro ao reordenar banners:', error);
+                toast.error('Erro ao reordenar banners.');
+            }
         }
     };
 
     const positions = [
-        { value: 'home_top', label: 'Home Header (Top)' },
-        { value: 'home_middle', label: 'Mid Section' },
-        { value: 'home_bottom', label: 'Footer Base' }
+        { value: 'home_top', label: 'Cabeçalho Inicial (Topo)' },
+        { value: 'home_middle', label: 'Seção Intermediária (Meio)' },
+        { value: 'home_bottom', label: 'Rodapé da Página (Base)' }
     ];
 
+    // Compute Metrics
+    const totalBanners = banners.length;
+    const activeBanners = banners.filter(b => b.active).length;
+    const topActive = banners.some(b => b.position === 'home_top' && b.active);
+    const middleActive = banners.some(b => b.position === 'home_middle' && b.active);
+    const bottomActive = banners.some(b => b.position === 'home_bottom' && b.active);
+    const activeSectionsCount = [topActive, middleActive, bottomActive].filter(Boolean).length;
+    const impactText = activeSectionsCount === 3 ? 'Máximo' : activeSectionsCount === 2 ? 'Alto' : activeSectionsCount === 1 ? 'Moderado' : 'Nenhum';
+
+    const visiblePositions = selectedTab === 'all' 
+        ? positions 
+        : positions.filter(pos => pos.value === selectedTab);
+
+    const kpiCards = useMemo<readonly KpiCardConfig[]>(() => [
+        {
+            id: 'ativos',
+            label: 'Banners Ativos',
+            icon: Eye,
+            iconClass: "text-[#FFBF00] animate-pulse",
+            iconBg: "bg-amber-500/10 border-amber-500/20",
+            hoverBorder: "hover:border-[#FFBF00]/30 hover:shadow-[0_0_30px_rgba(255,191,0,0.05)]",
+            value: activeBanners,
+            accent: 'text-[#FFBF00]',
+            subValue: `/ ${totalBanners} total`,
+            footer: "Banners atualmente visíveis no app"
+        },
+        {
+            id: 'distribuicao',
+            label: 'Distribuição',
+            icon: Layout,
+            iconClass: "text-amber-500",
+            iconBg: "bg-zinc-900 border-white/5",
+            hoverBorder: "hover:border-amber-500/30 hover:shadow-[0_0_30px_rgba(245,158,11,0.05)]",
+            value: `${banners.filter(b => b.position === 'home_top').length} Topo`,
+            accent: 'text-amber-500',
+            subValue: `Meio: ${banners.filter(b => b.position === 'home_middle').length} • Base: ${banners.filter(b => b.position === 'home_bottom').length}`,
+            footer: "Posicionamento na Home"
+        },
+        {
+            id: 'impacto',
+            label: 'Impacto Estético',
+            icon: Sparkles,
+            iconClass: "text-[#FFBF00]",
+            iconBg: "bg-[#FFBF00]/10 border-[#FFBF00]/20",
+            hoverBorder: "hover:border-[#FFBF00]/30 hover:shadow-[0_0_30px_rgba(255,191,0,0.05)]",
+            value: impactText,
+            accent: 'text-[#FFBF00]',
+            footer: "Preenchimento das seções"
+        }
+    ], [activeBanners, totalBanners, banners, impactText]);
+
     return (
-        <div className="min-h-screen bg-admin-bg text-white pb-32 font-sans selection:bg-admin-gold/30">
-            {/* Header Elite */}
-        <div className="px-4 sm:px-6 py-6 sm:py-8">
-                <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
-                    <div className="flex items-center gap-4 sm:gap-6">
+        <div className="min-h-screen bg-[#09090b] text-zinc-400 font-sans selection:bg-admin-gold/30 selection:text-white pb-36 relative overflow-x-hidden">
+            {/* Ambient subtle glow */}
+            <div className="absolute top-0 left-1/4 w-[400px] h-[400px] bg-admin-gold/5 blur-[120px] rounded-full pointer-events-none" />
+            <div className="absolute top-1/3 right-1/4 w-[500px] h-[500px] bg-amber-500/5 blur-[150px] rounded-full pointer-events-none" />
+
+            {/* Sticky Compact Header */}
+            <div className="sticky top-0 z-40 p-4 pb-0">
+                <div className="admin-glass rounded-[2rem] border border-white/5 p-4 sm:p-5 shadow-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="flex items-center gap-4">
                         <button
                             onClick={handleBack}
-                            className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 flex items-center justify-center bg-zinc-950/50 text-zinc-400 rounded-2xl hover:bg-admin-gold hover:text-black transition-all active:scale-95 border border-white/5 group shadow-2xl"
+                            className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl transition-colors group active:scale-95"
+                            title="Voltar ao Painel"
                         >
-                            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 group-hover:-translate-x-1 transition-transform" />
+                            <ArrowLeft className="w-5 h-5 text-zinc-400 group-hover:text-white transition-colors" />
                         </button>
-                        <div className="min-w-0">
-                            <div className="flex items-center gap-2 sm:gap-3 mb-1">
-                                <Layout className="w-4 h-4 sm:w-5 sm:h-5 text-admin-gold animate-pulse shrink-0" />
-                                <h1 className="text-xl sm:text-2xl font-black tracking-tighter uppercase italic bg-gradient-to-r from-white via-zinc-400 to-zinc-600 bg-clip-text text-transparent truncate">
-                                    Visual Engine
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-lg font-black text-white tracking-tight flex items-center gap-2 uppercase select-none">
+                                    <span className="bg-gradient-to-r from-[#FFBF00] to-amber-500 bg-clip-text text-transparent italic font-extrabold">GERENCIADOR VISUAL</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowHelpModal(true)}
+                                        className="w-6 h-6 rounded-full flex items-center justify-center border transition-all duration-300 active:scale-95 bg-zinc-900/60 border-white/5 text-zinc-500 hover:text-white hover:border-white/10 shrink-0"
+                                        title="Guia do Gerenciador de Banners"
+                                    >
+                                        <HelpCircle className="w-3.5 h-3.5" />
+                                    </button>
                                 </h1>
                             </div>
-                            <p className="text-[9px] sm:text-[10px] font-bold text-admin-gold uppercase tracking-[0.2em] sm:tracking-[0.3em] opacity-80 truncate">
-                                Premium Banners Curatorship
+                            <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.18em] flex items-center gap-1.5 mt-0.5 select-none">
+                                Curadoria de Banners Premium
+                                <span className="w-1 h-1 rounded-full bg-admin-gold/70 animate-pulse" />
+                                <span className="text-amber-500/80">Estética PWA</span>
                             </p>
                         </div>
                     </div>
 
-                    <button
-                        onClick={() => handleOpenDialog()}
-                        className="group relative flex items-center justify-center gap-2 sm:gap-3 px-6 sm:px-8 py-3 sm:py-4 bg-[#FFBF00] text-black rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(212,175,55,0.3)] border border-[#FFBF00]/50 overflow-hidden w-full sm:w-auto mt-2 sm:mt-0"
-                    >
-                        <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
-                        <Plus className="w-4 h-4 relative z-10 text-black" />
-                        <span className="relative z-10 text-black">New Visual Asset</span>
-                    </button>
+                    {isLoaded && banners.length > 0 && (
+                        <button
+                            onClick={() => handleOpenDialog()}
+                            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#FFBF00] hover:bg-amber-500 text-black rounded-xl text-[9px] font-black uppercase tracking-wider hover:scale-[1.02] transition-all active:scale-95 shadow-lg shadow-amber-500/10 border border-amber-400/20 w-full sm:w-auto"
+                        >
+                            <Plus className="w-3.5 h-3.5 stroke-[3px]" /> Novo Banner
+                        </button>
+                    )}
                 </div>
             </div>
 
-            <div className="max-w-7xl mx-auto p-8 space-y-12">
-                {/* Stats Dashboard */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 p-8 rounded-[2.5rem] flex items-center gap-8 overflow-hidden hover:border-admin-gold/30 transition-all duration-500 shadow-2xl">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-admin-gold/5 blur-[60px] rounded-full -mr-16 -mt-16 group-hover:bg-admin-gold/10 transition-all" />
-                        <div className="w-20 h-20 bg-zinc-900 rounded-3xl flex items-center justify-center border border-white/5 text-admin-gold shadow-inner relative z-10">
-                            <Eye className="w-10 h-10 animate-pulse" />
-                        </div>
-                        <div className="relative z-10">
-                            <p className="text-[11px] font-black text-zinc-500 uppercase tracking-[0.3em] mb-1">Active Exposure</p>
-                            <h3 className="text-4xl font-black tracking-tighter text-white uppercase italic">{banners.filter(b => b.active).length} Assets</h3>
-                        </div>
+            <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8 relative z-10">
+                {/* Stats Carousel Row */}
+                {isLoaded && banners.length > 0 && (
+                    <div className="space-y-4">
+                        <AdminKpiCarousel cards={kpiCards} title="Métricas Visuais" />
                     </div>
-                    <div className="group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 p-8 rounded-[2.5rem] flex items-center gap-8 overflow-hidden hover:border-emerald-500/30 transition-all duration-500 shadow-2xl">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-[60px] rounded-full -mr-16 -mt-16 group-hover:bg-emerald-500/10 transition-all" />
-                        <div className="w-20 h-20 bg-zinc-900 rounded-3xl flex items-center justify-center border border-white/5 text-emerald-500 shadow-inner relative z-10">
-                            <Zap className="w-10 h-10" />
-                        </div>
-                        <div className="relative z-10">
-                            <p className="text-[11px] font-black text-zinc-500 uppercase tracking-[0.3em] mb-1">Visual Impact</p>
-                            <h3 className="text-4xl font-black tracking-tighter text-white uppercase italic tracking-widest text-[#00ff88]">High</h3>
-                        </div>
-                    </div>
-                </div>
+                )}
 
-                {!isLoaded ? (
-                    <div className="text-center py-32 flex flex-col items-center justify-center">
-                        <div className="relative w-20 h-20 mb-6">
-                            <div className="absolute inset-0 border-4 border-admin-gold/10 rounded-full" />
-                            <div className="absolute inset-0 border-4 border-t-admin-gold rounded-full animate-spin" />
-                            <Layout className="absolute inset-0 m-auto w-8 h-8 text-admin-gold animate-pulse" />
+                {/* Filter Tabs & Options */}
+                {isLoaded && banners.length > 0 && (
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-white/5 select-none">
+                        <div className="flex flex-wrap p-1 bg-zinc-950 rounded-2xl border border-white/5 relative">
+                            <button
+                                onClick={() => setSelectedTab('all')}
+                                className={cn(
+                                    "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-300 relative",
+                                    selectedTab === 'all' ? "text-black" : "text-zinc-500 hover:text-zinc-300"
+                                )}
+                            >
+                                <span className="relative z-10">Todos</span>
+                                {selectedTab === 'all' && (
+                                    <motion.div
+                                        layoutId="activeBannerTab"
+                                        className="absolute inset-0 bg-gradient-to-r from-[#FFBF00] to-amber-500 rounded-xl shadow-md"
+                                        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                                    />
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setSelectedTab('home_top')}
+                                className={cn(
+                                    "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-300 relative",
+                                    selectedTab === 'home_top' ? "text-black" : "text-zinc-500 hover:text-zinc-300"
+                                )}
+                            >
+                                <span className="relative z-10">Topo</span>
+                                {selectedTab === 'home_top' && (
+                                    <motion.div
+                                        layoutId="activeBannerTab"
+                                        className="absolute inset-0 bg-gradient-to-r from-[#FFBF00] to-amber-500 rounded-xl shadow-md"
+                                        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                                    />
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setSelectedTab('home_middle')}
+                                className={cn(
+                                    "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-300 relative",
+                                    selectedTab === 'home_middle' ? "text-black" : "text-zinc-500 hover:text-zinc-300"
+                                )}
+                            >
+                                <span className="relative z-10">Meio</span>
+                                {selectedTab === 'home_middle' && (
+                                    <motion.div
+                                        layoutId="activeBannerTab"
+                                        className="absolute inset-0 bg-gradient-to-r from-[#FFBF00] to-amber-500 rounded-xl shadow-md"
+                                        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                                    />
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setSelectedTab('home_bottom')}
+                                className={cn(
+                                    "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-300 relative",
+                                    selectedTab === 'home_bottom' ? "text-black" : "text-zinc-500 hover:text-zinc-300"
+                                )}
+                            >
+                                <span className="relative z-10">Base</span>
+                                {selectedTab === 'home_bottom' && (
+                                    <motion.div
+                                        layoutId="activeBannerTab"
+                                        className="absolute inset-0 bg-gradient-to-r from-[#FFBF00] to-amber-500 rounded-xl shadow-md"
+                                        transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                                    />
+                                )}
+                            </button>
                         </div>
-                        <p className="text-[11px] font-black text-zinc-500 uppercase tracking-[0.5em] animate-pulse">Sincronizando Galeria de Elite...</p>
+                        
+                        <div className="flex items-center gap-2 text-[9px] font-bold text-zinc-500 uppercase tracking-widest">
+                            <SlidersHorizontal className="w-3.5 h-3.5 text-amber-500" />
+                            <span>Visualizando: {selectedTab === 'all' ? 'Todos os setores' : positions.find(p => p.value === selectedTab)?.label}</span>
+                        </div>
+                    </div>
+                )}
+
+                {/* Banner Content List */}
+                {!isLoaded ? (
+                    <div className="text-center py-32 flex flex-col items-center justify-center select-none">
+                        <div className="relative w-16 h-16 mb-6">
+                            <div className="absolute inset-0 border-4 border-admin-gold/10 rounded-full" />
+                            <div className="absolute inset-0 border-4 border-t-[#FFBF00] rounded-full animate-spin" />
+                            <Layout className="absolute inset-0 m-auto w-6 h-6 text-[#FFBF00] animate-pulse" />
+                        </div>
+                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.4em] animate-pulse">Sincronizando Galeria de Banners...</p>
                     </div>
                 ) : (
-                    <div className="space-y-16">
-                        {positions.map((pos) => {
+                    <motion.div
+                        variants={containerVariants}
+                        initial="hidden"
+                        animate="visible"
+                        className="space-y-16"
+                    >
+                        {visiblePositions.map((pos) => {
                             const positionBanners = banners.filter(b => b.position === pos.value).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
                             return (
-                                <div key={pos.value} className="space-y-8">
-                                    <div className="flex items-center gap-6 px-4">
-                                        <h2 className="text-[12px] font-black text-white uppercase tracking-[0.4em] italic whitespace-nowrap">{pos.label}</h2>
-                                        <div className="h-[1px] flex-1 bg-gradient-to-r from-white/10 to-transparent" />
-                                    </div>
+                                <div key={pos.value} className="space-y-6">
+                                    {selectedTab === 'all' && (
+                                        <div className="flex items-center justify-between border-b border-white/5 pb-4 px-2 select-none">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-br from-[#FFBF00] to-amber-500 shadow-[0_0_10px_rgba(255,191,0,0.5)] animate-pulse" />
+                                                <h2 className="text-xs font-black text-white uppercase tracking-widest italic">{pos.label}</h2>
+                                            </div>
+                                            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">
+                                                {positionBanners.length} {positionBanners.length === 1 ? 'Banner' : 'Banners'}
+                                            </span>
+                                        </div>
+                                    )}
 
                                     {positionBanners.length === 0 ? (
-                                        <div className="bg-zinc-950/20 p-20 rounded-[4rem] border border-white/5 backdrop-blur-sm border-dashed text-center">
-                                            <p className="text-[11px] font-black text-zinc-700 uppercase tracking-[0.3em]">No Assets Deployed in this Sector</p>
+                                        <div className="bg-zinc-950/20 p-12 rounded-[2.5rem] border border-dashed border-white/5 backdrop-blur-sm text-center flex flex-col items-center justify-center group/empty hover:border-zinc-800 transition-all duration-300">
+                                            <Layout className="w-8 h-8 text-zinc-700 mb-3 group-hover/empty:text-zinc-500 transition-colors" />
+                                            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Nenhum Banner cadastrado neste Setor</p>
+                                            <button
+                                                onClick={() => handleOpenDialog({ position: pos.value } as Banner)}
+                                                className="text-[10px] font-black text-[#FFBF00] hover:text-white uppercase tracking-widest underline transition-colors"
+                                            >
+                                                + Adicionar Primeiro Banner
+                                            </button>
                                         </div>
                                     ) : (
-                                        <div className="grid gap-10">
-                                            {positionBanners.map(banner => (
-                                                <div
+                                        <div className="grid gap-6">
+                                            {positionBanners.map((banner, index) => (
+                                                <motion.div
                                                     key={banner.id}
-                                                    className={`group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[2rem] sm:rounded-[3.5rem] p-4 sm:p-8 transition-all duration-700 hover:border-admin-gold/30 hover:shadow-[0_40px_100px_rgba(0,0,0,0.6)] ${!banner.active ? 'opacity-30 grayscale' : ''}`}
+                                                    variants={itemVariants}
+                                                    className={cn(
+                                                        "group relative bg-zinc-950/30 backdrop-blur-md border border-white/5 rounded-[2.5rem] p-4 sm:p-5 transition-all duration-500 hover:border-zinc-800 hover:bg-zinc-950/50 hover:shadow-2xl",
+                                                        !banner.active && "opacity-50"
+                                                    )}
                                                 >
-                                                    <div className="flex flex-col xl:flex-row gap-6 sm:gap-10 items-center w-full">
-                                                        {/* Preview Imagem Premium */}
-                                                        <div className="relative w-full xl:w-[550px] aspect-[21/9] rounded-[1.5rem] sm:rounded-[2.5rem] overflow-hidden border border-white/5 shadow-[0_20px_50px_rgba(0,0,0,0.5)] bg-zinc-900 group-hover:scale-[1.02] transition-transform duration-700 shrink-0">
+                                                    <div className="flex flex-col lg:flex-row gap-6 items-center w-full">
+                                                        {/* Image Preview Card */}
+                                                        <div className="relative w-full lg:w-[380px] xl:w-[440px] aspect-[21/9] rounded-2xl overflow-hidden border border-white/5 shadow-2xl bg-zinc-900 group-hover:scale-[1.01] transition-all duration-500 shrink-0">
                                                             <img
                                                                 src={banner.imageUrl}
                                                                 alt={banner.title || 'Banner'}
-                                                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
+                                                                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                                                             />
                                                             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-80" />
                                                             {!banner.active && (
-                                                                <div className="absolute inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center text-[10px] sm:text-[12px] font-black uppercase tracking-[0.4em] sm:tracking-[0.5em] text-white/50 italic border border-admin-gold/20 rounded-[1.5rem] sm:rounded-[2.5rem] text-center px-4">
-                                                                    Protocol Suspended
+                                                                <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px] flex items-center justify-center text-[10px] font-black uppercase tracking-[0.4em] text-white/70 italic text-center px-4">
+                                                                    Exibição Suspensa
                                                                 </div>
                                                             )}
                                                         </div>
 
-                                                        {/* Infos & Controles */}
-                                                        <div className="flex-1 space-y-4 sm:space-y-6 w-full relative z-10 min-w-0">
-                                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                                                <div className="min-w-0 w-full">
-                                                                    <h3 className="text-xl sm:text-3xl font-black text-white uppercase italic tracking-tighter leading-none mb-2 bg-gradient-to-r from-white to-zinc-500 bg-clip-text text-transparent truncate w-full">
-                                                                        {banner.title || 'Untitled Campaign'}
+                                                        {/* Details and Controls Panel */}
+                                                        <div className="flex-1 space-y-4 w-full relative z-10 min-w-0">
+                                                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                                                                <div className="min-w-0 w-full space-y-1">
+                                                                    <h3 className="text-base sm:text-lg font-bold text-white tracking-tight leading-snug truncate w-full group-hover:text-admin-gold transition-colors duration-300">
+                                                                        {banner.title || 'Campanha sem Título'}
                                                                     </h3>
-                                                                    <div className="flex items-center gap-3">
-                                                                        <div className="px-2 sm:px-3 py-1 bg-zinc-900 border border-white/5 rounded-full shrink-0">
-                                                                            <p className="text-[9px] sm:text-[10px] font-bold text-admin-gold uppercase tracking-widest truncate">
-                                                                                Order: <span className="text-white">#{banner.order}</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="px-2 py-0.5 bg-zinc-900 border border-white/5 rounded-md shrink-0">
+                                                                            <p className="text-[9px] font-semibold text-zinc-400 uppercase tracking-wider">
+                                                                                Ordem: <span className="text-white font-mono">#{banner.order}</span>
+                                                                            </p>
+                                                                        </div>
+                                                                        <div className="px-2 py-0.5 bg-zinc-900 border border-white/5 rounded-md shrink-0">
+                                                                            <p className="text-[9px] font-semibold text-zinc-400 uppercase tracking-wider">
+                                                                                Setor: <span className="text-white font-mono">{pos.label.split(' ')[0]}</span>
                                                                             </p>
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                                <div className="flex gap-2 sm:gap-3 shrink-0">
+                                                                
+                                                                {/* Arrow Position Reordering pads */}
+                                                                <div className="flex gap-1.5 shrink-0 self-start sm:self-center">
                                                                     <button
                                                                         onClick={() => moveBanner(banner, 'up')}
-                                                                        className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 bg-zinc-900/50 text-zinc-500 rounded-xl sm:rounded-2xl flex items-center justify-center hover:bg-admin-gold hover:text-black disabled:opacity-20 border border-white/5 shadow-xl transition-all active:scale-90"
+                                                                        disabled={index === 0}
+                                                                        className="w-8 h-8 shrink-0 bg-zinc-900 border border-white/5 text-zinc-500 rounded-lg flex items-center justify-center hover:bg-zinc-800 hover:text-white disabled:opacity-10 disabled:pointer-events-none transition-all active:scale-95"
+                                                                        title="Mover para cima"
                                                                     >
-                                                                        <ArrowUp className="w-4 h-4 sm:w-5 h-5" />
+                                                                        <ArrowUp className="w-4 h-4" />
                                                                     </button>
                                                                     <button
                                                                         onClick={() => moveBanner(banner, 'down')}
-                                                                        className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 bg-zinc-900/50 text-zinc-500 rounded-xl sm:rounded-2xl flex items-center justify-center hover:bg-admin-gold hover:text-black disabled:opacity-20 border border-white/5 shadow-xl transition-all active:scale-90"
+                                                                        disabled={index === positionBanners.length - 1}
+                                                                        className="w-8 h-8 shrink-0 bg-zinc-900 border border-white/5 text-zinc-500 rounded-lg flex items-center justify-center hover:bg-zinc-800 hover:text-white disabled:opacity-10 disabled:pointer-events-none transition-all active:scale-95"
+                                                                        title="Mover para baixo"
                                                                     >
-                                                                        <ArrowDown className="w-4 h-4 sm:w-5 sm:h-5" />
+                                                                        <ArrowDown className="w-4 h-4" />
                                                                     </button>
                                                                 </div>
                                                             </div>
 
-                                                            <div className="flex flex-wrap items-center gap-3 sm:gap-6 py-4 sm:py-6 border-y border-white/5">
-                                                                <div className="px-4 sm:px-6 py-2 sm:py-3 bg-zinc-900/50 rounded-xl sm:rounded-2xl border border-white/5 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-zinc-500 flex items-center gap-2 sm:gap-3 group/link cursor-default max-w-full overflow-hidden w-full sm:w-auto">
-                                                                    <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 text-admin-gold group-hover/link:scale-110 transition-transform shrink-0" />
-                                                                    Redirect: <span className="text-white font-mono truncate">{banner.link || 'Root'}</span>
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-3 border-y border-white/5 items-center">
+                                                                <div className="px-3 py-1.5 bg-zinc-900/40 rounded-xl border border-white/5 text-[9px] font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-2 truncate max-w-full">
+                                                                    <ExternalLink className="w-3.5 h-3.5 text-[#FFBF00] shrink-0" />
+                                                                    <span>Link:</span>
+                                                                    <span className="text-white font-mono truncate">{banner.link || 'Início (Sem Rota)'}</span>
                                                                 </div>
-                                                                <div className={`px-4 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl border text-[9px] sm:text-[10px] font-black uppercase tracking-widest flex items-center gap-2 sm:gap-3 w-full sm:w-auto ${banner.active ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
-                                                                    <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full shrink-0 ${banner.active ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)] animate-pulse' : 'bg-red-500'}`} />
-                                                                    {banner.active ? 'Operational' : 'Off-line'}
+                                                                
+                                                                {/* Fast Status Switch Toggle directly in the card */}
+                                                                <div className="flex items-center justify-between sm:justify-end gap-3 px-1">
+                                                                    <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">
+                                                                        Exibir no App
+                                                                    </span>
+                                                                    <Switch
+                                                                        checked={banner.active}
+                                                                        onCheckedChange={() => handleToggleActive(banner)}
+                                                                        className="data-[state=checked]:bg-[#FFBF00]"
+                                                                    />
                                                                 </div>
                                                             </div>
 
-                                                            <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 pt-2">
+                                                            <div className="flex items-center gap-3 pt-1">
                                                                 <button
                                                                     onClick={() => handleOpenDialog(banner)}
-                                                                    className="w-full sm:flex-1 h-12 sm:h-14 px-6 sm:px-8 bg-zinc-900/80 border border-white/5 rounded-xl sm:rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-zinc-400 hover:bg-admin-gold hover:text-black hover:border-admin-gold transition-all flex items-center justify-center gap-2 sm:gap-3 shadow-xl active:scale-95"
+                                                                    className="flex-1 h-9 px-4 bg-zinc-900 hover:bg-zinc-800 border border-white/5 text-zinc-300 hover:text-white rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 active:scale-95"
                                                                 >
-                                                                    <Edit className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" /> Finalize Asset
+                                                                    <Edit className="w-3.5 h-3.5 shrink-0 text-[#FFBF00]" /> Editar
                                                                 </button>
                                                                 <button
                                                                     onClick={() => handleDelete(banner.id, banner.imageUrl)}
-                                                                    className="w-full sm:w-auto h-12 sm:h-14 px-6 sm:px-8 bg-red-500/10 border border-red-500/20 rounded-xl sm:rounded-2xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-red-500 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2 sm:gap-3 shadow-xl active:scale-95"
+                                                                    className="h-9 px-4 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/20 hover:border-transparent rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 active:scale-95"
                                                                 >
-                                                                    <Trash className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" /> Purge
+                                                                    <Trash className="w-3.5 h-3.5 shrink-0" /> Excluir
                                                                 </button>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                </div>
+                                                </motion.div>
                                             ))}
                                         </div>
                                     )}
                                 </div>
                             );
                         })}
-                    </div>
+                    </motion.div>
                 )}
             </div>
 
-            {/* Dialog Elite */}
+            {/* Dialog de Cadastro / Edição */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="w-[95vw] sm:w-full sm:max-w-2xl bg-zinc-950 border-white/5 text-white p-0 overflow-x-hidden overflow-y-auto max-h-[85vh] sm:max-h-[90vh] rounded-[2rem] sm:rounded-[3.5rem] shadow-[0_0_80px_rgba(0,0,0,0.9)] mx-auto custom-scrollbar">
+                <DialogContent className="w-[95vw] sm:w-full sm:max-w-4xl bg-zinc-950 border-white/5 text-white p-0 overflow-x-hidden overflow-y-auto max-h-[90vh] rounded-[2rem] sm:rounded-[2.5rem] shadow-[0_0_80px_rgba(0,0,0,0.9)] mx-auto custom-scrollbar">
                     <div className="absolute -top-40 -right-40 w-80 h-80 bg-admin-gold/5 blur-[120px] rounded-full pointer-events-none" />
-                    <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-emerald-500/5 blur-[120px] rounded-full pointer-events-none" />
+                    <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-[#FFBF00]/5 blur-[120px] rounded-full pointer-events-none" />
 
-                    <div className="p-6 pb-24 sm:pb-12 sm:p-12 space-y-8 sm:space-y-10 relative z-10 w-full overflow-hidden">
+                    <div className="p-6 pb-24 sm:pb-12 sm:p-10 space-y-6 sm:space-y-8 relative z-10 w-full overflow-hidden">
                         <DialogHeader>
-                            <DialogTitle className="text-xl sm:text-3xl font-black text-white tracking-widest uppercase italic flex items-center gap-3 sm:gap-4 truncate">
-                                <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-admin-gold shrink-0" />
-                                <span className="truncate">{editingBanner ? 'Optimize Asset' : 'Blueprint Creation'}</span>
+                            <DialogTitle className="text-lg sm:text-xl font-black text-white tracking-wider uppercase italic flex items-center gap-3 sm:gap-4 truncate">
+                                <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-[#FFBF00] shrink-0" />
+                                <span className="truncate">{editingBanner ? 'Editar Banner' : 'Cadastrar Novo Banner'}</span>
                             </DialogTitle>
-                            <DialogDescription className="text-zinc-500 font-bold uppercase text-[9px] sm:text-[11px] tracking-[0.2em] sm:tracking-[0.3em] mt-3">
-                                Structural Design & Protocol Configuration
+                            <DialogDescription className="text-zinc-500 font-bold uppercase text-[9px] sm:text-[10px] tracking-[0.2em] mt-2">
+                                Configuração de Layout e Parâmetros de Exibição
                             </DialogDescription>
                         </DialogHeader>
 
-                        <div className="space-y-6 sm:space-y-8">
-                            <div className="space-y-4">
-                                <Label className="text-[10px] sm:text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic opacity-80">Visual Source Control</Label>
-                                <div className="flex flex-col gap-6">
-                                    {formData.imageUrl ? (
-                                        <div className="group relative w-full aspect-[21/9] rounded-[2.5rem] overflow-hidden border border-white/10 bg-zinc-900 shadow-2xl">
-                                            <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                <Label htmlFor="banner-upload" className="cursor-pointer px-8 py-3 bg-admin-gold text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all">Change Master Asset</Label>
+                        {/* Two Columns: Left Form, Right Smartphone Simulator Mockup */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                            {/* Left Column: Form Controls */}
+                            <div className="lg:col-span-7 space-y-5">
+                                <div className="space-y-2">
+                                    <Label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic opacity-85">Imagem do Banner</Label>
+                                    <div className="flex flex-col gap-6">
+                                        {uploading ? (
+                                            <div className="w-full h-40 flex flex-col items-center justify-center gap-4 bg-zinc-900/40 border border-white/5 rounded-2xl">
+                                                <div className="w-8 h-8 border-2 border-zinc-700 border-t-[#FFBF00] rounded-full animate-spin" />
+                                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Enviando Imagem...</span>
                                             </div>
-                                        </div>
-                                    ) : (
-                                        <div className="relative">
-                                            <Label htmlFor="banner-upload" className="cursor-pointer w-full h-40 flex flex-col items-center justify-center gap-4 bg-zinc-900/50 border-2 border-dashed border-white/5 rounded-[2.5rem] text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600 hover:bg-zinc-900 hover:border-admin-gold/30 transition-all group">
-                                                <Upload className="w-10 h-10 group-hover:text-admin-gold transition-colors" />
-                                                <span>Deploy Main Image</span>
-                                            </Label>
-                                        </div>
-                                    )}
-                                    <Input id="banner-upload" type="file" accept="image/*" className="hidden" onChange={handleFileUpload} disabled={uploading} />
+                                        ) : formData.imageUrl ? (
+                                            <div className="group relative w-full aspect-[21/9] rounded-2xl overflow-hidden border border-white/10 bg-zinc-900 shadow-2xl">
+                                                <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                    <Label htmlFor="banner-upload" className="cursor-pointer px-8 py-3 bg-[#FFBF00] text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all">Alterar Imagem</Label>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="relative">
+                                                <Label htmlFor="banner-upload" className="cursor-pointer w-full h-40 flex flex-col items-center justify-center gap-4 bg-zinc-900/50 border-2 border-dashed border-white/5 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600 hover:bg-zinc-900 hover:border-admin-gold/30 transition-all group">
+                                                    <Upload className="w-10 h-10 group-hover:text-admin-gold transition-colors text-zinc-500" />
+                                                    <span>Enviar Imagem Principal</span>
+                                                </Label>
+                                            </div>
+                                        )}
+                                        <Input id="banner-upload" type="file" accept="image/*" className="hidden" onChange={handleFileUpload} disabled={uploading} />
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div className="space-y-4">
-                                <Label className="text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Asset Designation</Label>
-                                <Input
-                                    value={formData.title || ''}
-                                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                                    placeholder="EX: CORE_SUMMER_COLLECTION"
-                                    className="h-16 bg-zinc-900/50 border-white/10 rounded-2xl focus:ring-admin-gold focus:border-admin-gold/50 text-xl font-black tracking-widest uppercase italic transition-all"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8">
-                                <div className="space-y-4">
-                                    <Label className="text-[10px] sm:text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Spatial Position</Label>
-                                    <Select
-                                        value={formData.position}
-                                        onValueChange={(value: any) => setFormData({ ...formData, position: value })}
-                                    >
-                                        <SelectTrigger className="h-16 bg-zinc-900/50 border-white/10 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] focus:ring-admin-gold">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-zinc-950 border-white/10 text-white">
-                                            {positions.map(pos => (
-                                                <SelectItem key={pos.value} value={pos.value} className="font-bold uppercase tracking-widest text-[10px]">{pos.label}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-4">
-                                    <Label className="text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Sequence Priority</Label>
+                                <div className="space-y-2">
+                                    <Label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Título da Campanha</Label>
                                     <Input
-                                        type="number"
-                                        value={formData.order ?? ''}
-                                        onChange={(e) => setFormData({ ...formData, order: Number(e.target.value) })}
-                                        className="h-16 bg-zinc-900/50 border-white/10 rounded-2xl text-xl font-black focus:ring-admin-gold"
+                                        value={formData.title || ''}
+                                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                        placeholder="Ex: Coleção de Verão"
+                                        className="h-12 bg-zinc-900/50 border-white/10 rounded-xl focus:ring-[#FFBF00] focus:border-[#FFBF00]/50 text-base font-bold text-white transition-all"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Posição na Tela</Label>
+                                        <Select
+                                            value={formData.position}
+                                            onValueChange={(value: any) => {
+                                                const nextOrder = banners.filter(b => b.position === value).length + 1;
+                                                setFormData(prev => ({ ...prev, position: value, order: nextOrder }));
+                                            }}
+                                        >
+                                            <SelectTrigger className="h-12 bg-zinc-900/50 border-white/10 rounded-xl text-[10px] font-bold uppercase tracking-wider focus:ring-[#FFBF00]">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-zinc-950 border-white/10 text-white">
+                                                {positions.map(pos => (
+                                                    <SelectItem key={pos.value} value={pos.value} className="font-bold uppercase tracking-wider text-[9px]">{pos.label}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Prioridade de Exibição</Label>
+                                        <Input
+                                            type="number"
+                                            value={formData.order ?? ''}
+                                            onChange={(e) => setFormData({ ...formData, order: Number(e.target.value) })}
+                                            className="h-12 bg-zinc-900/50 border-white/10 rounded-xl text-base font-bold focus:ring-[#FFBF00]"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Link de Redirecionamento (Rota)</Label>
+                                    <Input
+                                        value={formData.link || ''}
+                                        onChange={(e) => setFormData({ ...formData, link: e.target.value })}
+                                        placeholder="Ex: /produtos, /categoria/calcados ou URL completa"
+                                        className="h-12 bg-zinc-900/50 border-white/10 rounded-xl focus:ring-[#FFBF00] focus:border-[#FFBF00]/50 text-xs font-mono tracking-wide placeholder:text-zinc-700 transition-all"
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-between p-4 bg-black/40 rounded-2xl border border-white/5 shadow-inner">
+                                    <div className="space-y-0.5">
+                                        <Label className="text-[10px] font-black text-white uppercase tracking-wider flex items-center gap-2 italic">
+                                            Banner Ativo <Zap className="w-3.5 h-3.5 text-[#FFBF00]" />
+                                        </Label>
+                                        <p className="text-[8px] font-medium text-zinc-500 uppercase tracking-wider">Habilitar visualização imediata no aplicativo</p>
+                                    </div>
+                                    <Switch
+                                        checked={formData.active}
+                                        onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
+                                        className="data-[state=checked]:bg-[#FFBF00]"
                                     />
                                 </div>
                             </div>
 
-                            <div className="space-y-4">
-                                <Label className="text-[10px] sm:text-[11px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Redirect Logic (Endpoint)</Label>
-                                <Input
-                                    value={formData.link || ''}
-                                    onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-                                    placeholder="/elite/curated-selection"
-                                    className="h-14 sm:h-16 bg-zinc-900/50 border-white/10 rounded-xl sm:rounded-2xl focus:ring-admin-gold focus:border-admin-gold/50 text-[10px] sm:text-xs font-black font-mono tracking-[0.1em] sm:tracking-widest placeholder:text-zinc-700 transition-all opacity-80"
-                                />
-                            </div>
+                            {/* Right Column: Mobile Live PWA Mockup Simulator */}
+                            <div className="lg:col-span-5 flex flex-col items-center select-none">
+                                <Label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 italic opacity-85 self-start lg:self-center">
+                                    Preview em Tempo Real (PWA Mobile)
+                                </Label>
+                                
+                                <div className="relative w-[280px] h-[480px] rounded-[2.5rem] border-4 border-zinc-800 bg-[#09090b] shadow-[0_15px_40px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col justify-between text-left select-none group/device">
+                                    {/* Mock Notch */}
+                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 h-4.5 bg-zinc-800 rounded-b-2xl z-30 flex items-center justify-center border-x border-b border-zinc-700/30">
+                                        <div className="w-2.5 h-2.5 rounded-full bg-zinc-950 border border-zinc-900" />
+                                    </div>
 
-                            <div className="flex items-center justify-between p-6 sm:p-8 bg-black/40 rounded-[1.5rem] sm:rounded-[2.5rem] border border-white/5 shadow-inner">
-                                <div className="space-y-1 sm:space-y-2">
-                                    <Label className="text-[10px] sm:text-[12px] font-black text-white uppercase tracking-[0.1em] sm:tracking-widest flex items-center gap-2 sm:gap-3 italic">
-                                        Active Protocol <Zap className="w-3 h-3 sm:w-4 sm:h-4 text-admin-gold" />
-                                    </Label>
-                                    <p className="text-[8px] sm:text-[10px] font-bold text-zinc-600 uppercase tracking-wider sm:tracking-widest">Enable immediate global visibility</p>
+                                    {/* Status Bar */}
+                                    <div className="px-5 pt-5 pb-1 flex justify-between items-center text-[7px] text-zinc-500 font-mono shrink-0 select-none z-20">
+                                        <span>09:41</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <span>5G</span>
+                                            <Smartphone className="w-2.5 h-2.5 text-zinc-500" />
+                                        </div>
+                                    </div>
+
+                                    {/* App Container */}
+                                    <div className="flex-1 px-4 py-2 overflow-y-auto flex flex-col gap-4 select-none relative custom-scrollbar">
+                                        {/* Mock Header */}
+                                        <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                                            <span className="text-[9px] font-black tracking-tight text-white uppercase italic">IKCOUS</span>
+                                            <div className="w-3.5 h-3.5 rounded-full bg-zinc-800" />
+                                        </div>
+
+                                        {/* Top Banner Area Preview */}
+                                        {formData.position === 'home_top' && (
+                                            <div className="w-full aspect-[21/9] rounded-xl overflow-hidden bg-zinc-900 border border-white/5 relative flex items-center justify-center shadow-md">
+                                                {formData.imageUrl ? (
+                                                    <img src={formData.imageUrl} alt="Mockup Top" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-widest">Banner Topo</span>
+                                                )}
+                                                {formData.title && (
+                                                    <div className="absolute bottom-0 inset-x-0 bg-black/60 px-2 py-1 text-[7px] font-bold text-white truncate">
+                                                        {formData.title}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Mock Search Bar */}
+                                        <div className="h-7 w-full bg-zinc-900 border border-white/5 rounded-xl flex items-center px-3 text-[7px] text-zinc-600 gap-1.5 shrink-0">
+                                            <span className="truncate">Buscar roupas e calçados...</span>
+                                        </div>
+
+                                        {/* Middle Banner Area Preview */}
+                                        {formData.position === 'home_middle' && (
+                                            <div className="w-full aspect-[21/9] rounded-xl overflow-hidden bg-zinc-900 border border-white/5 relative flex items-center justify-center shadow-md">
+                                                {formData.imageUrl ? (
+                                                    <img src={formData.imageUrl} alt="Mockup Middle" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-widest">Banner Intermediário</span>
+                                                )}
+                                                {formData.title && (
+                                                    <div className="absolute bottom-0 inset-x-0 bg-black/60 px-2 py-1 text-[7px] font-bold text-white truncate">
+                                                        {formData.title}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Mock Products list */}
+                                        <div className="space-y-1 shrink-0">
+                                            <div className="flex justify-between text-[7px] font-black uppercase text-zinc-500 tracking-wider">
+                                                <span>Promoções em Destaque</span>
+                                                <span className="text-[#FFBF00]">Ver tudo</span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div className="bg-zinc-900/40 border border-white/5 rounded-xl p-1.5 space-y-1">
+                                                    <div className="w-full aspect-square bg-zinc-800 rounded-md" />
+                                                    <div className="h-1 w-8 bg-zinc-700 rounded-sm" />
+                                                    <div className="h-1.5 w-12 bg-[#FFBF00] rounded-sm" />
+                                                </div>
+                                                <div className="bg-zinc-900/40 border border-white/5 rounded-xl p-1.5 space-y-1">
+                                                    <div className="w-full aspect-square bg-zinc-800 rounded-md" />
+                                                    <div className="h-1 w-6 bg-zinc-700 rounded-sm" />
+                                                    <div className="h-1.5 w-10 bg-[#FFBF00] rounded-sm" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Bottom Banner Area Preview */}
+                                        {formData.position === 'home_bottom' && (
+                                            <div className="w-full aspect-[21/9] rounded-xl overflow-hidden bg-zinc-900 border border-white/5 relative flex items-center justify-center shadow-md">
+                                                {formData.imageUrl ? (
+                                                    <img src={formData.imageUrl} alt="Mockup Bottom" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-widest">Banner Rodapé</span>
+                                                )}
+                                                {formData.title && (
+                                                    <div className="absolute bottom-0 inset-x-0 bg-black/60 px-2 py-1 text-[7px] font-bold text-white truncate">
+                                                        {formData.title}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Mock Navigation Bottom Bar */}
+                                    <div className="border-t border-white/5 bg-zinc-950/80 backdrop-blur-md py-2.5 px-6 flex justify-between text-[7px] text-zinc-500 font-bold shrink-0">
+                                        <span className="text-[#FFBF00]">Início</span>
+                                        <span>Buscar</span>
+                                        <span>Carrinho</span>
+                                        <span>Perfil</span>
+                                    </div>
                                 </div>
-                                <Switch
-                                    checked={formData.active}
-                                    onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
-                                    className="data-[state=checked]:bg-admin-gold scale-75 sm:scale-100"
-                                />
                             </div>
                         </div>
 
-                        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 pt-6">
+                        {/* Footer Action buttons */}
+                        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4 border-t border-white/5">
                             <Button
                                 variant="ghost"
                                 onClick={() => setIsDialogOpen(false)}
-                                className="h-14 sm:h-16 flex-1 rounded-xl sm:rounded-2xl text-zinc-500 hover:text-white hover:bg-white/5 text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] transition-all"
+                                className="h-11 flex-1 rounded-xl text-zinc-500 hover:text-white hover:bg-white/5 text-[10px] font-black uppercase tracking-wider transition-all"
                             >
-                                Abort
+                                Cancelar
                             </Button>
                             <Button
                                 onClick={handleSubmit}
-                                disabled={uploading}
-                                className="flex-[2] h-14 sm:h-16 rounded-xl sm:rounded-2xl bg-admin-gold text-black hover:bg-white text-[9px] sm:text-[11px] font-black uppercase tracking-[0.1em] sm:tracking-[0.3em] shadow-[0_20px_40px_rgba(212,175,55,0.2)] transition-all active:scale-95"
+                                disabled={uploading || isSubmitting}
+                                className="flex-[2] h-11 rounded-xl bg-gradient-to-r from-[#FFBF00] to-amber-500 text-black hover:scale-[1.02] hover:shadow-[0_0_25px_rgba(255,191,0,0.25)] text-[10px] font-black uppercase tracking-wider shadow-lg transition-all active:scale-95 border border-amber-400/20"
                             >
-                                {uploading ? 'Processing Architecture...' : 'Syndicate Global Asset'}
+                                {uploading ? 'Enviando Imagem...' : isSubmitting ? 'Salvando Configurações...' : 'Salvar Alterações'}
                             </Button>
                         </div>
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Modal de Ajuda */}
+            {showHelpModal && (
+                <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300 text-left">
+                    <div className="relative bg-zinc-950 border border-white/10 rounded-[2.5rem] w-full max-w-2xl p-5 sm:p-8 flex flex-col max-h-[85vh] shadow-[0_0_80px_rgba(0,0,0,0.9)] overflow-hidden animate-in zoom-in-95 duration-300">
+                        {/* Header */}
+                        <div className="flex justify-between items-center pb-4 border-b border-white/5 mb-4 shrink-0 select-none">
+                            <h3 className="text-xs font-black text-admin-gold uppercase tracking-[0.2em] flex items-center gap-2 text-[#FFBF00]">
+                                <HelpCircle className="w-5 h-5 animate-pulse text-[#FFBF00]" />
+                                Manual do Gerenciador de Banners
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => setShowHelpModal(false)}
+                                className="w-8 h-8 rounded-xl bg-zinc-900/50 border border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all flex items-center justify-center font-bold text-xs"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Scrollable Manual Content */}
+                        <div className="flex-1 overflow-y-auto space-y-6 pr-1 pb-6 custom-scrollbar text-zinc-400 text-xs">
+                            <div className="space-y-4">
+                                <p className="leading-relaxed">
+                                    O Gerenciador de Banners permite que você faça a curadoria dos banners rotativos na página inicial do aplicativo do cliente. Essa seção é a principal vitrine de promoções e produtos em destaque.
+                                </p>
+
+                                <div className="space-y-3">
+                                    <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-[#FFBF00] border-l-2 border-amber-500 pl-2">
+                                        Parâmetros dos Banners
+                                    </h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 select-none">
+                                        <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 space-y-1">
+                                            <div className="flex items-center gap-2 text-white font-bold text-[10px] uppercase tracking-wider">
+                                                <Layout className="w-4 h-4 text-emerald-500" />
+                                                Imagem Promocional
+                                            </div>
+                                            <p className="text-[10px] text-zinc-500">
+                                                Ideal usar proporção horizontal de 21:9. Imagens com boa legibilidade aumentam a conversão.
+                                            </p>
+                                        </div>
+
+                                        <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 space-y-1">
+                                            <div className="flex items-center gap-2 text-white font-bold text-[10px] uppercase tracking-wider">
+                                                <ExternalLink className="w-4 h-4 text-[#FFBF00]" />
+                                                Link de Destino
+                                            </div>
+                                            <p className="text-[10px] text-zinc-500">
+                                                A rota interna do app para onde o cliente será direcionado (ex: `/produtos` ou `/categoria/calcados`).
+                                            </p>
+                                        </div>
+
+                                        <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 space-y-1">
+                                            <div className="flex items-center gap-2 text-white font-bold text-[10px] uppercase tracking-wider">
+                                                <ArrowUp className="w-4 h-4 text-sky-500" />
+                                                Sequência / Ordenação
+                                            </div>
+                                            <p className="text-[10px] text-zinc-500">
+                                                Prioridade de exibição na fila de slides. Ordene usando os controles simples no painel.
+                                            </p>
+                                        </div>
+
+                                        <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 space-y-1">
+                                            <div className="flex items-center gap-2 text-white font-bold text-[10px] uppercase tracking-wider">
+                                                <Sparkles className="w-4 h-4 text-purple-500" />
+                                                Status de Exibição
+                                            </div>
+                                            <p className="text-[10px] text-zinc-500">
+                                                Suspenda ou ative a visibilidade de qualquer campanha instantaneamente usando o botão de alternar.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="pt-4 border-t border-white/5 flex justify-end shrink-0 select-none">
+                            <button
+                                type="button"
+                                onClick={() => setShowHelpModal(false)}
+                                className="px-6 py-3 rounded-xl bg-[#FFBF00] hover:bg-amber-500 text-black text-[9px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95"
+                            >
+                                Entendido
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

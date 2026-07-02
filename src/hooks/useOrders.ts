@@ -72,7 +72,9 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
       if (cached) {
         hasCache = true;
       }
-    } catch (e) {}
+    } catch (_e) {
+      // ignore localStorage issues
+    }
 
     if (!hasCache) {
       setLoading(true);
@@ -107,7 +109,14 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
   }, [user, enabled]);
 
   // Load orders with pagination (Admin) - Optimized
-  const loadOrders = useCallback(async (page = 0, pageSize = 20, statusFilter?: string) => {
+  const loadOrders = useCallback(async (
+    page = 0,
+    pageSize = 20,
+    statusFilter?: string,
+    searchQuery?: string,
+    startDate?: string,
+    endDate?: string
+  ) => {
     if (!enabled) return { orders: [], total: 0 };
     try {
       setLoading(true);
@@ -117,13 +126,30 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
           *,
           items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)),
           address:user_addresses(*)
-        `, { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
+        `, { count: 'exact' });
 
       if (statusFilter && statusFilter !== 'all') {
         query = query.eq('status', statusFilter);
       }
+
+      if (searchQuery) {
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(searchQuery);
+        if (isUuid) {
+          query = query.eq('id', searchQuery);
+        } else {
+          query = query.ilike('customer_name', `%${searchQuery}%`);
+        }
+      }
+
+      if (startDate) {
+        query = query.gte('created_at', startDate);
+      }
+      if (endDate) {
+        query = query.lte('created_at', endDate);
+      }
+
+      query = query.order('created_at', { ascending: false })
+        .range(page * pageSize, (page + 1) * pageSize - 1);
 
       const { data, error, count } = await query;
 
@@ -519,6 +545,43 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
     }
   }, []);
 
+  const subscribeToOrders = useCallback((onChange?: (payload: any) => void) => {
+    if (!user) return () => {};
+
+    const channelId = isAdmin ? 'admin_order_updates_realtime' : `order_updates_realtime_${user.id}`;
+    console.log(`[Realtime] Subscribing to orders (${isAdmin ? 'Admin' : 'User'}): ${channelId}`);
+
+    const channel = supabase.channel(channelId);
+
+    channel
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'marketplace_orders',
+        ...(isAdmin ? {} : { filter: `user_id=eq.${user.id}` })
+      },
+        async (payload) => {
+          console.log('[Realtime] Order change event:', payload.eventType);
+          if (onChange) {
+            onChange(payload);
+          }
+        }
+      );
+
+    channel.subscribe((status, err) => {
+      if (status === 'SUBSCRIBED') {
+        console.log(`[Realtime] Active orders channel: ${channelId}`);
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error('[Realtime] Orders channel error:', err?.message || err);
+      }
+    });
+
+    return () => {
+      console.log(`[Realtime] Cleaning up orders channel: ${channelId}`);
+      supabase.removeChannel(channel).catch(() => {});
+    };
+  }, [user, isAdmin]);
+
   return {
     orders,
     loading,
@@ -533,6 +596,7 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
     fetchOrdersByOtp,
     createOrder,
     fetchDashboardSummary,
-    fetchOrderHistory
+    fetchOrderHistory,
+    subscribeToOrders
   };
 };

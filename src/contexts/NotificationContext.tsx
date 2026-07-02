@@ -26,7 +26,7 @@ export function NotificationProvider({ children }: Readonly<{ children: React.Re
             const { data, error } = await supabase
                 .from('notificacoes')
                 .select('*')
-                .eq('usuario_id', user.id)
+                .or(`usuario_id.eq.${user.id},usuario_id.is.null`)
                 .order('created_at', { ascending: false })
                 .limit(50);
 
@@ -107,8 +107,7 @@ export function NotificationProvider({ children }: Readonly<{ children: React.Re
                 .on('postgres_changes', {
                     event: '*',
                     schema: 'public',
-                    table: 'notificacoes',
-                    filter: `usuario_id=eq.${user.id}`
+                    table: 'notificacoes'
                 }, () => {
                     fetchNotifications(true);
                 })

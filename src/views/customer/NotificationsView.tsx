@@ -29,24 +29,24 @@ export function NotificationsView() {
                         {notifications.map((notif: any) => (
                             <div
                                 key={notif.id}
-                                onClick={() => !notif.lida && markAsRead(notif.id)}
-                                className={`p-4 md:p-6 rounded-2xl bg-white border border-zinc-100 transition-all hover:border-zinc-200 group relative cursor-pointer shadow-sm ${!notif.lida ? 'bg-amber-50/10 border-amber-100' : ''}`}
+                                onClick={() => !notif.read && markAsRead(notif.id)}
+                                className={`p-4 md:p-6 rounded-2xl bg-white border border-zinc-100 transition-all hover:border-zinc-200 group relative cursor-pointer shadow-sm ${!notif.read ? 'bg-amber-50/10 border-amber-100' : ''}`}
                             >
-                                {!notif.lida && (
+                                {!notif.read && (
                                     <div className="absolute left-0 top-4 bottom-4 w-1 rounded-r-lg bg-amber-400" />
                                 )}
                                 <div className="flex gap-4">
-                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border border-zinc-100 shadow-sm ${notif.tipo === 'order' || notif.tipo === 'sucesso' ? 'bg-blue-50 text-blue-600' :
-                                        notif.tipo === 'referral' || notif.tipo === 'promo' ? 'bg-amber-50 text-amber-600' :
+                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border border-zinc-100 shadow-sm ${notif.type === 'order' || notif.type === 'delivery' ? 'bg-blue-50 text-blue-600' :
+                                        notif.type === 'referral' || notif.type === 'promotion' ? 'bg-amber-50 text-amber-600' :
                                             'bg-zinc-50 text-zinc-600'
                                         }`}>
-                                        {notif.tipo === 'order' || notif.tipo === 'sucesso' ? <Package className="w-5 h-5" /> :
-                                            notif.tipo === 'referral' || notif.tipo === 'promo' ? <Gift className="w-5 h-5" /> :
+                                        {notif.type === 'order' || notif.type === 'delivery' ? <Package className="w-5 h-5" /> :
+                                            notif.type === 'referral' || notif.type === 'promotion' ? <Gift className="w-5 h-5" /> :
                                                 <Info className="w-5 h-5" />}
                                     </div>
                                     <div className="space-y-1 pr-8 flex-1">
-                                        <h4 className="text-sm font-black text-zinc-900 leading-tight">{notif.titulo}</h4>
-                                        <p className="text-xs text-zinc-500 leading-relaxed font-medium line-clamp-2 md:line-clamp-none">{notif.mensagem}</p>
+                                        <h4 className="text-sm font-black text-zinc-900 leading-tight">{notif.title}</h4>
+                                        <p className="text-xs text-zinc-500 leading-relaxed font-medium line-clamp-2 md:line-clamp-none">{notif.message}</p>
                                         <p className="text-[9px] font-black text-zinc-300 uppercase tracking-widest pt-1">
                                             {new Date(notif.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                                         </p>

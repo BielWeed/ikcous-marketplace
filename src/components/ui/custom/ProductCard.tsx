@@ -21,6 +21,7 @@ interface ProductCardProps {
   className?: string;
   priority?: boolean;
   isEligibleForFreeShipping?: boolean;
+  selectedProductId?: string;
 }
 
 export const ProductCard = memo(function ProductCard({
@@ -34,7 +35,8 @@ export const ProductCard = memo(function ProductCard({
   onTouchStart,
   className,
   priority = false,
-  isEligibleForFreeShipping = false
+  isEligibleForFreeShipping = false,
+  selectedProductId
 }: Readonly<ProductCardProps>) {
   const discount = product.originalPrice
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
@@ -63,21 +65,35 @@ export const ProductCard = memo(function ProductCard({
     }, 600);
   };
 
+  const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const img = e.currentTarget.querySelector('img');
+    if (img) {
+      img.style.viewTransitionName = 'product-image';
+    }
+    onClick(product.id);
+  };
+
+  const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      const img = e.currentTarget.querySelector('img');
+      if (img) {
+        img.style.viewTransitionName = 'product-image';
+      }
+      onClick(product.id);
+    }
+  };
+
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onClick(product.id)}
+      onClick={handleCardClick}
       onMouseEnter={onMouseEnter ? () => onMouseEnter(product.id) : undefined}
       onTouchStart={onTouchStart ? () => onTouchStart(product.id) : undefined}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick(product.id);
-        }
-      }}
+      onKeyDown={handleCardKeyDown}
       className={cn(
-        "group bg-zinc-50/30 rounded-[2.5rem] overflow-hidden hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] hover:bg-white transition-all duration-500 cursor-pointer border border-zinc-200/60 flex flex-col relative active:scale-[0.98] h-full",
+        "group bg-zinc-50/30 rounded-[2.5rem] overflow-hidden hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] hover:bg-white transition-[transform,box-shadow,background-color] duration-300 ease-out cursor-pointer border border-zinc-200/60 flex flex-col relative active:scale-[0.98] h-full gpu-accelerated",
         className
       )}
     >
@@ -88,6 +104,7 @@ export const ProductCard = memo(function ProductCard({
           alt={product.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out"
           priority={priority}
+          style={selectedProductId === product.id ? { viewTransitionName: 'product-image' } : undefined}
         />
 
         {/* Action Buttons */}
@@ -135,7 +152,7 @@ export const ProductCard = memo(function ProductCard({
             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest truncate max-w-[80%]">
               {product.category}
             </p>
-            {isEligibleForFreeShipping && (
+            {(isEligibleForFreeShipping || product.freeShipping) && (
               <div className="flex shrink-0 items-center gap-1 bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-md text-[8px] font-black border border-emerald-100/50">
                 <Truck className="w-2.5 h-2.5 animate-bounce-subtle shrink-0" />
                 <span className="truncate">Frete Grátis</span>
@@ -145,22 +162,31 @@ export const ProductCard = memo(function ProductCard({
           <h3 className="text-[14px] font-black text-slate-900 line-clamp-2 leading-tight group-hover:text-primary transition-colors duration-300 min-h-[2.5rem]">
             {product.name}
           </h3>
+          <div className="flex items-center pt-0.5">
+            <StarRating rating={product.rating || 5} size={11} />
+          </div>
         </div>
 
-        {/* Rating and Price */}
-        <div className="flex items-end justify-between mt-auto pt-1 gap-2">
-          <div className="flex flex-col min-w-0">
-            {product.originalPrice && product.originalPrice > product.price && (
-              <span className="text-[10px] text-slate-400 line-through font-bold truncate">
-                {formatCurrency(product.originalPrice)}
-              </span>
+        {/* Price */}
+        <div className="flex items-end mt-auto pt-1">
+          <div className="flex flex-col w-full">
+            {product.originalPrice && product.originalPrice > product.price ? (
+              <div className="flex flex-col">
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-none">
+                  De: <span className="line-through">{formatCurrency(product.originalPrice)}</span>
+                </span>
+                <span className="text-[15px] font-black text-rose-600 tracking-tight leading-none mt-1">
+                  Por: {formatCurrency(product.price)}
+                </span>
+              </div>
+            ) : (
+              <div className="flex flex-col">
+                <span className="text-[9px] text-transparent select-none leading-none">Spacer</span>
+                <span className="text-[15px] font-black text-slate-900 tracking-tight leading-none mt-1">
+                  {formatCurrency(product.price)}
+                </span>
+              </div>
             )}
-            <span className="text-[16px] font-black text-slate-900 tracking-tight truncate leading-none mt-0.5">
-              {formatCurrency(product.price)}
-            </span>
-          </div>
-          <div className="shrink-0 mb-0.5">
-            <StarRating rating={product.rating || 5} size={12} />
           </div>
         </div>
 
