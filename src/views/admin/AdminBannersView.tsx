@@ -1,4 +1,4 @@
-import { useState, useMemo, type ChangeEvent } from 'react';
+import { useState, useMemo, type ChangeEvent, memo } from 'react';
 import { Plus, ArrowLeft, Upload, ArrowUp, ArrowDown, Layout, Sparkles, Eye, Zap, Trash, Edit, ExternalLink, HelpCircle, Smartphone, SlidersHorizontal } from 'lucide-react';
 import { motion, type Variants } from 'framer-motion';
 import { useBanners } from '@/hooks/useBanners';
@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
+import { ImageAdjuster } from '@/components/ui/custom/ImageAdjuster';
 
 interface AdminBannersViewProps {
     onNavigate: (view: View) => void;
@@ -27,7 +28,7 @@ const itemVariants: Variants = {
     visible: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 120, damping: 14 } }
 };
 
-export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
+export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
     const { banners, isLoaded, uploadBannerImage, addBanner, updateBanner, deleteBanner, reorderBanners, refreshBanners } = useBanners(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [showHelpModal, setShowHelpModal] = useState(false);
@@ -35,6 +36,33 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
     const [uploading, setUploading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedTab, setSelectedTab] = useState<'all' | 'home_top' | 'home_middle' | 'home_bottom'>('all');
+
+    // Image Adjuster integration
+    const [isAdjusterOpen, setIsAdjusterOpen] = useState(false);
+    const [adjustingImgUrl, setAdjustingImgUrl] = useState('');
+    const [isUploadingAdjusted, setIsUploadingAdjusted] = useState(false);
+
+    const openAdjuster = (url: string) => {
+        setAdjustingImgUrl(url);
+        setIsAdjusterOpen(true);
+    };
+
+    const handleAdjustConfirm = async (croppedBlob: Blob) => {
+        setIsUploadingAdjusted(true);
+        const file = new File([croppedBlob], `banner-image-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        const loadingToast = toast.loading('Enviando imagem recortada...');
+        try {
+            const url = await uploadBannerImage(file);
+            setFormData(prev => ({ ...prev, imageUrl: url }));
+            toast.success('Imagem ajustada com sucesso!', { id: loadingToast });
+            setIsAdjusterOpen(false);
+        } catch (error) {
+            console.error('Error uploading adjusted banner image:', error);
+            toast.error('Erro ao salvar imagem ajustada', { id: loadingToast });
+        } finally {
+            setIsUploadingAdjusted(false);
+        }
+    };
     
 
 
@@ -536,8 +564,15 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                                         ) : formData.imageUrl ? (
                                             <div className="group relative w-full aspect-[21/9] rounded-2xl overflow-hidden border border-white/10 bg-zinc-900 shadow-2xl">
                                                 <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                    <Label htmlFor="banner-upload" className="cursor-pointer px-8 py-3 bg-[#FFBF00] text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all">Alterar Imagem</Label>
+                                                <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                                                    <Label htmlFor="banner-upload" className="cursor-pointer px-4 py-2.5 bg-zinc-900 text-white border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-zinc-800 transition-all select-none">Alterar</Label>
+                                                    <Button 
+                                                        type="button" 
+                                                        onClick={() => openAdjuster(formData.imageUrl!)}
+                                                        className="px-4 py-2.5 bg-[#FFBF00] hover:bg-[#FFBF00]/90 text-black rounded-xl text-[9px] font-black uppercase tracking-widest transition-all select-none shadow-md active:scale-95 flex items-center gap-1.5 animate-in fade-in zoom-in-95 duration-200"
+                                                    >
+                                                        <SlidersHorizontal className="w-3.5 h-3.5" /> Ajustar
+                                                    </Button>
                                                 </div>
                                             </div>
                                         ) : (
@@ -841,6 +876,17 @@ export function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
                     </div>
                 </div>
             )}
+
+            {/* Image Adjuster Modal */}
+            <ImageAdjuster
+                isOpen={isAdjusterOpen}
+                onClose={() => setIsAdjusterOpen(false)}
+                imageUrl={adjustingImgUrl}
+                onConfirm={handleAdjustConfirm}
+                isSubmitting={isUploadingAdjusted}
+                allowedPresets={['2:1', '4:1', 'free']}
+                defaultPreset={formData.position === 'home_top' ? '4:1' : '2:1'}
+            />
         </div>
     );
-}
+});

@@ -744,6 +744,45 @@ export function useProducts({ autoFetch = true } = {}) {
     }
   };
 
+  const upsertVariants = async (productId: string, variants: Array<any>) => {
+    if (!isAdmin) {
+      toast.error('Permissão negada');
+      return false;
+    }
+    try {
+      const dbVariants = variants.map(v => {
+        const item: any = {
+          product_id: productId,
+          name: v.name,
+          value: v.value,
+          sku: v.sku || null,
+          stock_increment: v.stockIncrement,
+          price_override: v.priceOverride,
+          active: v.active,
+          image_url: v.imageUrl || null
+        };
+        if (v.id && !v.id.startsWith('temp-')) {
+          item.id = v.id;
+        }
+        return item;
+      });
+
+      const { error } = await supabase
+        .from('product_variants')
+        .upsert(dbVariants);
+
+      if (error) throw error;
+
+      await refreshContext();
+      toast.success('Variantes salvas');
+      return true;
+    } catch (err) {
+      console.error('Error upserting variants:', err);
+      toast.error('Erro ao salvar as variantes');
+      throw err;
+    }
+  };
+
   return {
     products,
     loading: currentLoading,
@@ -766,6 +805,7 @@ export function useProducts({ autoFetch = true } = {}) {
     updateVariant,
     deleteVariant,
     deleteVariants,
+    upsertVariants,
     fetchProduct,
     getFreeShippingEligibleProducts,
     toggleProductStatus

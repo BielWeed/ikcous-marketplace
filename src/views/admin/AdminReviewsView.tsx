@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { 
     Search, 
     Star, 
@@ -67,7 +67,7 @@ const getAvatarGradient = (name: string) => {
     return colors[sum % colors.length];
 };
 
-export function AdminReviewsView({ onNavigate: _onNavigate, active }: AdminReviewsViewProps) {
+export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _onNavigate, active = true }: AdminReviewsViewProps) {
     const { adminReviews, loading, getAllReviews, deleteReview, toggleVerified, addMerchantReply } = useReviews();
     const [page, setPage] = useState(0);
     const [showHelpModal, setShowHelpModal] = useState(false);
@@ -253,9 +253,9 @@ export function AdminReviewsView({ onNavigate: _onNavigate, active }: AdminRevie
                         <div className="flex items-center justify-between lg:justify-start gap-3 w-full lg:w-auto">
                             <div className="flex items-center gap-2.5">
                                 <button
-                                    onClick={() => _onNavigate('admin-orders')}
+                                    onClick={() => globalThis.history.back()}
                                     className="p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-colors group shrink-0"
-                                    title="Voltar ao Painel"
+                                    title="Voltar"
                                 >
                                     <ArrowLeft className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors" />
                                 </button>
@@ -931,4 +931,4 @@ export function AdminReviewsView({ onNavigate: _onNavigate, active }: AdminRevie
             </div>
         </div>
     );
-}
+});

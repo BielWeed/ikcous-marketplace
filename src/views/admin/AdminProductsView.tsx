@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react';
 import {
   Plus,
   Search,
@@ -29,6 +29,8 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useProducts } from '@/hooks/useProducts';
+import { useCategories } from '@/hooks/useCategories';
+import { useAnalytics } from '@/hooks/useAnalytics';
 import type { View } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,25 +52,28 @@ interface AdminProductsViewProps {
   active?: boolean;
 }
 
-export function AdminProductsView({ onNavigate, active }: Readonly<AdminProductsViewProps>) {
-  const { products, loading, deleteProduct, toggleProductStatus, addProduct, fetchProducts } = useProducts();
+export const AdminProductsView = memo(function AdminProductsView({ onNavigate, active }: Readonly<AdminProductsViewProps>) {
+  const { products, loading, deleteProduct, toggleProductStatus, addProduct, loadProducts } = useProducts({ autoFetch: false });
+  const { stats, fetchExecutiveSummary } = useAnalytics();
+  const { categories: dbCategories } = useCategories();
+
+  useEffect(() => {
+    if (active && !stats) {
+      fetchExecutiveSummary(false);
+    }
+  }, [active, stats, fetchExecutiveSummary]);
+
   const [searchTerm, setSearchTerm] = useState('');
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  const debouncedSearchTerm = useDebounce(searchTerm, 400);
   const [filterCategory, setFilterCategory] = useState('all');
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [currentPage, setCurrentPage] = useState(0);
+  const pageSize = 12;
+
   const [viewMode, setViewMode] = useState<'detailed' | 'compact'>(() => {
     const saved = localStorage.getItem('admin_products_view_mode');
     return (saved === 'detailed' || saved === 'compact') ? saved : 'compact';
   });
-
-  useEffect(() => {
-    localStorage.setItem('admin_products_view_mode', viewMode);
-  }, [viewMode]);
-
-  useEffect(() => {
-    if (active) {
-      fetchProducts();
-    }
-  }, [active, fetchProducts]);
 
   const [expandedHelp, setExpandedHelp] = useState<Record<string, boolean>>({});
   const [helpTab, setHelpTab] = useState<'concepts' | 'simulator'>('concepts');
@@ -76,8 +81,44 @@ export function AdminProductsView({ onNavigate, active }: Readonly<AdminProducts
   const [simPrice, setSimPrice] = useState<string>('15.00');
   const [simStock, setSimStock] = useState<string>('20');
 
-  const [currentPage, setCurrentPage] = useState(0);
-  const pageSize = 12;
+  useEffect(() => {
+    localStorage.setItem('admin_products_view_mode', viewMode);
+  }, [viewMode]);
+
+  const loadData = useCallback(async (pageToFetch: number) => {
+    const result = await loadProducts(pageToFetch, pageSize, {
+      search: debouncedSearchTerm || undefined,
+      category: filterCategory === 'all' ? undefined : filterCategory
+    });
+    if (result) {
+      setTotalProducts(result.total);
+    }
+  }, [loadProducts, pageSize, debouncedSearchTerm, filterCategory]);
+
+  const lastSearchRef = useRef(debouncedSearchTerm);
+  const lastCategoryRef = useRef(filterCategory);
+
+  useEffect(() => {
+    if (!active) return;
+
+    const filtersChanged = 
+      lastSearchRef.current !== debouncedSearchTerm ||
+      lastCategoryRef.current !== filterCategory;
+
+    lastSearchRef.current = debouncedSearchTerm;
+    lastCategoryRef.current = filterCategory;
+
+    let pageToFetch = currentPage;
+    if (filtersChanged) {
+      pageToFetch = 0;
+      if (currentPage !== 0) {
+        setCurrentPage(0);
+        return;
+      }
+    }
+
+    loadData(pageToFetch);
+  }, [currentPage, debouncedSearchTerm, filterCategory, active, loadData]);
 
   const simulatorMetrics = useMemo(() => {
     const cost = parseFloat(simCost) || 0;
@@ -123,43 +164,26 @@ export function AdminProductsView({ onNavigate, active }: Readonly<AdminProducts
     setExpandedHelp(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const filteredProducts = useMemo(() => {
-    return products?.filter(product => {
-      const matchesSearch = product.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-        product.id.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
-      const matchesCategory = filterCategory === 'all' || product.category === filterCategory;
-      return matchesSearch && matchesCategory;
-    }) || [];
-  }, [products, debouncedSearchTerm, filterCategory]);
+  const totalPages = Math.ceil(totalProducts / pageSize);
 
-  // Reset page when searching or filtering
-  useEffect(() => {
-    setCurrentPage(0);
-  }, [debouncedSearchTerm, filterCategory]);
-
-  const totalPages = Math.ceil(filteredProducts.length / pageSize);
-  const paginatedProducts = useMemo(() => {
-    const start = currentPage * pageSize;
-    return filteredProducts.slice(start, start + pageSize);
-  }, [filteredProducts, currentPage, pageSize]);
-
-  // Lógica de cálculo financeiro global
+  // Lógica de cálculo financeiro global (SWR / Server-Side)
   const financialStats = useMemo(() => {
-    if (!filteredProducts) return { invested: 0, potential: 0, avgRoi: 0, activeCount: 0 };
-
-    const totalInvested = filteredProducts.reduce((acc, p) => acc + ((p.costPrice || 0) * p.stock), 0);
-    const totalPotentialValue = filteredProducts.reduce((acc, p) => acc + ((p.price || 0) * p.stock), 0);
-    const potentialProfit = totalPotentialValue - totalInvested;
-    const avgRoi = totalInvested > 0 ? (potentialProfit / totalInvested) * 100 : 0;
+    const invested = stats?.inventory?.totalCost ?? 0;
+    const potentialValue = stats?.inventory?.totalValue ?? 0;
+    const potentialProfit = potentialValue - invested;
+    const avgRoi = invested > 0 ? (potentialProfit / invested) * 100 : 0;
 
     return {
-      invested: totalInvested,
+      invested,
       potential: potentialProfit,
-      avgRoi: avgRoi,
-      activeCount: filteredProducts.filter(p => p.isActive).length,
-      totalCount: filteredProducts.length
+      avgRoi,
+      totalCount: totalProducts
     };
-  }, [filteredProducts]);
+  }, [stats, totalProducts]);
+
+  const categories = useMemo(() => {
+    return ['all', ...dbCategories.map(c => c.name)];
+  }, [dbCategories]);
 
   const kpiCards = useMemo<readonly KpiCardConfig[]>(() => [
     {
@@ -187,14 +211,14 @@ export function AdminProductsView({ onNavigate, active }: Readonly<AdminProducts
       subValue: "Rendimento %",
     },
     {
-      id: 'produtos-ativos',
-      label: 'Produtos Ativos',
-      value: `${financialStats.activeCount} / ${financialStats.totalCount}`,
+      id: 'produtos-cadastrados',
+      label: 'Produtos no Catálogo',
+      value: `${totalProducts} itens`,
       icon: Package,
       accent: 'text-purple-500',
-      subValue: "Em Operação",
+      subValue: "Catálogo Geral",
     },
-  ], [financialStats]);
+  ], [financialStats, totalProducts]);
 
   const handleDelete = async (id: string) => {
     if (globalThis.confirm('Tem certeza que deseja excluir este produto?')) {
@@ -255,10 +279,7 @@ export function AdminProductsView({ onNavigate, active }: Readonly<AdminProducts
     }
   };
 
-  const categories = useMemo(() => {
-    const cats = new Set(products?.map(p => p.category) || []);
-    return ['all', ...Array.from(cats)];
-  }, [products]);
+
 
   if (loading && products.length === 0) {
     return (
@@ -298,8 +319,7 @@ export function AdminProductsView({ onNavigate, active }: Readonly<AdminProducts
       <div className="px-6 flex items-center justify-between gap-4 pt-6 pb-2">
           <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-none select-none flex items-center gap-3 shrink-0">
               <span className="flex items-baseline flex-nowrap whitespace-nowrap">
-                  <span className="italic text-white">Prod</span>
-                  <span className="text-admin-gold not-italic ml-0.5">utos</span>
+                  <span className="italic text-white">Produtos</span>
               </span>
               <button
                 type="button"
@@ -315,11 +335,26 @@ export function AdminProductsView({ onNavigate, active }: Readonly<AdminProducts
                 <HelpCircle className="w-4.5 h-4.5" />
               </button>
           </h1>
+          
+          <Button
+              className="h-11 px-5 rounded-xl bg-admin-gold text-black hover:bg-admin-gold/90 font-black text-[10px] uppercase tracking-widest shadow-[0_0_15px_rgba(234,179,8,0.2)] hover:scale-105 active:scale-95 transition-all shrink-0 items-center justify-center hidden sm:flex"
+              onClick={() => onNavigate('admin-product-form')}
+          >
+              <Plus className="w-4 h-4 mr-2 stroke-[3] shrink-0" />
+              Novo Produto
+          </Button>
+          <Button
+              size="icon"
+              className="h-11 w-11 rounded-xl bg-admin-gold text-black hover:bg-admin-gold/90 shadow-[0_0_15px_rgba(234,179,8,0.2)] active:scale-95 transition-all shrink-0 sm:hidden flex items-center justify-center"
+              onClick={() => onNavigate('admin-product-form')}
+          >
+              <Plus className="w-5 h-5 stroke-[3]" />
+          </Button>
       </div>
 
       <div className="px-4 sm:px-6 mt-6 space-y-6 sm:space-y-12">
       <div className="space-y-4">
-        <AdminKpiCarousel cards={kpiCards} title="Visão Financeira" />
+        {active && <AdminKpiCarousel cards={kpiCards} title="Visão Financeira" />}
       </div>
 
       {/* Unified Control Bar Compacta */}
@@ -334,7 +369,7 @@ export function AdminProductsView({ onNavigate, active }: Readonly<AdminProducts
                     <Input
                         id="search-assets"
                         name="search-assets"
-                        placeholder="Buscar por nome ou ID do produto..."
+                        placeholder="Buscar produtos..."
                         className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all font-bold text-sm w-full"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
@@ -373,22 +408,6 @@ export function AdminProductsView({ onNavigate, active }: Readonly<AdminProducts
                         <List className="w-5 h-5 text-zinc-500 group-hover:text-admin-gold transition-colors" />
                     )}
                 </Button>
-
-                <Button
-                    className="h-14 px-6 rounded-2xl bg-admin-gold text-black hover:bg-admin-gold/90 font-black text-[10px] uppercase tracking-widest shadow-[0_0_15px_rgba(234,179,8,0.2)] hover:scale-105 active:scale-95 transition-all shrink-0 items-center justify-center hidden sm:flex"
-                    onClick={() => onNavigate('admin-product-form')}
-                >
-                    <Plus className="w-4 h-4 mr-2 stroke-[3] shrink-0" />
-                    <span className="truncate">Novo Produto</span>
-                </Button>
-                {/* Mobile version */}
-                <Button
-                    size="icon"
-                    className="h-14 w-14 rounded-2xl bg-admin-gold text-black hover:bg-admin-gold/90 shadow-[0_0_15px_rgba(234,179,8,0.2)] active:scale-95 transition-all shrink-0 sm:hidden flex items-center justify-center"
-                    onClick={() => onNavigate('admin-product-form')}
-                >
-                    <Plus className="w-5 h-5 stroke-[3]" />
-                </Button>
             </div>
         </div>
       </div>
@@ -396,7 +415,7 @@ export function AdminProductsView({ onNavigate, active }: Readonly<AdminProducts
       {/* Grid view of Products as Assets */}
       {viewMode === 'detailed' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 pb-10">
-          {paginatedProducts?.map((product) => {
+          {products?.map((product) => {
             const margin = product.price > 0 ? ((product.price - (product.costPrice || 0)) / product.price) * 100 : 0;
             const roi = (product.costPrice || 0) > 0 ? ((product.price - (product.costPrice || 0)) / (product.costPrice || 0)) * 100 : 0;
             const invested = (product.costPrice || 0) * product.stock;
@@ -572,7 +591,7 @@ export function AdminProductsView({ onNavigate, active }: Readonly<AdminProducts
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 pb-10">
-          {paginatedProducts?.map((product) => {
+          {products?.map((product) => {
             return (
               <div
                 key={product.id}
@@ -675,7 +694,7 @@ export function AdminProductsView({ onNavigate, active }: Readonly<AdminProducts
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-4 pb-10 select-none px-4 sm:px-0">
           <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-            Exibindo {currentPage * pageSize + 1} - {Math.min((currentPage + 1) * pageSize, filteredProducts.length)} de {filteredProducts.length}
+            Exibindo {currentPage * pageSize + 1} - {Math.min((currentPage + 1) * pageSize, totalProducts)} de {totalProducts}
           </p>
           <div className="flex gap-2">
             <Button
@@ -709,7 +728,7 @@ export function AdminProductsView({ onNavigate, active }: Readonly<AdminProducts
       )}
 
       {/* Empty State */}
-      {filteredProducts?.length === 0 && (
+      {!loading && products?.length === 0 && (
         <div className="admin-glass p-32 rounded-[3rem] border border-white/5 flex flex-col items-center justify-center text-center relative overflow-hidden">
           <div className="absolute inset-0 bg-admin-gold/5 animate-pulse" />
           <div className="p-8 bg-zinc-900 border border-white/5 rounded-[2rem] mb-8 shadow-2xl relative z-10">
@@ -1099,6 +1118,6 @@ export function AdminProductsView({ onNavigate, active }: Readonly<AdminProducts
     </div>
 
   );
-};
+});
 
 export default AdminProductsView;

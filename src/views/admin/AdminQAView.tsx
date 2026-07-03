@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { 
     MessageSquare, 
     ArrowLeft, 
@@ -82,7 +82,7 @@ const getAvatarGradient = (name: string) => {
     return colors[sum % colors.length];
 };
 
-export function AdminQAView({ onNavigate, active }: AdminQAViewProps) {
+export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, active = true }: AdminQAViewProps) {
     const { questions, loading, getAllQuestions, addAnswer, deleteQuestion, subscribeToQuestions } = useQuestions();
     const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
     const [answer, setAnswer] = useState('');
@@ -168,13 +168,21 @@ export function AdminQAView({ onNavigate, active }: AdminQAViewProps) {
         loadQuestions(pageToFetch);
     }, [page, filter, debouncedSearchQuery, active, loadQuestions]);
 
+    const onQuestionEventRef = useRef<() => void>(() => {});
+
+    useEffect(() => {
+        onQuestionEventRef.current = () => {
+            loadQuestions(page);
+        };
+    }, [loadQuestions, page]);
+
     useEffect(() => {
         if (!active) return;
         const unsubscribe = subscribeToQuestions(() => {
-            loadQuestions(page);
+            onQuestionEventRef.current();
         });
         return () => unsubscribe();
-    }, [subscribeToQuestions, active, loadQuestions, page]);
+    }, [subscribeToQuestions, active]);
 
     const handleSendAnswer = async () => {
         if (!selectedQuestion || !answer.trim()) return;
@@ -722,9 +730,9 @@ export function AdminQAView({ onNavigate, active }: AdminQAViewProps) {
                         <div className="flex items-center justify-between lg:justify-start gap-3 w-full lg:w-auto">
                             <div className="flex items-center gap-2.5">
                                 <button
-                                    onClick={() => onNavigate('admin-orders')}
+                                    onClick={() => globalThis.history.back()}
                                     className="p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-colors group shrink-0"
-                                    title="Voltar ao Painel"
+                                    title="Voltar"
                                 >
                                     <ArrowLeft className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors" />
                                 </button>
@@ -1038,4 +1046,4 @@ export function AdminQAView({ onNavigate, active }: AdminQAViewProps) {
             )}
         </div>
     );
-}
+});

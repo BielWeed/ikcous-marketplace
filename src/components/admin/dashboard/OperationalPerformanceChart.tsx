@@ -190,7 +190,7 @@ export function OperationalPerformanceChart({ stats, loading, className }: Opera
                         <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em]">Nenhum dado disponível no período</p>
                     </div>
                 ) : chartMode === 'revenue' ? (
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                         <BarChart data={filteredRevenueHistory} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                             <CartesianGrid vertical={false} stroke="#ffffff" strokeOpacity={0.03} strokeDasharray="4 4" />
                             <XAxis
@@ -261,7 +261,7 @@ export function OperationalPerformanceChart({ stats, loading, className }: Opera
                         </BarChart>
                     </ResponsiveContainer>
                 ) : (
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                         <AreaChart data={processedRoiData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                             <defs>
                                 <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">

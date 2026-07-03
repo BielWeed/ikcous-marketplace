@@ -230,8 +230,9 @@ export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) 
                 <div className="max-w-4xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <button
-                            onClick={() => onNavigate('admin-dashboard')}
+                            onClick={() => globalThis.history.back()}
                             className="w-12 h-12 flex items-center justify-center bg-zinc-950 text-zinc-400 rounded-2xl hover:bg-zinc-900 hover:border-admin-gold/50 transition-all active:scale-95 border border-zinc-800 group shadow-inner"
+                            title="Voltar"
                         >
                             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
                         </button>

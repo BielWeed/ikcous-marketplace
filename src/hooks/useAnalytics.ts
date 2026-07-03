@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
 
 export interface DashboardStats {
     today: {
@@ -50,32 +51,76 @@ export interface DashboardStats {
 }
 
 
-export function useAnalytics() {
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+// Memory cache for SWR pattern
+let cachedStats: DashboardStats | null = null;
+let cachedCategoryData: any = null;
 
-    const fetchExecutiveSummary = useCallback(async (): Promise<DashboardStats | null> => {
+export function useAnalytics() {
+    const { isAdmin } = useAuth();
+    const [summaryLoading, setSummaryLoading] = useState(false);
+    const [categoryLoading, setCategoryLoading] = useState(false);
+    const loading = summaryLoading || categoryLoading;
+    const [error, setError] = useState<string | null>(null);
+    const [stats, setStats] = useState<DashboardStats | null>(cachedStats);
+    const [categoryData, setCategoryData] = useState<any>(cachedCategoryData);
+
+    const fetchExecutiveSummary = useCallback(async (forceRefresh = false): Promise<DashboardStats | null> => {
+        if (!isAdmin) {
+            console.warn('[useAnalytics] fetchExecutiveSummary bypassed: user is not admin');
+            return null;
+        }
+
+        // Verify active session before calling RPC to avoid transient auth errors
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            console.warn('[useAnalytics] fetchExecutiveSummary bypassed: user session not active in client');
+            return null;
+        }
+
+        if (cachedStats && !forceRefresh) {
+            // Background revalidation
+            (async () => {
+                try {
+                    const { data, error: err } = await supabase.rpc('get_admin_analytics_v2');
+                    if (!err && data) {
+                        cachedStats = data as any as DashboardStats;
+                        setStats(cachedStats);
+                    }
+                } catch (e) {
+                    console.error('Background fetch stats failed:', e);
+                }
+            })();
+            return cachedStats;
+        }
+
         try {
-            setLoading(true);
+            setSummaryLoading(true);
             setError(null);
             
             const { data, error: err } = await supabase.rpc('get_admin_analytics_v2');
             
             if (err) throw err;
-            return data as any as DashboardStats;
+            cachedStats = data as any as DashboardStats;
+            setStats(cachedStats);
+            return cachedStats;
         } catch (err: any) {
-
             console.error('Error fetching executive summary:', err);
             setError(err.message || 'Error fetching executive summary');
             return null;
         } finally {
-            setLoading(false);
+            setSummaryLoading(false);
         }
-    }, []);
-
+    }, [isAdmin]);
 
     const fetchRetentionAnalytics = useCallback(async () => {
         try {
+            // Verify active session before calling RPC to avoid transient auth errors
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                console.warn('[useAnalytics] fetchRetentionAnalytics bypassed: user session not active in client');
+                return null;
+            }
+
             const { data } = await (supabase as any).rpc('get_retention_rate');
             return data;
         } catch (err) {
@@ -84,25 +129,59 @@ export function useAnalytics() {
         }
     }, []);
 
-    const fetchCategoryAnalytics = useCallback(async (start: string, end: string) => {
+    const fetchCategoryAnalytics = useCallback(async (start: string, end: string, forceRefresh = false) => {
+        // Verify active session before calling RPC to avoid transient auth errors
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            console.warn('[useAnalytics] fetchCategoryAnalytics bypassed: user session not active in client');
+            return null;
+        }
+
+        if (cachedCategoryData && !forceRefresh) {
+            // Background revalidation
+            (async () => {
+                try {
+                    const { data } = await (supabase as any).rpc('get_category_analytics', { 
+                        start_date: start, 
+                        end_date: end 
+                    });
+                    if (data) {
+                        cachedCategoryData = data;
+                        setCategoryData(data);
+                    }
+                } catch (e) {
+                    console.error('Background fetch category failed:', e);
+                }
+            })();
+            return cachedCategoryData;
+        }
+
         try {
-            const { data } = await (supabase as any).rpc('get_category_analytics', { 
+            setCategoryLoading(true);
+            const { data, error } = await (supabase as any).rpc('get_category_analytics', { 
                 start_date: start, 
                 end_date: end 
             });
+            if (error) throw error;
+            cachedCategoryData = data;
+            setCategoryData(data);
             return data;
         } catch (err) {
             console.error('Error fetching category analytics:', err);
             return null;
+        } finally {
+            setCategoryLoading(false);
         }
     }, []);
 
     return {
         loading,
         error,
+        stats,
+        categoryData,
         fetchExecutiveSummary,
         fetchRetentionAnalytics,
         fetchCategoryAnalytics
     };
-};
+}
 

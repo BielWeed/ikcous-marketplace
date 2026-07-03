@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { View } from '@/types';
 import {
@@ -58,7 +58,7 @@ interface AdminCustomersViewProps {
     active?: boolean;
 }
 
-export function AdminCustomersView({ onNavigate, active }: Readonly<AdminCustomersViewProps>) {
+export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate, active }: Readonly<AdminCustomersViewProps>) {
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [loading, setLoading] = useState(true);
     const [showHelpModal, setShowHelpModal] = useState(false);
@@ -85,7 +85,7 @@ export function AdminCustomersView({ onNavigate, active }: Readonly<AdminCustome
         localStorage.setItem('admin_customers_view_mode', viewMode);
     }, [viewMode]);
 
-    const fetchCustomers = useCallback(async (pageToFetch = page) => {
+    const fetchCustomers = useCallback(async (pageToFetch: number) => {
         try {
             setLoading(true);
 
@@ -110,7 +110,7 @@ export function AdminCustomersView({ onNavigate, active }: Readonly<AdminCustome
         } finally {
             setLoading(false);
         }
-    }, [debouncedSearchTerm, sortField, sortDirection, page, PAGE_SIZE]);
+    }, [debouncedSearchTerm, sortField, sortDirection, PAGE_SIZE]);
 
     const prevSearch = useRef(debouncedSearchTerm);
     const prevSortField = useRef(sortField);
@@ -232,8 +232,7 @@ export function AdminCustomersView({ onNavigate, active }: Readonly<AdminCustome
             <div className="px-6 flex items-center justify-between gap-4 pt-6 pb-2">
                 <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-none select-none flex items-center gap-3 shrink-0">
                     <span className="flex items-baseline flex-nowrap whitespace-nowrap">
-                        <span className="italic text-white">Cli</span>
-                        <span className="text-admin-gold not-italic ml-0.5">entes</span>
+                        <span className="italic text-white">Clientes</span>
                     </span>
                     <button
                         type="button"
@@ -287,7 +286,7 @@ export function AdminCustomersView({ onNavigate, active }: Readonly<AdminCustome
                             <Button
                                 variant="outline"
                                 size="icon"
-                                onClick={() => fetchCustomers()}
+                                onClick={() => fetchCustomers(page)}
                                 className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/50 hover:bg-admin-gold hover:border-admin-gold group transition-all shrink-0"
                             >
                                 <RefreshCw className={cn("w-5 h-5 text-zinc-500 group-hover:text-black transition-colors", loading && "animate-spin text-admin-gold")} />
@@ -718,4 +717,4 @@ export function AdminCustomersView({ onNavigate, active }: Readonly<AdminCustome
             )}
         </div>
     );
-}
+});

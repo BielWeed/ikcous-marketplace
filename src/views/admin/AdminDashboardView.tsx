@@ -10,16 +10,18 @@ import {
 import {
   useEffect,
   useState,
-  useCallback
+  useCallback,
+  useMemo,
+  memo
 } from 'react';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { useAuth } from '@/hooks/useAuth';
-import type { DashboardStats } from '@/hooks/useAnalytics';
 import { Button } from '@/components/ui/button';
 import { KpiSummaryCards } from '@/components/admin/dashboard/KpiSummaryCards';
 import { OperationalPerformanceChart } from '@/components/admin/dashboard/OperationalPerformanceChart';
 import { TopProductsList } from '@/components/admin/dashboard/TopProductsList';
 import { StrategicIntelligenceBlocks } from '@/components/admin/dashboard/StrategicIntelligenceBlocks';
+import { LocalErrorBoundary } from '@/components/ui/custom/LocalErrorBoundary';
 import { cn } from '@/lib/utils';
 import type { View } from '@/types';
 
@@ -35,7 +37,7 @@ interface CategoryData {
   orders?: number;
 }
 
-export function AdminDashboardView({
+export const AdminDashboardView = memo(function AdminDashboardView({
   onNavigate,
   active
 }: Readonly<AdminDashboardViewProps>) {
@@ -43,36 +45,25 @@ export function AdminDashboardView({
   const { 
     fetchExecutiveSummary, 
     fetchCategoryAnalytics,
+    stats,
+    categoryData,
     error: analyticsError 
   } = useAnalytics();
   
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [categoryData, setCategoryData] = useState<CategoryData[]>([]);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadDashboardData = useCallback(async () => {
+  const loadDashboardData = useCallback(async (force = false) => {
     setIsLoading(true);
     try {
-      const [execData, catData] = await Promise.all([
-        fetchExecutiveSummary(),
+      await Promise.all([
+        fetchExecutiveSummary(force),
         fetchCategoryAnalytics(
           '2020-01-01T00:00:00.000Z',
-          new Date().toISOString()
+          new Date().toISOString(),
+          force
         )
       ]);
-
-      if (execData) setStats(execData);
-      if (catData) {
-        setCategoryData(
-          catData.map((c: { name: string; value: string | number; avg_ticket?: number; orders?: number }) => ({
-            name: c.name,
-            value: Number(c.value),
-            avg_ticket: c.avg_ticket ? Number(c.avg_ticket) : undefined,
-            orders: c.orders ? Number(c.orders) : undefined
-          }))
-        );
-      }
     } catch (err) {
       console.error('Error loading dashboard data:', err);
     } finally {
@@ -80,9 +71,19 @@ export function AdminDashboardView({
     }
   }, [fetchExecutiveSummary, fetchCategoryAnalytics]);
 
+  const mappedCategoryData = useMemo<CategoryData[]>(() => {
+    if (!categoryData) return [];
+    return categoryData.map((c: { name: string; value: string | number; avg_ticket?: number; orders?: number }) => ({
+      name: c.name,
+      value: Number(c.value),
+      avg_ticket: c.avg_ticket ? Number(c.avg_ticket) : undefined,
+      orders: c.orders ? Number(c.orders) : undefined
+    }));
+  }, [categoryData]);
+
   useEffect(() => {
     if (session && active) {
-      loadDashboardData();
+      loadDashboardData(false);
     }
   }, [loadDashboardData, session, active]);
 
@@ -92,8 +93,7 @@ export function AdminDashboardView({
         <div className="px-6 flex items-center justify-between gap-4 pt-6 pb-2">
             <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-none select-none flex items-center gap-3 shrink-0">
                 <span className="flex items-baseline flex-nowrap whitespace-nowrap">
-                    <span className="italic text-white">Dash</span>
-                    <span className="text-admin-gold not-italic ml-0.5">board</span>
+                    <span className="italic text-white">Dashboard</span>
                 </span>
                 <button
                     type="button"
@@ -108,7 +108,7 @@ export function AdminDashboardView({
             <div className="flex items-center gap-4">
                 <button 
                      disabled={isLoading} 
-                     onClick={loadDashboardData}
+                     onClick={() => loadDashboardData(true)}
                      className="flex items-center gap-3 px-4 py-2 sm:px-6 sm:py-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group disabled:opacity-50"
                 >
                     <RefreshCw className={cn("w-4 h-4 text-zinc-400 group-hover:rotate-180 transition-transform duration-700", isLoading && "animate-spin")} />
@@ -126,7 +126,7 @@ export function AdminDashboardView({
                         variant="outline"
                         size="sm"
                         className="ml-auto border-red-500/20 hover:bg-red-500/10 text-red-400 h-8 text-[10px]"
-                        onClick={loadDashboardData}
+                        onClick={() => loadDashboardData(true)}
                     >
                         Tentar
                     </Button>
@@ -137,33 +137,49 @@ export function AdminDashboardView({
         <div className="space-y-6 sm:space-y-12 px-4 mt-6">
             {/* KPI Overview Section */}
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                <KpiSummaryCards stats={stats} loading={isLoading} />
+                {active && (
+                    <LocalErrorBoundary>
+                        <KpiSummaryCards stats={stats} loading={isLoading && !stats} />
+                    </LocalErrorBoundary>
+                )}
             </div>
 
             {/* Strategic Intelligence Section */}
             <div className="animate-in fade-in slide-in-from-bottom-6 duration-700 delay-150 px-0 sm:px-6">
-                <StrategicIntelligenceBlocks 
-                    categoryData={categoryData}
-                    loading={isLoading}
-                />
+                {active && (
+                    <LocalErrorBoundary>
+                        <StrategicIntelligenceBlocks 
+                            categoryData={mappedCategoryData}
+                            loading={isLoading && !stats}
+                        />
+                    </LocalErrorBoundary>
+                )}
             </div>
 
             {/* Performance Grid - Old chart as secondary or removed */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-10 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-300">
-                <OperationalPerformanceChart
-                    stats={stats}
-                    loading={isLoading}
-                    className="lg:col-span-3"
-                />
+                {active && (
+                    <LocalErrorBoundary>
+                        <OperationalPerformanceChart
+                            stats={stats}
+                            loading={isLoading && !stats}
+                            className="lg:col-span-3"
+                        />
+                    </LocalErrorBoundary>
+                )}
             </div>
 
             {/* Bottom Grid */}
             <div className="grid grid-cols-1 gap-6 sm:gap-10 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-500">
-                <TopProductsList
-                    stats={stats}
-                    loading={isLoading}
-                    onNavigate={onNavigate}
-                />
+                {active && (
+                    <LocalErrorBoundary>
+                        <TopProductsList
+                            stats={stats}
+                            loading={isLoading && !stats}
+                            onNavigate={onNavigate}
+                        />
+                    </LocalErrorBoundary>
+                )}
             </div>
         </div>
 
@@ -268,5 +284,5 @@ export function AdminDashboardView({
         )}
     </div>
   );
-}
+});
 

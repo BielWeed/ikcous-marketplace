@@ -1,0 +1,33 @@
+- generic [ref=f7e3]:
+  - main [ref=f7e4]:
+    - generic [ref=f7e6]:
+      - generic [ref=f7e8]:
+        - button "Perfil" [ref=f7e10] [cursor=pointer]:
+          - img
+          - generic [ref=f7e11]: Perfil
+        - generic [ref=f7e12]:
+          - heading "IKCOUS Admin" [level=1] [ref=f7e13]
+          - paragraph [ref=f7e14]: Navegação Unificada
+        - button [ref=f7e16] [cursor=pointer]:
+          - img
+      - main [ref=f7e17]:
+        - generic [ref=f7e26]:
+          - paragraph [ref=f7e27]: Carregando Módulos
+          - paragraph [ref=f7e28]: Painel Administrativo
+      - navigation [ref=f7e29]:
+        - button "Geral" [ref=f7e30] [cursor=pointer]:
+          - img [ref=f7e32]
+          - generic [ref=f7e34]: Geral
+        - button "Pedidos" [ref=f7e35] [cursor=pointer]:
+          - img [ref=f7e36]
+          - generic [ref=f7e40]: Pedidos
+        - button "Produtos" [ref=f7e41] [cursor=pointer]:
+          - img [ref=f7e42]
+          - generic [ref=f7e45]: Produtos
+        - button "Clientes" [ref=f7e46] [cursor=pointer]:
+          - img [ref=f7e47]
+          - generic [ref=f7e52]: Clientes
+        - button "Ajustes" [ref=f7e53] [cursor=pointer]:
+          - img [ref=f7e54]
+          - generic [ref=f7e57]: Ajustes
+  - region "Notifications alt+T"

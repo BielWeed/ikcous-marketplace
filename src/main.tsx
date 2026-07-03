@@ -1,6 +1,18 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
+// Suppress Recharts "should be greater than 0" console warning which happens during initial layout calculations
+const originalWarn = console.warn;
+console.warn = (...args) => {
+  if (
+    typeof args[0] === 'string' &&
+    (args[0].includes('should be greater than 0') || (args[0].includes('width') && args[0].includes('height') && args[0].includes('chart')))
+  ) {
+    return;
+  }
+  originalWarn(...args);
+};
+
 // Headless sandbox safety: prevent Chromium Service Worker native crashes
 if (
   typeof navigator !== 'undefined' && (

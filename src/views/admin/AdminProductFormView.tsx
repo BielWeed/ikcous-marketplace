@@ -31,7 +31,7 @@ const containerVariants = {
 // };
 
 export function AdminProductFormView({ productId, onNavigate, onBack }: AdminProductFormViewProps) {
-  const { addProduct, updateProduct, addVariant, updateVariant, deleteVariants, uploadProductImages, fetchProduct } = useProducts({ autoFetch: false });
+  const { addProduct, updateProduct, upsertVariants, deleteVariants, uploadProductImages, fetchProduct } = useProducts({ autoFetch: false });
   const { categories: dbCategories, addCategory } = useCategories();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -315,6 +315,10 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!navigator.onLine) {
+      toast.error('Não é possível salvar alterações em modo offline.');
+      return;
+    }
     setIsSubmitting(true);
 
     const pPrice = parseFloat(formData.price) || 0;
@@ -353,24 +357,9 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
           await deleteVariants(deletedVariantIds);
         }
 
-        // 3. Atualizar ou adicionar as variantes restantes
-        for (const v of formData.variants) {
-          const vData = {
-            productId: productId,
-            name: v.name,
-            value: v.value,
-            sku: v.sku || undefined,
-            stockIncrement: v.stockIncrement,
-            priceOverride: v.priceOverride,
-            active: v.active,
-            imageUrl: v.imageUrl || undefined
-          };
-
-          if (v.id.startsWith('temp-')) {
-            await addVariant(vData);
-          } else {
-            await updateVariant(v.id, vData);
-          }
+        // 3. Salvar variantes restantes em lote
+        if (formData.variants.length > 0) {
+          await upsertVariants(productId, formData.variants);
         }
       } else {
         await addProduct(productData);
@@ -746,7 +735,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
             <button
               type="button"
               onClick={() => handleSubmit()}
-              disabled={!isValid || isSubmitting}
+              disabled={!isValid || isSubmitting || !navigator.onLine}
               className="px-3 py-2 md:px-4 md:py-2.5 rounded-xl flex items-center justify-center gap-1.5 md:gap-2 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 transition-all active:scale-[0.98] font-black uppercase tracking-wider text-[9px] md:text-[10px] shadow-lg shadow-emerald-500/20 text-emerald-950 border border-white/10 shrink-0"
             >
               {isSubmitting ? (

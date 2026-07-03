@@ -65,12 +65,21 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
         setNotesValue(order.notes || '');
     }, [order.trackingCode, order.notes]);
 
+    const itemsSerialized = JSON.stringify(
+        order.items.map(item => ({
+            productId: item.productId,
+            variantId: item.variantId || null,
+            quantity: item.quantity
+        }))
+    );
+
     // Load product and variant SKUs
     useEffect(() => {
         const fetchSkus = async () => {
             try {
                 setLoadingSkus(true);
-                const productIds = order.items.map(item => item.productId);
+                const itemsList = JSON.parse(itemsSerialized) as { productId: string; variantId: string | null }[];
+                const productIds = itemsList.map(item => item.productId);
                 
                 // Fetch product SKUs
                 const { data: productsData } = await supabase
@@ -84,7 +93,7 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                 });
 
                 // Fetch variant SKUs if any
-                const variantIds = order.items
+                const variantIds = itemsList
                     .map(item => item.variantId)
                     .filter((id): id is string => !!id);
                 if (variantIds.length > 0) {
@@ -107,7 +116,7 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
         };
 
         fetchSkus();
-    }, [order.items]);
+    }, [itemsSerialized]);
 
     const getNextStatus = (current: OrderStatus): OrderStatus | null => {
         const currentIndex = statusFlow.indexOf(current);

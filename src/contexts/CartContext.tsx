@@ -301,6 +301,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
         syncPending.current = true;
         try {
+            // Verify session before syncing to avoid transient auth errors
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                console.log('[CartContext] Bypassing sync: session not active/ready in client');
+                syncPending.current = false;
+                return;
+            }
+
             console.log('[CartContext] 📤 Syncing to Supabase...');
             const itemMap = new Map<string, any>();
             currentCart.forEach(item => {

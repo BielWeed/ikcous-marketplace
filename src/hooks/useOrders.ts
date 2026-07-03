@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
@@ -21,8 +21,12 @@ const validateStatusUpdate = (order: Order | undefined, isAdmin: boolean, status
   }
 };
 
-export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
-  const { user } = useAuth();
+export function useOrders(
+  enabled: boolean = true, 
+  isAdmin: boolean = false,
+  options?: { onRealtimeEvent?: (payload: any) => void }
+) {
+  const { user, isAdmin: isUserAdmin } = useAuth();
   const [orders, setOrders] = useState<Order[]>(() => {
     if (typeof window === 'undefined' || !user?.id || isAdmin) return [];
     try {
@@ -196,7 +200,9 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
         }
         return updated;
       });
-      toast.info(`Novo pedido recebido! #${newOrder.id.slice(0, 8)}`);
+      if (!isAdmin && !onRealtimeEventRef.current) {
+        toast.info(`Novo pedido recebido! #${newOrder.id.slice(0, 8)}`);
+      }
     }
   }, [isAdmin, user?.id]);
 
@@ -227,9 +233,23 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
     }
   }, [user?.id]);
 
+  const fetchUserOrdersRef = useRef(fetchUserOrders);
+  const handleRealtimeInsertRef = useRef(handleRealtimeInsert);
+  const handleRealtimeUpdateRef = useRef(handleRealtimeUpdate);
+  const handleRealtimeDeleteRef = useRef(handleRealtimeDelete);
+  const onRealtimeEventRef = useRef(options?.onRealtimeEvent);
+
+  useEffect(() => {
+    fetchUserOrdersRef.current = fetchUserOrders;
+    handleRealtimeInsertRef.current = handleRealtimeInsert;
+    handleRealtimeUpdateRef.current = handleRealtimeUpdate;
+    handleRealtimeDeleteRef.current = handleRealtimeDelete;
+    onRealtimeEventRef.current = options?.onRealtimeEvent;
+  });
+
   // Realtime subscription for orders
   useEffect(() => {
-    if (!enabled || !user) return;
+    if (!enabled || !user?.id) return;
 
     let activeChannel: ReturnType<typeof supabase.channel> | null = null;
     let retryCount = 0;
@@ -269,11 +289,15 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
               console.log('[Realtime] Order change:', payload.eventType, newId || oldId);
 
               if (payload.eventType === 'INSERT' && payload.new && 'id' in payload.new) {
-                await handleRealtimeInsert(payload.new);
+                await handleRealtimeInsertRef.current(payload.new);
               } else if (payload.eventType === 'UPDATE' && payload.new) {
-                handleRealtimeUpdate(payload.new);
+                handleRealtimeUpdateRef.current(payload.new);
               } else if (payload.eventType === 'DELETE') {
-                handleRealtimeDelete(oldId);
+                handleRealtimeDeleteRef.current(oldId);
+              }
+
+              if (onRealtimeEventRef.current) {
+                onRealtimeEventRef.current(payload);
               }
             }
           );
@@ -328,7 +352,7 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
       reconnectTimeout = setTimeout(async () => {
         if (isUnmounting) return;
         try {
-          await fetchUserOrders();
+          await fetchUserOrdersRef.current();
           if (!isUnmounting) setupRealtime();
         } catch {
           if (!isUnmounting) setupRealtime();
@@ -346,7 +370,7 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
             console.log('[Realtime] Orders foregrounded. Forcing reconnect...');
             retryCount = 0;
             clearTimeout(reconnectTimeout);
-            fetchUserOrders().then(() => {
+            fetchUserOrdersRef.current().then(() => {
               if (!isUnmounting) setupRealtime();
             });
           }
@@ -361,7 +385,7 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
           console.log('[Realtime] Orders online. Checking...');
           retryCount = 0;
           clearTimeout(reconnectTimeout);
-          fetchUserOrders().then(() => {
+          fetchUserOrdersRef.current().then(() => {
             if (!isUnmounting) setupRealtime();
           });
         }
@@ -382,7 +406,7 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
         supabase.removeChannel(activeChannel).catch(() => {});
       }
     };
-  }, [enabled, user, isAdmin, fetchUserOrders, handleRealtimeInsert, handleRealtimeUpdate, handleRealtimeDelete]);
+  }, [enabled, user?.id, isAdmin]);
 
 
   const updateOrderStatus = useCallback(async (orderId: string, status: OrderStatus, notes?: string, silent: boolean = false) => {
@@ -455,6 +479,10 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
   }, []);
 
   const fetchDashboardSummary = useCallback(async (): Promise<DashboardSummary | null> => {
+    if (!isUserAdmin) {
+      console.warn('[useOrders] fetchDashboardSummary bypassed: user is not admin');
+      return null;
+    }
     try {
       const { data } = await (supabase.rpc as any)('get_admin_analytics_v2');
       if (data) {
@@ -465,7 +493,7 @@ export function useOrders(enabled: boolean = true, isAdmin: boolean = false) {
       console.error('Error fetching dashboard summary:', err);
       return null;
     }
-  }, []);
+  }, [isUserAdmin]);
 
   const createOrder = useCallback(async (orderData: any) => {
     // 🛡️ Checkout de Convidados: O login não é mais obrigatório no frontend.

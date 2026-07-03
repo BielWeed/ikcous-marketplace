@@ -1,0 +1,347 @@
+- generic [ref=f6e1]:
+  - generic [ref=f6e4]:
+    - main [ref=f6e5]:
+      - generic [ref=f6e7]:
+        - generic [ref=f6e9]:
+          - button "Perfil" [ref=f6e11] [cursor=pointer]:
+            - img
+            - generic [ref=f6e12]: Perfil
+          - generic [ref=f6e13]:
+            - heading "IKCOUS Admin" [level=1] [ref=f6e14]
+            - paragraph [ref=f6e15]: Navegação Unificada
+          - button [ref=f6e17] [cursor=pointer]:
+            - img
+        - main [ref=f6e18]:
+          - generic [ref=f6e1178]:
+            - heading "Cli entes" [level=1] [ref=f6e1180]:
+              - generic [ref=f6e1181]:
+                - generic [ref=f6e1182]: Cli
+                - generic [ref=f6e1183]: entes
+              - button "Guia de Clientes e Ajuda" [ref=f6e1184] [cursor=pointer]:
+                - img [ref=f6e1185]
+            - main [ref=f6e1188]:
+              - generic [ref=f6e1190]:
+                - generic [ref=f6e1191]:
+                  - generic [ref=f6e1194]: Métricas de Clientes
+                  - generic [ref=f6e1195]:
+                    - generic [ref=f6e1196]:
+                      - button "Ir para card 1" [ref=f6e1197] [cursor=pointer]
+                      - button "Ir para card 2" [ref=f6e1198] [cursor=pointer]
+                      - button "Ir para card 3" [ref=f6e1199] [cursor=pointer]
+                      - button "Ir para card 4" [ref=f6e1200] [cursor=pointer]
+                    - button "Expandir" [ref=f6e1201] [cursor=pointer]:
+                      - img [ref=f6e1202]
+                      - generic [ref=f6e1207]: Expandir
+                - generic [ref=f6e1208]:
+                  - generic [ref=f6e1210]:
+                    - generic [ref=f6e1212]:
+                      - generic [ref=f6e1213]:
+                        - img [ref=f6e1215]
+                        - paragraph [ref=f6e1220]: Total Clientes
+                      - generic [ref=f6e1221]:
+                        - heading "13" [level=3] [ref=f6e1222]
+                        - paragraph [ref=f6e1223]: Base de Clientes
+                    - generic [ref=f6e1225]:
+                      - generic [ref=f6e1226]:
+                        - img [ref=f6e1228]
+                        - paragraph [ref=f6e1231]: Novos (30d)
+                      - generic [ref=f6e1232]:
+                        - heading "4" [level=3] [ref=f6e1233]
+                        - paragraph [ref=f6e1234]: Crescimento
+                    - generic [ref=f6e1236]:
+                      - generic [ref=f6e1237]:
+                        - img [ref=f6e1239]
+                        - paragraph [ref=f6e1242]: Ticket Médio
+                      - generic [ref=f6e1243]:
+                        - heading "R$ 119,90" [level=3] [ref=f6e1244]
+                        - paragraph [ref=f6e1245]: Consumo Médio
+                    - generic [ref=f6e1247]:
+                      - generic [ref=f6e1248]:
+                        - img [ref=f6e1250]
+                        - paragraph [ref=f6e1253]: Pedidos Totais
+                      - generic [ref=f6e1254]:
+                        - heading "12" [level=3] [ref=f6e1255]
+                        - paragraph [ref=f6e1256]: Pedidos
+                  - button "Anterior" [ref=f6e1257] [cursor=pointer]:
+                    - img [ref=f6e1258]
+                  - button "Próximo" [ref=f6e1260] [cursor=pointer]:
+                    - img [ref=f6e1261]
+              - generic [ref=f6e1263]:
+                - generic [ref=f6e1265]:
+                  - generic [ref=f6e1266]:
+                    - generic:
+                      - img
+                    - textbox "Buscar cliente premium..." [ref=f6e1267]
+                  - button [ref=f6e1268] [cursor=pointer]:
+                    - img
+                  - button "Visualização Detalhada" [ref=f6e1269] [cursor=pointer]:
+                    - img
+                  - button [ref=f6e1270] [cursor=pointer]:
+                    - img
+                - generic [ref=f6e1273]:
+                  - generic [ref=f6e1274] [cursor=pointer]:
+                    - generic [ref=f6e1275]:
+                      - generic [ref=f6e1276]:
+                        - generic [ref=f6e1279]: IS
+                        - button [ref=f6e1281]:
+                          - img
+                      - generic [ref=f6e1282]:
+                        - heading "Isadora Bernardes" [level=4] [ref=f6e1283]
+                        - generic [ref=f6e1284]:
+                          - generic [ref=f6e1285]: customer
+                          - generic [ref=f6e1286]: "#4DAD1A53"
+                      - generic [ref=f6e1287]:
+                        - generic [ref=f6e1288]:
+                          - img [ref=f6e1289]
+                          - generic [ref=f6e1292]: isadoranbrds@hotmail.com
+                        - generic [ref=f6e1293]:
+                          - img [ref=f6e1294]
+                          - generic [ref=f6e1296]: (34) 98824-1915
+                    - generic [ref=f6e1297]:
+                      - generic [ref=f6e1298]:
+                        - generic [ref=f6e1299]: LTV Total
+                        - generic [ref=f6e1300]: R$0,00
+                      - generic [ref=f6e1301]:
+                        - generic [ref=f6e1302]: Pedidos
+                        - generic [ref=f6e1303]: "0"
+                  - generic [ref=f6e1304] [cursor=pointer]:
+                    - generic [ref=f6e1305]:
+                      - generic [ref=f6e1306]:
+                        - generic [ref=f6e1309]: SO
+                        - button [ref=f6e1311]:
+                          - img
+                      - generic [ref=f6e1312]:
+                        - heading "SOLANGE ROCHA MUNDIM" [level=4] [ref=f6e1313]
+                        - generic [ref=f6e1314]:
+                          - generic [ref=f6e1315]: customer
+                          - generic [ref=f6e1316]: "#B833A392"
+                      - generic [ref=f6e1317]:
+                        - generic [ref=f6e1318]:
+                          - img [ref=f6e1319]
+                          - generic [ref=f6e1322]: mundimblancoadvogadas@gmail.com
+                        - generic [ref=f6e1323]:
+                          - img [ref=f6e1324]
+                          - generic [ref=f6e1326]: "+5524981263100"
+                    - generic [ref=f6e1327]:
+                      - generic [ref=f6e1328]:
+                        - generic [ref=f6e1329]: LTV Total
+                        - generic [ref=f6e1330]: R$0,00
+                      - generic [ref=f6e1331]:
+                        - generic [ref=f6e1332]: Pedidos
+                        - generic [ref=f6e1333]: "0"
+                  - generic [ref=f6e1334] [cursor=pointer]:
+                    - generic [ref=f6e1335]:
+                      - generic [ref=f6e1336]:
+                        - generic [ref=f6e1339]: IS
+                        - button [ref=f6e1341]:
+                          - img
+                      - generic [ref=f6e1342]:
+                        - heading "Isadora Nunes Bernardes" [level=4] [ref=f6e1343]
+                        - generic [ref=f6e1344]:
+                          - generic [ref=f6e1345]: customer
+                          - generic [ref=f6e1346]: "#FDE30A5D"
+                      - generic [ref=f6e1347]:
+                        - generic [ref=f6e1348]:
+                          - img [ref=f6e1349]
+                          - generic [ref=f6e1352]: isadoranbrdds@hotmail.com
+                        - generic [ref=f6e1353]:
+                          - img [ref=f6e1354]
+                          - generic [ref=f6e1356]: (34) 98824-1915
+                    - generic [ref=f6e1357]:
+                      - generic [ref=f6e1358]:
+                        - generic [ref=f6e1359]: LTV Total
+                        - generic [ref=f6e1360]: R$0,00
+                      - generic [ref=f6e1361]:
+                        - generic [ref=f6e1362]: Pedidos
+                        - generic [ref=f6e1363]: "0"
+                  - generic [ref=f6e1364] [cursor=pointer]:
+                    - generic [ref=f6e1365]:
+                      - generic [ref=f6e1366]:
+                        - generic [ref=f6e1369]: TE
+                        - button [ref=f6e1371]:
+                          - img
+                      - generic [ref=f6e1372]:
+                        - heading "Test Admin" [level=4] [ref=f6e1373]
+                        - generic [ref=f6e1374]:
+                          - generic [ref=f6e1375]: admin
+                          - generic [ref=f6e1376]: "#40F817BC"
+                      - generic [ref=f6e1377]:
+                        - generic [ref=f6e1378]:
+                          - img [ref=f6e1379]
+                          - generic [ref=f6e1382]: testadmin999@gmail.com
+                        - generic [ref=f6e1383]:
+                          - img [ref=f6e1384]
+                          - generic [ref=f6e1386]: "34988887777"
+                    - generic [ref=f6e1387]:
+                      - generic [ref=f6e1388]:
+                        - generic [ref=f6e1389]: LTV Total
+                        - generic [ref=f6e1390]: R$0,00
+                      - generic [ref=f6e1391]:
+                        - generic [ref=f6e1392]: Pedidos
+                        - generic [ref=f6e1393]: "0"
+                  - generic [ref=f6e1394] [cursor=pointer]:
+                    - generic [ref=f6e1395]:
+                      - generic [ref=f6e1396]:
+                        - generic [ref=f6e1399]: BO
+                        - button [ref=f6e1401]:
+                          - img
+                      - generic [ref=f6e1402]:
+                        - heading "Bot E2E" [level=4] [ref=f6e1403]
+                        - generic [ref=f6e1404]:
+                          - generic [ref=f6e1405]: customer
+                          - generic [ref=f6e1406]: "#AD26A725"
+                      - generic [ref=f6e1407]:
+                        - generic [ref=f6e1408]:
+                          - img [ref=f6e1409]
+                          - generic [ref=f6e1412]: bot.e2e_f4b7a2d6@1secmail.com
+                        - generic [ref=f6e1413]:
+                          - img [ref=f6e1414]
+                          - generic [ref=f6e1416]: (34) 99999-9999
+                    - generic [ref=f6e1417]:
+                      - generic [ref=f6e1418]:
+                        - generic [ref=f6e1419]: LTV Total
+                        - generic [ref=f6e1420]: R$0,00
+                      - generic [ref=f6e1421]:
+                        - generic [ref=f6e1422]: Pedidos
+                        - generic [ref=f6e1423]: "0"
+                  - generic [ref=f6e1424] [cursor=pointer]:
+                    - generic [ref=f6e1425]:
+                      - generic [ref=f6e1426]:
+                        - generic [ref=f6e1429]: BO
+                        - button [ref=f6e1431]:
+                          - img
+                      - generic [ref=f6e1432]:
+                        - heading "Bot Nexus" [level=4] [ref=f6e1433]
+                        - generic [ref=f6e1434]:
+                          - generic [ref=f6e1435]: customer
+                          - generic [ref=f6e1436]: "#BB665DC6"
+                      - generic [ref=f6e1437]:
+                        - generic [ref=f6e1438]:
+                          - img [ref=f6e1439]
+                          - generic [ref=f6e1442]: bot.nexus_iavxfh7n@1secmail.com
+                        - generic [ref=f6e1443]:
+                          - img [ref=f6e1444]
+                          - generic [ref=f6e1446]: "34999999999"
+                    - generic [ref=f6e1447]:
+                      - generic [ref=f6e1448]:
+                        - generic [ref=f6e1449]: LTV Total
+                        - generic [ref=f6e1450]: R$0,00
+                      - generic [ref=f6e1451]:
+                        - generic [ref=f6e1452]: Pedidos
+                        - generic [ref=f6e1453]: "0"
+                  - generic [ref=f6e1454] [cursor=pointer]:
+                    - generic [ref=f6e1455]:
+                      - generic [ref=f6e1456]:
+                        - generic [ref=f6e1459]: US
+                        - button [ref=f6e1461]:
+                          - img
+                      - generic [ref=f6e1462]:
+                        - heading "Usuário" [level=4] [ref=f6e1463]
+                        - generic [ref=f6e1464]:
+                          - generic [ref=f6e1465]: vendedor
+                          - generic [ref=f6e1466]: "#0EBC1FFE"
+                      - generic [ref=f6e1468]:
+                        - img [ref=f6e1469]
+                        - generic [ref=f6e1472]: gabrielhg.fwq1@gmail.com
+                    - generic [ref=f6e1473]:
+                      - generic [ref=f6e1474]:
+                        - generic [ref=f6e1475]: LTV Total
+                        - generic [ref=f6e1476]: R$0,00
+                      - generic [ref=f6e1477]:
+                        - generic [ref=f6e1478]: Pedidos
+                        - generic [ref=f6e1479]: "0"
+                  - generic [ref=f6e1480] [cursor=pointer]:
+                    - generic [ref=f6e1481]:
+                      - generic [ref=f6e1482]:
+                        - generic [ref=f6e1485]: GA
+                        - button [ref=f6e1487]:
+                          - img
+                      - generic [ref=f6e1488]:
+                        - heading "Gabriel" [level=4] [ref=f6e1489]
+                        - generic [ref=f6e1490]:
+                          - generic [ref=f6e1491]: admin
+                          - generic [ref=f6e1492]: "#8FF81728"
+                      - generic [ref=f6e1493]:
+                        - generic [ref=f6e1494]:
+                          - img [ref=f6e1495]
+                          - generic [ref=f6e1498]: gabrielhgfw.q.1@gmail.com
+                        - generic [ref=f6e1499]:
+                          - img [ref=f6e1500]
+                          - generic [ref=f6e1502]: (34) 99999-9999
+                    - generic [ref=f6e1503]:
+                      - generic [ref=f6e1504]:
+                        - generic [ref=f6e1505]: LTV Total
+                        - generic [ref=f6e1506]: R$0,00
+                      - generic [ref=f6e1507]:
+                        - generic [ref=f6e1508]: Pedidos
+                        - generic [ref=f6e1509]: "0"
+                  - generic [ref=f6e1510] [cursor=pointer]:
+                    - generic [ref=f6e1511]:
+                      - generic [ref=f6e1512]:
+                        - generic [ref=f6e1515]: US
+                        - button [ref=f6e1517]:
+                          - img
+                      - generic [ref=f6e1518]:
+                        - heading "Usuário" [level=4] [ref=f6e1519]
+                        - generic [ref=f6e1520]:
+                          - generic [ref=f6e1521]: vendedor
+                          - generic [ref=f6e1522]: "#D36DDDD3"
+                      - generic [ref=f6e1524]:
+                        - img [ref=f6e1525]
+                        - generic [ref=f6e1528]: gabrielhgfw.q1@gmail.com
+                    - generic [ref=f6e1529]:
+                      - generic [ref=f6e1530]:
+                        - generic [ref=f6e1531]: LTV Total
+                        - generic [ref=f6e1532]: R$0,00
+                      - generic [ref=f6e1533]:
+                        - generic [ref=f6e1534]: Pedidos
+                        - generic [ref=f6e1535]: "0"
+                  - generic [ref=f6e1536] [cursor=pointer]:
+                    - generic [ref=f6e1537]:
+                      - generic [ref=f6e1538]:
+                        - generic [ref=f6e1541]: JO
+                        - button [ref=f6e1543]:
+                          - img
+                      - generic [ref=f6e1544]:
+                        - heading "joao gabriel vieira de oliveira" [level=4] [ref=f6e1545]
+                        - generic [ref=f6e1546]:
+                          - generic [ref=f6e1547]: vendedor
+                          - generic [ref=f6e1548]: "#58EE6183"
+                      - generic [ref=f6e1549]:
+                        - generic [ref=f6e1550]:
+                          - img [ref=f6e1551]
+                          - generic [ref=f6e1554]: gabrielhgfwq.1@gmail.com
+                        - generic [ref=f6e1555]:
+                          - img [ref=f6e1556]
+                          - generic [ref=f6e1558]: "34999588039"
+                    - generic [ref=f6e1559]:
+                      - generic [ref=f6e1560]:
+                        - generic [ref=f6e1561]: LTV Total
+                        - generic [ref=f6e1562]: R$228,70
+                      - generic [ref=f6e1563]:
+                        - generic [ref=f6e1564]: Pedidos
+                        - generic [ref=f6e1565]: "3"
+                - generic [ref=f6e1566]:
+                  - button [disabled]:
+                    - img
+                  - generic [ref=f6e1567]: Segmento 1 de 2
+                  - button [ref=f6e1568] [cursor=pointer]:
+                    - img
+        - navigation [ref=f6e372]:
+          - button "Geral" [ref=f6e373] [cursor=pointer]:
+            - img [ref=f6e374]
+            - generic [ref=f6e376]: Geral
+          - button "Pedidos" [ref=f6e377] [cursor=pointer]:
+            - img [ref=f6e378]
+            - generic [ref=f6e382]: Pedidos
+          - button "Produtos" [ref=f6e383] [cursor=pointer]:
+            - img [ref=f6e384]
+            - generic [ref=f6e387]: Produtos
+          - button "Clientes" [ref=f6e388] [cursor=pointer]:
+            - img [ref=f6e389]
+            - generic [ref=f6e394]: Clientes
+          - button "Ajustes" [active] [ref=f6e395] [cursor=pointer]:
+            - img [ref=f6e396]
+            - generic [ref=f6e399]: Ajustes
+    - region "Notifications alt+T"
+  - generic [ref=f6e400]: R$ 0

@@ -451,7 +451,7 @@ export function StrategicIntelligenceBlocks({ categoryData, loading }: Strategic
                     })()}
 
                     <div className="h-[350px] sm:h-[380px] lg:h-[280px] w-full relative z-10 outline-none" aria-hidden="true" style={{ outline: 'none' }}>
-                        <ResponsiveContainer width="100%" height="100%" className="focus:outline-none" style={{ outline: 'none' }}>
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} className="focus:outline-none" style={{ outline: 'none' }}>
                             <PieChart className="focus:outline-none" style={{ outline: 'none' }}>
                                 <Pie
                                     key={isMobile ? 'mobile-pie' : 'desktop-pie'}

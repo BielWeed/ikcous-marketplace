@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import {
   Search,
   MessageCircle,
@@ -54,8 +54,11 @@ interface AdminOrdersViewProps {
   active?: boolean;
 }
 
-export function AdminOrdersView({ onNavigate, active }: Readonly<AdminOrdersViewProps>) {
-  const { orders, loadOrders, updateOrderStatus, totalOrders, isLoaded, fetchDashboardSummary, subscribeToOrders } = useOrders(true, true);
+export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, active }: Readonly<AdminOrdersViewProps>) {
+  const onRealtimeEventRef = useRef<(payload: any) => void>(() => {});
+  const { orders, loadOrders, updateOrderStatus, totalOrders, isLoaded, fetchDashboardSummary } = useOrders(true, true, {
+    onRealtimeEvent: (payload) => onRealtimeEventRef.current(payload)
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -104,13 +107,13 @@ export function AdminOrdersView({ onNavigate, active }: Readonly<AdminOrdersView
     }
   }, [fetchDashboardSummary]);
 
-  const handleSelectOrder = (order: Order) => {
+  const handleSelectOrder = useCallback((order: Order) => {
     const container = document.querySelector('main main') || document.querySelector('main');
     if (container) {
       setSavedScrollPosition(container.scrollTop);
     }
     setSelectedOrder(order);
-  };
+  }, []);
 
   useEffect(() => {
     const container = document.querySelector('main main') || document.querySelector('main');
@@ -173,34 +176,30 @@ export function AdminOrdersView({ onNavigate, active }: Readonly<AdminOrdersView
   }, [currentPage, filter, debouncedSearchQuery, dateRange, active, loadAllData]);
 
   useEffect(() => {
-    if (!active) return;
-    if (subscribeToOrders) {
-      const unsubscribe = subscribeToOrders((payload) => {
-        console.log('[AdminOrdersView] Realtime event received:', payload.eventType);
+    onRealtimeEventRef.current = (payload) => {
+      console.log('[AdminOrdersView] Realtime event received:', payload.eventType);
 
-        // Dispara aviso Toast
-        if (payload.eventType === 'INSERT') {
-          const newId = payload.new?.id;
-          toast.info(`Novo pedido recebido! #${newId ? newId.slice(-6) : ''}`, {
-            action: {
-              label: 'Ver',
-              onClick: () => {
-                if (payload.new) handleSelectOrder(payload.new as Order);
-              }
+      // Dispara aviso Toast
+      if (payload.eventType === 'INSERT') {
+        const newId = payload.new?.id;
+        toast.info(`Novo pedido recebido! #${newId ? newId.slice(-6) : ''}`, {
+          action: {
+            label: 'Ver',
+            onClick: () => {
+              if (payload.new) handleSelectOrder(payload.new as Order);
             }
-          });
-        } else if (payload.eventType === 'UPDATE') {
-          const updatedId = payload.new?.id;
-          const newStatus = payload.new?.status as OrderStatus;
-          toast.info(`Pedido #${updatedId ? updatedId.slice(-6) : ''} atualizado para ${statusConfig[newStatus]?.label || newStatus}`);
-        }
+          }
+        });
+      } else if (payload.eventType === 'UPDATE') {
+        const updatedId = payload.new?.id;
+        const newStatus = payload.new?.status as OrderStatus;
+        toast.info(`Pedido #${updatedId ? updatedId.slice(-6) : ''} atualizado para ${statusConfig[newStatus]?.label || newStatus}`);
+      }
 
-        // Força recarga sincronizada da listagem e dos KPIs
-        loadAllData(currentPage);
-      });
-      return () => unsubscribe();
-    }
-  }, [subscribeToOrders, active, currentPage, loadAllData]);
+      // Atualiza apenas os KPIs (listagem já é atualizada reativamente em memória)
+      loadStats();
+    };
+  }, [loadStats, handleSelectOrder]);
 
   const totalPages = Math.ceil(totalOrders / itemsPerPage);
   const paginatedOrders = orders;
@@ -299,8 +298,7 @@ export function AdminOrdersView({ onNavigate, active }: Readonly<AdminOrdersView
       <div className="px-6 flex items-center justify-between gap-4 pt-6 pb-2">
           <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-none select-none flex items-center gap-3 shrink-0">
               <span className="flex items-baseline flex-nowrap whitespace-nowrap">
-                  <span className="italic text-white">Ped</span>
-                  <span className="text-admin-gold not-italic ml-0.5">idos</span>
+                  <span className="italic text-white">Pedidos</span>
               </span>
               <button
                 type="button"
@@ -335,7 +333,7 @@ export function AdminOrdersView({ onNavigate, active }: Readonly<AdminOrdersView
           <SupportBanners onNavigate={onNavigate} />
         </div>
 
-        <AdminKpiCarousel cards={kpiCards} title="Métricas de Pedidos" />
+        {active && <AdminKpiCarousel cards={kpiCards} title="Métricas de Pedidos" />}
 
         {/* Unified Control Bar Compacta */}
         <div className="pt-8 border-t border-white/5 relative flex flex-col mb-8 mt-4">
@@ -346,7 +344,7 @@ export function AdminOrdersView({ onNavigate, active }: Readonly<AdminOrdersView
                         <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-admin-gold transition-colors" />
                     </div>
                     <Input
-                        placeholder="Pesquisar protocolo (Nome, ID, WhatsApp)..."
+                        placeholder="Buscar pedidos..."
                         className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all font-bold text-sm w-full"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -793,4 +791,4 @@ export function AdminOrdersView({ onNavigate, active }: Readonly<AdminOrdersView
       )}
     </div>
   );
-}
+});

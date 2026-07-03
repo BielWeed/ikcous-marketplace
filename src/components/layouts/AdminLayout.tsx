@@ -35,26 +35,49 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
 
     const adminMainRef = React.useRef<HTMLElement>(null);
     const scrollPositionsRef = React.useRef<Record<string, number>>({});
-    const prevViewRef = React.useRef<View>(currentView);
+    const isTransitioningRef = React.useRef(false);
+    const [isOffline, setIsOffline] = React.useState(!navigator.onLine);
 
-    // Save scroll position in real-time as the user scrolls to avoid clamping on layout hide
+    React.useEffect(() => {
+        const handleOnline = () => setIsOffline(false);
+        const handleOffline = () => setIsOffline(true);
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
+    const currentViewRef = React.useRef(currentView);
+    React.useEffect(() => {
+        currentViewRef.current = currentView;
+    }, [currentView]);
+
+    // Save scroll position in real-time as the user scrolls
     React.useEffect(() => {
         const container = adminMainRef.current;
         if (!container) return;
 
         const handleScroll = () => {
-            scrollPositionsRef.current[currentView] = container.scrollTop;
+            if (isTransitioningRef.current) return;
+            scrollPositionsRef.current[currentViewRef.current] = container.scrollTop;
         };
 
         container.addEventListener('scroll', handleScroll, { passive: true });
         return () => {
             container.removeEventListener('scroll', handleScroll);
         };
-    }, [currentView]);
+    }, []);
 
     React.useLayoutEffect(() => {
         const container = adminMainRef.current;
         if (!container) return;
+
+        // Synchronously lock scroll recording on view transition
+        isTransitioningRef.current = true;
 
         const savedScroll = scrollPositionsRef.current[currentView] || 0;
 
@@ -72,10 +95,10 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
             restoreScroll();
             rafId2 = requestAnimationFrame(() => {
                 restoreScroll();
+                // Safely unlock scroll recording only after final scroll position has settled
+                isTransitioningRef.current = false;
             });
         });
-
-        prevViewRef.current = currentView;
 
         return () => {
             cancelAnimationFrame(rafId1);
@@ -92,6 +115,15 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
                 <meta name="description" content="Sistema de navegação unificada e operação." />
                 <meta property="og:title" content="IKCOUS Admin" />
             </Helmet>
+            
+            {/* Offline Alert Banner */}
+            {isOffline && (
+                <div className="bg-red-500/10 border-b border-red-500/20 text-red-400 text-[10px] font-black uppercase tracking-widest py-2.5 px-6 text-center animate-in fade-in slide-in-from-top duration-300 relative z-[70] flex items-center justify-center gap-2 select-none shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+                    <span>Conexão perdida. Algumas ações administrativas estão temporariamente bloqueadas.</span>
+                </div>
+            )}
+
             {/* Premium Header */}
             <header 
                 className="px-6 py-4 md:py-6 relative top-0 z-50 border-b border-white/5 flex-shrink-0 bg-[#09090b]/80 backdrop-blur-xl"
@@ -140,8 +172,8 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
             </header>
 
             {/* Main Content Area */}
-            <main ref={adminMainRef} className="flex-1 overflow-y-auto overflow-x-hidden w-full bg-[#09090b] pb-20 lg:pb-8 gpu-accelerated">
-                <div className="w-full max-w-7xl mx-auto py-0">
+            <main ref={adminMainRef} className="flex-1 overflow-y-auto overflow-x-hidden w-full bg-[#09090b] pb-20 lg:pb-28 gpu-accelerated">
+                <div className="w-full max-w-7xl mx-auto py-0 overflow-x-hidden">
                     {(() => {
                         const isTransitionSupported = typeof document !== 'undefined' && 'startViewTransition' in document;
                         const isMainTab = ['admin-dashboard', 'admin', 'admin-products', 'admin-orders', 'admin-customers', 'admin-settings'].includes(currentView);
@@ -175,8 +207,11 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
             {/* Floating Bottom Navigation */}
             <div className="flex-shrink-0 relative z-[60]">
                 <nav 
-                    className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-lg admin-glass border border-white/10 shadow-[0_20px_40px_rgba(0,0,0,0.8)] rounded-[2rem] p-2 flex items-center justify-between bg-zinc-900/80 backdrop-blur-2xl"
-                    style={{ viewTransitionName: 'admin-bottom-nav' } as React.CSSProperties}
+                    className="fixed left-1/2 -translate-x-1/2 w-[90%] max-w-lg admin-glass border border-white/10 shadow-[0_20px_40px_rgba(0,0,0,0.8)] rounded-[2rem] p-2 flex items-center justify-between bg-zinc-900/80 backdrop-blur-2xl"
+                    style={{ 
+                        viewTransitionName: 'admin-bottom-nav',
+                        bottom: 'calc(1.5rem + var(--safe-area-bottom, env(safe-area-inset-bottom, 0px)))'
+                    } as React.CSSProperties}
                 >
                     {navItems.map((item, idx) => {
                         const Icon = item.icon;
@@ -192,7 +227,7 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
                                 onMouseEnter={() => prefetchView(item.view)}
                                 onTouchStart={() => prefetchView(item.view)}
                                 className={cn(
-                                    "flex flex-col items-center gap-1 flex-1 py-2 rounded-2xl relative transition-all active:scale-95 group z-10",
+                                    "flex flex-col items-center gap-0.5 sm:gap-1 flex-1 py-2 rounded-2xl relative transition-all active:scale-95 group z-10",
                                     isActive ? "text-admin-gold" : "text-zinc-500 hover:text-zinc-300"
                                 )}
                             >
@@ -204,7 +239,7 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
                                     />
                                 )}
                                 <Icon className={cn("w-5 h-5 transition-transform group-hover:-translate-y-0.5", isActive && "scale-110")} />
-                                <span className={cn("text-[9px] font-black uppercase tracking-tighter transition-all", isActive ? "opacity-100" : "opacity-60")}>
+                                <span className={cn("text-[9px] font-black uppercase tracking-tighter transition-all hidden sm:inline-block", isActive ? "opacity-100" : "opacity-60")}>
                                     {item.label}
                                 </span>
                             </button>

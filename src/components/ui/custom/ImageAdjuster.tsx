@@ -3,18 +3,40 @@ import { motion } from 'framer-motion';
 import { X, ZoomIn, ZoomOut, Check, RotateCw, AlertCircle, Info, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
-interface ImageAdjusterProps {
+export type AspectRatioPreset = '4:5' | '1:1' | '2:1' | '4:1' | 'free';
+
+export interface ImageAdjusterProps {
   isOpen: boolean;
   onClose: () => void;
   imageUrl: string;
   onConfirm: (croppedBlob: Blob) => Promise<void>;
   isSubmitting?: boolean;
+  allowedPresets?: AspectRatioPreset[];
+  defaultPreset?: AspectRatioPreset;
 }
 
-type AspectRatioPreset = '4:5' | '1:1' | 'free';
+const PRESET_LABELS: Record<AspectRatioPreset, string> = {
+  '4:5': 'Vitrine (4:5)',
+  '1:1': 'Detalhe (1:1)',
+  '2:1': 'Celular (2:1)',
+  '4:1': 'Desktop (4:1)',
+  'free': 'Livre'
+};
 
-export function ImageAdjuster({ isOpen, onClose, imageUrl, onConfirm, isSubmitting = false }: ImageAdjusterProps) {
-  const [aspectRatio, setAspectRatio] = useState<AspectRatioPreset>('4:5');
+export function ImageAdjuster({
+  isOpen,
+  onClose,
+  imageUrl,
+  onConfirm,
+  isSubmitting = false,
+  allowedPresets,
+  defaultPreset
+}: ImageAdjusterProps) {
+  const presets = allowedPresets || ['4:5', '1:1', 'free'];
+  const [aspectRatio, setAspectRatio] = useState<AspectRatioPreset>(() => {
+    if (defaultPreset && presets.includes(defaultPreset)) return defaultPreset;
+    return presets[0];
+  });
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState<0 | 90 | 180 | 270>(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -37,6 +59,10 @@ export function ImageAdjuster({ isOpen, onClose, imageUrl, onConfirm, isSubmitti
       return { width: maxWidth, height: maxHeight };
     } else if (aspectRatio === '1:1') {
       return { width: maxWidth, height: maxWidth };
+    } else if (aspectRatio === '2:1') {
+      return { width: maxWidth, height: maxWidth / 2 };
+    } else if (aspectRatio === '4:1') {
+      return { width: maxWidth, height: maxWidth / 4 };
     } else {
       // Freeform/Original aspect ratio helper
       if (imageSize.naturalWidth && imageSize.naturalHeight) {
@@ -227,10 +253,8 @@ export function ImageAdjuster({ isOpen, onClose, imageUrl, onConfirm, isSubmitti
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Não foi possível obter contexto do canvas');
 
-      // We want to generate a high-quality cropped image.
-      // Target resolution based on aspect ratio
-      const targetWidth = aspectRatio === '4:5' ? 1000 : aspectRatio === '1:1' ? 1000 : 1000;
-      const targetHeight = aspectRatio === '4:5' ? 1250 : aspectRatio === '1:1' ? 1000 : Math.round(1000 * (viewportHeight / viewportWidth));
+      const targetWidth = 1000;
+      const targetHeight = Math.round(targetWidth * (viewportHeight / viewportWidth));
 
       canvas.width = targetWidth;
       canvas.height = targetHeight;
@@ -419,40 +443,21 @@ export function ImageAdjuster({ isOpen, onClose, imageUrl, onConfirm, isSubmitti
             {/* Presets Selectors */}
             <div className="space-y-2">
               <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Enquadramento / Proporção</label>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setAspectRatio('4:5')}
-                  className={`py-2 text-[10px] font-black uppercase tracking-wider border rounded-xl transition-all active:scale-95 ${
-                    aspectRatio === '4:5'
-                      ? 'bg-emerald-500 border-emerald-400 text-emerald-950 shadow-lg shadow-emerald-500/10'
-                      : 'bg-zinc-950/50 border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-900'
-                  }`}
-                >
-                  Vitrine (4:5)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAspectRatio('1:1')}
-                  className={`py-2 text-[10px] font-black uppercase tracking-wider border rounded-xl transition-all active:scale-95 ${
-                    aspectRatio === '1:1'
-                      ? 'bg-emerald-500 border-emerald-400 text-emerald-950 shadow-lg shadow-emerald-500/10'
-                      : 'bg-zinc-950/50 border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-900'
-                  }`}
-                >
-                  Detalhe (1:1)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAspectRatio('free')}
-                  className={`py-2 text-[10px] font-black uppercase tracking-wider border rounded-xl transition-all active:scale-95 ${
-                    aspectRatio === 'free'
-                      ? 'bg-emerald-500 border-emerald-400 text-emerald-950 shadow-lg shadow-emerald-500/10'
-                      : 'bg-zinc-950/50 border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-900'
-                  }`}
-                >
-                  Livre
-                </button>
+              <div className="flex flex-wrap gap-2">
+                {presets.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setAspectRatio(preset)}
+                    className={`flex-1 min-w-[80px] py-2 text-[10px] font-black uppercase tracking-wider border rounded-xl transition-all active:scale-95 ${
+                      aspectRatio === preset
+                        ? 'bg-emerald-500 border-emerald-400 text-emerald-950 shadow-lg shadow-emerald-500/10'
+                        : 'bg-zinc-950/50 border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-900'
+                    }`}
+                  >
+                    {PRESET_LABELS[preset]}
+                  </button>
+                ))}
               </div>
             </div>
 

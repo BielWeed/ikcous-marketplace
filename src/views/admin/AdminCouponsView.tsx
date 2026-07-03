@@ -183,8 +183,7 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
                             <div className="flex items-center gap-3">
                                 <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2 uppercase select-none">
                                     <span className="flex items-baseline flex-nowrap whitespace-nowrap">
-                                        <span className="italic text-white">Cup</span>
-                                        <span className="text-emerald-500 not-italic ml-0.5">ons</span>
+                                        <span className="italic text-white">Cupons</span>
                                     </span>
                                     <button
                                         type="button"

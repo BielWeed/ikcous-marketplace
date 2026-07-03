@@ -14,7 +14,7 @@ const ProfileView = React.lazy(() => import('@/views/customer/ProfileView').then
 // --- LAZY LOADED ADMIN VIEWS ---
 import { cn } from '@/lib/utils';
 const AdminDashboard = React.lazy(() => import('@/views/admin/AdminDashboardView').then(m => ({ default: m.AdminDashboardView })));
-const AdminProducts = React.lazy(() => import('@/views/admin/AdminProductsView').then(m => ({ default: m.default })));
+const AdminProducts = React.lazy(() => import('@/views/admin/AdminProductsView').then(m => ({ default: m.AdminProductsView })));
 const AdminProductForm = React.lazy(() => import('@/views/admin/AdminProductFormView').then(m => ({ default: m.AdminProductFormView })));
 const AdminOrders = React.lazy(() => import('@/views/admin/AdminOrdersView').then(m => ({ default: m.AdminOrdersView })));
 const AdminCoupons = React.lazy(() => import('@/views/admin/AdminCouponsView').then(m => ({ default: m.AdminCouponsView })));
@@ -301,8 +301,11 @@ const AppContent = () => {
       targetView = 'auth';
     }
 
+    const isDifferentView = currentView !== targetView;
+
     // Prefetch chunk and show loader if necessary
-    if (currentView !== targetView) {
+    if (isDifferentView) {
+      isTransitioningRef.current = true;
       setIsRouteLoading(true);
       try {
         await prefetchViewPromise(targetView);
@@ -311,13 +314,6 @@ const AppContent = () => {
       } finally {
         setIsRouteLoading(false);
       }
-    }
-
-    if (currentView !== targetView) {
-      isTransitioningRef.current = true;
-      setTimeout(() => {
-        isTransitioningRef.current = false;
-      }, isTransitionSupported ? 50 : 150); // Much faster lock since view transition handles things natively
     }
 
     const fromView = currentView;
@@ -339,6 +335,12 @@ const AppContent = () => {
     const currentPathAndSearch = globalThis.location.pathname + globalThis.location.search;
     if (currentPathAndSearch !== path) {
       globalThis.history.pushState({ view: targetView, id, from: fromView }, '', path);
+    }
+
+    if (isDifferentView) {
+      setTimeout(() => {
+        isTransitioningRef.current = false;
+      }, isTransitionSupported ? 50 : 150); // Much faster lock since view transition handles things natively
     }
   }, [currentView, authLoading, user, startTransition, isTransitionSupported, prefetchViewPromise, saveCurrentScroll]);
 
@@ -550,7 +552,8 @@ const AppContent = () => {
         'home', 'cart', 'product-detail', 'checkout', 'profile', 'admin', 'search', 'auth', 'login', 'favorites',
         'notifications', 'order-success', 'orders', 'order-details', 'recently-viewed', 'compare', 'account-settings',
         'admin-dashboard', 'admin-products', 'admin-product-form', 'admin-orders', 'admin-coupons', 'admin-banners',
-        'admin-settings', 'admin-reviews', 'admin-qa', 'admin-customers', 'admin-user-detail', 'admin-push', 'address-form'
+        'admin-settings', 'admin-reviews', 'admin-qa', 'admin-customers', 'admin-user-detail', 'admin-push', 'address-form',
+        'admin-login'
       ];
       if (validViews.includes(path as View)) {
         let targetView = path as View;
@@ -558,6 +561,13 @@ const AppContent = () => {
           targetView = 'auth';
           if (globalThis.location.pathname !== '/auth') {
             globalThis.history.replaceState({ view: 'auth' }, '', '/auth');
+          }
+        }
+
+        if (targetView === 'admin-login' && !authLoading && isAdmin) {
+          targetView = 'admin';
+          if (globalThis.location.pathname !== '/admin') {
+            globalThis.history.replaceState({ view: 'admin' }, '', '/admin');
           }
         }
 
@@ -649,7 +659,7 @@ const AppContent = () => {
     return () => {
       globalThis.removeEventListener('popstate', handlePopState);
     };
-  }, [currentView, authLoading, user, startTransition, isTransitionSupported, selectedProductId, saveCurrentScroll]);
+  }, [currentView, authLoading, user, isAdmin, startTransition, isTransitionSupported, selectedProductId, saveCurrentScroll]);
 
   // Clear search query when navigating to non-search views
   useEffect(() => {
@@ -754,9 +764,10 @@ const AppContent = () => {
   const renderAdminContent = () => {
     const isMainTab = ['admin-dashboard', 'admin', 'admin-products', 'admin-orders', 'admin-customers', 'admin-settings'].includes(currentView);
 
-    if (isMainTab) {
-      return (
-        <div className="relative w-full min-h-[60vh]">
+    return (
+      <div className="relative w-full min-h-[60vh] overflow-x-hidden">
+        {/* Main Tabs Container - Kept mounted in the DOM to preserve loaded states & scroll positions */}
+        <div className={cn("w-full h-full", !isMainTab && "hidden")}>
           <motion.div
             initial={false}
             animate={
@@ -764,7 +775,7 @@ const AppContent = () => {
                 ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
                 : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
             }
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="w-full top-0 left-0"
           >
             <DeferredTabContent active={currentView === 'admin-dashboard' || currentView === 'admin'}>
@@ -778,7 +789,7 @@ const AppContent = () => {
                 ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
                 : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
             }
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="w-full top-0 left-0"
           >
             <DeferredTabContent active={currentView === 'admin-products'}>
@@ -792,7 +803,7 @@ const AppContent = () => {
                 ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
                 : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
             }
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="w-full top-0 left-0"
           >
             <DeferredTabContent active={currentView === 'admin-orders'}>
@@ -806,7 +817,7 @@ const AppContent = () => {
                 ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
                 : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
             }
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="w-full top-0 left-0"
           >
             <DeferredTabContent active={currentView === 'admin-customers'}>
@@ -820,7 +831,7 @@ const AppContent = () => {
                 ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
                 : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
             }
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="w-full top-0 left-0"
           >
             <DeferredTabContent active={currentView === 'admin-settings'}>
@@ -828,43 +839,59 @@ const AppContent = () => {
             </DeferredTabContent>
           </motion.div>
         </div>
-      );
-    }
 
-    switch (currentView) {
-      case 'admin-product-form':
-        return (
-          <AdminProductForm
-            productId={selectedProductId || undefined}
-            onNavigate={handleNavigate}
-          />
-        );
-      case 'admin-coupons':
-        return <AdminCoupons onNavigate={handleNavigate} />;
-      case 'admin-banners':
-        return <AdminBanners onNavigate={handleNavigate} />;
-      case 'admin-reviews':
-        return <AdminReviews onNavigate={handleNavigate} />;
-      case 'admin-qa':
-        return <AdminQA onNavigate={handleNavigate} />;
-      case 'admin-user-detail':
-        return (
-          <AdminUserDetail
-            userId={selectedProductId || ''}
-            onBack={handleAdminUserDetailBack}
-            onNavigate={handleNavigate}
-          />
-        );
-      case 'admin-push':
-        return (
-          <AdminPush
-            onNavigate={handleNavigate}
-            targetUserId={selectedProductId || undefined}
-          />
-        );
-      default:
-        return <AdminPush onNavigate={handleNavigate} />;
-    }
+        {/* Secondary Views (Rendered on demand) */}
+        <AnimatePresence mode="wait">
+          {!isMainTab && (
+            <motion.div
+              key={currentView}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
+              className="w-full"
+            >
+              {(() => {
+                switch (currentView) {
+                  case 'admin-product-form':
+                    return (
+                      <AdminProductForm
+                        productId={selectedProductId || undefined}
+                        onNavigate={handleNavigate}
+                      />
+                    );
+                  case 'admin-coupons':
+                    return <AdminCoupons onNavigate={handleNavigate} />;
+                  case 'admin-banners':
+                    return <AdminBanners onNavigate={handleNavigate} />;
+                  case 'admin-reviews':
+                    return <AdminReviews onNavigate={handleNavigate} active={true} />;
+                  case 'admin-qa':
+                    return <AdminQA onNavigate={handleNavigate} active={true} />;
+                  case 'admin-user-detail':
+                    return (
+                      <AdminUserDetail
+                        userId={selectedProductId || ''}
+                        onBack={handleAdminUserDetailBack}
+                        onNavigate={handleNavigate}
+                      />
+                    );
+                  case 'admin-push':
+                    return (
+                      <AdminPush
+                        onNavigate={handleNavigate}
+                        targetUserId={selectedProductId || undefined}
+                      />
+                    );
+                  default:
+                    return null;
+                }
+              })()}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
   };
 
   const renderView = () => {

@@ -12,6 +12,9 @@ module.exports = {
       '2xl': '1536px',
     },
     extend: {
+      spacing: {
+        '4.5': '1.125rem',
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

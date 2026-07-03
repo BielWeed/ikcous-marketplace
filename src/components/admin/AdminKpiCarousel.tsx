@@ -200,7 +200,7 @@ export function AdminKpiCarousel({
                     {loading ? (
                         <div className="flex -ml-3 sm:-ml-6 overflow-hidden">
                             {Array.from({ length: 2 }).map((_, i) => (
-                                <div key={i} className="flex-[0_0_50%] min-w-0 pl-3 sm:pl-6">
+                                <div key={i} className="flex-[0_0_100%] sm:flex-[0_0_50%] min-w-0 pl-3 sm:pl-6">
                                     {renderSkeleton(i)}
                                 </div>
                             ))}
@@ -210,7 +210,7 @@ export function AdminKpiCarousel({
                             <div className="overflow-hidden" ref={emblaRef}>
                                 <div className="flex -ml-3 sm:-ml-6">
                                     {displayCards.map((stat, index) => (
-                                        <div key={stat.id || stat.label || index} className="flex-[0_0_50%] sm:flex-[0_0_50%] md:flex-[0_0_33.333%] lg:flex-[0_0_25%] min-w-0 pl-3 sm:pl-6">
+                                        <div key={stat.id || stat.label || index} className="flex-[0_0_100%] sm:flex-[0_0_50%] md:flex-[0_0_33.333%] lg:flex-[0_0_25%] min-w-0 pl-3 sm:pl-6">
                                             {renderCard(stat, index)}
                                         </div>
                                     ))}

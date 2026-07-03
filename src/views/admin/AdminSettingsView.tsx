@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { Save, Ticket, Image as ImageIcon, Truck, Headset, Boxes, Bell, Settings, HelpCircle, ChevronDown, MessageSquare, Tag, Sparkles, Megaphone, MessageCircle, Clock, Share2, Info, Plus, Minus, Star } from 'lucide-react';
 
 import { useStore } from '@/contexts/StoreContext';
@@ -15,7 +15,7 @@ interface AdminSettingsViewProps {
     active?: boolean;
 }
 
-export function AdminSettingsView({ onNavigate, active }: Readonly<AdminSettingsViewProps>) {
+export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, active }: Readonly<AdminSettingsViewProps>) {
     const { config, isLoaded, updateConfig, refresh } = useStore();
     const [formData, setFormData] = useState(config);
     const [showHelpModal, setShowHelpModal] = useState(false);
@@ -82,8 +82,7 @@ export function AdminSettingsView({ onNavigate, active }: Readonly<AdminSettings
                 <div className="flex items-center justify-between max-w-4xl mx-auto w-full gap-4">
                     <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-none select-none flex items-center gap-3 shrink-0">
                         <span className="flex items-baseline flex-nowrap whitespace-nowrap">
-                            <span className="italic text-white">Aju</span>
-                            <span className="text-admin-gold not-italic ml-0.5">stes</span>
+                            <span className="italic text-white">Ajustes</span>
                         </span>
                         <button
                             type="button"
@@ -96,10 +95,10 @@ export function AdminSettingsView({ onNavigate, active }: Readonly<AdminSettings
                     </h1>
                     <button
                         onClick={handleSubmit}
-                        className="h-11 px-6 bg-admin-gold text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-[0_0_30px_rgba(212,175,55,0.2)] hover:shadow-[0_0_40px_rgba(212,175,55,0.3)] hover:bg-admin-gold/90 transition-all active:scale-95 flex items-center gap-3 shrink-0"
+                        className="h-11 px-4 sm:px-6 bg-admin-gold text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-[0_0_30px_rgba(212,175,55,0.2)] hover:shadow-[0_0_40px_rgba(212,175,55,0.3)] hover:bg-admin-gold/90 transition-all active:scale-95 flex items-center gap-2 sm:gap-3 shrink-0"
                     >
                         <Save className="w-4 h-4" />
-                        Salvar Alterações
+                        <span>Salvar<span className="hidden sm:inline"> Alterações</span></span>
                     </button>
                 </div>
             </div>
@@ -132,7 +131,7 @@ export function AdminSettingsView({ onNavigate, active }: Readonly<AdminSettings
                     >
                         <div className="overflow-hidden">
                             <div className="pt-2">
-                                <div className="admin-glass sm:rounded-[2.5rem] border-y sm:border-x border-white/5 p-5 sm:p-6 shadow-2xl relative overflow-hidden group">
+                                <div className="admin-glass sm:rounded-[2.5rem] border-y sm:border-x border-white/5 p-4 sm:p-6 shadow-2xl relative overflow-hidden group">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         {/* Card 1: Frete Grátis Inteligente */}
                                         <div className={`p-5 rounded-[2rem] border transition-all duration-300 flex flex-col gap-4 ${
@@ -414,7 +413,7 @@ export function AdminSettingsView({ onNavigate, active }: Readonly<AdminSettings
                     >
                         <div className="overflow-hidden">
                             <div className="pt-2">
-                                <div className="admin-glass sm:rounded-[2.5rem] border-y sm:border-x border-white/5 p-6 sm:p-8 shadow-2xl space-y-8 relative overflow-hidden">
+                                <div className="admin-glass sm:rounded-[2.5rem] border-y sm:border-x border-white/5 p-4 sm:p-8 shadow-2xl space-y-8 relative overflow-hidden">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         {/* WhatsApp Field */}
                                         <div className="space-y-3 flex-grow">
@@ -595,7 +594,7 @@ export function AdminSettingsView({ onNavigate, active }: Readonly<AdminSettings
                     >
                         <div className="overflow-hidden">
                             <div className="pt-2">
-                                <div className="admin-glass sm:rounded-[2.5rem] border-y sm:border-x border-white/5 p-6 sm:p-8 shadow-2xl space-y-4">
+                                <div className="admin-glass sm:rounded-[2.5rem] border-y sm:border-x border-white/5 p-4 sm:p-8 shadow-2xl space-y-4">
                                     {/* Avaliações de Usuário */}
                                     <div className={`p-5 rounded-[2rem] border transition-all duration-300 flex items-start gap-4 ${
                                         formData.enableReviews 
@@ -720,7 +719,7 @@ export function AdminSettingsView({ onNavigate, active }: Readonly<AdminSettings
                     >
                         <div className="overflow-hidden">
                             <div className="pt-2">
-                                <div className="admin-glass sm:rounded-[2.5rem] border-y sm:border-x border-white/5 p-6 sm:p-8 shadow-2xl space-y-4 relative overflow-hidden">
+                                <div className="admin-glass sm:rounded-[2.5rem] border-y sm:border-x border-white/5 p-4 sm:p-8 shadow-2xl space-y-4 relative overflow-hidden">
                                     {/* Alertas de Venda Ativa */}
                                     <div className={`p-5 rounded-[2rem] border transition-all duration-300 flex items-start gap-4 ${
                                         formData.realTimeSalesAlerts 
@@ -995,4 +994,4 @@ export function AdminSettingsView({ onNavigate, active }: Readonly<AdminSettings
             )}
         </div>
     );
-}
+});
