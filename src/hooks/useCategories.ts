@@ -112,7 +112,7 @@ export function useCategories() {
             .replace(/(^-|-$)+/g, '');
     };
 
-    const addCategory = useCallback(async (category: Omit<Category, 'id' | 'createdAt' | 'slug'>) => {
+    const addCategory = useCallback(async (category: Omit<Category, 'id' | 'createdAt' | 'slug'>, silent?: boolean) => {
         const tempId = `temp-${Date.now()}`;
         const slug = generateSlug(category.name);
         const newCategory: Category = {
@@ -157,7 +157,7 @@ export function useCategories() {
                 return final;
             });
 
-            toast.success('Categoria criada com sucesso!');
+            if (!silent) toast.success('Categoria criada com sucesso!');
             return data;
         } catch (error) {
             setCategories(prev => {
@@ -166,7 +166,7 @@ export function useCategories() {
                 return reverted;
             });
             console.error('Error adding category:', error);
-            toast.error('Erro ao criar categoria');
+            if (!silent) toast.error('Erro ao criar categoria');
             throw error;
         }
     }, [persistToVault]);

@@ -442,7 +442,10 @@ export function ImageAdjuster({
           <div className="w-full max-w-sm space-y-4 md:space-y-5 bg-zinc-900/40 p-4 md:p-5 border border-white/5 rounded-3xl">
             {/* Presets Selectors */}
             <div className="space-y-2">
-              <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Enquadramento / Proporção</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Enquadramento / Proporção</label>
+                <span className="text-[8px] font-bold text-emerald-400 uppercase tracking-wider animate-pulse">Vitrine (4:5) é recomendado</span>
+              </div>
               <div className="flex flex-wrap gap-2">
                 {presets.map((preset) => (
                   <button

@@ -1,0 +1,243 @@
+- generic [ref=f1e1]:
+  - generic [ref=f1e3]:
+    - main [ref=f1e4]:
+      - generic [ref=f1e15]:
+        - generic [ref=f1e17]:
+          - button "Perfil" [ref=f1e19] [cursor=pointer]:
+            - img
+            - generic [ref=f1e20]: Perfil
+          - generic [ref=f1e21]:
+            - heading "IKCOUS Admin" [level=1] [ref=f1e22]
+            - paragraph [ref=f1e23]: Navegação Unificada
+          - button [ref=f1e25] [cursor=pointer]:
+            - img
+        - main [ref=f1e26]:
+          - generic [ref=f1e1375]:
+            - generic [ref=f1e1377]:
+              - generic [ref=f1e1378]:
+                - button "Voltar ao Painel" [ref=f1e1379] [cursor=pointer]:
+                  - img [ref=f1e1380]
+                - generic [ref=f1e1382]:
+                  - heading "GERENCIADOR VISUAL" [level=1] [ref=f1e1384]:
+                    - generic [ref=f1e1385]: GERENCIADOR VISUAL
+                    - button "Guia do Gerenciador de Banners" [ref=f1e1386] [cursor=pointer]:
+                      - img [ref=f1e1387]
+                  - paragraph [ref=f1e1390]:
+                    - text: Curadoria de Banners Premium
+                    - generic [ref=f1e1392]: Estética PWA
+              - button "Novo Banner" [ref=f1e1393] [cursor=pointer]:
+                - img [ref=f1e1394]
+                - text: Novo Banner
+            - generic [ref=f1e1395]:
+              - generic [ref=f1e1397]:
+                - generic [ref=f1e1398]:
+                  - generic [ref=f1e1401]: Métricas Visuais
+                  - generic [ref=f1e1402]:
+                    - generic [ref=f1e1403]:
+                      - button "Ir para card 1" [ref=f1e1404] [cursor=pointer]
+                      - button "Ir para card 2" [ref=f1e1405] [cursor=pointer]
+                      - button "Ir para card 3" [ref=f1e1406] [cursor=pointer]
+                    - button "Expandir" [ref=f1e1407] [cursor=pointer]:
+                      - img [ref=f1e1408]
+                      - generic [ref=f1e1413]: Expandir
+                - generic [ref=f1e1414]:
+                  - generic [ref=f1e1416]:
+                    - generic [ref=f1e1418]:
+                      - generic [ref=f1e1419]:
+                        - img [ref=f1e1421]
+                        - paragraph [ref=f1e1424]: Banners Ativos
+                      - generic [ref=f1e1425]:
+                        - heading "4" [level=3] [ref=f1e1426]
+                        - paragraph [ref=f1e1427]: / 4 total
+                      - generic [ref=f1e1428]: Banners atualmente visíveis no app
+                    - generic [ref=f1e1430]:
+                      - generic [ref=f1e1431]:
+                        - img [ref=f1e1433]
+                        - paragraph [ref=f1e1435]: Distribuição
+                      - generic [ref=f1e1436]:
+                        - heading "4 Topo" [level=3] [ref=f1e1437]
+                        - paragraph [ref=f1e1438]: "Meio: 0 • Base: 0"
+                      - generic [ref=f1e1439]: Posicionamento na Home
+                    - generic [ref=f1e1441]:
+                      - generic [ref=f1e1442]:
+                        - img [ref=f1e1444]
+                        - paragraph [ref=f1e1447]: Impacto Estético
+                      - heading "Moderado" [level=3] [ref=f1e1449]
+                      - generic [ref=f1e1450]: Preenchimento das seções
+                  - button "Anterior" [ref=f1e1451] [cursor=pointer]:
+                    - img [ref=f1e1452]
+                  - button "Próximo" [ref=f1e1454] [cursor=pointer]:
+                    - img [ref=f1e1455]
+              - generic [ref=f1e1457]:
+                - generic [ref=f1e1458]:
+                  - button "Todos" [ref=f1e1459] [cursor=pointer]: Todos
+                  - button "Topo" [ref=f1e1461] [cursor=pointer]
+                  - button "Meio" [ref=f1e1462] [cursor=pointer]
+                  - button "Base" [ref=f1e1463] [cursor=pointer]
+                - generic [ref=f1e1464]:
+                  - img [ref=f1e1465]
+                  - generic [ref=f1e1466]: "Visualizando: Todos os setores"
+              - generic [ref=f1e1467]:
+                - generic [ref=f1e1468]:
+                  - generic [ref=f1e1469]:
+                    - heading "Cabeçalho Inicial (Topo)" [level=2] [ref=f1e1472]
+                    - generic [ref=f1e1473]: 4 Banners
+                  - generic [ref=f1e1474]:
+                    - generic [ref=f1e1476]:
+                      - img "Banner" [ref=f1e1478]
+                      - generic [ref=f1e1480]:
+                        - generic [ref=f1e1481]:
+                          - generic [ref=f1e1482]:
+                            - heading "Campanha sem Título" [level=3] [ref=f1e1483]
+                            - generic [ref=f1e1484]:
+                              - paragraph [ref=f1e1486]:
+                                - text: "Ordem:"
+                                - generic [ref=f1e1487]: "#2"
+                              - paragraph [ref=f1e1489]: "Setor: Cabeçalho"
+                          - generic [ref=f1e1490]:
+                            - button "Mover para cima" [disabled]:
+                              - img
+                            - button "Mover para baixo" [ref=f1e1491] [cursor=pointer]:
+                              - img [ref=f1e1492]
+                        - generic [ref=f1e1494]:
+                          - generic [ref=f1e1495]:
+                            - img [ref=f1e1496]
+                            - generic [ref=f1e1500]: "Link:"
+                            - generic [ref=f1e1501]: Início (Sem Rota)
+                          - generic [ref=f1e1502]:
+                            - generic [ref=f1e1503]: Exibir no App
+                            - switch [checked] [ref=f1e1504] [cursor=pointer]
+                        - generic [ref=f1e1505]:
+                          - button "Editar" [ref=f1e1506] [cursor=pointer]:
+                            - img [ref=f1e1507]
+                            - text: Editar
+                          - button "Excluir" [ref=f1e1510] [cursor=pointer]:
+                            - img [ref=f1e1511]
+                            - text: Excluir
+                    - generic [ref=f1e1515]:
+                      - img "Banner" [ref=f1e1517]
+                      - generic [ref=f1e1519]:
+                        - generic [ref=f1e1520]:
+                          - generic [ref=f1e1521]:
+                            - heading "Campanha sem Título" [level=3] [ref=f1e1522]
+                            - generic [ref=f1e1523]:
+                              - paragraph [ref=f1e1525]:
+                                - text: "Ordem:"
+                                - generic [ref=f1e1526]: "#3"
+                              - paragraph [ref=f1e1528]: "Setor: Cabeçalho"
+                          - generic [ref=f1e1529]:
+                            - button "Mover para cima" [ref=f1e1530] [cursor=pointer]:
+                              - img [ref=f1e1531]
+                            - button "Mover para baixo" [ref=f1e1533] [cursor=pointer]:
+                              - img [ref=f1e1534]
+                        - generic [ref=f1e1536]:
+                          - generic [ref=f1e1537]:
+                            - img [ref=f1e1538]
+                            - generic [ref=f1e1542]: "Link:"
+                            - generic [ref=f1e1543]: Início (Sem Rota)
+                          - generic [ref=f1e1544]:
+                            - generic [ref=f1e1545]: Exibir no App
+                            - switch [checked] [ref=f1e1546] [cursor=pointer]
+                        - generic [ref=f1e1547]:
+                          - button "Editar" [ref=f1e1548] [cursor=pointer]:
+                            - img [ref=f1e1549]
+                            - text: Editar
+                          - button "Excluir" [ref=f1e1552] [cursor=pointer]:
+                            - img [ref=f1e1553]
+                            - text: Excluir
+                    - generic [ref=f1e1557]:
+                      - img "Banner" [ref=f1e1559]
+                      - generic [ref=f1e1561]:
+                        - generic [ref=f1e1562]:
+                          - generic [ref=f1e1563]:
+                            - heading "Campanha sem Título" [level=3] [ref=f1e1564]
+                            - generic [ref=f1e1565]:
+                              - paragraph [ref=f1e1567]:
+                                - text: "Ordem:"
+                                - generic [ref=f1e1568]: "#4"
+                              - paragraph [ref=f1e1570]: "Setor: Cabeçalho"
+                          - generic [ref=f1e1571]:
+                            - button "Mover para cima" [ref=f1e1572] [cursor=pointer]:
+                              - img [ref=f1e1573]
+                            - button "Mover para baixo" [ref=f1e1575] [cursor=pointer]:
+                              - img [ref=f1e1576]
+                        - generic [ref=f1e1578]:
+                          - generic [ref=f1e1579]:
+                            - img [ref=f1e1580]
+                            - generic [ref=f1e1584]: "Link:"
+                            - generic [ref=f1e1585]: Início (Sem Rota)
+                          - generic [ref=f1e1586]:
+                            - generic [ref=f1e1587]: Exibir no App
+                            - switch [checked] [ref=f1e1588] [cursor=pointer]
+                        - generic [ref=f1e1589]:
+                          - button "Editar" [ref=f1e1590] [cursor=pointer]:
+                            - img [ref=f1e1591]
+                            - text: Editar
+                          - button "Excluir" [ref=f1e1594] [cursor=pointer]:
+                            - img [ref=f1e1595]
+                            - text: Excluir
+                    - generic [ref=f1e1599]:
+                      - img "Banner" [ref=f1e1601]
+                      - generic [ref=f1e1603]:
+                        - generic [ref=f1e1604]:
+                          - generic [ref=f1e1605]:
+                            - heading "Campanha sem Título" [level=3] [ref=f1e1606]
+                            - generic [ref=f1e1607]:
+                              - paragraph [ref=f1e1609]:
+                                - text: "Ordem:"
+                                - generic [ref=f1e1610]: "#4"
+                              - paragraph [ref=f1e1612]: "Setor: Cabeçalho"
+                          - generic [ref=f1e1613]:
+                            - button "Mover para cima" [ref=f1e1614] [cursor=pointer]:
+                              - img [ref=f1e1615]
+                            - button "Mover para baixo" [disabled]:
+                              - img
+                        - generic [ref=f1e1617]:
+                          - generic [ref=f1e1618]:
+                            - img [ref=f1e1619]
+                            - generic [ref=f1e1623]: "Link:"
+                            - generic [ref=f1e1624]: Início (Sem Rota)
+                          - generic [ref=f1e1625]:
+                            - generic [ref=f1e1626]: Exibir no App
+                            - switch [checked] [ref=f1e1627] [cursor=pointer]
+                        - generic [ref=f1e1628]:
+                          - button "Editar" [ref=f1e1629] [cursor=pointer]:
+                            - img [ref=f1e1630]
+                            - text: Editar
+                          - button "Excluir" [ref=f1e1633] [cursor=pointer]:
+                            - img [ref=f1e1634]
+                            - text: Excluir
+                - generic [ref=f1e1637]:
+                  - generic [ref=f1e1638]:
+                    - heading "Seção Intermediária (Meio)" [level=2] [ref=f1e1641]
+                    - generic [ref=f1e1642]: 0 Banners
+                  - generic [ref=f1e1643]:
+                    - img [ref=f1e1644]
+                    - paragraph [ref=f1e1646]: Nenhum Banner cadastrado neste Setor
+                    - button "+ Adicionar Primeiro Banner" [ref=f1e1647] [cursor=pointer]
+                - generic [ref=f1e1648]:
+                  - generic [ref=f1e1649]:
+                    - heading "Rodapé da Página (Base)" [level=2] [ref=f1e1652]
+                    - generic [ref=f1e1653]: 0 Banners
+                  - generic [ref=f1e1654]:
+                    - img [ref=f1e1655]
+                    - paragraph [ref=f1e1657]: Nenhum Banner cadastrado neste Setor
+                    - button "+ Adicionar Primeiro Banner" [ref=f1e1658] [cursor=pointer]
+        - navigation [ref=f1e410]:
+          - button "Geral" [ref=f1e411] [cursor=pointer]:
+            - img [ref=f1e412]
+            - generic [ref=f1e414]: Geral
+          - button "Pedidos" [ref=f1e415] [cursor=pointer]:
+            - img [ref=f1e416]
+            - generic [ref=f1e420]: Pedidos
+          - button "Produtos" [ref=f1e421] [cursor=pointer]:
+            - img [ref=f1e422]
+            - generic [ref=f1e425]: Produtos
+          - button "Clientes" [ref=f1e426] [cursor=pointer]:
+            - img [ref=f1e427]
+            - generic [ref=f1e432]: Clientes
+          - button "Ajustes" [active] [ref=f1e433] [cursor=pointer]:
+            - img [ref=f1e434]
+            - generic [ref=f1e437]: Ajustes
+    - region "Notifications alt+T"
+  - generic [ref=f1e438]: R$ 0

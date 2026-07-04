@@ -210,10 +210,29 @@ export function useProducts({ autoFetch = true } = {}) {
             active: v.active,
             image_url: v.imageUrl || null
           }));
-          const { error: varErr } = await supabase.from('product_variants').insert(variantsToInsert);
-          if (varErr) console.error('Error adding variants on creation:', varErr);
+          const { data: insertedVariants, error: varErr } = await supabase
+            .from('product_variants')
+            .insert(variantsToInsert)
+            .select();
+          
+          if (varErr) {
+            console.error('Error adding variants on creation:', varErr);
+          } else if (insertedVariants) {
+            newProduct.variants = (insertedVariants as any[]).map(v => ({
+              id: v.id,
+              productId: v.product_id,
+              name: v.name,
+              value: v.value,
+              sku: v.sku || undefined,
+              stockIncrement: v.stock_increment,
+              priceOverride: v.price_override,
+              active: v.active,
+              imageUrl: v.image_url || undefined
+            }));
+          }
         }
 
+        setLocalProducts(prev => [newProduct, ...prev]);
         await refreshContext();
         toast.success('Produto cadastrado com sucesso!');
         return newProduct;
@@ -285,6 +304,7 @@ export function useProducts({ autoFetch = true } = {}) {
           }
         }
 
+        setLocalProducts(prev => prev.map(p => p.id === id ? updatedProduct : p));
         await refreshContext();
         toast.success('Produto atualizado!');
         return updatedProduct;
@@ -342,6 +362,7 @@ export function useProducts({ autoFetch = true } = {}) {
 
       if (error) throw error;
 
+      setLocalProducts(prev => prev.filter(p => p.id !== id));
       await refreshContext();
       toast.success('Produto removido');
       return true;

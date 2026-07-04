@@ -1,0 +1,314 @@
+- generic [ref=f5e1]:
+  - generic [ref=f5e3]:
+    - main [ref=f5e4]:
+      - generic [ref=f5e15]:
+        - generic [ref=f5e17]:
+          - button "Perfil" [ref=f5e19] [cursor=pointer]:
+            - img
+            - generic [ref=f5e20]: Perfil
+          - generic [ref=f5e21]:
+            - heading "IKCOUS Admin" [level=1] [ref=f5e22]
+            - paragraph [ref=f5e23]: Navegação Unificada
+          - button [ref=f5e25] [cursor=pointer]:
+            - img
+        - main [ref=f5e26]:
+          - generic [ref=f5e881]:
+            - generic [ref=f5e882]:
+              - heading "Produtos" [level=1] [ref=f5e883]:
+                - generic [ref=f5e885]: Produtos
+                - button "Guia Completo de Métricas e Ajuda" [ref=f5e886] [cursor=pointer]:
+                  - img [ref=f5e887]
+              - generic [ref=f5e893]: Operações ao Vivo
+              - button "Novo Produto" [ref=f5e894] [cursor=pointer]:
+                - img
+                - text: Novo Produto
+            - generic [ref=f5e895]:
+              - generic [ref=f5e897]:
+                - generic [ref=f5e898]:
+                  - generic [ref=f5e901]: Visão Financeira
+                  - generic [ref=f5e902]:
+                    - generic [ref=f5e903]:
+                      - button "Ir para card 1" [ref=f5e904] [cursor=pointer]
+                      - button "Ir para card 2" [ref=f5e905] [cursor=pointer]
+                      - button "Ir para card 3" [ref=f5e906] [cursor=pointer]
+                      - button "Ir para card 4" [ref=f5e907] [cursor=pointer]
+                    - button "Expandir" [ref=f5e908] [cursor=pointer]:
+                      - img [ref=f5e909]
+                      - generic [ref=f5e914]: Expandir
+                - generic [ref=f5e915]:
+                  - generic [ref=f5e917]:
+                    - generic [ref=f5e919]:
+                      - generic [ref=f5e920]:
+                        - img [ref=f5e922]
+                        - paragraph [ref=f5e925]: Capital Alocado
+                      - generic [ref=f5e926]:
+                        - heading "R$ 719,62" [level=3] [ref=f5e927]
+                        - paragraph [ref=f5e928]: Capital Líquido
+                    - generic [ref=f5e930]:
+                      - generic [ref=f5e931]:
+                        - img [ref=f5e933]
+                        - paragraph [ref=f5e936]: Lucro Potencial
+                      - generic [ref=f5e937]:
+                        - heading "R$ 753,38" [level=3] [ref=f5e938]
+                        - paragraph [ref=f5e939]: Margem Bruta
+                    - generic [ref=f5e941]:
+                      - generic [ref=f5e942]:
+                        - img [ref=f5e944]
+                        - paragraph [ref=f5e946]: ROI do Portfólio
+                      - generic [ref=f5e947]:
+                        - heading "104.69%" [level=3] [ref=f5e948]
+                        - paragraph [ref=f5e949]: Rendimento %
+                    - generic [ref=f5e951]:
+                      - generic [ref=f5e952]:
+                        - img [ref=f5e954]
+                        - paragraph [ref=f5e958]: Produtos no Catálogo
+                      - generic [ref=f5e959]:
+                        - heading "18 itens" [level=3] [ref=f5e960]
+                        - paragraph [ref=f5e961]: Catálogo Geral
+                  - button "Anterior" [ref=f5e962] [cursor=pointer]:
+                    - img [ref=f5e963]
+                  - button "Próximo" [ref=f5e965] [cursor=pointer]:
+                    - img [ref=f5e966]
+              - generic [ref=f5e970]:
+                - generic [ref=f5e971]:
+                  - generic:
+                    - img
+                  - generic [ref=f5e972]: Buscar produtos
+                  - textbox "Buscar produtos" [ref=f5e973]:
+                    - /placeholder: Buscar produtos...
+                - button [ref=f5e974] [cursor=pointer]:
+                  - img
+                - button [ref=f5e975] [cursor=pointer]:
+                  - img
+              - generic [ref=f5e977]:
+                - generic [ref=f5e980]:
+                  - generic [ref=f5e981]:
+                    - img "maleta canetas 120" [ref=f5e983]
+                    - button [ref=f5e985] [cursor=pointer]:
+                      - img
+                    - generic [ref=f5e987]: Em Operação
+                  - generic [ref=f5e988]:
+                    - generic [ref=f5e989]:
+                      - paragraph [ref=f5e990]: brinquedo
+                      - heading "maleta canetas 120" [level=4] [ref=f5e991]
+                    - generic [ref=f5e992]:
+                      - generic [ref=f5e993]:
+                        - generic [ref=f5e994]: Estoque
+                        - generic [ref=f5e995]: "02"
+                      - generic [ref=f5e996]:
+                        - generic [ref=f5e997]: Preço
+                        - generic [ref=f5e998]: R$ 89,90
+                - generic [ref=f5e1001]:
+                  - generic [ref=f5e1002]:
+                    - img "Bobbie Goods" [ref=f5e1004]
+                    - button [ref=f5e1006] [cursor=pointer]:
+                      - img
+                    - generic [ref=f5e1008]: Em Operação
+                  - generic [ref=f5e1009]:
+                    - generic [ref=f5e1010]:
+                      - paragraph [ref=f5e1011]: brinquedo
+                      - heading "Bobbie Goods" [level=4] [ref=f5e1012]
+                    - generic [ref=f5e1013]:
+                      - generic [ref=f5e1014]:
+                        - generic [ref=f5e1015]: Estoque
+                        - generic [ref=f5e1016]: "04"
+                      - generic [ref=f5e1017]:
+                        - generic [ref=f5e1018]: Preço
+                        - generic [ref=f5e1019]: R$ 12,90
+                - generic [ref=f5e1022]:
+                  - generic [ref=f5e1023]:
+                    - img "livro de colorir stitch" [ref=f5e1025]
+                    - button [ref=f5e1027] [cursor=pointer]:
+                      - img
+                    - generic [ref=f5e1029]: Em Operação
+                  - generic [ref=f5e1030]:
+                    - generic [ref=f5e1031]:
+                      - paragraph [ref=f5e1032]: brinquedo
+                      - heading "livro de colorir stitch" [level=4] [ref=f5e1033]
+                    - generic [ref=f5e1034]:
+                      - generic [ref=f5e1035]:
+                        - generic [ref=f5e1036]: Estoque
+                        - generic [ref=f5e1037]: "07"
+                      - generic [ref=f5e1038]:
+                        - generic [ref=f5e1039]: Preço
+                        - generic [ref=f5e1040]: R$ 27,90
+                - generic [ref=f5e1043]:
+                  - generic [ref=f5e1044]:
+                    - img "livro de colorir capivara" [ref=f5e1046]
+                    - button [ref=f5e1048] [cursor=pointer]:
+                      - img
+                    - generic [ref=f5e1050]: Em Operação
+                  - generic [ref=f5e1051]:
+                    - generic [ref=f5e1052]:
+                      - paragraph [ref=f5e1053]: brinquedo
+                      - heading "livro de colorir capivara" [level=4] [ref=f5e1054]
+                    - generic [ref=f5e1055]:
+                      - generic [ref=f5e1056]:
+                        - generic [ref=f5e1057]: Estoque
+                        - generic [ref=f5e1058]: "03"
+                      - generic [ref=f5e1059]:
+                        - generic [ref=f5e1060]: Preço
+                        - generic [ref=f5e1061]: R$ 29,90
+                - generic [ref=f5e1064]:
+                  - generic [ref=f5e1065]:
+                    - img "caneta 3d" [ref=f5e1067]
+                    - button [ref=f5e1069] [cursor=pointer]:
+                      - img
+                    - generic [ref=f5e1071]: Em Operação
+                  - generic [ref=f5e1072]:
+                    - generic [ref=f5e1073]:
+                      - paragraph [ref=f5e1074]: brinquedo
+                      - heading "caneta 3d" [level=4] [ref=f5e1075]
+                    - generic [ref=f5e1076]:
+                      - generic [ref=f5e1077]:
+                        - generic [ref=f5e1078]: Estoque
+                        - generic [ref=f5e1079]: "04"
+                      - generic [ref=f5e1080]:
+                        - generic [ref=f5e1081]: Preço
+                        - generic [ref=f5e1082]: R$ 59,90
+                - generic [ref=f5e1085]:
+                  - generic [ref=f5e1086]:
+                    - img "Ventilador de teto com controle remoto" [ref=f5e1088]
+                    - button [ref=f5e1090] [cursor=pointer]:
+                      - img
+                    - generic [ref=f5e1092]: Em Operação
+                  - generic [ref=f5e1093]:
+                    - generic [ref=f5e1094]:
+                      - paragraph [ref=f5e1095]: Utilidade
+                      - heading "Ventilador de teto com controle remoto" [level=4] [ref=f5e1096]
+                    - generic [ref=f5e1097]:
+                      - generic [ref=f5e1098]:
+                        - generic [ref=f5e1099]: Estoque
+                        - generic [ref=f5e1100]: "02"
+                      - generic [ref=f5e1101]:
+                        - generic [ref=f5e1102]: Preço
+                        - generic [ref=f5e1103]: R$ 69,90
+                - generic [ref=f5e1106]:
+                  - generic [ref=f5e1107]:
+                    - img "Organizador Sapateira Multiuso" [ref=f5e1109]
+                    - button [ref=f5e1111] [cursor=pointer]:
+                      - img
+                    - generic [ref=f5e1113]: Em Operação
+                  - generic [ref=f5e1114]:
+                    - generic [ref=f5e1115]:
+                      - paragraph [ref=f5e1116]: Utilidade
+                      - heading "Organizador Sapateira Multiuso" [level=4] [ref=f5e1117]
+                    - generic [ref=f5e1118]:
+                      - generic [ref=f5e1119]:
+                        - generic [ref=f5e1120]: Estoque
+                        - generic [ref=f5e1121]: "01"
+                      - generic [ref=f5e1122]:
+                        - generic [ref=f5e1123]: Preço
+                        - generic [ref=f5e1124]: R$ 39,90
+                - generic [ref=f5e1127]:
+                  - generic [ref=f5e1128]:
+                    - img "Umidificador Difusor de Óleo Essencial" [ref=f5e1130]
+                    - button [ref=f5e1132] [cursor=pointer]:
+                      - img
+                    - generic [ref=f5e1134]: Em Operação
+                  - generic [ref=f5e1135]:
+                    - generic [ref=f5e1136]:
+                      - paragraph [ref=f5e1137]: Utilidade
+                      - heading "Umidificador Difusor de Óleo Essencial" [level=4] [ref=f5e1138]
+                    - generic [ref=f5e1139]:
+                      - generic [ref=f5e1140]:
+                        - generic [ref=f5e1141]: Estoque
+                        - generic [ref=f5e1142]: "00"
+                      - generic [ref=f5e1143]:
+                        - generic [ref=f5e1144]: Preço
+                        - generic [ref=f5e1145]: R$ 24,90
+                - generic [ref=f5e1148]:
+                  - generic [ref=f5e1149]:
+                    - img "Bolhas de Sabão com Pistola Lançadora" [ref=f5e1151]
+                    - button [ref=f5e1153] [cursor=pointer]:
+                      - img
+                    - generic [ref=f5e1155]: Em Operação
+                  - generic [ref=f5e1156]:
+                    - generic [ref=f5e1157]:
+                      - paragraph [ref=f5e1158]: brinquedo
+                      - heading "Bolhas de Sabão com Pistola Lançadora" [level=4] [ref=f5e1159]
+                    - generic [ref=f5e1160]:
+                      - generic [ref=f5e1161]:
+                        - generic [ref=f5e1162]: Estoque
+                        - generic [ref=f5e1163]: "00"
+                      - generic [ref=f5e1164]:
+                        - generic [ref=f5e1165]: Preço
+                        - generic [ref=f5e1166]: R$ 68,90
+                - generic [ref=f5e1169]:
+                  - generic [ref=f5e1170]:
+                    - img "copo De Alce Água Portátil 600ml Infantil" [ref=f5e1172]
+                    - button [ref=f5e1174] [cursor=pointer]:
+                      - img
+                    - generic [ref=f5e1176]: Em Operação
+                  - generic [ref=f5e1177]:
+                    - generic [ref=f5e1178]:
+                      - paragraph [ref=f5e1179]: Utilidade
+                      - heading "copo De Alce Água Portátil 600ml Infantil" [level=4] [ref=f5e1180]
+                    - generic [ref=f5e1181]:
+                      - generic [ref=f5e1182]:
+                        - generic [ref=f5e1183]: Estoque
+                        - generic [ref=f5e1184]: "00"
+                      - generic [ref=f5e1185]:
+                        - generic [ref=f5e1186]: Preço
+                        - generic [ref=f5e1187]: R$ 21,90
+                - generic [ref=f5e1190]:
+                  - generic [ref=f5e1191]:
+                    - img "Louças Escova De Limpeza Recipiente Para Detergente" [ref=f5e1193]
+                    - button [ref=f5e1195] [cursor=pointer]:
+                      - img
+                    - generic [ref=f5e1197]: Em Operação
+                  - generic [ref=f5e1198]:
+                    - generic [ref=f5e1199]:
+                      - paragraph [ref=f5e1200]: Utilidade
+                      - heading "Louças Escova De Limpeza Recipiente Para Detergente" [level=4] [ref=f5e1201]
+                    - generic [ref=f5e1202]:
+                      - generic [ref=f5e1203]:
+                        - generic [ref=f5e1204]: Estoque
+                        - generic [ref=f5e1205]: "06"
+                      - generic [ref=f5e1206]:
+                        - generic [ref=f5e1207]: Preço
+                        - generic [ref=f5e1208]: R$ 14,90
+                - generic [ref=f5e1211]:
+                  - generic [ref=f5e1212]:
+                    - img "Tesoura de Sobrancelha com Pente" [ref=f5e1214]
+                    - button [ref=f5e1216] [cursor=pointer]:
+                      - img
+                    - generic [ref=f5e1218]: Em Operação
+                  - generic [ref=f5e1219]:
+                    - generic [ref=f5e1220]:
+                      - paragraph [ref=f5e1221]: Auto Cuidado
+                      - heading "Tesoura de Sobrancelha com Pente" [level=4] [ref=f5e1222]
+                    - generic [ref=f5e1223]:
+                      - generic [ref=f5e1224]:
+                        - generic [ref=f5e1225]: Estoque
+                        - generic [ref=f5e1226]: "11"
+                      - generic [ref=f5e1227]:
+                        - generic [ref=f5e1228]: Preço
+                        - generic [ref=f5e1229]: R$ 24,90
+              - generic [ref=f5e1230]:
+                - paragraph [ref=f5e1231]: Exibindo 1 - 12 de 18
+                - generic [ref=f5e1232]:
+                  - button "Anterior" [disabled]:
+                    - img
+                    - text: Anterior
+                  - button "Próximo" [ref=f5e1233] [cursor=pointer]:
+                    - text: Próximo
+                    - img
+        - navigation [ref=f5e410]:
+          - button "Geral" [ref=f5e411] [cursor=pointer]:
+            - img [ref=f5e413]
+            - generic [ref=f5e415]: Geral
+          - button "Pedidos" [ref=f5e416] [cursor=pointer]:
+            - img [ref=f5e417]
+            - generic [ref=f5e421]: Pedidos
+          - button "Produtos" [active] [ref=f5e422] [cursor=pointer]:
+            - img [ref=f5e423]
+            - generic [ref=f5e426]: Produtos
+          - button "Clientes" [ref=f5e427] [cursor=pointer]:
+            - img [ref=f5e428]
+            - generic [ref=f5e433]: Clientes
+          - button "Ajustes" [ref=f5e434] [cursor=pointer]:
+            - img [ref=f5e435]
+            - generic [ref=f5e438]: Ajustes
+    - region "Notifications alt+T"
+  - generic [ref=f5e439]: R$ 0

@@ -1,0 +1,148 @@
+- generic [active] [ref=f9e1]:
+  - generic [ref=f9e3]:
+    - main [ref=f9e4]:
+      - generic [ref=f9e9]:
+        - generic [ref=f9e11]:
+          - button "Perfil" [ref=f9e13] [cursor=pointer]:
+            - img
+            - generic [ref=f9e14]: Perfil
+          - generic [ref=f9e15]:
+            - heading "IKCOUS Admin" [level=1] [ref=f9e16]
+            - paragraph [ref=f9e17]: Navegação Unificada
+          - button [ref=f9e19] [cursor=pointer]:
+            - img
+        - main [ref=f9e20]:
+          - generic [ref=f9e1339]:
+            - generic [ref=f9e1341]:
+              - generic [ref=f9e1342]:
+                - button [ref=f9e1343] [cursor=pointer]:
+                  - img
+                - generic [ref=f9e1344]:
+                  - heading "GESTÃO OPERACIONAL" [level=2] [ref=f9e1345]: GESTÃO OPERACIONAL
+                  - 'heading "Pedido #629831" [level=1] [ref=f9e1347]':
+                    - text: Pedido
+                    - generic [ref=f9e1348]: "#629831"
+              - button [ref=f9e1350] [cursor=pointer]:
+                - img
+            - generic [ref=f9e1351]:
+              - generic [ref=f9e1353]:
+                - generic [ref=f9e1355]:
+                  - img [ref=f9e1357]
+                  - generic [ref=f9e1361]: Novo
+                - generic [ref=f9e1362]:
+                  - img [ref=f9e1364]
+                  - generic [ref=f9e1367]: Separação
+                - generic [ref=f9e1368]:
+                  - img [ref=f9e1370]
+                  - generic [ref=f9e1375]: Trânsito
+                - generic [ref=f9e1376]:
+                  - img [ref=f9e1378]
+                  - generic [ref=f9e1381]: Finalizado
+              - generic [ref=f9e1382]:
+                - generic [ref=f9e1383]:
+                  - generic [ref=f9e1384]:
+                    - generic [ref=f9e1385]:
+                      - heading "Dados do Cliente" [level=3] [ref=f9e1386]:
+                        - img [ref=f9e1387]
+                        - text: Dados do Cliente
+                      - generic [ref=f9e1392]: Portfólio Ativo
+                    - generic [ref=f9e1394]:
+                      - generic [ref=f9e1395]:
+                        - paragraph [ref=f9e1396]: Nome Completo
+                        - paragraph [ref=f9e1397]: Gabriel Silva
+                      - generic [ref=f9e1398]:
+                        - paragraph [ref=f9e1399]: Contato Comercial
+                        - generic [ref=f9e1400]:
+                          - paragraph [ref=f9e1401]: (11) 99999-9999
+                          - button "Conversar no WhatsApp" [ref=f9e1402] [cursor=pointer]:
+                            - img [ref=f9e1403]
+                    - generic [ref=f9e1405]:
+                      - paragraph [ref=f9e1406]: Endereço de Entrega
+                      - generic [ref=f9e1407]:
+                        - paragraph [ref=f9e1408]:
+                          - text: Rua Rui Barbosa, 150
+                          - generic [ref=f9e1409]: Centro
+                        - generic [ref=f9e1410]:
+                          - button "Copiar" [ref=f9e1411] [cursor=pointer]:
+                            - img [ref=f9e1412]
+                            - text: Copiar
+                          - link "Maps" [ref=f9e1415] [cursor=pointer]:
+                            - /url: https://www.google.com/maps/search/?api=1&query=Rua%20Rui%20Barbosa%2C%20150%20-%20Centro
+                            - img [ref=f9e1416]
+                            - text: Maps
+                  - generic [ref=f9e1419]:
+                    - generic [ref=f9e1420]:
+                      - heading "Itens do Pedido" [level=3] [ref=f9e1421]:
+                        - img [ref=f9e1422]
+                        - text: Itens do Pedido
+                      - generic [ref=f9e1426]: 1 Unidade
+                    - generic [ref=f9e1428]:
+                      - generic [ref=f9e1429]:
+                        - img "Bobbie Goods" [ref=f9e1431]
+                        - generic [ref=f9e1432]: 1X
+                      - generic [ref=f9e1433]:
+                        - paragraph [ref=f9e1434]: Bobbie Goods
+                        - generic [ref=f9e1435]:
+                          - generic [ref=f9e1436]: R$ 12,90
+                          - generic [ref=f9e1437]: "SKU: 017"
+                      - paragraph [ref=f9e1439]: R$ 12,90
+                - generic [ref=f9e1440]:
+                  - generic [ref=f9e1441]:
+                    - heading "Consolidado Financeiro" [level=3] [ref=f9e1443]:
+                      - img [ref=f9e1444]
+                      - text: Consolidado Financeiro
+                    - generic [ref=f9e1446]:
+                      - generic [ref=f9e1447]:
+                        - generic [ref=f9e1448]: Subtotal Bruto
+                        - generic [ref=f9e1449]: R$ 12,90
+                      - generic [ref=f9e1450]:
+                        - generic [ref=f9e1451]: Taxa Logística
+                        - generic [ref=f9e1452]: R$ 15,00
+                      - generic [ref=f9e1453]:
+                        - generic [ref=f9e1455]:
+                          - generic [ref=f9e1456]: Montante Final
+                          - generic [ref=f9e1457]: R$27,90
+                        - generic [ref=f9e1458]:
+                          - img [ref=f9e1460]
+                          - generic [ref=f9e1466]:
+                            - paragraph [ref=f9e1467]: Liquidação
+                            - paragraph [ref=f9e1468]: Rede PIX
+                  - generic [ref=f9e1470]:
+                    - heading "Logística & Rastreio" [level=3] [ref=f9e1472]:
+                      - img [ref=f9e1473]
+                      - text: Logística & Rastreio
+                    - generic [ref=f9e1479]:
+                      - paragraph [ref=f9e1480]: Nenhum código de rastreamento cadastrado.
+                      - button "Adicionar Rastreio" [ref=f9e1481] [cursor=pointer]:
+                        - img
+                        - text: Adicionar Rastreio
+                  - generic [ref=f9e1482]:
+                    - heading "Comandos de Execução" [level=3] [ref=f9e1483]
+                    - generic [ref=f9e1484]:
+                      - button "Acionamento WhatsApp" [ref=f9e1485] [cursor=pointer]:
+                        - img
+                        - text: Acionamento WhatsApp
+                      - 'button "Avançar: Em Separação" [ref=f9e1486] [cursor=pointer]'
+                      - button "Abortar Operação" [ref=f9e1487] [cursor=pointer]
+                  - generic [ref=f9e1488]:
+                    - heading "Notas Operacionais" [level=3] [ref=f9e1490]:
+                      - img [ref=f9e1491]
+                      - text: Notas Operacionais
+                    - generic [ref=f9e1494]:
+                      - paragraph [ref=f9e1495]: Nenhuma nota cadastrada para este pedido.
+                      - button "Adicionar Nota" [ref=f9e1496] [cursor=pointer]:
+                        - img
+                        - text: Adicionar Nota
+        - navigation [ref=f9e179]:
+          - button [ref=f9e180] [cursor=pointer]:
+            - img [ref=f9e181]
+          - button [ref=f9e183] [cursor=pointer]:
+            - img [ref=f9e184]
+          - button [ref=f9e188] [cursor=pointer]:
+            - img [ref=f9e189]
+          - button [ref=f9e192] [cursor=pointer]:
+            - img [ref=f9e193]
+          - button [ref=f9e198] [cursor=pointer]:
+            - img [ref=f9e200]
+    - region "Notifications alt+T"
+  - generic [ref=f9e542]: R$ 0

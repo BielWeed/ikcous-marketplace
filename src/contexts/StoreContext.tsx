@@ -27,7 +27,7 @@ interface StoreContextType {
     products: Product[];
     loadingProducts: boolean;
     updateConfig: (updates: Partial<StoreConfig>) => Promise<void>;
-    refresh: () => Promise<void>;
+    refresh: (options?: { onlyConfig?: boolean }) => Promise<void>;
     fetchProducts: () => Promise<void>;
     calculateShipping: (cart: CartItem[]) => number;
 }
@@ -36,7 +36,7 @@ interface StoreContextType {
 export const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export function StoreProvider({ children }: Readonly<{ children: React.ReactNode }>) {
-    const { isAdmin } = useAuth();
+    const { isAdmin, loading } = useAuth();
     const vaultRef = useRef<DataVault | null>(null);
     const [config, setConfig] = useState<StoreConfig>(defaultStoreConfig);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -80,7 +80,19 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
                     setLoadingProducts(false);
                 }
             } catch (err) {
-                console.error('[StoreContext] DataVault load failed, will fetch from network:', err);
+                console.error('[StoreContext] DataVault load failed, purging cache stores and fetching from network:', err);
+                try {
+                    const vault = vaultRef.current || await DataVault.init();
+                    if (vault) {
+                        const stores: import('@/lib/dataVault').StoreName[] = ['products', 'categories', 'banners', 'store_config', 'coupons', 'product_variants', '_meta'];
+                        await Promise.all(stores.map(s => vault.clear(s).catch(() => {})));
+                    }
+                } catch (clearErr) {
+                    console.error('[StoreContext] Failed to clear DataVault stores:', clearErr);
+                }
+                // Fallback to let UI load from network instead of hanging on loader
+                setIsLoaded(true);
+                setLoadingProducts(true);
             }
         };
         loadFromVault();
@@ -152,18 +164,28 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
 
                     if (!insertError && newData) {
                         const mapped = mapConfig(newData);
-                        setConfig(mapped);
+                        setConfig(prev => {
+                            const isIdentical = Object.keys(mapped).every(
+                                (k) => (mapped as any)[k] === (prev as any)[k]
+                            );
+                            if (isIdentical) return prev;
+                            vaultRef.current?.put('store_config', { id: 'singleton', ...mapped }).catch(() => {});
+                            return mapped;
+                        });
                         applyBranding(mapped.primaryColor);
-                        // Persist to DataVault
-                        vaultRef.current?.put('store_config', { id: 'singleton', ...mapped }).catch(() => {});
                     }
                 }
             } else if (data) {
                 const mapped = mapConfig(data);
-                setConfig(mapped);
+                setConfig(prev => {
+                    const isIdentical = Object.keys(mapped).every(
+                        (k) => (mapped as any)[k] === (prev as any)[k]
+                    );
+                    if (isIdentical) return prev;
+                    vaultRef.current?.put('store_config', { id: 'singleton', ...mapped }).catch(() => {});
+                    return mapped;
+                });
                 applyBranding(mapped.primaryColor);
-                // Persist to DataVault
-                vaultRef.current?.put('store_config', { id: 'singleton', ...mapped }).catch(() => {});
             }
         } catch (err) {
             console.error('[StoreContext] Config error:', err);
@@ -202,13 +224,16 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
                     product_variants: variants?.filter(v => v.product_id === item.id) || []
                 }));
                 
-                setProducts(mapped);
-                // Persist to DataVault (non-blocking)
-                vaultRef.current?.replaceAll('products', mapped).then(() => {
-                    vaultRef.current?.setLastSync('products');
-                }).catch(() => {});
+                setProducts(prev => {
+                    if (JSON.stringify(prev) === JSON.stringify(mapped)) return prev;
+                    // Persist to DataVault (non-blocking)
+                    vaultRef.current?.replaceAll('products', mapped).then(() => {
+                        vaultRef.current?.setLastSync('products');
+                    }).catch(() => {});
+                    return mapped;
+                });
             } else {
-                setProducts([]);
+                setProducts(prev => prev.length === 0 ? prev : []);
             }
         } catch (err) {
             console.error('[StoreContext] Products fetch error:', err);
@@ -260,10 +285,14 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
     }, [isAdmin, applyBranding]);
 
     useEffect(() => {
+        if (loading) {
+            console.log('[StoreContext] Auth is still loading. Skipping network fetches.');
+            return;
+        }
         console.log('[StoreContext] Effect triggered. isAdmin:', isAdmin);
         fetchConfig();
         fetchProducts();
-    }, [fetchConfig, fetchProducts, isAdmin]);
+    }, [fetchConfig, fetchProducts, isAdmin, loading]);
 
     // ── Realtime Sync: Listen for changes applied by RealtimeSyncEngine ──
     useSyncListener(['store_config'], useCallback((event) => {
@@ -305,9 +334,13 @@ export function StoreProvider({ children }: Readonly<{ children: React.ReactNode
         return config.shippingFee;
     }, [config.freeShippingMin, config.shippingFee]);
 
-    const refresh = useCallback(async () => {
-        await fetchConfig();
-        await fetchProducts();
+    const refresh = useCallback(async (options?: { onlyConfig?: boolean }) => {
+        if (options?.onlyConfig) {
+            await fetchConfig();
+        } else {
+            await fetchConfig();
+            await fetchProducts();
+        }
     }, [fetchConfig, fetchProducts]);
 
     const contextValue = React.useMemo(() => ({

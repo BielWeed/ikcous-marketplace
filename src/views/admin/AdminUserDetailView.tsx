@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
     ArrowLeft,
     Mail,
     Phone,
@@ -62,6 +72,8 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
     const [orders, setOrders] = useState<Order[]>([]);
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [addresses, setAddresses] = useState<Address[]>([]);
+    const [cartItemToRemove, setCartItemToRemove] = useState<{ productId: string; variantId?: string } | null>(null);
+    const [isClearingCart, setIsClearingCart] = useState(false);
     const [copiedField, setCopiedField] = useState<'id' | 'email' | 'whatsapp' | null>(null);
 
     const handleCopy = (text: string, field: 'id' | 'email' | 'whatsapp') => {
@@ -166,16 +178,28 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
         fetchUserData();
     }, [fetchUserData]);
 
-    const handleRemoveCartItem = async (productId: string, variantId?: string) => {
-        if (!globalThis.confirm('Deseja realmente remover este item do carrinho do cliente?')) return;
+    const handleRemoveCartItem = (productId: string, variantId?: string) => {
+        setCartItemToRemove({ productId, variantId });
+    };
+
+    const confirmRemoveCartItem = async () => {
+        if (!cartItemToRemove) return;
         try {
-            const targetVariantId = variantId || '';
-            const { error } = await supabase
+            const { productId, variantId } = cartItemToRemove;
+            
+            let query = supabase
                 .from('cart_items')
                 .delete()
                 .eq('user_id', userId)
-                .eq('product_id', productId)
-                .eq('variant_id', targetVariantId);
+                .eq('product_id', productId);
+                
+            if (variantId) {
+                query = query.eq('variant_id', variantId);
+            } else {
+                query = query.is('variant_id', null);
+            }
+
+            const { error } = await query;
 
             if (error) throw error;
 
@@ -184,11 +208,16 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
         } catch (err) {
             console.error('Error removing cart item:', err);
             toast.error('Erro ao remover item do carrinho');
+        } finally {
+            setCartItemToRemove(null);
         }
     };
 
-    const handleClearUserCart = async () => {
-        if (!globalThis.confirm('Deseja realmente limpar todo o carrinho deste cliente?')) return;
+    const handleClearUserCart = () => {
+        setIsClearingCart(true);
+    };
+
+    const confirmClearUserCart = async () => {
         try {
             const { error } = await supabase
                 .from('cart_items')
@@ -202,6 +231,8 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
         } catch (err) {
             console.error('Error clearing user cart:', err);
             toast.error('Erro ao limpar carrinho');
+        } finally {
+            setIsClearingCart(false);
         }
     };
 
@@ -765,6 +796,46 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                 </div>
               </div>
             )}
+
+      {/* Diálogo de Confirmação de Remoção de Item do Carrinho */}
+      <AlertDialog open={cartItemToRemove !== null} onOpenChange={(open) => !open && setCartItemToRemove(null)}>
+        <AlertDialogContent className="bg-zinc-950 border border-white/10 rounded-3xl max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white font-black text-lg uppercase tracking-tight">Remover Item?</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400 text-xs">
+              Tem certeza que deseja remover este item do carrinho do cliente?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="bg-white/5 border border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRemoveCartItem} className="bg-rose-650 hover:bg-rose-700 text-white rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Remover Item
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Diálogo de Confirmação de Limpeza de Carrinho */}
+      <AlertDialog open={isClearingCart} onOpenChange={(open) => !open && setIsClearingCart(false)}>
+        <AlertDialogContent className="bg-zinc-950 border border-white/10 rounded-3xl max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white font-black text-lg uppercase tracking-tight">Limpar Carrinho?</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400 text-xs">
+              Tem certeza que deseja limpar completamente o carrinho deste cliente? Esta ação removerá todos os produtos adicionados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="bg-white/5 border border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmClearUserCart} className="bg-rose-650 hover:bg-rose-700 text-white rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Limpar Carrinho
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
         </div>
     );
 }

@@ -1,4 +1,15 @@
 import { useState, useMemo, type ChangeEvent, memo } from 'react';
+import { LazyImage } from '@/components/LazyImage';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Plus, ArrowLeft, Upload, ArrowUp, ArrowDown, Layout, Sparkles, Eye, Zap, Trash, Edit, ExternalLink, HelpCircle, Smartphone, SlidersHorizontal } from 'lucide-react';
 import { motion, type Variants } from 'framer-motion';
 import { useBanners } from '@/hooks/useBanners';
@@ -11,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
 import { ImageAdjuster } from '@/components/ui/custom/ImageAdjuster';
 
@@ -30,12 +42,15 @@ const itemVariants: Variants = {
 
 export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
     const { banners, isLoaded, uploadBannerImage, addBanner, updateBanner, deleteBanner, reorderBanners, refreshBanners } = useBanners(true);
+    const isOffline = useOnlineStatus();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [showHelpModal, setShowHelpModal] = useState(false);
     const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
     const [uploading, setUploading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedTab, setSelectedTab] = useState<'all' | 'home_top' | 'home_middle' | 'home_bottom'>('all');
+    const [bannerToDelete, setBannerToDelete] = useState<{ id: string; imageUrl: string } | null>(null);
+    const [isProcessing, setIsProcessing] = useState(false);
 
     // Image Adjuster integration
     const [isAdjusterOpen, setIsAdjusterOpen] = useState(false);
@@ -48,6 +63,12 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
     };
 
     const handleAdjustConfirm = async (croppedBlob: Blob) => {
+        if (isOffline) {
+            toast.error('Sem conexão com a internet', {
+                description: 'Você precisa estar online para salvar a imagem ajustada.'
+            });
+            return;
+        }
         setIsUploadingAdjusted(true);
         const file = new File([croppedBlob], `banner-image-${Date.now()}.jpg`, { type: 'image/jpeg' });
         const loadingToast = toast.loading('Enviando imagem recortada...');
@@ -98,6 +119,12 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
     };
 
     const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+        if (isOffline) {
+            toast.error('Sem conexão com a internet', {
+                description: 'Você precisa estar online para fazer o upload de imagens.'
+            });
+            return;
+        }
         const file = e.target.files?.[0];
         if (!file) return;
 
@@ -114,6 +141,12 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
     };
 
     const handleSubmit = async () => {
+        if (isOffline) {
+            toast.error('Sem conexão com a internet', {
+                description: 'Você precisa estar online para salvar as alterações do banner.'
+            });
+            return;
+        }
         if (isSubmitting) return;
         setIsSubmitting(true);
         try {
@@ -138,28 +171,56 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
         }
     };
 
-    const handleDelete = async (id: string, imageUrl: string) => {
-        if (confirm('Tem certeza que deseja excluir este banner?')) {
-            try {
-                await deleteBanner(id, imageUrl);
-                await refreshBanners(false, true);
-            } catch (error) {
-                console.error('Erro ao deletar banner:', error);
-                toast.error('Erro ao deletar o banner.');
-            }
+    const handleDelete = (id: string, imageUrl: string) => {
+        if (isOffline) {
+            toast.error('Sem conexão com a internet', {
+                description: 'Você precisa estar online para excluir banners.'
+            });
+            return;
+        }
+        setBannerToDelete({ id, imageUrl });
+    };
+
+    const confirmDeleteBanner = async () => {
+        if (!bannerToDelete) return;
+        setIsProcessing(true);
+        try {
+            await deleteBanner(bannerToDelete.id, bannerToDelete.imageUrl);
+            await refreshBanners(false, true);
+        } catch (error) {
+            console.error('Erro ao deletar banner:', error);
+            toast.error('Erro ao deletar o banner.');
+        } finally {
+            setIsProcessing(false);
+            setBannerToDelete(null);
         }
     };
 
     const handleToggleActive = async (banner: Banner) => {
+        if (isOffline) {
+            toast.error('Sem conexão com a internet', {
+                description: 'Você precisa estar online para alternar a visibilidade do banner.'
+            });
+            return;
+        }
+        setIsProcessing(true);
         try {
             await updateBanner(banner.id, { active: !banner.active });
             await refreshBanners(false, true);
         } catch (error) {
             console.error('Erro ao alternar status do banner:', error);
+        } finally {
+            setIsProcessing(false);
         }
     };
 
     const moveBanner = async (banner: Banner, direction: 'up' | 'down') => {
+        if (isOffline) {
+            toast.error('Sem conexão com a internet', {
+                description: 'Você precisa estar online para alterar a ordem dos banners.'
+            });
+            return;
+        }
         const bannersInPosition = banners
             .filter(b => b.position === banner.position)
             .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -169,12 +230,15 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
 
         if (targetIndex >= 0 && targetIndex < bannersInPosition.length) {
             const targetBanner = bannersInPosition[targetIndex];
+            setIsProcessing(true);
             try {
                 await reorderBanners(banner.id, targetBanner.id);
                 await refreshBanners(false, true);
             } catch (error) {
                 console.error('Erro ao reordenar banners:', error);
                 toast.error('Erro ao reordenar banners.');
+            } finally {
+                setIsProcessing(false);
             }
         }
     };
@@ -237,7 +301,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
     ], [activeBanners, totalBanners, banners, impactText]);
 
     return (
-        <div className="min-h-screen bg-[#09090b] text-zinc-400 font-sans selection:bg-admin-gold/30 selection:text-white pb-36 relative overflow-x-hidden">
+        <div className="h-auto bg-[#09090b] text-zinc-400 font-sans selection:bg-admin-gold/30 selection:text-white pb-8 relative overflow-x-hidden">
             {/* Ambient subtle glow */}
             <div className="absolute top-0 left-1/4 w-[400px] h-[400px] bg-admin-gold/5 blur-[120px] rounded-full pointer-events-none" />
             <div className="absolute top-1/3 right-1/4 w-[500px] h-[500px] bg-amber-500/5 blur-[150px] rounded-full pointer-events-none" />
@@ -278,7 +342,8 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                     {isLoaded && banners.length > 0 && (
                         <button
                             onClick={() => handleOpenDialog()}
-                            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#FFBF00] hover:bg-amber-500 text-black rounded-xl text-[9px] font-black uppercase tracking-wider hover:scale-[1.02] transition-all active:scale-95 shadow-lg shadow-amber-500/10 border border-amber-400/20 w-full sm:w-auto"
+                            disabled={isOffline}
+                            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#FFBF00] hover:bg-amber-500 text-black rounded-xl text-[9px] font-black uppercase tracking-wider hover:scale-[1.02] transition-all active:scale-95 shadow-lg shadow-amber-500/10 border border-amber-400/20 w-full sm:w-auto disabled:opacity-50 disabled:grayscale disabled:pointer-events-none"
                         >
                             <Plus className="w-3.5 h-3.5 stroke-[3px]" /> Novo Banner
                         </button>
@@ -411,7 +476,8 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                                             <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Nenhum Banner cadastrado neste Setor</p>
                                             <button
                                                 onClick={() => handleOpenDialog({ position: pos.value } as Banner)}
-                                                className="text-[10px] font-black text-[#FFBF00] hover:text-white uppercase tracking-widest underline transition-colors"
+                                                disabled={isOffline}
+                                                className="text-[10px] font-black text-[#FFBF00] hover:text-white uppercase tracking-widest underline transition-colors disabled:opacity-50 disabled:grayscale disabled:pointer-events-none"
                                             >
                                                 + Adicionar Primeiro Banner
                                             </button>
@@ -430,7 +496,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                                                     <div className="flex flex-col lg:flex-row gap-6 items-center w-full">
                                                         {/* Image Preview Card */}
                                                         <div className="relative w-full lg:w-[380px] xl:w-[440px] aspect-[21/9] rounded-2xl overflow-hidden border border-white/5 shadow-2xl bg-zinc-900 group-hover:scale-[1.01] transition-all duration-500 shrink-0">
-                                                            <img
+                                                            <LazyImage
                                                                 src={banner.imageUrl}
                                                                 alt={banner.title || 'Banner'}
                                                                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
@@ -468,7 +534,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                                                                 <div className="flex gap-1.5 shrink-0 self-start sm:self-center">
                                                                     <button
                                                                         onClick={() => moveBanner(banner, 'up')}
-                                                                        disabled={index === 0}
+                                                                        disabled={index === 0 || isProcessing || isOffline}
                                                                         className="w-8 h-8 shrink-0 bg-zinc-900 border border-white/5 text-zinc-500 rounded-lg flex items-center justify-center hover:bg-zinc-800 hover:text-white disabled:opacity-10 disabled:pointer-events-none transition-all active:scale-95"
                                                                         title="Mover para cima"
                                                                     >
@@ -476,7 +542,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                                                                     </button>
                                                                     <button
                                                                         onClick={() => moveBanner(banner, 'down')}
-                                                                        disabled={index === positionBanners.length - 1}
+                                                                        disabled={index === positionBanners.length - 1 || isProcessing || isOffline}
                                                                         className="w-8 h-8 shrink-0 bg-zinc-900 border border-white/5 text-zinc-500 rounded-lg flex items-center justify-center hover:bg-zinc-800 hover:text-white disabled:opacity-10 disabled:pointer-events-none transition-all active:scale-95"
                                                                         title="Mover para baixo"
                                                                     >
@@ -500,6 +566,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                                                                     <Switch
                                                                         checked={banner.active}
                                                                         onCheckedChange={() => handleToggleActive(banner)}
+                                                                        disabled={isProcessing || isOffline}
                                                                         className="data-[state=checked]:bg-[#FFBF00]"
                                                                     />
                                                                 </div>
@@ -508,13 +575,15 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                                                             <div className="flex items-center gap-3 pt-1">
                                                                 <button
                                                                     onClick={() => handleOpenDialog(banner)}
-                                                                    className="flex-1 h-9 px-4 bg-zinc-900 hover:bg-zinc-800 border border-white/5 text-zinc-300 hover:text-white rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 active:scale-95"
+                                                                    disabled={isProcessing || isOffline}
+                                                                    className="flex-1 h-9 px-4 bg-zinc-900 hover:bg-zinc-800 border border-white/5 text-zinc-300 hover:text-white rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
                                                                 >
                                                                     <Edit className="w-3.5 h-3.5 shrink-0 text-[#FFBF00]" /> Editar
                                                                 </button>
                                                                 <button
                                                                     onClick={() => handleDelete(banner.id, banner.imageUrl)}
-                                                                    className="h-9 px-4 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/20 hover:border-transparent rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 active:scale-95"
+                                                                    disabled={isProcessing || isOffline}
+                                                                    className="h-9 px-4 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/20 hover:border-transparent rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
                                                                 >
                                                                     <Trash className="w-3.5 h-3.5 shrink-0" /> Excluir
                                                                 </button>
@@ -887,6 +956,26 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                 allowedPresets={['2:1', '4:1', 'free']}
                 defaultPreset={formData.position === 'home_top' ? '4:1' : '2:1'}
             />
+
+      {/* Diálogo de Confirmação de Exclusão de Banner */}
+      <AlertDialog open={bannerToDelete !== null} onOpenChange={(open) => !open && setBannerToDelete(null)}>
+        <AlertDialogContent className="bg-zinc-950 border border-white/10 rounded-3xl max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white font-black text-lg uppercase tracking-tight">Excluir Banner?</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400 text-xs">
+              Tem certeza que deseja excluir este banner? Esta ação não pode ser desfeita e removerá a campanha do catálogo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="bg-white/5 border border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteBanner} className="bg-rose-650 hover:bg-rose-700 text-white rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Excluir Banner
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
         </div>
     );
 });

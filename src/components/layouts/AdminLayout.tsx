@@ -15,6 +15,7 @@ import { Helmet } from 'react-helmet-async';
 import { usePrefetchOnHover } from '@/hooks/usePrefetchOnHover';
 import { haptic } from '@/utils/haptic';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 interface AdminLayoutProps {
     children: React.ReactNode;
@@ -22,8 +23,12 @@ interface AdminLayoutProps {
     onNavigate: (view: View) => void;
 }
 
+// Global cache to preserve scroll position of admin views across layouts unmounts
+const globalAdminScrollPositions: Record<string, number> = {};
+
 export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutProps) {
     const { prefetchView } = usePrefetchOnHover();
+    const isMainTab = ['admin-dashboard', 'admin', 'admin-products', 'admin-orders', 'admin-customers', 'admin-settings'].includes(currentView);
 
     const navItems = [
         { icon: Activity, label: 'Geral', view: 'admin-dashboard' },
@@ -34,22 +39,11 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
     ];
 
     const adminMainRef = React.useRef<HTMLElement>(null);
-    const scrollPositionsRef = React.useRef<Record<string, number>>({});
     const isTransitioningRef = React.useRef(false);
-    const [isOffline, setIsOffline] = React.useState(!navigator.onLine);
-
-    React.useEffect(() => {
-        const handleOnline = () => setIsOffline(false);
-        const handleOffline = () => setIsOffline(true);
-
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-
-        return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
-        };
-    }, []);
+    const hasUserInteractedRef = React.useRef(false);
+    const targetScrollRef = React.useRef(0);
+    const lastTransitionTimeRef = React.useRef(0);
+    const isOffline = useOnlineStatus();
 
     const currentViewRef = React.useRef(currentView);
     React.useEffect(() => {
@@ -63,7 +57,21 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
 
         const handleScroll = () => {
             if (isTransitioningRef.current) return;
-            scrollPositionsRef.current[currentViewRef.current] = container.scrollTop;
+
+            // Check if there is an 'id' query parameter (sub-view details active)
+            // If so, do not overwrite the list view scroll position!
+            const hasIdQuery = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('id');
+            if (hasIdQuery) return;
+
+            // Guard against browser scroll reset to 0 while container shinks during async loading
+            const savedScroll = globalAdminScrollPositions[currentViewRef.current] || 0;
+            const maxScrollable = container.scrollHeight - container.clientHeight;
+            if (savedScroll > 0 && maxScrollable < savedScroll && container.scrollTop === 0 && !hasUserInteractedRef.current) {
+                return;
+            }
+
+            globalAdminScrollPositions[currentViewRef.current] = container.scrollTop;
+            targetScrollRef.current = container.scrollTop;
         };
 
         container.addEventListener('scroll', handleScroll, { passive: true });
@@ -78,8 +86,11 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
 
         // Synchronously lock scroll recording on view transition
         isTransitioningRef.current = true;
+        hasUserInteractedRef.current = false;
+        lastTransitionTimeRef.current = Date.now();
 
-        const savedScroll = scrollPositionsRef.current[currentView] || 0;
+        const savedScroll = globalAdminScrollPositions[currentView] || 0;
+        targetScrollRef.current = savedScroll;
 
         const restoreScroll = () => {
             if (adminMainRef.current) {
@@ -91,12 +102,15 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
 
         // Staggered restoration for dynamic content
         let rafId2: number;
+        let timeoutId: ReturnType<typeof setTimeout>;
         const rafId1 = requestAnimationFrame(() => {
             restoreScroll();
             rafId2 = requestAnimationFrame(() => {
                 restoreScroll();
-                // Safely unlock scroll recording only after final scroll position has settled
-                isTransitioningRef.current = false;
+                // Release lock after a safe delay of 250ms to allow layout settling and animation completion
+                timeoutId = setTimeout(() => {
+                    isTransitioningRef.current = false;
+                }, 250);
             });
         });
 
@@ -105,6 +119,52 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
             if (rafId2) {
                 cancelAnimationFrame(rafId2);
             }
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+            }
+        };
+    }, [currentView]);
+
+    // Listen for manual user scrolls to immediately release scroll locks
+    React.useEffect(() => {
+        const container = adminMainRef.current;
+        if (!container) return;
+
+        const handleUserInteraction = () => {
+            hasUserInteractedRef.current = true;
+            isTransitioningRef.current = false;
+        };
+
+        container.addEventListener('wheel', handleUserInteraction, { passive: true });
+        container.addEventListener('touchmove', handleUserInteraction, { passive: true });
+        
+        return () => {
+            container.removeEventListener('wheel', handleUserInteraction);
+            container.removeEventListener('touchmove', handleUserInteraction);
+        };
+    }, []);
+
+    // ResizeObserver to handle dynamic height changes (skeletons replaced by dynamic content)
+    React.useEffect(() => {
+        const container = adminMainRef.current;
+        if (!container) return;
+
+        const observer = new ResizeObserver(() => {
+            if (hasUserInteractedRef.current) return; // Skip if user is actively scrolling/interacting
+
+            const timeSinceTransition = Date.now() - lastTransitionTimeRef.current;
+            if ((isTransitioningRef.current || timeSinceTransition < 400) && targetScrollRef.current > 0 && container.scrollTop < targetScrollRef.current) {
+                container.scrollTop = targetScrollRef.current;
+            }
+        });
+
+        const contentWrapper = container.firstElementChild;
+        if (contentWrapper) {
+            observer.observe(contentWrapper);
+        }
+
+        return () => {
+            observer.disconnect();
         };
     }, [currentView]);
 
@@ -172,16 +232,14 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
             </header>
 
             {/* Main Content Area */}
-            <main ref={adminMainRef} className="flex-1 overflow-y-auto overflow-x-hidden w-full bg-[#09090b] pb-20 lg:pb-28 gpu-accelerated">
+            <main ref={adminMainRef} className="flex-1 overflow-y-auto overflow-x-hidden w-full bg-[#09090b] pb-36 lg:pb-44 gpu-accelerated admin-scroll-container">
                 <div className="w-full max-w-7xl mx-auto py-0 overflow-x-hidden">
                     {(() => {
                         const isTransitionSupported = typeof document !== 'undefined' && 'startViewTransition' in document;
-                        const isMainTab = ['admin-dashboard', 'admin', 'admin-products', 'admin-orders', 'admin-customers', 'admin-settings'].includes(currentView);
-                        const wrapperKey = isMainTab ? 'admin-main-tabs' : currentView;
 
                         if (isTransitionSupported) {
                             return (
-                                <div key={wrapperKey} className="w-full">
+                                <div key="admin-content-wrapper" className="w-full">
                                     {children}
                                 </div>
                             );
@@ -189,7 +247,7 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
                         return (
                             <AnimatePresence mode="wait">
                                 <motion.div
-                                    key={wrapperKey}
+                                    key="admin-content-wrapper-motion"
                                     initial={{ opacity: 0, y: 8 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -8 }}
@@ -206,46 +264,57 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
 
             {/* Floating Bottom Navigation */}
             <div className="flex-shrink-0 relative z-[60]">
-                <nav 
-                    className="fixed left-1/2 -translate-x-1/2 w-[90%] max-w-lg admin-glass border border-white/10 shadow-[0_20px_40px_rgba(0,0,0,0.8)] rounded-[2rem] p-2 flex items-center justify-between bg-zinc-900/80 backdrop-blur-2xl"
-                    style={{ 
-                        viewTransitionName: 'admin-bottom-nav',
-                        bottom: 'calc(1.5rem + var(--safe-area-bottom, env(safe-area-inset-bottom, 0px)))'
-                    } as React.CSSProperties}
-                >
-                    {navItems.map((item, idx) => {
-                        const Icon = item.icon;
-                        const isActive = currentView === item.view;
+                <AnimatePresence>
+                    {isMainTab && (
+                        <motion.nav 
+                            initial={{ y: 120, x: '-50%', opacity: 0 }}
+                            animate={{ y: 0, x: '-50%', opacity: 1 }}
+                            exit={{ y: 120, x: '-50%', opacity: 0 }}
+                            transition={{ type: 'spring', stiffness: 260, damping: 25 }}
+                            className="fixed left-1/2 w-[90%] max-w-lg admin-glass border border-white/10 shadow-[0_20px_40px_rgba(0,0,0,0.8)] rounded-[2rem] p-2 flex items-center justify-between bg-zinc-900/80 backdrop-blur-2xl"
+                            style={{ 
+                                viewTransitionName: 'admin-bottom-nav',
+                                bottom: 'calc(1.5rem + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))'
+                            } as React.CSSProperties}
+                        >
+                            {navItems.map((item, idx) => {
+                                const Icon = item.icon;
+                                const isActive = currentView === item.view;
 
-                        return (
-                            <button
-                                key={idx}
-                                onClick={() => {
-                                    haptic.light();
-                                    onNavigate(item.view as View);
-                                }}
-                                onMouseEnter={() => prefetchView(item.view)}
-                                onTouchStart={() => prefetchView(item.view)}
-                                className={cn(
-                                    "flex flex-col items-center gap-0.5 sm:gap-1 flex-1 py-2 rounded-2xl relative transition-all active:scale-95 group z-10",
-                                    isActive ? "text-admin-gold" : "text-zinc-500 hover:text-zinc-300"
-                                )}
-                            >
-                                {isActive && (
-                                    <motion.div
-                                        layoutId="admin-active-pill"
-                                        className="absolute inset-0 bg-white/5 border border-white/5 rounded-2xl -z-10"
-                                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                                    />
-                                )}
-                                <Icon className={cn("w-5 h-5 transition-transform group-hover:-translate-y-0.5", isActive && "scale-110")} />
-                                <span className={cn("text-[9px] font-black uppercase tracking-tighter transition-all hidden sm:inline-block", isActive ? "opacity-100" : "opacity-60")}>
-                                    {item.label}
-                                </span>
-                            </button>
-                        );
-                    })}
-                </nav>
+                                return (
+                                    <button
+                                        key={idx}
+                                        onClick={() => {
+                                            haptic.light();
+                                            onNavigate(item.view as View);
+                                        }}
+                                        onMouseEnter={() => prefetchView(item.view)}
+                                        onTouchStart={() => prefetchView(item.view)}
+                                        className={cn(
+                                            "flex flex-col items-center gap-0.5 sm:gap-1 flex-1 py-2 rounded-2xl relative transition-all active:scale-95 group z-10",
+                                            isActive ? "text-admin-gold" : "text-zinc-500 hover:text-zinc-300"
+                                        )}
+                                    >
+                                        {isActive && (
+                                            <motion.div
+                                                layoutId="admin-active-pill"
+                                                className="absolute inset-0 bg-zinc-800/60 border border-white/10 rounded-2xl -z-10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.1),0_8px_16px_rgba(0,0,0,0.4)]"
+                                                transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                                            />
+                                        )}
+                                        <Icon className={cn("w-5 h-5 transition-transform group-hover:-translate-y-0.5", isActive && "scale-110")} />
+                                        <span className={cn("text-[9px] font-black uppercase tracking-tighter transition-all hidden sm:inline-block", isActive ? "opacity-100" : "opacity-60")}>
+                                            {item.label}
+                                        </span>
+                                        {isActive && (
+                                            <span className="w-1 h-1 rounded-full bg-admin-gold sm:hidden mt-0.5 animate-in zoom-in duration-300" />
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </motion.nav>
+                    )}
+                </AnimatePresence>
             </div>
         </div>
     );

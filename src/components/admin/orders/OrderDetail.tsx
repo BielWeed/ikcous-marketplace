@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { LazyImage } from '@/components/LazyImage';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { 
@@ -37,6 +38,8 @@ interface OrderDetailProps {
     onStatusChange: (orderId: string, status: OrderStatus) => void;
     onWhatsApp: (order: Order) => void;
 }
+
+const globalSkuCache: Record<string, string> = {};
 
 export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Readonly<OrderDetailProps>) {
 
@@ -77,37 +80,65 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
     useEffect(() => {
         const fetchSkus = async () => {
             try {
-                setLoadingSkus(true);
                 const itemsList = JSON.parse(itemsSerialized) as { productId: string; variantId: string | null }[];
                 const productIds = itemsList.map(item => item.productId);
-                
-                // Fetch product SKUs
-                const { data: productsData } = await supabase
-                    .from('produtos')
-                    .select('id, codigo')
-                    .in('id', productIds);
-
-                const newSkus: Record<string, string> = {};
-                productsData?.forEach(p => {
-                    if (p.codigo) newSkus[`prod-${p.id}`] = p.codigo;
-                });
-
-                // Fetch variant SKUs if any
                 const variantIds = itemsList
                     .map(item => item.variantId)
                     .filter((id): id is string => !!id);
-                if (variantIds.length > 0) {
-                    const { data: variantsData } = await supabase
-                        .from('product_variants')
-                        .select('id, sku')
-                        .in('id', variantIds);
 
-                    variantsData?.forEach(v => {
-                        if (v.sku) newSkus[`var-${v.id}`] = v.sku;
+                // Check cache first
+                const missingProductIds = productIds.filter(id => !globalSkuCache[`prod-${id}`]);
+                const missingVariantIds = variantIds.filter(id => !globalSkuCache[`var-${id}`]);
+
+                if (missingProductIds.length === 0 && missingVariantIds.length === 0) {
+                    // All cached, set state immediately without spinner
+                    const cachedSkus: Record<string, string> = {};
+                    productIds.forEach(id => {
+                        cachedSkus[`prod-${id}`] = globalSkuCache[`prod-${id}`];
+                    });
+                    variantIds.forEach(id => {
+                        cachedSkus[`var-${id}`] = globalSkuCache[`var-${id}`];
+                    });
+                    setSkus(cachedSkus);
+                    return;
+                }
+
+                setLoadingSkus(true);
+
+                // Fetch missing product SKUs
+                if (missingProductIds.length > 0) {
+                    const { data: productsData } = await supabase
+                        .from('produtos')
+                        .select('id, codigo')
+                        .in('id', missingProductIds);
+
+                    productsData?.forEach(p => {
+                        if (p.codigo) globalSkuCache[`prod-${p.id}`] = p.codigo;
                     });
                 }
 
-                setSkus(newSkus);
+                // Fetch missing variant SKUs
+                if (missingVariantIds.length > 0) {
+                    const { data: variantsData } = await supabase
+                        .from('product_variants')
+                        .select('id, sku')
+                        .in('id', missingVariantIds);
+
+                    variantsData?.forEach(v => {
+                        if (v.sku) globalSkuCache[`var-${v.id}`] = v.sku;
+                    });
+                }
+
+                // Build full result from cache
+                const resultSkus: Record<string, string> = {};
+                productIds.forEach(id => {
+                    if (globalSkuCache[`prod-${id}`]) resultSkus[`prod-${id}`] = globalSkuCache[`prod-${id}`];
+                });
+                variantIds.forEach(id => {
+                    if (globalSkuCache[`var-${id}`]) resultSkus[`var-${id}`] = globalSkuCache[`var-${id}`];
+                });
+
+                setSkus(resultSkus);
             } catch (err) {
                 console.error('Error fetching SKUs:', err);
             } finally {
@@ -397,7 +428,7 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                                     return (
                                         <div key={`${item.productId}-${item.variantId || 'default'}`} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0 group/item">
                                             <div className="w-14 h-14 rounded-xl overflow-hidden border border-white/10 shadow-lg relative shrink-0">
-                                                <img src={item.image} alt={item.name} className="w-full h-full object-cover group-hover/item:scale-115 transition-transform duration-500" />
+                                                <LazyImage src={item.image} alt={item.name} className="w-full h-full object-cover group-hover/item:scale-115 transition-transform duration-500" />
                                                 <div className="absolute top-0.5 right-0.5 bg-black/85 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md border border-white/10">
                                                     {item.quantity}X
                                                 </div>

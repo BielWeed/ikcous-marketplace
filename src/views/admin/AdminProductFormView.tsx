@@ -1,4 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { LazyImage } from '@/components/LazyImage';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ArrowLeft, Plus, Camera, Check, Layers, Trash2, Edit2, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Info, Package, ShieldCheck, Image as ImageIcon, Flame, Truck, Heart, Share2, MessageCircle, ShoppingCart, ChevronLeft, ChevronRight, Scissors, BookOpen, Smartphone, X, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { View, ProductVariant } from '@/types';
@@ -8,6 +19,7 @@ import { useCategories } from '@/hooks/useCategories';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ImageAdjuster } from '@/components/ui/custom/ImageAdjuster';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 interface AdminProductFormViewProps {
   productId?: string;
   onNavigate: (view: View) => void;
@@ -33,8 +45,9 @@ const containerVariants = {
 export function AdminProductFormView({ productId, onNavigate, onBack }: AdminProductFormViewProps) {
   const { addProduct, updateProduct, upsertVariants, deleteVariants, uploadProductImages, fetchProduct } = useProducts({ autoFetch: false });
   const { categories: dbCategories, addCategory } = useCategories();
+  const isOffline = useOnlineStatus();
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(!!productId);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -70,6 +83,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
+  const [variantToDelete, setVariantToDelete] = useState<string | null>(null);
   const [isPromoActive, setIsPromoActive] = useState(false);
   const [previewMode, setPreviewMode] = useState<'card' | 'page'>('card');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -85,6 +99,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
   const [adjustingImgUrl, setAdjustingImgUrl] = useState('');
   const [adjustingImgIndex, setAdjustingImgIndex] = useState<number | null>(null);
   const [isUploadingAdjusted, setIsUploadingAdjusted] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [showPhotoGuide, setShowPhotoGuide] = useState(false);
   const [expandedHelp, setExpandedHelp] = useState<Record<string, boolean>>({});
@@ -233,24 +248,96 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
     }
   }, [productId, fetchProduct, onNavigate]);
 
+  // Draft recovery on mount for new products
+  useEffect(() => {
+    if (!productId) {
+      const savedDraft = localStorage.getItem('ikcous_product_form_draft');
+      if (savedDraft) {
+        try {
+          const parsed = JSON.parse(savedDraft);
+          setFormData(prev => ({
+            ...prev,
+            ...parsed,
+            variants: parsed.variants || []
+          }));
+          setIsPromoActive(!!parsed.originalPrice);
+          
+          toast.success('Rascunho recuperado automaticamente!', {
+            description: 'Você pode continuar editando o produto de onde parou.',
+            action: {
+              label: 'Descartar',
+              onClick: () => {
+                localStorage.removeItem('ikcous_product_form_draft');
+                setFormData({
+                  name: '',
+                  description: '',
+                  price: '',
+                  costPrice: '',
+                  originalPrice: '',
+                  stock: '',
+                  category: '',
+                  images: [] as string[],
+                  freeShipping: false,
+                  isBestseller: false,
+                  isActive: true,
+                  metaTitle: '',
+                  metaDescription: '',
+                  sku: '',
+                  variants: [] as ProductVariant[],
+                });
+                setIsPromoActive(false);
+                toast.info('Rascunho descartado.');
+              }
+            },
+            duration: 6000
+          });
+        } catch (e) {
+          console.error('[AdminProductFormView] Failed to parse draft:', e);
+        }
+      }
+    }
+  }, [productId]);
+
+  // Draft auto-save on changes
+  useEffect(() => {
+    if (!productId && !isLoading) {
+      const timer = setTimeout(() => {
+        const isDirty = formData.name || formData.description || formData.price || formData.stock || formData.category || formData.images.length > 0;
+        if (isDirty) {
+          localStorage.setItem('ikcous_product_form_draft', JSON.stringify(formData));
+        }
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [formData, productId, isLoading]);
+
   const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isOffline) {
+      toast.error('Não é possível enviar imagens em modo offline.');
+      return;
+    }
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    const loadingToast = toast.loading(`Enviando ${files.length} imagem(ns)...`);
+    const loadingToast = toast.loading(`Processando e enviando ${files.length} imagem(ns)...`);
 
     try {
-      const urls = await uploadProductImages(files);
+      // Compress all images in parallel before uploading
+      const compressedFiles = await Promise.all(
+        files.map(file => compressImage(file))
+      );
+
+      const urls = await uploadProductImages(compressedFiles);
       setFormData(prev => ({
         ...prev,
         images: [...prev.images, ...urls]
       }));
-      toast.success('Imagens enviadas com sucesso!', { id: loadingToast });
+      toast.success('Imagens processadas e enviadas com sucesso!', { id: loadingToast });
     } catch (error) {
       console.error('Upload error:', error);
-      toast.error('Erro ao enviar imagens', { id: loadingToast });
+      toast.error('Erro ao processar ou enviar imagens', { id: loadingToast });
     }
-  }, [uploadProductImages]);
+  }, [uploadProductImages, isOffline]);
 
   const removeImage = useCallback((index: number) => {
     setFormData(prev => ({
@@ -269,14 +356,28 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
       return;
     }
 
-    const parsedPriceOverride = variantFormData.priceOverride ? parseFloat(variantFormData.priceOverride) : undefined;
+    const cleanNumberString = (val: string) => {
+      if (!val) return '';
+      let clean = val.replace(',', '.').replace(/[^\d.-]/g, '');
+      const parts = clean.split('.');
+      if (parts.length > 2) {
+        clean = parts[0] + '.' + parts.slice(1).join('');
+      }
+      return clean;
+    };
+
+    const sanitizedVarPrice = cleanNumberString(variantFormData.priceOverride);
+    const sanitizedVarStock = variantFormData.stockIncrement.replace(/\D/g, '');
+
+    const parsedPriceOverride = sanitizedVarPrice ? parseFloat(sanitizedVarPrice) : undefined;
+    const sanitizedVarSku = variantFormData.sku ? variantFormData.sku.trim().toUpperCase().replace(/\s+/g, '-') : undefined;
 
     const vData = {
       productId: productId || '',
-      name: variantFormData.name,
-      value: variantFormData.value,
-      sku: variantFormData.sku,
-      stockIncrement: parseInt(variantFormData.stockIncrement) || 0,
+      name: variantFormData.name.trim(),
+      value: variantFormData.value.trim(),
+      sku: sanitizedVarSku || undefined,
+      stockIncrement: parseInt(sanitizedVarStock) || 0,
       priceOverride: parsedPriceOverride !== undefined ? Math.max(0, parsedPriceOverride) : undefined,
       active: variantFormData.active,
       imageUrl: variantFormData.imageUrl || undefined
@@ -302,35 +403,57 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
   };
 
   const handleDeleteVariant = (vId: string) => {
-    if (globalThis.confirm('Excluir esta variante?')) {
-      if (!vId.startsWith('temp-')) {
-        setDeletedVariantIds(prev => [...prev, vId]);
-      }
-      setFormData(prev => ({
-        ...prev,
-        variants: prev.variants.filter(v => v.id !== vId)
-      }));
+    setVariantToDelete(vId);
+  };
+
+  const confirmDeleteVariant = () => {
+    if (!variantToDelete) return;
+    if (!variantToDelete.startsWith('temp-')) {
+      setDeletedVariantIds(prev => [...prev, variantToDelete]);
     }
+    setFormData(prev => ({
+      ...prev,
+      variants: prev.variants.filter(v => v.id !== variantToDelete)
+    }));
+    setVariantToDelete(null);
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!navigator.onLine) {
+    if (isSubmitting) return;
+    if (isOffline) {
       toast.error('Não é possível salvar alterações em modo offline.');
       return;
     }
     setIsSubmitting(true);
 
-    const pPrice = parseFloat(formData.price) || 0;
-    const pCostRaw = formData.costPrice ? parseFloat(formData.costPrice) : undefined;
+    const cleanNumberString = (val: string) => {
+      if (!val) return '';
+      let clean = val.replace(',', '.').replace(/[^\d.-]/g, '');
+      const parts = clean.split('.');
+      if (parts.length > 2) {
+        clean = parts[0] + '.' + parts.slice(1).join('');
+      }
+      return clean;
+    };
+
+    const sanitizedPrice = cleanNumberString(formData.price);
+    const sanitizedCost = cleanNumberString(formData.costPrice);
+    const sanitizedOriginal = cleanNumberString(formData.originalPrice);
+    const sanitizedStock = formData.stock.replace(/\D/g, '');
+
+    const pPrice = parseFloat(sanitizedPrice) || 0;
+    const pCostRaw = sanitizedCost ? parseFloat(sanitizedCost) : undefined;
     const pCost = (pCostRaw !== undefined && !isNaN(pCostRaw)) ? pCostRaw : undefined;
-    const pOriginalRaw = formData.originalPrice ? parseFloat(formData.originalPrice) : undefined;
+    const pOriginalRaw = sanitizedOriginal ? parseFloat(sanitizedOriginal) : undefined;
     const pOriginal = (pOriginalRaw !== undefined && !isNaN(pOriginalRaw)) ? pOriginalRaw : undefined;
-    const pStock = parseInt(formData.stock) || 0;
+    const pStock = parseInt(sanitizedStock) || 0;
+
+    const sanitizedSku = formData.sku ? formData.sku.trim().toUpperCase().replace(/\s+/g, '-') : undefined;
 
     const productData = {
-      name: formData.name,
-      description: formData.description,
+      name: formData.name.trim(),
+      description: formData.description.trim(),
       price: Math.max(0, pPrice),
       costPrice: pCost !== undefined ? Math.max(0, pCost) : undefined,
       originalPrice: isPromoActive && pOriginal !== undefined ? Math.max(0, pOriginal) : undefined,
@@ -340,9 +463,9 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
       freeShipping: formData.freeShipping,
       isBestseller: formData.isBestseller,
       isActive: formData.isActive,
-      metaTitle: formData.metaTitle,
-      metaDescription: formData.metaDescription,
-      sku: formData.sku || undefined,
+      metaTitle: formData.metaTitle.trim(),
+      metaDescription: formData.metaDescription.trim(),
+      sku: sanitizedSku || undefined,
       variants: formData.variants,
       sold: productId ? (currentProduct?.sold || 0) : 0,
     };
@@ -359,14 +482,28 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
 
         // 3. Salvar variantes restantes em lote
         if (formData.variants.length > 0) {
-          await upsertVariants(productId, formData.variants);
+          const variantsWithSanitizedSku = formData.variants.map(v => ({
+            ...v,
+            sku: v.sku ? v.sku.trim().toUpperCase().replace(/\s+/g, '-') : undefined
+          }));
+          await upsertVariants(productId, variantsWithSanitizedSku);
         }
       } else {
-        await addProduct(productData);
+        const variantsWithSanitizedSku = formData.variants.map(v => ({
+          ...v,
+          sku: v.sku ? v.sku.trim().toUpperCase().replace(/\s+/g, '-') : undefined
+        }));
+        await addProduct({
+          ...productData,
+          variants: variantsWithSanitizedSku
+        });
       }
 
       setIsSubmitting(false);
       setShowSuccess(true);
+      if (!productId) {
+        localStorage.removeItem('ikcous_product_form_draft');
+      }
 
       setTimeout(() => {
         onNavigate('admin-products');
@@ -421,7 +558,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
             <motion.div
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
-              className="bg-zinc-900 border border-white/10 rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl relative overflow-hidden"
+              className="bg-zinc-900 border border-white/10 rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl relative overflow-hidden gpu-accelerated"
             >
               <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
                 <Layers className="w-24 h-24 text-white" />
@@ -470,7 +607,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                     if (newCategoryName.trim()) {
                       const loadingId = toast.loading('Criando categoria...');
                       try {
-                        await addCategory({ name: newCategoryName.trim(), description: '', isActive: true });
+                        await addCategory({ name: newCategoryName.trim(), description: '', isActive: true }, true);
                         setFormData(prev => ({ ...prev, category: newCategoryName.trim() }));
                         toast.success('Categoria criada com sucesso!', { id: loadingId });
                         setShowCategoryForm(false);
@@ -499,7 +636,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
             <motion.div
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
-              className="bg-zinc-900 border border-white/10 rounded-[2.5rem] w-full max-w-md shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
+              className="bg-zinc-900 border border-white/10 rounded-[2.5rem] w-full max-w-md shadow-2xl flex flex-col max-h-[90vh] overflow-hidden gpu-accelerated"
             >
               <div className="flex items-center gap-4 p-8 pb-5 border-b border-white/5 shrink-0 bg-zinc-900 relative z-10">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
@@ -732,11 +869,22 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
               <span className="text-xs font-bold font-mono text-zinc-300">{productId || 'NEW_ENTRY'}</span>
             </div>
 
+            {isOffline && (
+              <span className="text-[9px] font-black text-rose-500 uppercase tracking-wider bg-rose-500/10 px-2.5 py-1.5 rounded-lg border border-rose-500/20 mr-1 animate-pulse">
+                Sem Conexão
+              </span>
+            )}
+
             <button
               type="button"
               onClick={() => handleSubmit()}
-              disabled={!isValid || isSubmitting || !navigator.onLine}
-              className="px-3 py-2 md:px-4 md:py-2.5 rounded-xl flex items-center justify-center gap-1.5 md:gap-2 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 transition-all active:scale-[0.98] font-black uppercase tracking-wider text-[9px] md:text-[10px] shadow-lg shadow-emerald-500/20 text-emerald-950 border border-white/10 shrink-0"
+              disabled={!isValid || isSubmitting || isOffline}
+              className={cn(
+                "px-3 py-2 md:px-4 md:py-2.5 rounded-xl flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-[0.98] font-black uppercase tracking-wider text-[9px] md:text-[10px] border shrink-0",
+                isOffline
+                  ? "bg-zinc-900 border-rose-500/20 text-rose-400 cursor-not-allowed"
+                  : "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-emerald-950 border-white/10 shadow-lg shadow-emerald-500/20 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-650"
+              )}
             >
               {isSubmitting ? (
                 <div className="w-3.5 h-3.5 border-2 border-emerald-950/30 border-t-emerald-950 rounded-full animate-spin" />
@@ -744,6 +892,11 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                 <>
                   <Check className="w-3.5 h-3.5" />
                   Salvo
+                </>
+              ) : isOffline ? (
+                <>
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Offline
                 </>
               ) : (
                 <>
@@ -761,7 +914,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
         initial="hidden"
         animate="visible"
         onSubmit={handleSubmit}
-        className="max-w-screen-xl mx-auto p-6 space-y-8"
+        className="max-w-screen-xl mx-auto p-6 space-y-8 gpu-accelerated"
       >
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column - Main Details */}
@@ -877,10 +1030,50 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                   })}
                 </AnimatePresence>
 
-                <label className="flex-shrink-0 w-36 h-36 rounded-3xl border-2 border-dashed border-white/10 border-emerald-500/10 flex flex-col items-center justify-center cursor-pointer hover:bg-emerald-500/5 hover:border-emerald-500/30 transition-all group/upload relative overflow-hidden">
+                <label 
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    if (isOffline) {
+                      toast.error('Não é possível enviar imagens offline.');
+                      return;
+                    }
+                    const files = Array.from(e.dataTransfer.files || []);
+                    if (files.length === 0) return;
+                    const loadingToast = toast.loading(`Processando e enviando ${files.length} imagem(ns)...`);
+                    try {
+                      // Compress all images in parallel before uploading
+                      const compressedFiles = await Promise.all(
+                        files.map(file => compressImage(file))
+                      );
+                      const urls = await uploadProductImages(compressedFiles);
+                      setFormData(prev => ({
+                        ...prev,
+                        images: [...prev.images, ...urls]
+                      }));
+                      toast.success('Imagens processadas e enviadas com sucesso!', { id: loadingToast });
+                    } catch (error) {
+                      console.error('Upload error:', error);
+                      toast.error('Erro ao processar ou enviar imagens', { id: loadingToast });
+                    }
+                  }}
+                  className={cn(
+                    "flex-shrink-0 w-36 h-36 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all group/upload relative overflow-hidden select-none",
+                    isDragging 
+                      ? "border-emerald-500 bg-emerald-500/10 scale-105 shadow-[0_0_20px_rgba(16,185,129,0.2)]" 
+                      : "border-white/10 border-emerald-500/10 hover:bg-emerald-500/5 hover:border-emerald-500/30"
+                  )}
+                >
                   <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-emerald-500/5" />
                   <Plus className="w-8 h-8 text-zinc-600 group-hover/upload:text-emerald-500 group-hover/upload:scale-110 transition-all mb-1 relative z-10" />
-                  <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest relative z-10 group-hover/upload:text-emerald-400">Adicionar Imagem</span>
+                  <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest relative z-10 group-hover/upload:text-emerald-400">
+                    {isDragging ? 'Solte as Fotos' : 'Adicionar Imagem'}
+                  </span>
                   <input type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" />
                 </label>
               </div>
@@ -989,12 +1182,12 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="md:col-span-2 space-y-3">
                   <label htmlFor="product-name" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Nome do Produto *</label>
-                  <input
+                  <LocalBufferedInput
                     id="product-name"
                     name="product-name"
                     type="text"
                     value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    onFlush={(val) => setFormData(prev => ({ ...prev, name: val }))}
                     placeholder="Ex: Camiseta Básica Preta - Tamanho M"
                     className="w-full px-6 py-5 bg-zinc-950/50 border border-white/5 rounded-2xl text-base font-black text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all placeholder:text-zinc-800"
                   />
@@ -1002,11 +1195,11 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
 
                 <div className="md:col-span-2 space-y-3">
                   <label htmlFor="product-description" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Descrição do Produto *</label>
-                  <textarea
+                  <LocalBufferedTextarea
                     id="product-description"
                     name="product-description"
                     value={formData.description}
-                    onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                    onFlush={(val) => setFormData(prev => ({ ...prev, description: val }))}
                     placeholder="Digite os detalhes e informações do produto..."
                     rows={6}
                     className="w-full px-6 py-5 bg-zinc-950/50 border border-white/5 rounded-3xl text-sm font-medium text-zinc-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all resize-none placeholder:text-zinc-800 leading-relaxed"
@@ -1050,12 +1243,12 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                 <div className="space-y-3">
                   <label htmlFor="product-sku" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Código SKU</label>
                   <div className="relative group">
-                    <input
+                    <LocalBufferedInput
                       id="product-sku"
                       name="product-sku"
                       type="text"
                       value={formData.sku}
-                      onChange={(e) => setFormData(prev => ({ ...prev, sku: e.target.value.toUpperCase() }))}
+                      onFlush={(val) => setFormData(prev => ({ ...prev, sku: val.toUpperCase() }))}
                       placeholder="Ex: SKU-PROD-BASE"
                       className="w-full px-6 py-5 bg-zinc-950/50 border border-white/5 rounded-2xl text-sm font-black text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all placeholder:text-zinc-800"
                     />
@@ -1068,11 +1261,11 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                 <div className="md:col-span-2 space-y-3">
                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Quantidade em Estoque *</label>
                   <div className="relative group">
-                    <input
+                    <LocalBufferedInput
                       type="number"
                       min="0"
                       value={formData.stock}
-                      onChange={(e) => setFormData(prev => ({ ...prev, stock: e.target.value }))}
+                      onFlush={(val) => setFormData(prev => ({ ...prev, stock: val }))}
                       className="w-full px-6 py-5 bg-zinc-950/50 border border-white/5 rounded-2xl text-sm font-black text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all tabular-nums"
                     />
                     <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-600">
@@ -1176,7 +1369,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                           <div className="flex items-center gap-3">
                             {v.imageUrl && (
                               <div className="w-12 h-12 rounded-lg overflow-hidden border border-white/5 shrink-0">
-                                <img src={v.imageUrl} className="w-full h-full object-cover" />
+                                <LazyImage src={v.imageUrl} alt={`${v.name}: ${v.value}`} className="w-full h-full object-cover" />
                               </div>
                             )}
                             <div>
@@ -1325,12 +1518,12 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Preço de Custo</label>
                   <div className="relative group">
                     <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-bold text-sm">R$</span>
-                    <input
+                    <LocalBufferedInput
                       type="number"
                       step="0.01"
                       min="0"
                       value={formData.costPrice}
-                      onChange={(e) => setFormData(prev => ({ ...prev, costPrice: e.target.value }))}
+                      onFlush={(val) => setFormData(prev => ({ ...prev, costPrice: val }))}
                       className="w-full pl-14 pr-6 py-5 bg-zinc-950/50 border border-white/5 rounded-2xl text-lg font-black text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all tabular-nums"
                     />
                   </div>
@@ -1340,12 +1533,12 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Preço de Venda</label>
                   <div className="relative group">
                     <span className="absolute left-6 top-1/2 -translate-y-1/2 text-emerald-500/50 font-bold text-sm">R$</span>
-                    <input
+                    <LocalBufferedInput
                       type="number"
                       step="0.01"
                       min="0"
                       value={formData.price}
-                      onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))}
+                      onFlush={(val) => setFormData(prev => ({ ...prev, price: val }))}
                       className="w-full pl-14 pr-6 py-5 bg-zinc-950 shadow-inner border border-emerald-500/20 rounded-2xl text-lg font-black text-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all tabular-nums"
                     />
                   </div>
@@ -1375,12 +1568,12 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
                       <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Preço Original ("De:")</label>
                       <div className="relative group">
                         <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-bold text-sm">R$</span>
-                        <input
+                        <LocalBufferedInput
                           type="number"
                           step="0.01"
                           min="0"
                           value={formData.originalPrice}
-                          onChange={(e) => setFormData(prev => ({ ...prev, originalPrice: e.target.value }))}
+                          onFlush={(val) => setFormData(prev => ({ ...prev, originalPrice: val }))}
                           placeholder="Ex: 99.90"
                           className="w-full pl-14 pr-6 py-5 bg-zinc-950/50 border border-white/5 rounded-2xl text-lg font-black text-zinc-600 focus:outline-none transition-all tabular-nums"
                         />
@@ -2269,6 +2462,195 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
             </div>
           </div>
         )}
+
+      {/* Diálogo de Confirmação de Exclusão de Variante */}
+      <AlertDialog open={variantToDelete !== null} onOpenChange={(open) => !open && setVariantToDelete(null)}>
+        <AlertDialogContent className="bg-zinc-950 border border-white/10 rounded-3xl max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white font-black text-lg uppercase tracking-tight">Excluir Variante?</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400 text-xs">
+              Tem certeza que deseja excluir esta variante? Ela será removida da lista. Para salvar essa alteração permanentemente no banco de dados, você precisa salvar o formulário do produto.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="bg-white/5 border border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteVariant} className="bg-rose-650 hover:bg-rose-700 text-white rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Excluir Variante
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+
+const compressImage = (file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.85): Promise<File> => {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) {
+      resolve(file);
+      return;
+    }
+
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(objectUrl);
+        resolve(file);
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          URL.revokeObjectURL(objectUrl);
+          if (blob) {
+            const compressedFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            });
+            resolve(compressedFile);
+          } else {
+            resolve(file);
+          }
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+
+    img.src = objectUrl;
+  });
+};
+
+interface LocalBufferedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
+  value: string;
+  onFlush: (val: string) => void;
+}
+function LocalBufferedInput({ value, onFlush, className, ...props }: LocalBufferedInputProps) {
+  const [localVal, setLocalVal] = useState(value);
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setLocalVal(value);
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setLocalVal(val);
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      onFlush(val);
+    }, 150);
+  };
+
+  const handleBlur = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    onFlush(localVal ? localVal.toString() : '');
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <input
+      {...props}
+      value={localVal}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      className={className}
+    />
+  );
+}
+
+interface LocalBufferedTextareaProps extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'onChange'> {
+  value: string;
+  onFlush: (val: string) => void;
+}
+function LocalBufferedTextarea({ value, onFlush, className, ...props }: LocalBufferedTextareaProps) {
+  const [localVal, setLocalVal] = useState(value);
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setLocalVal(value);
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setLocalVal(val);
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      onFlush(val);
+    }, 150);
+  };
+
+  const handleBlur = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    onFlush(localVal ? localVal.toString() : '');
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <textarea
+      {...props}
+      value={localVal}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      className={className}
+    />
+  );
+}
+

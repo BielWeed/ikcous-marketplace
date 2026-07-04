@@ -20,7 +20,7 @@ export function useViewTransition() {
         if (!isSupported) {
             updateFn();
             onFinished?.();
-            return;
+            return null;
         }
 
         // Apply view-specific direction class to documentElement
@@ -31,7 +31,7 @@ export function useViewTransition() {
         }
 
         const transition = (document as Document & {
-            startViewTransition: (cb: () => void) => { ready: Promise<void>; finished?: Promise<void> }
+            startViewTransition: (cb: () => void) => { ready: Promise<void>; finished?: Promise<void>; skip?: () => void }
         }).startViewTransition(() => {
             updateFn();
         });
@@ -47,6 +47,7 @@ export function useViewTransition() {
                 onFinished?.();
             });
         }
+        return transition;
     }, [isSupported]);
 
     return { navigate, isSupported };

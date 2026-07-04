@@ -20,7 +20,8 @@ import {
     HelpCircle,
     LayoutGrid,
     List,
-    Snowflake
+    Snowflake,
+    Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +39,8 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks/useDebounce';
 import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
+import { LocalErrorBoundary } from '@/components/ui/custom/LocalErrorBoundary';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 interface Customer {
     id: string;
@@ -59,6 +62,7 @@ interface AdminCustomersViewProps {
 }
 
 export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate, active }: Readonly<AdminCustomersViewProps>) {
+    const isOffline = useOnlineStatus();
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [loading, setLoading] = useState(true);
     const [showHelpModal, setShowHelpModal] = useState(false);
@@ -158,35 +162,34 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
             setSortDirection('asc');
         }
     };
-
     const renderDetailedSkeletons = () => {
         return (
             <div className="flex flex-col gap-4 p-4 md:p-0 md:gap-0 divide-y-0 md:divide-y divide-zinc-800/30">
-                {Array.from({ length: 5 }).map((_, i) => (
+                {Array.from({ length: 10 }).map((_, i) => (
                     <div
                         key={i}
-                        className="group bg-zinc-900/30 md:bg-transparent border border-zinc-800/50 md:border-transparent rounded-[1.5rem] md:rounded-none p-5 md:px-8 md:py-6 flex flex-col md:grid md:grid-cols-12 md:items-center gap-5 md:gap-4 animate-pulse relative"
+                        className="group bg-zinc-900/30 md:bg-transparent border border-zinc-800/50 md:border-transparent rounded-[1.5rem] md:rounded-none p-5 md:px-8 md:py-6 flex flex-col md:grid md:grid-cols-12 md:items-center gap-5 md:gap-4 animate-pulse relative min-h-[120px]"
                     >
                         <div className="flex items-center gap-4 md:col-span-4 pr-10 md:pr-0">
-                            <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-zinc-800 shrink-0" />
+                            <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-zinc-850 shrink-0" />
                             <div className="flex-1 flex flex-col gap-2 min-w-0">
-                                <div className="h-4 w-2/3 bg-zinc-800 rounded" />
-                                <div className="h-3 w-1/3 bg-zinc-800 rounded" />
+                                <div className="h-4 w-2/3 bg-zinc-850 rounded" />
+                                <div className="h-3 w-1/3 bg-zinc-850 rounded" />
                             </div>
                         </div>
                         <div className="flex flex-col gap-2 md:col-span-3">
-                            <div className="h-3.5 w-3/4 bg-zinc-800 rounded" />
-                            <div className="h-3.5 w-1/2 bg-zinc-800 rounded" />
+                            <div className="h-3.5 w-3/4 bg-zinc-850 rounded" />
+                            <div className="h-3.5 w-1/2 bg-zinc-850 rounded" />
                         </div>
                         <div className="grid grid-cols-2 md:col-span-3 md:flex gap-4 md:items-center justify-between md:justify-end">
-                            <div className="h-9 w-24 bg-zinc-800 rounded-xl" />
-                            <div className="h-10 w-10 bg-zinc-800 rounded-[0.8rem]" />
+                            <div className="h-9 w-24 bg-zinc-850 rounded-xl" />
+                            <div className="h-10 w-10 bg-zinc-850 rounded-[0.8rem]" />
                         </div>
                         <div className="hidden md:flex flex-col items-end gap-1.5 md:col-span-1">
-                            <div className="h-8 w-20 bg-zinc-800 rounded-lg" />
+                            <div className="h-8 w-20 bg-zinc-850 rounded-lg" />
                         </div>
                         <div className="absolute top-4 right-4 md:relative md:top-auto md:right-auto md:col-span-1 flex justify-end">
-                            <div className="h-10 w-10 bg-zinc-800 rounded-[0.8rem]" />
+                            <div className="h-10 w-10 bg-zinc-850 rounded-[0.8rem]" />
                         </div>
                     </div>
                 ))}
@@ -196,29 +199,29 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
 
     const renderCompactSkeletons = () => {
         return (
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 p-4 md:p-6">
-                {Array.from({ length: 5 }).map((_, i) => (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 p-3 sm:p-4 md:p-6">
+                {Array.from({ length: 10 }).map((_, i) => (
                     <div
                         key={i}
-                        className="group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[2rem] p-4 sm:p-5 min-h-[160px] flex flex-col justify-between animate-pulse"
+                        className="group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[1.5rem] p-3.5 sm:p-5 min-h-[170px] flex flex-col justify-between animate-pulse"
                     >
                         <div className="flex flex-col w-full h-full">
                             <div className="flex justify-between items-start w-full relative">
-                                <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-zinc-800 shrink-0" />
-                                <div className="h-8 w-8 bg-zinc-800 rounded-lg" />
+                                <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-zinc-850 shrink-0" />
+                                <div className="h-11 w-11 bg-zinc-850 rounded-xl" />
                             </div>
                             <div className="mt-3 space-y-2">
-                                <div className="h-4 w-3/4 bg-zinc-800 rounded" />
-                                <div className="h-3 w-1/2 bg-zinc-800 rounded" />
+                                <div className="h-4 w-3/4 bg-zinc-850 rounded" />
+                                <div className="h-3 w-1/2 bg-zinc-850 rounded" />
                             </div>
                             <div className="mt-3 space-y-1">
-                                <div className="h-3 w-5/6 bg-zinc-800 rounded" />
-                                <div className="h-3 w-2/3 bg-zinc-800 rounded" />
+                                <div className="h-3 w-5/6 bg-zinc-850 rounded" />
+                                <div className="h-3 w-2/3 bg-zinc-850 rounded" />
                             </div>
                         </div>
                         <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between gap-2">
-                            <div className="h-3 w-12 bg-zinc-800 rounded" />
-                            <div className="h-3 w-8 bg-zinc-800 rounded" />
+                            <div className="h-3 w-12 bg-zinc-850 rounded" />
+                            <div className="h-3 w-8 bg-zinc-850 rounded" />
                         </div>
                     </div>
                 ))}
@@ -227,7 +230,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
     };
 
     return (
-        <div className="min-h-screen bg-black text-white selection:bg-admin-gold/30 pb-32 animate-in fade-in duration-500">
+        <div className="h-auto bg-black text-white selection:bg-admin-gold/30 pb-8 animate-in fade-in duration-500">
             {/* Header */}
             <div className="px-6 flex items-center justify-between gap-4 pt-6 pb-2">
                 <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-none select-none flex items-center gap-3 shrink-0">
@@ -247,7 +250,9 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
             <main className="max-w-7xl mx-auto mt-6 pb-10 sm:px-6 space-y-10">
                 {/* Control Bar para Carrossel/Grid de Métricas */}
                 <div className="space-y-4">
-                    <AdminKpiCarousel cards={kpiCards} loading={loading} title="Métricas de Clientes" />
+                    <LocalErrorBoundary>
+                        <AdminKpiCarousel cards={kpiCards} loading={loading} title="Métricas de Clientes" />
+                    </LocalErrorBoundary>
                 </div>
                 {/* Unified Control & Data Block */}
                 <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/50 sm:rounded-[3rem] shadow-2xl overflow-hidden relative flex flex-col">
@@ -256,7 +261,11 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                         <div className="flex items-center gap-4 w-full flex-1">
                             <div className="relative group w-full">
                                 <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                                    <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-admin-gold transition-colors" />
+                                    {loading || searchTerm !== debouncedSearchTerm ? (
+                                        <Loader2 className="h-5 w-5 text-admin-gold animate-spin" />
+                                    ) : (
+                                        <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-admin-gold transition-colors" />
+                                    )}
                                 </div>
                                 <Input
                                     type="text"
@@ -286,8 +295,9 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                             <Button
                                 variant="outline"
                                 size="icon"
-                                onClick={() => fetchCustomers(page)}
-                                className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/50 hover:bg-admin-gold hover:border-admin-gold group transition-all shrink-0"
+                                onClick={() => !isOffline && fetchCustomers(page)}
+                                disabled={loading || isOffline}
+                                className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/50 hover:bg-admin-gold hover:border-admin-gold group transition-all shrink-0 disabled:opacity-40"
                             >
                                 <RefreshCw className={cn("w-5 h-5 text-zinc-500 group-hover:text-black transition-colors", loading && "animate-spin text-admin-gold")} />
                             </Button>
@@ -295,11 +305,12 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                     </div>
 
                     {/* Data List (Responsive Grid/Cards) */}
-                    <div className={cn("relative group/table w-full p-2 sm:p-0 transition-opacity duration-300", loading && paginatedCustomers.length > 0 && "opacity-50 pointer-events-none")}>
-                        {/* Glow Decoration */}
-                        <div className="absolute -top-24 -left-24 w-48 h-48 bg-admin-gold/5 blur-[100px] pointer-events-none" />
+                    <LocalErrorBoundary>
+                        <div className={cn("relative group/table w-full p-2 sm:p-0 transition-opacity duration-300", loading && paginatedCustomers.length > 0 && "opacity-50 pointer-events-none")}>
+                            {/* Glow Decoration */}
+                            <div className="absolute -top-24 -left-24 w-48 h-48 bg-admin-gold/5 blur-[100px] pointer-events-none" />
 
-                        <div className="relative z-10 flex flex-col w-full">
+                            <div className="relative z-10 flex flex-col w-full">
                             {loading && paginatedCustomers.length === 0 ? (
                                 viewMode === 'detailed' ? renderDetailedSkeletons() : renderCompactSkeletons()
                             ) : paginatedCustomers.length === 0 ? (
@@ -479,15 +490,15 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                                     </div>
                                 </>
                             ) : (
-                                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 p-4 md:p-6">
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 p-3 sm:p-4 md:p-6">
                                     {paginatedCustomers.map((customer) => (
                                         <div
                                             key={customer.id}
                                             onClick={() => onNavigate('admin-user-detail', customer.id)}
-                                            className="group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[2rem] p-4 sm:p-5 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer min-h-[160px] flex flex-col justify-between content-visibility-auto"
+                                            className="group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[1.5rem] p-3.5 sm:p-5 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer min-h-[160px] flex flex-col justify-between content-visibility-auto"
                                         >
                                             {/* Glow Background */}
-                                            <div className="absolute inset-0 bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 group-hover:from-admin-gold/5 group-hover:to-transparent rounded-[2rem] transition-all duration-700 pointer-events-none z-0" />
+                                            <div className="absolute inset-0 bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 group-hover:from-admin-gold/5 group-hover:to-transparent rounded-[1.5rem] transition-all duration-700 pointer-events-none z-0" />
 
                                             <div className="relative z-10 flex flex-col w-full h-full">
                                                 {/* Header Row: Avatar and Action Dropdown */}
@@ -509,8 +520,8 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                                                     <div className="absolute top-0 right-0" onClick={(e) => e.stopPropagation()}>
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
-                                                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg bg-zinc-950/80 border border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-900 transition-all shadow-md">
-                                                                    <MoreHorizontal className="w-4 h-4 flex-shrink-0" />
+                                                                <Button variant="ghost" size="icon" className="h-11 w-11 rounded-xl bg-zinc-950/80 border border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-900 transition-all shadow-md flex items-center justify-center">
+                                                                    <MoreHorizontal className="w-5 h-5 flex-shrink-0" />
                                                                 </Button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end" className="w-[180px] rounded-2xl border border-zinc-800/80 bg-zinc-950/95 backdrop-blur-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-2 z-[100]">
@@ -544,7 +555,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                                                 </div>
 
                                                 {/* Customer Name and Badges */}
-                                                <div className="mt-3 min-w-0 pr-6">
+                                                <div className="mt-3 min-w-0 pr-2">
                                                     <h4 className="text-xs sm:text-sm font-black text-white truncate group-hover:text-admin-gold transition-colors leading-none">
                                                         {customer.full_name || 'Usuário'}
                                                     </h4>
@@ -600,6 +611,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                             )}
                         </div>
                     </div>
+                </LocalErrorBoundary>
                     {totalPages > 1 && (
                         <div className="flex items-center justify-between px-8 py-5 border-t border-zinc-800/50 bg-zinc-900/60 relative z-10">
                             <Button

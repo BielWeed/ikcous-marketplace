@@ -24,6 +24,7 @@ import { StrategicIntelligenceBlocks } from '@/components/admin/dashboard/Strate
 import { LocalErrorBoundary } from '@/components/ui/custom/LocalErrorBoundary';
 import { cn } from '@/lib/utils';
 import type { View } from '@/types';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 interface AdminDashboardViewProps {
   onNavigate: (view: View, id?: string) => void;
@@ -42,6 +43,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
   active
 }: Readonly<AdminDashboardViewProps>) {
   const { session } = useAuth();
+  const isOffline = useOnlineStatus();
   const { 
     fetchExecutiveSummary, 
     fetchCategoryAnalytics,
@@ -54,7 +56,10 @@ export const AdminDashboardView = memo(function AdminDashboardView({
   const [isLoading, setIsLoading] = useState(true);
 
   const loadDashboardData = useCallback(async (force = false) => {
-    setIsLoading(true);
+    const hasData = !!stats;
+    if (!hasData || force) {
+      setIsLoading(true);
+    }
     try {
       await Promise.all([
         fetchExecutiveSummary(force),
@@ -69,7 +74,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     } finally {
       setIsLoading(false);
     }
-  }, [fetchExecutiveSummary, fetchCategoryAnalytics]);
+  }, [fetchExecutiveSummary, fetchCategoryAnalytics, stats]);
 
   const mappedCategoryData = useMemo<CategoryData[]>(() => {
     if (!categoryData) return [];
@@ -107,8 +112,8 @@ export const AdminDashboardView = memo(function AdminDashboardView({
             
             <div className="flex items-center gap-4">
                 <button 
-                     disabled={isLoading} 
-                     onClick={() => loadDashboardData(true)}
+                     disabled={isLoading || isOffline} 
+                     onClick={() => !isOffline && loadDashboardData(true)}
                      className="flex items-center gap-3 px-4 py-2 sm:px-6 sm:py-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group disabled:opacity-50"
                 >
                     <RefreshCw className={cn("w-4 h-4 text-zinc-400 group-hover:rotate-180 transition-transform duration-700", isLoading && "animate-spin")} />

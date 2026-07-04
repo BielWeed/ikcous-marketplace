@@ -1,0 +1,275 @@
+- generic [ref=f9e3]:
+  - main [ref=f9e4]:
+    - generic [ref=f9e9]:
+      - generic [ref=f9e11]:
+        - button "Perfil" [ref=f9e13] [cursor=pointer]:
+          - img
+          - generic [ref=f9e14]: Perfil
+        - generic [ref=f9e15]:
+          - heading "IKCOUS Admin" [level=1] [ref=f9e16]
+          - paragraph [ref=f9e17]: Navegação Unificada
+        - button [ref=f9e19] [cursor=pointer]:
+          - img
+      - main [ref=f9e20]:
+        - generic [ref=f9e26]:
+          - generic [ref=f9e28]:
+            - heading "Ajustes" [level=1] [ref=f9e29]:
+              - generic [ref=f9e31]: Ajustes
+              - button "Guia de Configurações e Ajuda" [ref=f9e32] [cursor=pointer]:
+                - img [ref=f9e33]
+            - button "Salvar" [ref=f9e36] [cursor=pointer]:
+              - img [ref=f9e37]
+              - generic [ref=f9e41]: Salvar
+          - generic [ref=f9e42]:
+            - generic [ref=f9e43]:
+              - button "Logística & Entregas" [ref=f9e44] [cursor=pointer]:
+                - generic [ref=f9e45]:
+                  - img [ref=f9e47]
+                  - heading "Logística & Entregas" [level=2] [ref=f9e52]
+                - img [ref=f9e53]
+              - generic [ref=f9e59]:
+                - generic [ref=f9e60]:
+                  - generic [ref=f9e61]:
+                    - generic [ref=f9e62]:
+                      - img [ref=f9e64]
+                      - generic [ref=f9e69]:
+                        - generic [ref=f9e70]: Frete Grátis
+                        - generic [ref=f9e71]: Valor Mínimo
+                    - switch [checked] [ref=f9e72] [cursor=pointer]
+                  - generic [ref=f9e73]:
+                    - paragraph [ref=f9e74]: Ativa a barra de progresso no carrinho. Pedidos acima deste valor terão a taxa de entrega anulada.
+                    - generic [ref=f9e75]:
+                      - button [ref=f9e76] [cursor=pointer]:
+                        - img [ref=f9e77]
+                      - generic [ref=f9e78]:
+                        - generic [ref=f9e79]: R$
+                        - spinbutton [ref=f9e80]: "200"
+                      - button [ref=f9e81] [cursor=pointer]:
+                        - img [ref=f9e82]
+                    - generic [ref=f9e83]:
+                      - button "R$ 50" [ref=f9e84] [cursor=pointer]
+                      - button "R$ 100" [ref=f9e85] [cursor=pointer]
+                      - button "R$ 150" [ref=f9e86] [cursor=pointer]
+                      - button "R$ 200" [ref=f9e87] [cursor=pointer]
+                      - button "R$ 250" [ref=f9e88] [cursor=pointer]
+                    - generic [ref=f9e89]:
+                      - generic [ref=f9e90]:
+                        - generic [ref=f9e91]: Simulação no PWA
+                        - generic [ref=f9e92]: R$ 200
+                      - paragraph [ref=f9e95]: "Exemplo: Se a compra for de R$ 140, faltará R$ 60 para frete grátis."
+                - generic [ref=f9e96]:
+                  - generic [ref=f9e97]:
+                    - generic [ref=f9e98]:
+                      - img [ref=f9e100]
+                      - generic [ref=f9e103]:
+                        - generic [ref=f9e104]: Taxa de Entrega
+                        - generic [ref=f9e105]: Cobrança Padrão
+                    - switch [checked] [ref=f9e106] [cursor=pointer]
+                  - generic [ref=f9e107]:
+                    - paragraph [ref=f9e108]: Insira o valor fixo cobrado por padrão para entregas caso o pedido não atinja a regra de frete grátis.
+                    - generic [ref=f9e109]:
+                      - button [ref=f9e110] [cursor=pointer]:
+                        - img [ref=f9e111]
+                      - generic [ref=f9e112]:
+                        - generic [ref=f9e113]: R$
+                        - spinbutton [ref=f9e114]: "10"
+                      - button [ref=f9e115] [cursor=pointer]:
+                        - img [ref=f9e116]
+                    - generic [ref=f9e117]:
+                      - button "R$ 5" [ref=f9e118] [cursor=pointer]
+                      - button "R$ 10" [ref=f9e119] [cursor=pointer]
+                      - button "R$ 12" [ref=f9e120] [cursor=pointer]
+                      - button "R$ 15" [ref=f9e121] [cursor=pointer]
+                      - button "R$ 20" [ref=f9e122] [cursor=pointer]
+                    - generic [ref=f9e123]:
+                      - generic [ref=f9e124]:
+                        - img [ref=f9e125]
+                        - generic [ref=f9e127]: Resumo da Regra
+                      - paragraph [ref=f9e128]:
+                        - text: Se o cliente comprar menos que
+                        - generic [ref=f9e129]: R$ 200
+                        - text: ", o valor da entrega será"
+                        - generic [ref=f9e130]: R$ 10
+                        - text: .
+            - generic [ref=f9e132]:
+              - button "Canais de Atendimento" [ref=f9e133] [cursor=pointer]:
+                - generic [ref=f9e134]:
+                  - img [ref=f9e136]
+                  - heading "Canais de Atendimento" [level=2] [ref=f9e139]
+                - img [ref=f9e140]
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: WhatsApp da Operação
+                            - generic: Atendimento & Vendas
+                          - paragraph: Número que receberá contatos diretos de clientes interessados em produtos ou buscando suporte de pedidos.
+                          - generic:
+                            - generic:
+                              - img
+                              - generic: "+55"
+                            - 'textbox "Ex: 34999999999"': "5534999999999"
+                          - generic:
+                            - generic:
+                              - img
+                              - generic: Formato e Protocolo
+                            - paragraph:
+                              - text: "Informe apenas o DDD e o número (ex:"
+                              - code: "34999999999"
+                              - text: ). O código do país
+                              - code: "55"
+                              - text: será adicionado de forma automatizada ao salvar.
+                        - generic:
+                          - generic:
+                            - generic: Horário de Funcionamento
+                            - generic: Expediente
+                          - paragraph: Informa aos clientes no PWA o horário em que a operação está ativa para responder dúvidas e enviar pedidos.
+                          - generic:
+                            - generic:
+                              - img
+                            - 'textbox "Ex: Seg-Sáb: 9h às 18h"': "Seg-Sáb: 9h às 18h"
+                          - generic:
+                            - generic:
+                              - img
+                              - generic: Exemplos recomendados
+                            - paragraph:
+                              - text: •
+                              - code: "Seg-Sáb: 9h às 18h"
+                              - text: •
+                              - code: "Seg a Sex: 8h às 18h | Sáb: 8h às 12h"
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: Mensagem de Compartilhamento de Produtos
+                            - generic: Divulgação
+                          - paragraph: Texto de introdução anexado à mensagem quando um usuário compartilha um produto. O nome do produto, o preço e o link serão adicionados logo abaixo.
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - img
+                              - 'textbox "Ex: Confira este produto incrível que encontrei!"': Confira os produtos da Ikous!
+                          - generic:
+                            - text: Visualização da Mensagem no WhatsApp
+                            - generic:
+                              - generic:
+                                - paragraph: Confira os produtos da Ikous!
+                                - generic:
+                                  - generic:
+                                    - generic: IMG
+                                    - generic:
+                                      - paragraph: Fone de Ouvido Bluetooth
+                                      - paragraph: R$ 189,90
+                                  - paragraph: ikcous.com/produto/fone-de-ouvido-bluetooth
+                                - generic:
+                                  - generic: 12:00
+                                  - generic: ✓✓
+            - generic [ref=f9e142]:
+              - button "Módulos de Sistema" [ref=f9e143] [cursor=pointer]:
+                - generic [ref=f9e144]:
+                  - img [ref=f9e146]
+                  - heading "Módulos de Sistema" [level=2] [ref=f9e156]
+                - img [ref=f9e157]
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - img
+                        - generic:
+                          - generic:
+                            - generic: Avaliações de Usuário
+                            - generic: Prova Social
+                          - paragraph: Permitir feedback social em produtos
+                          - paragraph: Habilita comentários e notas com estrelas nas páginas de produtos. Clientes podem compartilhar fotos e experiências reais, incentivando a tomada de decisão de novos compradores.
+                          - generic:
+                            - generic: Habilitado e ativo no app
+                        - generic:
+                          - switch [checked]
+                      - generic:
+                        - generic:
+                          - img
+                        - generic:
+                          - generic:
+                            - generic: Motor de Cupons
+                            - generic: Conversão e Vendas
+                          - paragraph: Ativar validação de descontos no checkout
+                          - paragraph: Habilita o campo de cupom no carrinho e checkout. Permite validar e aplicar descontos percentuais ou fixos definidos em suas campanhas ativas no painel administrativo.
+                          - generic:
+                            - generic: Habilitado e ativo no app
+                        - generic:
+                          - switch [checked]
+            - generic [ref=f9e159]:
+              - button "Inteligência de Notificação" [ref=f9e160] [cursor=pointer]:
+                - generic [ref=f9e161]:
+                  - img [ref=f9e163]
+                  - heading "Inteligência de Notificação" [level=2] [ref=f9e166]
+                - img [ref=f9e167]
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - img
+                        - generic:
+                          - generic:
+                            - generic: Alertas de Venda Ativa
+                            - generic: Gatilho de Urgência
+                          - paragraph: Feedback visual imediato para novos pedidos
+                          - paragraph: "Exibe popups discretos no site informando sobre compras recentes de outros usuários (Ex: \"Fulano de São Paulo acabou de comprar este item\"). Estimula o gatilho da escassez e da prova social em tempo real."
+                          - generic:
+                            - generic: Habilitado e ativo no app
+                        - generic:
+                          - switch [checked]
+                      - generic:
+                        - generic:
+                          - img
+                        - generic:
+                          - generic:
+                            - generic: Push Marketing Automation
+                            - generic: Retenção & Engajamento
+                          - paragraph: Broadcast de ofertas via sistema
+                          - paragraph: Dispara automaticamente ofertas personalizadas, avisos de promoções exclusivas e lembretes de carrinhos abandonados diretamente no navegador ou celular dos clientes que aceitaram notificações.
+                          - generic:
+                            - generic: Desativado
+                        - generic:
+                          - switch
+            - generic [ref=f9e169]:
+              - button "Gestão & Atalhos" [ref=f9e170] [cursor=pointer]:
+                - generic [ref=f9e171]:
+                  - img [ref=f9e173]
+                  - heading "Gestão & Atalhos" [level=2] [ref=f9e176]
+                - img [ref=f9e177]
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - button "Campanhas Gerir Cupons":
+                        - generic:
+                          - img
+                        - generic:
+                          - generic: Campanhas
+                          - generic: Gerir Cupons
+                      - button "Vitrine Gerir Banners":
+                        - generic:
+                          - img
+                        - generic:
+                          - generic: Vitrine
+                          - generic: Gerir Banners
+      - navigation [ref=f9e179]:
+        - button [active] [ref=f9e180] [cursor=pointer]:
+          - img [ref=f9e181]
+        - button [ref=f9e183] [cursor=pointer]:
+          - img [ref=f9e184]
+        - button [ref=f9e188] [cursor=pointer]:
+          - img [ref=f9e189]
+        - button [ref=f9e192] [cursor=pointer]:
+          - img [ref=f9e193]
+        - button [ref=f9e198] [cursor=pointer]:
+          - img [ref=f9e200]
+  - region "Notifications alt+T"

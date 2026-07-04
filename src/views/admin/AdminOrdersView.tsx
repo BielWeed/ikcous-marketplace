@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import { flushSync } from 'react-dom';
+import { LazyImage } from '@/components/LazyImage';
 import {
   Search,
   MessageCircle,
@@ -14,12 +16,13 @@ import {
   Filter,
   HelpCircle,
   LayoutGrid,
-  List
+  List,
+  Loader2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Order, OrderStatus, View } from '@/types';
 import { useOrders } from '@/hooks/useOrders';
-import { useDebounce } from '@/hooks/useDebounce';
+import { DebouncedSearchInput } from '@/components/admin/DebouncedSearchInput';
 import { OrderStatusBadge, statusConfig } from '@/components/admin/orders/OrderStatusBadge';
 import { OrderDetail } from '@/components/admin/orders/OrderDetail';
 import { SupportBanners } from '@/components/admin/dashboard/SupportBanners';
@@ -34,6 +37,9 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LocalErrorBoundary } from '@/components/ui/custom/LocalErrorBoundary';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { mapOrderFromDB } from '@/lib/mappers';
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   pix: 'PIX Instantâneo',
@@ -50,17 +56,21 @@ const STATUS_ORDER_COLORS: Record<string, string> = {
 };
 
 interface AdminOrdersViewProps {
-  onNavigate: (view: View) => void;
+  onNavigate: (view: View, id?: string) => void;
   active?: boolean;
+  selectedOrderId?: string | null;
+  onSetBackOverride?: (fn: (() => void) | null) => void;
 }
 
-export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, active }: Readonly<AdminOrdersViewProps>) {
+export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, active, selectedOrderId, onSetBackOverride }: Readonly<AdminOrdersViewProps>) {
+  const isOffline = useOnlineStatus();
+  const [recentOrderChanges, setRecentOrderChanges] = useState<Record<string, 'INSERT' | 'UPDATE'>>({});
   const onRealtimeEventRef = useRef<(payload: any) => void>(() => {});
-  const { orders, loadOrders, updateOrderStatus, totalOrders, isLoaded, fetchDashboardSummary } = useOrders(true, true, {
+  const { orders, loadOrders, updateOrderStatus, totalOrders, isLoaded, fetchDashboardSummary } = useOrders(active ?? false, true, {
     onRealtimeEvent: (payload) => onRealtimeEventRef.current(payload)
   });
   const [searchQuery, setSearchQuery] = useState('');
-  const debouncedSearchQuery = useDebounce(searchQuery, 500);
+  const [isTyping, setIsTyping] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [dateRange, setDateRange] = useState({
     start: '',
@@ -77,6 +87,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
   }, [viewMode]);
 
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [savedScrollPosition, setSavedScrollPosition] = useState(0);
   const prevSelectedOrderRef = useRef<Order | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
@@ -107,16 +118,99 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
     }
   }, [fetchDashboardSummary]);
 
+  const handleBackToList = useCallback(() => {
+    onNavigate('admin-orders');
+  }, [onNavigate]);
+
   const handleSelectOrder = useCallback((order: Order) => {
-    const container = document.querySelector('main main') || document.querySelector('main');
+    const container = document.querySelector('.admin-scroll-container') || document.querySelector('main');
     if (container) {
       setSavedScrollPosition(container.scrollTop);
     }
-    setSelectedOrder(order);
-  }, []);
+    onNavigate('admin-orders', order.id);
+  }, [onNavigate]);
+
+  // Clean back override on order detail to prevent intercepting url popstates
+  useEffect(() => {
+    if (onSetBackOverride) {
+      onSetBackOverride(null);
+    }
+    return () => {
+      if (onSetBackOverride) {
+        onSetBackOverride(null);
+      }
+    };
+  }, [onSetBackOverride]);
+
+  // Sync selectedOrder with selectedOrderId prop driven by URL
+  const lastSelectedOrderIdRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const nextOrder = selectedOrderId ? (orders.find(o => o.id === selectedOrderId) || null) : null;
+    const isIdChanged = lastSelectedOrderIdRef.current !== selectedOrderId;
+    lastSelectedOrderIdRef.current = selectedOrderId;
+
+    const updateState = (order: Order | null) => {
+      setSelectedOrder(order);
+    };
+
+    const triggerUpdate = (order: Order | null) => {
+      if (isIdChanged && typeof document !== 'undefined' && 'startViewTransition' in document) {
+        document.startViewTransition(() => {
+          flushSync(() => {
+            updateState(order);
+          });
+        });
+      } else {
+        updateState(order);
+      }
+    };
+
+    if (!selectedOrderId) {
+      triggerUpdate(null);
+      return;
+    }
+
+    if (nextOrder) {
+      triggerUpdate(nextOrder);
+      return;
+    }
+
+    // Fetch from Supabase if not found locally (e.g., deep link or pagination)
+    let isCurrent = true;
+    const fetchSingleOrder = async () => {
+      setLoadingDetail(true);
+      try {
+        const { data, error } = await supabase
+          .from('marketplace_orders')
+          .select(`
+            *,
+            items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)),
+            address:user_addresses(*)
+          `)
+          .eq('id', selectedOrderId)
+          .single();
+
+        if (error) throw error;
+        if (data && isCurrent) {
+          const mapped = mapOrderFromDB(data as any);
+          triggerUpdate(mapped);
+        }
+      } catch (err) {
+        console.error('Error fetching single order:', err);
+        toast.error('Erro ao carregar detalhes do pedido');
+      } finally {
+        if (isCurrent) setLoadingDetail(false);
+      }
+    };
+
+    fetchSingleOrder();
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedOrderId, orders]);
 
   useEffect(() => {
-    const container = document.querySelector('main main') || document.querySelector('main');
+    const container = document.querySelector('.admin-scroll-container') || document.querySelector('main');
     if (!container) return;
 
     const prev = prevSelectedOrderRef.current;
@@ -144,23 +238,23 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
       pageToFetch,
       itemsPerPage,
       filter,
-      debouncedSearchQuery,
+      searchQuery,
       dateRange.start || undefined,
       dateRange.end || undefined
     );
     loadStats();
-  }, [loadOrders, itemsPerPage, filter, debouncedSearchQuery, dateRange, loadStats]);
+  }, [loadOrders, itemsPerPage, filter, searchQuery, dateRange, loadStats]);
 
   useEffect(() => {
     if (!active) return;
 
     const filterChanged = 
       lastFilterRef.current !== filter || 
-      lastSearchRef.current !== debouncedSearchQuery || 
+      lastSearchRef.current !== searchQuery || 
       lastDateRef.current !== JSON.stringify(dateRange);
 
     lastFilterRef.current = filter;
-    lastSearchRef.current = debouncedSearchQuery;
+    lastSearchRef.current = searchQuery;
     lastDateRef.current = JSON.stringify(dateRange);
 
     let pageToFetch = currentPage;
@@ -173,11 +267,23 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
     }
 
     loadAllData(pageToFetch);
-  }, [currentPage, filter, debouncedSearchQuery, dateRange, active, loadAllData]);
+  }, [currentPage, filter, searchQuery, dateRange, active, loadAllData]);
 
   useEffect(() => {
     onRealtimeEventRef.current = (payload) => {
       console.log('[AdminOrdersView] Realtime event received:', payload.eventType);
+
+      const targetId = payload.new?.id;
+      if (targetId && (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE')) {
+        setRecentOrderChanges(prev => ({ ...prev, [targetId]: payload.eventType }));
+        setTimeout(() => {
+          setRecentOrderChanges(prev => {
+            const next = { ...prev };
+            delete next[targetId];
+            return next;
+          });
+        }, 3000);
+      }
 
       // Dispara aviso Toast
       if (payload.eventType === 'INSERT') {
@@ -205,6 +311,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
   const paginatedOrders = orders;
 
   const handleStatusChange = async (orderId: string, newStatus: OrderStatus, silent: boolean = false) => {
+    if (isOffline) {
+      toast.error('Operação não permitida offline.', {
+        description: 'Você precisa estar online para alterar o status do pedido.'
+      });
+      return;
+    }
     const order = orders?.find(o => o.id === orderId);
 
     if (order?.userId && !silent) {
@@ -241,7 +353,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
   };
 
 
-  const handleWhatsApp = (order: Order) => {
+  const handleWhatsApp = useCallback((order: Order) => {
+    if (isOffline) {
+      toast.error('Operação não permitida offline.', {
+        description: 'Contatos via WhatsApp exigem conexão com a internet.'
+      });
+      return;
+    }
     const message = `Olá ${order.customer?.name || 'Cliente'}!\n\n` +
       `Seu pedido #${order.id.slice(-6)} foi atualizado.\n` +
       `Status: ${statusConfig[order.status].label}\n\n` +
@@ -253,7 +371,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
     }
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     globalThis.open(url, '_blank');
-  };
+  }, [isOffline]);
 
   if (!isLoaded && orders.length === 0) {
     return (
@@ -275,24 +393,104 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
             </div>
           ))}
         </div>
-        <Skeleton className="h-[400px] w-full rounded-3xl bg-white/5 animate-pulse" />
+        {viewMode === 'detailed' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-10">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[3rem] p-8 space-y-6 h-[278px] flex flex-col justify-between shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="w-10 h-10 rounded-xl bg-white/5 animate-pulse" />
+                    <div className="space-y-2">
+                      <Skeleton className="h-3 w-16 bg-white/5 animate-pulse" />
+                      <Skeleton className="h-2.5 w-12 bg-white/5 animate-pulse" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-5 w-16 bg-white/5 rounded-full animate-pulse" />
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-6 w-3/4 bg-white/5 animate-pulse" />
+                  <Skeleton className="h-3 w-1/2 bg-white/5 animate-pulse" />
+                </div>
+                <div className="flex justify-between items-end pt-4 border-t border-white/5">
+                  <div className="space-y-1">
+                    <Skeleton className="h-2.5 w-12 bg-white/5 animate-pulse" />
+                    <Skeleton className="h-6 w-24 bg-white/5 animate-pulse" />
+                  </div>
+                  <Skeleton className="w-12 h-12 rounded-2xl bg-white/5 animate-pulse" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 min-[480px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-10">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(i => (
+              <div key={i} className="bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[2rem] p-4 sm:p-5 h-[164px] flex flex-col justify-between shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="w-8 h-8 rounded-lg bg-white/5 animate-pulse" />
+                    <div className="space-y-1">
+                      <Skeleton className="h-2.5 w-12 bg-white/5 animate-pulse" />
+                      <Skeleton className="h-2 w-8 bg-white/5 animate-pulse" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-4.5 w-12 bg-white/5 rounded-full animate-pulse" />
+                </div>
+                <div className="space-y-1">
+                  <Skeleton className="h-4 w-3/4 bg-white/5 animate-pulse" />
+                  <Skeleton className="h-2.5 w-1/2 bg-white/5 animate-pulse" />
+                </div>
+                <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                  <div className="space-y-1">
+                    <Skeleton className="h-2 w-8 bg-white/5 animate-pulse" />
+                    <Skeleton className="h-4 w-16 bg-white/5 animate-pulse" />
+                  </div>
+                  <Skeleton className="w-9 h-9 rounded-xl bg-white/5 animate-pulse" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (selectedOrderId && (loadingDetail || !selectedOrder)) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] bg-[#09090b] text-white">
+        <div className="relative w-16 h-16">
+          <div className="absolute inset-0 rounded-full border-2 border-amber-500/10 animate-ping duration-1000"></div>
+          <div className="w-16 h-16 border-2 border-amber-500/10 border-t-amber-500 rounded-full animate-spin"></div>
+          <div className="absolute inset-4 rounded-full bg-zinc-900 border border-white/5 flex items-center justify-center">
+            <span className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+          </div>
+        </div>
+        <div className="flex flex-col items-center gap-1.5 text-center mt-6">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500 animate-pulse">
+            Carregando Pedido
+          </p>
+          <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest leading-none">
+            Aguarde um instante
+          </p>
+        </div>
       </div>
     );
   }
 
   if (selectedOrder) {
     return (
-      <OrderDetail
-        order={selectedOrder}
-        onBack={() => setSelectedOrder(null)}
-        onStatusChange={handleStatusChange}
-        onWhatsApp={handleWhatsApp}
-      />
+      <LocalErrorBoundary>
+        <OrderDetail
+          order={selectedOrder}
+          onBack={handleBackToList}
+          onStatusChange={handleStatusChange}
+          onWhatsApp={handleWhatsApp}
+        />
+      </LocalErrorBoundary>
     );
   }
 
   return (
-    <div className="min-h-screen bg-admin-bg text-white pb-32 font-sans selection:bg-admin-gold/30 animate-in fade-in duration-500">
+    <div className="h-auto bg-admin-bg text-white pb-8 font-sans selection:bg-admin-gold/30 animate-in fade-in duration-500">
 
       {/* Header Elite */}
       <div className="px-6 flex items-center justify-between gap-4 pt-6 pb-2">
@@ -309,7 +507,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
                 <HelpCircle className="w-4.5 h-4.5" />
               </button>
           </h1>
-          <div className="hidden md:flex items-center gap-3">
+          <div className="flex items-center gap-3">
             <div className={cn(
               "inline-flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300",
               !isLoaded 
@@ -333,22 +531,31 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
           <SupportBanners onNavigate={onNavigate} />
         </div>
 
-        {active && <AdminKpiCarousel cards={kpiCards} title="Métricas de Pedidos" />}
+        {active && (
+          <LocalErrorBoundary>
+            <AdminKpiCarousel cards={kpiCards} title="Métricas de Pedidos" />
+          </LocalErrorBoundary>
+        )}
 
         {/* Unified Control Bar Compacta */}
         <div className="pt-8 border-t border-white/5 relative flex flex-col mb-8 mt-4">
           <div className="flex flex-col md:flex-row md:items-center gap-6 relative z-20">
             <div className="flex items-center gap-4 w-full flex-1">
                 <div className="relative group w-full">
-                    <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                        <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-admin-gold transition-colors" />
-                    </div>
-                    <Input
+                     <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                         {!isLoaded || isTyping ? (
+                             <Loader2 className="h-5 w-5 text-admin-gold animate-spin" />
+                         ) : (
+                             <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-admin-gold transition-colors" />
+                         )}
+                     </div>
+                    <DebouncedSearchInput
                         placeholder="Buscar pedidos..."
                         className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all font-bold text-sm w-full"
                         value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        autoComplete="off"
+                        onChange={setSearchQuery}
+                        onTyping={setIsTyping}
+                        delay={300}
                     />
                 </div>
                 
@@ -441,225 +648,55 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
         </div>
 
         {/* Orders List */}
-        <div className={cn("space-y-8 relative transition-opacity duration-300", !isLoaded && "opacity-50 pointer-events-none")}>
-          {paginatedOrders.length === 0 ? (
-            <div className="bg-zinc-950/40 backdrop-blur-md p-20 rounded-[4rem] border border-white/5 text-center relative overflow-hidden">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-admin-gold/5 blur-[100px] rounded-full" />
-              <div className="relative z-10">
-                <div className="w-24 h-24 bg-zinc-900/50 rounded-[3rem] flex items-center justify-center mx-auto mb-8 border border-white/5 shadow-2xl">
-                  <Package className="w-12 h-12 text-zinc-700" />
+        <LocalErrorBoundary>
+          <div className={cn("space-y-8 relative transition-opacity duration-300", (!isLoaded && paginatedOrders.length === 0) && "opacity-50 pointer-events-none")}>
+            {paginatedOrders.length === 0 ? (
+              <div className="bg-zinc-950/40 backdrop-blur-md p-20 rounded-[4rem] border border-white/5 text-center relative overflow-hidden">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-admin-gold/5 blur-[100px] rounded-full" />
+                <div className="relative z-10">
+                  <div className="w-24 h-24 bg-zinc-900/50 rounded-[3rem] flex items-center justify-center mx-auto mb-8 border border-white/5 shadow-2xl">
+                    <Package className="w-12 h-12 text-zinc-700" />
+                  </div>
+                  <h3 className="text-xl font-black text-white uppercase italic tracking-tighter mb-2">Nenhum Registro Detectado</h3>
+                  <p className="text-sm font-medium text-zinc-500 uppercase tracking-widest max-w-xs mx-auto mb-8">O sistema de inteligência não localizou tráfego operacional para os parâmetros definidos.</p>
+                  <Button
+                    variant="outline"
+                    onClick={() => { setSearchQuery(''); setFilter('all'); setDateRange({ start: '', end: '' }); }}
+                    className="border-admin-gold/50 text-admin-gold hover:bg-admin-gold hover:text-black font-black uppercase text-[10px] tracking-widest rounded-xl hover:scale-105 transition-all"
+                  >
+                    Resetar Filtros de Segurança
+                  </Button>
                 </div>
-                <h3 className="text-xl font-black text-white uppercase italic tracking-tighter mb-2">Nenhum Registro Detectado</h3>
-                <p className="text-sm font-medium text-zinc-500 uppercase tracking-widest max-w-xs mx-auto mb-8">O sistema de inteligência não localizou tráfego operacional para os parâmetros definidos.</p>
-                <Button
-                  variant="outline"
-                  onClick={() => { setSearchQuery(''); setFilter('all'); setDateRange({ start: '', end: '' }); }}
-                  className="border-admin-gold/50 text-admin-gold hover:bg-admin-gold hover:text-black font-black uppercase text-[10px] tracking-widest rounded-xl hover:scale-105 transition-all"
-                >
-                  Resetar Filtros de Segurança
-                </Button>
               </div>
-            </div>
-          ) : viewMode === 'detailed' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {paginatedOrders.map((order) => {
-                return (
-                  <div
+            ) : viewMode === 'detailed' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {paginatedOrders.map((order) => (
+                  <AdminOrderCard
                     key={order.id}
-                    onClick={() => handleSelectOrder(order)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        handleSelectOrder(order);
-                      }
-                    }}
-                    className={cn(
-                      "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[3rem] p-8 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_20px_60px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto",
-                      "border-white/5"
-                    )}
-                  >
-                  
-                  {/* Glow Background */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 group-hover:from-admin-gold/5 group-hover:to-transparent rounded-[3rem] transition-all duration-700 pointer-events-none z-0" />
-
-                  <div className="flex items-center justify-between mb-8 relative z-10">
-                    <div className="flex items-center gap-3">
-                      <div className="relative shrink-0">
-                        {order.items?.[0]?.image ? (
-                          <img src={order.items[0].image} alt="Produto" className="w-10 h-10 rounded-xl object-cover border border-white/10 shrink-0" />
-                        ) : (
-                          <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-white/10 flex items-center justify-center shrink-0">
-                            <Package className="w-5 h-5 text-zinc-600" />
-                          </div>
-                        )}
-                        {order.items?.length > 1 && (
-                          <div className="absolute -top-2 -right-2 bg-admin-gold text-black text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg border border-zinc-900">
-                            +{order.items.length - 1}
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] block mb-1 group-hover:text-admin-gold transition-colors">#{order.id.slice(-6).toUpperCase()}</span>
-                        <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest flex items-center gap-2">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(order.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                        </span>
-                      </div>
-                    </div>
-                    <OrderStatusBadge status={order.status} />
-                  </div>
-
-                  <div className="space-y-6 relative z-10">
-                    <div>
-                      <h4 className="text-lg sm:text-xl font-black text-white group-hover:text-admin-gold transition-colors truncate mb-2">
-                        {(() => {
-                          if (!order.items || order.items.length === 0) return 'Pedido Vazio';
-                          if (order.items.length === 1) return order.items[0].name;
-                          return `${order.items[0].name} e mais ${order.items.length - 1}`;
-                        })()}
-                      </h4>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div className="flex items-center gap-1.5 text-[9px] font-black text-zinc-400 uppercase tracking-widest bg-white/5 px-2 py-1 rounded-md border border-white/5">
-                          <User className="w-3 h-3" />
-                          {(() => {
-                            const nameParts = (order.customer?.name || 'Cliente').split(' ');
-                            return nameParts.length > 1
-                              ? `${nameParts[0][0]}. ${nameParts.at(-1)}`
-                              : nameParts[0];
-                          })()}
-                        </div>
-                        <span className="text-[9px] font-black text-zinc-500 bg-white/5 px-2 py-1 rounded-md border border-white/5 uppercase tracking-widest">{order.items?.length || 0} Prod.</span>
-                        <div className="w-1 h-1 rounded-full bg-zinc-800" />
-                        <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400 font-black">{PAYMENT_METHOD_LABELS[order.paymentMethod] || 'Outro'}</span>
-                      </div>
-                    </div>
-
-                    <div className="pt-6 border-t border-white/5 flex items-end justify-between">
-                      <div className="space-y-1">
-                        <span className="text-[9px] font-black text-zinc-600 uppercase tracking-[0.3em] ">Valor Capital</span>
-                        <p className="text-2xl font-black text-white tracking-widest tabular-nums">
-                          <span className="text-[10px] font-black text-zinc-500 mr-1 uppercase">R$</span>
-                          {(order.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </p>
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleWhatsApp(order);
-                          }}
-                          className="w-12 h-12 flex items-center justify-center bg-emerald-500/10 text-emerald-500 rounded-2xl hover:bg-emerald-500 hover:text-black transition-all border border-emerald-500/20 shadow-xl relative z-10"
-                        >
-                          <MessageCircle className="w-5 h-5" />
-                        </button>
-                        <div className="w-12 h-12 flex items-center justify-center text-zinc-500 group-hover:text-admin-gold transition-all duration-300">
-                          <ChevronRight className="w-6 h-6 transform transition-transform duration-300 group-hover:translate-x-1 filter group-hover:drop-shadow-[0_0_8px_rgba(212,175,55,0.5)]" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {paginatedOrders.map((order) => {
-                return (
-                  <div
+                    order={order}
+                    viewMode="detailed"
+                    onSelect={handleSelectOrder}
+                    onWhatsApp={handleWhatsApp}
+                    changeType={recentOrderChanges[order.id]}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 min-[480px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {paginatedOrders.map((order) => (
+                  <AdminOrderCard
                     key={order.id}
-                    onClick={() => handleSelectOrder(order)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        handleSelectOrder(order);
-                      }
-                    }}
-                    className={cn(
-                      "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[2rem] p-4 sm:p-5 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto",
-                      "border-white/5"
-                    )}
-                  >
-                  
-                  {/* Glow Background */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 group-hover:from-admin-gold/5 group-hover:to-transparent rounded-[2rem] transition-all duration-700 pointer-events-none z-0" />
-
-                  {/* Header Row: Image/ID and Status */}
-                  <div className="flex flex-col gap-2 min-[400px]:flex-row min-[400px]:items-center justify-between mb-4 relative z-10">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="relative shrink-0">
-                        {order.items?.[0]?.image ? (
-                          <img src={order.items[0].image} alt="Produto" className="w-8 h-8 rounded-lg object-cover border border-white/10 shrink-0" />
-                        ) : (
-                          <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-white/10 flex items-center justify-center shrink-0">
-                            <Package className="w-4 h-4 text-zinc-600" />
-                          </div>
-                        )}
-                        {order.items?.length > 1 && (
-                          <div className="absolute -top-1.5 -right-1.5 bg-admin-gold text-black text-[8px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center shadow-lg border border-zinc-900">
-                            +{order.items.length - 1}
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest block group-hover:text-admin-gold transition-colors truncate">#{order.id.slice(-6).toUpperCase()}</span>
-                        <span className="text-[8px] font-bold text-zinc-600 uppercase tracking-tight block truncate">
-                          {new Date(order.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="shrink-0 flex justify-start min-[400px]:justify-end">
-                      <OrderStatusBadge status={order.status} className="px-1.5 py-0.5" />
-                    </div>
-                  </div>
-
-                  {/* Customer & Product description */}
-                  <div className="space-y-1 mb-4 relative z-10">
-                    <h4 className="text-sm font-black text-white group-hover:text-admin-gold transition-colors truncate">
-                      {order.customer?.name || 'Cliente'}
-                    </h4>
-                    <p className="text-[9px] text-zinc-500 font-bold uppercase truncate">
-                      {(() => {
-                        if (!order.items || order.items.length === 0) return 'Pedido Vazio';
-                        if (order.items.length === 1) return order.items[0].name;
-                        return `${order.items[0].name} e mais ${order.items.length - 1}`;
-                      })()}
-                    </p>
-                  </div>
-
-                  {/* Footer Row: Price and Quick WhatsApp button */}
-                  <div className="pt-3 border-t border-white/5 flex items-center justify-between relative z-10">
-                    <div className="space-y-0.5">
-                      <span className="text-[8px] font-black text-zinc-600 uppercase tracking-wider block">Valor</span>
-                      <p className="text-base font-black text-white tracking-tight tabular-nums">
-                        <span className="text-[9px] font-black text-zinc-500 mr-0.5 uppercase">R$</span>
-                        {(order.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleWhatsApp(order);
-                        }}
-                        className="w-9 h-9 flex items-center justify-center bg-emerald-500/10 text-emerald-500 rounded-xl hover:bg-emerald-500 hover:text-black transition-all border border-emerald-500/20 shadow-lg relative z-10 active:scale-90"
-                        title="WhatsApp"
-                      >
-                        <MessageCircle className="w-4.5 h-4.5" />
-                      </button>
-                      <ChevronRight className="w-4.5 h-4.5 text-zinc-500 group-hover:text-admin-gold transition-all duration-300 transform group-hover:translate-x-0.5" />
-                    </div>
-                  </div>
-                </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                    order={order}
+                    viewMode="compact"
+                    onSelect={handleSelectOrder}
+                    onWhatsApp={handleWhatsApp}
+                    changeType={recentOrderChanges[order.id]}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </LocalErrorBoundary>
 
 
         {/* Elite Pagination */}
@@ -792,3 +829,214 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
     </div>
   );
 });
+
+interface AdminOrderCardProps {
+  readonly order: Order;
+  readonly viewMode: 'detailed' | 'compact';
+  readonly onSelect: (order: Order) => void;
+  readonly onWhatsApp: (order: Order) => void;
+  readonly changeType?: 'INSERT' | 'UPDATE';
+}
+
+const AdminOrderCard = memo(function AdminOrderCard({
+  order,
+  viewMode,
+  onSelect,
+  onWhatsApp,
+  changeType
+}: AdminOrderCardProps) {
+  if (viewMode === 'detailed') {
+    return (
+      <div
+        onClick={() => onSelect(order)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect(order);
+          }
+        }}
+        className={cn(
+          "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[3rem] p-8 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_20px_60px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto",
+          changeType === 'INSERT' && "border-admin-gold shadow-[0_0_25px_rgba(212,175,55,0.3)] animate-pulse",
+          changeType === 'UPDATE' && "border-blue-500 shadow-[0_0_25px_rgba(59,130,246,0.3)] animate-pulse",
+          !changeType && "border-white/5"
+        )}
+      >
+        {/* Glow Background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 group-hover:from-admin-gold/5 group-hover:to-transparent rounded-[3rem] transition-all duration-700 pointer-events-none z-0" />
+
+        <div className="flex items-center justify-between mb-8 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="relative shrink-0">
+              {order.items?.[0]?.image ? (
+                <LazyImage src={order.items[0].image} alt="Produto" className="w-10 h-10 rounded-xl object-cover border border-white/10 shrink-0" />
+              ) : (
+                <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-white/10 flex items-center justify-center shrink-0">
+                  <Package className="w-5 h-5 text-zinc-600" />
+                </div>
+              )}
+              {order.items?.length > 1 && (
+                <div className="absolute -top-2 -right-2 bg-admin-gold text-black text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg border border-zinc-900">
+                  +{order.items.length - 1}
+                </div>
+              )}
+            </div>
+            <div>
+              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] block mb-1 group-hover:text-admin-gold transition-colors">#{order.id.slice(-6).toUpperCase()}</span>
+              <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest flex items-center gap-2">
+                <Calendar className="w-3 h-3" />
+                {new Date(order.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+              </span>
+            </div>
+          </div>
+          <OrderStatusBadge status={order.status} />
+        </div>
+
+        <div className="space-y-6 relative z-10">
+          <div>
+            <h4 className="text-lg sm:text-xl font-black text-white group-hover:text-admin-gold transition-colors truncate mb-2">
+              {(() => {
+                if (!order.items || order.items.length === 0) return 'Pedido Vazio';
+                if (order.items.length === 1) return order.items[0].name;
+                return `${order.items[0].name} e mais ${order.items.length - 1}`;
+              })()}
+            </h4>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 text-[9px] font-black text-zinc-400 uppercase tracking-widest bg-white/5 px-2 py-1 rounded-md border border-white/5">
+                <User className="w-3 h-3" />
+                {(() => {
+                  const nameParts = (order.customer?.name || 'Cliente').split(' ');
+                  return nameParts.length > 1
+                    ? `${nameParts[0][0]}. ${nameParts.at(-1)}`
+                    : nameParts[0];
+                })()}
+              </div>
+              <span className="text-[9px] font-black text-zinc-500 bg-white/5 px-2 py-1 rounded-md border border-white/5 uppercase tracking-widest">{order.items?.length || 0} Prod.</span>
+              <div className="w-1 h-1 rounded-full bg-zinc-800" />
+              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400 font-black">{PAYMENT_METHOD_LABELS[order.paymentMethod] || 'Outro'}</span>
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-white/5 flex items-end justify-between">
+            <div className="space-y-1">
+              <span className="text-[9px] font-black text-zinc-600 uppercase tracking-[0.3em] ">Valor Capital</span>
+              <p className="text-2xl font-black text-white tracking-widest tabular-nums">
+                <span className="text-[10px] font-black text-zinc-500 mr-1 uppercase">R$</span>
+                {(order.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="flex gap-2 items-center">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onWhatsApp(order);
+                }}
+                className="w-12 h-12 flex items-center justify-center bg-emerald-500/10 text-emerald-500 rounded-2xl hover:bg-emerald-500 hover:text-black transition-all border border-emerald-500/20 shadow-xl relative z-10"
+              >
+                <MessageCircle className="w-5 h-5" />
+              </button>
+              <div className="w-12 h-12 flex items-center justify-center text-zinc-500 group-hover:text-admin-gold transition-all duration-300">
+                <ChevronRight className="w-6 h-6 transform transition-transform duration-300 group-hover:translate-x-1 filter group-hover:drop-shadow-[0_0_8px_rgba(212,175,55,0.5)]" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // compact mode
+  return (
+    <div
+      onClick={() => onSelect(order)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(order);
+        }
+      }}
+      className={cn(
+        "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[2rem] p-4 sm:p-5 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto",
+        changeType === 'INSERT' && "border-admin-gold shadow-[0_0_20px_rgba(212,175,55,0.3)] animate-pulse",
+        changeType === 'UPDATE' && "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] animate-pulse",
+        !changeType && "border-white/5"
+      )}
+    >
+      {/* Glow Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 group-hover:from-admin-gold/5 group-hover:to-transparent rounded-[2rem] transition-all duration-700 pointer-events-none z-0" />
+
+      {/* Header Row: Image/ID and Status */}
+      <div className="flex flex-col gap-2 min-[400px]:flex-row min-[400px]:items-center justify-between mb-4 relative z-10">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="relative shrink-0">
+            {order.items?.[0]?.image ? (
+              <LazyImage src={order.items[0].image} alt="Produto" className="w-8 h-8 rounded-lg object-cover border border-white/10 shrink-0" />
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-white/10 flex items-center justify-center shrink-0">
+                <Package className="w-4 h-4 text-zinc-600" />
+              </div>
+            )}
+            {order.items?.length > 1 && (
+              <div className="absolute -top-1.5 -right-1.5 bg-admin-gold text-black text-[8px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center shadow-lg border border-zinc-900">
+                +{order.items.length - 1}
+              </div>
+            )}
+          </div>
+          <div className="min-w-0">
+            <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest block group-hover:text-admin-gold transition-colors truncate">#{order.id.slice(-6).toUpperCase()}</span>
+            <span className="text-[8px] font-bold text-zinc-600 uppercase tracking-tight block truncate">
+              {new Date(order.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+            </span>
+          </div>
+        </div>
+        <div className="shrink-0 flex justify-start min-[400px]:justify-end">
+          <OrderStatusBadge status={order.status} className="px-1.5 py-0.5" />
+        </div>
+      </div>
+
+      {/* Customer & Product description */}
+      <div className="space-y-1 mb-4 relative z-10">
+        <h4 className="text-sm font-black text-white group-hover:text-admin-gold transition-colors truncate">
+          {order.customer?.name || 'Cliente'}
+        </h4>
+        <p className="text-[9px] text-zinc-500 font-bold uppercase truncate">
+          {(() => {
+            if (!order.items || order.items.length === 0) return 'Pedido Vazio';
+            if (order.items.length === 1) return order.items[0].name;
+            return `${order.items[0].name} e mais ${order.items.length - 1}`;
+          })()}
+        </p>
+      </div>
+
+      {/* Footer Row: Price and Quick WhatsApp button */}
+      <div className="pt-3 border-t border-white/5 flex items-center justify-between relative z-10">
+        <div className="space-y-0.5">
+          <span className="text-[8px] font-black text-zinc-600 uppercase tracking-wider block">Valor</span>
+          <p className="text-base font-black text-white tracking-tight tabular-nums">
+            <span className="text-[9px] font-black text-zinc-500 mr-0.5 uppercase">R$</span>
+            {(order.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onWhatsApp(order);
+            }}
+            className="w-11 h-11 flex items-center justify-center bg-emerald-500/10 text-emerald-500 rounded-xl hover:bg-emerald-500 hover:text-black transition-all border border-emerald-500/20 shadow-lg relative z-10 active:scale-90"
+            title="WhatsApp"
+          >
+            <MessageCircle className="w-5 h-5" />
+          </button>
+          <ChevronRight className="w-4.5 h-4.5 text-zinc-500 group-hover:text-admin-gold transition-all duration-300 transform group-hover:translate-x-0.5" />
+        </div>
+      </div>
+    </div>
+  );
+});
+
+export default AdminOrdersView;

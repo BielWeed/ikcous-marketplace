@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
-import { ShoppingCart, Package, Sparkles } from 'lucide-react';
+import { cn, formatCurrency } from '@/lib/utils';
+import { ShoppingCart, Package, Sparkles, ShieldCheck, Truck, RotateCcw, ArrowRight } from 'lucide-react';
 import type { CartItem, View, Product, Order } from '@/types';
 import { useStore } from '@/contexts/StoreContext';
 import { useProducts } from '@/hooks/useProducts';
@@ -217,22 +217,37 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
             transition={{ duration: 0.25, ease: 'easeOut' }}
             className="flex-1 flex flex-col"
           >
-            {!user && cart.length === 0 ? (
+            {cart.length === 0 ? (
               <div className="flex-1 flex items-center justify-center">
                 <EmptyCart onNavigate={onNavigate} />
               </div>
             ) : (
-              <>
-                <CartItemsList
-                  cart={cart}
-                  removingId={removingId}
-                  onUpdateQuantity={onUpdateQuantity}
-                  onRemove={handleRemove}
-                  handleClearCart={handleClearCart}
-                />
+              <div className="max-w-7xl mx-auto w-full px-4 xs:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-8 items-stretch lg:items-start">
+                {/* Coluna Esquerda: Itens, Frete Grátis e Checkout Convidado */}
+                <div className="flex-1 w-full min-w-0 space-y-6">
+                  <CartItemsList
+                    cart={cart}
+                    removingId={removingId}
+                    onUpdateQuantity={onUpdateQuantity}
+                    onRemove={handleRemove}
+                    handleClearCart={handleClearCart}
+                  />
 
-                {!user && cart.length > 0 && (
-                  <div className="px-4 xs:px-6 pb-6">
+                  {cart.length > 0 && (
+                    <ShippingProgress
+                      shipping={shipping}
+                      savings={savings}
+                      progressPercent={progressPercent}
+                      amountToFree={amountToFree}
+                      isNearlyThere={isNearlyThere}
+                      freeShippingProducts={freeShippingProducts}
+                      onAddToCart={onAddToCart}
+                      deferred={!isReady}
+                      onNavigate={onNavigate}
+                    />
+                  )}
+
+                  {!user && cart.length > 0 && (
                     <div className="p-8 bg-zinc-950 rounded-[3rem] shadow-2xl shadow-zinc-200 relative overflow-hidden group">
                       <div className="relative z-10">
                         <div className="flex items-center gap-3 mb-4">
@@ -279,35 +294,105 @@ export function CartView({ cart, onUpdateQuantity, onRemove, onNavigate, onAddTo
                       <div className="absolute top-0 right-0 w-64 h-64 bg-amber-400/5 rounded-full blur-3xl -mr-32 -mt-32" />
                       <div className="absolute bottom-0 left-0 w-32 h-32 bg-zinc-400/5 rounded-full blur-2xl -ml-16 -mb-16" />
                     </div>
+                  )}
+                </div>
+
+                {/* Coluna Direita: Resumo do Pedido (Desktop Only) */}
+                <div className="hidden lg:block w-full lg:w-[380px] shrink-0 sticky top-24 bg-white border border-zinc-100 p-6 rounded-[2.5rem] shadow-[0_10px_40px_rgba(0,0,0,0.02)] space-y-6">
+                  <div>
+                    <h3 className="text-zinc-950 text-lg font-black uppercase tracking-tight mb-1">
+                      Resumo do Pedido
+                    </h3>
+                    <p className="text-zinc-400 text-[10px] font-black uppercase tracking-widest">
+                      {cartCount} {cartCount > 1 ? 'itens selecionados' : 'item selecionado'}
+                    </p>
                   </div>
-                )}
 
-                {cart.length === 0 && (
-                  <div className="flex-1 flex items-center justify-center">
-                    <EmptyCart onNavigate={onNavigate} />
+                  <div className="space-y-4 pt-2 border-t border-zinc-50">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-zinc-400 uppercase tracking-wider">Subtotal</span>
+                      <span className="font-black text-zinc-950">{formatCurrency(subtotal)}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-zinc-400 uppercase tracking-wider">Frete</span>
+                      <span className={cn(
+                        "font-black tracking-tight",
+                        shipping === 0 ? "text-emerald-500" : "text-zinc-950"
+                      )}>
+                        {shipping === 0 ? 'GRÁTIS' : formatCurrency(shipping)}
+                      </span>
+                    </div>
+
+                    {shipping === 0 && (
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-zinc-400 uppercase tracking-wider">Bônus</span>
+                        <span className="font-black text-emerald-500 uppercase tracking-tighter flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 fill-emerald-500/20" />
+                          Frete Grátis
+                        </span>
+                      </div>
+                    )}
+
+                    {amountToFree > 0 && (
+                      <div className="p-3 bg-amber-50/50 border border-amber-100/50 rounded-2xl text-[10px] font-medium text-amber-800 leading-relaxed">
+                        Adicione mais <span className="font-black">{formatCurrency(amountToFree)}</span> para garantir <span className="font-black">Frete Grátis</span>!
+                      </div>
+                    )}
                   </div>
-                )}
-              </>
-            )}
 
-            {cart.length > 0 && (
-              <>
-                <ShippingProgress
-                  shipping={shipping}
-                  savings={savings}
-                  progressPercent={progressPercent}
-                  amountToFree={amountToFree}
-                  isNearlyThere={isNearlyThere}
-                  freeShippingProducts={freeShippingProducts}
-                  onAddToCart={onAddToCart}
-                  deferred={!isReady}
-                />
+                  <div className="pt-4 border-t border-zinc-100 flex justify-between items-end">
+                    <div>
+                      <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Total</span>
+                      <span className="text-2xl font-black tracking-tighter text-zinc-950">
+                        {formatCurrency(total)}
+                      </span>
+                    </div>
+                    {shipping === 0 && (
+                      <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg uppercase tracking-wider">
+                        Economizou {formatCurrency(savings)}
+                      </span>
+                    )}
+                  </div>
 
-              </>
+                  <button
+                    onClick={() => { haptic.medium(); onNavigate('checkout'); }}
+                    className="w-full h-14 bg-zinc-950 hover:bg-zinc-800 text-white rounded-2xl flex items-center justify-between px-6 transition-all active:scale-[0.98] shadow-xl shadow-zinc-200 group relative overflow-hidden"
+                  >
+                    <span className="text-[11px] font-black uppercase tracking-widest relative z-10">Finalizar Compra</span>
+                    <div className="w-8 h-8 bg-white/10 rounded-xl flex items-center justify-center group-hover:bg-white/20 transition-colors relative z-10">
+                      <ArrowRight className="w-4 h-4 text-white group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                  </button>
+
+                  <div className="pt-4 border-t border-zinc-50 space-y-3">
+                    <div className="flex items-center gap-3 text-zinc-500">
+                      <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                      <span className="text-[10px] font-semibold tracking-tight leading-tight">
+                        Ambiente de pagamento 100% seguro
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-zinc-500">
+                      <Truck className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                      <span className="text-[10px] font-semibold tracking-tight leading-tight">
+                        Envio expresso e código de rastreio automático
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-zinc-500">
+                      <RotateCcw className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                      <span className="text-[10px] font-semibold tracking-tight leading-tight">
+                        Garantia de devolução fácil em até 7 dias
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Spacer to prevent overlap by the sticky bottom actions */}
             <div 
+              className="lg:hidden"
               style={{
                 height: cart.length > 0 
                   ? 'calc(180px + var(--safe-area-bottom, 0px))' 

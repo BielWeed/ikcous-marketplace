@@ -5,6 +5,13 @@ import { useAuth } from '@/hooks/useAuth';
 import { mapOrderFromDB } from '@/lib/mappers';
 import type { Order, OrderStatus, DashboardSummary } from '@/types';
 
+interface SharedSubscription {
+  channel: any;
+  refCount: number;
+  callbacks: Set<(payload: any) => void>;
+}
+const globalOrderSubscriptions = new Map<string, SharedSubscription>();
+
 const validateStatusUpdate = (order: Order | undefined, isAdmin: boolean, status: OrderStatus, silent: boolean) => {
   if (!isAdmin) {
     if (status !== 'cancelled') {
@@ -43,7 +50,7 @@ export function useOrders(
     }
     return [];
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(enabled);
   const [totalOrders, setTotalOrders] = useState(0);
 
   // Synchronously load cache on mount or when user changes
@@ -194,7 +201,7 @@ export function useOrders(
       setOrders(prev => {
         if (prev.some(o => o.id === newOrder.id)) return prev;
         const updated = [newOrder, ...prev];
-        if (user?.id) {
+        if (user?.id && !isAdmin) {
           const cacheKey = `ikcous_orders_cache_${user.id}`;
           localStorage.setItem(cacheKey, JSON.stringify(updated));
         }
@@ -212,26 +219,26 @@ export function useOrders(
       const updated = prev.map(o =>
         o.id === updatedOrder.id ? { ...o, status: updatedOrder.status, trackingCode: updatedOrder.tracking_code } : o
       );
-      if (user?.id) {
+      if (user?.id && !isAdmin) {
         const cacheKey = `ikcous_orders_cache_${user.id}`;
         localStorage.setItem(cacheKey, JSON.stringify(updated));
       }
       return updated;
     });
-  }, [user?.id]);
+  }, [isAdmin, user?.id]);
 
   const handleRealtimeDelete = useCallback((oldId: string | undefined) => {
     if (oldId) {
       setOrders(prev => {
         const updated = prev.filter(o => o.id !== oldId);
-        if (user?.id) {
+        if (user?.id && !isAdmin) {
           const cacheKey = `ikcous_orders_cache_${user.id}`;
           localStorage.setItem(cacheKey, JSON.stringify(updated));
         }
         return updated;
       });
     }
-  }, [user?.id]);
+  }, [isAdmin, user?.id]);
 
   const fetchUserOrdersRef = useRef(fetchUserOrders);
   const handleRealtimeInsertRef = useRef(handleRealtimeInsert);
@@ -251,81 +258,88 @@ export function useOrders(
   useEffect(() => {
     if (!enabled || !user?.id) return;
 
-    let activeChannel: ReturnType<typeof supabase.channel> | null = null;
-    let retryCount = 0;
-    let isSubscribed = false;
+    const channelId = isAdmin ? 'admin_order_updates' : `order_updates_${user.id}`;
     let isUnmounting = false;
     let isConnecting = false;
+    let retryCount = 0;
     let reconnectTimeout: ReturnType<typeof setTimeout> | undefined;
     let visibilityTimeout: ReturnType<typeof setTimeout> | undefined;
     let onlineTimeout: ReturnType<typeof setTimeout> | undefined;
 
+    const onEvent = async (payload: any) => {
+      if (isUnmounting) return;
+      const newId = (payload.new as any)?.id;
+      const oldId = (payload.old as any)?.id;
+
+      console.log('[Realtime] Order change event processed:', payload.eventType, newId || oldId);
+
+      if (payload.eventType === 'INSERT' && payload.new && 'id' in payload.new) {
+        await handleRealtimeInsertRef.current(payload.new);
+      } else if (payload.eventType === 'UPDATE' && payload.new) {
+        handleRealtimeUpdateRef.current(payload.new);
+      } else if (payload.eventType === 'DELETE') {
+        handleRealtimeDeleteRef.current(oldId);
+      }
+
+      if (onRealtimeEventRef.current) {
+        onRealtimeEventRef.current(payload);
+      }
+    };
+
     const setupRealtime = async () => {
       if (isUnmounting || isConnecting) return;
+
+      const existing = globalOrderSubscriptions.get(channelId);
+      if (existing) {
+        existing.callbacks.add(onEvent);
+        return;
+      }
+
       isConnecting = true;
-
       try {
-        if (activeChannel) {
-          supabase.removeChannel(activeChannel).catch(() => {});
-        }
-
-        const channelId = isAdmin ? 'admin_order_updates' : `order_updates_${user.id}`;
-        console.log(`[Realtime] Subscribing to orders (${isAdmin ? 'Admin' : 'User'}): ${channelId}`);
-
+        console.log(`[Realtime] Creating new order channel (${isAdmin ? 'Admin' : 'User'}): ${channelId}`);
         const channel = supabase.channel(channelId);
 
-        channel
-          .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'marketplace_orders',
-            ...(isAdmin ? {} : { filter: `user_id=eq.${user.id}` })
-          },
-            async (payload) => {
-              if (isUnmounting) return;
-              const newId = (payload.new as any)?.id;
-              const oldId = (payload.old as any)?.id;
-
-              console.log('[Realtime] Order change:', payload.eventType, newId || oldId);
-
-              if (payload.eventType === 'INSERT' && payload.new && 'id' in payload.new) {
-                await handleRealtimeInsertRef.current(payload.new);
-              } else if (payload.eventType === 'UPDATE' && payload.new) {
-                handleRealtimeUpdateRef.current(payload.new);
-              } else if (payload.eventType === 'DELETE') {
-                handleRealtimeDeleteRef.current(oldId);
-              }
-
-              if (onRealtimeEventRef.current) {
-                onRealtimeEventRef.current(payload);
-              }
+        channel.on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'marketplace_orders',
+          ...(isAdmin ? {} : { filter: `user_id=eq.${user.id}` })
+        },
+          async (payload) => {
+            const sub = globalOrderSubscriptions.get(channelId);
+            if (sub) {
+              const cbPromises = Array.from(sub.callbacks).map(cb => {
+                try {
+                  return Promise.resolve(cb(payload));
+                } catch (e) {
+                  console.error('[Realtime] Order callback error:', e);
+                  return Promise.resolve();
+                }
+              });
+              await Promise.all(cbPromises);
             }
-          );
+          }
+        );
 
-        activeChannel = channel;
+        const subObj: SharedSubscription = {
+          channel,
+          refCount: 1,
+          callbacks: new Set([onEvent])
+        };
+        globalOrderSubscriptions.set(channelId, subObj);
 
         channel.subscribe(async (status, err) => {
           isConnecting = false;
-          if (isUnmounting || activeChannel !== channel) return;
+          if (isUnmounting) return;
 
           if (status === 'SUBSCRIBED') {
-            isSubscribed = true;
             retryCount = 0;
-            console.log(`[Realtime] Active: orders for ${user.id}`);
+            console.log(`[Realtime] Active shared channel: ${channelId}`);
           } else if (status === 'CHANNEL_ERROR') {
-            isSubscribed = false;
-            const errorMsg = err?.message || String(err);
-            console.error('[Realtime] Order channel error:', errorMsg);
-
-            if (errorMsg.includes('InvalidJWTToken') || errorMsg.includes('expired') || errorMsg.includes('401')) {
-              console.warn('[Realtime] Auth issue detected. Refreshing session...');
-              await supabase.auth.refreshSession().catch(() => {});
-              handleReconnect(1000);
-            } else {
-              handleReconnect();
-            }
+            console.error('[Realtime] Order channel error:', err?.message || err);
+            handleReconnect();
           } else if (status === 'TIMED_OUT' || status === 'CLOSED') {
-            isSubscribed = false;
             handleReconnect();
           }
         });
@@ -338,12 +352,6 @@ export function useOrders(
 
     const handleReconnect = (initialDelay?: number) => {
       if (isUnmounting) return;
-
-      const EXTENDED_MAX_RETRIES = 15;
-      if (retryCount >= EXTENDED_MAX_RETRIES) {
-        console.error('[Realtime] Max retries reached for orders.');
-        return;
-      }
 
       const timeout = initialDelay || Math.min(1000 * Math.pow(1.5, retryCount), 30000);
       retryCount++;
@@ -360,13 +368,20 @@ export function useOrders(
       }, timeout + Math.random() * 1000);
     };
 
-    setupRealtime();
+    const existing = globalOrderSubscriptions.get(channelId);
+    if (existing) {
+      existing.refCount++;
+      existing.callbacks.add(onEvent);
+    } else {
+      setupRealtime();
+    }
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         clearTimeout(visibilityTimeout);
         visibilityTimeout = setTimeout(() => {
-          if (!isSubscribed && !isUnmounting && !isConnecting) {
+          const sub = globalOrderSubscriptions.get(channelId);
+          if (!sub && !isUnmounting && !isConnecting) {
             console.log('[Realtime] Orders foregrounded. Forcing reconnect...');
             retryCount = 0;
             clearTimeout(reconnectTimeout);
@@ -381,7 +396,8 @@ export function useOrders(
     const handleOnline = () => {
       clearTimeout(onlineTimeout);
       onlineTimeout = setTimeout(() => {
-        if (!isSubscribed && !isUnmounting && !isConnecting) {
+        const sub = globalOrderSubscriptions.get(channelId);
+        if (!sub && !isUnmounting && !isConnecting) {
           console.log('[Realtime] Orders online. Checking...');
           retryCount = 0;
           clearTimeout(reconnectTimeout);
@@ -402,8 +418,16 @@ export function useOrders(
       clearTimeout(onlineTimeout);
       globalThis.removeEventListener('visibilitychange', handleVisibilityChange);
       globalThis.removeEventListener('online', handleOnline);
-      if (activeChannel) {
-        supabase.removeChannel(activeChannel).catch(() => {});
+
+      const sub = globalOrderSubscriptions.get(channelId);
+      if (sub) {
+        sub.callbacks.delete(onEvent);
+        sub.refCount--;
+        if (sub.refCount <= 0) {
+          globalOrderSubscriptions.delete(channelId);
+          supabase.removeChannel(sub.channel).catch(() => {});
+          console.log(`[Realtime] Cleaned up shared channel: ${channelId}`);
+        }
       }
     };
   }, [enabled, user?.id, isAdmin]);
@@ -430,7 +454,7 @@ export function useOrders(
         const updated = prev.map(order =>
           order.id === orderId ? { ...order, status } : order
         );
-        if (user?.id) {
+        if (user?.id && !isAdmin) {
           const cacheKey = `ikcous_orders_cache_${user.id}`;
           localStorage.setItem(cacheKey, JSON.stringify(updated));
         }

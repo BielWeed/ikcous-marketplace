@@ -1,0 +1,619 @@
+- generic [ref=f9e1]:
+  - generic [ref=f9e3]:
+    - main [ref=f9e4]:
+      - generic [ref=f9e9]:
+        - generic [ref=f9e11]:
+          - button "Perfil" [ref=f9e13] [cursor=pointer]:
+            - img
+            - generic [ref=f9e14]: Perfil
+          - generic [ref=f9e15]:
+            - heading "IKCOUS Admin" [level=1] [ref=f9e16]
+            - paragraph [ref=f9e17]: Navegação Unificada
+          - button [ref=f9e19] [cursor=pointer]:
+            - img
+        - main [ref=f9e20]:
+          - generic [ref=f9e24]:
+            - generic:
+              - generic:
+                - generic:
+                  - heading "Produtos" [level=1]:
+                    - generic:
+                      - generic: Produtos
+                    - button "Guia Completo de Métricas e Ajuda":
+                      - img
+                  - generic:
+                    - generic:
+                      - generic: Operações ao Vivo
+                  - button:
+                    - img
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - img
+                          - generic: Buscar produtos
+                          - textbox "Buscar produtos":
+                            - /placeholder: Buscar produtos...
+                        - button:
+                          - img
+                        - button:
+                          - img
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - img "maleta canetas 120"
+                            - generic:
+                              - button:
+                                - img
+                            - generic:
+                              - generic: Em Operação
+                          - generic:
+                            - generic:
+                              - paragraph: brinquedo
+                              - heading "maleta canetas 120" [level=4]
+                            - generic:
+                              - generic:
+                                - generic: Estoque
+                                - generic: "02"
+                              - generic:
+                                - generic: Preço
+                                - generic: R$ 89,90
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - img "Bobbie Goods"
+                            - generic:
+                              - button:
+                                - img
+                            - generic:
+                              - generic: Em Operação
+                          - generic:
+                            - generic:
+                              - paragraph: brinquedo
+                              - heading "Bobbie Goods" [level=4]
+                            - generic:
+                              - generic:
+                                - generic: Estoque
+                                - generic: "04"
+                              - generic:
+                                - generic: Preço
+                                - generic: R$ 12,90
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - img "livro de colorir stitch"
+                            - generic:
+                              - button:
+                                - img
+                            - generic:
+                              - generic: Em Operação
+                          - generic:
+                            - generic:
+                              - paragraph: brinquedo
+                              - heading "livro de colorir stitch" [level=4]
+                            - generic:
+                              - generic:
+                                - generic: Estoque
+                                - generic: "07"
+                              - generic:
+                                - generic: Preço
+                                - generic: R$ 27,90
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - img "livro de colorir capivara"
+                            - generic:
+                              - button:
+                                - img
+                            - generic:
+                              - generic: Em Operação
+                          - generic:
+                            - generic:
+                              - paragraph: brinquedo
+                              - heading "livro de colorir capivara" [level=4]
+                            - generic:
+                              - generic:
+                                - generic: Estoque
+                                - generic: "03"
+                              - generic:
+                                - generic: Preço
+                                - generic: R$ 29,90
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - img "caneta 3d"
+                            - generic:
+                              - button:
+                                - img
+                            - generic:
+                              - generic: Em Operação
+                          - generic:
+                            - generic:
+                              - paragraph: brinquedo
+                              - heading "caneta 3d" [level=4]
+                            - generic:
+                              - generic:
+                                - generic: Estoque
+                                - generic: "04"
+                              - generic:
+                                - generic: Preço
+                                - generic: R$ 59,90
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - img "Ventilador de teto com controle remoto"
+                            - generic:
+                              - button:
+                                - img
+                            - generic:
+                              - generic: Em Operação
+                          - generic:
+                            - generic:
+                              - paragraph: Utilidade
+                              - heading "Ventilador de teto com controle remoto" [level=4]
+                            - generic:
+                              - generic:
+                                - generic: Estoque
+                                - generic: "02"
+                              - generic:
+                                - generic: Preço
+                                - generic: R$ 69,90
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - button:
+                                - img
+                            - generic:
+                              - generic: Em Operação
+                          - generic:
+                            - generic:
+                              - paragraph: Utilidade
+                              - heading "Organizador Sapateira Multiuso" [level=4]
+                            - generic:
+                              - generic:
+                                - generic: Estoque
+                                - generic: "01"
+                              - generic:
+                                - generic: Preço
+                                - generic: R$ 39,90
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - button:
+                                - img
+                            - generic:
+                              - generic: Em Operação
+                          - generic:
+                            - generic:
+                              - paragraph: Utilidade
+                              - heading "Umidificador Difusor de Óleo Essencial" [level=4]
+                            - generic:
+                              - generic:
+                                - generic: Estoque
+                                - generic: "00"
+                              - generic:
+                                - generic: Preço
+                                - generic: R$ 24,90
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - button:
+                                - img
+                            - generic:
+                              - generic: Em Operação
+                          - generic:
+                            - generic:
+                              - paragraph: brinquedo
+                              - heading "Bolhas de Sabão com Pistola Lançadora" [level=4]
+                            - generic:
+                              - generic:
+                                - generic: Estoque
+                                - generic: "00"
+                              - generic:
+                                - generic: Preço
+                                - generic: R$ 68,90
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - button:
+                                - img
+                            - generic:
+                              - generic: Em Operação
+                          - generic:
+                            - generic:
+                              - paragraph: Utilidade
+                              - heading "copo De Alce Água Portátil 600ml Infantil" [level=4]
+                            - generic:
+                              - generic:
+                                - generic: Estoque
+                                - generic: "00"
+                              - generic:
+                                - generic: Preço
+                                - generic: R$ 21,90
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - img "Louças Escova De Limpeza Recipiente Para Detergente"
+                            - generic:
+                              - button:
+                                - img
+                            - generic:
+                              - generic: Em Operação
+                          - generic:
+                            - generic:
+                              - paragraph: Utilidade
+                              - heading "Louças Escova De Limpeza Recipiente Para Detergente" [level=4]
+                            - generic:
+                              - generic:
+                                - generic: Estoque
+                                - generic: "06"
+                              - generic:
+                                - generic: Preço
+                                - generic: R$ 14,90
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - img "Tesoura de Sobrancelha com Pente"
+                            - generic:
+                              - button:
+                                - img
+                            - generic:
+                              - generic: Em Operação
+                          - generic:
+                            - generic:
+                              - paragraph: Auto Cuidado
+                              - heading "Tesoura de Sobrancelha com Pente" [level=4]
+                            - generic:
+                              - generic:
+                                - generic: Estoque
+                                - generic: "11"
+                              - generic:
+                                - generic: Preço
+                                - generic: R$ 24,90
+                  - generic:
+                    - paragraph: Exibindo 1 - 12 de 18
+                    - generic:
+                      - button "Anterior" [disabled]:
+                        - img
+                        - text: Anterior
+                      - button "Próximo":
+                        - text: Próximo
+                        - img
+            - generic [ref=f9e896]:
+              - generic [ref=f9e897]:
+                - heading "Pedidos" [level=1] [ref=f9e898]:
+                  - generic [ref=f9e900]: Pedidos
+                  - button "Guia de Ajuda e Explicações" [ref=f9e901] [cursor=pointer]:
+                    - img [ref=f9e902]
+                - generic [ref=f9e908]: Operações ao Vivo
+              - generic [ref=f9e909]:
+                - generic [ref=f9e911]:
+                  - generic [ref=f9e914] [cursor=pointer]:
+                    - generic [ref=f9e915]:
+                      - img [ref=f9e917]
+                      - generic [ref=f9e919]:
+                        - generic [ref=f9e920]: Feedback
+                        - heading "Reviews" [level=3] [ref=f9e921]
+                    - img [ref=f9e923]
+                  - generic [ref=f9e928] [cursor=pointer]:
+                    - generic [ref=f9e929]:
+                      - img [ref=f9e931]
+                      - generic [ref=f9e933]:
+                        - generic [ref=f9e934]: Dúvidas
+                        - heading "Suporte" [level=3] [ref=f9e935]
+                    - img [ref=f9e937]
+                - generic [ref=f9e940]:
+                  - generic [ref=f9e941]:
+                    - generic [ref=f9e944]: Métricas de Pedidos
+                    - generic [ref=f9e945]:
+                      - generic [ref=f9e946]:
+                        - button "Ir para card 1" [ref=f9e947] [cursor=pointer]
+                        - button "Ir para card 2" [ref=f9e948] [cursor=pointer]
+                        - button "Ir para card 3" [ref=f9e949] [cursor=pointer]
+                        - button "Ir para card 4" [ref=f9e950] [cursor=pointer]
+                      - button "Expandir" [ref=f9e951] [cursor=pointer]:
+                        - img [ref=f9e952]
+                        - generic [ref=f9e957]: Expandir
+                  - generic [ref=f9e958]:
+                    - generic [ref=f9e960]:
+                      - generic [ref=f9e962]:
+                        - generic [ref=f9e963]:
+                          - img [ref=f9e965]
+                          - paragraph [ref=f9e967]: Receita Hoje
+                        - generic [ref=f9e968]:
+                          - heading "R$ 0,00" [level=3] [ref=f9e969]
+                          - paragraph [ref=f9e970]: Finanças
+                      - generic [ref=f9e972]:
+                        - generic [ref=f9e973]:
+                          - img [ref=f9e975]
+                          - paragraph [ref=f9e978]: Ações Pendentes
+                        - generic [ref=f9e979]:
+                          - heading "11" [level=3] [ref=f9e980]
+                          - paragraph [ref=f9e981]: Urgente
+                      - generic [ref=f9e983]:
+                        - generic [ref=f9e984]:
+                          - img [ref=f9e986]
+                          - paragraph [ref=f9e989]: Ticket Médio
+                        - generic [ref=f9e990]:
+                          - heading "R$ 129,89" [level=3] [ref=f9e991]
+                          - paragraph [ref=f9e992]: Rendimento
+                      - generic [ref=f9e994]:
+                        - generic [ref=f9e995]:
+                          - img [ref=f9e997]
+                          - paragraph [ref=f9e1000]: Total Concluído
+                        - generic [ref=f9e1001]:
+                          - heading "2" [level=3] [ref=f9e1002]
+                          - paragraph [ref=f9e1003]: Concluído
+                    - button "Anterior" [ref=f9e1004] [cursor=pointer]:
+                      - img [ref=f9e1005]
+                    - button "Próximo" [ref=f9e1007] [cursor=pointer]:
+                      - img [ref=f9e1008]
+                - generic [ref=f9e1010]:
+                  - generic [ref=f9e1012]:
+                    - generic [ref=f9e1013]:
+                      - generic:
+                        - img
+                      - textbox "Buscar pedidos..." [ref=f9e1014]
+                    - button [ref=f9e1015] [cursor=pointer]:
+                      - img
+                    - button "Visualização Detalhada" [ref=f9e1016] [cursor=pointer]:
+                      - img
+                  - generic [ref=f9e1017]:
+                    - button "Todos Ativos" [ref=f9e1018] [cursor=pointer]
+                    - button "Novo Pedido" [ref=f9e1019] [cursor=pointer]: Novo Pedido
+                    - button "Em Separação" [ref=f9e1021] [cursor=pointer]: Em Separação
+                    - button "Em Trânsito" [ref=f9e1023] [cursor=pointer]: Em Trânsito
+                    - button "Finalizado" [ref=f9e1025] [cursor=pointer]: Finalizado
+                    - button "Cancelado" [ref=f9e1027] [cursor=pointer]: Cancelado
+                - generic [ref=f9e1030]:
+                  - button "#629831 30 de jun. Novo Pedido Gabriel Silva Bobbie Goods Valor R$27,90" [ref=f9e1031] [cursor=pointer]:
+                    - generic [ref=f9e1032]:
+                      - generic [ref=f9e1036]:
+                        - generic [ref=f9e1037]: "#629831"
+                        - generic [ref=f9e1038]: 30 de jun.
+                      - generic [ref=f9e1041]: Novo Pedido
+                    - generic [ref=f9e1042]:
+                      - heading "Gabriel Silva" [level=4] [ref=f9e1043]
+                      - paragraph [ref=f9e1044]: Bobbie Goods
+                    - generic [ref=f9e1045]:
+                      - generic [ref=f9e1046]:
+                        - generic [ref=f9e1047]: Valor
+                        - paragraph [ref=f9e1048]: R$27,90
+                      - generic [ref=f9e1049]:
+                        - button "WhatsApp" [ref=f9e1050]:
+                          - img [ref=f9e1051]
+                        - img [ref=f9e1053]
+                  - 'button "+2 #824AEF 28 de jun. Novo Pedido João Gabriel Vieira de Oliveira livro de colorir capivara e mais 2 Valor R$112,70" [ref=f9e1055] [cursor=pointer]':
+                    - generic [ref=f9e1056]:
+                      - generic [ref=f9e1057]:
+                        - generic [ref=f9e1060]: "+2"
+                        - generic [ref=f9e1061]:
+                          - generic [ref=f9e1062]: "#824AEF"
+                          - generic [ref=f9e1063]: 28 de jun.
+                      - generic [ref=f9e1066]: Novo Pedido
+                    - generic [ref=f9e1067]:
+                      - heading "João Gabriel Vieira de Oliveira" [level=4] [ref=f9e1068]
+                      - paragraph [ref=f9e1069]: livro de colorir capivara e mais 2
+                    - generic [ref=f9e1070]:
+                      - generic [ref=f9e1071]:
+                        - generic [ref=f9e1072]: Valor
+                        - paragraph [ref=f9e1073]: R$112,70
+                      - generic [ref=f9e1074]:
+                        - button "WhatsApp" [ref=f9e1075]:
+                          - img [ref=f9e1076]
+                        - img [ref=f9e1078]
+                  - button "#DD3BDC 26 de mai. Novo Pedido João Gabriel Vieira de Oliveira livro de colorir capivara Valor R$44,90" [ref=f9e1080] [cursor=pointer]:
+                    - generic [ref=f9e1081]:
+                      - generic [ref=f9e1085]:
+                        - generic [ref=f9e1086]: "#DD3BDC"
+                        - generic [ref=f9e1087]: 26 de mai.
+                      - generic [ref=f9e1090]: Novo Pedido
+                    - generic [ref=f9e1091]:
+                      - heading "João Gabriel Vieira de Oliveira" [level=4] [ref=f9e1092]
+                      - paragraph [ref=f9e1093]: livro de colorir capivara
+                    - generic [ref=f9e1094]:
+                      - generic [ref=f9e1095]:
+                        - generic [ref=f9e1096]: Valor
+                        - paragraph [ref=f9e1097]: R$44,90
+                      - generic [ref=f9e1098]:
+                        - button "WhatsApp" [ref=f9e1099]:
+                          - img [ref=f9e1100]
+                        - img [ref=f9e1102]
+                  - 'button "+1 #3FFB87 26 de mai. Novo Pedido Test Guest User Escova Elétrica De Limpeza - 7 em 1 e mais 1 Valor R$656,60" [ref=f9e1104] [cursor=pointer]':
+                    - generic [ref=f9e1105]:
+                      - generic [ref=f9e1106]:
+                        - generic [ref=f9e1109]: "+1"
+                        - generic [ref=f9e1110]:
+                          - generic [ref=f9e1111]: "#3FFB87"
+                          - generic [ref=f9e1112]: 26 de mai.
+                      - generic [ref=f9e1115]: Novo Pedido
+                    - generic [ref=f9e1116]:
+                      - heading "Test Guest User" [level=4] [ref=f9e1117]
+                      - paragraph [ref=f9e1118]: Escova Elétrica De Limpeza - 7 em 1 e mais 1
+                    - generic [ref=f9e1119]:
+                      - generic [ref=f9e1120]:
+                        - generic [ref=f9e1121]: Valor
+                        - paragraph [ref=f9e1122]: R$656,60
+                      - generic [ref=f9e1123]:
+                        - button "WhatsApp" [ref=f9e1124]:
+                          - img [ref=f9e1125]
+                        - img [ref=f9e1127]
+                  - 'button "+1 #02CDC4 25 de mai. Novo Pedido João Gabriel Vieira de Oliveira maleta canetas 120 e mais 1 Valor R$192,70" [ref=f9e1129] [cursor=pointer]':
+                    - generic [ref=f9e1130]:
+                      - generic [ref=f9e1131]:
+                        - generic [ref=f9e1134]: "+1"
+                        - generic [ref=f9e1135]:
+                          - generic [ref=f9e1136]: "#02CDC4"
+                          - generic [ref=f9e1137]: 25 de mai.
+                      - generic [ref=f9e1140]: Novo Pedido
+                    - generic [ref=f9e1141]:
+                      - heading "João Gabriel Vieira de Oliveira" [level=4] [ref=f9e1142]
+                      - paragraph [ref=f9e1143]: maleta canetas 120 e mais 1
+                    - generic [ref=f9e1144]:
+                      - generic [ref=f9e1145]:
+                        - generic [ref=f9e1146]: Valor
+                        - paragraph [ref=f9e1147]: R$192,70
+                      - generic [ref=f9e1148]:
+                        - button "WhatsApp" [ref=f9e1149]:
+                          - img [ref=f9e1150]
+                        - img [ref=f9e1152]
+                  - 'button "+1 #D7B38B 25 de mai. Novo Pedido João Gabriel Vieira de Oliveira livro de colorir capivara e mais 1 Valor R$69,80" [ref=f9e1154] [cursor=pointer]':
+                    - generic [ref=f9e1155]:
+                      - generic [ref=f9e1156]:
+                        - generic [ref=f9e1159]: "+1"
+                        - generic [ref=f9e1160]:
+                          - generic [ref=f9e1161]: "#D7B38B"
+                          - generic [ref=f9e1162]: 25 de mai.
+                      - generic [ref=f9e1165]: Novo Pedido
+                    - generic [ref=f9e1166]:
+                      - heading "João Gabriel Vieira de Oliveira" [level=4] [ref=f9e1167]
+                      - paragraph [ref=f9e1168]: livro de colorir capivara e mais 1
+                    - generic [ref=f9e1169]:
+                      - generic [ref=f9e1170]:
+                        - generic [ref=f9e1171]: Valor
+                        - paragraph [ref=f9e1172]: R$69,80
+                      - generic [ref=f9e1173]:
+                        - button "WhatsApp" [ref=f9e1174]:
+                          - img [ref=f9e1175]
+                        - img [ref=f9e1177]
+                  - button "#FE89FC 24 de mar. Novo Pedido joao gabriel vieira de oliveira maleta canetas 120 Valor R$98,90" [ref=f9e1179] [cursor=pointer]:
+                    - generic [ref=f9e1180]:
+                      - generic [ref=f9e1184]:
+                        - generic [ref=f9e1185]: "#FE89FC"
+                        - generic [ref=f9e1186]: 24 de mar.
+                      - generic [ref=f9e1189]: Novo Pedido
+                    - generic [ref=f9e1190]:
+                      - heading "joao gabriel vieira de oliveira" [level=4] [ref=f9e1191]
+                      - paragraph [ref=f9e1192]: maleta canetas 120
+                    - generic [ref=f9e1193]:
+                      - generic [ref=f9e1194]:
+                        - generic [ref=f9e1195]: Valor
+                        - paragraph [ref=f9e1196]: R$98,90
+                      - generic [ref=f9e1197]:
+                        - button "WhatsApp" [ref=f9e1198]:
+                          - img [ref=f9e1199]
+                        - img [ref=f9e1201]
+                  - button "#03424A 24 de mar. Novo Pedido joao gabriel vieira de oliveira maleta canetas 120 Valor R$98,90" [ref=f9e1203] [cursor=pointer]:
+                    - generic [ref=f9e1204]:
+                      - generic [ref=f9e1208]:
+                        - generic [ref=f9e1209]: "#03424A"
+                        - generic [ref=f9e1210]: 24 de mar.
+                      - generic [ref=f9e1213]: Novo Pedido
+                    - generic [ref=f9e1214]:
+                      - heading "joao gabriel vieira de oliveira" [level=4] [ref=f9e1215]
+                      - paragraph [ref=f9e1216]: maleta canetas 120
+                    - generic [ref=f9e1217]:
+                      - generic [ref=f9e1218]:
+                        - generic [ref=f9e1219]: Valor
+                        - paragraph [ref=f9e1220]: R$98,90
+                      - generic [ref=f9e1221]:
+                        - button "WhatsApp" [ref=f9e1222]:
+                          - img [ref=f9e1223]
+                        - img [ref=f9e1225]
+                  - button "#7A23DA 24 de mar. Em Separação joao gabriel vieira de oliveira Mini barbeador shaver Valor R$30,90" [ref=f9e1227] [cursor=pointer]:
+                    - generic [ref=f9e1228]:
+                      - generic [ref=f9e1232]:
+                        - generic [ref=f9e1233]: "#7A23DA"
+                        - generic [ref=f9e1234]: 24 de mar.
+                      - generic [ref=f9e1237]: Em Separação
+                    - generic [ref=f9e1238]:
+                      - heading "joao gabriel vieira de oliveira" [level=4] [ref=f9e1239]
+                      - paragraph [ref=f9e1240]: Mini barbeador shaver
+                    - generic [ref=f9e1241]:
+                      - generic [ref=f9e1242]:
+                        - generic [ref=f9e1243]: Valor
+                        - paragraph [ref=f9e1244]: R$30,90
+                      - generic [ref=f9e1245]:
+                        - button "WhatsApp" [ref=f9e1246]:
+                          - img [ref=f9e1247]
+                        - img [ref=f9e1249]
+                  - 'button "+1 #CCB0C7 24 de mar. Novo Pedido João Gabriel Vieira de Oliveira Organizador Sapateira Multiuso e mais 1 Valor R$78,80" [ref=f9e1251] [cursor=pointer]':
+                    - generic [ref=f9e1252]:
+                      - generic [ref=f9e1253]:
+                        - generic [ref=f9e1256]: "+1"
+                        - generic [ref=f9e1257]:
+                          - generic [ref=f9e1258]: "#CCB0C7"
+                          - generic [ref=f9e1259]: 24 de mar.
+                      - generic [ref=f9e1262]: Novo Pedido
+                    - generic [ref=f9e1263]:
+                      - heading "João Gabriel Vieira de Oliveira" [level=4] [ref=f9e1264]
+                      - paragraph [ref=f9e1265]: Organizador Sapateira Multiuso e mais 1
+                    - generic [ref=f9e1266]:
+                      - generic [ref=f9e1267]:
+                        - generic [ref=f9e1268]: Valor
+                        - paragraph [ref=f9e1269]: R$78,80
+                      - generic [ref=f9e1270]:
+                        - button "WhatsApp" [ref=f9e1271]:
+                          - img [ref=f9e1272]
+                        - img [ref=f9e1274]
+                  - button "#55E74C 15 de mar. Em Trânsito João Gabriel Vieira de Oliveira Bobbie Goods Valor R$47,70" [ref=f9e1276] [cursor=pointer]:
+                    - generic [ref=f9e1277]:
+                      - generic [ref=f9e1281]:
+                        - generic [ref=f9e1282]: "#55E74C"
+                        - generic [ref=f9e1283]: 15 de mar.
+                      - generic [ref=f9e1286]: Em Trânsito
+                    - generic [ref=f9e1287]:
+                      - heading "João Gabriel Vieira de Oliveira" [level=4] [ref=f9e1288]
+                      - paragraph [ref=f9e1289]: Bobbie Goods
+                    - generic [ref=f9e1290]:
+                      - generic [ref=f9e1291]:
+                        - generic [ref=f9e1292]: Valor
+                        - paragraph [ref=f9e1293]: R$47,70
+                      - generic [ref=f9e1294]:
+                        - button "WhatsApp" [ref=f9e1295]:
+                          - img [ref=f9e1296]
+                        - img [ref=f9e1298]
+                  - button "#12D77E 15 de mar. Novo Pedido João Gabriel Vieira de Oliveira maleta canetas 120 Valor R$98,90" [ref=f9e1300] [cursor=pointer]:
+                    - generic [ref=f9e1301]:
+                      - generic [ref=f9e1305]:
+                        - generic [ref=f9e1306]: "#12D77E"
+                        - generic [ref=f9e1307]: 15 de mar.
+                      - generic [ref=f9e1310]: Novo Pedido
+                    - generic [ref=f9e1311]:
+                      - heading "João Gabriel Vieira de Oliveira" [level=4] [ref=f9e1312]
+                      - paragraph [ref=f9e1313]: maleta canetas 120
+                    - generic [ref=f9e1314]:
+                      - generic [ref=f9e1315]:
+                        - generic [ref=f9e1316]: Valor
+                        - paragraph [ref=f9e1317]: R$98,90
+                      - generic [ref=f9e1318]:
+                        - button "WhatsApp" [ref=f9e1319]:
+                          - img [ref=f9e1320]
+                        - img [ref=f9e1322]
+                - generic [ref=f9e1324]:
+                  - button [disabled]:
+                    - img
+                  - generic [ref=f9e1325]:
+                    - generic [ref=f9e1326]: Perfil do Setor
+                    - generic [ref=f9e1327]: 1 / 5
+                  - button [ref=f9e1328] [cursor=pointer]:
+                    - img
+        - navigation [ref=f9e179]:
+          - button [ref=f9e180] [cursor=pointer]:
+            - img [ref=f9e181]
+          - button [active] [ref=f9e183] [cursor=pointer]:
+            - img [ref=f9e184]
+          - button [ref=f9e188] [cursor=pointer]:
+            - img [ref=f9e189]
+          - button [ref=f9e192] [cursor=pointer]:
+            - img [ref=f9e193]
+          - button [ref=f9e198] [cursor=pointer]:
+            - img [ref=f9e200]
+    - region "Notifications alt+T"
+  - generic [ref=f9e542]: R$ 0

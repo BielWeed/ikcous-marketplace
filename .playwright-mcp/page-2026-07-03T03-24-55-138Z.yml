@@ -1,0 +1,6 @@
+- generic [ref=f4e3]:
+  - main [ref=f4e4]:
+    - generic [ref=f4e12]:
+      - paragraph [ref=f4e13]: Carregando Módulos
+      - paragraph [ref=f4e14]: Painel Administrativo
+  - region "Notifications alt+T"

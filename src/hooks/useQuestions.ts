@@ -194,15 +194,15 @@ export function useQuestions() {
         }
     }, [getQuestionsByProduct, user]);
 
-    const addAnswer = useCallback(async (answer: { questionId: string, answer: string }) => {
+    const addAnswer = useCallback(async (answer: { questionId: string, answer: string }, options?: { silent?: boolean }) => {
         if (!isAdmin) {
-            toast.error('Permissão negada');
+            if (!options?.silent) toast.error('Permissão negada');
             return false;
         }
         try {
             // ZENITH v21.7: Rely on AuthContext's verified user
             if (!user) {
-                toast.error('Login necessário.');
+                if (!options?.silent) toast.error('Login necessário.');
                 return false;
             }
 
@@ -213,11 +213,11 @@ export function useQuestions() {
             });
 
             if (error) throw error;
-            toast.success('Resposta enviada!');
+            if (!options?.silent) toast.success('Resposta enviada!');
             return true;
         } catch (err: any) {
             console.error(err);
-            toast.error("Erro ao responder");
+            if (!options?.silent) toast.error("Erro ao responder");
             return false;
         }
     }, [user, isAdmin]);
@@ -336,9 +336,9 @@ export function useQuestions() {
         }
     }, [isAdmin]);
 
-    const deleteQuestion = useCallback(async (questionId: string) => {
+    const deleteQuestion = useCallback(async (questionId: string, options?: { silent?: boolean }) => {
         if (!isAdmin) {
-            toast.error('Permissão negada');
+            if (!options?.silent) toast.error('Permissão negada');
             return;
         }
         try {
@@ -349,10 +349,10 @@ export function useQuestions() {
 
             if (error) throw error;
             setQuestions(prev => prev.filter(q => q.id !== questionId));
-            toast.success('Pergunta removida.');
+            if (!options?.silent) toast.success('Pergunta removida.');
         } catch (error) {
             console.error('Error deleting question:', error);
-            toast.error('Erro ao remover pergunta.');
+            if (!options?.silent) toast.error('Erro ao remover pergunta.');
         }
     }, [isAdmin]);
 

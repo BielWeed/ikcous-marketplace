@@ -22,6 +22,8 @@ import { useReviews } from '@/hooks/useReviews';
 import type { View } from '@/types';
 import { useDebounce } from '@/hooks/useDebounce';
 import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { toast } from 'sonner';
 
 interface AdminReviewsViewProps {
     readonly onNavigate: (view: View) => void;
@@ -67,8 +69,9 @@ const getAvatarGradient = (name: string) => {
     return colors[sum % colors.length];
 };
 
-export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _onNavigate, active = true }: AdminReviewsViewProps) {
+export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, active = true }: AdminReviewsViewProps) {
     const { adminReviews, loading, getAllReviews, deleteReview, toggleVerified, addMerchantReply } = useReviews();
+    const isOffline = useOnlineStatus();
     const [page, setPage] = useState(0);
     const [showHelpModal, setShowHelpModal] = useState(false);
     const [totalReviews, setTotalReviews] = useState(0);
@@ -91,16 +94,22 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
     const prevRating = useRef(ratingFilter);
     const prevSearch = useRef(debouncedSearchQuery);
 
+    const firstLoadRef = useRef(true);
+
     const loadReviews = useCallback(async (pageToFetch: number) => {
-        const result = await getAllReviews(pageToFetch, pageSize, {
-            rating: ratingFilter,
-            search: debouncedSearchQuery
-        });
-        if (result) {
-            setTotalReviews(result.total);
-            setAverageRating(result.averageRating?.toFixed(1) || '0.0');
-            setGlobalVerifiedCount(result.globalVerifiedCount || 0);
-            setGlobalRepliedCount(result.globalRepliedCount || 0);
+        try {
+            const result = await getAllReviews(pageToFetch, pageSize, {
+                rating: ratingFilter,
+                search: debouncedSearchQuery
+            });
+            if (result) {
+                setTotalReviews(result.total);
+                setAverageRating(result.averageRating?.toFixed(1) || '0.0');
+                setGlobalVerifiedCount(result.globalVerifiedCount || 0);
+                setGlobalRepliedCount(result.globalRepliedCount || 0);
+            }
+        } finally {
+            firstLoadRef.current = false;
         }
     }, [getAllReviews, pageSize, ratingFilter, debouncedSearchQuery]);
 
@@ -136,6 +145,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
         : 0;
 
     const handleDelete = async (id: string) => {
+        if (isOffline) {
+            toast.error('Você está offline', {
+                description: 'Não é possível excluir avaliações sem conexão com a internet.'
+            });
+            return;
+        }
         await deleteReview(id);
         setConfirmDeleteId(null);
         if (adminReviews.length === 1 && page > 0) {
@@ -228,7 +243,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
     ], [averageRating, totalReviews, responseRate, globalRepliedCount, verifiedRate, globalVerifiedCount]);
 
 
-    if (loading && adminReviews.length === 0) {
+    if ((loading || firstLoadRef.current) && adminReviews.length === 0) {
         return (
             <div className="min-h-screen bg-[#09090b] flex flex-col items-center justify-center space-y-6">
                 <div className="relative">
@@ -244,7 +259,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
     }
 
     return (
-        <div className="min-h-screen bg-[#09090b] text-zinc-400 font-sans selection:bg-admin-gold/30 selection:text-white pb-32">
+        <div className="h-auto bg-[#09090b] text-zinc-400 font-sans selection:bg-admin-gold/30 selection:text-white pb-8">
             {/* Header / Stats Overlay */}
             <div className="sticky top-0 z-50 p-2 sm:p-4 pb-0 bg-[#09090b]/80 backdrop-blur-md">
                 <div className="admin-glass rounded-2xl sm:rounded-[2rem] border border-white/5 p-3 sm:p-4 shadow-2xl">
@@ -253,7 +268,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
                         <div className="flex items-center justify-between lg:justify-start gap-3 w-full lg:w-auto">
                             <div className="flex items-center gap-2.5">
                                 <button
-                                    onClick={() => globalThis.history.back()}
+                                    onClick={() => onNavigate('admin-settings')}
                                     className="p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-colors group shrink-0"
                                     title="Voltar"
                                 >
@@ -476,7 +491,15 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
                                         {/* Action Bar */}
                                         <div className="flex flex-wrap items-center gap-3 pt-6 border-t border-white/5">
                                             <button
-                                                onClick={() => toggleVerified(review.id, review.verified)}
+                                                onClick={() => {
+                                                    if (isOffline) {
+                                                        toast.error('Você está offline', {
+                                                            description: 'Não é possível alterar a verificação de avaliações sem conexão.'
+                                                        });
+                                                        return;
+                                                    }
+                                                    toggleVerified(review.id, review.verified);
+                                                }}
                                                 className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${review.verified
                                                     ? 'bg-zinc-900 text-zinc-400 border border-white/5 hover:bg-zinc-800'
                                                     : 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 hover:scale-[1.02]'
@@ -489,6 +512,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
                                             {!review.merchantReply && (
                                                 <button
                                                     onClick={() => {
+                                                        if (isOffline) {
+                                                            toast.error('Você está offline', {
+                                                                description: 'Não é possível responder avaliações sem conexão.'
+                                                            });
+                                                            return;
+                                                        }
                                                         setReplyingTo(review.id);
                                                         setReplyText('');
                                                     }}
@@ -569,9 +598,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
                                                         <textarea
                                                             value={replyText}
                                                             onChange={(e) => setReplyText(e.target.value)}
-                                                            placeholder="Escreva uma resposta atenciosa para este cliente..."
-                                                            className="w-full p-6 text-base font-medium bg-black/40 border border-white/10 rounded-3xl text-white placeholder:text-zinc-700 focus:outline-none focus:ring-2 focus:ring-admin-gold/20 focus:border-admin-gold/30 min-h-[160px] transition-all resize-none"
-                                                            disabled={isSubmittingReply}
+                                                            placeholder={isOffline ? "Você está offline. Não é possível responder no momento." : "Escreva uma resposta atenciosa para este cliente..."}
+                                                            className="w-full p-6 text-base font-medium bg-black/40 border border-white/10 rounded-3xl text-white placeholder:text-zinc-700 focus:outline-none focus:ring-2 focus:ring-admin-gold/20 focus:border-admin-gold/30 min-h-[160px] transition-all resize-none disabled:opacity-40"
+                                                            disabled={isSubmittingReply || isOffline}
                                                         />
                                                         <div className="flex justify-end items-center gap-4">
                                                             <button
@@ -583,6 +612,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
                                                             </button>
                                                             <button
                                                                 onClick={async () => {
+                                                                    if (isOffline) {
+                                                                        toast.error('Você está offline', {
+                                                                            description: 'Não é possível responder avaliações sem conexão.'
+                                                                        });
+                                                                        return;
+                                                                    }
                                                                     if (!replyText.trim()) return;
                                                                     setIsSubmittingReply(true);
                                                                     const success = await addMerchantReply(review.id, replyText);
@@ -597,7 +632,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
                                                                     }
                                                                 }}
                                                                 className="px-8 py-3 bg-admin-gold text-black text-[10px] font-black uppercase tracking-widest rounded-2xl hover:scale-[1.02] shadow-xl shadow-admin-gold/20 transition-all active:scale-95 disabled:opacity-50 disabled:grayscale"
-                                                                disabled={isSubmittingReply || !replyText.trim()}
+                                                                disabled={isSubmittingReply || !replyText.trim() || isOffline}
                                                             >
                                                                 {isSubmittingReply ? 'Publicando...' : 'Publicar Resposta'}
                                                             </button>
@@ -684,7 +719,15 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
                                         <div className="flex items-center justify-between gap-2 pt-4 border-t border-white/5 mt-auto">
                                             <div className="flex items-center gap-1">
                                                 <button
-                                                    onClick={() => toggleVerified(review.id, review.verified)}
+                                                    onClick={() => {
+                                                        if (isOffline) {
+                                                            toast.error('Você está offline', {
+                                                                description: 'Não é possível alterar a verificação de avaliações sem conexão.'
+                                                            });
+                                                            return;
+                                                        }
+                                                        toggleVerified(review.id, review.verified);
+                                                    }}
                                                     className={`p-2 rounded-xl transition-all duration-300 ${review.verified
                                                         ? 'bg-zinc-900 text-zinc-550 border border-white/5 hover:bg-zinc-800'
                                                         : 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 hover:scale-105'
@@ -697,6 +740,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
                                                 {!review.merchantReply && (
                                                     <button
                                                         onClick={() => {
+                                                            if (isOffline) {
+                                                                toast.error('Você está offline', {
+                                                                    description: 'Não é possível responder avaliações sem conexão.'
+                                                                });
+                                                                return;
+                                                            }
                                                             setReplyingTo(review.id);
                                                             setReplyText('');
                                                         }}
@@ -756,13 +805,19 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
                                                         <textarea
                                                             value={replyText}
                                                             onChange={(e) => setReplyText(e.target.value)}
-                                                            placeholder="Resposta..."
-                                                            className="w-full p-3 text-xs bg-black/45 border border-white/10 rounded-xl text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-admin-gold/30 min-h-[80px] transition-all resize-none"
-                                                            disabled={isSubmittingReply}
+                                                            placeholder={isOffline ? "Você está offline. Não é possível responder." : "Resposta..."}
+                                                            className="w-full p-3 text-xs bg-black/45 border border-white/10 rounded-xl text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-admin-gold/30 min-h-[80px] transition-all resize-none disabled:opacity-40"
+                                                            disabled={isSubmittingReply || isOffline}
                                                         />
                                                         <div className="flex justify-end gap-2">
                                                             <button
                                                                 onClick={async () => {
+                                                                    if (isOffline) {
+                                                                        toast.error('Você está offline', {
+                                                                            description: 'Não é possível responder avaliações sem conexão.'
+                                                                        });
+                                                                        return;
+                                                                    }
                                                                     if (!replyText.trim()) return;
                                                                     setIsSubmittingReply(true);
                                                                     const success = await addMerchantReply(review.id, replyText);
@@ -777,7 +832,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate: _on
                                                                     }
                                                                 }}
                                                                 className="px-4 py-1.5 bg-admin-gold text-black text-[9px] font-black uppercase rounded-lg hover:scale-105 transition-all disabled:opacity-50"
-                                                                disabled={isSubmittingReply || !replyText.trim()}
+                                                                disabled={isSubmittingReply || !replyText.trim() || isOffline}
                                                             >
                                                                 {isSubmittingReply ? 'Enviando...' : 'Responder'}
                                                             </button>

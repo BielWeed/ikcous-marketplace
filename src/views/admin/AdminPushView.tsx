@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Send, Users, Info, Sparkles, Zap, History, Target, HelpCircle } from 'lucide-react';
+import { ArrowLeft, Send, Users, Info, Sparkles, Zap, History, Target, HelpCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useVOR } from '@/hooks/useVOR';
 import type { View } from '@/types';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 interface AdminPushViewProps {
     onNavigate: (view: View, id?: string) => void;
@@ -17,6 +18,7 @@ interface AdminPushViewProps {
 
 export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) {
     const { user } = useAuth();
+    const isOffline = useOnlineStatus();
     const [loading, setLoading] = useState(false);
     const [showHelpModal, setShowHelpModal] = useState(false);
     const [subCount, setSubCount] = useState(0);
@@ -101,6 +103,12 @@ export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) 
 
 
     const handleTestSubscription = async () => {
+        if (isOffline) {
+            toast.error('Você está offline', {
+                description: 'Não é possível se inscrever para notificações de teste sem conexão.'
+            });
+            return;
+        }
         try {
             await subscribe();
             setIsTestSubscribed(true);
@@ -111,6 +119,12 @@ export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) 
     };
 
     const handleSend = async () => {
+        if (isOffline) {
+            toast.error('Você está offline', {
+                description: 'Não é possível enviar notificações push sem conexão.'
+            });
+            return;
+        }
         if (!notification.title || !notification.body) {
             toast.error('Preencha título e mensagem');
             return;
@@ -223,14 +237,22 @@ export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) 
         }
     };
 
+    const handleBack = () => {
+        if (targetUserId) {
+            onNavigate('admin-customers');
+        } else {
+            onNavigate('admin-dashboard');
+        }
+    };
+
     return (
-        <div className="min-h-screen bg-[#09090b] text-white selection:bg-emerald-500/30 selection:text-emerald-200 pb-32 animate-in fade-in duration-700">
+        <div className="h-auto bg-[#09090b] text-white selection:bg-emerald-500/30 selection:text-emerald-200 pb-8 animate-in fade-in duration-700">
             {/* Header Executivo */}
             <div className="px-6 py-6">
                 <div className="max-w-4xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <button
-                            onClick={() => globalThis.history.back()}
+                            onClick={handleBack}
                             className="w-12 h-12 flex items-center justify-center bg-zinc-950 text-zinc-400 rounded-2xl hover:bg-zinc-900 hover:border-admin-gold/50 transition-all active:scale-95 border border-zinc-800 group shadow-inner"
                             title="Voltar"
                         >
@@ -325,7 +347,8 @@ export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) 
                     <div className="flex justify-end pr-10">
                         <button
                             onClick={handleTestSubscription}
-                            className="px-6 py-3 bg-white text-emerald-600 text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-emerald-50 transition-all border border-emerald-100 flex items-center gap-3 shadow-premium-sm active:scale-95"
+                            disabled={isOffline}
+                            className="px-6 py-3 bg-white text-emerald-600 text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-emerald-50 transition-all border border-emerald-100 flex items-center gap-3 shadow-premium-sm active:scale-95 disabled:opacity-40 disabled:pointer-events-none"
                         >
                             <Zap className="w-4 h-4 fill-emerald-500" />
                             Monitorar este Dispositivo (Admin Test)
@@ -387,6 +410,16 @@ export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) 
                                 </div>
                             </div>
 
+                            {isOffline && (
+                                <div className="p-5 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center gap-3.5 text-rose-400 animate-in fade-in slide-in-from-top-3">
+                                    <AlertCircle className="w-5 h-5 shrink-0" />
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-wider">Modo Offline Ativo</p>
+                                        <p className="text-[10px] text-zinc-500 font-bold mt-0.5">Disparos de notificação desativados temporariamente.</p>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="space-y-6">
                                 <div className="space-y-3">
                                     <Label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Segmentação do Público</Label>
@@ -402,7 +435,8 @@ export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) 
                                                 onClick={() => {
                                                     onNavigate('admin-push');
                                                 }}
-                                                className="px-4 py-2 bg-zinc-900 border border-white/10 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-zinc-800 transition-all active:scale-95 shadow-sm"
+                                                disabled={isOffline}
+                                                className="px-4 py-2 bg-zinc-900 border border-white/10 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-zinc-800 transition-all active:scale-95 shadow-sm disabled:opacity-40"
                                             >
                                                 Cancelar
                                             </button>
@@ -417,11 +451,12 @@ export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) 
                                             ].map(s => (
                                                 <button
                                                     key={s.id}
-                                                    onClick={() => setSegment(s.id)}
+                                                    onClick={() => !isOffline && setSegment(s.id)}
+                                                    disabled={isOffline}
                                                     className={`h-12 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${segment === s.id
                                                         ? 'bg-white text-black border-white shadow-lg shadow-white/10'
                                                         : 'bg-white/5 text-zinc-400 border-white/5 hover:bg-white/10 hover:text-white'
-                                                        }`}
+                                                        } disabled:opacity-30 disabled:pointer-events-none`}
                                                 >
                                                     {s.label}
                                                 </button>
@@ -438,8 +473,9 @@ export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) 
                                     <Input
                                         value={notification.title}
                                         onChange={e => setNotification({ ...notification, title: e.target.value })}
-                                        placeholder="Ex: Almoço VIP Liberado! 🥂"
-                                        className="h-16 bg-black/40 border-white/10 rounded-2xl focus:ring-admin-gold/50 focus:bg-black/60 focus:border-admin-gold/50 text-white placeholder:text-zinc-700 shadow-inner transition-all"
+                                        disabled={isOffline || loading}
+                                        placeholder={isOffline ? "Indisponível offline" : "Ex: Almoço VIP Liberado! 🥂"}
+                                        className="h-16 bg-black/40 border-white/10 rounded-2xl focus:ring-admin-gold/50 focus:bg-black/60 focus:border-admin-gold/50 text-white placeholder:text-zinc-700 shadow-inner transition-all disabled:opacity-40"
                                     />
                                 </div>
 
@@ -448,9 +484,10 @@ export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) 
                                     <Textarea
                                         value={notification.body}
                                         onChange={e => setNotification({ ...notification, body: e.target.value })}
-                                        placeholder="Os primeiros 10 clientes ganham um presente exclusivo..."
+                                        disabled={isOffline || loading}
+                                        placeholder={isOffline ? "Indisponível offline" : "Os primeiros 10 clientes ganham um presente exclusivo..."}
                                         rows={4}
-                                        className="bg-black/40 border-white/10 rounded-2xl focus:ring-admin-gold/50 focus:bg-black/60 focus:border-admin-gold/50 text-sm font-medium text-white placeholder:text-zinc-700 resize-none p-5 shadow-inner transition-all"
+                                        className="bg-black/40 border-white/10 rounded-2xl focus:ring-admin-gold/50 focus:bg-black/60 focus:border-admin-gold/50 text-sm font-medium text-white placeholder:text-zinc-700 resize-none p-5 shadow-inner transition-all disabled:opacity-40"
                                     />
                                 </div>
 
@@ -459,15 +496,16 @@ export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) 
                                     <Input
                                         value={notification.url}
                                         onChange={e => setNotification({ ...notification, url: e.target.value })}
+                                        disabled={isOffline || loading}
                                         placeholder="/"
-                                        className="h-16 bg-black/40 border-white/10 rounded-2xl focus:ring-admin-gold/50 focus:bg-black/60 focus:border-admin-gold/50 text-sm font-bold font-mono text-white placeholder:text-zinc-700 shadow-inner transition-all"
+                                        className="h-16 bg-black/40 border-white/10 rounded-2xl focus:ring-admin-gold/50 focus:bg-black/60 focus:border-admin-gold/50 text-sm font-bold font-mono text-white placeholder:text-zinc-700 shadow-inner transition-all disabled:opacity-40"
                                     />
                                 </div>
 
                                 <button
                                     className="w-full h-20 mt-4 flex items-center justify-center gap-4 bg-emerald-500 text-white rounded-[2rem] text-sm font-black uppercase tracking-[0.3em] hover:bg-emerald-400 transition-all active:scale-95 shadow-[0_20px_40px_rgba(16,185,129,0.2)] disabled:opacity-30 disabled:grayscale disabled:active:scale-100"
                                     onClick={handleSend}
-                                    disabled={loading || subCount === 0}
+                                    disabled={loading || subCount === 0 || isOffline}
                                 >
                                     {loading ? (
                                         <div className="w-6 h-6 border-3 border-white/20 border-t-white rounded-full animate-spin" />

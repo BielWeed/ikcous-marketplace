@@ -19,6 +19,16 @@ export function usePredictiveNavigation(currentView: string) {
             predictions = ['cart', 'checkout'];
         } else if (currentView === 'cart') {
             predictions = ['checkout'];
+        } else if (currentView === 'admin-dashboard' || currentView === 'admin') {
+            predictions = ['admin-orders', 'admin-products', 'admin-customers', 'admin-settings'];
+        } else if (currentView === 'admin-products') {
+            predictions = ['admin-product-form', 'admin-dashboard'];
+        } else if (currentView === 'admin-customers') {
+            predictions = ['admin-user-detail', 'admin-dashboard'];
+        } else if (currentView === 'admin-orders') {
+            predictions = ['admin-dashboard'];
+        } else if (currentView === 'admin-settings') {
+            predictions = ['admin-coupons', 'admin-banners', 'admin-dashboard'];
         }
 
         if (predictions.length > 0) {

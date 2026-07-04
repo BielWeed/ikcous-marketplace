@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import { LazyImage } from '@/components/LazyImage';
 import { 
     MessageSquare, 
     ArrowLeft, 
@@ -24,6 +25,7 @@ import { useQuestions } from '@/hooks/useQuestions';
 import type { Question } from '@/hooks/useQuestions';
 import type { View } from '@/types';
 import { toast } from 'sonner';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { useDebounce } from '@/hooks/useDebounce';
 import { supabase } from '@/lib/supabase';
@@ -82,8 +84,9 @@ const getAvatarGradient = (name: string) => {
     return colors[sum % colors.length];
 };
 
-export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, active = true }: AdminQAViewProps) {
+export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true }: AdminQAViewProps) {
     const { questions, loading, getAllQuestions, addAnswer, deleteQuestion, subscribeToQuestions } = useQuestions();
+    const isOffline = useOnlineStatus();
     const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
     const [answer, setAnswer] = useState('');
     const [showHelpModal, setShowHelpModal] = useState(false);
@@ -134,8 +137,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, 
         }
     }, [fetchStats, refreshTrigger, questions, active]);
 
-    const prevFilter = useRef(filter);
-    const prevSearch = useRef(debouncedSearchQuery);
+    const firstLoadRef = useRef(true);
 
     const loadQuestions = useCallback((pageToFetch: number) => {
         getAllQuestions(pageToFetch, pageSize, filter, debouncedSearchQuery).then(result => {
@@ -146,8 +148,14 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, 
                     setPage(maxPage);
                 }
             }
+            firstLoadRef.current = false;
+        }).catch(() => {
+            firstLoadRef.current = false;
         });
     }, [getAllQuestions, pageSize, filter, debouncedSearchQuery]);
+
+    const prevFilter = useRef(filter);
+    const prevSearch = useRef(debouncedSearchQuery);
 
     useEffect(() => {
         if (!active) return;
@@ -185,6 +193,12 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, 
     }, [subscribeToQuestions, active]);
 
     const handleSendAnswer = async () => {
+        if (isOffline) {
+            toast.error('Você está offline', {
+                description: 'Não é possível enviar respostas sem conexão com a internet.'
+            });
+            return;
+        }
         if (!selectedQuestion || !answer.trim()) return;
 
         setIsSubmitting(true);
@@ -192,7 +206,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, 
             const success = await addAnswer({
                 questionId: selectedQuestion.id,
                 answer: answer
-            });
+            }, { silent: true });
 
             if (success) {
                 toast.success('Resposta enviada com sucesso!');
@@ -210,7 +224,13 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, 
     };
 
     const handleDelete = async (id: string) => {
-        await deleteQuestion(id);
+        if (isOffline) {
+            toast.error('Você está offline', {
+                description: 'Não é possível excluir perguntas sem conexão com a internet.'
+            });
+            return;
+        }
+        await deleteQuestion(id, { silent: true });
         toast.success('Pergunta excluída');
         setConfirmDeleteId(null);
         setRefreshTrigger(prev => prev + 1);
@@ -586,9 +606,9 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, 
                                         {/* Product Reference */}
                                         <div className="inline-flex items-center gap-3 p-1.5 pr-4 bg-white/5 border border-white/10 rounded-2xl group/product transition-all hover:bg-white/10 hover:border-emerald-500/20">
                                             <div className="relative w-9 h-9 rounded-xl overflow-hidden bg-zinc-800 shrink-0">
-                                                <img
+                                                <LazyImage
                                                     src={q.productImage || 'https://placehold.co/100x100?text=S/I'}
-                                                    alt={q.productName}
+                                                    alt={q.productName || 'Produto'}
                                                     className="w-full h-full object-cover transition-transform duration-500 group-hover/product:scale-110"
                                                 />
                                             </div>
@@ -694,7 +714,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, 
     };
 
     const renderContent = () => {
-        if (loading && questions.length === 0) {
+        if ((loading || firstLoadRef.current) && questions.length === 0) {
             return (
                 <motion.div
                     key="loading"
@@ -720,7 +740,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, 
     };
 
     return (
-        <div className="min-h-screen bg-[#09090b] text-zinc-100 selection:bg-emerald-500/30 pb-32 animate-in fade-in duration-500">
+        <div className="h-auto bg-[#09090b] text-zinc-100 selection:bg-emerald-500/30 pb-8 animate-in fade-in duration-500">
             
             {/* Header Sticky */}
             <div className="sticky top-0 z-50 p-2 sm:p-4 pb-0 bg-[#09090b]/80 backdrop-blur-md">
@@ -730,7 +750,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, 
                         <div className="flex items-center justify-between lg:justify-start gap-3 w-full lg:w-auto">
                             <div className="flex items-center gap-2.5">
                                 <button
-                                    onClick={() => globalThis.history.back()}
+                                    onClick={() => onNavigate('admin-settings')}
                                     className="p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-colors group shrink-0"
                                     title="Voltar"
                                 >
@@ -911,8 +931,9 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, 
                                         id="merchant-answer"
                                         value={answer}
                                         onChange={(e) => setAnswer(e.target.value)}
-                                        placeholder="Dê uma resposta completa e persuasiva para encantar o cliente..."
-                                        className="w-full h-48 px-6 py-6 bg-white/[0.03] border border-white/10 rounded-[2rem] text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 transition-all resize-none shadow-inner scrollbar-hide"
+                                        disabled={isOffline}
+                                        placeholder={isOffline ? "Você está offline. Não é possível responder no momento." : "Dê uma resposta completa e persuasiva para encantar o cliente..."}
+                                        className="w-full h-48 px-6 py-6 bg-white/[0.03] border border-white/10 rounded-[2rem] text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 transition-all resize-none shadow-inner scrollbar-hide disabled:opacity-40"
                                     />
                                     <div className="absolute bottom-4 right-6 flex items-center gap-2 pointer-events-none opacity-40">
                                         <Send className="w-4 h-4 text-emerald-400" />
@@ -920,6 +941,13 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, 
                                     </div>
                                 </div>
                             </div>
+
+                            {isOffline && (
+                                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-400">
+                                    <AlertCircle className="w-4 h-4 shrink-0" />
+                                    <span className="text-xs font-bold uppercase tracking-wider">Modo Offline Ativo</span>
+                                </div>
+                            )}
 
                             <div className="flex flex-col sm:flex-row gap-4 pt-2">
                                 <motion.button
@@ -931,10 +959,10 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate: _onNavigate, 
                                     Descartar
                                 </motion.button>
                                 <motion.button
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
+                                    whileHover={isOffline ? {} : { scale: 1.02 }}
+                                    whileTap={isOffline ? {} : { scale: 0.98 }}
                                     onClick={handleSendAnswer}
-                                    disabled={isSubmitting || !answer.trim()}
+                                    disabled={isSubmitting || !answer.trim() || isOffline}
                                     className="flex-[2] h-14 bg-emerald-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 border border-emerald-400 hover:bg-emerald-400 transition-all disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-3"
                                 >
                                     {isSubmitting ? (

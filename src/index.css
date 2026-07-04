@@ -487,10 +487,10 @@
 
 /* Native View Transitions API Customizations */
 ::view-transition-old(root) {
-  animation: 100ms cubic-bezier(0.16, 1, 0.3, 1) both fade-out;
+  animation: 90ms cubic-bezier(0.16, 1, 0.3, 1) both fade-out;
 }
 ::view-transition-new(root) {
-  animation: 180ms cubic-bezier(0.16, 1, 0.3, 1) 40ms both fade-in;
+  animation: 140ms cubic-bezier(0.16, 1, 0.3, 1) 20ms both fade-in;
 }
 
 /* Forward (Slide da direita para a esquerda - entrar em subpágina) */
@@ -629,4 +629,11 @@
 /* Render and Scroll Optimization */
 main {
   overscroll-behavior-y: contain;
+}
+
+.admin-scroll-container {
+  -webkit-overflow-scrolling: touch; /* Kinetic/inertial scroll on iOS */
+  scroll-behavior: smooth;
+  will-change: scroll-position;
+  contain: paint; /* Reduce paint invalidation areas during scrolling */
 }

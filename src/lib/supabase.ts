@@ -14,10 +14,7 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        storage: globalThis.localStorage,
-        lock: async (_name, _acquireTimeout, fn) => {
-            return await fn();
-        }
+        storage: globalThis.localStorage
     },
     realtime: {
         params: {

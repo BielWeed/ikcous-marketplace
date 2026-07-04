@@ -26,14 +26,14 @@ import {
   Sparkles,
   AlertTriangle,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Loader2
 } from 'lucide-react';
 import { useProducts } from '@/hooks/useProducts';
 import { useCategories } from '@/hooks/useCategories';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import type { View } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
@@ -45,7 +45,20 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
-import { useDebounce } from '@/hooks/useDebounce';
+import { DebouncedSearchInput } from '@/components/admin/DebouncedSearchInput';
+import { LazyImage } from '@/components/LazyImage';
+import { LocalErrorBoundary } from '@/components/ui/custom/LocalErrorBoundary';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 interface AdminProductsViewProps {
   onNavigate: (view: View, id?: string) => void;
@@ -56,6 +69,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
   const { products, loading, deleteProduct, toggleProductStatus, addProduct, loadProducts } = useProducts({ autoFetch: false });
   const { stats, fetchExecutiveSummary } = useAnalytics();
   const { categories: dbCategories } = useCategories();
+  const isOffline = useOnlineStatus();
 
   useEffect(() => {
     if (active && !stats) {
@@ -64,7 +78,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
   }, [active, stats, fetchExecutiveSummary]);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const debouncedSearchTerm = useDebounce(searchTerm, 400);
+  const [isTyping, setIsTyping] = useState(false);
   const [filterCategory, setFilterCategory] = useState('all');
   const [totalProducts, setTotalProducts] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -80,32 +94,40 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
   const [simCost, setSimCost] = useState<string>('10.00');
   const [simPrice, setSimPrice] = useState<string>('15.00');
   const [simStock, setSimStock] = useState<string>('20');
+  const [productToDelete, setProductToDelete] = useState<string | null>(null);
+  const [productToDuplicate, setProductToDuplicate] = useState<any | null>(null);
 
   useEffect(() => {
     localStorage.setItem('admin_products_view_mode', viewMode);
   }, [viewMode]);
 
-  const loadData = useCallback(async (pageToFetch: number) => {
-    const result = await loadProducts(pageToFetch, pageSize, {
-      search: debouncedSearchTerm || undefined,
-      category: filterCategory === 'all' ? undefined : filterCategory
-    });
-    if (result) {
-      setTotalProducts(result.total);
-    }
-  }, [loadProducts, pageSize, debouncedSearchTerm, filterCategory]);
+  const firstLoadRef = useRef(true);
 
-  const lastSearchRef = useRef(debouncedSearchTerm);
+  const loadData = useCallback(async (pageToFetch: number) => {
+    try {
+      const result = await loadProducts(pageToFetch, pageSize, {
+        search: searchTerm || undefined,
+        category: filterCategory === 'all' ? undefined : filterCategory
+      });
+      if (result) {
+        setTotalProducts(result.total);
+      }
+    } finally {
+      firstLoadRef.current = false;
+    }
+  }, [loadProducts, pageSize, searchTerm, filterCategory]);
+
+  const lastSearchRef = useRef(searchTerm);
   const lastCategoryRef = useRef(filterCategory);
 
   useEffect(() => {
     if (!active) return;
 
     const filtersChanged = 
-      lastSearchRef.current !== debouncedSearchTerm ||
+      lastSearchRef.current !== searchTerm ||
       lastCategoryRef.current !== filterCategory;
 
-    lastSearchRef.current = debouncedSearchTerm;
+    lastSearchRef.current = searchTerm;
     lastCategoryRef.current = filterCategory;
 
     let pageToFetch = currentPage;
@@ -118,7 +140,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
     }
 
     loadData(pageToFetch);
-  }, [currentPage, debouncedSearchTerm, filterCategory, active, loadData]);
+  }, [currentPage, searchTerm, filterCategory, active, loadData]);
 
   const simulatorMetrics = useMemo(() => {
     const cost = parseFloat(simCost) || 0;
@@ -220,80 +242,140 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
     },
   ], [financialStats, totalProducts]);
 
-  const handleDelete = async (id: string) => {
-    if (globalThis.confirm('Tem certeza que deseja excluir este produto?')) {
-      try {
-        await deleteProduct(id);
-        toast.success("Produto Removido", {
-          description: "O produto foi excluído com sucesso.",
-        });
-      } catch {
-        toast.error("Erro na Exclusão", {
-          description: "Não foi possível remover o produto.",
-        });
-      }
+  const handleToggleStatus = useCallback(async (id: string, active: boolean) => {
+    await toggleProductStatus(id, active);
+  }, [toggleProductStatus]);
+
+  const handleDelete = useCallback((id: string) => {
+    setProductToDelete(id);
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!productToDelete) return;
+    try {
+      await deleteProduct(productToDelete);
+      toast.success("Produto Removido", {
+        description: "O produto foi excluído com sucesso.",
+      });
+    } catch {
+      toast.error("Erro na Exclusão", {
+        description: "Não foi possível remover o produto.",
+      });
+    } finally {
+      setProductToDelete(null);
     }
-  };
+  }, [deleteProduct, productToDelete]);
 
-  const handleDuplicate = async (product: any) => {
-    if (globalThis.confirm(`Tem certeza que deseja duplicar o produto "${product.name}"?`)) {
-      try {
-        const duplicateData = {
-          name: `${product.name} (Cópia)`,
-          description: product.description,
-          price: product.price,
-          costPrice: product.costPrice || 0,
-          originalPrice: product.originalPrice,
-          stock: product.stock,
-          category: product.category,
-          images: product.images,
-          isActive: false,
-          sold: 0,
-          isBestseller: product.isBestseller,
-          freeShipping: product.freeShipping,
-          metaTitle: product.metaTitle,
-          metaDescription: product.metaDescription,
-          tags: product.tags || [],
-          sku: product.sku ? `${product.sku}-COPY` : undefined,
-          variants: product.variants?.map((v: any) => ({
-            name: v.name,
-            value: v.value,
-            sku: v.sku ? `${v.sku}-COPY` : undefined,
-            stockIncrement: v.stockIncrement,
-            priceOverride: v.priceOverride,
-            active: v.active,
-            imageUrl: v.imageUrl
-          }))
-        };
-        
-        await addProduct(duplicateData);
-        toast.success("Produto Duplicado", {
-          description: "O produto foi duplicado com sucesso.",
-        });
-      } catch (err) {
-        console.error('Error duplicating product:', err);
-        toast.error("Erro na Duplicação", {
-          description: "Não foi possível duplicar o produto.",
-        });
-      }
+  const handleDuplicate = useCallback((product: any) => {
+    setProductToDuplicate(product);
+  }, []);
+
+  const confirmDuplicate = useCallback(async () => {
+    if (!productToDuplicate) return;
+    try {
+      const duplicateData = {
+        name: `${productToDuplicate.name} (Cópia)`,
+        description: productToDuplicate.description,
+        price: productToDuplicate.price,
+        costPrice: productToDuplicate.costPrice || 0,
+        originalPrice: productToDuplicate.originalPrice,
+        stock: productToDuplicate.stock,
+        category: productToDuplicate.category,
+        images: productToDuplicate.images,
+        isActive: false,
+        sold: 0,
+        isBestseller: productToDuplicate.isBestseller,
+        freeShipping: productToDuplicate.freeShipping,
+        metaTitle: productToDuplicate.metaTitle,
+        metaDescription: productToDuplicate.metaDescription,
+        tags: productToDuplicate.tags || [],
+        sku: productToDuplicate.sku ? `${productToDuplicate.sku}-COPY` : undefined,
+        variants: productToDuplicate.variants?.map((v: any) => ({
+          name: v.name,
+          value: v.value,
+          sku: v.sku ? `${v.sku}-COPY` : undefined,
+          stockIncrement: v.stockIncrement,
+          priceOverride: v.priceOverride,
+          active: v.active,
+          imageUrl: v.imageUrl
+        }))
+      };
+      
+      await addProduct(duplicateData);
+      toast.success("Produto Duplicado", {
+        description: "O produto foi duplicado com sucesso.",
+      });
+    } catch (err) {
+      console.error('Error duplicating product:', err);
+      toast.error("Erro na Duplicação", {
+        description: "Não foi possível duplicar o produto.",
+      });
+    } finally {
+      setProductToDuplicate(null);
     }
-  };
+  }, [addProduct, productToDuplicate]);
 
 
 
-  if (loading && products.length === 0) {
+  if ((loading || firstLoadRef.current) && products.length === 0) {
     return (
-      <div className="p-8 space-y-8 animate-in fade-in duration-500">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32 rounded-2xl bg-white/5" />)}
+      <div className="p-6 md:p-8 space-y-8 animate-in fade-in duration-500">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-28 rounded-2xl bg-white/5 animate-pulse" />)}
         </div>
-        <Skeleton className="h-[600px] w-full rounded-3xl bg-white/5" />
+        
+        {viewMode === 'detailed' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 pb-10">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+              <div key={i} className="admin-glass rounded-[2.5rem] border border-white/5 p-8 space-y-6 h-[440px] flex flex-col justify-between shadow-[0_20px_50px_rgba(0,0,0,0.3)]">
+                <div className="flex gap-6 items-start">
+                  <Skeleton className="w-24 h-24 rounded-3xl bg-white/5 shrink-0 animate-pulse" />
+                  <div className="flex-1 space-y-3 pt-2">
+                    <Skeleton className="h-5 w-3/4 bg-white/5 animate-pulse" />
+                    <Skeleton className="h-3.5 w-1/2 bg-white/5 animate-pulse" />
+                    <Skeleton className="h-4.5 w-1/3 bg-white/5 rounded-lg animate-pulse" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-6 border-t border-white/5">
+                  <Skeleton className="h-16 rounded-2xl bg-white/5 animate-pulse" />
+                  <Skeleton className="h-16 rounded-2xl bg-white/5 animate-pulse" />
+                </div>
+                <div className="space-y-4 pt-2 flex-1">
+                  <div className="flex justify-between items-center">
+                    <Skeleton className="h-3.5 w-1/3 bg-white/5 animate-pulse" />
+                    <Skeleton className="h-3.5 w-1/12 bg-white/5 animate-pulse" />
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <Skeleton className="h-3.5 w-1/4 bg-white/5 animate-pulse" />
+                    <Skeleton className="h-3.5 w-1/4 bg-white/5 animate-pulse" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 pb-10">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(i => (
+              <div key={i} className="admin-glass rounded-[1.5rem] border border-white/5 overflow-hidden h-[250px] flex flex-col justify-between shadow-lg">
+                <Skeleton className="w-full aspect-square bg-white/5 animate-pulse" />
+                <div className="p-3 flex flex-col gap-2">
+                  <Skeleton className="h-3 w-1/3 bg-white/5 animate-pulse" />
+                  <Skeleton className="h-3.5 w-3/4 bg-white/5 animate-pulse" />
+                  <div className="flex justify-between items-baseline pt-1 border-t border-white/5">
+                    <Skeleton className="h-3 w-1/4 bg-white/5 animate-pulse" />
+                    <Skeleton className="h-3.5 w-1/3 bg-white/5 animate-pulse" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-admin-bg text-white pb-32 animate-in fade-in duration-1000">
+    <div className="h-auto bg-admin-bg text-white pb-8 animate-in fade-in duration-1000">
       <style>{`
         @keyframes help-vertical-scroll {
           0% {
@@ -335,17 +417,36 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
                 <HelpCircle className="w-4.5 h-4.5" />
               </button>
           </h1>
+
+          <div className="flex items-center gap-3 mr-auto md:ml-2">
+            <div className={cn(
+              "inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full transition-all duration-300",
+              loading 
+                ? "bg-amber-500/10 border-amber-500/20 text-amber-500" 
+                : "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+            )}>
+              <div className={cn(
+                "w-1.5 h-1.5 rounded-full",
+                loading ? "bg-amber-500 animate-pulse" : "bg-emerald-500 animate-pulse"
+              )} />
+              <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest">
+                {loading ? "Sincronizando..." : "Operações ao Vivo"}
+              </span>
+            </div>
+          </div>
           
           <Button
-              className="h-11 px-5 rounded-xl bg-admin-gold text-black hover:bg-admin-gold/90 font-black text-[10px] uppercase tracking-widest shadow-[0_0_15px_rgba(234,179,8,0.2)] hover:scale-105 active:scale-95 transition-all shrink-0 items-center justify-center hidden sm:flex"
+              disabled={isOffline}
+              className="h-11 px-5 rounded-xl bg-admin-gold text-black hover:bg-admin-gold/90 font-black text-[10px] uppercase tracking-widest shadow-[0_0_15px_rgba(234,179,8,0.2)] hover:scale-105 active:scale-95 transition-all shrink-0 items-center justify-center hidden sm:flex disabled:opacity-50 disabled:pointer-events-none"
               onClick={() => onNavigate('admin-product-form')}
           >
               <Plus className="w-4 h-4 mr-2 stroke-[3] shrink-0" />
               Novo Produto
           </Button>
           <Button
+              disabled={isOffline}
               size="icon"
-              className="h-11 w-11 rounded-xl bg-admin-gold text-black hover:bg-admin-gold/90 shadow-[0_0_15px_rgba(234,179,8,0.2)] active:scale-95 transition-all shrink-0 sm:hidden flex items-center justify-center"
+              className="h-11 w-11 rounded-xl bg-admin-gold text-black hover:bg-admin-gold/90 shadow-[0_0_15px_rgba(234,179,8,0.2)] active:scale-95 transition-all shrink-0 sm:hidden flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
               onClick={() => onNavigate('admin-product-form')}
           >
               <Plus className="w-5 h-5 stroke-[3]" />
@@ -354,7 +455,11 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
 
       <div className="px-4 sm:px-6 mt-6 space-y-6 sm:space-y-12">
       <div className="space-y-4">
-        {active && <AdminKpiCarousel cards={kpiCards} title="Visão Financeira" />}
+        {active && (
+          <LocalErrorBoundary>
+            <AdminKpiCarousel cards={kpiCards} title="Visão Financeira" />
+          </LocalErrorBoundary>
+        )}
       </div>
 
       {/* Unified Control Bar Compacta */}
@@ -363,17 +468,22 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
             <div className="flex items-center gap-4 w-full flex-1">
                 <div className="relative group w-full">
                     <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                        <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-admin-gold transition-colors" />
+                         {loading || isTyping ? (
+                             <Loader2 className="h-5 w-5 text-admin-gold animate-spin" />
+                         ) : (
+                             <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-admin-gold transition-colors" />
+                         )}
                     </div>
                     <label htmlFor="search-assets" className="sr-only">Buscar produtos</label>
-                    <Input
+                    <DebouncedSearchInput
                         id="search-assets"
                         name="search-assets"
                         placeholder="Buscar produtos..."
                         className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all font-bold text-sm w-full"
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        autoComplete="off"
+                        onChange={setSearchTerm}
+                        onTyping={setIsTyping}
+                        delay={300}
                     />
                 </div>
                 
@@ -413,282 +523,41 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
       </div>
 
       {/* Grid view of Products as Assets */}
-      {viewMode === 'detailed' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 pb-10">
-          {products?.map((product) => {
-            const margin = product.price > 0 ? ((product.price - (product.costPrice || 0)) / product.price) * 100 : 0;
-            const roi = (product.costPrice || 0) > 0 ? ((product.price - (product.costPrice || 0)) / (product.costPrice || 0)) * 100 : 0;
-            const invested = (product.costPrice || 0) * product.stock;
-            const totalProfit = ((product.price || 0) * product.stock) - invested;
-
-            return (
-              <div
-                key={product.id}
-                className="group relative"
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-admin-gold to-transparent rounded-[2.5rem] blur-2xl opacity-0 group-hover:opacity-5 transition-opacity duration-700" />
-
-                <div className="relative admin-glass sm:rounded-[2.5rem] border-y sm:border-x border-white/5 overflow-hidden group-hover:border-white/10 transition-all duration-500 flex flex-col h-full shadow-[0_20px_50px_rgba(0,0,0,0.3)]">
-
-                  {/* Header Action Overlay */}
-                  <div className="absolute right-4 top-4 z-20">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-10 w-10 bg-black/40 backdrop-blur-md border border-white/5 text-zinc-500 hover:text-white hover:bg-black/60 rounded-xl p-0 transition-all">
-                          <MoreVertical className="w-5 h-5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="bg-zinc-950/95 border border-white/10 p-1.5 rounded-2xl backdrop-blur-3xl min-w-[180px] shadow-[0_10px_30px_rgba(0,0,0,0.8)] z-50">
-                        <DropdownMenuItem 
-                          onClick={() => onNavigate('admin-product-form', product.id)} 
-                          className="flex items-center cursor-pointer focus:bg-white/[0.08] text-zinc-300 focus:text-white rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs mb-0.5"
-                        >
-                          <Edit2 className="w-4 h-4 mr-3 text-admin-gold shrink-0" /> Editar Produto
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          onClick={() => toggleProductStatus(product.id, product.isActive)} 
-                          className="flex items-center cursor-pointer focus:bg-white/[0.08] text-zinc-300 focus:text-white rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs mb-0.5"
-                        >
-                          <Eye className="w-4 h-4 mr-3 text-blue-400 shrink-0" /> {product.isActive ? 'Pausar Produto' : 'Ativar Produto'}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          onClick={() => handleDuplicate(product)} 
-                          className="flex items-center cursor-pointer focus:bg-white/[0.08] text-zinc-300 focus:text-white rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs mb-0.5"
-                        >
-                          <Copy className="w-4 h-4 mr-3 text-purple-400 shrink-0" /> Duplicar Produto
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          onClick={() => handleDelete(product.id)} 
-                          className="flex items-center cursor-pointer focus:bg-rose-500/10 text-zinc-400 focus:text-rose-500 rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs"
-                        >
-                          <Trash2 className="w-4 h-4 mr-3 shrink-0" /> Excluir Produto
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* Main Content */}
-                  <div className="p-8 space-y-8 h-full flex flex-col">
-                    {/* Visual Identity */}
-                    <div className="flex gap-6 items-start">
-                      <div className="w-24 h-24 rounded-3xl overflow-hidden bg-zinc-900 border border-white/5 flex-shrink-0 relative group-hover:scale-105 transition-transform duration-700 shadow-2xl">
-                        <img
-                          src={product.images[0] || 'https://via.placeholder.com/150'}
-                          alt={product.name}
-                          className="w-full h-full object-cover transition-all duration-700"
-                        />
-                        {!product.isActive && (
-                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm">
-                            <Eye className="w-6 h-6 text-white/20" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0 pt-2">
-                        <h4 className="text-xl font-black text-white truncate group-hover:text-admin-gold transition-colors leading-[1.2]">{product.name}</h4>
-                        <p className="text-[10px] text-zinc-600 mt-2 font-black uppercase tracking-[0.2em]">{product.category}</p>
-                        <div className="flex flex-wrap gap-2 mt-4">
-                          <Badge className={`${product.isActive ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-zinc-800 text-zinc-500 border-white/5'} text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border backdrop-blur-md transition-all`}>
-                            {product.isActive ? 'Em Operação' : 'Offline'}
-                          </Badge>
-                          {product.costPrice !== undefined && product.costPrice !== null && product.costPrice > 0 && product.costPrice <= 0.1 && (
-                            <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border backdrop-blur-md animate-pulse">
-                              Custo Suspeito
-                            </Badge>
-                          )}
-                          {product.stock <= 5 && (
-                            <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border animate-pulse shadow-[0_0_15px_rgba(234,179,8,0.2)]">
-                              Crítico
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Operational Metrics Grid */}
-                    <div className="grid grid-cols-2 gap-3 pt-6 border-t border-white/5">
-                      <div className="p-4 bg-zinc-900/50 rounded-2xl border border-white/5 group-hover:border-white/10 transition-colors">
-                        <p className="text-[8px] text-zinc-600 uppercase font-black tracking-[0.2em] mb-2">Margem de Lucro</p>
-                        <div className="flex items-center justify-between">
-                          <span className={cn(
-                            "text-lg font-black tracking-tighter",
-                            margin >= 40 && 'text-emerald-500',
-                            margin >= 20 && margin < 40 && 'text-admin-gold',
-                            margin < 20 && 'text-rose-500'
-                          )}>
-                            {margin.toFixed(1)}%
-                          </span>
-                          <div className={cn(
-                            "w-6 h-6 rounded-lg flex items-center justify-center border",
-                            margin >= 20 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" : "bg-rose-500/10 border-rose-500/20 text-rose-500"
-                          )}>
-                            <TrendingUp className="w-3.5 h-3.5" />
-                          </div>
-                        </div>
-                      </div>
-                      <div className="p-4 bg-zinc-900/50 rounded-2xl border border-white/5 group-hover:border-white/10 transition-colors">
-                        <p className="text-[8px] text-zinc-600 uppercase font-black tracking-[0.2em] mb-2">ROI de Rendimento</p>
-                        <div className="flex items-center justify-between">
-                          <span className={cn(
-                            "text-lg font-black tracking-tighter",
-                            roi >= 100 && 'text-emerald-500',
-                            roi >= 50 && roi < 100 && 'text-admin-gold',
-                            roi < 50 && 'text-rose-500'
-                          )}>
-                            {roi.toFixed(1)}%
-                          </span>
-                          <div className="w-6 h-6 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center">
-                            <ArrowUpRight className="w-3.5 h-3.5" />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Inventory Specs */}
-                    <div className="space-y-4 pt-2 flex-1">
-                      <div className="flex justify-between items-center group/spec">
-                        <span className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest group-hover/spec:text-zinc-500 transition-colors">Unidades em Estoque</span>
-                        <div className="flex items-center gap-2">
-                          <div className="w-12 h-1 bg-zinc-900 rounded-full overflow-hidden">
-                            <div
-                              className={cn("h-full transition-all duration-1000", product.stock <= 5 ? "bg-rose-500" : "bg-admin-gold")}
-                              style={{ width: `${Math.min(product.stock * 5, 100)}%` }}
-                            />
-                          </div>
-                          <span className={cn("text-xs font-black font-mono", product.stock <= 5 ? "text-rose-500" : "text-white")}>
-                            {product.stock.toString().padStart(2, '0')}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between items-center group/spec">
-                        <span className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest group-hover/spec:text-zinc-500 transition-colors">Capital Alocado</span>
-                        <span className="font-mono text-xs font-bold text-zinc-400">R$ {invested.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                      </div>
-
-                      <div className="flex justify-between items-end pt-6 border-t border-white/5 mt-auto">
-                        <div className="space-y-1">
-                          <p className="text-[8px] font-black text-admin-gold uppercase tracking-[0.3em]">Valor de Mercado</p>
-                          <h4 className="text-3xl font-black text-white tracking-tighter">
-                            R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </h4>
-                        </div>
-                        <div className="text-right space-y-1">
-                          <p className="text-[8px] font-black text-emerald-500 uppercase tracking-[0.3em]">Potencial</p>
-                          <p className="text-sm font-black text-white/80 tracking-tight">
-                            + R$ {totalProfit.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Footer Gradient Strip */}
-                  <div className="h-1.5 w-full bg-gradient-to-r from-zinc-900 via-admin-gold/20 to-zinc-900 group-hover:via-admin-gold/50 transition-all duration-1000" />
-                </div>
-              </div>
-            );
-          })}
+      <LocalErrorBoundary>
+        <div className={cn("transition-opacity duration-300", (loading && products.length === 0) && "opacity-50 pointer-events-none")}>
+          {viewMode === 'detailed' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 pb-10">
+              {products?.map((product) => (
+                <AdminProductCard
+                  key={product.id}
+                  product={product}
+                  viewMode="detailed"
+                  onNavigate={onNavigate}
+                  onToggleStatus={handleToggleStatus}
+                  onDuplicate={handleDuplicate}
+                  onDelete={handleDelete}
+                  isOffline={isOffline}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 pb-10">
+              {products?.map((product) => (
+                <AdminProductCard
+                  key={product.id}
+                  product={product}
+                  viewMode="compact"
+                  onNavigate={onNavigate}
+                  onToggleStatus={handleToggleStatus}
+                  onDuplicate={handleDuplicate}
+                  onDelete={handleDelete}
+                  isOffline={isOffline}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 pb-10">
-          {products?.map((product) => {
-            return (
-              <div
-                key={product.id}
-                className="group relative"
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-admin-gold to-transparent rounded-[1.5rem] blur-xl opacity-0 group-hover:opacity-5 transition-opacity duration-700" />
-
-                <div className="relative admin-glass rounded-[1.5rem] border border-white/5 overflow-hidden group-hover:border-white/10 transition-all duration-500 flex flex-col h-full shadow-lg">
-                  {/* Image and Action Button */}
-                  <div className="relative aspect-square w-full bg-zinc-900 overflow-hidden border-b border-white/5">
-                    <img
-                      src={product.images[0] || 'https://via.placeholder.com/150'}
-                      alt={product.name}
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    />
-                    {!product.isActive && (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm">
-                        <Eye className="w-5 h-5 text-white/40" />
-                      </div>
-                    )}
-                    {/* Dropdown in the corner of image */}
-                    <div className="absolute right-2 top-2 z-10">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 bg-black/60 backdrop-blur-md border border-white/5 text-zinc-400 hover:text-white hover:bg-black/80 rounded-lg p-0 transition-all">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent className="bg-zinc-950/95 border border-white/10 p-1.5 rounded-2xl backdrop-blur-3xl min-w-[160px] shadow-[0_10px_30px_rgba(0,0,0,0.8)] z-50">
-                          <DropdownMenuItem 
-                            onClick={() => onNavigate('admin-product-form', product.id)} 
-                            className="flex items-center cursor-pointer focus:bg-white/[0.08] text-zinc-300 focus:text-white rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs mb-0.5"
-                          >
-                            <Edit2 className="w-3.5 h-3.5 mr-2 text-admin-gold shrink-0" /> Editar Produto
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => toggleProductStatus(product.id, product.isActive)} 
-                            className="flex items-center cursor-pointer focus:bg-white/[0.08] text-zinc-300 focus:text-white rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs mb-0.5"
-                          >
-                            <Eye className="w-3.5 h-3.5 mr-2 text-blue-400 shrink-0" /> {product.isActive ? 'Pausar Produto' : 'Ativar Produto'}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => handleDuplicate({ ...product, sold: 0 })} 
-                            className="flex items-center cursor-pointer focus:bg-white/[0.08] text-zinc-300 focus:text-white rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs mb-0.5"
-                          >
-                            <Copy className="w-3.5 h-3.5 mr-2 text-purple-400 shrink-0" /> Duplicar Produto
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => handleDelete(product.id)} 
-                            className="flex items-center cursor-pointer focus:bg-rose-500/10 text-zinc-400 focus:text-rose-500 rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 mr-2 shrink-0" /> Excluir Produto
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-
-                    {/* Badges on image */}
-                    <div className="absolute left-2 bottom-2 flex flex-col gap-1 z-10">
-                      <Badge className={cn(
-                        "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border backdrop-blur-md transition-all self-start",
-                        product.isActive ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-zinc-800 text-zinc-500 border-white/5'
-                      )}>
-                        {product.isActive ? 'Em Operação' : 'Offline'}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Details */}
-                  <div className="p-3 flex flex-col flex-1 justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[8px] text-zinc-500 font-black uppercase tracking-widest leading-none mb-1">{product.category}</p>
-                      <h4 className="text-xs font-black text-white truncate group-hover:text-admin-gold transition-colors leading-[1.3]">{product.name}</h4>
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center text-[9px]">
-                        <span className="font-bold text-zinc-500 uppercase tracking-wider">Estoque</span>
-                        <span className={cn("font-black font-mono", product.stock <= 5 ? "text-rose-500" : "text-white")}>
-                          {product.stock.toString().padStart(2, '0')}
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between items-baseline pt-1 border-t border-white/5">
-                        <span className="text-[8px] font-bold text-admin-gold uppercase tracking-wider">Preço</span>
-                        <span className="font-mono text-xs font-black text-white">
-                          R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      </LocalErrorBoundary>
 
       {/* Pagination Controls */}
       {totalPages > 1 && (
@@ -702,7 +571,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
               size="sm"
               onClick={() => {
                 setCurrentPage(prev => Math.max(0, prev - 1));
-                const mainEl = document.querySelector('main main') || document.querySelector('main');
+                const mainEl = document.querySelector('.admin-scroll-container') || document.querySelector('main');
                 if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
               }}
               disabled={currentPage === 0}
@@ -715,7 +584,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
               size="sm"
               onClick={() => {
                 setCurrentPage(prev => Math.min(totalPages - 1, prev + 1));
-                const mainEl = document.querySelector('main main') || document.querySelector('main');
+                const mainEl = document.querySelector('.admin-scroll-container') || document.querySelector('main');
                 if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
               }}
               disabled={currentPage === totalPages - 1}
@@ -1114,9 +983,338 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
           </div>
         </div>
       )}
+
+      {/* Diálogo de Confirmação de Exclusão */}
+      <AlertDialog open={productToDelete !== null} onOpenChange={(open) => !open && setProductToDelete(null)}>
+        <AlertDialogContent className="bg-zinc-950 border border-white/10 rounded-3xl max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white font-black text-lg uppercase tracking-tight">Excluir Produto?</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400 text-xs">
+              Tem certeza que deseja excluir este produto? Esta ação não pode ser desfeita e removerá o item permanentemente do catálogo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="bg-white/5 border border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-rose-650 hover:bg-rose-700 text-white rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Confirmar Exclusão
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Diálogo de Confirmação de Duplicação */}
+      <AlertDialog open={productToDuplicate !== null} onOpenChange={(open) => !open && setProductToDuplicate(null)}>
+        <AlertDialogContent className="bg-zinc-950 border border-white/10 rounded-3xl max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white font-black text-lg uppercase tracking-tight">Duplicar Produto?</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400 text-xs">
+              Deseja realmente duplicar o produto "{productToDuplicate?.name}"? Uma nova cópia será criada desativada.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="bg-white/5 border border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDuplicate} className="bg-admin-gold hover:bg-admin-gold/90 text-black rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Confirmar Duplicação
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       </div>
     </div>
 
+  );
+});
+
+interface AdminProductCardProps {
+  readonly product: any;
+  readonly viewMode: 'detailed' | 'compact';
+  readonly onNavigate: (view: View, id?: string) => void;
+  readonly onToggleStatus: (id: string, active: boolean) => Promise<void> | void;
+  readonly onDuplicate: (product: any) => void;
+  readonly onDelete: (id: string) => void;
+  readonly isOffline?: boolean;
+}
+
+const AdminProductCard = memo(function AdminProductCard({
+  product,
+  viewMode,
+  onNavigate,
+  onToggleStatus,
+  onDuplicate,
+  onDelete,
+  isOffline = false
+}: AdminProductCardProps) {
+  if (viewMode === 'detailed') {
+    const margin = product.price > 0 ? ((product.price - (product.costPrice || 0)) / product.price) * 100 : 0;
+    const roi = (product.costPrice || 0) > 0 ? ((product.price - (product.costPrice || 0)) / (product.costPrice || 0)) * 100 : 0;
+    const invested = (product.costPrice || 0) * product.stock;
+    const totalProfit = ((product.price || 0) * product.stock) - invested;
+
+    return (
+      <div className="group relative">
+        <div className="absolute inset-0 bg-gradient-to-br from-admin-gold to-transparent rounded-[2.5rem] blur-2xl opacity-0 group-hover:opacity-5 transition-opacity duration-700" />
+        <div className="relative admin-glass sm:rounded-[2.5rem] border-y sm:border-x border-white/5 overflow-hidden group-hover:border-white/10 transition-all duration-500 flex flex-col h-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] content-visibility-auto">
+          {/* Header Action Overlay */}
+          <div className="absolute right-4 top-4 z-20">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-10 w-10 bg-black/40 backdrop-blur-md border border-white/5 text-zinc-500 hover:text-white hover:bg-black/60 rounded-xl p-0 transition-all">
+                  <MoreVertical className="w-5 h-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="bg-zinc-950/95 border border-white/10 p-1.5 rounded-2xl backdrop-blur-3xl min-w-[180px] shadow-[0_10px_30px_rgba(0,0,0,0.8)] z-50">
+                <DropdownMenuItem 
+                  disabled={isOffline}
+                  onClick={() => onNavigate('admin-product-form', product.id)} 
+                  className="flex items-center cursor-pointer focus:bg-white/[0.08] text-zinc-300 focus:text-white rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs mb-0.5 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <Edit2 className="w-4 h-4 mr-3 text-admin-gold shrink-0" /> Editar Produto
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  disabled={isOffline}
+                  onClick={() => onToggleStatus(product.id, product.isActive)} 
+                  className="flex items-center cursor-pointer focus:bg-white/[0.08] text-zinc-300 focus:text-white rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs mb-0.5 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <Eye className="w-4 h-4 mr-3 text-blue-400 shrink-0" /> {product.isActive ? 'Pausar Produto' : 'Ativar Produto'}
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  disabled={isOffline}
+                  onClick={() => onDuplicate(product)} 
+                  className="flex items-center cursor-pointer focus:bg-white/[0.08] text-zinc-300 focus:text-white rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs mb-0.5 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <Copy className="w-4 h-4 mr-3 text-purple-400 shrink-0" /> Duplicar Produto
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  disabled={isOffline}
+                  onClick={() => onDelete(product.id)} 
+                  className="flex items-center cursor-pointer focus:bg-rose-500/10 text-zinc-400 focus:text-rose-500 rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <Trash2 className="w-4 h-4 mr-3 shrink-0" /> Excluir Produto
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Main Content */}
+          <div className="p-8 space-y-8 h-full flex flex-col">
+            {/* Visual Identity */}
+            <div className="flex gap-6 items-start">
+              <div className="w-24 h-24 rounded-3xl overflow-hidden bg-zinc-900 border border-white/5 flex-shrink-0 relative group-hover:scale-105 transition-transform duration-700 shadow-2xl">
+                <LazyImage
+                  src={product.images[0] || 'https://via.placeholder.com/150'}
+                  alt={product.name}
+                  className="w-full h-full object-cover transition-all duration-700"
+                />
+                {!product.isActive && (
+                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm">
+                    <Eye className="w-6 h-6 text-white/20" />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0 pt-2">
+                <h4 className="text-xl font-black text-white truncate group-hover:text-admin-gold transition-colors leading-[1.2]">{product.name}</h4>
+                <p className="text-[10px] text-zinc-600 mt-2 font-black uppercase tracking-[0.2em]">{product.category}</p>
+                <div className="flex flex-wrap gap-2 mt-4">
+                  <Badge className={`${product.isActive ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-zinc-800 text-zinc-500 border-white/5'} text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border backdrop-blur-md transition-all`}>
+                    {product.isActive ? 'Em Operação' : 'Offline'}
+                  </Badge>
+                  {product.costPrice !== undefined && product.costPrice !== null && product.costPrice > 0 && product.costPrice <= 0.1 && (
+                    <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border backdrop-blur-md animate-pulse">
+                      Custo Suspeito
+                    </Badge>
+                  )}
+                  {product.stock <= 5 && (
+                    <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border animate-pulse shadow-[0_0_15px_rgba(234,179,8,0.2)]">
+                      Crítico
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Operational Metrics Grid */}
+            <div className="grid grid-cols-2 gap-3 pt-6 border-t border-white/5">
+              <div className="p-4 bg-zinc-900/50 rounded-2xl border border-white/5 group-hover:border-white/10 transition-colors">
+                <p className="text-[8px] text-zinc-600 uppercase font-black tracking-[0.2em] mb-2">Margem de Lucro</p>
+                <div className="flex items-center justify-between">
+                  <span className={cn(
+                    "text-lg font-black tracking-tighter",
+                    margin >= 40 && 'text-emerald-500',
+                    margin >= 20 && margin < 40 && 'text-admin-gold',
+                    margin < 20 && 'text-rose-500'
+                  )}>
+                    {margin.toFixed(1)}%
+                  </span>
+                  <div className={cn(
+                    "w-6 h-6 rounded-lg flex items-center justify-center border",
+                    margin >= 20 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" : "bg-rose-500/10 border-rose-500/20 text-rose-500"
+                  )}>
+                    <TrendingUp className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 bg-zinc-900/50 rounded-2xl border border-white/5 group-hover:border-white/10 transition-colors">
+                <p className="text-[8px] text-zinc-600 uppercase font-black tracking-[0.2em] mb-2">ROI de Rendimento</p>
+                <div className="flex items-center justify-between">
+                  <span className={cn(
+                    "text-lg font-black tracking-tighter",
+                    roi >= 100 && 'text-emerald-500',
+                    roi >= 50 && roi < 100 && 'text-admin-gold',
+                    roi < 50 && 'text-rose-500'
+                  )}>
+                    {roi.toFixed(1)}%
+                  </span>
+                  <div className="w-6 h-6 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center">
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Inventory Specs */}
+            <div className="space-y-4 pt-2 flex-1">
+              <div className="flex justify-between items-center group/spec">
+                <span className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest group-hover/spec:text-zinc-500 transition-colors">Unidades em Estoque</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-12 h-1 bg-zinc-900 rounded-full overflow-hidden">
+                    <div
+                      className={cn("h-full transition-all duration-1000", product.stock <= 5 ? "bg-rose-500" : "bg-admin-gold")}
+                      style={{ width: `${Math.min(product.stock * 5, 100)}%` }}
+                    />
+                  </div>
+                  <span className={cn("text-xs font-black font-mono", product.stock <= 5 ? "text-rose-500" : "text-white")}>
+                    {product.stock.toString().padStart(2, '0')}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center group/spec">
+                <span className="text-[10px] font-bold text-zinc-700 uppercase tracking-widest group-hover/spec:text-zinc-500 transition-colors">Capital Alocado</span>
+                <span className="font-mono text-xs font-bold text-zinc-400">R$ {invested.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+              </div>
+
+              <div className="flex justify-between items-end pt-6 border-t border-white/5 mt-auto">
+                <div className="space-y-1">
+                  <p className="text-[8px] font-black text-admin-gold uppercase tracking-[0.3em]">Preço de Venda</p>
+                  <h4 className="text-3xl font-black text-white tracking-tighter">
+                    R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </h4>
+                </div>
+                <div className="text-right space-y-1">
+                  <p className="text-[8px] font-black text-emerald-500 uppercase tracking-[0.3em]">Potencial</p>
+                  <p className="text-sm font-black text-white/80 tracking-tight">
+                    + R$ {totalProfit.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Gradient Strip */}
+          <div className="h-1.5 w-full bg-gradient-to-r from-zinc-900 via-admin-gold/20 to-zinc-900 group-hover:via-admin-gold/50 transition-all duration-1000" />
+        </div>
+      </div>
+    );
+  }
+
+  // compact mode
+  return (
+    <div className="group relative">
+      <div className="absolute inset-0 bg-gradient-to-br from-admin-gold to-transparent rounded-[1.5rem] blur-xl opacity-0 group-hover:opacity-5 transition-opacity duration-700" />
+      <div className="relative admin-glass rounded-[1.5rem] border border-white/5 overflow-hidden group-hover:border-white/10 transition-all duration-500 flex flex-col h-full shadow-lg content-visibility-auto">
+        {/* Image and Action Button */}
+        <div className="relative aspect-square w-full bg-zinc-900 overflow-hidden border-b border-white/5">
+          <LazyImage
+            src={product.images[0] || 'https://via.placeholder.com/150'}
+            alt={product.name}
+            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+          />
+          {!product.isActive && (
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm">
+              <Eye className="w-5 h-5 text-white/40" />
+            </div>
+          )}
+          {/* Dropdown in the corner of image */}
+          <div className="absolute right-2 top-2 z-10">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-11 w-11 bg-black/60 backdrop-blur-md border border-white/5 text-zinc-400 hover:text-white hover:bg-black/80 rounded-xl p-0 transition-all flex items-center justify-center">
+                  <MoreVertical className="w-5 h-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="bg-zinc-950/95 border border-white/10 p-1.5 rounded-2xl backdrop-blur-3xl min-w-[160px] shadow-[0_10px_30px_rgba(0,0,0,0.8)] z-50">
+                <DropdownMenuItem 
+                  disabled={isOffline}
+                  onClick={() => onNavigate('admin-product-form', product.id)} 
+                  className="flex items-center cursor-pointer focus:bg-white/[0.08] text-zinc-300 focus:text-white rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs mb-0.5 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <Edit2 className="w-3.5 h-3.5 mr-2 text-admin-gold shrink-0" /> Editar Produto
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  disabled={isOffline}
+                  onClick={() => onToggleStatus(product.id, product.isActive)} 
+                  className="flex items-center cursor-pointer focus:bg-white/[0.08] text-zinc-300 focus:text-white rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs mb-0.5 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <Eye className="w-3.5 h-3.5 mr-2 text-blue-400 shrink-0" /> {product.isActive ? 'Pausar Produto' : 'Ativar Produto'}
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  disabled={isOffline}
+                  onClick={() => onDuplicate({ ...product, sold: 0 })} 
+                  className="flex items-center cursor-pointer focus:bg-white/[0.08] text-zinc-300 focus:text-white rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs mb-0.5 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <Copy className="w-3.5 h-3.5 mr-2 text-purple-400 shrink-0" /> Duplicar Produto
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  disabled={isOffline}
+                  onClick={() => onDelete(product.id)} 
+                  className="flex items-center cursor-pointer focus:bg-rose-500/10 text-zinc-400 focus:text-rose-500 rounded-xl px-3.5 py-2.5 transition-colors font-bold text-xs disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-2 shrink-0" /> Excluir Produto
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Badges on image */}
+          <div className="absolute left-2 bottom-2 flex flex-col gap-1 z-10">
+            <Badge className={cn(
+              "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border backdrop-blur-md transition-all self-start",
+              product.isActive ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-zinc-800 text-zinc-500 border-white/5'
+            )}>
+              {product.isActive ? 'Em Operação' : 'Offline'}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Details */}
+        <div className="p-3 flex flex-col flex-1 justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[8px] text-zinc-500 font-black uppercase tracking-widest leading-none mb-1">{product.category}</p>
+            <h4 className="text-xs font-black text-white truncate group-hover:text-admin-gold transition-colors leading-[1.3]">{product.name}</h4>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex justify-between items-center text-[9px]">
+              <span className="font-bold text-zinc-500 uppercase tracking-wider">Estoque</span>
+              <span className={cn("font-black font-mono", product.stock <= 5 ? "text-rose-500" : "text-white")}>
+                {product.stock.toString().padStart(2, '0')}
+              </span>
+            </div>
+
+            <div className="flex justify-between items-baseline pt-1 border-t border-white/5">
+              <span className="text-[8px] font-bold text-admin-gold uppercase tracking-wider">Preço</span>
+              <span className="font-mono text-xs font-black text-white">
+                R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 });
 

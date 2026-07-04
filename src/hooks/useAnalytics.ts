@@ -54,6 +54,9 @@ export interface DashboardStats {
 // Memory cache for SWR pattern
 let cachedStats: DashboardStats | null = null;
 let cachedCategoryData: any = null;
+let lastStatsFetchTime = 0;
+let lastCategoryFetchTime = 0;
+const REVALIDATION_THROTTLE_MS = 30000; // 30 seconds
 
 export function useAnalytics() {
     const { isAdmin } = useAuth();
@@ -77,6 +80,14 @@ export function useAnalytics() {
             return null;
         }
 
+        const now = Date.now();
+        const shouldRevalidate = forceRefresh || !cachedStats || (now - lastStatsFetchTime) > REVALIDATION_THROTTLE_MS;
+
+        if (cachedStats && !shouldRevalidate) {
+            // Stats are cached and fresh, return immediately
+            return cachedStats;
+        }
+
         if (cachedStats && !forceRefresh) {
             // Background revalidation
             (async () => {
@@ -84,6 +95,7 @@ export function useAnalytics() {
                     const { data, error: err } = await supabase.rpc('get_admin_analytics_v2');
                     if (!err && data) {
                         cachedStats = data as any as DashboardStats;
+                        lastStatsFetchTime = Date.now();
                         setStats(cachedStats);
                     }
                 } catch (e) {
@@ -101,6 +113,7 @@ export function useAnalytics() {
             
             if (err) throw err;
             cachedStats = data as any as DashboardStats;
+            lastStatsFetchTime = Date.now();
             setStats(cachedStats);
             return cachedStats;
         } catch (err: any) {
@@ -137,6 +150,13 @@ export function useAnalytics() {
             return null;
         }
 
+        const now = Date.now();
+        const shouldRevalidate = forceRefresh || !cachedCategoryData || (now - lastCategoryFetchTime) > REVALIDATION_THROTTLE_MS;
+
+        if (cachedCategoryData && !shouldRevalidate) {
+            return cachedCategoryData;
+        }
+
         if (cachedCategoryData && !forceRefresh) {
             // Background revalidation
             (async () => {
@@ -147,6 +167,7 @@ export function useAnalytics() {
                     });
                     if (data) {
                         cachedCategoryData = data;
+                        lastCategoryFetchTime = Date.now();
                         setCategoryData(data);
                     }
                 } catch (e) {
@@ -164,6 +185,7 @@ export function useAnalytics() {
             });
             if (error) throw error;
             cachedCategoryData = data;
+            lastCategoryFetchTime = Date.now();
             setCategoryData(data);
             return data;
         } catch (err) {

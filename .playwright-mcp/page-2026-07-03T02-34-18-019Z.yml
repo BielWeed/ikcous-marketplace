@@ -1,0 +1,251 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e3]:
+    - main [ref=f1e4]:
+      - generic [ref=f1e15]:
+        - generic [ref=f1e17]:
+          - button "Perfil" [ref=f1e19] [cursor=pointer]:
+            - img
+            - generic [ref=f1e20]: Perfil
+          - generic [ref=f1e21]:
+            - heading "IKCOUS Admin" [level=1] [ref=f1e22]
+            - paragraph [ref=f1e23]: Navegação Unificada
+          - button [ref=f1e25] [cursor=pointer]:
+            - img
+        - main [ref=f1e26]:
+          - generic [ref=f1e32]:
+            - generic [ref=f1e33]:
+              - heading "Dashboard" [level=1] [ref=f1e34]:
+                - generic [ref=f1e36]: Dashboard
+                - button "Guia de Ajuda e Informações" [ref=f1e37] [cursor=pointer]:
+                  - img [ref=f1e38]
+              - button "Sincronizar" [ref=f1e42] [cursor=pointer]:
+                - img [ref=f1e43]
+                - generic [ref=f1e48]: Sincronizar
+            - generic [ref=f1e49]:
+              - generic [ref=f1e52]:
+                - generic [ref=f1e53]:
+                  - generic [ref=f1e56]: Métricas Principais
+                  - generic [ref=f1e57]:
+                    - generic [ref=f1e58]:
+                      - button "Ir para card 1" [ref=f1e59] [cursor=pointer]
+                      - button "Ir para card 2" [ref=f1e60] [cursor=pointer]
+                      - button "Ir para card 3" [ref=f1e61] [cursor=pointer]
+                      - button "Ir para card 4" [ref=f1e62] [cursor=pointer]
+                    - button "Expandir" [ref=f1e63] [cursor=pointer]:
+                      - img [ref=f1e64]
+                      - generic [ref=f1e69]: Expandir
+                - generic [ref=f1e70]:
+                  - generic [ref=f1e72]:
+                    - generic [ref=f1e74]:
+                      - generic [ref=f1e75]:
+                        - img [ref=f1e77]
+                        - paragraph [ref=f1e80]: Volume Total
+                      - generic [ref=f1e81]:
+                        - heading "R$ 1.558,70" [level=3] [ref=f1e82]
+                        - paragraph [ref=f1e83]: Histórico acumulado
+                    - generic [ref=f1e85]:
+                      - generic [ref=f1e86]:
+                        - img [ref=f1e88]
+                        - paragraph [ref=f1e91]: Total de Pedidos
+                      - generic [ref=f1e92]:
+                        - heading "12" [level=3] [ref=f1e93]
+                        - paragraph [ref=f1e94]: Histórico acumulado
+                    - generic [ref=f1e96]:
+                      - generic [ref=f1e97]:
+                        - img [ref=f1e99]
+                        - paragraph [ref=f1e101]: Ticket Médio
+                      - generic [ref=f1e102]:
+                        - heading "R$ 129,89" [level=3] [ref=f1e103]
+                        - paragraph [ref=f1e104]: Histórico acumulado
+                    - generic [ref=f1e106]:
+                      - generic [ref=f1e107]:
+                        - img [ref=f1e109]
+                        - paragraph [ref=f1e114]: Clientes Únicos
+                      - generic [ref=f1e115]:
+                        - heading "4" [level=3] [ref=f1e116]
+                        - paragraph [ref=f1e117]: Histórico acumulado
+                  - button "Anterior" [ref=f1e118] [cursor=pointer]:
+                    - img [ref=f1e119]
+                  - button "Próximo" [ref=f1e121] [cursor=pointer]:
+                    - img [ref=f1e122]
+              - generic [ref=f1e125]:
+                - region "Relatório Estratégico de Faturamento" [ref=f1e126]:
+                  - heading "Relatório Estratégico de Faturamento" [level=2] [ref=f1e127]
+                  - list [ref=f1e128]:
+                    - listitem [ref=f1e129]: "Categoria Utilidade: R$ 766,40, Ticket Médio: R$ 255,47"
+                    - listitem [ref=f1e130]: "Categoria brinquedo: R$ 646,50, Ticket Médio: R$ 64,65"
+                    - listitem [ref=f1e131]: "Categoria Auto Cuidado: R$ 46,80, Ticket Médio: R$ 23,40"
+                  - paragraph [ref=f1e132]: "Faturamento Total: R$ 1.459,70"
+                - generic [ref=f1e134]:
+                  - generic [ref=f1e136]:
+                    - generic [ref=f1e137]:
+                      - heading "Divisão de Faturamento" [level=3] [ref=f1e138]
+                      - paragraph [ref=f1e139]: Desempenho por Categoria
+                    - img [ref=f1e141]
+                  - generic [ref=f1e146]:
+                    - img [ref=f1e147]:
+                      - generic [ref=f1e148]:
+                        - img [ref=f1e150] [cursor=pointer]
+                        - img [ref=f1e152] [cursor=pointer]
+                        - img [ref=f1e154] [cursor=pointer]
+                        - generic [ref=f1e155]:
+                          - generic: Total
+                          - generic: R$ 1.459,70
+                    - list [ref=f1e157]:
+                      - listitem [ref=f1e158]:
+                        - button [pressed] [ref=f1e159] [cursor=pointer]:
+                          - generic [ref=f1e161]: Utilidade
+                      - listitem [ref=f1e162]:
+                        - button [pressed] [ref=f1e163] [cursor=pointer]:
+                          - generic [ref=f1e165]: brinquedo
+                      - listitem [ref=f1e166]:
+                        - button [pressed] [ref=f1e167] [cursor=pointer]:
+                          - generic [ref=f1e169]: Auto Cuidado
+              - generic [ref=f1e171]:
+                - generic [ref=f1e173]:
+                  - generic [ref=f1e174]:
+                    - generic [ref=f1e175]:
+                      - heading "Performance" [level=3] [ref=f1e176]
+                      - paragraph [ref=f1e179]: Fluxo Operacional
+                    - generic [ref=f1e180]:
+                      - img [ref=f1e181]
+                      - generic [ref=f1e183]: "-85.4%"
+                  - generic [ref=f1e184]:
+                    - generic [ref=f1e185]:
+                      - button "30D" [ref=f1e186] [cursor=pointer]
+                      - button "90D" [ref=f1e187] [cursor=pointer]
+                      - button "Tudo" [ref=f1e188] [cursor=pointer]
+                    - generic [ref=f1e189]:
+                      - button "Faturamento" [ref=f1e190] [cursor=pointer]
+                      - button "ROI do Estoque" [ref=f1e191] [cursor=pointer]
+                - generic [ref=f1e192]:
+                  - generic [ref=f1e195]:
+                    - text: "Faturamento Total:"
+                    - strong [ref=f1e196]: R$ 1.559
+                  - generic [ref=f1e199]:
+                    - text: "Pedidos:"
+                    - strong [ref=f1e200]: "12"
+                  - generic [ref=f1e203]:
+                    - text: "Ticket Médio:"
+                    - strong [ref=f1e204]: R$ 130
+                - img [ref=f1e208]:
+                  - generic [ref=f1e212]:
+                    - generic [ref=f1e214]: 04/06
+                    - generic [ref=f1e216]: 05/06
+                    - generic [ref=f1e218]: 06/06
+                    - generic [ref=f1e220]: 07/06
+                    - generic [ref=f1e222]: 08/06
+                    - generic [ref=f1e224]: 09/06
+                    - generic [ref=f1e226]: 10/06
+                    - generic [ref=f1e228]: 11/06
+                    - generic [ref=f1e230]: 12/06
+                    - generic [ref=f1e232]: 13/06
+                    - generic [ref=f1e234]: 14/06
+                    - generic [ref=f1e236]: 15/06
+                    - generic [ref=f1e238]: 16/06
+                    - generic [ref=f1e240]: 17/06
+                    - generic [ref=f1e242]: 18/06
+                    - generic [ref=f1e244]: 19/06
+                    - generic [ref=f1e246]: 20/06
+                    - generic [ref=f1e248]: 21/06
+                    - generic [ref=f1e250]: 22/06
+                    - generic [ref=f1e252]: 23/06
+                    - generic [ref=f1e254]: 24/06
+                    - generic [ref=f1e256]: 25/06
+                    - generic [ref=f1e258]: 26/06
+                    - generic [ref=f1e260]: 27/06
+                    - generic [ref=f1e262]: 28/06
+                    - generic [ref=f1e264]: 29/06
+                    - generic [ref=f1e266]: 30/06
+                    - generic [ref=f1e268]: 01/07
+                    - generic [ref=f1e270]: 02/07
+                    - generic [ref=f1e272]: 03/07
+                  - generic [ref=f1e274]:
+                    - generic [ref=f1e276]: R$ 0
+                    - generic [ref=f1e278]: R$30
+                    - generic [ref=f1e280]: R$60
+                    - generic [ref=f1e282]: R$90
+                    - generic [ref=f1e284]: R$120
+              - generic [ref=f1e292]:
+                - generic [ref=f1e293]:
+                  - img [ref=f1e297]
+                  - heading "top 5 produtos mais lucrativos" [level=2] [ref=f1e303]
+                - generic [ref=f1e307]:
+                  - generic [ref=f1e308] [cursor=pointer]:
+                    - generic [ref=f1e310]:
+                      - img [ref=f1e313]
+                      - img "maleta canetas 120" [ref=f1e316]
+                      - generic [ref=f1e317]:
+                        - heading "maleta canetas 120" [level=4] [ref=f1e318]
+                        - generic [ref=f1e319]:
+                          - generic [ref=f1e320]: 5 Vendas
+                          - progressbar [ref=f1e323]
+                    - generic [ref=f1e325]:
+                      - generic [ref=f1e326]: R$ 449,50
+                      - generic [ref=f1e328]: Analisar SKU
+                  - generic [ref=f1e330] [cursor=pointer]:
+                    - generic [ref=f1e332]:
+                      - generic [ref=f1e334]: "02"
+                      - img "Escova Elétrica De Limpeza - 7 em 1" [ref=f1e336]
+                      - generic [ref=f1e337]:
+                        - heading "Escova Elétrica De Limpeza - 7 em 1" [level=4] [ref=f1e338]
+                        - generic [ref=f1e339]:
+                          - generic [ref=f1e340]: 10 Vendas
+                          - progressbar [ref=f1e343]
+                    - generic [ref=f1e345]:
+                      - generic [ref=f1e346]: R$ 349,00
+                      - generic [ref=f1e348]: Analisar SKU
+                  - generic [ref=f1e350] [cursor=pointer]:
+                    - generic [ref=f1e352]:
+                      - generic [ref=f1e354]: "03"
+                      - img "Escova De Limpeza Elétrica 9 Em 1 Multifuncional Giratória" [ref=f1e356]
+                      - generic [ref=f1e357]:
+                        - heading "Escova De Limpeza Elétrica 9 Em 1 Multifuncional Giratória" [level=4] [ref=f1e358]
+                        - generic [ref=f1e359]:
+                          - generic [ref=f1e360]: 4 Vendas
+                          - progressbar [ref=f1e363]
+                    - generic [ref=f1e365]:
+                      - generic [ref=f1e366]: R$ 307,60
+                      - generic [ref=f1e368]: Analisar SKU
+                  - generic [ref=f1e370] [cursor=pointer]:
+                    - generic [ref=f1e372]:
+                      - generic [ref=f1e374]: "04"
+                      - img "livro de colorir capivara" [ref=f1e376]
+                      - generic [ref=f1e377]:
+                        - heading "livro de colorir capivara" [level=4] [ref=f1e378]
+                        - generic [ref=f1e379]:
+                          - generic [ref=f1e380]: 4 Vendas
+                          - progressbar [ref=f1e383]
+                    - generic [ref=f1e385]:
+                      - generic [ref=f1e386]: R$ 119,60
+                      - generic [ref=f1e388]: Analisar SKU
+                  - generic [ref=f1e390] [cursor=pointer]:
+                    - generic [ref=f1e392]:
+                      - generic [ref=f1e394]: "05"
+                      - img "Bobbie Goods" [ref=f1e396]
+                      - generic [ref=f1e397]:
+                        - heading "Bobbie Goods" [level=4] [ref=f1e398]
+                        - generic [ref=f1e399]:
+                          - generic [ref=f1e400]: 6 Vendas
+                          - progressbar [ref=f1e403]
+                    - generic [ref=f1e405]:
+                      - generic [ref=f1e406]: R$ 77,40
+                      - generic [ref=f1e408]: Analisar SKU
+        - navigation [ref=f1e410]:
+          - button "Geral" [ref=f1e411] [cursor=pointer]:
+            - img [ref=f1e412]
+            - generic [ref=f1e414]: Geral
+          - button "Pedidos" [ref=f1e415] [cursor=pointer]:
+            - img [ref=f1e416]
+            - generic [ref=f1e420]: Pedidos
+          - button "Produtos" [ref=f1e421] [cursor=pointer]:
+            - img [ref=f1e422]
+            - generic [ref=f1e425]: Produtos
+          - button "Clientes" [ref=f1e426] [cursor=pointer]:
+            - img [ref=f1e427]
+            - generic [ref=f1e432]: Clientes
+          - button "Ajustes" [ref=f1e433] [cursor=pointer]:
+            - img [ref=f1e434]
+            - generic [ref=f1e437]: Ajustes
+    - region "Notifications alt+T"
+  - generic [ref=f1e438]: R$ 0

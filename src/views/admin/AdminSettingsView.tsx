@@ -1,7 +1,8 @@
-import { useState, useEffect, memo } from 'react';
-import { Save, Ticket, Image as ImageIcon, Truck, Headset, Boxes, Bell, Settings, HelpCircle, ChevronDown, MessageSquare, Tag, Sparkles, Megaphone, MessageCircle, Clock, Share2, Info, Plus, Minus, Star } from 'lucide-react';
+import React, { useState, useEffect, memo } from 'react';
+import { Save, Ticket, Image as ImageIcon, Truck, Headset, Boxes, Bell, Settings, HelpCircle, ChevronDown, MessageSquare, Tag, Sparkles, Megaphone, MessageCircle, Clock, Share2, Info, Plus, Minus, RefreshCw } from 'lucide-react';
 
 import { useStore } from '@/contexts/StoreContext';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -17,8 +18,10 @@ interface AdminSettingsViewProps {
 
 export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, active }: Readonly<AdminSettingsViewProps>) {
     const { config, isLoaded, updateConfig, refresh } = useStore();
+    const isOffline = useOnlineStatus();
     const [formData, setFormData] = useState(config);
     const [showHelpModal, setShowHelpModal] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
         logistics: true, // Opened by default
         support: false,
@@ -42,11 +45,19 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
 
     useEffect(() => {
         if (active) {
-            refresh();
+            refresh({ onlyConfig: true });
         }
     }, [active, refresh]);
 
     const handleSubmit = async () => {
+        if (isOffline) {
+            toast.error('Sem conexão com a internet', {
+                description: 'Você precisa estar online para salvar as configurações do marketplace.'
+            });
+            return;
+        }
+        if (isSaving) return;
+
         // Basic validation
         if (!formData.whatsappNumber) {
             toast.error('WhatsApp é obrigatório');
@@ -70,15 +81,45 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
             shippingFee: Math.max(0, formData.shippingFee || 0)
         };
 
-        await updateConfig(sanitizedFormData);
+        setIsSaving(true);
+        try {
+            await updateConfig(sanitizedFormData);
+        } catch (err) {
+            console.error('[AdminSettingsView] Error updating config:', err);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
-    if (!isLoaded) return <div className="p-10 text-center">Carregando...</div>;
+    if (!isLoaded) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] bg-[#09090b] text-white">
+                <div className="relative w-16 h-16">
+                    {/* Outer glowing ring */}
+                    <div className="absolute inset-0 rounded-full border-2 border-amber-500/10 animate-ping duration-1000"></div>
+                    {/* Spinner */}
+                    <div className="w-16 h-16 border-2 border-amber-500/10 border-t-amber-500 rounded-full animate-spin"></div>
+                    {/* Center hub */}
+                    <div className="absolute inset-4 rounded-full bg-zinc-900 border border-white/5 flex items-center justify-center">
+                        <span className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+                    </div>
+                </div>
+                <div className="flex flex-col items-center gap-1.5 text-center mt-6">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500 animate-pulse">
+                        Carregando Configurações
+                    </p>
+                    <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest leading-none">
+                        Painel Administrativo
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <div className="min-h-screen bg-admin-bg pb-20 animate-in fade-in duration-700">
+        <div className="h-auto bg-admin-bg pb-8 animate-in fade-in duration-700">
             {/* Elite Header */}
-            <div className="px-6 pt-6 pb-2">
+            <div className="sticky top-0 z-30 bg-[#09090b]/90 backdrop-blur-md border-b border-white/5 py-4 px-6 mb-4">
                 <div className="flex items-center justify-between max-w-4xl mx-auto w-full gap-4">
                     <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-none select-none flex items-center gap-3 shrink-0">
                         <span className="flex items-baseline flex-nowrap whitespace-nowrap">
@@ -95,15 +136,25 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                     </h1>
                     <button
                         onClick={handleSubmit}
-                        className="h-11 px-4 sm:px-6 bg-admin-gold text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-[0_0_30px_rgba(212,175,55,0.2)] hover:shadow-[0_0_40px_rgba(212,175,55,0.3)] hover:bg-admin-gold/90 transition-all active:scale-95 flex items-center gap-2 sm:gap-3 shrink-0"
+                        disabled={isOffline || isSaving}
+                        className="h-11 px-4 sm:px-6 bg-admin-gold text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-[0_0_30px_rgba(212,175,55,0.2)] hover:shadow-[0_0_40px_rgba(212,175,55,0.3)] hover:bg-admin-gold/90 transition-all active:scale-95 flex items-center gap-2 sm:gap-3 shrink-0 disabled:opacity-50 disabled:grayscale disabled:pointer-events-none"
                     >
-                        <Save className="w-4 h-4" />
-                        <span>Salvar<span className="hidden sm:inline"> Alterações</span></span>
+                        {isSaving ? (
+                            <>
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                <span>Salvando...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Save className="w-4 h-4" />
+                                <span>Salvar<span className="hidden sm:inline"> Alterações</span></span>
+                            </>
+                        )}
                     </button>
                 </div>
             </div>
 
-            <div className="px-4 mt-6 space-y-6 max-w-2xl mx-auto pb-10">
+            <div className="px-4 space-y-6 max-w-2xl mx-auto pb-10">
                 {/* Entregas Section */}
                 <div className="space-y-3">
                     <button
@@ -165,6 +216,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                         });
                                                     }}
                                                     className="data-[state=checked]:bg-emerald-500"
+                                                    disabled={isOffline}
                                                 />
                                             </div>
 
@@ -180,7 +232,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                 <div className="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-2xl p-2 h-16">
                                                     <button
                                                         type="button"
-                                                        disabled={formData.freeShippingMin <= 0}
+                                                        disabled={formData.freeShippingMin <= 0 || isOffline}
                                                         onClick={() => {
                                                             const newVal = Math.max(0, formData.freeShippingMin - 10);
                                                             setFormData({ ...formData, freeShippingMin: newVal });
@@ -203,12 +255,13 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                             }}
                                                             className="w-20 bg-transparent border-0 p-0 text-center font-black text-xl text-white focus:outline-none focus:ring-0 focus:border-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                             autoComplete="off"
+                                                            disabled={isOffline}
                                                         />
                                                     </div>
 
                                                     <button
                                                         type="button"
-                                                        disabled={formData.freeShippingMin === 0}
+                                                        disabled={formData.freeShippingMin === 0 || isOffline}
                                                         onClick={() => {
                                                             const newVal = formData.freeShippingMin + 10;
                                                             setFormData({ ...formData, freeShippingMin: newVal });
@@ -225,7 +278,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                         <button
                                                             key={preset}
                                                             type="button"
-                                                            disabled={formData.freeShippingMin === 0}
+                                                            disabled={formData.freeShippingMin === 0 || isOffline}
                                                             onClick={() => setFormData({ ...formData, freeShippingMin: preset })}
                                                             className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider border transition-all duration-200 select-none ${
                                                                 formData.freeShippingMin === preset
@@ -291,6 +344,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                         });
                                                     }}
                                                     className="data-[state=checked]:bg-admin-gold"
+                                                    disabled={isOffline}
                                                 />
                                             </div>
 
@@ -306,7 +360,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                 <div className="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-2xl p-2 h-16">
                                                     <button
                                                         type="button"
-                                                        disabled={formData.shippingFee <= 0}
+                                                        disabled={formData.shippingFee <= 0 || isOffline}
                                                         onClick={() => {
                                                             const newVal = Math.max(0, formData.shippingFee - 1);
                                                             setFormData({ ...formData, shippingFee: newVal });
@@ -329,12 +383,13 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                             }}
                                                             className="w-20 bg-transparent border-0 p-0 text-center font-black text-xl text-white focus:outline-none focus:ring-0 focus:border-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                             autoComplete="off"
+                                                            disabled={isOffline}
                                                         />
                                                     </div>
 
                                                     <button
                                                         type="button"
-                                                        disabled={formData.shippingFee === 0}
+                                                        disabled={formData.shippingFee === 0 || isOffline}
                                                         onClick={() => {
                                                             const newVal = formData.shippingFee + 1;
                                                             setFormData({ ...formData, shippingFee: newVal });
@@ -351,7 +406,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                         <button
                                                             key={preset}
                                                             type="button"
-                                                            disabled={formData.shippingFee === 0}
+                                                            disabled={formData.shippingFee === 0 || isOffline}
                                                             onClick={() => setFormData({ ...formData, shippingFee: preset })}
                                                             className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider border transition-all duration-200 select-none ${
                                                                 formData.shippingFee === preset
@@ -433,12 +488,13 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                     <MessageCircle className="w-4 h-4 text-[#25d366]" />
                                                     <span className="text-xs font-black text-zinc-500">+55</span>
                                                 </div>
-                                                <Input
+                                                <LocalBufferedInput
                                                     value={formData.whatsappNumber}
-                                                    onChange={(e) => setFormData({ ...formData, whatsappNumber: e.target.value })}
+                                                    onFlush={(val) => setFormData({ ...formData, whatsappNumber: val })}
                                                     placeholder="Ex: 34999999999"
                                                     className="h-14 pl-20 bg-black/40 border-white/10 rounded-2xl focus:ring-admin-gold/50 focus:bg-black/60 transition-all font-bold text-white placeholder:text-zinc-700"
                                                     autoComplete="tel"
+                                                    disabled={isOffline}
                                                 />
                                             </div>
                                             <div className="p-3 bg-zinc-950/40 border border-white/5 rounded-xl space-y-1">
@@ -469,12 +525,13 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                 <div className="absolute left-5 top-1/2 -translate-y-1/2 flex items-center border-r border-white/10 pr-3 pointer-events-none">
                                                     <Clock className="w-4 h-4 text-admin-gold" />
                                                 </div>
-                                                <Input
+                                                <LocalBufferedInput
                                                     value={formData.businessHours}
-                                                    onChange={(e) => setFormData({ ...formData, businessHours: e.target.value })}
+                                                    onFlush={(val) => setFormData({ ...formData, businessHours: val })}
                                                     placeholder="Ex: Seg-Sáb: 9h às 18h"
                                                     className="h-14 pl-14 bg-black/40 border-white/10 rounded-2xl focus:ring-admin-gold/50 focus:bg-black/60 transition-all font-bold text-white placeholder:text-zinc-700"
                                                     autoComplete="off"
+                                                    disabled={isOffline}
                                                 />
                                             </div>
                                             <div className="p-3 bg-zinc-950/40 border border-white/5 rounded-xl space-y-1">
@@ -512,11 +569,12 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                     <div className="absolute left-5 top-5 pointer-events-none">
                                                         <Share2 className="w-4 h-4 text-zinc-500" />
                                                     </div>
-                                                    <Textarea
+                                                    <LocalBufferedTextarea
                                                         value={formData.shareText}
-                                                        onChange={(e) => setFormData({ ...formData, shareText: e.target.value })}
+                                                        onFlush={(val) => setFormData({ ...formData, shareText: val })}
                                                         placeholder="Ex: Confira este produto incrível que encontrei!"
                                                         className="min-h-[130px] pl-14 bg-black/40 border-white/10 rounded-2xl focus:ring-admin-gold/50 focus:bg-black/60 transition-all font-medium text-white resize-none p-5 text-sm leading-relaxed placeholder:text-zinc-700"
+                                                        disabled={isOffline}
                                                     />
                                                 </div>
                                             </div>
@@ -637,6 +695,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                 checked={formData.enableReviews}
                                                 onCheckedChange={(checked) => setFormData({ ...formData, enableReviews: checked })}
                                                 className="data-[state=checked]:bg-blue-500"
+                                                disabled={isOffline}
                                             />
                                         </div>
                                     </div>
@@ -683,6 +742,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                 checked={formData.enableCoupons}
                                                 onCheckedChange={(checked) => setFormData({ ...formData, enableCoupons: checked })}
                                                 className="data-[state=checked]:bg-admin-gold"
+                                                disabled={isOffline}
                                             />
                                         </div>
                                     </div>
@@ -762,6 +822,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                 checked={formData.realTimeSalesAlerts}
                                                 onCheckedChange={(checked) => setFormData({ ...formData, realTimeSalesAlerts: checked })}
                                                 className="data-[state=checked]:bg-emerald-500"
+                                                disabled={isOffline}
                                             />
                                         </div>
                                     </div>
@@ -808,6 +869,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                                 checked={formData.pushMarketingEnabled}
                                                 onCheckedChange={(checked) => setFormData({ ...formData, pushMarketingEnabled: checked })}
                                                 className="data-[state=checked]:bg-purple-500"
+                                                disabled={isOffline}
                                             />
                                         </div>
                                     </div>
@@ -869,32 +931,6 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                         <div>
                                             <span className="block text-sm font-bold text-white group-hover:text-admin-gold transition-colors">Vitrine</span>
                                             <span className="block text-[9px] font-black text-zinc-500 uppercase tracking-widest leading-none mt-1">Gerir Banners</span>
-                                        </div>
-                                    </button>
-
-                                    <button
-                                        onClick={() => onNavigate('admin-reviews')}
-                                        className="admin-glass group flex items-center gap-4 p-5 rounded-[2rem] border border-white/5 hover:border-admin-gold/30 hover:bg-white/5 transition-all active:scale-95 text-left"
-                                    >
-                                        <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center text-zinc-500 group-hover:text-admin-gold group-hover:border-admin-gold/20 transition-all shadow-xl">
-                                            <Star className="w-6 h-6" />
-                                        </div>
-                                        <div>
-                                            <span className="block text-sm font-bold text-white group-hover:text-admin-gold transition-colors">Avaliações</span>
-                                            <span className="block text-[9px] font-black text-zinc-500 uppercase tracking-widest leading-none mt-1">Depoimentos</span>
-                                        </div>
-                                    </button>
-
-                                    <button
-                                        onClick={() => onNavigate('admin-qa')}
-                                        className="admin-glass group flex items-center gap-4 p-5 rounded-[2rem] border border-white/5 hover:border-admin-gold/30 hover:bg-white/5 transition-all active:scale-95 text-left"
-                                    >
-                                        <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center text-zinc-500 group-hover:text-admin-gold group-hover:border-admin-gold/20 transition-all shadow-xl">
-                                            <MessageSquare className="w-6 h-6" />
-                                        </div>
-                                        <div>
-                                            <span className="block text-sm font-bold text-white group-hover:text-admin-gold transition-colors">Suporte</span>
-                                            <span className="block text-[9px] font-black text-zinc-500 uppercase tracking-widest leading-none mt-1">Dúvidas & Respostas</span>
                                         </div>
                                     </button>
                                 </div>
@@ -995,3 +1031,102 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
         </div>
     );
 });
+
+interface LocalBufferedInputProps extends React.ComponentProps<typeof Input> {
+    onFlush: (val: string) => void;
+}
+function LocalBufferedInput({ value, onFlush, ...props }: LocalBufferedInputProps) {
+    const [localVal, setLocalVal] = useState(value);
+    const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        setLocalVal(value);
+    }, [value]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setLocalVal(val);
+
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+        }
+
+        timeoutRef.current = setTimeout(() => {
+            onFlush(val);
+        }, 150);
+    };
+
+    const handleBlur = () => {
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+        }
+        onFlush(localVal ? localVal.toString() : '');
+    };
+
+    useEffect(() => {
+        return () => {
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+            }
+        };
+    }, []);
+
+    return (
+        <Input
+            {...props}
+            value={localVal}
+            onChange={handleChange}
+            onBlur={handleBlur}
+        />
+    );
+}
+
+interface LocalBufferedTextareaProps extends React.ComponentProps<typeof Textarea> {
+    onFlush: (val: string) => void;
+}
+function LocalBufferedTextarea({ value, onFlush, ...props }: LocalBufferedTextareaProps) {
+    const [localVal, setLocalVal] = useState(value);
+    const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        setLocalVal(value);
+    }, [value]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const val = e.target.value;
+        setLocalVal(val);
+
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+        }
+
+        timeoutRef.current = setTimeout(() => {
+            onFlush(val);
+        }, 150);
+    };
+
+    const handleBlur = () => {
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+        }
+        onFlush(localVal ? localVal.toString() : '');
+    };
+
+    useEffect(() => {
+        return () => {
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+            }
+        };
+    }, []);
+
+    return (
+        <Textarea
+            {...props}
+            value={localVal}
+            onChange={handleChange}
+            onBlur={handleBlur}
+        />
+    );
+}
+

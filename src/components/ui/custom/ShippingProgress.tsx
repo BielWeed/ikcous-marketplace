@@ -14,6 +14,7 @@ interface ShippingProgressProps {
     freeShippingProducts: Product[];
     onAddToCart?: (product: Product, quantity?: number) => void;
     deferred?: boolean;
+    onNavigate?: (view: any, id?: string) => void;
 }
 
 export function ShippingProgress({
@@ -24,7 +25,8 @@ export function ShippingProgress({
     isNearlyThere,
     freeShippingProducts,
     onAddToCart,
-    deferred = false
+    deferred = false,
+    onNavigate
 }: ShippingProgressProps) {
     const [quantities, setQuantities] = useState<Record<string, number>>({});
 
@@ -143,7 +145,11 @@ export function ShippingProgress({
                                 key={p.id}
                                 onClick={() => {
                                     haptic.light();
-                                    window.location.href = `?product=${p.id}`;
+                                    if (onNavigate) {
+                                        onNavigate('product-detail', p.id);
+                                    } else {
+                                        window.location.href = `?product=${p.id}`;
+                                    }
                                 }}
                                 className="w-[124px] flex-shrink-0 group/card cursor-pointer bg-zinc-50 rounded-2xl p-2 border border-zinc-100 hover:border-zinc-300 transition-colors"
                             >

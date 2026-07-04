@@ -1,4 +1,14 @@
 import { useState, useMemo } from 'react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Plus, Trash, Edit, ArrowLeft, Ticket, Calendar, Users, HelpCircle, TrendingUp, Sparkles, Copy, Check } from 'lucide-react';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { useCoupons } from '@/hooks/useCoupons';
@@ -10,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
 
@@ -29,10 +40,12 @@ interface AdminCouponsViewProps {
 
 export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
     const { coupons, loading, addCoupon, updateCoupon, deleteCoupon } = useCoupons(true);
+    const isOffline = useOnlineStatus();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [showHelpModal, setShowHelpModal] = useState(false);
     const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
     const [copiedCode, setCopiedCode] = useState<string | null>(null);
+    const [couponToDelete, setCouponToDelete] = useState<string | null>(null);
 
     const [formData, setFormData] = useState<Partial<Coupon>>({
         code: '',
@@ -69,6 +82,12 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
     };
 
     const handleSubmit = async () => {
+        if (isOffline) {
+            toast.error('Sem conexão com a internet', {
+                description: 'Você precisa estar online para salvar ou alterar cupons.'
+            });
+            return;
+        }
         if (!formData.code || !formData.code.trim()) {
             toast.error('O código do cupom é obrigatório.');
             return;
@@ -111,9 +130,25 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
         }
     };
 
-    const handleDelete = async (id: string) => {
-        if (confirm('Tem certeza que deseja excluir este cupom?')) {
-            await deleteCoupon(id);
+    const handleDelete = (id: string) => {
+        if (isOffline) {
+            toast.error('Sem conexão com a internet', {
+                description: 'Você precisa estar online para excluir cupons.'
+            });
+            return;
+        }
+        setCouponToDelete(id);
+    };
+
+    const confirmDeleteCoupon = async () => {
+        if (!couponToDelete) return;
+        try {
+            await deleteCoupon(couponToDelete);
+        } catch (error) {
+            console.error('Error deleting coupon:', error);
+            toast.error('Erro ao excluir o cupom.');
+        } finally {
+            setCouponToDelete(null);
         }
     };
 
@@ -167,7 +202,7 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
     ], [activeCoupons, totalCoupons, totalUsage, averageDiscount]);
 
     return (
-        <div className="min-h-screen bg-[#09090b] text-zinc-400 font-sans selection:bg-emerald-500/30 selection:text-emerald-200 relative pb-36 animate-in fade-in duration-500">
+        <div className="h-auto bg-[#09090b] text-zinc-400 font-sans selection:bg-emerald-500/30 selection:text-emerald-200 relative pb-8 animate-in fade-in duration-500">
             {/* Header */}
             <div className="sticky top-0 z-50 p-4 pb-0">
                 <div className="admin-glass rounded-[2rem] border border-white/5 p-4 sm:p-5 shadow-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -206,7 +241,8 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
                     {coupons.length > 0 && (
                         <button
                             onClick={() => handleOpenDialog()}
-                            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white text-black rounded-xl text-[9px] font-black uppercase tracking-wider hover:scale-[1.02] transition-all active:scale-95 shadow-lg shadow-white/5 border border-white/10 w-full sm:w-auto"
+                            disabled={isOffline}
+                            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white text-black rounded-xl text-[9px] font-black uppercase tracking-wider hover:scale-[1.02] transition-all active:scale-95 shadow-lg shadow-white/5 border border-white/10 w-full sm:w-auto disabled:opacity-50 disabled:grayscale disabled:pointer-events-none"
                         >
                             <Plus className="w-3.5 h-3.5" /> Novo Cupom
                         </button>
@@ -299,7 +335,8 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
 
                             <button
                                 onClick={() => handleOpenDialog()}
-                                className="mt-8 flex items-center gap-2 px-6 py-3.5 bg-white hover:bg-zinc-200 text-black rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-white/5"
+                                disabled={isOffline}
+                                className="mt-8 flex items-center gap-2 px-6 py-3.5 bg-white hover:bg-zinc-200 text-black rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-white/5 disabled:opacity-50 disabled:grayscale disabled:pointer-events-none"
                             >
                                 <Plus className="w-4 h-4" /> Criar Primeiro Cupom
                             </button>
@@ -422,13 +459,15 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
                                             <div className="flex items-center gap-2 pt-4 border-t border-white/5">
                                                 <button
                                                     onClick={() => handleOpenDialog(coupon)}
-                                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white/[0.03] text-zinc-400 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white/10 hover:text-white transition-all border border-white/5 active:scale-95"
+                                                    disabled={isOffline}
+                                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white/[0.03] text-zinc-400 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white/10 hover:text-white transition-all border border-white/5 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
                                                 >
                                                     <Edit className="w-3.5 h-3.5" /> Editar
                                                 </button>
                                                 <button
                                                     onClick={() => handleDelete(coupon.id)}
-                                                    className="w-10 h-10 flex items-center justify-center bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500 hover:text-white transition-all duration-300 border border-red-500/10 active:scale-95"
+                                                    disabled={isOffline}
+                                                    className="w-10 h-10 flex items-center justify-center bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500 hover:text-white transition-all duration-300 border border-red-500/10 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
                                                 >
                                                     <Trash className="w-3.5 h-3.5" />
                                                 </button>
@@ -739,6 +778,26 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
                 <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-white/5 blur-[120px] rounded-full" />
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[#09090b] z-[-2]" />
             </div>
+
+      {/* Diálogo de Confirmação de Exclusão de Cupom */}
+      <AlertDialog open={couponToDelete !== null} onOpenChange={(open) => !open && setCouponToDelete(null)}>
+        <AlertDialogContent className="bg-zinc-950 border border-white/10 rounded-3xl max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white font-black text-lg uppercase tracking-tight">Excluir Cupom?</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400 text-xs">
+              Tem certeza que deseja excluir este cupom? Esta ação não pode ser desfeita e invalidará o código para os clientes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="bg-white/5 border border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteCoupon} className="bg-rose-650 hover:bg-rose-700 text-white rounded-xl text-xs font-bold px-4 py-2 border-0">
+              Excluir Cupom
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
         </div>
     );
 }

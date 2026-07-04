@@ -119,7 +119,7 @@ export const FavoritesView = React.memo(function FavoritesView({
   }
 
   return (
-    <div className="min-h-full pb-48 bg-zinc-50/30 overflow-x-hidden">
+    <div className="min-h-full pb-24 bg-zinc-50/30 overflow-x-hidden">
       {/* Header Premium */}
       <div className="px-6 pt-12 pb-8 bg-gradient-to-b from-white to-transparent flex flex-col mb-4">
         <div>
@@ -176,8 +176,8 @@ export const FavoritesView = React.memo(function FavoritesView({
         </AnimatePresence>
       </div>
 
-      {/* Futuristic Floating CTA */}
-      <div className="fixed bottom-24 left-6 right-6 z-40">
+      {/* Futuristic CTA */}
+      <div className="px-6 mt-8 mb-6">
         <button
           onClick={() => {
             haptic.medium();

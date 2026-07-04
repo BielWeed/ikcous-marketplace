@@ -136,9 +136,9 @@ export function SearchBar({ value, onChange, onProductClick, placeholder = "Busc
         )}>
             {/* Liquid Search Container */}
             <div className={cn(
-                "absolute inset-0 bg-white shadow-sm border border-zinc-100 rounded-full transition-[box-shadow,border-color,transform] duration-700 ease-[cubic-bezier(0.23,1,0.32,1)]",
+                "absolute inset-0 bg-white shadow-sm border border-zinc-100 rounded-full transition-[box-shadow,border-color,transform] duration-700",
                 isFocused ? "shadow-xl border-zinc-200 scale-[1.01]" : ""
-            )} />
+            )} style={{ transitionTimingFunction: 'cubic-bezier(0.23, 1, 0.32, 1)' }} />
 
             <div className={cn(
                 "relative flex items-center h-10 transition-[z-index,opacity] duration-300",

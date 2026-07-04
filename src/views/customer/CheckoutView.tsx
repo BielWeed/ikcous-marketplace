@@ -695,7 +695,7 @@ export function CheckoutView({ cart, subtotal, shipping, total, onClearCart, onN
 
       {/* Order Summary - Fixed Bottom Bar */}
       {typeof document !== 'undefined' && document.body && createPortal(
-        <div className="fixed bottom-safe-navigation left-0 right-0 bg-white/95 backdrop-blur-3xl border-t border-zinc-100 p-4 pb-8 md:bottom-[88px] md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-full md:max-w-md md:rounded-t-2xl md:rounded-b-none md:border-t md:border-x md:border-b-0 md:border-zinc-200/60 md:pb-8 z-[110] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] rounded-t-[2.5rem]">
+        <div className="fixed bottom-safe-navigation left-0 right-0 bg-white/95 backdrop-blur-3xl border-t border-zinc-100 p-4 pb-8 md:bottom-[104px] md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-full md:max-w-md md:rounded-t-2xl md:rounded-b-none md:border-t md:border-x md:border-b-0 md:border-zinc-200/60 md:pb-8 z-[110] shadow-[0_-20px_50px_rgba(0,0,0,0.1)] rounded-t-[2.5rem]">
           <div className="max-w-screen-md mx-auto">
             <div className="flex items-center justify-between mb-4 px-1">
               <div className="flex flex-col">

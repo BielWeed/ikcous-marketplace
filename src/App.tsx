@@ -41,6 +41,7 @@ const AdminLayout = React.lazy(() => import('@/components/layouts/AdminLayout').
 const DebugPanel = React.lazy(() => import('@/components/debug/DebugPanel').then(m => ({ default: m.DebugPanel })));
 import { toast } from 'sonner';
 import { Toaster } from '@/components/ui/sonner';
+import { LocalErrorBoundary } from '@/components/ui/custom/LocalErrorBoundary';
 
 declare global {
   interface Window {
@@ -65,16 +66,53 @@ import { useSwipeBack } from '@/hooks/useSwipeBack';
 import { useWebVitals } from '@/hooks/useWebVitals';
 
 function DeferredTabContent({ active, children }: { readonly active: boolean; readonly children: React.ReactNode }) {
-  const [hasBeenActive, setHasBeenActive] = useState(false);
+  const [hasBeenActive, setHasBeenActive] = useState(active);
 
-  useEffect(() => {
-    if (active) {
-      setHasBeenActive(true);
-    }
-  }, [active]);
+  if (active && !hasBeenActive) {
+    setHasBeenActive(true);
+  }
 
   if (!hasBeenActive) return null;
   return <>{children}</>;
+}
+
+interface TabWrapperProps {
+  readonly active: boolean;
+  readonly isTransitionSupported: boolean;
+  readonly children: React.ReactNode;
+}
+
+function TabWrapper({ active, children, isTransitionSupported }: TabWrapperProps) {
+  if (isTransitionSupported) {
+    return (
+      <div
+        className="w-full top-0 left-0"
+        style={{
+          display: active ? "block" : "none",
+          position: active ? "relative" : "absolute",
+          opacity: active ? 1 : 0,
+          pointerEvents: active ? "auto" : "none",
+        }}
+      >
+        {children}
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={false}
+      animate={
+        active
+          ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative", visibility: "visible", pointerEvents: "auto" }
+          : { opacity: 0, y: 8, scale: 0.99, position: "absolute", pointerEvents: "none", transitionEnd: { display: "none", visibility: "hidden" } }
+      }
+      transition={{ duration: 0.20, ease: [0.16, 1, 0.3, 1] }}
+      className="w-full top-0 left-0"
+    >
+      {children}
+    </motion.div>
+  );
 }
 
 function ViewLoadingFallback() {
@@ -245,6 +283,28 @@ const AppContent = () => {
 
   const [currentView, setCurrentView] = useState<View>('home');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+
+  const currentViewRef = useRef<View>(currentView);
+  const selectedProductIdRef = useRef<string | null>(selectedProductId);
+  const userRef = useRef(user);
+  const authLoadingRef = useRef(authLoading);
+
+  useEffect(() => {
+    currentViewRef.current = currentView;
+  }, [currentView]);
+
+  useEffect(() => {
+    selectedProductIdRef.current = selectedProductId;
+  }, [selectedProductId]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    authLoadingRef.current = authLoading;
+  }, [authLoading]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isDebugOpen, setIsDebugOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -256,6 +316,7 @@ const AppContent = () => {
   const scrollSentinelRef = useRef<HTMLDivElement>(null);
   const backOverrideRef = useRef<(() => void) | null>(null);
   const isTransitioningRef = useRef(false);
+  const activeTransitionRef = useRef<any>(null);
   const scrollPositionsRef = useRef<Record<string, number>>({});
   const navigationDirectionRef = useRef<'forward' | 'back' | 'none'>('forward');
   const swipeBackActiveRef = useRef(false);
@@ -271,15 +332,32 @@ const AppContent = () => {
   useBehavioralPrefetch(currentView, prefetchView);
   useWebVitals();
 
+  // Eagerly prefetch all admin views in the background to ensure instantaneous tab switches
+  useEffect(() => {
+    if (isAdmin) {
+      const adminViews = [
+        'admin-dashboard', 'admin-products', 'admin-orders', 'admin-customers',
+        'admin-settings', 'admin-coupons', 'admin-banners', 'admin-reviews',
+        'admin-qa', 'admin-user-detail', 'admin-push'
+      ];
+      const timeoutId = setTimeout(() => {
+        adminViews.forEach(view => prefetchView(view));
+      }, 1000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isAdmin, prefetchView]);
+
   const favoriteIds = React.useMemo(() => favorites.map(p => p.id), [favorites]);
 
   const saveCurrentScroll = useCallback(() => {
     if (!mainRef.current) return;
-    const viewKey = currentView === 'product-detail' && selectedProductId
-      ? `product-detail-${selectedProductId}`
-      : currentView;
+    const currView = currentViewRef.current;
+    const selProdId = selectedProductIdRef.current;
+    const viewKey = currView === 'product-detail' && selProdId
+      ? `product-detail-${selProdId}`
+      : currView;
     scrollPositionsRef.current[viewKey] = mainRef.current.scrollTop;
-  }, [currentView, selectedProductId]);
+  }, []);
 
   // Sync ref with state to avoid listener closure issues
   useEffect(() => {
@@ -288,7 +366,13 @@ const AppContent = () => {
 
   const handleNavigate = useCallback(async (view: View, id?: string) => {
     saveCurrentScroll();
-    if (isTransitioningRef.current && currentView !== view) {
+    const currView = currentViewRef.current;
+    const isAuthL = authLoadingRef.current;
+    const usr = userRef.current;
+
+    const isMainTabNav = ['home', 'favorites', 'cart', 'profile', 'admin-dashboard', 'admin', 'admin-products', 'admin-orders', 'admin-customers', 'admin-settings'].includes(view);
+
+    if (isTransitioningRef.current && currView !== view && !isMainTabNav) {
       // Exceções para redirecionamentos programáticos críticos (Auth, Login, Home, Profile, Admin)
       if (!['auth', 'login', 'home', 'profile', 'admin'].includes(view)) {
         console.warn(`[App] Navigation to ${view} throttled to prevent animation race conditions`);
@@ -297,52 +381,77 @@ const AppContent = () => {
     }
 
     let targetView = view;
-    if ((view === 'profile' || view === 'account-settings' || view === 'address-form') && !authLoading && !user) {
+    if ((view === 'profile' || view === 'account-settings' || view === 'address-form') && !isAuthL && !usr) {
       targetView = 'auth';
     }
 
-    const isDifferentView = currentView !== targetView;
+    const isDifferentView = currView !== targetView;
+    const fromView = currView;
+    const dir = getNavigationDirection(currView, targetView);
+    navigationDirectionRef.current = dir;
+    setNavigationDirection(dir);
 
-    // Prefetch chunk and show loader if necessary
+    const performTransition = () => {
+      // If a transition is already in progress, skip it to allow snappy interruptible navigation
+      if (activeTransitionRef.current && typeof activeTransitionRef.current.skip === 'function') {
+        try {
+          activeTransitionRef.current.skip();
+        } catch (e) {
+          console.warn('[App] Failed to skip active transition:', e);
+        }
+      }
+
+      const transition = startTransition(() => {
+        setSelectedProductId(id || null);
+        setCurrentView(targetView);
+        setBackOverride(null); // Reset override on navigation
+      }, dir);
+
+      activeTransitionRef.current = transition;
+
+      const onTransitionEnd = () => {
+        if (activeTransitionRef.current === transition) {
+          activeTransitionRef.current = null;
+        }
+        isTransitioningRef.current = false;
+      };
+
+      if (transition && typeof transition.finished?.then === 'function') {
+        transition.finished.then(onTransitionEnd).catch(onTransitionEnd);
+      } else {
+        setTimeout(onTransitionEnd, isTransitionSupported ? 80 : 220);
+      }
+
+      // Sync URL without full reload
+      let path = targetView === 'home' ? '/' : `/${targetView}`;
+      if (targetView === 'product-detail' && id) {
+        path = `/product-detail?id=${id}`;
+      }
+      const currentPathAndSearch = globalThis.location.pathname + globalThis.location.search;
+      if (currentPathAndSearch !== path) {
+        globalThis.history.pushState({ view: targetView, id, from: fromView }, '', path);
+      }
+    };
+
     if (isDifferentView) {
       isTransitioningRef.current = true;
       setIsRouteLoading(true);
-      try {
-        await prefetchViewPromise(targetView);
-      } catch (err) {
-        console.error('[App] Failed to prefetch route chunk:', err);
-      } finally {
-        setIsRouteLoading(false);
-      }
+      prefetchViewPromise(targetView)
+        .then(() => {
+          performTransition();
+        })
+        .catch((err) => {
+          console.error('[App] Failed to prefetch route chunk:', err);
+          // Fallback to navigate anyway if prefetch fails
+          performTransition();
+        })
+        .finally(() => {
+          setIsRouteLoading(false);
+        });
+    } else {
+      performTransition();
     }
-
-    const fromView = currentView;
-    const dir = getNavigationDirection(currentView, targetView);
-    navigationDirectionRef.current = dir;
-    setNavigationDirection(dir);
-    startTransition(() => {
-      setSelectedProductId(id || null);
-      setCurrentView(targetView);
-      setBackOverride(null); // Reset override on navigation
-    }, dir);
-
-
-    // Sync URL without full reload
-    let path = targetView === 'home' ? '/' : `/${targetView}`;
-    if (targetView === 'product-detail' && id) {
-      path = `/product-detail?id=${id}`;
-    }
-    const currentPathAndSearch = globalThis.location.pathname + globalThis.location.search;
-    if (currentPathAndSearch !== path) {
-      globalThis.history.pushState({ view: targetView, id, from: fromView }, '', path);
-    }
-
-    if (isDifferentView) {
-      setTimeout(() => {
-        isTransitioningRef.current = false;
-      }, isTransitionSupported ? 50 : 150); // Much faster lock since view transition handles things natively
-    }
-  }, [currentView, authLoading, user, startTransition, isTransitionSupported, prefetchViewPromise, saveCurrentScroll]);
+  }, [startTransition, isTransitionSupported, prefetchViewPromise, saveCurrentScroll]);
 
 
   const handleProductClick = useCallback((productId: string) => {
@@ -353,15 +462,20 @@ const AppContent = () => {
 
   const handleScroll = useCallback(() => {
     if (!mainRef.current || isTransitioningRef.current) return;
-    const viewKey = currentView === 'product-detail' && selectedProductId
-      ? `product-detail-${selectedProductId}`
-      : currentView;
+    const currView = currentViewRef.current;
+    const selProdId = selectedProductIdRef.current;
+    const viewKey = currView === 'product-detail' && selProdId
+      ? `product-detail-${selProdId}`
+      : currView;
     scrollPositionsRef.current[viewKey] = mainRef.current.scrollTop;
-  }, [currentView, selectedProductId]);
+  }, []);
 
   useLayoutEffect(() => {
     const mainEl = mainRef.current;
     if (!mainEl) return;
+
+    // Skip scroll restoration if we are on an admin view, as AdminLayout handles it internally
+    if (currentView.startsWith('admin')) return;
 
     const viewKey = currentView === 'product-detail' && selectedProductId
       ? `product-detail-${selectedProductId}`
@@ -557,6 +671,24 @@ const AppContent = () => {
       ];
       if (validViews.includes(path as View)) {
         let targetView = path as View;
+        
+        // Intercept popstate exit from sub-admin views to non-admin views, routing them back to parent admin views instead
+        const currView = currentViewRef.current;
+        const subAdminViews = ['admin-product-form', 'admin-user-detail', 'admin-push'];
+        if (subAdminViews.includes(currView) && !targetView.startsWith('admin')) {
+          console.log(`[App] Intercepted popstate exit from sub-admin: ${currView} to ${targetView}. Rerouting to parent admin view.`);
+          if (currView === 'admin-product-form') {
+            targetView = 'admin-products';
+            globalThis.history.replaceState({ view: 'admin-products' }, '', '/admin-products');
+          } else if (currView === 'admin-user-detail') {
+            targetView = 'admin-customers';
+            globalThis.history.replaceState({ view: 'admin-customers' }, '', '/admin-customers');
+          } else if (currView === 'admin-push') {
+            targetView = 'admin-dashboard';
+            globalThis.history.replaceState({ view: 'admin-dashboard' }, '', '/admin-dashboard');
+          }
+        }
+
         if ((targetView === 'profile' || targetView === 'account-settings' || targetView === 'address-form') && !authLoading && !user) {
           targetView = 'auth';
           if (globalThis.location.pathname !== '/auth') {
@@ -575,12 +707,19 @@ const AppContent = () => {
         const queryId = urlParams.get('id');
         const stateId = globalThis.history.state?.id;
         const nextSelectedProductId = queryId || stateId || (
-          (targetView !== 'product-detail' && targetView !== 'order-details' && targetView !== 'admin-product-form' && targetView !== 'admin-user-detail')
+          (targetView !== 'product-detail' && targetView !== 'order-details' && targetView !== 'admin-product-form' && targetView !== 'admin-user-detail' && targetView !== 'admin-orders')
             ? null
             : selectedProductId
         );
 
-        const isGoingBackToHomeFromProduct = (targetView === 'home' || targetView === 'favorites' || targetView === 'search') && currentView === 'product-detail';
+        const isGoingBackToHomeFromProduct = (targetView === 'home' || targetView === 'favorites' || targetView === 'search') && currentViewRef.current === 'product-detail';
+        const finalSelectedProductId = isGoingBackToHomeFromProduct ? null : nextSelectedProductId;
+
+        if (currentViewRef.current === targetView && selectedProductIdRef.current === finalSelectedProductId) {
+          // Já estamos no mesmo destino. Evitar transições e renderizações redundantes.
+          return;
+        }
+
         const currentDir = navigationDirectionRef.current;
         setNavigationDirection(currentDir);
 
@@ -767,78 +906,98 @@ const AppContent = () => {
     return (
       <div className="relative w-full min-h-[60vh] overflow-x-hidden">
         {/* Main Tabs Container - Kept mounted in the DOM to preserve loaded states & scroll positions */}
-        <div className={cn("w-full h-full", !isMainTab && "hidden")}>
-          <motion.div
-            initial={false}
-            animate={
-              (currentView === 'admin-dashboard' || currentView === 'admin')
-                ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
-                : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
-            }
-            transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
-            className="w-full top-0 left-0"
+        {isTransitionSupported ? (
+          <div
+            className="w-full h-full"
+            style={{
+              display: isMainTab ? "block" : "none",
+              position: isMainTab ? "relative" : "absolute",
+              opacity: isMainTab ? 1 : 0,
+            }}
           >
-            <DeferredTabContent active={currentView === 'admin-dashboard' || currentView === 'admin'}>
-              <AdminDashboard onNavigate={handleNavigate} active={currentView === 'admin-dashboard' || currentView === 'admin'} />
-            </DeferredTabContent>
-          </motion.div>
+            <TabWrapper active={currentView === 'admin-dashboard' || currentView === 'admin'} isTransitionSupported={isTransitionSupported}>
+              <LocalErrorBoundary>
+                <DeferredTabContent active={currentView === 'admin-dashboard' || currentView === 'admin'}>
+                  <AdminDashboard onNavigate={handleNavigate} active={currentView === 'admin-dashboard' || currentView === 'admin'} />
+                </DeferredTabContent>
+              </LocalErrorBoundary>
+            </TabWrapper>
+            <TabWrapper active={currentView === 'admin-products'} isTransitionSupported={isTransitionSupported}>
+              <LocalErrorBoundary>
+                <DeferredTabContent active={currentView === 'admin-products'}>
+                  <AdminProducts onNavigate={handleNavigate} active={currentView === 'admin-products'} />
+                </DeferredTabContent>
+              </LocalErrorBoundary>
+            </TabWrapper>
+            <TabWrapper active={currentView === 'admin-orders'} isTransitionSupported={isTransitionSupported}>
+              <LocalErrorBoundary>
+                <DeferredTabContent active={currentView === 'admin-orders'}>
+                  <AdminOrders onNavigate={handleNavigate} active={currentView === 'admin-orders'} selectedOrderId={selectedProductId} onSetBackOverride={setBackOverride} />
+                </DeferredTabContent>
+              </LocalErrorBoundary>
+            </TabWrapper>
+            <TabWrapper active={currentView === 'admin-customers'} isTransitionSupported={isTransitionSupported}>
+              <LocalErrorBoundary>
+                <DeferredTabContent active={currentView === 'admin-customers'}>
+                  <AdminCustomers onNavigate={handleNavigate} active={currentView === 'admin-customers'} />
+                </DeferredTabContent>
+              </LocalErrorBoundary>
+            </TabWrapper>
+            <TabWrapper active={currentView === 'admin-settings'} isTransitionSupported={isTransitionSupported}>
+              <LocalErrorBoundary>
+                <DeferredTabContent active={currentView === 'admin-settings'}>
+                  <AdminSettings onNavigate={handleNavigate} active={currentView === 'admin-settings'} />
+                </DeferredTabContent>
+              </LocalErrorBoundary>
+            </TabWrapper>
+          </div>
+        ) : (
           <motion.div
+            className="w-full h-full"
             initial={false}
-            animate={
-              currentView === 'admin-products'
-                ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
-                : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
+            animate={isMainTab
+              ? { opacity: 1, y: 0, display: "block", position: "relative" }
+              : { opacity: 0, y: -8, position: "absolute", transitionEnd: { display: "none" } }
             }
-            transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
-            className="w-full top-0 left-0"
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           >
-            <DeferredTabContent active={currentView === 'admin-products'}>
-              <AdminProducts onNavigate={handleNavigate} active={currentView === 'admin-products'} />
-            </DeferredTabContent>
+            <TabWrapper active={currentView === 'admin-dashboard' || currentView === 'admin'} isTransitionSupported={isTransitionSupported}>
+              <LocalErrorBoundary>
+                <DeferredTabContent active={currentView === 'admin-dashboard' || currentView === 'admin'}>
+                  <AdminDashboard onNavigate={handleNavigate} active={currentView === 'admin-dashboard' || currentView === 'admin'} />
+                </DeferredTabContent>
+              </LocalErrorBoundary>
+            </TabWrapper>
+            <TabWrapper active={currentView === 'admin-products'} isTransitionSupported={isTransitionSupported}>
+              <LocalErrorBoundary>
+                <DeferredTabContent active={currentView === 'admin-products'}>
+                  <AdminProducts onNavigate={handleNavigate} active={currentView === 'admin-products'} />
+                </DeferredTabContent>
+              </LocalErrorBoundary>
+            </TabWrapper>
+            <TabWrapper active={currentView === 'admin-orders'} isTransitionSupported={isTransitionSupported}>
+              <LocalErrorBoundary>
+                <DeferredTabContent active={currentView === 'admin-orders'}>
+                  <AdminOrders onNavigate={handleNavigate} active={currentView === 'admin-orders'} selectedOrderId={selectedProductId} onSetBackOverride={setBackOverride} />
+                </DeferredTabContent>
+              </LocalErrorBoundary>
+            </TabWrapper>
+            <TabWrapper active={currentView === 'admin-customers'} isTransitionSupported={isTransitionSupported}>
+              <LocalErrorBoundary>
+                <DeferredTabContent active={currentView === 'admin-customers'}>
+                  <AdminCustomers onNavigate={handleNavigate} active={currentView === 'admin-customers'} />
+                </DeferredTabContent>
+              </LocalErrorBoundary>
+            </TabWrapper>
+            <TabWrapper active={currentView === 'admin-settings'} isTransitionSupported={isTransitionSupported}>
+              <LocalErrorBoundary>
+                <DeferredTabContent active={currentView === 'admin-settings'}>
+                  <AdminSettings onNavigate={handleNavigate} active={currentView === 'admin-settings'} />
+                </DeferredTabContent>
+              </LocalErrorBoundary>
+            </TabWrapper>
           </motion.div>
-          <motion.div
-            initial={false}
-            animate={
-              currentView === 'admin-orders'
-                ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
-                : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
-            }
-            transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
-            className="w-full top-0 left-0"
-          >
-            <DeferredTabContent active={currentView === 'admin-orders'}>
-              <AdminOrders onNavigate={handleNavigate} active={currentView === 'admin-orders'} />
-            </DeferredTabContent>
-          </motion.div>
-          <motion.div
-            initial={false}
-            animate={
-              currentView === 'admin-customers'
-                ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
-                : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
-            }
-            transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
-            className="w-full top-0 left-0"
-          >
-            <DeferredTabContent active={currentView === 'admin-customers'}>
-              <AdminCustomers onNavigate={handleNavigate} active={currentView === 'admin-customers'} />
-            </DeferredTabContent>
-          </motion.div>
-          <motion.div
-            initial={false}
-            animate={
-              currentView === 'admin-settings'
-                ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative" }
-                : { opacity: 0, y: 12, scale: 0.98, position: "absolute", transitionEnd: { display: "none" } }
-            }
-            transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
-            className="w-full top-0 left-0"
-          >
-            <DeferredTabContent active={currentView === 'admin-settings'}>
-              <AdminSettings onNavigate={handleNavigate} active={currentView === 'admin-settings'} />
-            </DeferredTabContent>
-          </motion.div>
-        </div>
+        )}
 
         {/* Secondary Views (Rendered on demand) */}
         <AnimatePresence mode="wait">
@@ -851,42 +1010,44 @@ const AppContent = () => {
               transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
               className="w-full"
             >
-              {(() => {
-                switch (currentView) {
-                  case 'admin-product-form':
-                    return (
-                      <AdminProductForm
-                        productId={selectedProductId || undefined}
-                        onNavigate={handleNavigate}
-                      />
-                    );
-                  case 'admin-coupons':
-                    return <AdminCoupons onNavigate={handleNavigate} />;
-                  case 'admin-banners':
-                    return <AdminBanners onNavigate={handleNavigate} />;
-                  case 'admin-reviews':
-                    return <AdminReviews onNavigate={handleNavigate} active={true} />;
-                  case 'admin-qa':
-                    return <AdminQA onNavigate={handleNavigate} active={true} />;
-                  case 'admin-user-detail':
-                    return (
-                      <AdminUserDetail
-                        userId={selectedProductId || ''}
-                        onBack={handleAdminUserDetailBack}
-                        onNavigate={handleNavigate}
-                      />
-                    );
-                  case 'admin-push':
-                    return (
-                      <AdminPush
-                        onNavigate={handleNavigate}
-                        targetUserId={selectedProductId || undefined}
-                      />
-                    );
-                  default:
-                    return null;
-                }
-              })()}
+              <LocalErrorBoundary>
+                {(() => {
+                  switch (currentView) {
+                    case 'admin-product-form':
+                      return (
+                        <AdminProductForm
+                          productId={selectedProductId || undefined}
+                          onNavigate={handleNavigate}
+                        />
+                      );
+                    case 'admin-coupons':
+                      return <AdminCoupons onNavigate={handleNavigate} />;
+                    case 'admin-banners':
+                      return <AdminBanners onNavigate={handleNavigate} />;
+                    case 'admin-reviews':
+                      return <AdminReviews onNavigate={handleNavigate} active={true} />;
+                    case 'admin-qa':
+                      return <AdminQA onNavigate={handleNavigate} active={true} />;
+                    case 'admin-user-detail':
+                      return (
+                        <AdminUserDetail
+                          userId={selectedProductId || ''}
+                          onBack={handleAdminUserDetailBack}
+                          onNavigate={handleNavigate}
+                        />
+                      );
+                    case 'admin-push':
+                      return (
+                        <AdminPush
+                          onNavigate={handleNavigate}
+                          targetUserId={selectedProductId || undefined}
+                        />
+                      );
+                    default:
+                      return null;
+                  }
+                })()}
+              </LocalErrorBoundary>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1135,7 +1296,7 @@ const AppContent = () => {
         onScroll={handleScroll}
         className={cn(
           "relative flex-1 flex flex-col overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch] gpu-accelerated",
-          currentView.startsWith('admin') && "h-full pt-0"
+          currentView.startsWith('admin') && "h-full pt-0 overflow-y-hidden"
         )}
       >
         {/* Scroll Sentinel for header visual transitions */}

@@ -257,24 +257,23 @@ export function useReviews() {
 
       if (error) throw error;
 
-      // Compute dynamic average rating and global statistics for matching filters
+      // Compute dynamic average rating and global statistics for matching filters using optimized database-side RPC
       let averageRating = 0;
       let globalVerifiedCount = 0;
       let globalRepliedCount = 0;
-      let avgQuery = supabase.from('reviews' as any).select('rating, verified, merchant_reply');
-      if (filters?.search) {
-        const q = `%${filters.search}%`;
-        avgQuery = avgQuery.or(`comment.ilike.${q},user_id.in.(${profileFilter.join(',')}),product_id.in.(${productFilter.join(',')})`);
-      }
-      if (filters?.rating && filters.rating !== 'all') {
-        avgQuery = avgQuery.eq('rating', filters.rating);
-      }
-      const { data: avgData, error: avgError } = await avgQuery;
-      if (!avgError && avgData && avgData.length > 0) {
-        const sum = avgData.reduce((acc: number, curr: any) => acc + curr.rating, 0);
-        averageRating = sum / avgData.length;
-        globalVerifiedCount = avgData.filter((curr: any) => curr.verified).length;
-        globalRepliedCount = avgData.filter((curr: any) => curr.merchant_reply && curr.merchant_reply.trim() !== '').length;
+
+      const { data: metricsData, error: metricsError } = await (supabase.rpc as any)('get_reviews_metrics', {
+        p_search: filters?.search || null,
+        p_rating: (filters?.rating && filters.rating !== 'all') ? Number(filters.rating) : null
+      });
+
+      if (!metricsError && metricsData && metricsData.length > 0) {
+        const metrics = metricsData[0];
+        averageRating = Number(metrics.average_rating) || 0;
+        globalVerifiedCount = Number(metrics.total_verified) || 0;
+        globalRepliedCount = Number(metrics.total_replied) || 0;
+      } else if (metricsError) {
+        console.error('[useReviews] Failed to fetch aggregate metrics via RPC:', metricsError);
       }
 
       const formatted: AdminReview[] = (data || []).map((item: any) => ({
