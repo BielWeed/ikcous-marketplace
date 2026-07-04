@@ -103,6 +103,11 @@ export function useProducts({ autoFetch = true } = {}) {
         query = query.lte('estoque', 5);
       }
 
+      // Apply Category
+      if (filters?.category) {
+        query = query.eq('categoria', filters.category);
+      }
+
       const { data: fetchData, error: fetchError, count: fetchCount } = await query
         .order('data_cadastro', { ascending: false })
         .range(from, to);

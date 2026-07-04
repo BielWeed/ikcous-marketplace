@@ -556,6 +556,17 @@
   contain-intrinsic-size: 1px 200px;
 }
 
+.content-visibility-detailed-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 440px;
+}
+
+.content-visibility-compact-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 250px;
+}
+
+
 
 @keyframes fade-out {
   from { opacity: 1; }

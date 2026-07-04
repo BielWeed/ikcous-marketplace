@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
 import { ImageAdjuster } from '@/components/ui/custom/ImageAdjuster';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface AdminBannersViewProps {
     onNavigate: (view: View) => void;
@@ -300,6 +301,48 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
         }
     ], [activeBanners, totalBanners, banners, impactText]);
 
+    const renderSkeleton = () => (
+        <div className="space-y-16 animate-pulse select-none">
+            {visiblePositions.map((pos) => (
+                <div key={pos.value} className="space-y-6">
+                    {selectedTab === 'all' && (
+                        <div className="flex items-center justify-between border-b border-white/5 pb-4 px-2">
+                            <div className="flex items-center gap-3">
+                                <Skeleton className="w-3.5 h-3.5 rounded-full bg-white/5" />
+                                <Skeleton className="h-4.5 w-32 bg-white/5 rounded" />
+                            </div>
+                            <Skeleton className="h-3 w-16 bg-white/5 rounded" />
+                        </div>
+                    )}
+                    <div className="grid gap-6">
+                        {[1, 2].map((i) => (
+                            <div key={i} className="bg-zinc-950/30 border border-white/5 rounded-[2.5rem] p-4 sm:p-5 h-[230px] sm:h-[180px] lg:h-[230px] xl:h-[180px] flex flex-col lg:flex-row gap-6 items-center">
+                                <Skeleton className="w-full lg:w-[380px] xl:w-[440px] aspect-[21/9] rounded-2xl bg-white/5 shrink-0" />
+                                <div className="flex-1 space-y-4 w-full">
+                                    <div className="flex justify-between items-start gap-4">
+                                        <div className="space-y-2 flex-1">
+                                            <Skeleton className="h-5 w-1/2 bg-white/5 rounded" />
+                                            <div className="flex gap-2">
+                                                <Skeleton className="h-4.5 w-16 bg-white/5 rounded" />
+                                                <Skeleton className="h-4.5 w-16 bg-white/5 rounded" />
+                                            </div>
+                                        </div>
+                                        <Skeleton className="w-16 h-8 bg-white/5 rounded" />
+                                    </div>
+                                    <div className="h-px bg-white/5 w-full" />
+                                    <div className="flex gap-3">
+                                        <Skeleton className="h-9 flex-1 bg-white/5 rounded-xl" />
+                                        <Skeleton className="h-9 w-20 bg-white/5 rounded-xl" />
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+
     return (
         <div className="h-auto bg-[#09090b] text-zinc-400 font-sans selection:bg-admin-gold/30 selection:text-white pb-8 relative overflow-x-hidden">
             {/* Ambient subtle glow */}
@@ -438,13 +481,8 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
 
                 {/* Banner Content List */}
                 {!isLoaded ? (
-                    <div className="text-center py-32 flex flex-col items-center justify-center select-none">
-                        <div className="relative w-16 h-16 mb-6">
-                            <div className="absolute inset-0 border-4 border-admin-gold/10 rounded-full" />
-                            <div className="absolute inset-0 border-4 border-t-[#FFBF00] rounded-full animate-spin" />
-                            <Layout className="absolute inset-0 m-auto w-6 h-6 text-[#FFBF00] animate-pulse" />
-                        </div>
-                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.4em] animate-pulse">Sincronizando Galeria de Banners...</p>
+                    <div className="py-6">
+                        {renderSkeleton()}
                     </div>
                 ) : (
                     <motion.div

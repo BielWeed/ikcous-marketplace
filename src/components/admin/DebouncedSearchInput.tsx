@@ -35,6 +35,12 @@ export const DebouncedSearchInput = React.memo(function DebouncedSearchInput({
     }, [onTyping]);
 
     useEffect(() => {
+        return () => {
+            onTypingRef.current?.(false);
+        };
+    }, []);
+
+    useEffect(() => {
         setLocalValue(value);
     }, [value]);
 

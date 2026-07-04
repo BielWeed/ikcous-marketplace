@@ -119,7 +119,7 @@ const CustomPieLabel = React.memo(({ viewBox, totalRevenue, fontSize }: CustomPi
 });
 CustomPieLabel.displayName = 'CustomPieLabel';
 
-export function StrategicIntelligenceBlocks({ categoryData, loading }: StrategicIntelligenceBlocksProps) {
+export const StrategicIntelligenceBlocks = React.memo(function StrategicIntelligenceBlocks({ categoryData, loading }: StrategicIntelligenceBlocksProps) {
     const isDeferredReady = useDeferredRender(180);
     const _isMobile = useMediaQuery('(max-width: 1023px)');
     const [activeIndex, setActiveIndex] = useState(-1);
@@ -508,4 +508,4 @@ export function StrategicIntelligenceBlocks({ categoryData, loading }: Strategic
 
         </div>
     );
-}
+});

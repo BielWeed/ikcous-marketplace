@@ -24,13 +24,15 @@ interface AdminKpiCarouselProps {
     readonly loading?: boolean;
     readonly title?: string;
     readonly autoplayInterval?: number;
+    readonly active?: boolean;
 }
 
 export function AdminKpiCarousel({
     cards,
     loading = false,
     title = 'Métricas Principais',
-    autoplayInterval = 4000
+    autoplayInterval = 4000,
+    active = true
 }: AdminKpiCarouselProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [activeIndex, setActiveIndex] = useState(0);
@@ -73,9 +75,19 @@ export function AdminKpiCarousel({
         };
     }, [emblaApi, onSelect, onInit]);
 
-    // Autoplay effect - pauses when tab is in background (Visibility API)
+    // Recalcula dimensões do carrossel quando a aba administrativa ganha foco
     useEffect(() => {
-        if (!emblaApi || isExpanded || isHovered || loading) return;
+        if (active && emblaApi) {
+            const timer = setTimeout(() => {
+                emblaApi.reInit();
+            }, 50);
+            return () => clearTimeout(timer);
+        }
+    }, [active, emblaApi]);
+
+    // Autoplay effect - pauses when tab is in background (Visibility API) or when panel view is inactive
+    useEffect(() => {
+        if (!emblaApi || !active || isExpanded || isHovered || loading) return;
 
         let interval: ReturnType<typeof setInterval> | undefined;
 
@@ -111,7 +123,7 @@ export function AdminKpiCarousel({
             if (interval) clearInterval(interval);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [emblaApi, isExpanded, isHovered, autoplayInterval, loading]);
+    }, [emblaApi, active, isExpanded, isHovered, autoplayInterval, loading]);
 
     const renderCard = useCallback((stat: KpiCardConfig, index: number) => {
         const Icon = stat.icon;
@@ -124,7 +136,7 @@ export function AdminKpiCarousel({
                 transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1], delay: index * 0.04 }}
                 whileHover={{ y: -3, scale: 1.015 }}
                 className={cn(
-                    "bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group transition-all duration-500 w-full select-none cursor-default",
+                    "bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] shadow-2xl relative group transition-colors duration-300 w-full select-none cursor-default",
                     stat.hoverBorder || "hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.06)]"
                 )} 
                 style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
@@ -249,9 +261,9 @@ export function AdminKpiCarousel({
                     onMouseLeave={() => setIsHovered(false)}
                 >
                     {loading ? (
-                        <div className="flex -ml-3 sm:-ml-6 overflow-hidden">
-                            {Array.from({ length: 2 }).map((_, i) => (
-                                <div key={i} className="flex-[0_0_100%] sm:flex-[0_0_50%] min-w-0 pl-3 sm:pl-6">
+                        <div className="flex -ml-3 sm:-ml-6 overflow-hidden animate-pulse">
+                            {Array.from({ length: displayCards.length || 4 }).map((_, i) => (
+                                <div key={`loading-skeleton-${i}`} className="flex-[0_0_100%] sm:flex-[0_0_50%] md:flex-[0_0_33.333%] lg:flex-[0_0_25%] min-w-0 pl-3 sm:pl-6">
                                     {renderSkeleton(i)}
                                 </div>
                             ))}
@@ -259,7 +271,7 @@ export function AdminKpiCarousel({
                     ) : (
                         <>
                             <div className="overflow-hidden" ref={emblaRef}>
-                                <div className="flex -ml-3 sm:-ml-6">
+                                <div className="flex -ml-3 sm:-ml-6" style={{ touchAction: 'pan-y' }}>
                                     {displayCards.map((stat, index) => (
                                         <div key={stat.id || stat.label || index} className="flex-[0_0_100%] sm:flex-[0_0_50%] md:flex-[0_0_33.333%] lg:flex-[0_0_25%] min-w-0 pl-3 sm:pl-6">
                                             {renderCard(stat, index)}

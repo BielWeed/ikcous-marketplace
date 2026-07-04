@@ -24,7 +24,6 @@ import {
     Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -37,8 +36,8 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { useDebounce } from '@/hooks/useDebounce';
 import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
+import { DebouncedSearchInput } from '@/components/admin/DebouncedSearchInput';
 import { LocalErrorBoundary } from '@/components/ui/custom/LocalErrorBoundary';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
@@ -61,22 +60,33 @@ interface AdminCustomersViewProps {
     active?: boolean;
 }
 
+let cachedCustomersData: {
+    customers: Customer[];
+    total: number;
+    stats: {
+        total_customers: number;
+        global_ltv: number;
+        global_orders: number;
+        new_customers_30d: number;
+    };
+} | null = null;
+
 export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate, active }: Readonly<AdminCustomersViewProps>) {
     const isOffline = useOnlineStatus();
-    const [customers, setCustomers] = useState<Customer[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [customers, setCustomers] = useState<Customer[]>(() => cachedCustomersData?.customers || []);
+    const [loading, setLoading] = useState(() => !cachedCustomersData);
     const [showHelpModal, setShowHelpModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const debouncedSearchTerm = useDebounce(searchTerm, 400);
+    const [isTyping, setIsTyping] = useState(false);
     const [sortField, setSortField] = useState<keyof Customer>('created_at');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-    const [totalCustomers, setTotalCustomers] = useState(0);
+    const [totalCustomers, setTotalCustomers] = useState(() => cachedCustomersData?.total || 0);
     const [globalStats, setGlobalStats] = useState<{
         total_customers: number;
         global_ltv: number;
         global_orders: number;
         new_customers_30d: number;
-    } | null>(null);
+    } | null>(() => cachedCustomersData?.stats || null);
     const [page, setPage] = useState(0);
     const PAGE_SIZE = 10;
 
@@ -94,7 +104,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
             setLoading(true);
 
             const { data, error } = await (supabase.rpc as any)('get_admin_customers_paged', {
-                p_search: debouncedSearchTerm,
+                p_search: searchTerm,
                 p_sort_field: sortField,
                 p_sort_direction: sortDirection,
                 p_page: pageToFetch,
@@ -104,9 +114,19 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
             if (error) throw error;
 
             if (data) {
-                setCustomers(data.data || []);
-                setTotalCustomers(data.total_count || 0);
-                setGlobalStats(data.stats);
+                const customersList = data.data || [];
+                const totalCount = data.total_count || 0;
+                const stats = data.stats;
+
+                cachedCustomersData = {
+                    customers: customersList,
+                    total: totalCount,
+                    stats
+                };
+
+                setCustomers(customersList);
+                setTotalCustomers(totalCount);
+                setGlobalStats(stats);
             }
         } catch (error) {
             console.error('Error fetching customers:', error);
@@ -114,9 +134,9 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
         } finally {
             setLoading(false);
         }
-    }, [debouncedSearchTerm, sortField, sortDirection, PAGE_SIZE]);
+    }, [searchTerm, sortField, sortDirection, PAGE_SIZE]);
 
-    const prevSearch = useRef(debouncedSearchTerm);
+    const prevSearch = useRef(searchTerm);
     const prevSortField = useRef(sortField);
     const prevSortDirection = useRef(sortDirection);
 
@@ -124,11 +144,11 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
         if (!active) return;
 
         const filtersChanged = 
-            prevSearch.current !== debouncedSearchTerm ||
+            prevSearch.current !== searchTerm ||
             prevSortField.current !== sortField ||
             prevSortDirection.current !== sortDirection;
 
-        prevSearch.current = debouncedSearchTerm;
+        prevSearch.current = searchTerm;
         prevSortField.current = sortField;
         prevSortDirection.current = sortDirection;
 
@@ -142,7 +162,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
         }
 
         fetchCustomers(pageToFetch);
-    }, [debouncedSearchTerm, sortField, sortDirection, page, active, fetchCustomers]);
+    }, [searchTerm, sortField, sortDirection, page, active, fetchCustomers]);
 
     const kpiCards = useMemo<readonly KpiCardConfig[]>(() => [
         { label: 'Total Clientes', value: globalStats?.total_customers || 0, icon: Users, accent: 'text-admin-gold', subValue: 'Base de Clientes' },
@@ -251,7 +271,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                 {/* Control Bar para Carrossel/Grid de Métricas */}
                 <div className="space-y-4">
                     <LocalErrorBoundary>
-                        <AdminKpiCarousel cards={kpiCards} loading={loading} title="Métricas de Clientes" />
+                        <AdminKpiCarousel cards={kpiCards} loading={loading && !globalStats} title="Métricas de Clientes" />
                     </LocalErrorBoundary>
                 </div>
                 {/* Unified Control & Data Block */}
@@ -261,19 +281,19 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                         <div className="flex items-center gap-4 w-full flex-1">
                             <div className="relative group w-full">
                                 <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                                    {loading || searchTerm !== debouncedSearchTerm ? (
+                                    {loading || isTyping ? (
                                         <Loader2 className="h-5 w-5 text-admin-gold animate-spin" />
                                     ) : (
                                         <Search className="h-5 w-5 text-zinc-600 group-focus-within:text-admin-gold transition-colors" />
                                     )}
                                 </div>
-                                <Input
-                                    type="text"
+                                <DebouncedSearchInput
                                     placeholder="Buscar cliente premium..."
                                     className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all font-bold text-sm w-full"
                                     value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    autoComplete="off"
+                                    onChange={setSearchTerm}
+                                    onTyping={setIsTyping}
+                                    delay={300}
                                 />
                             </div>
                             <Button variant="outline" size="icon" className="h-14 w-14 rounded-2xl border-zinc-800 bg-zinc-900/60 hover:border-admin-gold/50 group transition-all shrink-0">

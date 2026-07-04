@@ -21,12 +21,13 @@ export function useRealtimeUpdate(onUpdateDetected: () => void, userId?: string)
     useEffect(() => {
         let activeChannel: ReturnType<typeof supabase.channel> | null = null;
         let isUnmounting = false;
+        let setupTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
         // Shared BroadcastChannel for cross-tab realtime synchronization
         const bc = new BroadcastChannel('ikcous_realtime_updates');
 
         if (isLeader) {
-            console.log('[RealtimeUpdate] Current tab is LEADER. Setting up Supabase Realtime subscription...');
+            console.log('[RealtimeUpdate] Current tab is LEADER. Deferring Supabase Realtime subscription...');
 
             const setupRealtime = () => {
                 if (isUnmounting) return;
@@ -88,7 +89,7 @@ export function useRealtimeUpdate(onUpdateDetected: () => void, userId?: string)
                     });
             };
 
-            setupRealtime();
+            setupTimeoutId = setTimeout(setupRealtime, 400);
         } else {
             console.log('[RealtimeUpdate] Current tab is SECONDARY. Relying on Leader Tab via BroadcastChannel...');
 
@@ -113,6 +114,9 @@ export function useRealtimeUpdate(onUpdateDetected: () => void, userId?: string)
         return () => {
             console.log('[RealtimeUpdate] Context cleaning up (isLeader:', isLeader, ')...');
             isUnmounting = true;
+            if (setupTimeoutId) {
+                clearTimeout(setupTimeoutId);
+            }
             bc.close();
             if (activeChannel) {
                 const channelToCleanup = activeChannel;

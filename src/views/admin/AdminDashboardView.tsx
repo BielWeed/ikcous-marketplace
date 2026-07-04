@@ -12,6 +12,7 @@ import {
   useState,
   useCallback,
   useMemo,
+  useRef,
   memo
 } from 'react';
 import { useAnalytics } from '@/hooks/useAnalytics';
@@ -53,10 +54,18 @@ export const AdminDashboardView = memo(function AdminDashboardView({
   } = useAnalytics();
   
   const [showHelpModal, setShowHelpModal] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
+  const [isLoading, setIsLoading] = useState(() => !stats || !categoryData);
+  
+  const statsRef = useRef(stats);
+  const categoryDataRef = useRef(categoryData);
+  
+  useEffect(() => {
+    statsRef.current = stats;
+    categoryDataRef.current = categoryData;
+  }, [stats, categoryData]);
+ 
   const loadDashboardData = useCallback(async (force = false) => {
-    const hasData = !!stats;
+    const hasData = !!statsRef.current && !!categoryDataRef.current;
     if (!hasData || force) {
       setIsLoading(true);
     }
@@ -74,7 +83,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     } finally {
       setIsLoading(false);
     }
-  }, [fetchExecutiveSummary, fetchCategoryAnalytics, stats]);
+  }, [fetchExecutiveSummary, fetchCategoryAnalytics]);
 
   const mappedCategoryData = useMemo<CategoryData[]>(() => {
     if (!categoryData) return [];
@@ -144,7 +153,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
                 {active && (
                     <LocalErrorBoundary>
-                        <KpiSummaryCards stats={stats} loading={isLoading && !stats} />
+                        <KpiSummaryCards stats={stats} loading={isLoading && !stats} active={active} />
                     </LocalErrorBoundary>
                 )}
             </div>
@@ -163,15 +172,14 @@ export const AdminDashboardView = memo(function AdminDashboardView({
 
             {/* Performance Grid - Old chart as secondary or removed */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-10 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-300">
-                {active && (
-                    <LocalErrorBoundary>
-                        <OperationalPerformanceChart
-                            stats={stats}
-                            loading={isLoading && !stats}
-                            className="lg:col-span-3"
-                        />
-                    </LocalErrorBoundary>
-                )}
+                <LocalErrorBoundary>
+                    <OperationalPerformanceChart
+                        stats={stats}
+                        loading={isLoading && !stats}
+                        active={active}
+                        className="lg:col-span-3"
+                    />
+                </LocalErrorBoundary>
             </div>
 
             {/* Bottom Grid */}

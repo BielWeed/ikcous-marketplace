@@ -317,62 +317,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
 
 
 
-  if ((loading || firstLoadRef.current) && products.length === 0) {
-    return (
-      <div className="p-6 md:p-8 space-y-8 animate-in fade-in duration-500">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-28 rounded-2xl bg-white/5 animate-pulse" />)}
-        </div>
-        
-        {viewMode === 'detailed' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 pb-10">
-            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-              <div key={i} className="admin-glass rounded-[2.5rem] border border-white/5 p-8 space-y-6 h-[440px] flex flex-col justify-between shadow-[0_20px_50px_rgba(0,0,0,0.3)]">
-                <div className="flex gap-6 items-start">
-                  <Skeleton className="w-24 h-24 rounded-3xl bg-white/5 shrink-0 animate-pulse" />
-                  <div className="flex-1 space-y-3 pt-2">
-                    <Skeleton className="h-5 w-3/4 bg-white/5 animate-pulse" />
-                    <Skeleton className="h-3.5 w-1/2 bg-white/5 animate-pulse" />
-                    <Skeleton className="h-4.5 w-1/3 bg-white/5 rounded-lg animate-pulse" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3 pt-6 border-t border-white/5">
-                  <Skeleton className="h-16 rounded-2xl bg-white/5 animate-pulse" />
-                  <Skeleton className="h-16 rounded-2xl bg-white/5 animate-pulse" />
-                </div>
-                <div className="space-y-4 pt-2 flex-1">
-                  <div className="flex justify-between items-center">
-                    <Skeleton className="h-3.5 w-1/3 bg-white/5 animate-pulse" />
-                    <Skeleton className="h-3.5 w-1/12 bg-white/5 animate-pulse" />
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <Skeleton className="h-3.5 w-1/4 bg-white/5 animate-pulse" />
-                    <Skeleton className="h-3.5 w-1/4 bg-white/5 animate-pulse" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 pb-10">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(i => (
-              <div key={i} className="admin-glass rounded-[1.5rem] border border-white/5 overflow-hidden h-[250px] flex flex-col justify-between shadow-lg">
-                <Skeleton className="w-full aspect-square bg-white/5 animate-pulse" />
-                <div className="p-3 flex flex-col gap-2">
-                  <Skeleton className="h-3 w-1/3 bg-white/5 animate-pulse" />
-                  <Skeleton className="h-3.5 w-3/4 bg-white/5 animate-pulse" />
-                  <div className="flex justify-between items-baseline pt-1 border-t border-white/5">
-                    <Skeleton className="h-3 w-1/4 bg-white/5 animate-pulse" />
-                    <Skeleton className="h-3.5 w-1/3 bg-white/5 animate-pulse" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
+  // Removed early return loading block to prevent visual layout shifts
 
   return (
     <div className="h-auto bg-admin-bg text-white pb-8 animate-in fade-in duration-1000">
@@ -457,7 +402,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
       <div className="space-y-4">
         {active && (
           <LocalErrorBoundary>
-            <AdminKpiCarousel cards={kpiCards} title="Visão Financeira" />
+            <AdminKpiCarousel cards={kpiCards} loading={loading && !stats} active={active} title="Visão Financeira" />
           </LocalErrorBoundary>
         )}
       </div>
@@ -522,43 +467,88 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
         </div>
       </div>
 
-      {/* Grid view of Products as Assets */}
+         {/* Grid view of Products as Assets */}
       <LocalErrorBoundary>
-        <div className={cn("transition-opacity duration-300", (loading && products.length === 0) && "opacity-50 pointer-events-none")}>
+        <div className={cn("transition-opacity duration-300", loading && "opacity-50 pointer-events-none")}>
           {viewMode === 'detailed' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 pb-10">
-              {products?.map((product) => (
-                <AdminProductCard
-                  key={product.id}
-                  product={product}
-                  viewMode="detailed"
-                  onNavigate={onNavigate}
-                  onToggleStatus={handleToggleStatus}
-                  onDuplicate={handleDuplicate}
-                  onDelete={handleDelete}
-                  isOffline={isOffline}
-                />
-              ))}
+              {((loading || firstLoadRef.current) && products.length === 0) ? (
+                Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="admin-glass rounded-[2.5rem] border border-white/5 p-8 space-y-6 h-[440px] flex flex-col justify-between shadow-[0_20px_50px_rgba(0,0,0,0.3)] animate-pulse">
+                    <div className="flex gap-6 items-start">
+                      <Skeleton className="w-24 h-24 rounded-3xl bg-white/5 shrink-0 animate-pulse" />
+                      <div className="flex-1 space-y-3 pt-2">
+                        <Skeleton className="h-5 w-3/4 bg-white/5 animate-pulse" />
+                        <Skeleton className="h-3.5 w-1/2 bg-white/5 animate-pulse" />
+                        <Skeleton className="h-4.5 w-1/3 bg-white/5 rounded-lg animate-pulse" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 pt-6 border-t border-white/5">
+                      <Skeleton className="h-16 rounded-2xl bg-white/5 animate-pulse" />
+                      <Skeleton className="h-16 rounded-2xl bg-white/5 animate-pulse" />
+                    </div>
+                    <div className="space-y-4 pt-2 flex-1">
+                      <div className="flex justify-between items-center">
+                        <Skeleton className="h-3.5 w-1/3 bg-white/5 animate-pulse" />
+                        <Skeleton className="h-3.5 w-1/12 bg-white/5 animate-pulse" />
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <Skeleton className="h-3.5 w-1/4 bg-white/5 animate-pulse" />
+                        <Skeleton className="h-3.5 w-1/4 bg-white/5 animate-pulse" />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                products?.map((product) => (
+                  <AdminProductCard
+                    key={product.id}
+                    product={product}
+                    viewMode="detailed"
+                    onNavigate={onNavigate}
+                    onToggleStatus={handleToggleStatus}
+                    onDuplicate={handleDuplicate}
+                    onDelete={handleDelete}
+                    isOffline={isOffline}
+                  />
+                ))
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 pb-10">
-              {products?.map((product) => (
-                <AdminProductCard
-                  key={product.id}
-                  product={product}
-                  viewMode="compact"
-                  onNavigate={onNavigate}
-                  onToggleStatus={handleToggleStatus}
-                  onDuplicate={handleDuplicate}
-                  onDelete={handleDelete}
-                  isOffline={isOffline}
-                />
-              ))}
+              {((loading || firstLoadRef.current) && products.length === 0) ? (
+                Array.from({ length: 12 }).map((_, i) => (
+                  <div key={i} className="admin-glass rounded-[1.5rem] border border-white/5 overflow-hidden h-[250px] flex flex-col justify-between shadow-lg animate-pulse">
+                    <Skeleton className="w-full aspect-square bg-white/5 animate-pulse" />
+                    <div className="p-3 flex flex-col gap-2">
+                      <Skeleton className="h-3 w-1/3 bg-white/5 animate-pulse" />
+                      <Skeleton className="h-3.5 w-3/4 bg-white/5 animate-pulse" />
+                      <div className="flex justify-between items-baseline pt-1 border-t border-white/5">
+                        <Skeleton className="h-3 w-1/4 bg-white/5 animate-pulse" />
+                        <Skeleton className="h-3.5 w-1/3 bg-white/5 animate-pulse" />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                products?.map((product) => (
+                  <AdminProductCard
+                    key={product.id}
+                    product={product}
+                    viewMode="compact"
+                    onNavigate={onNavigate}
+                    onToggleStatus={handleToggleStatus}
+                    onDuplicate={handleDuplicate}
+                    onDelete={handleDelete}
+                    isOffline={isOffline}
+                  />
+                ))
+              )}
             </div>
           )}
         </div>
       </LocalErrorBoundary>
-
+ 
       {/* Pagination Controls */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-4 pb-10 select-none px-4 sm:px-0">
@@ -569,9 +559,9 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
+              onClick={(e) => {
                 setCurrentPage(prev => Math.max(0, prev - 1));
-                const mainEl = document.querySelector('.admin-scroll-container') || document.querySelector('main');
+                const mainEl = e.currentTarget.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
                 if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
               }}
               disabled={currentPage === 0}
@@ -582,9 +572,9 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
+              onClick={(e) => {
                 setCurrentPage(prev => Math.min(totalPages - 1, prev + 1));
-                const mainEl = document.querySelector('.admin-scroll-container') || document.querySelector('main');
+                const mainEl = e.currentTarget.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
                 if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
               }}
               disabled={currentPage === totalPages - 1}
@@ -1057,12 +1047,12 @@ const AdminProductCard = memo(function AdminProductCard({
     return (
       <div className="group relative">
         <div className="absolute inset-0 bg-gradient-to-br from-admin-gold to-transparent rounded-[2.5rem] blur-2xl opacity-0 group-hover:opacity-5 transition-opacity duration-700" />
-        <div className="relative admin-glass sm:rounded-[2.5rem] border-y sm:border-x border-white/5 overflow-hidden group-hover:border-white/10 transition-all duration-500 flex flex-col h-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] content-visibility-auto">
+        <div className="relative admin-glass sm:rounded-[2.5rem] border-y sm:border-x border-white/5 overflow-hidden group-hover:border-white/10 transition-all duration-500 flex flex-col h-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] content-visibility-detailed-card">
           {/* Header Action Overlay */}
           <div className="absolute right-4 top-4 z-20">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-10 w-10 bg-black/40 backdrop-blur-md border border-white/5 text-zinc-500 hover:text-white hover:bg-black/60 rounded-xl p-0 transition-all">
+                <Button variant="ghost" size="sm" className="h-11 w-11 bg-black/40 backdrop-blur-md border border-white/5 text-zinc-500 hover:text-white hover:bg-black/60 rounded-xl p-0 transition-all">
                   <MoreVertical className="w-5 h-5" />
                 </Button>
               </DropdownMenuTrigger>
@@ -1225,7 +1215,7 @@ const AdminProductCard = memo(function AdminProductCard({
   return (
     <div className="group relative">
       <div className="absolute inset-0 bg-gradient-to-br from-admin-gold to-transparent rounded-[1.5rem] blur-xl opacity-0 group-hover:opacity-5 transition-opacity duration-700" />
-      <div className="relative admin-glass rounded-[1.5rem] border border-white/5 overflow-hidden group-hover:border-white/10 transition-all duration-500 flex flex-col h-full shadow-lg content-visibility-auto">
+      <div className="relative admin-glass rounded-[1.5rem] border border-white/5 overflow-hidden group-hover:border-white/10 transition-all duration-500 flex flex-col h-full shadow-lg content-visibility-compact-card">
         {/* Image and Action Button */}
         <div className="relative aspect-square w-full bg-zinc-900 overflow-hidden border-b border-white/5">
           <LazyImage

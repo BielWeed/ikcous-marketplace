@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
 import { ArrowLeft, Send, Users, Info, Sparkles, Zap, History, Target, HelpCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -16,7 +16,7 @@ interface AdminPushViewProps {
     targetUserId?: string;
 }
 
-export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) {
+export const AdminPushView = memo(function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) {
     const { user } = useAuth();
     const isOffline = useOnlineStatus();
     const [loading, setLoading] = useState(false);
@@ -659,4 +659,4 @@ export function AdminPushView({ onNavigate, targetUserId }: AdminPushViewProps) 
             )}
         </div>
     );
-}
+});

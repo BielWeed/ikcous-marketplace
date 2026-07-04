@@ -22,6 +22,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import type { Order, OrderStatus, View } from '@/types';
 import { useOrders } from '@/hooks/useOrders';
+import { useAnalytics } from '@/hooks/useAnalytics';
 import { DebouncedSearchInput } from '@/components/admin/DebouncedSearchInput';
 import { OrderStatusBadge, statusConfig } from '@/components/admin/orders/OrderStatusBadge';
 import { OrderDetail } from '@/components/admin/orders/OrderDetail';
@@ -66,9 +67,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
   const isOffline = useOnlineStatus();
   const [recentOrderChanges, setRecentOrderChanges] = useState<Record<string, 'INSERT' | 'UPDATE'>>({});
   const onRealtimeEventRef = useRef<(payload: any) => void>(() => {});
-  const { orders, loadOrders, updateOrderStatus, totalOrders, isLoaded, fetchDashboardSummary } = useOrders(active ?? false, true, {
+  const { orders, loadOrders, updateOrderStatus, totalOrders, isLoaded, loading } = useOrders(active ?? false, true, {
     onRealtimeEvent: (payload) => onRealtimeEventRef.current(payload)
   });
+  const { stats: analyticsStats, fetchExecutiveSummary } = useAnalytics();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -90,6 +93,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [savedScrollPosition, setSavedScrollPosition] = useState(0);
   const prevSelectedOrderRef = useRef<Order | null>(null);
+  const viewRef = useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const itemsPerPage = 12;
 
@@ -97,7 +101,23 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
   const lastSearchRef = useRef<string>('');
   const lastDateRef = useRef<string>(JSON.stringify({ start: '', end: '' }));
 
-  const [stats, setStats] = useState({ revenueDay: 0, pending: 0, avgTicket: 0, completed: 0 });
+  const [stats, setStats] = useState(() => ({
+    revenueDay: analyticsStats?.today?.revenue || 0,
+    pending: analyticsStats?.today?.pending || 0,
+    avgTicket: analyticsStats?.averageTicket || analyticsStats?.executive?.avgTicket || 0,
+    completed: analyticsStats?.month?.count || 0
+  }));
+
+  useEffect(() => {
+    if (analyticsStats) {
+      setStats({
+        revenueDay: analyticsStats.today?.revenue || 0,
+        pending: analyticsStats.today?.pending || 0,
+        avgTicket: analyticsStats.averageTicket || analyticsStats.executive?.avgTicket || 0,
+        completed: analyticsStats.month?.count || 0
+      });
+    }
+  }, [analyticsStats]);
 
   const kpiCards = useMemo<readonly KpiCardConfig[]>(() => [
     { label: 'Receita Hoje', value: `R$ ${stats.revenueDay.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: DollarSign, accent: 'text-emerald-500', subValue: 'Finanças' },
@@ -107,23 +127,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
   ], [stats]);
 
   const loadStats = useCallback(async () => {
-    const summary = await fetchDashboardSummary();
-    if (summary) {
-      setStats({
-        revenueDay: summary.today?.revenue || 0,
-        pending: summary.today?.pending || 0,
-        avgTicket: summary.averageTicket || 0,
-        completed: summary.month?.count || 0
-      });
-    }
-  }, [fetchDashboardSummary]);
+    await fetchExecutiveSummary(true);
+  }, [fetchExecutiveSummary]);
 
   const handleBackToList = useCallback(() => {
     onNavigate('admin-orders');
   }, [onNavigate]);
 
   const handleSelectOrder = useCallback((order: Order) => {
-    const container = document.querySelector('.admin-scroll-container') || document.querySelector('main');
+    const container = viewRef.current?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
     if (container) {
       setSavedScrollPosition(container.scrollTop);
     }
@@ -145,6 +157,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
   // Sync selectedOrder with selectedOrderId prop driven by URL
   const lastSelectedOrderIdRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
+    if (!active) return;
+
     const nextOrder = selectedOrderId ? (orders.find(o => o.id === selectedOrderId) || null) : null;
     const isIdChanged = lastSelectedOrderIdRef.current !== selectedOrderId;
     lastSelectedOrderIdRef.current = selectedOrderId;
@@ -207,10 +221,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
     return () => {
       isCurrent = false;
     };
-  }, [selectedOrderId, orders]);
+  }, [selectedOrderId, orders, active]);
 
   useEffect(() => {
-    const container = document.querySelector('.admin-scroll-container') || document.querySelector('main');
+    const container = viewRef.current?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
     if (!container) return;
 
     const prev = prevSelectedOrderRef.current;
@@ -373,86 +387,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
     globalThis.open(url, '_blank');
   }, [isOffline]);
 
-  if (!isLoaded && orders.length === 0) {
-    return (
-      <div className="p-6 space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-10 w-48 bg-white/5 rounded-xl animate-pulse" />
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-5 rounded-[1.5rem] flex flex-col border border-white/[0.04] space-y-3 sm:space-y-4 shadow-2xl">
-              <div className="flex items-center gap-3">
-                <Skeleton className="w-10 h-10 rounded-xl bg-white/5 animate-pulse" />
-                <Skeleton className="h-3 w-20 bg-white/5 animate-pulse" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Skeleton className="h-8 w-24 bg-white/5 animate-pulse" />
-                <Skeleton className="h-3 w-16 bg-white/5 animate-pulse" />
-              </div>
-            </div>
-          ))}
-        </div>
-        {viewMode === 'detailed' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-10">
-            {[1, 2, 3, 4, 5, 6].map(i => (
-              <div key={i} className="bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[3rem] p-8 space-y-6 h-[278px] flex flex-col justify-between shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="w-10 h-10 rounded-xl bg-white/5 animate-pulse" />
-                    <div className="space-y-2">
-                      <Skeleton className="h-3 w-16 bg-white/5 animate-pulse" />
-                      <Skeleton className="h-2.5 w-12 bg-white/5 animate-pulse" />
-                    </div>
-                  </div>
-                  <Skeleton className="h-5 w-16 bg-white/5 rounded-full animate-pulse" />
-                </div>
-                <div className="space-y-2">
-                  <Skeleton className="h-6 w-3/4 bg-white/5 animate-pulse" />
-                  <Skeleton className="h-3 w-1/2 bg-white/5 animate-pulse" />
-                </div>
-                <div className="flex justify-between items-end pt-4 border-t border-white/5">
-                  <div className="space-y-1">
-                    <Skeleton className="h-2.5 w-12 bg-white/5 animate-pulse" />
-                    <Skeleton className="h-6 w-24 bg-white/5 animate-pulse" />
-                  </div>
-                  <Skeleton className="w-12 h-12 rounded-2xl bg-white/5 animate-pulse" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 min-[480px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-10">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(i => (
-              <div key={i} className="bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[2rem] p-4 sm:p-5 h-[164px] flex flex-col justify-between shadow-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Skeleton className="w-8 h-8 rounded-lg bg-white/5 animate-pulse" />
-                    <div className="space-y-1">
-                      <Skeleton className="h-2.5 w-12 bg-white/5 animate-pulse" />
-                      <Skeleton className="h-2 w-8 bg-white/5 animate-pulse" />
-                    </div>
-                  </div>
-                  <Skeleton className="h-4.5 w-12 bg-white/5 rounded-full animate-pulse" />
-                </div>
-                <div className="space-y-1">
-                  <Skeleton className="h-4 w-3/4 bg-white/5 animate-pulse" />
-                  <Skeleton className="h-2.5 w-1/2 bg-white/5 animate-pulse" />
-                </div>
-                <div className="flex items-center justify-between pt-3 border-t border-white/5">
-                  <div className="space-y-1">
-                    <Skeleton className="h-2 w-8 bg-white/5 animate-pulse" />
-                    <Skeleton className="h-4 w-16 bg-white/5 animate-pulse" />
-                  </div>
-                  <Skeleton className="w-9 h-9 rounded-xl bg-white/5 animate-pulse" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
+  // Removed early return loading block to prevent visual layout shifts
 
   if (selectedOrderId && (loadingDetail || !selectedOrder)) {
     return (
@@ -490,7 +425,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
   }
 
   return (
-    <div className="h-auto bg-admin-bg text-white pb-8 font-sans selection:bg-admin-gold/30 animate-in fade-in duration-500">
+    <div ref={viewRef} className="h-auto bg-admin-bg text-white pb-8 font-sans selection:bg-admin-gold/30 animate-in fade-in duration-500">
 
       {/* Header Elite */}
       <div className="px-6 flex items-center justify-between gap-4 pt-6 pb-2">
@@ -533,7 +468,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
 
         {active && (
           <LocalErrorBoundary>
-            <AdminKpiCarousel cards={kpiCards} title="Métricas de Pedidos" />
+            <AdminKpiCarousel cards={kpiCards} loading={(!isLoaded || loading) && !analyticsStats} active={active} title="Métricas de Pedidos" />
           </LocalErrorBoundary>
         )}
 
@@ -621,7 +556,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
             <button
               onClick={() => setFilter('all')}
               className={cn(
-                "px-5 h-10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 snap-center",
+                "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 snap-center",
                 filter === 'all'
                   ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
                   : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white"
@@ -634,7 +569,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
                 key={status}
                 onClick={() => setFilter(status as OrderStatus)}
                 className={cn(
-                  "px-5 h-10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-3 shrink-0 snap-center",
+                  "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-3 shrink-0 snap-center",
                   filter === status
                     ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
                     : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white"
@@ -649,8 +584,66 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
 
         {/* Orders List */}
         <LocalErrorBoundary>
-          <div className={cn("space-y-8 relative transition-opacity duration-300", (!isLoaded && paginatedOrders.length === 0) && "opacity-50 pointer-events-none")}>
-            {paginatedOrders.length === 0 ? (
+          <div className={cn("space-y-8 relative transition-opacity duration-300", !isLoaded && "opacity-50 pointer-events-none")}>
+            {(!isLoaded || loading) && paginatedOrders.length === 0 ? (
+              viewMode === 'detailed' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[3rem] p-8 space-y-6 h-[278px] flex flex-col justify-between shadow-[0_20px_60px_rgba(0,0,0,0.3)] animate-pulse">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="w-10 h-10 rounded-xl bg-white/5" />
+                          <div className="space-y-2">
+                            <Skeleton className="h-3 w-16 bg-white/5" />
+                            <Skeleton className="h-2.5 w-12 bg-white/5" />
+                          </div>
+                        </div>
+                        <Skeleton className="h-5 w-16 bg-white/5 rounded-full" />
+                      </div>
+                      <div className="space-y-2">
+                        <Skeleton className="h-6 w-3/4 bg-white/5" />
+                        <Skeleton className="h-3 w-1/2 bg-white/5" />
+                      </div>
+                      <div className="flex justify-between items-end pt-4 border-t border-white/5">
+                        <div className="space-y-1">
+                          <Skeleton className="h-2.5 w-12 bg-white/5" />
+                          <Skeleton className="h-6 w-24 bg-white/5" />
+                        </div>
+                        <Skeleton className="w-12 h-12 rounded-2xl bg-white/5" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 min-[480px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {Array.from({ length: 10 }).map((_, i) => (
+                    <div key={i} className="bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[2rem] p-4 sm:p-5 h-[164px] flex flex-col justify-between shadow-lg animate-pulse">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Skeleton className="w-8 h-8 rounded-lg bg-white/5" />
+                          <div className="space-y-1">
+                            <Skeleton className="h-2.5 w-12 bg-white/5" />
+                            <Skeleton className="h-2 w-8 bg-white/5" />
+                          </div>
+                        </div>
+                        <Skeleton className="h-4.5 w-12 bg-white/5 rounded-full" />
+                      </div>
+                      <div className="space-y-1">
+                        <Skeleton className="h-4 w-3/4 bg-white/5" />
+                        <Skeleton className="h-2.5 w-1/2 bg-white/5" />
+                      </div>
+                      <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                        <div className="space-y-1">
+                          <Skeleton className="h-2 w-8 bg-white/5" />
+                          <Skeleton className="h-4 w-16 bg-white/5" />
+                        </div>
+                        <Skeleton className="w-9 h-9 rounded-xl bg-white/5" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : paginatedOrders.length === 0 ? (
               <div className="bg-zinc-950/40 backdrop-blur-md p-20 rounded-[4rem] border border-white/5 text-center relative overflow-hidden">
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-admin-gold/5 blur-[100px] rounded-full" />
                 <div className="relative z-10">
@@ -704,7 +697,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
           <div className="flex items-center justify-center gap-10 pt-12">
             <Button
               variant="ghost"
-              onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+              onClick={(e) => {
+                setCurrentPage(p => Math.max(0, p - 1));
+                const mainEl = e.currentTarget.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+                if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
               disabled={currentPage === 0}
               className="w-16 h-16 bg-zinc-950/50 border border-white/5 text-zinc-500 rounded-3xl hover:bg-admin-gold hover:text-black transition-all disabled:opacity-20 group"
             >
@@ -716,7 +713,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
             </div>
             <Button
               variant="ghost"
-              onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+              onClick={(e) => {
+                setCurrentPage(p => Math.min(totalPages - 1, p + 1));
+                const mainEl = e.currentTarget.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+                if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
               disabled={currentPage === totalPages - 1}
               className="w-16 h-16 bg-zinc-950/50 border border-white/5 text-zinc-500 rounded-3xl hover:bg-admin-gold hover:text-black transition-all disabled:opacity-20 group"
             >

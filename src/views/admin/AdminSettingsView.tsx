@@ -1,5 +1,5 @@
 import React, { useState, useEffect, memo } from 'react';
-import { Save, Ticket, Image as ImageIcon, Truck, Headset, Boxes, Bell, Settings, HelpCircle, ChevronDown, MessageSquare, Tag, Sparkles, Megaphone, MessageCircle, Clock, Share2, Info, Plus, Minus, RefreshCw } from 'lucide-react';
+import { Save, Ticket, Image as ImageIcon, Truck, Headset, Boxes, Bell, Settings, HelpCircle, ChevronDown, MessageSquare, Tag, Sparkles, Megaphone, MessageCircle, Clock, Share2, Info, Plus, Minus, RefreshCw, Star } from 'lucide-react';
 
 import { useStore } from '@/contexts/StoreContext';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 
 import type { View } from '@/types';
 
@@ -91,30 +92,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
         }
     };
 
-    if (!isLoaded) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] bg-[#09090b] text-white">
-                <div className="relative w-16 h-16">
-                    {/* Outer glowing ring */}
-                    <div className="absolute inset-0 rounded-full border-2 border-amber-500/10 animate-ping duration-1000"></div>
-                    {/* Spinner */}
-                    <div className="w-16 h-16 border-2 border-amber-500/10 border-t-amber-500 rounded-full animate-spin"></div>
-                    {/* Center hub */}
-                    <div className="absolute inset-4 rounded-full bg-zinc-900 border border-white/5 flex items-center justify-center">
-                        <span className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
-                    </div>
-                </div>
-                <div className="flex flex-col items-center gap-1.5 text-center mt-6">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500 animate-pulse">
-                        Carregando Configurações
-                    </p>
-                    <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest leading-none">
-                        Painel Administrativo
-                    </p>
-                </div>
-            </div>
-        );
-    }
+    // Removed early return loading block to prevent visual layout shifts
 
     return (
         <div className="h-auto bg-admin-bg pb-8 animate-in fade-in duration-700">
@@ -136,7 +114,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                     </h1>
                     <button
                         onClick={handleSubmit}
-                        disabled={isOffline || isSaving}
+                        disabled={!isLoaded || isOffline || isSaving}
                         className="h-11 px-4 sm:px-6 bg-admin-gold text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-[0_0_30px_rgba(212,175,55,0.2)] hover:shadow-[0_0_40px_rgba(212,175,55,0.3)] hover:bg-admin-gold/90 transition-all active:scale-95 flex items-center gap-2 sm:gap-3 shrink-0 disabled:opacity-50 disabled:grayscale disabled:pointer-events-none"
                     >
                         {isSaving ? (
@@ -155,8 +133,19 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
             </div>
 
             <div className="px-4 space-y-6 max-w-2xl mx-auto pb-10">
-                {/* Entregas Section */}
-                <div className="space-y-3">
+                {!isLoaded ? (
+                    <div className="space-y-6 animate-pulse mt-4">
+                        {[1, 2, 3, 4, 5].map(i => (
+                            <div key={i} className="p-6 rounded-[2rem] bg-zinc-900/30 border border-white/5 flex flex-col justify-between h-20">
+                                <Skeleton className="h-4 w-1/3 bg-white/5 rounded-md" />
+                                <Skeleton className="h-3 w-1/2 bg-white/5 rounded-md" />
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <>
+                        {/* Entregas Section */}
+                        <div className="space-y-3">
                     <button
                         type="button"
                         onClick={() => toggleSection('logistics')}
@@ -933,12 +922,40 @@ export const AdminSettingsView = memo(function AdminSettingsView({ onNavigate, a
                                             <span className="block text-[9px] font-black text-zinc-500 uppercase tracking-widest leading-none mt-1">Gerir Banners</span>
                                         </div>
                                     </button>
+
+                                    <button
+                                        onClick={() => onNavigate('admin-reviews')}
+                                        className="admin-glass group flex items-center gap-4 p-5 rounded-[2rem] border border-white/5 hover:border-admin-gold/30 hover:bg-white/5 transition-all active:scale-95 text-left"
+                                    >
+                                        <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center text-zinc-500 group-hover:text-admin-gold group-hover:border-admin-gold/20 transition-all shadow-xl">
+                                            <Star className="w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <span className="block text-sm font-bold text-white group-hover:text-admin-gold transition-colors">Avaliações</span>
+                                            <span className="block text-[9px] font-black text-zinc-500 uppercase tracking-widest leading-none mt-1">Gerir Feedbacks</span>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => onNavigate('admin-qa')}
+                                        className="admin-glass group flex items-center gap-4 p-5 rounded-[2rem] border border-white/5 hover:border-admin-gold/30 hover:bg-white/5 transition-all active:scale-95 text-left"
+                                    >
+                                        <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center text-zinc-500 group-hover:text-admin-gold group-hover:border-admin-gold/20 transition-all shadow-xl">
+                                            <MessageSquare className="w-6 h-6" />
+                                        </div>
+                                        <div>
+                                            <span className="block text-sm font-bold text-white group-hover:text-admin-gold transition-colors">Suporte</span>
+                                            <span className="block text-[9px] font-black text-zinc-500 uppercase tracking-widest leading-none mt-1">Dúvidas de Clientes</span>
+                                        </div>
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </>
+        )}
+    </div>
 
             {/* Modal de Ajuda */}
             {showHelpModal && (

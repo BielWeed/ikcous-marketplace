@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ImageAdjuster } from '@/components/ui/custom/ImageAdjuster';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { Skeleton } from '@/components/ui/skeleton';
 interface AdminProductFormViewProps {
   productId?: string;
   onNavigate: (view: View) => void;
@@ -42,7 +43,7 @@ const containerVariants = {
 //   visible: { opacity: 1, y: 0 }
 // };
 
-export function AdminProductFormView({ productId, onNavigate, onBack }: AdminProductFormViewProps) {
+export const AdminProductFormView = React.memo(function AdminProductFormView({ productId, onNavigate, onBack }: AdminProductFormViewProps) {
   const { addProduct, updateProduct, upsertVariants, deleteVariants, uploadProductImages, fetchProduct } = useProducts({ autoFetch: false });
   const { categories: dbCategories, addCategory } = useCategories();
   const isOffline = useOnlineStatus();
@@ -526,10 +527,71 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-950">
-        <div className="flex flex-col items-center gap-6">
-          <div className="w-12 h-12 border-4 border-white/5 border-t-emerald-500 rounded-full animate-spin shadow-[0_0_15px_rgba(16,185,129,0.3)]" />
-          <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.3em] animate-pulse">Iniciando Protocolo de Carga</p>
+      <div className="min-h-screen bg-zinc-950 text-white pb-12 select-none animate-pulse">
+        {/* Background Decor */}
+        <div className="fixed inset-0 pointer-events-none">
+          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-500/5 blur-[120px] rounded-full" />
+          <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-blue-500/5 blur-[120px] rounded-full" />
+        </div>
+
+        <header className="sticky top-0 z-30 bg-zinc-950/80 backdrop-blur-md border-b border-white/5 px-4 py-3 md:px-6 md:py-4">
+          <div className="flex items-center justify-between mx-auto max-w-5xl">
+            <div className="flex items-center gap-3 md:gap-4">
+              <div className="w-9 h-9 md:w-10 md:h-10 bg-white/5 rounded-xl border border-white/10" />
+              <div className="space-y-1.5">
+                <Skeleton className="h-4 w-32 bg-white/5 rounded" />
+                <Skeleton className="h-3 w-48 bg-white/5 rounded hidden sm:block" />
+              </div>
+            </div>
+            <Skeleton className="h-10 w-24 bg-white/5 rounded-xl border border-white/10" />
+          </div>
+        </header>
+
+        <div className="max-w-screen-xl mx-auto p-6 space-y-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* Left Column */}
+            <div className="lg:col-span-8 space-y-8">
+              {/* Photos section */}
+              <div className="p-6 rounded-[2.5rem] bg-zinc-900/20 border border-white/5 space-y-6">
+                <div className="flex justify-between items-center">
+                  <Skeleton className="h-4.5 w-24 bg-white/5 rounded" />
+                </div>
+                <div className="flex gap-6">
+                  <Skeleton className="w-36 h-36 rounded-3xl bg-white/5 shrink-0" />
+                  <Skeleton className="w-36 h-36 rounded-3xl bg-white/5 shrink-0" />
+                </div>
+              </div>
+
+              {/* General Data section */}
+              <div className="p-6 rounded-[2.5rem] bg-zinc-900/20 border border-white/5 space-y-6">
+                <Skeleton className="h-4.5 w-32 bg-white/5 rounded" />
+                <div className="space-y-3">
+                  <Skeleton className="h-3 w-20 bg-white/5 rounded" />
+                  <Skeleton className="h-14 w-full bg-white/5 rounded-2xl" />
+                </div>
+                <div className="space-y-3">
+                  <Skeleton className="h-3 w-28 bg-white/5 rounded" />
+                  <Skeleton className="h-32 w-full bg-white/5 rounded-3xl" />
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column */}
+            <div className="lg:col-span-4 space-y-8">
+              <div className="p-6 rounded-[2.5rem] bg-zinc-900/20 border border-white/5 space-y-6">
+                <Skeleton className="h-4.5 w-24 bg-white/5 rounded" />
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="flex justify-between items-center">
+                    <div className="space-y-1">
+                      <Skeleton className="h-3 w-16 bg-white/5 rounded" />
+                      <Skeleton className="h-2 w-24 bg-white/5 rounded" />
+                    </div>
+                    <Skeleton className="h-6 w-10 bg-white/5 rounded-full" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -2484,7 +2546,7 @@ export function AdminProductFormView({ productId, onNavigate, onBack }: AdminPro
       </AlertDialog>
     </div>
   );
-}
+});
 
 const compressImage = (file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.85): Promise<File> => {
   return new Promise((resolve) => {

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { Skeleton } from '@/components/ui/skeleton';
 
 import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
 
@@ -38,7 +39,7 @@ interface AdminCouponsViewProps {
     onNavigate: (view: View) => void;
 }
 
-export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
+export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
     const { coupons, loading, addCoupon, updateCoupon, deleteCoupon } = useCoupons(true);
     const isOffline = useOnlineStatus();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -201,6 +202,33 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
         }
     ], [activeCoupons, totalCoupons, totalUsage, averageDiscount]);
 
+    const renderSkeleton = () => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 rounded-[2.5rem] border border-white/[0.05] p-6 lg:p-8 h-[256px] flex flex-col justify-between animate-pulse">
+                    <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-4">
+                            <Skeleton className="w-12 h-12 rounded-2xl bg-white/5 animate-pulse" />
+                            <div className="space-y-1.5">
+                                <Skeleton className="h-4.5 w-20 bg-white/5 animate-pulse" />
+                                <Skeleton className="h-3 w-12 bg-white/5 animate-pulse" />
+                            </div>
+                        </div>
+                        <Skeleton className="w-12 h-6 rounded-full bg-white/5 animate-pulse" />
+                    </div>
+                    <div className="space-y-2">
+                        <Skeleton className="h-4.5 w-full bg-white/5 animate-pulse" />
+                        <Skeleton className="h-3 w-3/4 bg-white/5 animate-pulse" />
+                    </div>
+                    <div className="pt-4 border-t border-white/5 flex justify-between items-center">
+                        <Skeleton className="h-3 w-16 bg-white/5 animate-pulse" />
+                        <Skeleton className="w-8 h-8 rounded-xl bg-white/5 animate-pulse" />
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+
     return (
         <div className="h-auto bg-[#09090b] text-zinc-400 font-sans selection:bg-emerald-500/30 selection:text-emerald-200 relative pb-8 animate-in fade-in duration-500">
             {/* Header */}
@@ -252,9 +280,9 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
 
             <div className="max-w-7xl mx-auto p-4 lg:p-8">
                 {/* Stats Carousel Row */}
-                {coupons.length > 0 && (
+                {(coupons.length > 0 || loading) && (
                     <div className="space-y-4 mb-8">
-                        <AdminKpiCarousel cards={kpiCards} title="Métricas de Campanhas" />
+                        <AdminKpiCarousel cards={kpiCards} loading={loading} title="Métricas de Campanhas" />
                     </div>
                 )}
 
@@ -265,13 +293,9 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            className="flex flex-col items-center justify-center py-32"
+                            className="py-6"
                         >
-                            <div className="relative">
-                                <div className="w-16 h-16 border-2 border-zinc-800 border-t-emerald-500 rounded-full animate-spin" />
-                                <Ticket className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 text-emerald-500 animate-pulse" />
-                            </div>
-                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] mt-6">Sincronizando ofertas...</p>
+                            {renderSkeleton()}
                         </motion.div>
                     ) : coupons.length === 0 ? (
                         <motion.div
@@ -800,4 +824,4 @@ export function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
       </AlertDialog>
         </div>
     );
-}
+});

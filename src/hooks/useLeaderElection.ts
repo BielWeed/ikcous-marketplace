@@ -130,28 +130,35 @@ export function useLeaderElection() {
         };
         window.addEventListener('beforeunload', onUnload);
         
+        let visibilityDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+
         const handleVisibility = () => {
-            if (document.visibilityState === 'hidden') {
-                if (resignTimeoutRef.current) clearTimeout(resignTimeoutRef.current);
-                resignTimeoutRef.current = setTimeout(() => {
-                    if (isLeaderRef.current) {
-                        bc.postMessage({ type: 'LEADER_RESIGNED', tabId: TAB_ID });
-                    }
-                    resignLeadership();
-                }, 3000);
-            } else {
-                if (resignTimeoutRef.current) {
-                    clearTimeout(resignTimeoutRef.current);
-                    resignTimeoutRef.current = null;
-                }
-                bc.postMessage({ type: 'LEADER_PING', tabId: TAB_ID });
-                leaderAliveReceived = false;
-                setTimeout(() => {
-                    if (!leaderAliveReceived) {
-                        claimLeadership();
-                    }
-                }, 120);
+            if (visibilityDebounceTimeout) {
+                clearTimeout(visibilityDebounceTimeout);
             }
+            visibilityDebounceTimeout = setTimeout(() => {
+                if (document.visibilityState === 'hidden') {
+                    if (resignTimeoutRef.current) clearTimeout(resignTimeoutRef.current);
+                    resignTimeoutRef.current = setTimeout(() => {
+                        if (isLeaderRef.current) {
+                            bc.postMessage({ type: 'LEADER_RESIGNED', tabId: TAB_ID });
+                        }
+                        resignLeadership();
+                    }, 3000);
+                } else {
+                    if (resignTimeoutRef.current) {
+                        clearTimeout(resignTimeoutRef.current);
+                        resignTimeoutRef.current = null;
+                    }
+                    bc.postMessage({ type: 'LEADER_PING', tabId: TAB_ID });
+                    leaderAliveReceived = false;
+                    setTimeout(() => {
+                        if (!leaderAliveReceived) {
+                            claimLeadership();
+                        }
+                    }, 120);
+                }
+            }, 300);
         };
         document.addEventListener('visibilitychange', handleVisibility);
 
@@ -165,6 +172,9 @@ export function useLeaderElection() {
             if (resignTimeoutRef.current) {
                 clearTimeout(resignTimeoutRef.current);
                 resignTimeoutRef.current = null;
+            }
+            if (visibilityDebounceTimeout) {
+                clearTimeout(visibilityDebounceTimeout);
             }
             window.removeEventListener('beforeunload', onUnload);
             document.removeEventListener('visibilitychange', handleVisibility);

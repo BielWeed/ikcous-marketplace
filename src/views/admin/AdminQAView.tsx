@@ -19,7 +19,8 @@ import {
     Check,
     AlertCircle,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    Loader2
 } from 'lucide-react';
 import { useQuestions } from '@/hooks/useQuestions';
 import type { Question } from '@/hooks/useQuestions';
@@ -27,7 +28,7 @@ import type { View } from '@/types';
 import { toast } from 'sonner';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
-import { useDebounce } from '@/hooks/useDebounce';
+import { DebouncedSearchInput } from '@/components/admin/DebouncedSearchInput';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import {
@@ -84,6 +85,13 @@ const getAvatarGradient = (name: string) => {
     return colors[sum % colors.length];
 };
 
+let cachedQAStats: {
+    total: number;
+    pending: number;
+    answered: number;
+    rate: number;
+} | null = null;
+
 export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true }: AdminQAViewProps) {
     const { questions, loading, getAllQuestions, addAnswer, deleteQuestion, subscribeToQuestions } = useQuestions();
     const isOffline = useOnlineStatus();
@@ -95,7 +103,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
     const [page, setPage] = useState(0);
     const [totalQuestions, setTotalQuestions] = useState(0);
     const [searchQuery, setSearchQuery] = useState('');
-    const debouncedSearchQuery = useDebounce(searchQuery, 500);
+    const [isTyping, setIsTyping] = useState(false);
     const pageSize = 10;
 
     // Redesign Added States
@@ -104,10 +112,10 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
     const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(null);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-    const [totalCount, setTotalCount] = useState(0);
-    const [pendingCount, setPendingCount] = useState(0);
-    const [answeredCount, setAnsweredCount] = useState(0);
-    const [responseRate, setResponseRate] = useState(0);
+    const [totalCount, setTotalCount] = useState(() => cachedQAStats?.total || 0);
+    const [pendingCount, setPendingCount] = useState(() => cachedQAStats?.pending || 0);
+    const [answeredCount, setAnsweredCount] = useState(() => cachedQAStats?.answered || 0);
+    const [responseRate, setResponseRate] = useState(() => cachedQAStats?.rate || 0);
 
     // Dynamic metrics fetching
     const fetchStats = useCallback(async () => {
@@ -122,6 +130,12 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
             const answered = Math.max(0, total - pending);
             const rate = total > 0 ? Math.round((answered / total) * 100) : 0;
 
+            cachedQAStats = {
+                total,
+                pending,
+                answered,
+                rate
+            };
             setTotalCount(total);
             setPendingCount(pending);
             setAnsweredCount(answered);
@@ -140,7 +154,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
     const firstLoadRef = useRef(true);
 
     const loadQuestions = useCallback((pageToFetch: number) => {
-        getAllQuestions(pageToFetch, pageSize, filter, debouncedSearchQuery).then(result => {
+        getAllQuestions(pageToFetch, pageSize, filter, searchQuery).then(result => {
             if (result) {
                 setTotalQuestions(result.total);
                 const maxPage = Math.max(0, Math.ceil(result.total / pageSize) - 1);
@@ -152,17 +166,17 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
         }).catch(() => {
             firstLoadRef.current = false;
         });
-    }, [getAllQuestions, pageSize, filter, debouncedSearchQuery]);
+    }, [getAllQuestions, pageSize, filter, searchQuery]);
 
     const prevFilter = useRef(filter);
-    const prevSearch = useRef(debouncedSearchQuery);
+    const prevSearch = useRef(searchQuery);
 
     useEffect(() => {
         if (!active) return;
 
-        const filterChanged = prevFilter.current !== filter || prevSearch.current !== debouncedSearchQuery;
+        const filterChanged = prevFilter.current !== filter || prevSearch.current !== searchQuery;
         prevFilter.current = filter;
-        prevSearch.current = debouncedSearchQuery;
+        prevSearch.current = searchQuery;
 
         let pageToFetch = page;
         if (filterChanged) {
@@ -174,7 +188,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
         }
 
         loadQuestions(pageToFetch);
-    }, [page, filter, debouncedSearchQuery, active, loadQuestions]);
+    }, [page, filter, searchQuery, active, loadQuestions]);
 
     const onQuestionEventRef = useRef<() => void>(() => {});
 
@@ -213,7 +227,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
                 setSelectedQuestion(null);
                 setAnswer('');
                 setRefreshTrigger(prev => prev + 1);
-                getAllQuestions(page, pageSize, filter, debouncedSearchQuery);
+                getAllQuestions(page, pageSize, filter, searchQuery);
             }
         } catch (error) {
             console.error('Error answering:', error);
@@ -234,7 +248,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
         toast.success('Pergunta excluída');
         setConfirmDeleteId(null);
         setRefreshTrigger(prev => prev + 1);
-        getAllQuestions(page, pageSize, filter, debouncedSearchQuery);
+        getAllQuestions(page, pageSize, filter, searchQuery);
     };
 
     const totalPages = Math.ceil(totalQuestions / pageSize);
@@ -463,26 +477,29 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
                                         ) : (
                                             <>
                                                 <button
+                                                    disabled={isOffline}
                                                     onClick={() => setConfirmDeleteId(q.id)}
-                                                    className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/15 flex items-center justify-center transition-all"
+                                                    className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/15 flex items-center justify-center transition-all disabled:opacity-40 disabled:pointer-events-none"
                                                     title="Excluir Pergunta"
                                                 >
                                                     <Trash2 className="w-3.5 h-3.5" />
                                                 </button>
                                                 {!isAnswered ? (
                                                     <button
+                                                        disabled={isOffline}
                                                         onClick={() => setSelectedQuestion(q)}
-                                                        className="h-8 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all"
+                                                        className="h-8 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-40 disabled:pointer-events-none"
                                                     >
                                                         <MessageSquare className="w-3 h-3" /> Responder
                                                     </button>
                                                 ) : (
                                                     <button
+                                                        disabled={isOffline}
                                                         onClick={() => {
                                                             setSelectedQuestion(q);
                                                             setAnswer(q.answers[0].answer);
                                                         }}
-                                                        className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white border border-white/10 flex items-center justify-center transition-all"
+                                                        className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white border border-white/10 flex items-center justify-center transition-all disabled:opacity-40 disabled:pointer-events-none"
                                                         title="Editar Resposta"
                                                     >
                                                         <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
@@ -640,8 +657,9 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
                                         ) : (
                                             <>
                                                 <button
+                                                    disabled={isOffline}
                                                     onClick={() => setConfirmDeleteId(q.id)}
-                                                    className="w-12 h-12 flex items-center justify-center rounded-2xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all shadow-lg shadow-red-500/5 group/del"
+                                                    className="w-12 h-12 flex items-center justify-center rounded-2xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all shadow-lg shadow-red-500/5 group/del disabled:opacity-40 disabled:pointer-events-none"
                                                     title="Excluir Pergunta"
                                                 >
                                                     <Trash2 className="w-5 h-5 transition-transform group-hover/del:scale-110" />
@@ -649,8 +667,9 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
 
                                                 {!isAnswered && (
                                                     <button
+                                                        disabled={isOffline}
                                                         onClick={() => setSelectedQuestion(q)}
-                                                        className="h-12 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white border border-emerald-400 shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 group/rep font-black text-xs uppercase tracking-widest"
+                                                        className="h-12 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white border border-emerald-400 shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 group/rep font-black text-xs uppercase tracking-widest disabled:opacity-40 disabled:pointer-events-none"
                                                     >
                                                         <MessageSquare className="w-4 h-4 shrink-0 transition-transform group-hover/rep:rotate-12" />
                                                         <span>Responder</span>
@@ -686,11 +705,12 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
                                                                 {new Date(ans.createdAt).toLocaleDateString('pt-BR')}
                                                             </span>
                                                             <button
+                                                                disabled={isOffline}
                                                                 onClick={() => {
                                                                     setSelectedQuestion(q);
                                                                     setAnswer(ans.answer);
                                                                 }}
-                                                                className="px-2 py-0.5 text-[9px] font-black bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-zinc-400 hover:text-white transition-all"
+                                                                className="px-2 py-0.5 text-[9px] font-black bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-zinc-400 hover:text-white transition-all disabled:opacity-40 disabled:pointer-events-none"
                                                             >
                                                                 Editar
                                                             </button>
@@ -791,16 +811,23 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
                         {/* Search & Main Filter */}
                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto lg:flex-1 lg:max-w-2xl lg:justify-end">
                             <div className="relative flex-1 group min-w-0">
-                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 group-focus-within:text-admin-gold transition-colors" />
+                                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    {loading || isTyping ? (
+                                        <Loader2 className="w-3.5 h-3.5 text-admin-gold animate-spin" />
+                                    ) : (
+                                        <Search className="w-3.5 h-3.5 text-zinc-500 group-focus-within:text-admin-gold transition-colors" />
+                                    )}
+                                </div>
                                 <label htmlFor="qa-search" className="sr-only">Buscar perguntas</label>
-                                <input
-                                    type="text"
+                                <DebouncedSearchInput
                                     id="qa-search"
                                     name="search"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
                                     placeholder="Buscar por cliente ou pergunta..."
                                     className="w-full pl-9 pr-3 py-2 bg-black/40 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-admin-gold/20 focus:border-admin-gold/50 focus:bg-zinc-950/60 transition-all font-bold"
+                                    value={searchQuery}
+                                    onChange={setSearchQuery}
+                                    onTyping={setIsTyping}
+                                    delay={300}
                                 />
                             </div>
                             
@@ -844,7 +871,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
 
             {/* KPI Dashboard Section */}
             <div className="max-w-7xl mx-auto px-4 mt-6 space-y-4">
-                <AdminKpiCarousel cards={kpiCards} title="Métricas de Suporte (SAC)" />
+                <AdminKpiCarousel cards={kpiCards} loading={loading && !cachedQAStats} title="Métricas de Suporte (SAC)" />
             </div>
 
             <main className="max-w-7xl mx-auto px-4 mt-8">
@@ -954,7 +981,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
                                     whileHover={{ scale: 1.02 }}
                                     whileTap={{ scale: 0.98 }}
                                     onClick={() => setSelectedQuestion(null)}
-                                    className="flex-1 h-14 bg-white/5 text-zinc-400 rounded-2xl text-[11px] font-black uppercase tracking-widest border border-white/10 hover:bg-white/10 hover:text-white transition-all"
+                                    className="flex-1 h-14 bg-white/5 text-zinc-400 rounded-2xl text-[11px] font-black uppercase tracking-widest border border-white/10 hover:bg-white/10 hover:text-white transition-colors duration-200"
                                 >
                                     Descartar
                                 </motion.button>
@@ -963,7 +990,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
                                     whileTap={isOffline ? {} : { scale: 0.98 }}
                                     onClick={handleSendAnswer}
                                     disabled={isSubmitting || !answer.trim() || isOffline}
-                                    className="flex-[2] h-14 bg-emerald-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 border border-emerald-400 hover:bg-emerald-400 transition-all disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-3"
+                                    className="flex-[2] h-14 bg-emerald-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 border border-emerald-400 hover:bg-emerald-400 transition-colors duration-200 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-3"
                                 >
                                     {isSubmitting ? (
                                         <>

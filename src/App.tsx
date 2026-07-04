@@ -68,9 +68,11 @@ import { useWebVitals } from '@/hooks/useWebVitals';
 function DeferredTabContent({ active, children }: { readonly active: boolean; readonly children: React.ReactNode }) {
   const [hasBeenActive, setHasBeenActive] = useState(active);
 
-  if (active && !hasBeenActive) {
-    setHasBeenActive(true);
-  }
+  useEffect(() => {
+    if (active) {
+      setHasBeenActive(true);
+    }
+  }, [active]);
 
   if (!hasBeenActive) return null;
   return <>{children}</>;
@@ -86,12 +88,12 @@ function TabWrapper({ active, children, isTransitionSupported }: TabWrapperProps
   if (isTransitionSupported) {
     return (
       <div
-        className="w-full top-0 left-0"
+        className={cn(
+          "w-full h-full overflow-y-auto pb-36 lg:pb-44 admin-scroll-container scroll-smooth",
+          active ? "active-scroll-container block relative" : "invisible absolute top-0 left-0 pointer-events-none"
+        )}
         style={{
-          display: active ? "block" : "none",
-          position: active ? "relative" : "absolute",
           opacity: active ? 1 : 0,
-          pointerEvents: active ? "auto" : "none",
         }}
       >
         {children}
@@ -104,11 +106,14 @@ function TabWrapper({ active, children, isTransitionSupported }: TabWrapperProps
       initial={false}
       animate={
         active
-          ? { opacity: 1, y: 0, scale: 1, display: "block", position: "relative", visibility: "visible", pointerEvents: "auto" }
-          : { opacity: 0, y: 8, scale: 0.99, position: "absolute", pointerEvents: "none", transitionEnd: { display: "none", visibility: "hidden" } }
+          ? { opacity: 1, y: 0, scale: 1, position: "relative", visibility: "visible", pointerEvents: "auto" }
+          : { opacity: 0, y: 8, scale: 0.99, position: "absolute", pointerEvents: "none", transitionEnd: { visibility: "hidden" } }
       }
       transition={{ duration: 0.20, ease: [0.16, 1, 0.3, 1] }}
-      className="w-full top-0 left-0"
+      className={cn(
+        "w-full h-full overflow-y-auto pb-36 lg:pb-44 admin-scroll-container scroll-smooth",
+        active ? "active-scroll-container block relative" : "invisible absolute top-0 left-0 pointer-events-none"
+      )}
     >
       {children}
     </motion.div>
@@ -659,6 +664,12 @@ const AppContent = () => {
       let path = globalThis.location.pathname.slice(1) || 'home';
       // Normalize path (remove trailing slashes)
       path = path.replace(/\/$/, '');
+      
+      // Convert slash-based admin sub-routes to hyphenated view names (e.g., admin/orders -> admin-orders)
+      if (path.startsWith('admin/')) {
+        path = path.replace('admin/', 'admin-');
+      }
+
       if (!path) path = 'home';
 
       // Basic validation of view name
@@ -904,15 +915,16 @@ const AppContent = () => {
     const isMainTab = ['admin-dashboard', 'admin', 'admin-products', 'admin-orders', 'admin-customers', 'admin-settings'].includes(currentView);
 
     return (
-      <div className="relative w-full min-h-[60vh] overflow-x-hidden">
+      <div className="relative w-full h-full overflow-x-hidden flex flex-col">
         {/* Main Tabs Container - Kept mounted in the DOM to preserve loaded states & scroll positions */}
         {isTransitionSupported ? (
           <div
             className="w-full h-full"
             style={{
-              display: isMainTab ? "block" : "none",
               position: isMainTab ? "relative" : "absolute",
               opacity: isMainTab ? 1 : 0,
+              pointerEvents: isMainTab ? "auto" : "none",
+              visibility: isMainTab ? "visible" : "hidden",
             }}
           >
             <TabWrapper active={currentView === 'admin-dashboard' || currentView === 'admin'} isTransitionSupported={isTransitionSupported}>
@@ -956,8 +968,8 @@ const AppContent = () => {
             className="w-full h-full"
             initial={false}
             animate={isMainTab
-              ? { opacity: 1, y: 0, display: "block", position: "relative" }
-              : { opacity: 0, y: -8, position: "absolute", transitionEnd: { display: "none" } }
+              ? { opacity: 1, y: 0, position: "relative", pointerEvents: "auto", visibility: "visible" }
+              : { opacity: 0, y: -8, position: "absolute", pointerEvents: "none", transitionEnd: { visibility: "hidden" } }
             }
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           >
@@ -1008,7 +1020,7 @@ const AppContent = () => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
-              className="w-full"
+              className="w-full h-full overflow-y-auto pb-36 lg:pb-44 admin-scroll-container active-scroll-container scroll-smooth gpu-accelerated"
             >
               <LocalErrorBoundary>
                 {(() => {

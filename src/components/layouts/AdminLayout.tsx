@@ -23,9 +23,6 @@ interface AdminLayoutProps {
     onNavigate: (view: View) => void;
 }
 
-// Global cache to preserve scroll position of admin views across layouts unmounts
-const globalAdminScrollPositions: Record<string, number> = {};
-
 export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutProps) {
     const { prefetchView } = usePrefetchOnHover();
     const isMainTab = ['admin-dashboard', 'admin', 'admin-products', 'admin-orders', 'admin-customers', 'admin-settings'].includes(currentView);
@@ -38,135 +35,28 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
         { icon: Settings, label: 'Ajustes', view: 'admin-settings' },
     ];
 
-    const adminMainRef = React.useRef<HTMLElement>(null);
-    const isTransitioningRef = React.useRef(false);
-    const hasUserInteractedRef = React.useRef(false);
-    const targetScrollRef = React.useRef(0);
-    const lastTransitionTimeRef = React.useRef(0);
     const isOffline = useOnlineStatus();
 
-    const currentViewRef = React.useRef(currentView);
-    React.useEffect(() => {
-        currentViewRef.current = currentView;
-    }, [currentView]);
-
-    // Save scroll position in real-time as the user scrolls
-    React.useEffect(() => {
-        const container = adminMainRef.current;
-        if (!container) return;
-
-        const handleScroll = () => {
-            if (isTransitioningRef.current) return;
-
-            // Check if there is an 'id' query parameter (sub-view details active)
-            // If so, do not overwrite the list view scroll position!
-            const hasIdQuery = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('id');
-            if (hasIdQuery) return;
-
-            // Guard against browser scroll reset to 0 while container shinks during async loading
-            const savedScroll = globalAdminScrollPositions[currentViewRef.current] || 0;
-            const maxScrollable = container.scrollHeight - container.clientHeight;
-            if (savedScroll > 0 && maxScrollable < savedScroll && container.scrollTop === 0 && !hasUserInteractedRef.current) {
-                return;
-            }
-
-            globalAdminScrollPositions[currentViewRef.current] = container.scrollTop;
-            targetScrollRef.current = container.scrollTop;
-        };
-
-        container.addEventListener('scroll', handleScroll, { passive: true });
-        return () => {
-            container.removeEventListener('scroll', handleScroll);
-        };
-    }, []);
-
-    React.useLayoutEffect(() => {
-        const container = adminMainRef.current;
-        if (!container) return;
-
-        // Synchronously lock scroll recording on view transition
-        isTransitioningRef.current = true;
-        hasUserInteractedRef.current = false;
-        lastTransitionTimeRef.current = Date.now();
-
-        const savedScroll = globalAdminScrollPositions[currentView] || 0;
-        targetScrollRef.current = savedScroll;
-
-        const restoreScroll = () => {
-            if (adminMainRef.current) {
-                adminMainRef.current.scrollTop = savedScroll;
-            }
-        };
-
-        restoreScroll();
-
-        // Staggered restoration for dynamic content
-        let rafId2: number;
-        let timeoutId: ReturnType<typeof setTimeout>;
-        const rafId1 = requestAnimationFrame(() => {
-            restoreScroll();
-            rafId2 = requestAnimationFrame(() => {
-                restoreScroll();
-                // Release lock after a safe delay of 250ms to allow layout settling and animation completion
-                timeoutId = setTimeout(() => {
-                    isTransitioningRef.current = false;
-                }, 250);
-            });
-        });
-
-        return () => {
-            cancelAnimationFrame(rafId1);
-            if (rafId2) {
-                cancelAnimationFrame(rafId2);
-            }
-            if (timeoutId) {
-                clearTimeout(timeoutId);
-            }
-        };
-    }, [currentView]);
-
-    // Listen for manual user scrolls to immediately release scroll locks
-    React.useEffect(() => {
-        const container = adminMainRef.current;
-        if (!container) return;
-
-        const handleUserInteraction = () => {
-            hasUserInteractedRef.current = true;
-            isTransitioningRef.current = false;
-        };
-
-        container.addEventListener('wheel', handleUserInteraction, { passive: true });
-        container.addEventListener('touchmove', handleUserInteraction, { passive: true });
-        
-        return () => {
-            container.removeEventListener('wheel', handleUserInteraction);
-            container.removeEventListener('touchmove', handleUserInteraction);
-        };
-    }, []);
-
-    // ResizeObserver to handle dynamic height changes (skeletons replaced by dynamic content)
-    React.useEffect(() => {
-        const container = adminMainRef.current;
-        if (!container) return;
-
-        const observer = new ResizeObserver(() => {
-            if (hasUserInteractedRef.current) return; // Skip if user is actively scrolling/interacting
-
-            const timeSinceTransition = Date.now() - lastTransitionTimeRef.current;
-            if ((isTransitioningRef.current || timeSinceTransition < 400) && targetScrollRef.current > 0 && container.scrollTop < targetScrollRef.current) {
-                container.scrollTop = targetScrollRef.current;
-            }
-        });
-
-        const contentWrapper = container.firstElementChild;
-        if (contentWrapper) {
-            observer.observe(contentWrapper);
+    const getParentView = (view: View): View | 'profile' => {
+        switch (view) {
+            case 'admin-product-form':
+                return 'admin-products';
+            case 'admin-user-detail':
+                return 'admin-customers';
+            case 'admin-push':
+                return 'admin-dashboard';
+            case 'admin-coupons':
+            case 'admin-banners':
+            case 'admin-reviews':
+            case 'admin-qa':
+                return 'admin-settings';
+            default:
+                return 'profile';
         }
+    };
 
-        return () => {
-            observer.disconnect();
-        };
-    }, [currentView]);
+    const parentView = getParentView(currentView);
+    const isSubView = parentView !== 'profile';
 
     return (
         <div className="h-[100dvh] w-screen overflow-hidden bg-[#09090b] flex flex-col font-sans text-zinc-50">
@@ -190,19 +80,19 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
                 style={{ viewTransitionName: 'admin-header' } as React.CSSProperties}
             >
                 <div className="max-w-7xl mx-auto flex items-center justify-between relative h-10 md:h-12">
-                    {/* Left: Profile Button */}
+                    {/* Left: Profile or Back Button */}
                     <div className="absolute left-0">
                         <Button
                             variant="ghost"
                             onClick={() => {
                                 haptic.light();
-                                onNavigate('profile');
+                                onNavigate(parentView as View);
                             }}
-                            onMouseEnter={() => prefetchView('profile')}
-                            onTouchStart={() => prefetchView('profile')}
+                            onMouseEnter={() => prefetchView(parentView as any)}
+                            onTouchStart={() => prefetchView(parentView as any)}
                             className="flex items-center gap-2 rounded-full bg-zinc-900 border border-white/5 font-bold text-[10px] md:text-xs text-white uppercase tracking-widest px-3 md:px-4 transition-all hover:bg-zinc-800 active:scale-95"
                         >
-                            <ArrowLeft className="w-4 h-4" /> <span className="inline">Perfil</span>
+                            <ArrowLeft className="w-4 h-4" /> <span className="inline">{isSubView ? 'Voltar' : 'Perfil'}</span>
                         </Button>
                     </div>
 
@@ -232,14 +122,14 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
             </header>
 
             {/* Main Content Area */}
-            <main ref={adminMainRef} className="flex-1 overflow-y-auto overflow-x-hidden w-full bg-[#09090b] pb-36 lg:pb-44 gpu-accelerated admin-scroll-container">
-                <div className="w-full max-w-7xl mx-auto py-0 overflow-x-hidden">
+            <main className="flex-1 overflow-hidden w-full bg-[#09090b] gpu-accelerated">
+                <div className="w-full h-full max-w-7xl mx-auto py-0 overflow-hidden flex flex-col relative">
                     {(() => {
                         const isTransitionSupported = typeof document !== 'undefined' && 'startViewTransition' in document;
 
                         if (isTransitionSupported) {
                             return (
-                                <div key="admin-content-wrapper" className="w-full">
+                                <div key="admin-content-wrapper" className="w-full h-full">
                                     {children}
                                 </div>
                             );
@@ -252,7 +142,7 @@ export function AdminLayout({ children, currentView, onNavigate }: AdminLayoutPr
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -8 }}
                                     transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                                    className="w-full"
+                                    className="w-full h-full"
                                 >
                                     {children}
                                 </motion.div>

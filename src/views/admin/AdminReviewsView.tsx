@@ -15,13 +15,16 @@ import {
     MessageCircle,
     Clock,
     LayoutGrid,
-    List
+    List,
+    Loader2,
+    AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { useReviews } from '@/hooks/useReviews';
 import type { View } from '@/types';
-import { useDebounce } from '@/hooks/useDebounce';
 import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
+import { DebouncedSearchInput } from '@/components/admin/DebouncedSearchInput';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { toast } from 'sonner';
 
@@ -77,7 +80,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
     const [totalReviews, setTotalReviews] = useState(0);
     const pageSize = 10;
     const [searchQuery, setSearchQuery] = useState('');
-    const debouncedSearchQuery = useDebounce(searchQuery, 500);
+    const [isTyping, setIsTyping] = useState(false);
     const [ratingFilter, setRatingFilter] = useState<number | 'all'>('all');
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -92,7 +95,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
     const triggerRefresh = () => setRefreshTrigger(prev => prev + 1);
 
     const prevRating = useRef(ratingFilter);
-    const prevSearch = useRef(debouncedSearchQuery);
+    const prevSearch = useRef(searchQuery);
 
     const firstLoadRef = useRef(true);
 
@@ -100,7 +103,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
         try {
             const result = await getAllReviews(pageToFetch, pageSize, {
                 rating: ratingFilter,
-                search: debouncedSearchQuery
+                search: searchQuery
             });
             if (result) {
                 setTotalReviews(result.total);
@@ -111,14 +114,14 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
         } finally {
             firstLoadRef.current = false;
         }
-    }, [getAllReviews, pageSize, ratingFilter, debouncedSearchQuery]);
+    }, [getAllReviews, pageSize, ratingFilter, searchQuery]);
 
     useEffect(() => {
         if (!active) return;
 
-        const filterChanged = prevRating.current !== ratingFilter || prevSearch.current !== debouncedSearchQuery;
+        const filterChanged = prevRating.current !== ratingFilter || prevSearch.current !== searchQuery;
         prevRating.current = ratingFilter;
-        prevSearch.current = debouncedSearchQuery;
+        prevSearch.current = searchQuery;
 
         let pageToFetch = page;
         if (filterChanged) {
@@ -130,7 +133,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
         }
 
         loadReviews(pageToFetch);
-    }, [page, ratingFilter, debouncedSearchQuery, active, loadReviews, refreshTrigger]);
+    }, [page, ratingFilter, searchQuery, active, loadReviews, refreshTrigger]);
 
     const totalPages = Math.ceil(totalReviews / pageSize);
     const avgRating = averageRating;
@@ -242,24 +245,57 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
         }
     ], [averageRating, totalReviews, responseRate, globalRepliedCount, verifiedRate, globalVerifiedCount]);
 
+    const renderDetailedSkeleton = () => (
+        <div className="grid gap-6">
+            {[1, 2, 3].map((i) => (
+                <div key={i} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 rounded-[2.5rem] border border-white/[0.05] p-6 lg:p-8 space-y-6 animate-pulse">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                        <div className="flex items-center gap-5">
+                            <Skeleton className="w-16 h-16 rounded-2xl bg-white/5 animate-pulse" />
+                            <div className="space-y-2">
+                                <Skeleton className="h-5 w-32 bg-white/5 animate-pulse" />
+                                <Skeleton className="h-3 w-48 bg-white/5 animate-pulse" />
+                            </div>
+                        </div>
+                        <Skeleton className="h-10 w-24 bg-white/5 rounded-2xl animate-pulse" />
+                    </div>
+                    <div className="space-y-2 pl-6 lg:pl-10 border-l border-white/10">
+                        <Skeleton className="h-4 w-full bg-white/5 animate-pulse" />
+                        <Skeleton className="h-4 w-5/6 bg-white/5 animate-pulse" />
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
 
-    if ((loading || firstLoadRef.current) && adminReviews.length === 0) {
-        return (
-            <div className="min-h-screen bg-[#09090b] flex flex-col items-center justify-center space-y-6">
-                <div className="relative">
-                    <div className="w-16 h-16 border-2 border-zinc-800 border-t-admin-gold rounded-full animate-spin" />
-                    <Star className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 text-admin-gold animate-pulse animate-duration-1000" />
+    const renderCompactSkeleton = () => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                <div key={i} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 rounded-[2rem] border border-white/[0.05] p-5 h-48 flex flex-col justify-between animate-pulse">
+                    <div>
+                        <div className="flex items-start justify-between gap-3 mb-4">
+                            <div className="flex items-center gap-3">
+                                <Skeleton className="w-10 h-10 rounded-xl bg-white/5 animate-pulse" />
+                                <div className="space-y-1.5">
+                                    <Skeleton className="h-3 w-20 bg-white/5 animate-pulse" />
+                                    <Skeleton className="h-2 w-12 bg-white/5 animate-pulse" />
+                                </div>
+                            </div>
+                            <Skeleton className="h-6 w-10 bg-white/5 rounded-lg animate-pulse" />
+                        </div>
+                        <Skeleton className="h-3 w-24 bg-white/5 rounded-full mb-4 animate-pulse" />
+                        <div className="space-y-1.5">
+                            <Skeleton className="h-3 w-full bg-white/5 animate-pulse" />
+                            <Skeleton className="h-3 w-5/6 bg-white/5 animate-pulse" />
+                        </div>
+                    </div>
                 </div>
-                <div className="text-center">
-                    <p className="text-sm font-black text-white uppercase tracking-[0.2em]">Carregando Feedback</p>
-                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-2">Sincronizando com a base de dados...</p>
-                </div>
-            </div>
-        );
-    }
+            ))}
+        </div>
+    );
 
     return (
-        <div className="h-auto bg-[#09090b] text-zinc-400 font-sans selection:bg-admin-gold/30 selection:text-white pb-8">
+        <div className="h-auto bg-[#09090b] text-zinc-400 font-sans selection:bg-admin-gold/30 selection:text-white pb-8 animate-in fade-in duration-500">
             {/* Header / Stats Overlay */}
             <div className="sticky top-0 z-50 p-2 sm:p-4 pb-0 bg-[#09090b]/80 backdrop-blur-md">
                 <div className="admin-glass rounded-2xl sm:rounded-[2rem] border border-white/5 p-3 sm:p-4 shadow-2xl">
@@ -308,16 +344,23 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                         {/* Search & Main Filter */}
                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto lg:flex-1 lg:max-w-2xl lg:justify-end">
                             <div className="relative flex-1 group min-w-0">
-                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 group-focus-within:text-admin-gold transition-colors" />
+                                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    {loading || isTyping ? (
+                                        <Loader2 className="w-3.5 h-3.5 text-admin-gold animate-spin" />
+                                    ) : (
+                                        <Search className="w-3.5 h-3.5 text-zinc-500 group-focus-within:text-admin-gold transition-colors" />
+                                    )}
+                                </div>
                                 <label htmlFor="reviews-search" className="sr-only">Buscar avaliações</label>
-                                <input
-                                    type="text"
+                                <DebouncedSearchInput
                                     id="reviews-search"
                                     name="search"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
                                     placeholder="Buscar por cliente ou produto..."
                                     className="w-full pl-9 pr-3 py-2 bg-black/40 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-admin-gold/20 focus:border-admin-gold/50 focus:bg-zinc-950/60 transition-all font-bold"
+                                    value={searchQuery}
+                                    onChange={setSearchQuery}
+                                    onTyping={setIsTyping}
+                                    delay={300}
                                 />
                             </div>
                             
@@ -364,12 +407,22 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
 
             {/* KPI Dashboard Section */}
             <div className="max-w-7xl mx-auto px-4 mt-6 space-y-4">
-                <AdminKpiCarousel cards={kpiCards} title="Métricas de Avaliações" />
+                <AdminKpiCarousel cards={kpiCards} loading={loading || firstLoadRef.current} active={active} title="Métricas de Avaliações" />
             </div>
 
             <div className="max-w-7xl mx-auto p-4 lg:p-8">
                 <AnimatePresence mode="wait">
-                    {adminReviews.length === 0 ? (
+                    {(loading || firstLoadRef.current) && adminReviews.length === 0 ? (
+                        <motion.div
+                            key="loading"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="py-12"
+                        >
+                            {viewMode === 'detailed' ? renderDetailedSkeleton() : renderCompactSkeleton()}
+                        </motion.div>
+                    ) : adminReviews.length === 0 ? (
                         <motion.div
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
@@ -511,17 +564,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
 
                                             {!review.merchantReply && (
                                                 <button
+                                                    disabled={isOffline}
                                                     onClick={() => {
-                                                        if (isOffline) {
-                                                            toast.error('Você está offline', {
-                                                                description: 'Não é possível responder avaliações sem conexão.'
-                                                            });
-                                                            return;
-                                                        }
                                                         setReplyingTo(review.id);
                                                         setReplyText('');
                                                     }}
-                                                    className="flex items-center gap-2 px-6 py-3 bg-admin-gold text-black rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] transition-all active:scale-95 shadow-xl shadow-admin-gold/10"
+                                                    className="flex items-center gap-2 px-6 py-3 bg-admin-gold text-black rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] transition-all active:scale-95 shadow-xl shadow-admin-gold/10 disabled:opacity-40 disabled:pointer-events-none"
                                                 >
                                                     <MessageSquare className="w-3.5 h-3.5" /> Responder
                                                 </button>
@@ -587,7 +635,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                                                                         key={idx}
                                                                         type="button"
                                                                         onClick={() => setReplyText(suggestion.text)}
-                                                                        className="px-3.5 py-2 bg-white/5 border border-white/5 hover:border-admin-gold/30 hover:bg-admin-gold/15 rounded-xl text-xs font-bold text-zinc-300 hover:text-white transition-all active:scale-95"
+                                                                        disabled={isOffline || isSubmittingReply}
+                                                                        className="px-3.5 py-2 bg-white/5 border border-white/5 hover:border-admin-gold/30 hover:bg-admin-gold/15 rounded-xl text-xs font-bold text-zinc-300 hover:text-white transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none"
                                                                     >
                                                                         {suggestion.label}
                                                                     </button>
@@ -602,6 +651,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                                                             className="w-full p-6 text-base font-medium bg-black/40 border border-white/10 rounded-3xl text-white placeholder:text-zinc-700 focus:outline-none focus:ring-2 focus:ring-admin-gold/20 focus:border-admin-gold/30 min-h-[160px] transition-all resize-none disabled:opacity-40"
                                                             disabled={isSubmittingReply || isOffline}
                                                         />
+                                                        {isOffline && (
+                                                            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-400">
+                                                                <AlertCircle className="w-4 h-4 shrink-0 animate-pulse" />
+                                                                <span className="text-[10px] font-black uppercase tracking-wider">Modo Offline Ativo</span>
+                                                            </div>
+                                                        )}
                                                         <div className="flex justify-end items-center gap-4">
                                                             <button
                                                                 onClick={() => setReplyingTo(null)}
@@ -627,7 +682,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                                                                         setReplyText('');
                                                                         getAllReviews(page, pageSize, {
                                                                             rating: ratingFilter,
-                                                                            search: debouncedSearchQuery
+                                                                            search: searchQuery
                                                                         });
                                                                     }
                                                                 }}
@@ -827,7 +882,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                                                                         setReplyText('');
                                                                         getAllReviews(page, pageSize, {
                                                                             rating: ratingFilter,
-                                                                            search: debouncedSearchQuery
+                                                                            search: searchQuery
                                                                         });
                                                                     }
                                                                 }}

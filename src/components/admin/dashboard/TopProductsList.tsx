@@ -4,6 +4,7 @@ import { Progress } from '@/components/ui/progress';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import type { DashboardStats } from '@/hooks/useAnalytics';
+import { LazyImage } from '@/components/LazyImage';
 
 interface TopProductsListProps {
     stats: DashboardStats | null;
@@ -117,17 +118,10 @@ export function TopProductsList({ stats, loading, onNavigate }: TopProductsListP
                                                     "w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-zinc-950 overflow-hidden border relative group-hover:scale-105 transition-transform duration-500 shadow-2xl",
                                                     isFirst ? "border-admin-gold/40 scale-105" : "border-white/10"
                                                 )}>
-                                                    <img
+                                                    <LazyImage
                                                         src={item.image || `https://placehold.co/100x100/18181b/d4af37?text=${encodeURIComponent(item.name.substring(0, 2))}`}
                                                         alt={item.name}
                                                         className="w-full h-full object-cover group-hover:opacity-80 transition-opacity"
-                                                        onError={(e) => {
-                                                            const target = e.target as HTMLImageElement;
-                                                            const fallback = `https://placehold.co/100x100/18181b/d4af37?text=${encodeURIComponent(item.name.substring(0, 2))}`;
-                                                            if (target.src !== fallback) {
-                                                                target.src = fallback;
-                                                            }
-                                                        }}
                                                     />
                                                 </div>
 

@@ -10,34 +10,49 @@ import {
     ResponsiveContainer
 } from 'recharts';
 import { BarChart3, Activity } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useMemo, memo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { DashboardStats } from '@/hooks/useAnalytics';
-import { useDeferredRender } from '@/hooks/useDeferredRender';
 
 interface OperationalPerformanceChartProps {
     stats: DashboardStats | null;
     loading: boolean;
     className?: string;
+    active?: boolean;
 }
 
-export function OperationalPerformanceChart({ stats, loading, className }: OperationalPerformanceChartProps) {
-    const isDeferredReady = useDeferredRender(180);
+export const OperationalPerformanceChart = memo(function OperationalPerformanceChart({ stats, loading, className, active = true }: OperationalPerformanceChartProps) {
+    const [isChartReady, setIsChartReady] = useState(false);
     const [chartMode, setChartMode] = useState<'revenue' | 'roi'>('revenue');
     const [timeframe, setTimeframe] = useState<'30' | '90' | 'all'>('30');
 
+    useEffect(() => {
+        if (active) {
+            const timer = setTimeout(() => {
+                setIsChartReady(true);
+            }, 180);
+            return () => clearTimeout(timer);
+        } else {
+            setIsChartReady(false);
+            return undefined;
+        }
+    }, [active]);
+
     // Filter history based on timeframe before processing
-    const filteredRevenueHistory = stats?.revenueHistory ? (
-        timeframe === '30' 
-            ? stats.revenueHistory.slice(-30) 
-            : timeframe === '90' 
-                ? stats.revenueHistory.slice(-90) 
-                : stats.revenueHistory
-    ) : [];
+    const revenueHistory = stats?.revenueHistory;
+    const filteredRevenueHistory = useMemo(() => {
+        return revenueHistory ? (
+            timeframe === '30' 
+                ? revenueHistory.slice(-30) 
+                : timeframe === '90' 
+                    ? revenueHistory.slice(-90) 
+                    : revenueHistory
+        ) : [];
+    }, [revenueHistory, timeframe]);
 
     // Process data for ROI chart
-    const processedRoiData = (() => {
+    const processedRoiData = useMemo(() => {
         if (!filteredRevenueHistory || filteredRevenueHistory.length === 0) return [];
         
         const totalCost = stats?.inventory?.totalCost ?? 0;
@@ -65,7 +80,7 @@ export function OperationalPerformanceChart({ stats, loading, className }: Opera
                 revenue: Number(day.revenue)
             };
         });
-    })();
+    }, [filteredRevenueHistory, stats?.inventory?.totalCost]);
 
     return (
         <div className={cn("admin-glass pt-0 pb-6 px-4 sm:pt-0 sm:pb-10 sm:px-10 sm:rounded-[3rem] border border-white/5 space-y-4 sm:space-y-6 relative overflow-hidden group", className)}>
@@ -180,7 +195,7 @@ export function OperationalPerformanceChart({ stats, loading, className }: Opera
             )}
 
             <div className="h-[200px] sm:h-[300px] w-full relative z-10 px-0">
-                {loading || !isDeferredReady ? (
+                {loading || !isChartReady ? (
                     <Skeleton className="w-full h-full rounded-3xl bg-white/5 animate-pulse" />
                 ) : !stats?.revenueHistory || stats.revenueHistory.length === 0 ? (
                     <div className="w-full h-full rounded-3xl bg-white/5 border border-white/5 flex flex-col items-center justify-center space-y-4">
@@ -257,7 +272,7 @@ export function OperationalPerformanceChart({ stats, loading, className }: Opera
                                     return null;
                                 }}
                             />
-                            <Bar dataKey="revenue" fill="#10b981" radius={[6, 6, 6, 6]} opacity={0.3} barSize={20} className="hover:opacity-60 transition-opacity cursor-pointer" />
+                            <Bar dataKey="revenue" fill="#10b981" radius={[6, 6, 6, 6]} opacity={0.3} barSize={20} className="hover:opacity-60 transition-opacity cursor-pointer" isAnimationActive={false} />
                         </BarChart>
                     </ResponsiveContainer>
                 ) : (
@@ -346,6 +361,7 @@ export function OperationalPerformanceChart({ stats, loading, className }: Opera
                                 dot={false}
                                 activeDot={{ r: 5, fill: '#10b981', stroke: '#fff', strokeWidth: 1.5 }}
                                 name="Lucro Acumulado"
+                                isAnimationActive={false}
                             />
                             <Area 
                                 type="monotone" 
@@ -358,6 +374,7 @@ export function OperationalPerformanceChart({ stats, loading, className }: Opera
                                 dot={false}
                                 activeDot={{ r: 5, fill: '#f59e0b', stroke: '#fff', strokeWidth: 1.5 }}
                                 name="Valor Investido (Estoque)"
+                                isAnimationActive={false}
                             />
                         </AreaChart>
                     </ResponsiveContainer>
@@ -365,4 +382,4 @@ export function OperationalPerformanceChart({ stats, loading, className }: Opera
             </div>
         </div>
     );
-}
+});

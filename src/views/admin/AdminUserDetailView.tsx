@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -64,7 +65,7 @@ interface AdminUserDetailViewProps {
     onNavigate: (view: View, id?: string) => void;
 }
 
-export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDetailViewProps) {
+export const AdminUserDetailView = memo(function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDetailViewProps) {
     const { isAdmin } = useAuth();
     const [loading, setLoading] = useState(true);
     const [showHelpModal, setShowHelpModal] = useState(false);
@@ -249,21 +250,57 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
 
     if (!isAdmin) return null;
 
-    if (loading) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
-                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-muted-foreground animate-pulse">Carregando detalhes do cliente...</p>
-            </div>
-        );
-    }
-
     const totalSpent = orders
         .filter(o => o.status !== 'cancelled')
         .reduce((sum, o) => sum + o.total, 0);
 
+    const renderContentSkeleton = () => (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative animate-pulse">
+            {/* Left Column: Profile Card Skeleton */}
+            <div className="lg:col-span-4 bg-zinc-900/40 backdrop-blur-3xl border border-zinc-800/80 rounded-[1.5rem] p-6 space-y-6">
+                <div className="flex flex-col items-center space-y-3">
+                    <Skeleton className="h-20 w-20 rounded-full bg-white/5 animate-pulse" />
+                    <Skeleton className="h-5 w-40 bg-white/5 rounded animate-pulse" />
+                    <Skeleton className="h-4 w-28 bg-white/5 rounded animate-pulse" />
+                </div>
+                <div className="space-y-4 pt-4 border-t border-white/5">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="flex justify-between">
+                            <Skeleton className="h-3 w-16 bg-white/5 rounded animate-pulse" />
+                            <Skeleton className="h-3 w-24 bg-white/5 rounded animate-pulse" />
+                        </div>
+                    ))}
+                </div>
+            </div>
+            
+            {/* Right Column: Details Skeleton */}
+            <div className="lg:col-span-8 space-y-6">
+                <div className="grid grid-cols-3 gap-4">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-4 space-y-2">
+                            <Skeleton className="h-3 w-12 bg-white/5 rounded animate-pulse" />
+                            <Skeleton className="h-6 w-20 bg-white/5 rounded animate-pulse" />
+                        </div>
+                    ))}
+                </div>
+                <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-[1.5rem] p-6 space-y-4">
+                    <Skeleton className="h-4.5 w-32 bg-white/5 rounded animate-pulse" />
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
+                            <div className="space-y-1.5 flex-1">
+                                <Skeleton className="h-3.5 w-1/3 bg-white/5 rounded animate-pulse" />
+                                <Skeleton className="h-2.5 w-1/2 bg-white/5 rounded animate-pulse" />
+                            </div>
+                            <Skeleton className="h-6 w-16 bg-white/5 rounded-full animate-pulse" />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+
     return (
-        <div className="space-y-6 pb-20 max-w-7xl mx-auto px-4 md:px-0">
+        <div className="space-y-6 pb-20 max-w-7xl mx-auto px-4 md:px-0 animate-in fade-in duration-500">
             {/* Header / Actions */}
             <div className="flex items-center gap-4 mt-6">
                 <Button variant="ghost" size="icon" onClick={onBack} className="rounded-xl h-10 w-10 bg-zinc-950/80 border border-zinc-800 shadow-inner hover:bg-zinc-800 hover:border-admin-gold/50 transition-all text-zinc-400 hover:text-white shrink-0">
@@ -298,8 +335,11 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative">
-                {/* Glow Background Global */}
+            {loading ? (
+                renderContentSkeleton()
+            ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative">
+                    {/* Glow Background Global */}
                 <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[600px] bg-admin-gold/5 blur-[120px] pointer-events-none rounded-full" />
 
                 {/* Left Column: Profile Card */}
@@ -707,6 +747,7 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
                     </div>
                 </div>
             </div>
+            )}
 
             {/* Modal de Ajuda */}
             {showHelpModal && (
@@ -838,4 +879,4 @@ export function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDet
       </AlertDialog>
         </div>
     );
-}
+});
