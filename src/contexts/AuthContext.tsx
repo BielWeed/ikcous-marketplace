@@ -83,7 +83,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (isPasswordRecovery && typeof window !== 'undefined') {
             const url = new URL(window.location.href);
             url.searchParams.delete('type');
-            window.history.replaceState({}, document.title, url.pathname + url.search);
+            window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
         }
     }, [isPasswordRecovery]);
 

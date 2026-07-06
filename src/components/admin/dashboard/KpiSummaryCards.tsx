@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 import { ShoppingBag, TrendingUp, Star, Users } from 'lucide-react';
 import type { DashboardStats } from '@/hooks/useAnalytics';
 import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKpiCarousel';
@@ -9,7 +9,7 @@ interface KpiSummaryCardsProps {
     active?: boolean;
 }
 
-export function KpiSummaryCards({ stats, loading, active }: KpiSummaryCardsProps) {
+export const KpiSummaryCards = memo(function KpiSummaryCards({ stats, loading, active }: KpiSummaryCardsProps) {
     const kpiCards = useMemo<readonly KpiCardConfig[]>(() => [
         { 
             id: 'volume',
@@ -50,4 +50,4 @@ export function KpiSummaryCards({ stats, loading, active }: KpiSummaryCardsProps
             <AdminKpiCarousel cards={kpiCards} loading={loading} active={active} title="Métricas Principais" />
         </div>
     );
-}
+});

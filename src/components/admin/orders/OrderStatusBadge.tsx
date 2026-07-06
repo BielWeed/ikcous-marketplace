@@ -1,5 +1,5 @@
  
-import React from 'react';
+import React, { memo } from 'react';
 import { Package, Clock, Truck, CheckCircle, XCircle } from 'lucide-react';
 import type { OrderStatus } from '@/types';
 
@@ -51,7 +51,7 @@ interface OrderStatusBadgeProps {
     className?: string;
 }
 
-export function OrderStatusBadge({ status, className }: Readonly<OrderStatusBadgeProps>) {
+export const OrderStatusBadge = memo(function OrderStatusBadge({ status, className }: Readonly<OrderStatusBadgeProps>) {
     const cfg = statusConfig[status || 'pending'] || statusConfig.pending;
 
     return (
@@ -61,4 +61,4 @@ export function OrderStatusBadge({ status, className }: Readonly<OrderStatusBadg
             </span>
         </div>
     );
-}
+});

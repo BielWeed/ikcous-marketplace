@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -48,6 +49,7 @@ import { mapOrderFromDB, mapProductFromDB } from '@/lib/mappers';
 import type { Order, CartItem, Address, View } from '@/types';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
+import { haptic } from '@/utils/haptic';
 
 interface Profile {
     id: string;
@@ -67,6 +69,7 @@ interface AdminUserDetailViewProps {
 
 export const AdminUserDetailView = memo(function AdminUserDetailView({ userId, onBack, onNavigate }: AdminUserDetailViewProps) {
     const { isAdmin } = useAuth();
+    const isOffline = useOnlineStatus();
     const [loading, setLoading] = useState(true);
     const [showHelpModal, setShowHelpModal] = useState(false);
     const [profile, setProfile] = useState<Profile | null>(null);
@@ -78,6 +81,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({ userId, o
     const [copiedField, setCopiedField] = useState<'id' | 'email' | 'whatsapp' | null>(null);
 
     const handleCopy = (text: string, field: 'id' | 'email' | 'whatsapp') => {
+        haptic.light();
         navigator.clipboard.writeText(text);
         setCopiedField(field);
         toast.success(`${field === 'id' ? 'ID' : field === 'email' ? 'E-mail' : 'Telefone'} copiado com sucesso!`);
@@ -185,6 +189,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({ userId, o
 
     const confirmRemoveCartItem = async () => {
         if (!cartItemToRemove) return;
+        if (isOffline) {
+            toast.error('Operação negada: Você está offline.');
+            return;
+        }
         try {
             const { productId, variantId } = cartItemToRemove;
             
@@ -219,6 +227,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({ userId, o
     };
 
     const confirmClearUserCart = async () => {
+        if (isOffline) {
+            toast.error('Operação negada: Você está offline.');
+            return;
+        }
         try {
             const { error } = await supabase
                 .from('cart_items')
@@ -255,7 +267,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({ userId, o
         .reduce((sum, o) => sum + o.total, 0);
 
     const renderContentSkeleton = () => (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative animate-pulse">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative">
             {/* Left Column: Profile Card Skeleton */}
             <div className="lg:col-span-4 bg-zinc-900/40 backdrop-blur-3xl border border-zinc-800/80 rounded-[1.5rem] p-6 space-y-6">
                 <div className="flex flex-col items-center space-y-3">
@@ -373,10 +385,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({ userId, o
                         {/* Direct WhatsApp Call CTA */}
                         <div className="w-full mt-4 px-2">
                             <Button
-                                className="w-full gap-2 h-10 rounded-xl bg-gradient-to-br from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 text-zinc-950 font-black uppercase tracking-widest text-[9px] shadow-[0_0_15px_rgba(34,197,94,0.2)] hover:shadow-[0_0_25px_rgba(34,197,94,0.4)] border-none transition-all duration-300"
-                                disabled={!profile?.whatsapp}
+                                className="w-full gap-2 h-10 rounded-xl bg-gradient-to-br from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 text-zinc-950 font-black uppercase tracking-widest text-[9px] shadow-[0_0_15px_rgba(34,197,94,0.2)] hover:shadow-[0_0_25px_rgba(34,197,94,0.4)] border-none transition-all duration-300 disabled:opacity-40 disabled:pointer-events-none"
+                                disabled={!profile?.whatsapp || isOffline}
                                 onClick={() => {
-                                    if (!profile?.whatsapp) return;
+                                    if (!profile?.whatsapp || isOffline) return;
                                     let phone = profile.whatsapp.replace(/\D/g, '');
                                     if (phone.length === 11 || phone.length === 10) {
                                         phone = '55' + phone;
@@ -606,7 +618,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({ userId, o
                                                         variant="ghost"
                                                         size="sm"
                                                         onClick={handleClearUserCart}
-                                                        className="h-7 px-2.5 text-[8px] font-black uppercase tracking-widest rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all border border-red-500/20 shadow-sm"
+                                                        disabled={isOffline}
+                                                        className="h-7 px-2.5 text-[8px] font-black uppercase tracking-widest rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all border border-red-500/20 shadow-sm disabled:opacity-40 disabled:pointer-events-none"
                                                     >
                                                         Limpar Carrinho
                                                     </Button>
@@ -677,7 +690,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({ userId, o
                                                                             variant="ghost"
                                                                             size="icon"
                                                                             onClick={() => handleRemoveCartItem(item.product.id, item.variantId)}
-                                                                            className="h-8 w-8 rounded-lg text-zinc-500 hover:text-red-500 hover:bg-red-500/10"
+                                                                            disabled={isOffline}
+                                                                            className="h-8 w-8 rounded-lg text-zinc-500 hover:text-red-500 hover:bg-red-500/10 disabled:opacity-40 disabled:pointer-events-none"
                                                                             title="Remover do Carrinho"
                                                                         >
                                                                             <Trash2 className="h-4 w-4" />

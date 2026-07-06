@@ -17,6 +17,8 @@ export function useUpdateCheck() {
     // ==============================
     // CORE: Vite PWA Native Events
     // ==============================
+    const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
+
     const {
         offlineReady: [offlineReady, setOfflineReady],
         needRefresh: [needRefresh, _setNeedRefresh],
@@ -24,18 +26,31 @@ export function useUpdateCheck() {
     } = useRegisterSW({
         onRegisteredSW(swUrl, r) {
             console.log(`[PWA] Service Worker registered: ${swUrl}`);
-            // Force a check every 3 minutes
             if (r) {
-                setInterval(() => {
-                    console.log('[PWA] Checking for SW updates...');
-                    r.update();
-                }, 3 * 60 * 1000);
+                setRegistration(r);
             }
         },
         onRegisterError(error) {
             console.error('[PWA] Service Worker registration error:', error);
         },
     });
+
+    useEffect(() => {
+        if (!registration) return;
+
+        console.log('[PWA] Starting SW update check interval (3 minutes)...');
+        const intervalId = setInterval(() => {
+            console.log('[PWA] Checking for SW updates...');
+            registration.update().catch(err => {
+                console.error('[PWA] Failed to check for SW update:', err);
+            });
+        }, 3 * 60 * 1000);
+
+        return () => {
+            console.log('[PWA] Clearing SW update check interval...');
+            clearInterval(intervalId);
+        };
+    }, [registration]);
 
     // ==============================
     // CORE: Nuclear Purge (mandatory)

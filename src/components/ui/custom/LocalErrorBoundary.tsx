@@ -1,26 +1,28 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCcw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { AdminErrorState } from '@/components/admin/AdminErrorState';
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  onReset?: () => void;
 }
 
 interface State {
   hasError: boolean;
   error: Error | null;
+  showDetails: boolean;
 }
 
 export class LocalErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
-    error: null
+    error: null,
+    showDetails: false
   };
 
   public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return { hasError: true, error, showDetails: false };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -28,7 +30,14 @@ export class LocalErrorBoundary extends Component<Props, State> {
   }
 
   private handleReset = () => {
-    this.setState({ hasError: false, error: null });
+    this.setState({ hasError: false, error: null, showDetails: false });
+    if (this.props.onReset) {
+      this.props.onReset();
+    }
+  };
+
+  private toggleDetails = () => {
+    this.setState(prev => ({ showDetails: !prev.showDetails }));
   };
 
   public render() {
@@ -38,25 +47,30 @@ export class LocalErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="admin-glass p-8 sm:p-12 rounded-[2rem] border border-white/5 flex flex-col items-center justify-center text-center space-y-4 shadow-2xl relative overflow-hidden group">
-          <div className="absolute inset-0 bg-red-500/[0.01] pointer-events-none" />
-          <div className="w-12 h-12 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-center text-red-500 animate-pulse">
-            <AlertTriangle className="w-6 h-6" />
-          </div>
-          <div className="space-y-1 relative z-10">
-            <h4 className="text-xs font-black text-white uppercase tracking-[0.2em]">Falha na Renderização</h4>
-            <p className="text-[10px] text-zinc-500 uppercase tracking-widest max-w-xs leading-relaxed">
-              Ocorreu um erro ao carregar este bloco de controle.
-            </p>
-          </div>
-          <Button
-            onClick={this.handleReset}
-            size="sm"
-            className="h-9 px-4 rounded-xl bg-zinc-900 border border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-800 text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
-          >
-            <RefreshCcw className="w-3.5 h-3.5 mr-2" />
-            Tentar Novamente
-          </Button>
+        <div className="w-full flex flex-col items-center justify-center space-y-4 animate-in fade-in duration-300">
+          <AdminErrorState
+            title="Falha Operacional"
+            message="Ocorreu um erro ao carregar este bloco de controle."
+            onRetry={this.handleReset}
+          />
+          
+          {this.state.error && (
+            <div className="w-full max-w-md space-y-2 text-center">
+              <button
+                type="button"
+                onClick={this.toggleDetails}
+                className="text-[9px] font-black uppercase tracking-wider text-zinc-500 hover:text-white transition-colors"
+              >
+                {this.state.showDetails ? 'Ocultar Detalhes' : 'Visualizar Detalhes Técnicos'}
+              </button>
+              
+              {this.state.showDetails && (
+                <pre className="text-left text-[9px] font-mono text-red-400/90 bg-black/60 border border-white/5 rounded-xl p-3 overflow-x-auto max-h-36 custom-scrollbar animate-in fade-in zoom-in-95 duration-200">
+                  {this.state.error.stack || this.state.error.message}
+                </pre>
+              )}
+            </div>
+          )}
         </div>
       );
     }
@@ -64,3 +78,4 @@ export class LocalErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
+

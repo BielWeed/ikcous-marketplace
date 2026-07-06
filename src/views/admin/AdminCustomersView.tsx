@@ -41,44 +41,37 @@ import { DebouncedSearchInput } from '@/components/admin/DebouncedSearchInput';
 import { LocalErrorBoundary } from '@/components/ui/custom/LocalErrorBoundary';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
-interface Customer {
-    id: string;
-    email: string | null;
-    full_name: string | null;
-    phone: string | null;
-    role: string;
-    created_at: string;
-    orders_count?: number;
-    total_spent?: number;
-    last_order_date?: string;
-    avatar_url?: string;
-    is_push_subscribed?: boolean;
-}
+import { cachedCustomersData, setCachedCustomersData, type Customer } from '@/utils/admin_cache';
 
 interface AdminCustomersViewProps {
     onNavigate: (view: View, id?: string) => void;
     active?: boolean;
 }
 
-let cachedCustomersData: {
-    customers: Customer[];
-    total: number;
-    stats: {
-        total_customers: number;
-        global_ltv: number;
-        global_orders: number;
-        new_customers_30d: number;
-    };
-} | null = null;
-
 export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate, active }: Readonly<AdminCustomersViewProps>) {
     const isOffline = useOnlineStatus();
     const [customers, setCustomers] = useState<Customer[]>(() => cachedCustomersData?.customers || []);
+
+    const [savedScrollPosition, setSavedScrollPosition] = useState(0);
+    const viewRef = useRef<HTMLDivElement>(null);
+    const hasRestoredScrollRef = useRef(false);
+    const wasActiveRef = useRef(active);
+
+    const handleLocalNavigate = useCallback((view: View, id?: string) => {
+        const container = viewRef.current?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+        if (container) {
+            setSavedScrollPosition(container.scrollTop);
+            hasRestoredScrollRef.current = false;
+        }
+        onNavigate(view, id);
+    }, [onNavigate]);
+
+
     const [loading, setLoading] = useState(() => !cachedCustomersData);
     const [showHelpModal, setShowHelpModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [isTyping, setIsTyping] = useState(false);
-    const [sortField, setSortField] = useState<keyof Customer>('created_at');
+    const [sortField, setSortField] = useState<keyof Customer>('total_spent');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
     const [totalCustomers, setTotalCustomers] = useState(() => cachedCustomersData?.total || 0);
     const [globalStats, setGlobalStats] = useState<{
@@ -99,6 +92,34 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
         localStorage.setItem('admin_customers_view_mode', viewMode);
     }, [viewMode]);
 
+    useEffect(() => {
+        if (!active) {
+            if (wasActiveRef.current) {
+                const container = viewRef.current?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+                if (container) {
+                    setSavedScrollPosition(container.scrollTop);
+                }
+            }
+            hasRestoredScrollRef.current = false;
+            wasActiveRef.current = false;
+            return;
+        }
+
+        wasActiveRef.current = true;
+
+        if (active && !loading && customers.length > 0 && savedScrollPosition > 0 && !hasRestoredScrollRef.current) {
+            const container = viewRef.current?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+            if (container) {
+                hasRestoredScrollRef.current = true;
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        container.scrollTop = savedScrollPosition;
+                    });
+                });
+            }
+        }
+    }, [active, loading, customers.length, savedScrollPosition]);
+
     const fetchCustomers = useCallback(async (pageToFetch: number) => {
         try {
             setLoading(true);
@@ -118,11 +139,11 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                 const totalCount = data.total_count || 0;
                 const stats = data.stats;
 
-                cachedCustomersData = {
+                setCachedCustomersData({
                     customers: customersList,
                     total: totalCount,
                     stats
-                };
+                });
 
                 setCustomers(customersList);
                 setTotalCustomers(totalCount);
@@ -136,33 +157,22 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
         }
     }, [searchTerm, sortField, sortDirection, PAGE_SIZE]);
 
-    const prevSearch = useRef(searchTerm);
-    const prevSortField = useRef(sortField);
-    const prevSortDirection = useRef(sortDirection);
-
     useEffect(() => {
         if (!active) return;
-
-        const filtersChanged = 
-            prevSearch.current !== searchTerm ||
-            prevSortField.current !== sortField ||
-            prevSortDirection.current !== sortDirection;
-
-        prevSearch.current = searchTerm;
-        prevSortField.current = sortField;
-        prevSortDirection.current = sortDirection;
-
-        let pageToFetch = page;
-        if (filtersChanged) {
-            pageToFetch = 0;
-            if (page !== 0) {
-                setPage(0);
-                return;
-            }
-        }
-
-        fetchCustomers(pageToFetch);
+        fetchCustomers(page);
     }, [searchTerm, sortField, sortDirection, page, active, fetchCustomers]);
+
+    // Auto-refresh when coming back online
+    const wasOfflineRef = useRef(isOffline);
+    useEffect(() => {
+        if (wasOfflineRef.current && !isOffline && active) {
+            toast.success('Conexão restabelecida. Atualizando clientes...', {
+                icon: '⚡'
+            });
+            fetchCustomers(page);
+        }
+        wasOfflineRef.current = isOffline;
+    }, [isOffline, active, page, fetchCustomers]);
 
     const kpiCards = useMemo<readonly KpiCardConfig[]>(() => [
         { label: 'Total Clientes', value: globalStats?.total_customers || 0, icon: Users, accent: 'text-admin-gold', subValue: 'Base de Clientes' },
@@ -175,6 +185,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
     const paginatedCustomers = customers; // Already paginated from server
 
     const handleSort = (field: keyof Customer) => {
+        setPage(0);
         if (sortField === field) {
             setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
         } else {
@@ -250,7 +261,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
     };
 
     return (
-        <div className="h-auto bg-black text-white selection:bg-admin-gold/30 pb-8 animate-in fade-in duration-500">
+        <div ref={viewRef} className="h-auto bg-black text-white selection:bg-admin-gold/30 pb-28 lg:pb-8 animate-in fade-in duration-500">
             {/* Header */}
             <div className="px-6 flex items-center justify-between gap-4 pt-6 pb-2">
                 <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-none select-none flex items-center gap-3 shrink-0">
@@ -271,7 +282,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                 {/* Control Bar para Carrossel/Grid de Métricas */}
                 <div className="space-y-4">
                     <LocalErrorBoundary>
-                        <AdminKpiCarousel cards={kpiCards} loading={loading && !globalStats} title="Métricas de Clientes" />
+                        <AdminKpiCarousel cards={kpiCards} loading={loading && !globalStats} active={active} title="Métricas de Clientes" />
                     </LocalErrorBoundary>
                 </div>
                 {/* Unified Control & Data Block */}
@@ -291,7 +302,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                                     placeholder="Buscar cliente premium..."
                                     className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all font-bold text-sm w-full"
                                     value={searchTerm}
-                                    onChange={setSearchTerm}
+                                    onChange={(val) => { setSearchTerm(val); setPage(0); }}
                                     onTyping={setIsTyping}
                                     delay={300}
                                 />
@@ -326,7 +337,8 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
 
                     {/* Data List (Responsive Grid/Cards) */}
                     <LocalErrorBoundary>
-                        <div className={cn("relative group/table w-full p-2 sm:p-0 transition-opacity duration-300", loading && paginatedCustomers.length > 0 && "opacity-50 pointer-events-none")}>
+                        <div className="relative group/table w-full p-2 sm:p-0">
+                            {loading && paginatedCustomers.length > 0 && <div className="admin-sync-progress-bar" />}
                             {/* Glow Decoration */}
                             <div className="absolute -top-24 -left-24 w-48 h-48 bg-admin-gold/5 blur-[100px] pointer-events-none" />
 
@@ -373,7 +385,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                                             <div
                                                 key={customer.id}
                                                 className="group bg-zinc-900/30 md:bg-transparent border border-zinc-800/50 md:border-transparent rounded-[1.5rem] md:rounded-none p-5 md:px-8 md:py-6 flex flex-col md:grid md:grid-cols-12 md:items-center gap-5 md:gap-4 hover:bg-zinc-800/20 md:hover:bg-zinc-800/30 transition-all cursor-pointer relative overflow-hidden shadow-xl md:shadow-none min-h-[120px] content-visibility-auto"
-                                                onClick={() => onNavigate('admin-user-detail', customer.id)}
+                                                onClick={() => handleLocalNavigate('admin-user-detail', customer.id)}
                                             >
                                                 {/* Column 1: Client Info (md:col-span-4) */}
                                                 <div className="flex items-center gap-4 md:col-span-4 pr-10 md:pr-0">
@@ -481,14 +493,14 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                                                                 <DropdownMenuSeparator className="bg-zinc-800/60" />
                                                                 <DropdownMenuItem
                                                                     className="group rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer text-zinc-200 focus:bg-admin-gold focus:text-black p-3 transition-colors flex items-center gap-1"
-                                                                    onClick={() => onNavigate('admin-user-detail', customer.id)}
+                                                                    onClick={() => handleLocalNavigate('admin-user-detail', customer.id)}
                                                                 >
                                                                     <Shield className="w-4 h-4 mr-2 text-zinc-400 group-focus:text-black transition-colors shrink-0" />
                                                                     Ver Perfil Elite
                                                                 </DropdownMenuItem>
                                                                 <DropdownMenuItem
                                                                     className="group rounded-xl text-[10px] font-black uppercase tracking-widest cursor-pointer text-zinc-200 focus:bg-admin-gold focus:text-black p-3 transition-colors flex items-center gap-1"
-                                                                    onClick={() => onNavigate('admin-push', customer.id)}
+                                                                    onClick={() => handleLocalNavigate('admin-push', customer.id)}
                                                                 >
                                                                     <Zap className="w-4 h-4 mr-2 text-zinc-400 group-focus:text-black transition-colors shrink-0" />
                                                                     Notificação Push
@@ -514,7 +526,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                                     {paginatedCustomers.map((customer) => (
                                         <div
                                             key={customer.id}
-                                            onClick={() => onNavigate('admin-user-detail', customer.id)}
+                                            onClick={() => handleLocalNavigate('admin-user-detail', customer.id)}
                                             className="group relative bg-zinc-950/40 backdrop-blur-md border border-white/5 rounded-[1.5rem] p-3.5 sm:p-5 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer min-h-[160px] flex flex-col justify-between content-visibility-auto"
                                         >
                                             {/* Glow Background */}
@@ -549,14 +561,14 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                                                                 <DropdownMenuSeparator className="bg-zinc-800/60" />
                                                                 <DropdownMenuItem
                                                                     className="group rounded-xl text-[9px] font-black uppercase tracking-widest cursor-pointer text-zinc-200 focus:bg-admin-gold focus:text-black p-2.5 transition-colors flex items-center gap-1"
-                                                                    onClick={() => onNavigate('admin-user-detail', customer.id)}
+                                                                    onClick={() => handleLocalNavigate('admin-user-detail', customer.id)}
                                                                 >
                                                                     <Shield className="w-3.5 h-3.5 mr-2 text-zinc-400 group-focus:text-black transition-colors shrink-0" />
                                                                     Ver Perfil Elite
                                                                 </DropdownMenuItem>
                                                                 <DropdownMenuItem
                                                                     className="group rounded-xl text-[9px] font-black uppercase tracking-widest cursor-pointer text-zinc-200 focus:bg-admin-gold focus:text-black p-2.5 transition-colors flex items-center gap-1"
-                                                                    onClick={() => onNavigate('admin-push', customer.id)}
+                                                                    onClick={() => handleLocalNavigate('admin-push', customer.id)}
                                                                 >
                                                                     <Zap className="w-3.5 h-3.5 mr-2 text-zinc-400 group-focus:text-black transition-colors shrink-0" />
                                                                     Notificação Push
@@ -637,7 +649,11 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                             <Button
                                 variant="outline"
                                 size="icon"
-                                onClick={() => setPage(prev => Math.max(0, prev - 1))}
+                                onClick={(e) => {
+                                    setPage(prev => Math.max(0, prev - 1));
+                                    const mainEl = e.currentTarget.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+                                    if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
                                 disabled={page === 0}
                                 className="h-10 w-10 rounded-xl border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-admin-gold/50 disabled:opacity-30"
                             >
@@ -649,7 +665,11 @@ export const AdminCustomersView = memo(function AdminCustomersView({ onNavigate,
                             <Button
                                 variant="outline"
                                 size="icon"
-                                onClick={() => setPage(prev => Math.min(totalPages - 1, prev + 1))}
+                                onClick={(e) => {
+                                    setPage(prev => Math.min(totalPages - 1, prev + 1));
+                                    const mainEl = e.currentTarget.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+                                    if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
                                 disabled={page === totalPages - 1}
                                 className="h-10 w-10 rounded-xl border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-admin-gold/50 disabled:opacity-30"
                             >

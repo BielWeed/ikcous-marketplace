@@ -8,7 +8,6 @@ import { PieChart as PieChartIcon } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { formatCurrency } from '@/lib/utils';
-import { useDeferredRender } from '@/hooks/useDeferredRender';
 
 export interface CategoryData {
     name: string;
@@ -24,6 +23,7 @@ export interface CategoryData {
 interface StrategicIntelligenceBlocksProps {
     readonly categoryData: CategoryData[];
     readonly loading: boolean;
+    readonly active?: boolean;
 }
 
 const PREMIUM_PALETTE = [
@@ -119,8 +119,19 @@ const CustomPieLabel = React.memo(({ viewBox, totalRevenue, fontSize }: CustomPi
 });
 CustomPieLabel.displayName = 'CustomPieLabel';
 
-export const StrategicIntelligenceBlocks = React.memo(function StrategicIntelligenceBlocks({ categoryData, loading }: StrategicIntelligenceBlocksProps) {
-    const isDeferredReady = useDeferredRender(180);
+export const StrategicIntelligenceBlocks = React.memo(function StrategicIntelligenceBlocks({ categoryData, loading, active = true }: StrategicIntelligenceBlocksProps) {
+    const [isChartReady, setIsChartReady] = useState(false);
+
+    useEffect(() => {
+        if (active) {
+            const timer = setTimeout(() => {
+                setIsChartReady(true);
+            }, 180);
+            return () => clearTimeout(timer);
+        } else {
+            setIsChartReady(false);
+        }
+    }, [active]);
     const _isMobile = useMediaQuery('(max-width: 1023px)');
     const [activeIndex, setActiveIndex] = useState(-1);
     const [lastActiveIndex, setLastActiveIndex] = useState(-1);
@@ -159,6 +170,7 @@ export const StrategicIntelligenceBlocks = React.memo(function StrategicIntellig
             const gradientId = PREMIUM_PALETTE[safeIndex % PREMIUM_PALETTE.length].id;
             return {
                 ...item,
+                name: item.name ? item.name.charAt(0).toUpperCase() + item.name.slice(1) : '',
                 value: Number(item.value) || 0,
                 gradientId,
                 solidColor: GRADIENT_MAP[gradientId]
@@ -169,6 +181,11 @@ export const StrategicIntelligenceBlocks = React.memo(function StrategicIntellig
     const visibleCategoryData = useMemo(() => {
         return safeCategoryData.filter(c => !hiddenCategories.has(c.name));
     }, [safeCategoryData, hiddenCategories]);
+
+    const visibleCategoryDataRef = useRef(visibleCategoryData);
+    useEffect(() => {
+        visibleCategoryDataRef.current = visibleCategoryData;
+    }, [visibleCategoryData]);
 
     const totalRevenue = useMemo(() => {
         return visibleCategoryData.reduce((acc, curr) => acc + (curr.value || 0), 0);
@@ -225,10 +242,10 @@ export const StrategicIntelligenceBlocks = React.memo(function StrategicIntellig
             return;
         }
         
-        const index = visibleCategoryData.findIndex(c => c.name === categoryName);
+        const index = visibleCategoryDataRef.current.findIndex(c => c.name === categoryName);
         setActiveIndex(index);
         if (index !== -1) setLastActiveIndex(index);
-    }, [visibleCategoryData]);
+    }, []);
 
     const renderActiveShape = useCallback((props: SectorProps & { payload?: CategoryData }) => {
         const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload } = props;
@@ -258,7 +275,7 @@ export const StrategicIntelligenceBlocks = React.memo(function StrategicIntellig
         );
     }, []);
 
-    if (!mounted || !isDeferredReady || (loading && (!categoryData || categoryData.length === 0))) {
+    if (!mounted || !isChartReady || (loading && (!categoryData || categoryData.length === 0))) {
         return (
             <div className="space-y-12 pb-10 sm:pb-20">
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
@@ -285,7 +302,7 @@ export const StrategicIntelligenceBlocks = React.memo(function StrategicIntellig
     }
 
     return (
-        <div className="space-y-12 pb-10 sm:pb-20">
+        <div className="space-y-12 pb-10 sm:pb-20 animate-in fade-in duration-500">
             {/* A11y - Accessibility Layer for Screen Readers */}
             <section className="sr-only" aria-label="Relatório Estratégico de Faturamento" aria-live="polite" aria-atomic="true">
                 <h2>Relatório Estratégico de Faturamento</h2>
@@ -467,9 +484,7 @@ export const StrategicIntelligenceBlocks = React.memo(function StrategicIntellig
                                     dataKey="value"
                                     stroke="#09090b"
                                     strokeWidth={1.5}
-                                    isAnimationActive={true}
-                                    animationDuration={800}
-                                    animationEasing="ease-out"
+                                    isAnimationActive={!isMobile}
                                     cx={pieLayout.cx}
                                     cy={pieLayout.cy}
                                     onMouseEnter={onPieEnter}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { LazyImage } from '@/components/LazyImage';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -37,11 +37,12 @@ interface OrderDetailProps {
     onBack: () => void;
     onStatusChange: (orderId: string, status: OrderStatus) => void;
     onWhatsApp: (order: Order) => void;
+    isOffline?: boolean;
 }
 
 const globalSkuCache: Record<string, string> = {};
 
-export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Readonly<OrderDetailProps>) {
+export const OrderDetail = memo(function OrderDetail({ order, onBack, onStatusChange, onWhatsApp, isOffline = false }: Readonly<OrderDetailProps>) {
 
     // Local state for instant UI update & inline editing
     const [localTrackingCode, setLocalTrackingCode] = useState(order.trackingCode || '');
@@ -358,7 +359,8 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                                         <p className="font-mono text-sm font-semibold text-white">{order.customer.whatsapp}</p>
                                         <button
                                             onClick={handleWhatsAppDirect}
-                                            className="p-1 hover:bg-emerald-500/10 text-emerald-400 hover:text-emerald-300 rounded transition-colors"
+                                            disabled={isOffline}
+                                            className="p-1 hover:bg-emerald-500/10 text-emerald-400 hover:text-emerald-300 rounded transition-colors disabled:opacity-40 disabled:pointer-events-none"
                                             title="Conversar no WhatsApp"
                                         >
                                             <MessageCircle className="w-4 h-4 fill-current" />
@@ -620,7 +622,8 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                                                     </a>
                                                     <button
                                                         onClick={() => setIsEditingTracking(true)}
-                                                        className="p-1.5 hover:bg-white/5 text-zinc-400 hover:text-white rounded transition-colors"
+                                                        disabled={isOffline}
+                                                        className="p-1.5 hover:bg-white/5 text-zinc-400 hover:text-white rounded transition-colors disabled:opacity-40 disabled:pointer-events-none"
                                                         title="Editar Código"
                                                     >
                                                         <Edit3 className="w-3.5 h-3.5" />
@@ -633,7 +636,8 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                                             <p className="text-[10px] text-zinc-500 font-medium">Nenhum código de rastreamento cadastrado.</p>
                                             <Button
                                                 onClick={() => setIsEditingTracking(true)}
-                                                className="h-8 bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold text-[9px] uppercase tracking-wider rounded-lg px-3 flex items-center gap-1 active:scale-95 transition-all"
+                                                disabled={isOffline}
+                                                className="h-8 bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold text-[9px] uppercase tracking-wider rounded-lg px-3 flex items-center gap-1 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
                                             >
                                                 <Plus className="w-3.5 h-3.5" />
                                                 Adicionar Rastreio
@@ -651,7 +655,8 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                             <div className="space-y-2">
                                 <Button
                                     onClick={() => onWhatsApp(order)}
-                                    className="w-full h-11 bg-emerald-500 hover:bg-emerald-600 text-black font-black uppercase tracking-widest text-[9px] rounded-xl transition-all shadow-xl shadow-emerald-500/10 flex items-center justify-center gap-2 active:scale-95"
+                                    disabled={isOffline}
+                                    className="w-full h-11 bg-emerald-500 hover:bg-emerald-600 text-black font-black uppercase tracking-widest text-[9px] rounded-xl transition-all shadow-xl shadow-emerald-500/10 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-40 disabled:pointer-events-none"
                                 >
                                     <MessageCircle className="w-4 h-4 fill-current" />
                                     Acionamento WhatsApp
@@ -660,7 +665,8 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                                 {nextStatus && order.status !== 'cancelled' && (
                                     <Button
                                         onClick={() => onStatusChange(order.id, nextStatus)}
-                                        className="w-full h-11 bg-white/5 hover:bg-white/10 text-white font-black uppercase tracking-widest text-[9px] rounded-xl border border-white/10 transition-all shadow-xl active:scale-95"
+                                        disabled={isOffline}
+                                        className="w-full h-11 bg-white/5 hover:bg-white/10 text-white font-black uppercase tracking-widest text-[9px] rounded-xl border border-white/10 transition-all shadow-xl active:scale-95 disabled:opacity-40 disabled:pointer-events-none"
                                     >
                                         Avançar: {statusConfig[nextStatus].label}
                                     </Button>
@@ -669,8 +675,9 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                                 {order.status !== 'cancelled' && order.status !== 'delivered' && (
                                     <Button
                                         onClick={() => onStatusChange(order.id, 'cancelled')}
+                                        disabled={isOffline}
                                         variant="ghost"
-                                        className="w-full h-11 text-red-400/60 hover:text-red-400 hover:bg-red-400/5 font-black uppercase tracking-widest text-[9px] rounded-xl transition-all"
+                                        className="w-full h-11 text-red-400/60 hover:text-red-400 hover:bg-red-400/5 font-black uppercase tracking-widest text-[9px] rounded-xl transition-all disabled:opacity-40 disabled:pointer-events-none"
                                     >
                                         Abortar Operação
                                     </Button>
@@ -740,7 +747,8 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                                             <div className="flex justify-end">
                                                 <Button
                                                     onClick={() => setIsEditingNotes(true)}
-                                                    className="h-8 bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold text-[9px] uppercase tracking-wider rounded-lg px-3 flex items-center gap-1 active:scale-95 transition-all"
+                                                    disabled={isOffline}
+                                                    className="h-8 bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold text-[9px] uppercase tracking-wider rounded-lg px-3 flex items-center gap-1 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
                                                 >
                                                     <Edit3 className="w-3.5 h-3.5 text-zinc-400" />
                                                     Editar Notas
@@ -752,7 +760,8 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
                                             <p className="text-[10px] text-zinc-500 font-medium">Nenhuma nota cadastrada para este pedido.</p>
                                             <Button
                                                 onClick={() => setIsEditingNotes(true)}
-                                                className="h-8 bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold text-[9px] uppercase tracking-wider rounded-lg px-3 flex items-center gap-1 active:scale-95 transition-all"
+                                                disabled={isOffline}
+                                                className="h-8 bg-white/5 border border-white/5 hover:bg-white/10 text-white font-bold text-[9px] uppercase tracking-wider rounded-lg px-3 flex items-center gap-1 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
                                             >
                                                 <Plus className="w-3.5 h-3.5" />
                                                 Adicionar Nota
@@ -770,4 +779,4 @@ export function OrderDetail({ order, onBack, onStatusChange, onWhatsApp }: Reado
             <OrderReceipt order={order} />
         </div>
     );
-}
+});

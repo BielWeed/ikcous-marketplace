@@ -13,6 +13,35 @@ let lastBannersFetchTime = 0;
 let cacheOnlyActive: boolean | null = null;
 const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
 
+async function normalizeBannersOrder(pos: "home_top" | "home_middle" | "home_bottom") {
+  try {
+    const { data, error } = await supabase
+      .from('banners')
+      .select('id, order')
+      .eq('position', pos)
+      .order('order', { ascending: true })
+      .order('id', { ascending: true });
+
+    if (error) throw error;
+    if (!data || data.length === 0) return;
+
+    const updates = data.map((b: any, idx: number) => {
+      const targetOrder = idx + 1;
+      if (b.order !== targetOrder) {
+        return supabase.from('banners').update({ order: targetOrder }).eq('id', b.id);
+      }
+      return null;
+    }).filter(Boolean);
+
+    if (updates.length > 0) {
+      await Promise.all(updates);
+      console.log(`[Banners] Normalized ${updates.length} orders for position: ${pos}`);
+    }
+  } catch (err) {
+    console.error('[Banners] Error normalizing banners order:', err);
+  }
+}
+
 export function useBanners(adminMode: boolean = false) {
   const { isAdmin } = useAuth();
   const vaultRef = useRef<DataVault | null>(null);
@@ -51,11 +80,8 @@ export function useBanners(adminMode: boolean = false) {
   }, []);
 
   const fetchBanners = useCallback(async (onlyActive = !adminMode, forceRefresh = false) => {
-    // Prevent duplicate concurrent fetches
-    if (isFetchingRef.current && !forceRefresh) return;
-    
-    // If a network fetch is already active, wait for it
-    if (bannersFetchPromise && !forceRefresh) {
+    // If a network fetch is already active, wait for it (never duplicate parallel fetches)
+    if (bannersFetchPromise) {
       try {
         const data = await bannersFetchPromise;
         setBanners(data);
@@ -64,6 +90,9 @@ export function useBanners(adminMode: boolean = false) {
       return;
     }
 
+    // Prevent duplicate concurrent fetches
+    if (isFetchingRef.current && !forceRefresh) return;
+    
     isFetchingRef.current = true;
 
     const queryPromise = (async () => {
@@ -197,6 +226,8 @@ export function useBanners(adminMode: boolean = false) {
       persistToVault(updatedBanners);
       setBanners(updatedBanners);
 
+      // Async normalization of position order in DB
+      normalizeBannersOrder(data.position as "home_top" | "home_middle" | "home_bottom").catch(() => {});
 
       toast.success('Banner adicionado com sucesso!');
       return data;
@@ -209,6 +240,13 @@ export function useBanners(adminMode: boolean = false) {
 
   const updateBanner = async (id: string, updates: Partial<Banner>) => {
     if (!isAdmin) throw new Error('Acesso negado: Apenas administradores podem atualizar banners.');
+    
+    // Optimistic Update
+    const previousBanners = [...banners];
+    const updated = banners.map(b => b.id === id ? { ...b, ...updates } : b);
+    persistToVault(updated);
+    setBanners(updated);
+
     try {
       const dbUpdates: any = {};
       if (updates.imageUrl !== undefined) dbUpdates.image_url = updates.imageUrl;
@@ -225,15 +263,23 @@ export function useBanners(adminMode: boolean = false) {
 
       if (error) throw error;
 
-      const updated = banners.map(b => b.id === id ? { ...b, ...updates } : b);
-      persistToVault(updated);
-      setBanners(updated);
-
+      // Run DB order normalization if position or order changed
+      const previousBanner = previousBanners.find(b => b.id === id);
+      if (previousBanner) {
+        if (updates.position && updates.position !== previousBanner.position) {
+          normalizeBannersOrder(previousBanner.position).catch(() => {});
+          normalizeBannersOrder(updates.position).catch(() => {});
+        } else if (updates.order !== undefined || updates.position !== undefined) {
+          normalizeBannersOrder(previousBanner.position).catch(() => {});
+        }
+      }
 
       toast.success('Banner atualizado com sucesso!');
     } catch (error) {
       console.error('Error updating banner:', error);
       toast.error('Erro ao atualizar banner.');
+      persistToVault(previousBanners);
+      setBanners(previousBanners);
       throw error;
     }
   };
@@ -243,6 +289,36 @@ export function useBanners(adminMode: boolean = false) {
       toast.error('Acesso negado: Apenas administradores podem reordenar banners.');
       return;
     }
+
+    const activeBanner = banners.find(b => b.id === activeBannerId);
+    const overBanner = banners.find(b => b.id === overBannerId);
+    if (!activeBanner || !overBanner) return;
+
+    // Resolve any clashing/duplicate order issues in the database first
+    const activePosition = activeBanner.position;
+    const samePosBanners = banners.filter(b => b.position === activePosition);
+    const hasOrderCollision = samePosBanners.some((b, idx) => {
+      const matchIndex = samePosBanners.findIndex(x => x.order === b.order);
+      return matchIndex !== idx;
+    });
+
+    if (hasOrderCollision) {
+      console.log(`[Banners] Collision detected in ${activePosition}. Normalizing before swap.`);
+      try {
+        const sorted = [...samePosBanners].sort((a, b) => {
+          if ((a.order ?? 0) !== (b.order ?? 0)) return (a.order ?? 0) - (b.order ?? 0);
+          return a.id.localeCompare(b.id);
+        });
+        const updates = sorted.map((b, idx) => {
+          b.order = idx + 1;
+          return supabase.from('banners').update({ order: idx + 1 }).eq('id', b.id);
+        });
+        await Promise.all(updates);
+      } catch (err) {
+        console.error('[Banners] Collision normalization failed:', err);
+      }
+    }
+
     // 1. Optimistic Update
     const previousBanners = [...banners];
     const newBanners = [...banners];
@@ -250,21 +326,21 @@ export function useBanners(adminMode: boolean = false) {
     const overIndex = newBanners.findIndex(b => b.id === overBannerId);
 
     if (activeIndex !== -1 && overIndex !== -1) {
-      const activeBanner = { ...newBanners[activeIndex] };
-      const overBanner = { ...newBanners[overIndex] };
+      const activeB = { ...newBanners[activeIndex] };
+      const overB = { ...newBanners[overIndex] };
 
       // Swap the 'order' values
-      const tempOrder = activeBanner.order;
-      activeBanner.order = overBanner.order;
-      overBanner.order = tempOrder;
+      const tempOrder = activeB.order;
+      activeB.order = overB.order;
+      overB.order = tempOrder;
 
-      newBanners[activeIndex] = overBanner;
-      newBanners[overIndex] = activeBanner;
+      newBanners[activeIndex] = overB;
+      newBanners[overIndex] = activeB;
 
       // Sort by order
       const cachedBanners = [...banners];
-      cachedBanners[activeIndex] = overBanner;
-      cachedBanners[overIndex] = activeBanner;
+      cachedBanners[activeIndex] = overB;
+      cachedBanners[overIndex] = activeB;
       cachedBanners.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       
       persistToVault(cachedBanners);
@@ -282,6 +358,7 @@ export function useBanners(adminMode: boolean = false) {
       persistToVault(previousBanners);
       setBanners(previousBanners);
       console.error('Error reordering banners:', error);
+      toast.error('Erro ao reordenar banners.');
     }
   };
 
@@ -294,6 +371,11 @@ export function useBanners(adminMode: boolean = false) {
         .eq('id', id);
 
       if (error) throw error;
+
+      const deletedBanner = banners.find(b => b.id === id);
+      if (deletedBanner) {
+        normalizeBannersOrder(deletedBanner.position).catch(() => {});
+      }
 
       if (imageUrl) {
         try {

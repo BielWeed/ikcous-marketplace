@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -6,7 +7,7 @@ interface InventoryAlertProps {
     onNavigate: (view: any, id?: string) => void;
 }
 
-export function InventoryAlert({ alertsCount, onNavigate }: InventoryAlertProps) {
+export const InventoryAlert = memo(function InventoryAlert({ alertsCount, onNavigate }: InventoryAlertProps) {
     if (alertsCount <= 0) return null;
 
     return (
@@ -33,5 +34,4 @@ export function InventoryAlert({ alertsCount, onNavigate }: InventoryAlertProps)
             </div>
         </div>
     );
-
-}
+});

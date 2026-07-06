@@ -7,14 +7,123 @@ import { toast } from 'sonner';
 import { mapProductFromDB } from '@/lib/mappers';
 import { TruthGate } from '@/utils/truth_gate';
 import type { Product, ProductVariant } from '@/types';
+import { clearAnalyticsCache } from '@/hooks/useAnalytics';
+
+async function callRpcWithRetry<T>(
+  fn: () => Promise<{ data: T | null; error: any }>,
+  retries = 3,
+  delay = 500
+): Promise<{ data: T | null; error: any }> {
+  let lastError: any = null;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fn();
+      if (!res.error) {
+        return res;
+      }
+      lastError = res.error;
+      
+      if (lastError.message?.includes('JWT') || lastError.status === 401) {
+        const { data: { session } } = await supabase.auth.refreshSession();
+        if (session) {
+          const retryRes = await fn();
+          if (!retryRes.error) return retryRes;
+          lastError = retryRes.error;
+        }
+      }
+      
+      if (i < retries && (!lastError.status || lastError.status >= 500 || lastError.status === 408)) {
+        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+      } else {
+        break;
+      }
+    } catch (err: any) {
+      lastError = err;
+      if (i < retries) {
+        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+      } else {
+        break;
+      }
+    }
+  }
+  return { data: null, error: lastError };
+}
+
+// Memory cache for Admin Products (SWR Pattern)
+let cachedAdminProducts: Product[] | null = null;
+let cachedAdminProductsTotal = 0;
+
+async function syncOfflineUpdates() {
+  if (typeof window === 'undefined' || !navigator.onLine) return;
+  const queueStr = localStorage.getItem('products_offline_updates_queue');
+  if (!queueStr) return;
+
+  try {
+    const queue = JSON.parse(queueStr);
+    if (!Array.isArray(queue) || queue.length === 0) return;
+
+    const remainingQueue: any[] = [];
+    const toastId = toast.loading(`Sincronizando ${queue.length} atualizações pendentes offline...`);
+
+    for (const item of queue) {
+      const { id, updates } = item;
+      try {
+        const dbUpdates: any = {};
+        if (updates.name !== undefined) dbUpdates.nome = updates.name;
+        if (updates.description !== undefined) dbUpdates.descricao = updates.description;
+        if (updates.price !== undefined) dbUpdates.preco_venda = updates.price;
+        if (updates.costPrice !== undefined) dbUpdates.custo = updates.costPrice;
+        if (updates.originalPrice !== undefined) dbUpdates.preco_original = updates.originalPrice;
+        if (updates.stock !== undefined) dbUpdates.estoque = updates.stock;
+        if (updates.category !== undefined) dbUpdates.categoria = updates.category;
+        if (updates.images !== undefined) {
+          dbUpdates.imagem_urls = updates.images;
+          dbUpdates.imagem_url = updates.images[0] || null;
+        }
+        if (updates.isActive !== undefined) dbUpdates.ativo = updates.isActive;
+        if (updates.isBestseller !== undefined) dbUpdates.is_bestseller = updates.isBestseller;
+        if (updates.freeShipping !== undefined) dbUpdates.frete_gratis = updates.freeShipping;
+        if (updates.metaTitle !== undefined) dbUpdates.meta_title = updates.metaTitle;
+        if (updates.metaDescription !== undefined) dbUpdates.meta_description = updates.metaDescription;
+        if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
+        if (updates.sold !== undefined) dbUpdates.sold = updates.sold;
+        if (updates.sku !== undefined) dbUpdates.codigo = updates.sku || null;
+
+        const { error } = await supabase
+          .from('produtos')
+          .update(dbUpdates)
+          .eq('id', id);
+
+        if (error) throw error;
+      } catch (err) {
+        console.error(`[Offline Sync] Failed to sync product ${id}:`, err);
+        remainingQueue.push(item);
+      }
+    }
+
+    if (remainingQueue.length > 0) {
+      localStorage.setItem('products_offline_updates_queue', JSON.stringify(remainingQueue));
+      toast.error(`Falha ao sincronizar ${remainingQueue.length} alterações. Tentando novamente mais tarde.`, { id: toastId });
+    } else {
+      localStorage.removeItem('products_offline_updates_queue');
+      clearAnalyticsCache();
+      toast.success('Todas as atualizações pendentes foram sincronizadas com sucesso!', { id: toastId });
+    }
+  } catch (e) {
+    console.error('[Offline Sync] Error parsing offline updates queue:', e);
+  }
+}
+
 
 export function useProducts({ autoFetch = true } = {}) {
   const { products: contextProducts, loadingProducts: contextLoading, fetchProducts: refreshContext } = useStore();
-  const [localProducts, setLocalProducts] = useState<Product[]>([]);
+  const [localProducts, setLocalProducts] = useState<Product[]>(() => {
+    return !autoFetch && cachedAdminProducts ? cachedAdminProducts : [];
+  });
   const [loading, setLoading] = useState(false);
   const { isAdmin } = useAuth();
   const lastLoadId = useRef(0);
-  const isFetchingRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Return context products if we are just doing a standard fetch
   const products = autoFetch ? contextProducts : localProducts;
@@ -62,111 +171,219 @@ export function useProducts({ autoFetch = true } = {}) {
 
 
 
-  // Load products with pagination and filtering (Admin focus)
-  const loadProducts = useCallback(async (page = 0, pageSize = 10, filters?: any) => {
-    if (isFetchingRef.current) return null;
-    const loadId = ++lastLoadId.current;
+  // Fetch single product (Optimized for Edit Form)
+  const fetchProduct = useCallback(async (id: string) => {
     try {
       setLoading(true);
-      isFetchingRef.current = true;
+      
+      // Use the base table for admins to see 'custo' and other hidden fields
+      let pQuery: any;
+      if (isAdmin) {
+        pQuery = supabase.from('produtos').select('*').eq('id', id).is('deleted_at', null).single();
+      } else {
+        pQuery = supabase.from('vw_produtos_public').select('*').eq('id', id).single();
+      }
+      
+      const { data: p, error: pErr } = await pQuery;
+      
+      if (pErr) throw pErr;
+
+      const { data: v, error: vErr } = await supabase
+        .from('product_variants')
+        .select('*')
+        .eq('product_id', id);
+      
+      if (vErr) console.error('[useProducts] Error fetching variants for product:', vErr);
+      
+      const productData = {
+        ...(p as any),
+        product_variants: v || []
+      };
+
+      if (productData) {
+        return mapProductFromDB(productData);
+      }
+      return null;
+    } catch (err) {
+      console.error('Error fetching product:', err);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [isAdmin]);
+
+  // Load products with pagination and filtering (Admin focus)
+  const loadProducts = useCallback(async (page = 0, pageSize = 10, filters?: any) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
+    const loadId = ++lastLoadId.current;
+
+    try {
+      if (!filters?.silent) {
+        setLoading(true);
+      }
       let data: any[] | null = null;
       let count: number | null = null;
 
-      // Pagination
-      const from = page * pageSize;
-      const to = from + pageSize - 1;
-
-      // Use the base table for admins to see 'custo' and other hidden fields
-      // Use the public view for everyone else to avoid 403 Forbidden and sanitize data
-      let query: any;
       if (isAdmin) {
-        query = supabase.from('produtos').select('*', { count: 'exact' }).is('deleted_at', null);
+        // Use the new optimized get_admin_products_paged RPC
+        const { data: rpcData, error: rpcError } = await callRpcWithRetry<any>(async () => {
+          const query = (supabase.rpc as any)('get_admin_products_paged', {
+            p_search: filters?.search || '',
+            p_category: filters?.category || 'all',
+            p_status: filters?.status || 'all',
+            p_stock: filters?.stock || 'all',
+            p_page: page,
+            p_page_size: pageSize
+          });
+          return query.abortSignal(signal);
+        });
+
+        if (rpcError) throw rpcError;
+
+        if (rpcData) {
+          data = rpcData.data || [];
+          count = Number(rpcData.total_count) || 0;
+        }
       } else {
-        query = supabase.from('vw_produtos_public').select('*', { count: 'exact' });
-      }
-      
-      // Apply Search
-      if (filters?.search) {
-        // Use 'nome' for both table and view as verified in migrations
-        query = query.ilike('nome', `%${filters.search}%`);
-      }
+        // Pagination for public/non-admin flow
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
 
-      // Apply Status
-      if (filters?.status === 'active') {
-        query = query.eq('ativo', true);
-      } else if (filters?.status === 'inactive') {
-        query = query.eq('ativo', false);
-      }
+        let query = supabase.from('vw_produtos_public').select('*', { count: 'exact' });
 
-      // Apply Stock
-      if (filters?.stock === 'low') {
-        query = query.lte('estoque', 5);
-      }
-
-      // Apply Category
-      if (filters?.category) {
-        query = query.eq('categoria', filters.category);
-      }
-
-      const { data: fetchData, error: fetchError, count: fetchCount } = await query
-        .order('data_cadastro', { ascending: false })
-        .range(from, to);
-
-      if (fetchError) throw fetchError;
-      
-      if (fetchData && fetchData.length > 0) {
-        // Step 2: Fetch variants for these products
-        const productIds = (fetchData as any[]).map((p: any) => p.id).filter(id => id !== null) as string[];
-        const { data: variants, error: varError } = await supabase
-          .from('product_variants')
-          .select('*')
-          .in('product_id', productIds);
-        
-        if (varError) {
-          console.error('[useProducts] Error fetching variants:', varError);
+        // Apply Search
+        if (filters?.search) {
+          query = query.ilike('nome', `%${filters.search}%`);
         }
 
-        // Merge variants into products
-        data = (fetchData as any[]).map((p: any) => ({
-          ...p,
-          product_variants: variants?.filter(v => v.product_id === p.id) || []
-        }));
-      } else {
-        data = fetchData;
+        // Apply Status
+        if (filters?.status === 'active') {
+          query = query.eq('ativo', true);
+        } else if (filters?.status === 'inactive') {
+          query = query.eq('ativo', false);
+        }
+
+        // Apply Stock
+        if (filters?.stock === 'low') {
+          query = query.lte('estoque', 5);
+        }
+
+        // Apply Category
+        if (filters?.category) {
+          query = query.eq('categoria', filters.category);
+        }
+
+        query = query.abortSignal(signal);
+
+        const { data: fetchData, error: fetchError, count: fetchCount } = await query
+          .order('data_cadastro', { ascending: false })
+          .range(from, to);
+
+        if (fetchError) throw fetchError;
+
+        if (fetchData && fetchData.length > 0) {
+          // Fetch variants for these products
+          const productIds = (fetchData as any[]).map((p: any) => p.id).filter(id => id !== null) as string[];
+          const { data: variants, error: varError } = await supabase
+            .from('product_variants')
+            .select('*')
+            .in('product_id', productIds)
+            .abortSignal(signal);
+
+          if (varError) {
+            console.error('[useProducts] Error fetching variants:', varError);
+          }
+
+          // Merge variants into products
+          data = (fetchData as any[]).map((p: any) => ({
+            ...p,
+            product_variants: variants?.filter(v => v.product_id === p.id) || []
+          }));
+        } else {
+          data = fetchData;
+        }
+        count = fetchCount;
       }
-      count = fetchCount;
 
       if (data) {
         if (loadId !== lastLoadId.current) return null;
         const mappedProducts = (data as any[]).map((item: any) => mapProductFromDB(item));
         setLocalProducts(mappedProducts);
+        if (!autoFetch && isAdmin) {
+          cachedAdminProducts = mappedProducts;
+          cachedAdminProductsTotal = count || 0;
+        }
         return {
           products: mappedProducts,
           total: count || 0
         };
       }
       return { products: [], total: 0 };
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.message === 'Fetch is aborted' || err?.message?.includes('aborted')) {
+        return null;
+      }
       console.error('Error loading products:', err);
-      toast.error('Erro ao listar produtos');
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        if (cachedAdminProducts) {
+          setLocalProducts(cachedAdminProducts);
+          return {
+            products: cachedAdminProducts,
+            total: cachedAdminProductsTotal
+          };
+        }
+      } else {
+        toast.error('Erro ao listar produtos');
+      }
       return null;
     } finally {
-      isFetchingRef.current = false;
       setLoading(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, autoFetch]);
 
   // We rely on the context for autoFetch now
   useEffect(() => {
-    // If not auto-fetching from context, we might need a local fetch 
-    // but usually this hook is used either as a context consumer or as an admin fetcher.
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, []);
+
+  // Synchronize queued offline updates when coming back online
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleOnlineSync = () => {
+      setTimeout(() => {
+        syncOfflineUpdates().then(() => {
+          refreshContext().catch(() => {});
+          if (!autoFetch && isAdmin) {
+            loadProducts(0, 10, { silent: true }).catch(() => {});
+          }
+        });
+      }, 1000);
+    };
+
+    window.addEventListener('online', handleOnlineSync);
+    if (navigator.onLine) {
+      handleOnlineSync();
+    }
+    return () => {
+      window.removeEventListener('online', handleOnlineSync);
+    };
+  }, [refreshContext, autoFetch, isAdmin, loadProducts]);
+
 
   const getProductById = useCallback((id: string) => {
     return products.find(p => p.id === id);
   }, [products]);
 
-  const addProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'rating' | 'reviewCount'>) => {
+  const addProduct = useCallback(async (productData: Omit<Product, 'id' | 'createdAt' | 'rating' | 'reviewCount'>) => {
     if (!isAdmin) {
       toast.error('Permissão negada');
       return;
@@ -237,7 +454,10 @@ export function useProducts({ autoFetch = true } = {}) {
           }
         }
 
+        cachedAdminProducts = [newProduct, ...(cachedAdminProducts || [])];
+        cachedAdminProductsTotal += 1;
         setLocalProducts(prev => [newProduct, ...prev]);
+        clearAnalyticsCache();
         await refreshContext();
         toast.success('Produto cadastrado com sucesso!');
         return newProduct;
@@ -247,13 +467,44 @@ export function useProducts({ autoFetch = true } = {}) {
       toast.error(err.message || 'Erro ao cadastrar produto');
       throw err;
     }
-  };
+  }, [isAdmin, refreshContext]);
 
-  const updateProduct = async (id: string, updates: Partial<Product>) => {
+  const updateProduct = useCallback(async (id: string, updates: Partial<Product>) => {
     if (!isAdmin) {
       toast.error('Permissão negada');
       return;
     }
+
+    // Check if offline
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      try {
+        const oldProduct = products.find(p => p.id === id) || await fetchProduct(id);
+        const optimisticProduct = oldProduct ? { ...oldProduct, ...updates } : null;
+        
+        if (optimisticProduct) {
+          cachedAdminProducts = (cachedAdminProducts || []).map(p => p.id === id ? optimisticProduct : p);
+          setLocalProducts(prev => prev.map(p => p.id === id ? optimisticProduct : p));
+        }
+
+        const queueStr = localStorage.getItem('products_offline_updates_queue') || '[]';
+        const queue = JSON.parse(queueStr);
+        const cleanQueue = queue.filter((item: any) => item.id !== id);
+        const existingItem = queue.find((item: any) => item.id === id);
+        const mergedUpdates = existingItem ? { ...existingItem.updates, ...updates } : updates;
+
+        cleanQueue.push({ id, updates: mergedUpdates, timestamp: Date.now() });
+        localStorage.setItem('products_offline_updates_queue', JSON.stringify(cleanQueue));
+
+        toast.info('Alteração guardada offline.', {
+          description: 'Será sincronizada com o servidor quando reestabelecer conexão.'
+        });
+
+        return optimisticProduct;
+      } catch (err) {
+        console.error('[useProducts] Error queuing offline update:', err);
+      }
+    }
+
     try {
       // TruthGate: Security & Logic Validation
       TruthGate.verifyProductAxiom(updates);
@@ -309,7 +560,9 @@ export function useProducts({ autoFetch = true } = {}) {
           }
         }
 
+        cachedAdminProducts = (cachedAdminProducts || []).map(p => p.id === id ? updatedProduct : p);
         setLocalProducts(prev => prev.map(p => p.id === id ? updatedProduct : p));
+        clearAnalyticsCache();
         await refreshContext();
         toast.success('Produto atualizado!');
         return updatedProduct;
@@ -319,15 +572,23 @@ export function useProducts({ autoFetch = true } = {}) {
       toast.error(err.message || 'Erro ao atualizar produto');
       throw err;
     }
-  };
+  }, [isAdmin, products, refreshContext, backupStorageFile, fetchProduct]);
 
-  const deleteProduct = async (id: string) => {
+  const deleteProduct = useCallback(async (id: string) => {
     if (!isAdmin) {
       toast.error('Permissão negada');
       return;
     }
+    const originalProducts = [...localProducts];
+    const originalCache = cachedAdminProducts ? [...cachedAdminProducts] : null;
+    const originalTotal = cachedAdminProductsTotal;
+
+    cachedAdminProducts = (cachedAdminProducts || []).filter(p => p.id !== id);
+    cachedAdminProductsTotal = Math.max(0, cachedAdminProductsTotal - 1);
+    setLocalProducts(prev => prev.filter(p => p.id !== id));
+
     try {
-      const product = await fetchProduct(id);
+      const product = originalProducts.find(p => p.id === id);
       if (!product) {
         throw new Error('Produto não encontrado');
       }
@@ -367,26 +628,37 @@ export function useProducts({ autoFetch = true } = {}) {
 
       if (error) throw error;
 
-      setLocalProducts(prev => prev.filter(p => p.id !== id));
+      clearAnalyticsCache();
       await refreshContext();
       toast.success('Produto removido');
       return true;
     } catch (err: any) {
       console.error('Error deleting product:', err);
+      cachedAdminProducts = originalCache;
+      cachedAdminProductsTotal = originalTotal;
+      setLocalProducts(originalProducts);
       toast.error('Erro ao excluir produto');
       return false;
     }
-  };
+  }, [isAdmin, localProducts, backupStorageFile, refreshContext]);
 
   // Bulk Delete
-  const deleteProducts = async (ids: string[]) => {
+  const deleteProducts = useCallback(async (ids: string[]) => {
     if (!isAdmin) {
       toast.error('Permissão negada');
       return false;
     }
+    const originalProducts = [...localProducts];
+    const originalCache = cachedAdminProducts ? [...cachedAdminProducts] : null;
+    const originalTotal = cachedAdminProductsTotal;
+
+    cachedAdminProducts = (cachedAdminProducts || []).filter(p => !ids.includes(p.id));
+    cachedAdminProductsTotal = Math.max(0, cachedAdminProductsTotal - ids.length);
+    setLocalProducts(prev => prev.filter(p => !ids.includes(p.id)));
+
     try {
       for (const id of ids) {
-        const product = await fetchProduct(id);
+        const product = originalProducts.find(p => p.id === id);
         if (!product) continue;
 
         // Move product images to backup
@@ -430,17 +702,30 @@ export function useProducts({ autoFetch = true } = {}) {
       return true;
     } catch (err) {
       console.error('Error deleting products:', err);
+      cachedAdminProducts = originalCache;
+      cachedAdminProductsTotal = originalTotal;
+      setLocalProducts(originalProducts);
       toast.error('Erro ao excluir produtos');
       return false;
     }
-  };
+  }, [isAdmin, localProducts, backupStorageFile, refreshContext]);
 
   // Bulk Status Update
-  const updateProductsStatus = async (ids: string[], isActive: boolean) => {
+  const updateProductsStatus = useCallback(async (ids: string[], isActive: boolean) => {
     if (!isAdmin) {
       toast.error('Permissão negada');
       return false;
     }
+    const originalProducts = [...localProducts];
+    const originalCache = cachedAdminProducts ? [...cachedAdminProducts] : null;
+
+    cachedAdminProducts = (cachedAdminProducts || []).map(p => 
+      ids.includes(p.id) ? { ...p, isActive } : p
+    );
+    setLocalProducts(prev => prev.map(p => 
+      ids.includes(p.id) ? { ...p, isActive } : p
+    ));
+
     try {
       const { error } = await supabase
         .from('produtos')
@@ -454,16 +739,31 @@ export function useProducts({ autoFetch = true } = {}) {
       return true;
     } catch (err) {
       console.error('Error updating products status:', err);
+      cachedAdminProducts = originalCache;
+      setLocalProducts(originalProducts);
       toast.error('Erro ao atualizar status');
       return false;
     }
-  };
+  }, [isAdmin, localProducts, refreshContext]);
 
-  const toggleProductStatus = async (id: string, currentStatus: boolean) => {
-    return updateProduct(id, { isActive: !currentStatus });
-  };
+  const toggleProductStatus = useCallback(async (id: string, currentStatus: boolean) => {
+    cachedAdminProducts = (cachedAdminProducts || []).map(p => p.id === id ? { ...p, isActive: !currentStatus } : p);
+    setLocalProducts(prev => prev.map(p => p.id === id ? { ...p, isActive: !currentStatus } : p));
+    try {
+      const result = await updateProduct(id, { isActive: !currentStatus });
+      if (!result) {
+        cachedAdminProducts = (cachedAdminProducts || []).map(p => p.id === id ? { ...p, isActive: currentStatus } : p);
+        setLocalProducts(prev => prev.map(p => p.id === id ? { ...p, isActive: currentStatus } : p));
+      }
+      return result;
+    } catch (err) {
+      cachedAdminProducts = (cachedAdminProducts || []).map(p => p.id === id ? { ...p, isActive: currentStatus } : p);
+      setLocalProducts(prev => prev.map(p => p.id === id ? { ...p, isActive: currentStatus } : p));
+      throw err;
+    }
+  }, [updateProduct]);
 
-  const uploadProductImages = async (files: File[]) => {
+  const uploadProductImages = useCallback(async (files: File[]) => {
     const urls: string[] = [];
 
     for (const file of files) {
@@ -490,7 +790,7 @@ export function useProducts({ autoFetch = true } = {}) {
     }
 
     return urls;
-  };
+  }, []);
 
   // Recommendations Logic - Server Side RPC
   const fetchRecommendations = useCallback(async (productId: string, limit = 4) => {
@@ -519,50 +819,11 @@ export function useProducts({ autoFetch = true } = {}) {
     }
   }, [products]);
 
-  // Fetch single product (Optimized for Edit Form)
-  const fetchProduct = useCallback(async (id: string) => {
-    try {
-      setLoading(true);
-      
-      // Use the base table for admins to see 'custo' and other hidden fields
-      let pQuery: any;
-      if (isAdmin) {
-        pQuery = supabase.from('produtos').select('*').eq('id', id).is('deleted_at', null).single();
-      } else {
-        pQuery = supabase.from('vw_produtos_public').select('*').eq('id', id).single();
-      }
-      
-      const { data: p, error: pErr } = await pQuery;
-      
-      if (pErr) throw pErr;
 
-      const { data: v, error: vErr } = await supabase
-        .from('product_variants')
-        .select('*')
-        .eq('product_id', id);
-      
-      if (vErr) console.error('[useProducts] Error fetching variants for product:', vErr);
-      
-      const productData = {
-        ...(p as any),
-        product_variants: v || []
-      };
-
-      if (productData) {
-        return mapProductFromDB(productData);
-      }
-      return null;
-    } catch (err) {
-      console.error('Error fetching product:', err);
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, [isAdmin]);
 
   // Deprecated: Synchronous version for backward compatibility
   // Prioritize fetchRecommendations
-  const getRecommendations = (productId: string, limit = 4) => {
+  const getRecommendations = useCallback((productId: string, limit = 4) => {
     const res: Product[] = [];
     for (const p of products) {
       if (p.id !== productId && p.isActive && p.stock > 0) {
@@ -571,9 +832,9 @@ export function useProducts({ autoFetch = true } = {}) {
       }
     }
     return res;
-  };
+  }, [products]);
 
-  const getCartRecommendations = (cartProductIds: string[], limit = 4) => {
+  const getCartRecommendations = useCallback((cartProductIds: string[], limit = 4) => {
     const res: Product[] = [];
     for (const p of products) {
       if (!cartProductIds.includes(p.id) && p.isActive && p.stock > 0) {
@@ -582,9 +843,9 @@ export function useProducts({ autoFetch = true } = {}) {
       }
     }
     return res;
-  };
+  }, [products]);
 
-  const getFreeShippingEligibleProducts = (cartProductIds: string[], limit = 10) => {
+  const getFreeShippingEligibleProducts = useCallback((cartProductIds: string[], limit = 10) => {
     const res: Product[] = [];
     for (const p of products) {
       if (!cartProductIds.includes(p.id) && p.isActive && p.stock > 0) {
@@ -593,17 +854,17 @@ export function useProducts({ autoFetch = true } = {}) {
       }
     }
     return res;
-  };
+  }, [products]);
 
   // Track Recommendation Click
-  const trackRecommendationClick = (_productId: string, _source: string) => {
+  const trackRecommendationClick = useCallback((_productId: string, _source: string) => {
     // Analytics ping could be restored here if needed
-  };
+  }, []);
 
 
 
   // Variant Management
-  const addVariant = async (variantData: Omit<ProductVariant, 'id'>) => {
+  const addVariant = useCallback(async (variantData: Omit<ProductVariant, 'id'>) => {
     if (!isAdmin) {
       toast.error('Permissão negada');
       return;
@@ -650,9 +911,9 @@ export function useProducts({ autoFetch = true } = {}) {
       toast.error('Erro ao adicionar variante');
       throw err;
     }
-  };
+  }, [isAdmin, refreshContext]);
 
-  const updateVariant = async (id: string, updates: Partial<ProductVariant>) => {
+  const updateVariant = useCallback(async (id: string, updates: Partial<ProductVariant>) => {
     if (!isAdmin) {
       toast.error('Permissão negada');
       return;
@@ -700,9 +961,9 @@ export function useProducts({ autoFetch = true } = {}) {
       toast.error('Erro ao atualizar variante');
       throw err;
     }
-  };
+  }, [isAdmin, refreshContext, backupStorageFile]);
 
-  const deleteVariant = async (id: string) => {
+  const deleteVariant = useCallback(async (id: string) => {
     if (!isAdmin) {
       toast.error('Permissão negada');
       return;
@@ -732,9 +993,9 @@ export function useProducts({ autoFetch = true } = {}) {
       toast.error('Erro ao remover variante');
       throw err;
     }
-  };
+  }, [isAdmin, refreshContext, backupStorageFile]);
 
-  const deleteVariants = async (ids: string[]) => {
+  const deleteVariants = useCallback(async (ids: string[]) => {
     if (!isAdmin) {
       toast.error('Permissão negada');
       return false;
@@ -768,9 +1029,9 @@ export function useProducts({ autoFetch = true } = {}) {
       toast.error('Erro ao remover variantes');
       throw err;
     }
-  };
+  }, [isAdmin, refreshContext, backupStorageFile]);
 
-  const upsertVariants = async (productId: string, variants: Array<any>) => {
+  const upsertVariants = useCallback(async (productId: string, variants: Array<any>) => {
     if (!isAdmin) {
       toast.error('Permissão negada');
       return false;
@@ -807,7 +1068,7 @@ export function useProducts({ autoFetch = true } = {}) {
       toast.error('Erro ao salvar as variantes');
       throw err;
     }
-  };
+  }, [isAdmin, refreshContext]);
 
   return {
     products,

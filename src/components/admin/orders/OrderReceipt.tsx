@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import type { Order } from '@/types';
 
 interface OrderReceiptProps {
     order: Order;
 }
 
-export function OrderReceipt({ order }: OrderReceiptProps) {
+export const OrderReceipt = memo(function OrderReceipt({ order }: OrderReceiptProps) {
     return (
         <>
             <div className="hidden print:block p-8 text-black bg-white font-mono text-sm max-w-[80mm] mx-auto border border-gray-200">
@@ -76,4 +77,4 @@ export function OrderReceipt({ order }: OrderReceiptProps) {
             </style>
         </>
     );
-}
+});

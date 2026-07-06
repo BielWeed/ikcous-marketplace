@@ -22,7 +22,10 @@ export function mapProductFromDB(
         const rawCusto = row.custo ?? row.cost_price;
         const costPrice = (rawCusto !== null && rawCusto !== undefined) ? Number(rawCusto) : undefined;
         const stock = row.estoque !== undefined ? Number(row.estoque) : (row.stock !== undefined ? Number(row.stock) : 0);
-        const images = row.imagem_urls || row.images || (row.imagem_url ? [row.imagem_url] : []);
+        const rawImages = row.imagem_urls || row.images || (row.imagem_url ? [row.imagem_url] : []);
+        const sanitizedImages = Array.isArray(rawImages)
+            ? rawImages.filter((img: any) => typeof img === 'string' && img.trim() !== '')
+            : [];
         const category = row.categoria || row.category || 'Geral';
         const isActive = row.ativo ?? row.is_active ?? true;
         const freeShipping = !!(row.frete_gratis ?? row.free_shipping);
@@ -40,8 +43,8 @@ export function mapProductFromDB(
             originalPrice: row.preco_original ? Number(row.preco_original) : undefined,
             images: (name?.includes('Aliança Luxo'))
                 ? ['https://m.media-amazon.com/images/I/51-mYyA-zXL._AC_SL1000_.jpg']
-                : (images && images.length > 0
-                    ? images
+                : (sanitizedImages.length > 0
+                    ? sanitizedImages
                     : ['https://placehold.co/600x400?text=Sem+Imagem']),
             category,
             stock: (Array.isArray(row.product_variants) && row.product_variants.some((v: any) => v.active))

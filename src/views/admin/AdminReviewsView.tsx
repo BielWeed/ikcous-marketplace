@@ -27,6 +27,7 @@ import { DebouncedSearchInput } from '@/components/admin/DebouncedSearchInput';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { toast } from 'sonner';
+import { haptic } from '@/utils/haptic';
 
 interface AdminReviewsViewProps {
     readonly onNavigate: (view: View) => void;
@@ -66,11 +67,14 @@ const getAvatarGradient = (name: string) => {
         'from-cyan-500 to-blue-600'
     ];
     let sum = 0;
-    for (let i = 0; i < name.length; i++) {
-        sum += name.charCodeAt(i);
+    const cleanName = name || 'Anônimo';
+    for (let i = 0; i < cleanName.length; i++) {
+        sum += cleanName.charCodeAt(i);
     }
     return colors[sum % colors.length];
 };
+
+let cachedScrollPosition = 0;
 
 export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, active = true }: AdminReviewsViewProps) {
     const { adminReviews, loading, getAllReviews, deleteReview, toggleVerified, addMerchantReply } = useReviews();
@@ -79,6 +83,40 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
     const [showHelpModal, setShowHelpModal] = useState(false);
     const [totalReviews, setTotalReviews] = useState(0);
     const pageSize = 10;
+
+    const viewRef = useRef<HTMLDivElement>(null);
+    const hasRestoredScrollRef = useRef(false);
+
+    // Save scroll on unmount
+    useEffect(() => {
+        const currentEl = viewRef.current;
+        return () => {
+            const container = currentEl?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+            if (container) {
+                cachedScrollPosition = container.scrollTop;
+            }
+        };
+    }, []);
+
+    // Restore scroll on data loaded
+    useEffect(() => {
+        if (!active) {
+            hasRestoredScrollRef.current = false;
+            return;
+        }
+
+        if (active && !loading && adminReviews.length > 0 && cachedScrollPosition > 0 && !hasRestoredScrollRef.current) {
+            const container = viewRef.current?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+            if (container) {
+                hasRestoredScrollRef.current = true;
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        container.scrollTop = cachedScrollPosition;
+                    });
+                });
+            }
+        }
+    }, [active, loading, adminReviews.length]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const [ratingFilter, setRatingFilter] = useState<number | 'all'>('all');
@@ -94,16 +132,21 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
 
     const triggerRefresh = () => setRefreshTrigger(prev => prev + 1);
 
-    const prevRating = useRef(ratingFilter);
-    const prevSearch = useRef(searchQuery);
+    // Removed ref tracking for filter changes in favor of direct state resets
 
     const firstLoadRef = useRef(true);
+    const reviewsLengthRef = useRef(adminReviews.length);
 
-    const loadReviews = useCallback(async (pageToFetch: number) => {
+    useEffect(() => {
+        reviewsLengthRef.current = adminReviews.length;
+    }, [adminReviews.length]);
+
+    const loadReviews = useCallback(async (pageToFetch: number, silent = false) => {
         try {
             const result = await getAllReviews(pageToFetch, pageSize, {
                 rating: ratingFilter,
-                search: searchQuery
+                search: searchQuery,
+                silent
             });
             if (result) {
                 setTotalReviews(result.total);
@@ -111,6 +154,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                 setGlobalVerifiedCount(result.globalVerifiedCount || 0);
                 setGlobalRepliedCount(result.globalRepliedCount || 0);
             }
+        } catch (err) {
+            console.error('[AdminReviewsView] Failed to load reviews:', err);
         } finally {
             firstLoadRef.current = false;
         }
@@ -118,22 +163,20 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
 
     useEffect(() => {
         if (!active) return;
-
-        const filterChanged = prevRating.current !== ratingFilter || prevSearch.current !== searchQuery;
-        prevRating.current = ratingFilter;
-        prevSearch.current = searchQuery;
-
-        let pageToFetch = page;
-        if (filterChanged) {
-            pageToFetch = 0;
-            if (page !== 0) {
-                setPage(0);
-                return;
-            }
-        }
-
-        loadReviews(pageToFetch);
+        loadReviews(page, false);
     }, [page, ratingFilter, searchQuery, active, loadReviews, refreshTrigger]);
+
+    // Auto-refresh when coming back online
+    const wasOfflineRef = useRef(isOffline);
+    useEffect(() => {
+        if (wasOfflineRef.current && !isOffline && active) {
+            toast.success('Conexão restabelecida. Atualizando avaliações...', {
+                icon: '⚡'
+            });
+            loadReviews(page);
+        }
+        wasOfflineRef.current = isOffline;
+    }, [isOffline, active, page, loadReviews]);
 
     const totalPages = Math.ceil(totalReviews / pageSize);
     const avgRating = averageRating;
@@ -149,17 +192,40 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
 
     const handleDelete = async (id: string) => {
         if (isOffline) {
+            haptic.error();
             toast.error('Você está offline', {
                 description: 'Não é possível excluir avaliações sem conexão com a internet.'
             });
             return;
         }
+        haptic.medium();
         await deleteReview(id);
+        haptic.success();
         setConfirmDeleteId(null);
         if (adminReviews.length === 1 && page > 0) {
             setPage(p => p - 1);
         } else {
             triggerRefresh();
+        }
+    };
+
+    const handleToggleVerified = async (reviewId: string, currentVerified: boolean) => {
+        if (isOffline) {
+            haptic.error();
+            toast.error('Você está offline', {
+                description: 'Não é possível alterar a verificação de avaliações sem conexão.'
+            });
+            return;
+        }
+        haptic.light();
+        try {
+            await toggleVerified(reviewId, currentVerified);
+            haptic.success();
+            triggerRefresh();
+        } catch (err) {
+            haptic.error();
+            console.error('Erro ao alternar verificação:', err);
+            toast.error('Erro ao alternar status de verificação.');
         }
     };
 
@@ -295,7 +361,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
     );
 
     return (
-        <div className="h-auto bg-[#09090b] text-zinc-400 font-sans selection:bg-admin-gold/30 selection:text-white pb-8 animate-in fade-in duration-500">
+        <div ref={viewRef} className="h-auto bg-[#09090b] text-zinc-400 font-sans selection:bg-admin-gold/30 selection:text-white pb-8 animate-in fade-in duration-500">
             {/* Header / Stats Overlay */}
             <div className="sticky top-0 z-50 p-2 sm:p-4 pb-0 bg-[#09090b]/80 backdrop-blur-md">
                 <div className="admin-glass rounded-2xl sm:rounded-[2rem] border border-white/5 p-3 sm:p-4 shadow-2xl">
@@ -358,7 +424,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                                     placeholder="Buscar por cliente ou produto..."
                                     className="w-full pl-9 pr-3 py-2 bg-black/40 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-admin-gold/20 focus:border-admin-gold/50 focus:bg-zinc-950/60 transition-all font-bold"
                                     value={searchQuery}
-                                    onChange={setSearchQuery}
+                                    onChange={(val) => { setSearchQuery(val); setPage(0); }}
                                     onTyping={setIsTyping}
                                     delay={300}
                                 />
@@ -367,7 +433,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                             <div className="flex items-center gap-2 shrink-0">
                                 <div className="flex items-center gap-1 p-0.5 bg-black/40 rounded-xl border border-zinc-800 overflow-x-auto no-scrollbar">
                                     <button
-                                        onClick={() => setRatingFilter('all')}
+                                        onClick={() => { setRatingFilter('all'); setPage(0); }}
                                         className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${ratingFilter === 'all'
                                             ? 'bg-admin-gold text-black shadow-lg shadow-admin-gold/20'
                                             : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
@@ -377,7 +443,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                                     {[5, 4, 3, 2, 1].map(star => (
                                         <button
                                             key={star}
-                                            onClick={() => setRatingFilter(star)}
+                                            onClick={() => { setRatingFilter(star); setPage(0); }}
                                             className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1 whitespace-nowrap ${ratingFilter === star
                                                 ? 'bg-admin-gold text-black shadow-lg shadow-admin-gold/20'
                                                 : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
@@ -545,13 +611,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                                         <div className="flex flex-wrap items-center gap-3 pt-6 border-t border-white/5">
                                             <button
                                                 onClick={() => {
-                                                    if (isOffline) {
-                                                        toast.error('Você está offline', {
-                                                            description: 'Não é possível alterar a verificação de avaliações sem conexão.'
-                                                        });
-                                                        return;
-                                                    }
-                                                    toggleVerified(review.id, review.verified);
+                                                    handleToggleVerified(review.id, review.verified);
                                                 }}
                                                 className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${review.verified
                                                     ? 'bg-zinc-900 text-zinc-400 border border-white/5 hover:bg-zinc-800'
@@ -666,24 +726,29 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                                                                 Cancelar
                                                             </button>
                                                             <button
-                                                                onClick={async () => {
-                                                                    if (isOffline) {
+                                                                       onClick={async () => {
+                                                                           if (isOffline) {
+                                                                        haptic.error();
                                                                         toast.error('Você está offline', {
                                                                             description: 'Não é possível responder avaliações sem conexão.'
                                                                         });
                                                                         return;
                                                                     }
                                                                     if (!replyText.trim()) return;
+                                                                    haptic.light();
                                                                     setIsSubmittingReply(true);
                                                                     const success = await addMerchantReply(review.id, replyText);
                                                                     setIsSubmittingReply(false);
                                                                     if (success) {
+                                                                        haptic.success();
                                                                         setReplyingTo(null);
                                                                         setReplyText('');
                                                                         getAllReviews(page, pageSize, {
                                                                             rating: ratingFilter,
                                                                             search: searchQuery
                                                                         });
+                                                                    } else {
+                                                                        haptic.error();
                                                                     }
                                                                 }}
                                                                 className="px-8 py-3 bg-admin-gold text-black text-[10px] font-black uppercase tracking-widest rounded-2xl hover:scale-[1.02] shadow-xl shadow-admin-gold/20 transition-all active:scale-95 disabled:opacity-50 disabled:grayscale"
@@ -775,13 +840,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                                             <div className="flex items-center gap-1">
                                                 <button
                                                     onClick={() => {
-                                                        if (isOffline) {
-                                                            toast.error('Você está offline', {
-                                                                description: 'Não é possível alterar a verificação de avaliações sem conexão.'
-                                                            });
-                                                            return;
-                                                        }
-                                                        toggleVerified(review.id, review.verified);
+                                                        handleToggleVerified(review.id, review.verified);
                                                     }}
                                                     className={`p-2 rounded-xl transition-all duration-300 ${review.verified
                                                         ? 'bg-zinc-900 text-zinc-550 border border-white/5 hover:bg-zinc-800'
@@ -866,24 +925,29 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                                                         />
                                                         <div className="flex justify-end gap-2">
                                                             <button
-                                                                onClick={async () => {
-                                                                    if (isOffline) {
+                                                                       onClick={async () => {
+                                                                           if (isOffline) {
+                                                                        haptic.error();
                                                                         toast.error('Você está offline', {
                                                                             description: 'Não é possível responder avaliações sem conexão.'
                                                                         });
                                                                         return;
                                                                     }
                                                                     if (!replyText.trim()) return;
+                                                                    haptic.light();
                                                                     setIsSubmittingReply(true);
                                                                     const success = await addMerchantReply(review.id, replyText);
                                                                     setIsSubmittingReply(false);
                                                                     if (success) {
+                                                                        haptic.success();
                                                                         setReplyingTo(null);
                                                                         setReplyText('');
                                                                         getAllReviews(page, pageSize, {
                                                                             rating: ratingFilter,
                                                                             search: searchQuery
                                                                         });
+                                                                    } else {
+                                                                        haptic.error();
                                                                     }
                                                                 }}
                                                                 className="px-4 py-1.5 bg-admin-gold text-black text-[9px] font-black uppercase rounded-lg hover:scale-105 transition-all disabled:opacity-50"
@@ -911,7 +975,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                         className="flex items-center justify-center gap-6 mt-16"
                     >
                         <button
-                            onClick={() => setPage(prev => Math.max(0, prev - 1))}
+                            onClick={(e) => {
+                                setPage(prev => Math.max(0, prev - 1));
+                                const mainEl = e.currentTarget.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+                                if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
                             disabled={page === 0}
                             className="w-14 h-14 flex items-center justify-center bg-zinc-950/50 rounded-2xl border border-white/5 text-white shadow-2xl disabled:opacity-20 hover:bg-zinc-900 transition-all active:scale-90"
                         >
@@ -922,7 +990,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                             {Array.from({ length: totalPages }, (_, i) => (
                                 <button
                                     key={i}
-                                    onClick={() => setPage(i)}
+                                    onClick={(e) => {
+                                        setPage(i);
+                                        const mainEl = e.currentTarget.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+                                        if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
                                     className={`w-11 h-11 rounded-xl text-[11px] font-black transition-all duration-300 ${page === i
                                         ? 'bg-admin-gold text-black shadow-xl shadow-admin-gold/20 scale-110'
                                         : 'text-zinc-500 hover:text-white hover:bg-white/5'
@@ -934,7 +1006,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({ onNavigate, act
                         </div>
 
                         <button
-                            onClick={() => setPage(prev => Math.min(totalPages - 1, prev + 1))}
+                            onClick={(e) => {
+                                setPage(prev => Math.min(totalPages - 1, prev + 1));
+                                const mainEl = e.currentTarget.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+                                if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
                             disabled={page === totalPages - 1}
                             className="w-14 h-14 flex items-center justify-center bg-zinc-950/50 rounded-2xl border border-white/5 text-white shadow-2xl disabled:opacity-20 hover:bg-zinc-900 transition-all active:scale-90"
                         >

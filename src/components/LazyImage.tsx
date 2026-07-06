@@ -76,20 +76,20 @@ export function LazyImage({
     return (
         <div
             ref={imgRef}
-            className={`relative overflow-hidden bg-zinc-100 ${className}`}
+            className={`relative overflow-hidden bg-zinc-100 dark:bg-zinc-900/50 ${className}`}
             style={style}
         >
             {/* Placeholder skeleton */}
             {showSkeleton && !isLoaded && !hasError && (
                 <div
-                    className={`absolute inset-0 bg-zinc-200 animate-pulse ${placeholderClassName}`}
+                    className={`absolute inset-0 bg-zinc-200 dark:bg-zinc-800/50 animate-pulse ${placeholderClassName}`}
                 />
             )}
 
             {/* Error Fallback */}
             {hasError && (
-                <div className="absolute inset-0 flex items-center justify-center bg-zinc-50 border border-zinc-100">
-                    <span className="text-[10px] text-zinc-400 font-medium">Erro ao carregar</span>
+                <div className="absolute inset-0 flex items-center justify-center bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-white/5">
+                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-medium">Erro ao carregar</span>
                 </div>
             )}
 

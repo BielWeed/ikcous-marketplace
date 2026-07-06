@@ -41,6 +41,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { LocalErrorBoundary } from '@/components/ui/custom/LocalErrorBoundary';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { mapOrderFromDB } from '@/lib/mappers';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   pix: 'PIX Instantâneo',
@@ -72,14 +73,24 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
   });
   const { stats: analyticsStats, fetchExecutiveSummary } = useAnalytics();
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useLocalStorage<string>('admin_orders_search_query', '');
   const [isTyping, setIsTyping] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
-  const [dateRange, setDateRange] = useState({
+
+  const [showVisualLoading, setShowVisualLoading] = useState(false);
+  useEffect(() => {
+    if (loading) {
+      const timer = setTimeout(() => setShowVisualLoading(true), 180);
+      return () => clearTimeout(timer);
+    } else {
+      setShowVisualLoading(false);
+    }
+  }, [loading]);
+  const [dateRange, setDateRange] = useLocalStorage<{ start: string; end: string }>('admin_orders_date_range', {
     start: '',
     end: ''
   });
-  const [filter, setFilter] = useState<OrderStatus | 'all'>('all');
+  const [filter, setFilter] = useLocalStorage<OrderStatus | 'all'>('admin_orders_filter', 'all');
   const [viewMode, setViewMode] = useState<'detailed' | 'compact'>(() => {
     const saved = localStorage.getItem('admin_orders_view_mode');
     return (saved === 'detailed' || saved === 'compact') ? saved : 'compact';
@@ -94,12 +105,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
   const [savedScrollPosition, setSavedScrollPosition] = useState(0);
   const prevSelectedOrderRef = useRef<Order | null>(null);
   const viewRef = useRef<HTMLDivElement>(null);
-  const [currentPage, setCurrentPage] = useState(0);
+  const hasRestoredScrollRef = useRef(false);
+  const wasActiveRef = useRef(active);
+  const [currentPage, setCurrentPage] = useLocalStorage<number>('admin_orders_current_page', 0);
   const itemsPerPage = 12;
 
-  const lastFilterRef = useRef<OrderStatus | 'all'>('all');
-  const lastSearchRef = useRef<string>('');
-  const lastDateRef = useRef<string>(JSON.stringify({ start: '', end: '' }));
+  const ordersLengthRef = useRef(orders.length);
+  useEffect(() => {
+    ordersLengthRef.current = orders.length;
+  }, [orders.length]);
+
+  // Removed ref tracking for filter changes in favor of direct state resets
 
   const [stats, setStats] = useState(() => ({
     revenueDay: analyticsStats?.today?.revenue || 0,
@@ -232,10 +248,32 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
 
     if (selectedOrder && !prev) {
       // Opened details page: scroll container to top
-      container.scrollTop = 0;
-    } else if (!selectedOrder && prev) {
-      // Returned to list view: restore scroll position
-      if (savedScrollPosition > 0) {
+      container.scrollTo({ top: 0, behavior: 'smooth' });
+      hasRestoredScrollRef.current = false;
+    }
+  }, [selectedOrder]);
+
+  useEffect(() => {
+    if (!active) {
+      if (wasActiveRef.current) {
+        const container = viewRef.current?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+        if (container) {
+          setSavedScrollPosition(container.scrollTop);
+        }
+      }
+      hasRestoredScrollRef.current = false;
+      wasActiveRef.current = false;
+      return;
+    }
+
+    wasActiveRef.current = true;
+
+    if (selectedOrder) return;
+
+    if (!selectedOrder && isLoaded && !loading && savedScrollPosition > 0 && !hasRestoredScrollRef.current) {
+      const container = viewRef.current?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+      if (container) {
+        hasRestoredScrollRef.current = true;
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             container.scrollTop = savedScrollPosition;
@@ -243,50 +281,42 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
         });
       }
     }
-  }, [selectedOrder, savedScrollPosition]);
+  }, [active, selectedOrder, isLoaded, loading, savedScrollPosition]);
 
   // Removidas funções bulk status e toggle selecionados para evitar erros de compilação.
 
-  const loadAllData = useCallback((pageToFetch: number) => {
+  const loadAllData = useCallback((pageToFetch: number, silent = false) => {
     loadOrders(
       pageToFetch,
       itemsPerPage,
       filter,
       searchQuery,
       dateRange.start || undefined,
-      dateRange.end || undefined
+      dateRange.end || undefined,
+      silent
     );
     loadStats();
   }, [loadOrders, itemsPerPage, filter, searchQuery, dateRange, loadStats]);
 
   useEffect(() => {
     if (!active) return;
-
-    const filterChanged = 
-      lastFilterRef.current !== filter || 
-      lastSearchRef.current !== searchQuery || 
-      lastDateRef.current !== JSON.stringify(dateRange);
-
-    lastFilterRef.current = filter;
-    lastSearchRef.current = searchQuery;
-    lastDateRef.current = JSON.stringify(dateRange);
-
-    let pageToFetch = currentPage;
-    if (filterChanged) {
-      pageToFetch = 0;
-      if (currentPage !== 0) {
-        setCurrentPage(0);
-        return;
-      }
-    }
-
-    loadAllData(pageToFetch);
+    loadAllData(currentPage, false);
   }, [currentPage, filter, searchQuery, dateRange, active, loadAllData]);
+
+  // Auto-refresh when coming back online
+  const wasOfflineRef = useRef(isOffline);
+  useEffect(() => {
+    if (wasOfflineRef.current && !isOffline && active) {
+      toast.success('Conexão restabelecida. Atualizando pedidos...', {
+        icon: '⚡'
+      });
+      loadAllData(currentPage);
+    }
+    wasOfflineRef.current = isOffline;
+  }, [isOffline, active, currentPage, loadAllData]);
 
   useEffect(() => {
     onRealtimeEventRef.current = (payload) => {
-      console.log('[AdminOrdersView] Realtime event received:', payload.eventType);
-
       const targetId = payload.new?.id;
       if (targetId && (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE')) {
         setRecentOrderChanges(prev => ({ ...prev, [targetId]: payload.eventType }));
@@ -414,18 +444,21 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
   if (selectedOrder) {
     return (
       <LocalErrorBoundary>
-        <OrderDetail
-          order={selectedOrder}
-          onBack={handleBackToList}
-          onStatusChange={handleStatusChange}
-          onWhatsApp={handleWhatsApp}
-        />
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <OrderDetail
+            order={selectedOrder}
+            onBack={handleBackToList}
+            onStatusChange={handleStatusChange}
+            onWhatsApp={handleWhatsApp}
+            isOffline={isOffline}
+          />
+        </div>
       </LocalErrorBoundary>
     );
   }
 
   return (
-    <div ref={viewRef} className="h-auto bg-admin-bg text-white pb-8 font-sans selection:bg-admin-gold/30 animate-in fade-in duration-500">
+    <div ref={viewRef} className="h-auto bg-admin-bg text-white pb-28 lg:pb-8 font-sans selection:bg-admin-gold/30 animate-in fade-in duration-200">
 
       {/* Header Elite */}
       <div className="px-6 flex items-center justify-between gap-4 pt-6 pb-2">
@@ -488,7 +521,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
                         placeholder="Buscar pedidos..."
                         className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all font-bold text-sm w-full"
                         value={searchQuery}
-                        onChange={setSearchQuery}
+                        onChange={(val) => { setSearchQuery(val); setCurrentPage(0); }}
                         onTyping={setIsTyping}
                         delay={300}
                     />
@@ -509,7 +542,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
                                     type="date"
                                     className="bg-black/40 border-zinc-800 text-white h-14 rounded-2xl focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all [color-scheme:dark] px-4 pt-5 pb-1 text-xs font-bold w-full"
                                     value={dateRange.start}
-                                    onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                                    onChange={(e) => { setDateRange(prev => ({ ...prev, start: e.target.value })); setCurrentPage(0); }}
                                     />
                                     <span className="absolute top-2 left-4 text-[7px] font-black uppercase text-zinc-600 tracking-widest pointer-events-none group-focus-within:text-admin-gold transition-colors">Início</span>
                                 </div>
@@ -518,7 +551,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
                                     type="date"
                                     className="bg-black/40 border-zinc-800 text-white h-14 rounded-2xl focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all [color-scheme:dark] px-4 pt-5 pb-1 text-xs font-bold w-full"
                                     value={dateRange.end}
-                                    onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                                    onChange={(e) => { setDateRange(prev => ({ ...prev, end: e.target.value })); setCurrentPage(0); }}
                                     />
                                     <span className="absolute top-2 left-4 text-[7px] font-black uppercase text-zinc-600 tracking-widest pointer-events-none group-focus-within:text-admin-gold transition-colors">Fim</span>
                                 </div>
@@ -527,7 +560,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
                                 <Button 
                                     variant="ghost" 
                                     className="w-full h-10 border border-zinc-800 text-[10px] font-black text-rose-500 hover:text-white hover:bg-rose-500 transition-all rounded-xl uppercase tracking-widest mt-2"
-                                    onClick={() => setDateRange({start: '', end: ''})}
+                                    onClick={() => { setDateRange({start: '', end: ''}); setCurrentPage(0); }}
                                 >
                                     Limpar Datas
                                 </Button>
@@ -554,7 +587,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
 
           <div className="flex overflow-x-auto custom-scrollbar-hidden gap-3 pt-6 relative z-10 w-full snap-x">
             <button
-              onClick={() => setFilter('all')}
+              onClick={() => { setFilter('all'); setCurrentPage(0); }}
               className={cn(
                 "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 snap-center",
                 filter === 'all'
@@ -567,7 +600,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
             {Object.entries(statusConfig).map(([status, cfg]) => (
               <button
                 key={status}
-                onClick={() => setFilter(status as OrderStatus)}
+                onClick={() => { setFilter(status as OrderStatus); setCurrentPage(0); }}
                 className={cn(
                   "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-3 shrink-0 snap-center",
                   filter === status
@@ -584,8 +617,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
 
         {/* Orders List */}
         <LocalErrorBoundary>
-          <div className={cn("space-y-8 relative transition-opacity duration-300", !isLoaded && "opacity-50 pointer-events-none")}>
-            {(!isLoaded || loading) && paginatedOrders.length === 0 ? (
+          <div className={cn("space-y-8 relative transition-opacity duration-300 min-h-[400px]", !isLoaded && "opacity-50 pointer-events-none")}>
+            {isLoaded && showVisualLoading && <div className="admin-sync-progress-bar" />}
+            {!isLoaded && paginatedOrders.length === 0 ? (
               viewMode === 'detailed' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                   {Array.from({ length: 6 }).map((_, i) => (
@@ -654,7 +688,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({ onNavigate, activ
                   <p className="text-sm font-medium text-zinc-500 uppercase tracking-widest max-w-xs mx-auto mb-8">O sistema de inteligência não localizou tráfego operacional para os parâmetros definidos.</p>
                   <Button
                     variant="outline"
-                    onClick={() => { setSearchQuery(''); setFilter('all'); setDateRange({ start: '', end: '' }); }}
+                    onClick={() => { setSearchQuery(''); setFilter('all'); setDateRange({ start: '', end: '' }); setCurrentPage(0); }}
                     className="border-admin-gold/50 text-admin-gold hover:bg-admin-gold hover:text-black font-black uppercase text-[10px] tracking-widest rounded-xl hover:scale-105 transition-all"
                   >
                     Resetar Filtros de Segurança
@@ -859,7 +893,7 @@ const AdminOrderCard = memo(function AdminOrderCard({
           }
         }}
         className={cn(
-          "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[3rem] p-8 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_20px_60px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto",
+          "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[3rem] p-8 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_20px_60px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto animate-in fade-in slide-in-from-bottom-2 duration-300",
           changeType === 'INSERT' && "border-admin-gold shadow-[0_0_25px_rgba(212,175,55,0.3)] animate-pulse",
           changeType === 'UPDATE' && "border-blue-500 shadow-[0_0_25px_rgba(59,130,246,0.3)] animate-pulse",
           !changeType && "border-white/5"
@@ -961,7 +995,7 @@ const AdminOrderCard = memo(function AdminOrderCard({
         }
       }}
       className={cn(
-        "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[2rem] p-4 sm:p-5 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto",
+        "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[2rem] p-4 sm:p-5 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto animate-in fade-in slide-in-from-bottom-2 duration-300",
         changeType === 'INSERT' && "border-admin-gold shadow-[0_0_20px_rgba(212,175,55,0.3)] animate-pulse",
         changeType === 'UPDATE' && "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] animate-pulse",
         !changeType && "border-white/5"

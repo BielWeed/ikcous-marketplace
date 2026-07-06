@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { LocalBufferedInput, LocalBufferedTextarea } from '@/components/admin/LocalBufferedInput';
 import { LazyImage } from '@/components/LazyImage';
+import { PhoneSimulator } from '@/components/admin/PhoneSimulator';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,7 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { ArrowLeft, Plus, Camera, Check, Layers, Trash2, Edit2, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Info, Package, ShieldCheck, Image as ImageIcon, Flame, Truck, Heart, Share2, MessageCircle, ShoppingCart, ChevronLeft, ChevronRight, Scissors, BookOpen, Smartphone, X, HelpCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Camera, Check, Layers, Trash2, Edit2, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Info, Package, ShieldCheck, Image as ImageIcon, Flame, Truck, Scissors, BookOpen, Smartphone, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { View, ProductVariant } from '@/types';
 import { useProducts } from '@/hooks/useProducts';
@@ -21,10 +23,77 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ImageAdjuster } from '@/components/ui/custom/ImageAdjuster';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { Skeleton } from '@/components/ui/skeleton';
+const compressImage = (file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.85): Promise<File> => {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/') || file.size < 100 * 1024) {
+      resolve(file);
+      return;
+    }
+
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(objectUrl);
+        resolve(file);
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          URL.revokeObjectURL(objectUrl);
+          if (blob) {
+            const compressedFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            });
+            resolve(compressedFile);
+          } else {
+            resolve(file);
+          }
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+
+    img.src = objectUrl;
+  });
+};
+
 interface AdminProductFormViewProps {
   productId?: string;
   onNavigate: (view: View) => void;
   onBack?: () => void;
+  onSetDirty?: (dirty: boolean) => void;
 }
 
 const containerVariants = {
@@ -43,13 +112,31 @@ const containerVariants = {
 //   visible: { opacity: 1, y: 0 }
 // };
 
-export const AdminProductFormView = React.memo(function AdminProductFormView({ productId, onNavigate, onBack }: AdminProductFormViewProps) {
+export const AdminProductFormView = React.memo(function AdminProductFormView({ productId, onNavigate, onBack, onSetDirty }: AdminProductFormViewProps) {
   const { addProduct, updateProduct, upsertVariants, deleteVariants, uploadProductImages, fetchProduct } = useProducts({ autoFetch: false });
   const { categories: dbCategories, addCategory } = useCategories();
   const isOffline = useOnlineStatus();
 
   const [isLoading, setIsLoading] = useState(!!productId);
   const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    price: '',
+    costPrice: '',
+    originalPrice: '',
+    stock: '',
+    category: '',
+    images: [] as string[],
+    freeShipping: false,
+    isBestseller: false,
+    isActive: true,
+    metaTitle: '',
+    metaDescription: '',
+    sku: '',
+    variants: [] as ProductVariant[],
+  });
+
+  const [initialData, setInitialData] = useState({
     name: '',
     description: '',
     price: '',
@@ -86,6 +173,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
   const [variantToDelete, setVariantToDelete] = useState<string | null>(null);
   const [isPromoActive, setIsPromoActive] = useState(false);
+
+  const [skuError, setSkuError] = useState('');
+  const [priceError, setPriceError] = useState('');
+  const [costError, setCostError] = useState('');
+  const [originalPriceError, setOriginalPriceError] = useState('');
+  const [stockError, setStockError] = useState('');
   const [previewMode, setPreviewMode] = useState<'card' | 'page'>('card');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -106,15 +199,10 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
   const [expandedHelp, setExpandedHelp] = useState<Record<string, boolean>>({});
 
   const toggleHelp = (key: string) => {
-    console.log('[HelpToggle] toggleHelp called for key:', key);
-    setExpandedHelp(prev => {
-      const next = {
-        ...prev,
-        [key]: !prev[key]
-      };
-      console.log('[HelpToggle] next state:', next);
-      return next;
-    });
+    setExpandedHelp(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
   };
 
   const suggestedAttributes = Array.from(
@@ -220,7 +308,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
         setIsLoading(true);
         const product = await fetchProduct(productId);
         if (product) {
-          setFormData({
+          const productFields = {
             name: product.name,
             description: product.description,
             price: product.price.toString(),
@@ -236,7 +324,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
             metaDescription: product.metaDescription || '',
             sku: product.sku || '',
             variants: product.variants || [],
-          });
+          };
+          setFormData(productFields);
+          setInitialData(productFields);
           setIsPromoActive(!!product.originalPrice);
           setCurrentProduct(product);
         } else {
@@ -256,11 +346,25 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
       if (savedDraft) {
         try {
           const parsed = JSON.parse(savedDraft);
-          setFormData(prev => ({
-            ...prev,
-            ...parsed,
-            variants: parsed.variants || []
-          }));
+          const draftFields = {
+            name: parsed.name || '',
+            description: parsed.description || '',
+            price: parsed.price || '',
+            costPrice: parsed.costPrice || '',
+            originalPrice: parsed.originalPrice || '',
+            stock: parsed.stock || '',
+            category: parsed.category || '',
+            images: parsed.images || [],
+            freeShipping: !!parsed.freeShipping,
+            isBestseller: !!parsed.isBestseller,
+            isActive: parsed.isActive !== false,
+            metaTitle: parsed.metaTitle || '',
+            metaDescription: parsed.metaDescription || '',
+            sku: parsed.sku || '',
+            variants: parsed.variants || [],
+          };
+          setFormData(draftFields);
+          setInitialData(draftFields);
           setIsPromoActive(!!parsed.originalPrice);
           
           toast.success('Rascunho recuperado automaticamente!', {
@@ -269,7 +373,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
               label: 'Descartar',
               onClick: () => {
                 localStorage.removeItem('ikcous_product_form_draft');
-                setFormData({
+                const emptyFields = {
                   name: '',
                   description: '',
                   price: '',
@@ -285,7 +389,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                   metaDescription: '',
                   sku: '',
                   variants: [] as ProductVariant[],
-                });
+                };
+                setFormData(emptyFields);
+                setInitialData(emptyFields);
                 setIsPromoActive(false);
                 toast.info('Rascunho descartado.');
               }
@@ -298,6 +404,82 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
       }
     }
   }, [productId]);
+
+  // Prevent leaving with unsaved changes
+  useEffect(() => {
+    if (!onSetDirty) return;
+    const isDirty = JSON.stringify(formData) !== JSON.stringify(initialData);
+    onSetDirty(isDirty);
+    return () => {
+      onSetDirty(false);
+    };
+  }, [formData, initialData, onSetDirty]);
+
+  useEffect(() => {
+    // Validar SKU
+    if (formData.sku) {
+      const hasSpecialChars = /[^A-Z0-9-]/i.test(formData.sku);
+      if (hasSpecialChars) {
+        setSkuError('O SKU deve conter apenas letras, números e hífens.');
+      } else {
+        setSkuError('');
+      }
+    } else {
+      setSkuError('');
+    }
+  }, [formData.sku]);
+
+  useEffect(() => {
+    // Validar Preço de Venda
+    const price = parseFloat(formData.price);
+    if (formData.price && (isNaN(price) || price <= 0)) {
+      setPriceError('Preço de venda deve ser maior que zero.');
+    } else {
+      setPriceError('');
+    }
+  }, [formData.price]);
+
+  useEffect(() => {
+    // Validar Preço de Custo
+    const price = parseFloat(formData.price) || 0;
+    const cost = parseFloat(formData.costPrice);
+    if (formData.costPrice && !isNaN(cost)) {
+      if (cost < 0) {
+        setCostError('Preço de custo não pode ser negativo.');
+      } else if (price > 0 && cost >= price) {
+        setCostError('Aviso: Preço de custo é maior ou igual ao preço de venda (prejuízo!).');
+      } else {
+        setCostError('');
+      }
+    } else {
+      setCostError('');
+    }
+  }, [formData.costPrice, formData.price]);
+
+  useEffect(() => {
+    // Validar Preço Original (De:)
+    const price = parseFloat(formData.price) || 0;
+    const orig = parseFloat(formData.originalPrice);
+    if (isPromoActive && formData.originalPrice && !isNaN(orig)) {
+      if (orig <= price) {
+        setOriginalPriceError('Preço original ("De:") deve ser maior que o preço promocional.');
+      } else {
+        setOriginalPriceError('');
+      }
+    } else {
+      setOriginalPriceError('');
+    }
+  }, [formData.originalPrice, formData.price, isPromoActive]);
+
+  useEffect(() => {
+    // Validar Estoque
+    const stock = parseInt(formData.stock);
+    if (formData.stock && (isNaN(stock) || stock < 0)) {
+      setStockError('O estoque deve ser maior ou igual a zero.');
+    } else {
+      setStockError('');
+    }
+  }, [formData.stock]);
 
   // Draft auto-save on changes
   useEffect(() => {
@@ -312,33 +494,62 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
     }
   }, [formData, productId, isLoading]);
 
+  const processAndUploadImages = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+
+    const currentImagesCount = formData.images.length;
+    if (currentImagesCount + files.length > 10) {
+      toast.error(`Limite de imagens excedido. Você já possui ${currentImagesCount} imagens e tentou adicionar mais ${files.length}. O máximo permitido são 10 imagens.`);
+      return;
+    }
+
+    const MAX_SINGLE_SIZE = 12 * 1024 * 1024; // 12MB
+    const MAX_TOTAL_SIZE = 30 * 1024 * 1024; // 30MB
+    let totalSize = 0;
+
+    for (const file of files) {
+      if (file.size > MAX_SINGLE_SIZE) {
+        toast.error(`O arquivo "${file.name}" excede o tamanho limite de 12MB. Envie uma imagem menor.`);
+        return;
+      }
+      totalSize += file.size;
+    }
+
+    if (totalSize > MAX_TOTAL_SIZE) {
+      toast.error(`O tamanho total das imagens selecionadas (${(totalSize / (1024 * 1024)).toFixed(1)}MB) excede o limite de 30MB por envio.`);
+      return;
+    }
+
+    const loadingToast = toast.loading(`Comprimindo e enviando ${files.length} imagem(ns)...`);
+    try {
+      const compressedFiles = await Promise.all(
+        files.map(file => compressImage(file))
+      );
+
+      const urls = await uploadProductImages(compressedFiles);
+      if (urls && urls.length > 0) {
+        setFormData(prev => ({
+          ...prev,
+          images: [...prev.images, ...urls]
+        }));
+        toast.success('Imagens processadas e enviadas com sucesso!', { id: loadingToast });
+      } else {
+        throw new Error('Falha no upload.');
+      }
+    } catch (error) {
+      console.error('[Upload] Process error:', error);
+      toast.error('Erro ao processar ou enviar imagens.', { id: loadingToast });
+    }
+  }, [formData.images.length, uploadProductImages]);
+
   const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isOffline) {
       toast.error('Não é possível enviar imagens em modo offline.');
       return;
     }
     const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-
-    const loadingToast = toast.loading(`Processando e enviando ${files.length} imagem(ns)...`);
-
-    try {
-      // Compress all images in parallel before uploading
-      const compressedFiles = await Promise.all(
-        files.map(file => compressImage(file))
-      );
-
-      const urls = await uploadProductImages(compressedFiles);
-      setFormData(prev => ({
-        ...prev,
-        images: [...prev.images, ...urls]
-      }));
-      toast.success('Imagens processadas e enviadas com sucesso!', { id: loadingToast });
-    } catch (error) {
-      console.error('Upload error:', error);
-      toast.error('Erro ao processar ou enviar imagens', { id: loadingToast });
-    }
-  }, [uploadProductImages, isOffline]);
+    await processAndUploadImages(files);
+  }, [processAndUploadImages, isOffline]);
 
   const removeImage = useCallback((index: number) => {
     setFormData(prev => ({
@@ -392,7 +603,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
     } else {
       setFormData(prev => ({
         ...prev,
-        variants: [...prev.variants, { ...vData, id: `temp-${Date.now()}` } as any]
+        variants: [...prev.variants, { ...vData, id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` } as any]
       }));
     }
 
@@ -403,9 +614,23 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
     });
   };
 
-  const handleDeleteVariant = (vId: string) => {
+  const handleDeleteVariant = useCallback((vId: string) => {
     setVariantToDelete(vId);
-  };
+  }, []);
+
+  const handleEditVariant = useCallback((v: ProductVariant) => {
+    setEditingVariant(v);
+    setVariantFormData({
+      name: v.name,
+      value: v.value,
+      sku: v.sku || '',
+      stockIncrement: v.stockIncrement.toString(),
+      priceOverride: v.priceOverride?.toString() || '',
+      active: v.active,
+      imageUrl: v.imageUrl || ''
+    });
+    setShowVariantForm(true);
+  }, []);
 
   const confirmDeleteVariant = () => {
     if (!variantToDelete) return;
@@ -507,6 +732,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
       }
 
       setTimeout(() => {
+        onSetDirty?.(false);
         onNavigate('admin-products');
       }, 1500);
     } catch (error) {
@@ -639,12 +865,13 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
               <div className="space-y-6 relative z-10">
                 <div className="space-y-2">
                   <label htmlFor="cat-name" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Nome do Setor / Categoria</label>
-                  <input
+                  <LocalBufferedInput
                     id="cat-name"
                     autoFocus
                     type="text"
+                    delay={150}
                     value={newCategoryName}
-                    onChange={e => setNewCategoryName(e.target.value)}
+                    onFlush={setNewCategoryName}
                     className="w-full px-5 py-4 bg-zinc-950 border border-white/5 rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all"
                     placeholder="Ex: Vestuário"
                   />
@@ -714,12 +941,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                 {/* Atributo */}
                 <div className="space-y-2">
                   <label htmlFor="variant-name" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Atributo (ex: Cor, Tamanho)</label>
-                  <input
+                  <LocalBufferedInput
                     id="variant-name"
                     name="variant-name"
                     type="text"
                     value={variantFormData.name}
-                    onChange={e => setVariantFormData(p => ({ ...p, name: e.target.value }))}
+                    onFlush={val => setVariantFormData(p => ({ ...p, name: val }))}
                     className="w-full px-5 py-4 bg-zinc-950 border border-white/5 rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all"
                     placeholder="Ex: Cor"
                   />
@@ -747,12 +974,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                 {/* Valor do Atributo */}
                 <div className="space-y-2">
                   <label htmlFor="variant-value" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Valor do Atributo</label>
-                  <input
+                  <LocalBufferedInput
                     id="variant-value"
                     name="variant-value"
                     type="text"
                     value={variantFormData.value}
-                    onChange={e => setVariantFormData(p => ({ ...p, value: e.target.value }))}
+                    onFlush={val => setVariantFormData(p => ({ ...p, value: val }))}
                     className="w-full px-5 py-4 bg-zinc-950 border border-white/5 rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all"
                     placeholder="Ex: Espacial Grey"
                   />
@@ -762,12 +989,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label htmlFor="variant-sku" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Código SKU</label>
-                    <input
+                    <LocalBufferedInput
                       id="variant-sku"
                       name="variant-sku"
                       type="text"
                       value={variantFormData.sku}
-                      onChange={e => setVariantFormData(p => ({ ...p, sku: e.target.value.toUpperCase() }))}
+                      onFlush={val => setVariantFormData(p => ({ ...p, sku: val.toUpperCase() }))}
                       className="w-full px-5 py-4 bg-zinc-950 border border-white/5 rounded-2xl text-sm font-bold font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all uppercase"
                       placeholder="Ex: SKU-COR-TAM"
                     />
@@ -798,12 +1025,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label htmlFor="variant-stock" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Saldo Extra</label>
-                    <input
+                    <LocalBufferedInput
                       id="variant-stock"
                       name="variant-stock"
                       type="number"
                       value={variantFormData.stockIncrement}
-                      onChange={e => setVariantFormData(p => ({ ...p, stockIncrement: e.target.value }))}
+                      onFlush={val => setVariantFormData(p => ({ ...p, stockIncrement: val }))}
                       className="w-full px-5 py-4 bg-zinc-950 border border-white/5 rounded-2xl text-sm font-black focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all"
                     />
                     <span className="text-[10px] text-zinc-500 leading-tight block mt-1 ml-1">
@@ -814,14 +1041,14 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                     <label htmlFor="variant-price" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Sobrescrever R$</label>
                     <div className="relative flex items-center">
                       <span className="absolute left-5 text-xs font-black text-zinc-600">R$</span>
-                      <input
+                      <LocalBufferedInput
                         id="variant-price"
                         name="variant-price"
                         type="number"
                         min="0"
                         step="0.01"
                         value={variantFormData.priceOverride}
-                        onChange={e => setVariantFormData(p => ({ ...p, priceOverride: e.target.value }))}
+                        onFlush={val => setVariantFormData(p => ({ ...p, priceOverride: val }))}
                         className="w-full pl-11 pr-5 py-4 bg-zinc-950 border border-white/5 rounded-2xl text-sm font-black focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all"
                         placeholder="Auto"
                       />
@@ -899,7 +1126,8 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
           <div className="flex items-center gap-3 md:gap-4">
             <button
               onClick={() => onBack ? onBack() : onNavigate('admin-products')}
-              className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 text-white rounded-xl border border-white/10 transition-all active:scale-90 group shrink-0"
+              disabled={isSubmitting}
+              className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 text-white rounded-xl border border-white/10 transition-all active:scale-90 group shrink-0 disabled:opacity-50 disabled:pointer-events-none"
             >
               <ArrowLeft className="w-4 h-4 md:w-4.5 md:h-4.5 group-hover:-translate-x-1 transition-transform" />
             </button>
@@ -978,6 +1206,13 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
         onSubmit={handleSubmit}
         className="max-w-screen-xl mx-auto p-6 space-y-8 gpu-accelerated"
       >
+        {isOffline && (
+          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-2xl flex items-center gap-3 text-xs font-bold uppercase tracking-wider animate-in fade-in slide-in-from-top-2 duration-300 select-none">
+            <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 animate-pulse" />
+            <span>Você está offline. O salvamento e alteração de produtos estão temporariamente suspensos.</span>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column - Main Details */}
           <div className="lg:col-span-8 space-y-8">
@@ -996,10 +1231,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                   <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">Fotos do Produto</h3>
                   <button
                     type="button"
-                    onClick={() => {
-                      console.log('[HelpToggle] Toggling photo guide. Current:', showPhotoGuide);
-                      setShowPhotoGuide(prev => !prev);
-                    }}
+                    onClick={() => setShowPhotoGuide(prev => !prev)}
                     className={cn(
                       "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
                       showPhotoGuide 
@@ -1106,29 +1338,14 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                       return;
                     }
                     const files = Array.from(e.dataTransfer.files || []);
-                    if (files.length === 0) return;
-                    const loadingToast = toast.loading(`Processando e enviando ${files.length} imagem(ns)...`);
-                    try {
-                      // Compress all images in parallel before uploading
-                      const compressedFiles = await Promise.all(
-                        files.map(file => compressImage(file))
-                      );
-                      const urls = await uploadProductImages(compressedFiles);
-                      setFormData(prev => ({
-                        ...prev,
-                        images: [...prev.images, ...urls]
-                      }));
-                      toast.success('Imagens processadas e enviadas com sucesso!', { id: loadingToast });
-                    } catch (error) {
-                      console.error('Upload error:', error);
-                      toast.error('Erro ao processar ou enviar imagens', { id: loadingToast });
-                    }
+                    await processAndUploadImages(files);
                   }}
                   className={cn(
                     "flex-shrink-0 w-36 h-36 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all group/upload relative overflow-hidden select-none",
                     isDragging 
                       ? "border-emerald-500 bg-emerald-500/10 scale-105 shadow-[0_0_20px_rgba(16,185,129,0.2)]" 
-                      : "border-white/10 border-emerald-500/10 hover:bg-emerald-500/5 hover:border-emerald-500/30"
+                      : "border-white/10 border-emerald-500/10 hover:bg-emerald-500/5 hover:border-emerald-500/30",
+                    isSubmitting && "opacity-40 pointer-events-none"
                   )}
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-emerald-500/5" />
@@ -1136,7 +1353,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                   <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest relative z-10 group-hover/upload:text-emerald-400">
                     {isDragging ? 'Solte as Fotos' : 'Adicionar Imagem'}
                   </span>
-                  <input type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" />
+                  <input type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" disabled={isSubmitting} />
                 </label>
               </div>
             </section>
@@ -1318,6 +1535,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                       <Layers className="w-5 h-5" />
                     </div>
                   </div>
+                  {skuError && (
+                    <span className="text-[10px] font-bold text-red-500 mt-1 ml-1 block">{skuError}</span>
+                  )}
                 </div>
 
                 <div className="md:col-span-2 space-y-3">
@@ -1334,6 +1554,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                       <Package className="w-5 h-5" />
                     </div>
                   </div>
+                  {stockError && (
+                    <span className="text-[10px] font-bold text-red-500 mt-1 ml-1 block">{stockError}</span>
+                  )}
                 </div>
 
                 {/* Product Variants Grade (Moved inside Product Data section) */}
@@ -1427,61 +1650,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                       </div>
                     ) : (
                       formData.variants.map((v) => (
-                        <div key={v.id} className="bg-zinc-900 border border-white/5 rounded-2xl p-4 flex items-center justify-between group hover:border-emerald-500/30 transition-all">
-                          <div className="flex items-center gap-3">
-                            {v.imageUrl && (
-                              <div className="w-12 h-12 rounded-lg overflow-hidden border border-white/5 shrink-0">
-                                <LazyImage src={v.imageUrl} alt={`${v.name}: ${v.value}`} className="w-full h-full object-cover" />
-                              </div>
-                            )}
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs font-black text-white uppercase italic tracking-tight">{v.name}: {v.value}</span>
-                                {!v.active && <span className="text-[7px] font-black bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded uppercase border border-white/5">Offline</span>}
-                              </div>
-                              <div className="flex items-center gap-4 text-[9px] font-black uppercase tracking-tighter text-zinc-500">
-                                <span className="flex items-center gap-1.5 py-1 px-2 bg-white/5 rounded-md border border-white/5">
-                                  <Package className="w-3 h-3 text-zinc-400" />
-                                  <span className="text-zinc-300">{v.stockIncrement > 0 ? `+${v.stockIncrement}` : v.stockIncrement} UND</span>
-                                </span>
-                                {v.priceOverride && (
-                                  <span className="flex items-center gap-1.5 py-1 px-2 bg-emerald-500/10 rounded-md border border-emerald-500/20 text-emerald-500">
-                                    <DollarSign className="w-3 h-3" />
-                                    R$ {v.priceOverride.toFixed(2)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingVariant(v);
-                                setVariantFormData({
-                                  name: v.name,
-                                  value: v.value,
-                                  sku: v.sku || '',
-                                  stockIncrement: v.stockIncrement.toString(),
-                                  priceOverride: v.priceOverride?.toString() || '',
-                                  active: v.active,
-                                  imageUrl: v.imageUrl || ''
-                                });
-                                setShowVariantForm(true);
-                              }}
-                              className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-600 hover:text-white hover:bg-white/5 transition-all"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteVariant(v.id)}
-                              className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-600 hover:text-red-500 hover:bg-red-500/5 transition-all"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
+                        <VariantItem
+                          key={v.id}
+                          variant={v}
+                          onEdit={handleEditVariant}
+                          onDelete={handleDeleteVariant}
+                        />
                       ))
                     )}
                   </div>
@@ -1589,6 +1763,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                       className="w-full pl-14 pr-6 py-5 bg-zinc-950/50 border border-white/5 rounded-2xl text-lg font-black text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all tabular-nums"
                     />
                   </div>
+                  {costError && (
+                    <span className={cn(
+                      "text-[10px] font-bold mt-1 ml-1 block",
+                      costError.includes('Aviso') ? "text-amber-500" : "text-red-500"
+                    )}>{costError}</span>
+                  )}
                 </div>
 
                 <div className="space-y-3">
@@ -1604,6 +1784,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                       className="w-full pl-14 pr-6 py-5 bg-zinc-950 shadow-inner border border-emerald-500/20 rounded-2xl text-lg font-black text-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all tabular-nums"
                     />
                   </div>
+                  {priceError && (
+                    <span className="text-[10px] font-bold text-red-500 mt-1 ml-1 block">{priceError}</span>
+                  )}
                 </div>
 
                 <div className="space-y-4">
@@ -1640,6 +1823,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                           className="w-full pl-14 pr-6 py-5 bg-zinc-950/50 border border-white/5 rounded-2xl text-lg font-black text-zinc-600 focus:outline-none transition-all tabular-nums"
                         />
                       </div>
+                      {originalPriceError && (
+                        <span className="text-[10px] font-bold text-red-500 mt-1 ml-1 block">{originalPriceError}</span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1928,503 +2114,19 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
       </div>
 
       {/* Live Preview Fullscreen Modal */}
-      <AnimatePresence>
-        {isPreviewOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[100] bg-zinc-950/95 backdrop-blur-xl flex flex-col text-zinc-100"
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-zinc-900/40 backdrop-blur-md">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-                  <Smartphone className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-xs font-black uppercase tracking-wider text-white">Simulador do Aplicativo</h3>
-                  <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Prévia em Tempo Real</p>
-                </div>
-              </div>
-
-              {/* Controls & Close */}
-              <div className="flex items-center gap-4">
-                {/* Toggle Selector */}
-                <div className="bg-zinc-900 p-1 rounded-xl flex items-center gap-1 border border-white/5">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewMode('card')}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer",
-                      previewMode === 'card'
-                        ? "bg-emerald-500 text-emerald-950 shadow-md font-extrabold"
-                        : "text-zinc-400 hover:text-white"
-                    )}
-                  >
-                    Card
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewMode('page')}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer",
-                      previewMode === 'page'
-                        ? "bg-emerald-500 text-emerald-950 shadow-md font-extrabold"
-                        : "text-zinc-400 hover:text-white"
-                    )}
-                  >
-                    Página
-                  </button>
-                </div>
-
-                {/* Close Button */}
-                <button
-                  type="button"
-                  onClick={() => setIsPreviewOpen(false)}
-                  className="w-9 h-9 rounded-xl bg-zinc-900 border border-white/5 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all active:scale-95 cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Simulator Body */}
-            <div className="flex-1 overflow-y-auto flex items-center justify-center p-6 md:p-12">
-              <motion.div
-                initial={{ scale: 0.95, y: 15 }}
-                animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.95, y: 15 }}
-                transition={{ type: "spring", damping: 25, stiffness: 350 }}
-                className="relative flex justify-center w-full max-w-sm"
-              >
-                {/* Phone frame styling wrapper (premium aesthetics) */}
-                <div className="relative p-4 bg-zinc-900 border border-white/10 rounded-[3.25rem] shadow-[0_25px_60px_rgba(0,0,0,0.8)]">
-                  {/* Speaker / Notch simulator */}
-                  <div className="absolute top-6 left-1/2 -translate-x-1/2 w-24 h-4 bg-zinc-950 rounded-full z-20 flex items-center justify-center">
-                    <div className="w-8 h-1 bg-zinc-850 rounded-full" />
-                    <div className="w-1.5 h-1.5 bg-zinc-900 rounded-full ml-2" />
-                  </div>
-
-                  {/* Live Content Screen */}
-                  <div className="rounded-[2.5rem] overflow-hidden bg-zinc-950 border border-white/5 flex flex-col relative text-left">
-                    {previewMode === 'card' ? (
-                      <div className="w-[240px] bg-zinc-50/5 overflow-hidden flex flex-col relative text-left shadow-2xl transition-all duration-300">
-                        {/* Image Container */}
-                        <div className="relative aspect-[4/5] overflow-hidden bg-zinc-900/50">
-                          {formData.images && formData.images.length > 0 ? (
-                            <img
-                              src={formData.images[0]}
-                              alt={formData.name || 'Sem nome'}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-zinc-600 gap-2 bg-zinc-950/80">
-                              <ImageIcon className="w-8 h-8 opacity-20" />
-                              <span className="text-[8px] font-black uppercase tracking-widest opacity-40">Sem imagem</span>
-                            </div>
-                          )}
-
-                          {/* Floating Badges */}
-                          <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start max-w-[calc(100%-48px)]">
-                            {/* Stock Badge */}
-                            {parseInt(formData.stock) > 0 ? (
-                              <span className={cn(
-                                "px-2 py-0.5 rounded-md font-black text-[8px] uppercase tracking-wider text-white shadow-lg shrink-0",
-                                parseInt(formData.stock) <= 3 ? "bg-amber-600 animate-pulse" : "bg-emerald-600"
-                              )}>
-                                {parseInt(formData.stock) <= 3 ? `Só restam ${formData.stock}` : 'Em estoque'}
-                              </span>
-                            ) : (
-                              <span className="bg-zinc-800 text-zinc-400 border border-white/5 px-2 py-0.5 rounded-md font-black text-[8px] uppercase tracking-wider shadow-lg shrink-0">
-                                Esgotado
-                              </span>
-                            )}
-
-                            {/* Promotion Discount Badge */}
-                            {formData.originalPrice && parseFloat(formData.originalPrice) > parseFloat(formData.price) && (
-                              <span className="bg-rose-600 text-white px-2 py-0.5 rounded-md font-black text-[8px] uppercase tracking-wider shadow-lg shrink-0 animate-bounce-subtle">
-                                {Math.round(((parseFloat(formData.originalPrice) - parseFloat(formData.price)) / parseFloat(formData.originalPrice)) * 100)}% OFF
-                              </span>
-                            )}
-
-                            {/* Bestseller (HOT) Badge */}
-                            {formData.isBestseller && (
-                              <span className="bg-slate-900 border border-white/10 px-2 py-0.5 rounded-md shadow-lg flex items-center gap-1 font-black text-[8px] text-white shrink-0">
-                                <Flame className="w-2.5 h-2.5 text-orange-400 fill-orange-400 animate-pulse" />
-                                HOT
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Content */}
-                        <div className="p-3.5 flex-1 flex flex-col gap-1.5 bg-zinc-950 border-t border-white/5">
-                          <div className="space-y-0.5">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <p className="text-[8px] text-zinc-500 font-bold uppercase tracking-widest truncate max-w-[65%]">
-                                {formData.category || 'Categoria'}
-                              </p>
-                              {formData.freeShipping && (
-                                <div className="flex shrink-0 items-center gap-1 bg-emerald-50/10 text-emerald-400 px-1.5 py-0.5 rounded-md text-[7px] font-black border border-emerald-50/20">
-                                  <Truck className="w-2 h-2 animate-bounce-subtle shrink-0" />
-                                  <span className="truncate">Frete Grátis</span>
-                                </div>
-                              )}
-                            </div>
-                            
-                            <h3 className="text-xs font-black text-white line-clamp-2 leading-snug min-h-[2rem]">
-                              {formData.name || 'Nome do produto'}
-                            </h3>
-                            
-                            <div className="flex items-center text-amber-400 text-[9px]">
-                              ★★★★★
-                            </div>
-                          </div>
-
-                          {/* Price */}
-                          <div className="flex items-end mt-auto pt-1">
-                            <div className="flex flex-col w-full">
-                              {formData.originalPrice && parseFloat(formData.originalPrice) > parseFloat(formData.price) ? (
-                                <div className="flex flex-col">
-                                  <span className="text-[8px] text-zinc-500 font-bold uppercase tracking-wider leading-none">
-                                    De: <span className="line-through">R$ {parseFloat(formData.originalPrice).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                  </span>
-                                  <span className="text-xs font-black text-rose-500 tracking-tight leading-none mt-1">
-                                    Por: R$ {parseFloat(formData.price).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="text-xs font-black text-white tracking-tight leading-none">
-                                  R$ {parseFloat(formData.price || '0').toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="w-[280px] h-[520px] bg-white rounded-[2rem] overflow-y-auto border border-zinc-200 flex flex-col relative text-left shadow-2xl [&::-webkit-scrollbar]:hidden scrollbar-none text-zinc-950">
-                        {/* Simulated Phone Header Gallery */}
-                        <div className="relative aspect-square bg-[#F8F9FA] shrink-0">
-                          <div className="w-full h-full flex justify-center items-center overflow-hidden">
-                            {formData.images && formData.images.length > 0 ? (
-                              <img
-                                src={formData.images[previewImgIndex] || formData.images[0]}
-                                alt={formData.name || 'Preview'}
-                                className="w-auto h-full max-w-full object-contain"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex flex-col items-center justify-center text-zinc-400 gap-1 bg-zinc-50">
-                                <ImageIcon className="w-6 h-6 opacity-30" />
-                                <span className="text-[7px] font-black uppercase tracking-widest opacity-50">Sem imagem</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Header overlay actions */}
-                          <div className="absolute top-4 left-4 w-7 h-7 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm text-zinc-700">
-                            <ArrowLeft className="w-4 h-4" />
-                          </div>
-                          <div className="absolute top-4 right-4 flex gap-2">
-                            <div className="w-7 h-7 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm text-zinc-700">
-                              <Heart className="w-4 h-4 text-zinc-400" />
-                            </div>
-                            <div className="w-7 h-7 bg-white/85 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm text-zinc-700">
-                              <Share2 className="w-4 h-4" />
-                            </div>
-                          </div>
-
-                          {/* Gallery Navigation */}
-                          {formData.images && formData.images.length > 1 && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setPreviewImgIndex(prev => (prev - 1 + formData.images.length) % formData.images.length);
-                                }}
-                                className="absolute left-2 top-1/2 -translate-y-1/2 w-6 h-6 bg-white/85 rounded-full flex items-center justify-center shadow-sm text-zinc-700 hover:bg-white transition-all cursor-pointer"
-                              >
-                                <ChevronLeft className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setPreviewImgIndex(prev => (prev + 1) % formData.images.length);
-                                }}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 bg-white/85 rounded-full flex items-center justify-center shadow-sm text-zinc-700 hover:bg-white transition-all cursor-pointer"
-                              >
-                                <ChevronRight className="w-4 h-4" />
-                              </button>
-                              
-                              {/* Image indicators */}
-                              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1 px-2.5 py-1 bg-black/10 backdrop-blur-md rounded-full">
-                                {formData.images.map((_, idx) => (
-                                  <div
-                                    key={idx}
-                                    className={cn(
-                                      "h-1 rounded-full transition-all duration-300",
-                                      idx === previewImgIndex ? "bg-white w-4" : "bg-white/40 w-1"
-                                    )}
-                                  />
-                                ))}
-                              </div>
-                            </>
-                          )}
-                        </div>
-
-                        {/* Simulated Content Body */}
-                        <div className="p-4 flex-1 flex flex-col gap-3 bg-white">
-                          {/* Breadcrumb / Category */}
-                          <span className="text-[8px] font-black uppercase tracking-wider text-zinc-400 block">
-                            Início &gt; {formData.category || 'Categoria'}
-                          </span>
-
-                          {/* Badges row */}
-                          <div className="flex flex-wrap gap-1">
-                            {formData.originalPrice && parseFloat(formData.originalPrice) > parseFloat(formData.price) && (
-                              <span className="px-2 py-0.5 bg-red-600 text-white text-[8px] font-black tracking-wider rounded-full uppercase">
-                                {Math.round(((parseFloat(formData.originalPrice) - parseFloat(formData.price)) / parseFloat(formData.originalPrice)) * 100)}% OFF
-                              </span>
-                            )}
-                            {formData.isBestseller && (
-                              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[8px] font-black tracking-wider rounded-full flex items-center gap-1 uppercase border border-amber-200/50">
-                                <Flame className="w-2.5 h-2.5 text-orange-500 fill-orange-500/20" />
-                                HOT
-                              </span>
-                            )}
-                            {formData.freeShipping && (
-                              <span className="px-2 py-0.5 bg-emerald-600 text-white text-[8px] font-black tracking-wider rounded-full flex items-center gap-1 uppercase">
-                                <Truck className="w-2.5 h-2.5 animate-bounce-subtle" />
-                                FRETE GRÁTIS
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Product Name */}
-                          <h1 className="text-sm font-black text-zinc-900 leading-snug tracking-tight">
-                            {formData.name || 'Nome do produto'}
-                          </h1>
-
-                          {/* Stars rating */}
-                          <div className="flex items-center gap-1 text-zinc-500 text-[9px] font-bold">
-                            <span className="text-amber-400 text-xs">★★★★★</span>
-                            <span>5.0 (15 avaliações)</span>
-                          </div>
-
-                          {/* Price Details */}
-                          {formData.originalPrice && parseFloat(formData.originalPrice) > parseFloat(formData.price) ? (
-                            <div className="flex flex-col">
-                              <span className="text-[8px] font-black text-zinc-400 uppercase tracking-widest leading-none">
-                                De: <span className="line-through">R$ {parseFloat(formData.originalPrice).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                              </span>
-                              <span className="text-base font-black text-rose-600 tracking-tighter leading-none mt-1">
-                                Por: R$ {parseFloat(formData.price).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-base font-black text-zinc-900 tracking-tighter leading-none">
-                              R$ {parseFloat(formData.price || '0').toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                          )}
-
-                          {/* Variants Grade Selection */}
-                          {Object.entries(
-                            formData.variants.reduce((acc, v) => {
-                              if (!v.active) return acc;
-                              if (!acc[v.name]) acc[v.name] = [];
-                              acc[v.name].push(v);
-                              return acc;
-                            }, {} as Record<string, typeof formData.variants>)
-                          ).map(([name, values]) => (
-                            <div key={name} className="space-y-1.5 mt-1">
-                              <label className="block text-[8px] font-black text-zinc-400 uppercase tracking-widest ml-0.5">
-                                Selecione {name}
-                              </label>
-                              <div className="flex flex-wrap gap-1.5">
-                                {values.map((v) => {
-                                  const isSelected = previewSelectedVariants[name] === v.value;
-                                  return (
-                                    <button
-                                      key={v.id}
-                                      type="button"
-                                      onClick={() => setPreviewSelectedVariants(prev => ({ ...prev, [name]: v.value }))}
-                                      className={cn(
-                                        "px-2.5 py-1 text-[9px] font-black rounded-xl border transition-all flex items-center gap-1 cursor-pointer",
-                                        isSelected
-                                          ? "border-zinc-900 bg-zinc-900 text-white"
-                                          : "border-zinc-100 bg-zinc-50 text-zinc-500 hover:border-zinc-200"
-                                      )}
-                                    >
-                                      {v.imageUrl && (
-                                        <img src={v.imageUrl} className="w-3.5 h-3.5 rounded-full object-cover shadow-sm bg-white" />
-                                      )}
-                                      <span>{v.value}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))}
-
-                          {/* Stock Banner */}
-                          {(() => {
-                            const selectedVariantObjects = Object.entries(previewSelectedVariants).map(([name, value]) =>
-                              formData.variants?.find(v => v.name === name && v.value === value)
-                            ).filter(Boolean);
-                            
-                            const baseStock = parseInt(formData.stock) || 0;
-                            const currentStock = baseStock + selectedVariantObjects.reduce((acc, v) => acc + (v?.stockIncrement || 0), 0);
-                            
-                            const isOutOfStock = currentStock === 0;
-                            const isLowStock = currentStock <= 3 && currentStock > 0;
-                            
-                            return (
-                              <div className={cn(
-                                "flex items-center gap-1.5 p-2 rounded-xl text-[9px] font-bold mt-1 border",
-                                isOutOfStock 
-                                  ? "bg-zinc-100 border-zinc-200 text-zinc-500" 
-                                  : isLowStock 
-                                    ? "bg-red-50 border-red-100 text-red-650" 
-                                    : "bg-green-50 border-green-100 text-green-650"
-                              )}>
-                                {isOutOfStock ? (
-                                  <>
-                                    <ShieldCheck className="w-3.5 h-3.5 text-zinc-400" />
-                                    <span>Produto Esgotado</span>
-                                  </>
-                                ) : isLowStock ? (
-                                  <>
-                                    <Flame className="w-3.5 h-3.5" />
-                                    <span>Apenas {currentStock} un. restantes!</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Check className="w-3.5 h-3.5" />
-                                    <span>Em estoque ({currentStock} un.)</span>
-                                  </>
-                                )}
-                              </div>
-                            );
-                          })()}
-
-                          {/* Purchase Actions Container */}
-                          <div className="flex gap-2 mt-1 w-full shrink-0">
-                            <div className="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center border border-emerald-100 shrink-0">
-                              <MessageCircle className="w-4 h-4" />
-                            </div>
-                            <div className="flex-1 h-9 bg-zinc-900 text-white text-[9px] font-black uppercase tracking-wider rounded-xl flex items-center justify-center gap-1">
-                              <ShoppingCart className="w-3.5 h-3.5" />
-                              <span>Adicionar ao Carrinho</span>
-                            </div>
-                          </div>
-
-                          {/* Tabbed view iOS style */}
-                          <div className="bg-zinc-100/60 p-1 rounded-xl flex items-center gap-0.5 mt-3 max-w-xs mx-auto w-full shrink-0">
-                            {[
-                              { id: 'description', label: 'Detalhes' },
-                              { id: 'reviews', label: 'Reviews (15)' },
-                              { id: 'questions', label: 'Chat' }
-                            ].map((tab) => {
-                              const isActive = activeDetailTab === tab.id;
-                              return (
-                                <button
-                                  key={tab.id}
-                                  type="button"
-                                  onClick={() => setActiveDetailTab(tab.id as any)}
-                                  className={cn(
-                                    "flex-1 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all cursor-pointer",
-                                    isActive ? "bg-white text-zinc-950 shadow-sm" : "text-zinc-400 hover:text-zinc-600"
-                                  )}
-                                >
-                                  {tab.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-
-                          {/* Tab Content */}
-                          <div className="shrink-0 pb-4">
-                            {activeDetailTab === 'description' && (
-                              <div className="text-[9px] text-zinc-600 leading-relaxed font-medium mt-1">
-                                {formData.description ? (
-                                  <div className="whitespace-pre-line">{formData.description}</div>
-                                ) : (
-                                  <p className="text-zinc-400 italic">Nenhuma descrição informada.</p>
-                                )}
-                                <div className="space-y-1.5 mt-3 pt-3 border-t border-zinc-100">
-                                  <div className="flex items-center gap-1.5 text-[8px] text-zinc-500">
-                                    <ShieldCheck className="w-3.5 h-3.5 text-zinc-400" />
-                                    <span>Troca garantida em até 24h</span>
-                                  </div>
-                                  <div className="flex items-center gap-1.5 text-[8px] text-zinc-500">
-                                    <Truck className="w-3.5 h-3.5 text-zinc-400" />
-                                    <span>Entrega local rápida</span>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {activeDetailTab === 'reviews' && (
-                              <div className="space-y-2 mt-1">
-                                <div className="bg-zinc-950 rounded-xl p-3 text-white flex flex-col gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-2xl font-black">5.0</span>
-                                    <div className="flex flex-col">
-                                      <span className="text-amber-400 text-[10px]">★★★★★</span>
-                                      <span className="text-[6px] text-zinc-500 uppercase tracking-widest font-black">Baseado em 15 reviews</span>
-                                    </div>
-                                  </div>
-                                  <div className="space-y-1 pt-1 border-t border-white/5">
-                                    {[5, 4, 3, 2, 1].map((star) => (
-                                      <div key={star} className="flex items-center gap-1 text-[7px] font-black text-zinc-400">
-                                        <span className="w-2">{star}</span>
-                                        <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
-                                          <div className="h-full bg-white rounded-full" style={{ width: star === 5 ? '100%' : '0%' }} />
-                                        </div>
-                                        <span className="w-3 text-right">{star === 5 ? '15' : '0'}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                                
-                                <div className="p-2 border border-zinc-100 rounded-xl space-y-0.5 bg-zinc-50/50">
-                                  <div className="flex justify-between items-center text-[7px] font-black">
-                                    <span>Gabriel M.</span>
-                                    <span className="text-amber-400">★★★★★</span>
-                                  </div>
-                                  <p className="text-[8px] text-zinc-500 leading-normal">Excelente produto, acabamento de altíssima qualidade. Recomendo muito!</p>
-                                </div>
-                              </div>
-                            )}
-
-                            {activeDetailTab === 'questions' && (
-                              <div className="space-y-2 mt-1">
-                                <div className="p-2 border border-zinc-100 rounded-xl space-y-1 bg-zinc-50/50">
-                                  <div className="flex items-center gap-1 text-[7px] font-black text-zinc-400 uppercase tracking-wider">
-                                    <span>P: Vocês entregam hoje?</span>
-                                  </div>
-                                  <div className="p-1.5 bg-white rounded-lg border border-zinc-100 text-[8px] text-zinc-600">
-                                    <span className="font-bold text-zinc-800 block text-[7px] uppercase tracking-wider mb-0.5">Resposta do Vendedor:</span>
-                                    Sim! Se o pedido for realizado até as 18h entregamos hoje mesmo.
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <PhoneSimulator
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        formData={formData}
+        previewMode={previewMode}
+        setPreviewMode={setPreviewMode}
+        previewImgIndex={previewImgIndex}
+        setPreviewImgIndex={setPreviewImgIndex}
+        previewSelectedVariants={previewSelectedVariants}
+        setPreviewSelectedVariants={setPreviewSelectedVariants}
+        activeDetailTab={activeDetailTab}
+        setActiveDetailTab={setActiveDetailTab}
+      />
         {/* Modal de Ajuda */}
         {showHelpModal && (
           <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
@@ -2548,171 +2250,59 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
   );
 });
 
-const compressImage = (file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.85): Promise<File> => {
-  return new Promise((resolve) => {
-    if (!file.type.startsWith('image/')) {
-      resolve(file);
-      return;
-    }
-
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-
-    img.onload = () => {
-      let width = img.width;
-      let height = img.height;
-
-      if (width > height) {
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-      } else {
-        if (height > maxHeight) {
-          width = Math.round((width * maxHeight) / height);
-          height = maxHeight;
-        }
-      }
-
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        URL.revokeObjectURL(objectUrl);
-        resolve(file);
-        return;
-      }
-
-      ctx.drawImage(img, 0, 0, width, height);
-
-      canvas.toBlob(
-        (blob) => {
-          URL.revokeObjectURL(objectUrl);
-          if (blob) {
-            const compressedFile = new File([blob], file.name, {
-              type: 'image/jpeg',
-              lastModified: Date.now()
-            });
-            resolve(compressedFile);
-          } else {
-            resolve(file);
-          }
-        },
-        'image/jpeg',
-        quality
-      );
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      resolve(file);
-    };
-
-    img.src = objectUrl;
-  });
-};
-
-interface LocalBufferedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
-  value: string;
-  onFlush: (val: string) => void;
+interface VariantItemProps {
+  readonly variant: ProductVariant;
+  readonly onEdit: (v: ProductVariant) => void;
+  readonly onDelete: (id: string) => void;
 }
-function LocalBufferedInput({ value, onFlush, className, ...props }: LocalBufferedInputProps) {
-  const [localVal, setLocalVal] = useState(value);
-  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    setLocalVal(value);
-  }, [value]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setLocalVal(val);
-
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    timeoutRef.current = setTimeout(() => {
-      onFlush(val);
-    }, 150);
-  };
-
-  const handleBlur = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    onFlush(localVal ? localVal.toString() : '');
-  };
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
-
+const VariantItem = React.memo(function VariantItem({ variant, onEdit, onDelete }: VariantItemProps) {
   return (
-    <input
-      {...props}
-      value={localVal}
-      onChange={handleChange}
-      onBlur={handleBlur}
-      className={className}
-    />
+    <div className="bg-zinc-900 border border-white/5 rounded-2xl p-4 flex items-center justify-between group hover:border-emerald-500/30 transition-all">
+      <div className="flex items-center gap-3">
+        {variant.imageUrl && (
+          <div className="w-12 h-12 rounded-lg overflow-hidden border border-white/5 shrink-0">
+            <LazyImage src={variant.imageUrl} alt={`${variant.name}: ${variant.value}`} className="w-full h-full object-cover" />
+          </div>
+        )}
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-black text-white uppercase italic tracking-tight">{variant.name}: {variant.value}</span>
+            {!variant.active && <span className="text-[7px] font-black bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded uppercase border border-white/5">Offline</span>}
+          </div>
+          <div className="flex items-center gap-4 text-[9px] font-black uppercase tracking-tighter text-zinc-500">
+            <span className="flex items-center gap-1.5 py-1 px-2 bg-white/5 rounded-md border border-white/5">
+              <Package className="w-3 h-3 text-zinc-400" />
+              <span className="text-zinc-300">{variant.stockIncrement > 0 ? `+${variant.stockIncrement}` : variant.stockIncrement} UND</span>
+            </span>
+            {variant.priceOverride && (
+              <span className="flex items-center gap-1.5 py-1 px-2 bg-emerald-500/10 rounded-md border border-emerald-500/20 text-emerald-500">
+                <DollarSign className="w-3 h-3" />
+                R$ {Number(variant.priceOverride).toFixed(2)}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onEdit(variant)}
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-600 hover:text-white hover:bg-white/5 transition-all"
+        >
+          <Edit2 className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => onDelete(variant.id)}
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-600 hover:text-red-500 hover:bg-red-500/5 transition-all"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
   );
-}
+});
 
-interface LocalBufferedTextareaProps extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'onChange'> {
-  value: string;
-  onFlush: (val: string) => void;
-}
-function LocalBufferedTextarea({ value, onFlush, className, ...props }: LocalBufferedTextareaProps) {
-  const [localVal, setLocalVal] = useState(value);
-  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    setLocalVal(value);
-  }, [value]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    setLocalVal(val);
-
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    timeoutRef.current = setTimeout(() => {
-      onFlush(val);
-    }, 150);
-  };
-
-  const handleBlur = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    onFlush(localVal ? localVal.toString() : '');
-  };
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
-
-  return (
-    <textarea
-      {...props}
-      value={localVal}
-      onChange={handleChange}
-      onBlur={handleBlur}
-      className={className}
-    />
-  );
-}
 

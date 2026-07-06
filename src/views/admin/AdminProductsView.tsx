@@ -32,6 +32,7 @@ import {
 import { useProducts } from '@/hooks/useProducts';
 import { useCategories } from '@/hooks/useCategories';
 import { useAnalytics } from '@/hooks/useAnalytics';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
 import type { View } from '@/types';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -60,6 +61,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
+let cachedProductsTotal = 0;
+
 interface AdminProductsViewProps {
   onNavigate: (view: View, id?: string) => void;
   active?: boolean;
@@ -71,18 +74,70 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
   const { categories: dbCategories } = useCategories();
   const isOffline = useOnlineStatus();
 
+  const [savedScrollPosition, setSavedScrollPosition] = useState(0);
+  const viewRef = useRef<HTMLDivElement>(null);
+  const hasRestoredScrollRef = useRef(false);
+  const wasActiveRef = useRef(active);
+
+  const handleLocalNavigate = useCallback((view: View, id?: string) => {
+    const container = viewRef.current?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+    if (container) {
+      setSavedScrollPosition(container.scrollTop);
+      hasRestoredScrollRef.current = false;
+    }
+    onNavigate(view, id);
+  }, [onNavigate]);
+
+  useEffect(() => {
+    if (!active) {
+      if (wasActiveRef.current) {
+        const container = viewRef.current?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+        if (container) {
+          setSavedScrollPosition(container.scrollTop);
+        }
+      }
+      hasRestoredScrollRef.current = false;
+      wasActiveRef.current = false;
+      return;
+    }
+
+    wasActiveRef.current = true;
+
+    if (active && !loading && products.length > 0 && savedScrollPosition > 0 && !hasRestoredScrollRef.current) {
+      const container = viewRef.current?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+      if (container) {
+        hasRestoredScrollRef.current = true;
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            container.scrollTop = savedScrollPosition;
+          });
+        });
+      }
+    }
+  }, [active, loading, products.length, savedScrollPosition]);
+
   useEffect(() => {
     if (active && !stats) {
       fetchExecutiveSummary(false);
     }
   }, [active, stats, fetchExecutiveSummary]);
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useLocalStorage<string>('admin_products_search_term', '');
   const [isTyping, setIsTyping] = useState(false);
-  const [filterCategory, setFilterCategory] = useState('all');
-  const [totalProducts, setTotalProducts] = useState(0);
-  const [currentPage, setCurrentPage] = useState(0);
+  const [filterCategory, setFilterCategory] = useLocalStorage<string>('admin_products_filter_category', 'all');
+  const [totalProducts, setTotalProducts] = useState(() => cachedProductsTotal);
+  const [currentPage, setCurrentPage] = useLocalStorage<number>('admin_products_current_page', 0);
   const pageSize = 12;
+
+  const [showVisualLoading, setShowVisualLoading] = useState(false);
+  useEffect(() => {
+    if (loading) {
+      const timer = setTimeout(() => setShowVisualLoading(true), 180);
+      return () => clearTimeout(timer);
+    } else {
+      setShowVisualLoading(false);
+    }
+  }, [loading]);
 
   const [viewMode, setViewMode] = useState<'detailed' | 'compact'>(() => {
     const saved = localStorage.getItem('admin_products_view_mode');
@@ -111,35 +166,16 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
       });
       if (result) {
         setTotalProducts(result.total);
+        cachedProductsTotal = result.total;
       }
     } finally {
       firstLoadRef.current = false;
     }
   }, [loadProducts, pageSize, searchTerm, filterCategory]);
 
-  const lastSearchRef = useRef(searchTerm);
-  const lastCategoryRef = useRef(filterCategory);
-
   useEffect(() => {
     if (!active) return;
-
-    const filtersChanged = 
-      lastSearchRef.current !== searchTerm ||
-      lastCategoryRef.current !== filterCategory;
-
-    lastSearchRef.current = searchTerm;
-    lastCategoryRef.current = filterCategory;
-
-    let pageToFetch = currentPage;
-    if (filtersChanged) {
-      pageToFetch = 0;
-      if (currentPage !== 0) {
-        setCurrentPage(0);
-        return;
-      }
-    }
-
-    loadData(pageToFetch);
+    loadData(currentPage);
   }, [currentPage, searchTerm, filterCategory, active, loadData]);
 
   const simulatorMetrics = useMemo(() => {
@@ -243,15 +279,34 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
   ], [financialStats, totalProducts]);
 
   const handleToggleStatus = useCallback(async (id: string, active: boolean) => {
+    if (isOffline) {
+      toast.error("Ação não permitida offline", {
+        description: "Reconecte-se à internet para alterar o status do produto.",
+      });
+      return;
+    }
     await toggleProductStatus(id, active);
-  }, [toggleProductStatus]);
+  }, [toggleProductStatus, isOffline]);
 
   const handleDelete = useCallback((id: string) => {
+    if (isOffline) {
+      toast.error("Ação não permitida offline", {
+        description: "Reconecte-se à internet para excluir produtos.",
+      });
+      return;
+    }
     setProductToDelete(id);
-  }, []);
+  }, [isOffline]);
 
   const confirmDelete = useCallback(async () => {
     if (!productToDelete) return;
+    if (isOffline) {
+      toast.error("Você está offline", {
+        description: "Não é possível confirmar a exclusão sem conexão.",
+      });
+      setProductToDelete(null);
+      return;
+    }
     try {
       await deleteProduct(productToDelete);
       toast.success("Produto Removido", {
@@ -264,14 +319,27 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
     } finally {
       setProductToDelete(null);
     }
-  }, [deleteProduct, productToDelete]);
+  }, [deleteProduct, productToDelete, isOffline]);
 
   const handleDuplicate = useCallback((product: any) => {
+    if (isOffline) {
+      toast.error("Ação não permitida offline", {
+        description: "Reconecte-se à internet para duplicar produtos.",
+      });
+      return;
+    }
     setProductToDuplicate(product);
-  }, []);
+  }, [isOffline]);
 
   const confirmDuplicate = useCallback(async () => {
     if (!productToDuplicate) return;
+    if (isOffline) {
+      toast.error("Você está offline", {
+        description: "Não é possível confirmar a duplicação sem conexão.",
+      });
+      setProductToDuplicate(null);
+      return;
+    }
     try {
       const duplicateData = {
         name: `${productToDuplicate.name} (Cópia)`,
@@ -313,14 +381,14 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
     } finally {
       setProductToDuplicate(null);
     }
-  }, [addProduct, productToDuplicate]);
+  }, [addProduct, productToDuplicate, isOffline]);
 
 
 
   // Removed early return loading block to prevent visual layout shifts
 
   return (
-    <div className="h-auto bg-admin-bg text-white pb-8 animate-in fade-in duration-1000">
+    <div ref={viewRef} className="h-auto bg-admin-bg text-white pb-8 animate-in fade-in duration-1000">
       <style>{`
         @keyframes help-vertical-scroll {
           0% {
@@ -383,7 +451,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
           <Button
               disabled={isOffline}
               className="h-11 px-5 rounded-xl bg-admin-gold text-black hover:bg-admin-gold/90 font-black text-[10px] uppercase tracking-widest shadow-[0_0_15px_rgba(234,179,8,0.2)] hover:scale-105 active:scale-95 transition-all shrink-0 items-center justify-center hidden sm:flex disabled:opacity-50 disabled:pointer-events-none"
-              onClick={() => onNavigate('admin-product-form')}
+              onClick={() => handleLocalNavigate('admin-product-form')}
           >
               <Plus className="w-4 h-4 mr-2 stroke-[3] shrink-0" />
               Novo Produto
@@ -392,7 +460,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
               disabled={isOffline}
               size="icon"
               className="h-11 w-11 rounded-xl bg-admin-gold text-black hover:bg-admin-gold/90 shadow-[0_0_15px_rgba(234,179,8,0.2)] active:scale-95 transition-all shrink-0 sm:hidden flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
-              onClick={() => onNavigate('admin-product-form')}
+              onClick={() => handleLocalNavigate('admin-product-form')}
           >
               <Plus className="w-5 h-5 stroke-[3]" />
           </Button>
@@ -426,7 +494,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
                         placeholder="Buscar produtos..."
                         className="pl-14 h-14 rounded-2xl border-zinc-800 bg-black/40 text-white placeholder:text-zinc-600 focus:ring-admin-gold/20 focus:border-admin-gold/50 transition-all font-bold text-sm w-full"
                         value={searchTerm}
-                        onChange={setSearchTerm}
+                        onChange={(val) => { setSearchTerm(val); setCurrentPage(0); }}
                         onTyping={setIsTyping}
                         delay={300}
                     />
@@ -442,7 +510,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
                     {categories.map(cat => (
                         <DropdownMenuItem
                         key={cat}
-                        onClick={() => setFilterCategory(cat)}
+                        onClick={() => { setFilterCategory(cat); setCurrentPage(0); }}
                         className="capitalize text-zinc-400 focus:text-white focus:bg-white/5 rounded-xl px-4 py-3 cursor-pointer transition-all font-bold text-xs mb-1 last:mb-0"
                         >
                         {cat === 'all' ? 'Todas as Categorias' : cat}
@@ -469,10 +537,11 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
 
          {/* Grid view of Products as Assets */}
       <LocalErrorBoundary>
-        <div className={cn("transition-opacity duration-300", loading && "opacity-50 pointer-events-none")}>
+        <div className="relative min-h-[400px]">
+          {showVisualLoading && <div className="admin-sync-progress-bar" />}
           {viewMode === 'detailed' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 pb-10">
-              {((loading || firstLoadRef.current) && products.length === 0) ? (
+            <div key="detailed-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 pb-10 animate-in fade-in duration-200 min-h-[400px]">
+              {(firstLoadRef.current && loading && products.length === 0) ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <div key={i} className="admin-glass rounded-[2.5rem] border border-white/5 p-8 space-y-6 h-[440px] flex flex-col justify-between shadow-[0_20px_50px_rgba(0,0,0,0.3)] animate-pulse">
                     <div className="flex gap-6 items-start">
@@ -505,7 +574,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
                     key={product.id}
                     product={product}
                     viewMode="detailed"
-                    onNavigate={onNavigate}
+                    onNavigate={handleLocalNavigate}
                     onToggleStatus={handleToggleStatus}
                     onDuplicate={handleDuplicate}
                     onDelete={handleDelete}
@@ -515,8 +584,8 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 pb-10">
-              {((loading || firstLoadRef.current) && products.length === 0) ? (
+            <div key="compact-grid" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 pb-10 animate-in fade-in duration-200 min-h-[250px]">
+              {(firstLoadRef.current && loading && products.length === 0) ? (
                 Array.from({ length: 12 }).map((_, i) => (
                   <div key={i} className="admin-glass rounded-[1.5rem] border border-white/5 overflow-hidden h-[250px] flex flex-col justify-between shadow-lg animate-pulse">
                     <Skeleton className="w-full aspect-square bg-white/5 animate-pulse" />
@@ -536,7 +605,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
                     key={product.id}
                     product={product}
                     viewMode="compact"
-                    onNavigate={onNavigate}
+                    onNavigate={handleLocalNavigate}
                     onToggleStatus={handleToggleStatus}
                     onDuplicate={handleDuplicate}
                     onDelete={handleDelete}
@@ -597,7 +666,7 @@ export const AdminProductsView = memo(function AdminProductsView({ onNavigate, a
           <p className="text-sm font-medium text-zinc-500 uppercase tracking-widest max-w-xs mx-auto mb-8">O sistema de inteligência não localizou produtos para os parâmetros definidos.</p>
           <Button
             variant="ghost"
-            onClick={() => { setSearchTerm(''); setFilterCategory('all'); }}
+            onClick={() => { setSearchTerm(''); setFilterCategory('all'); setCurrentPage(0); }}
             className="bg-black/40 border border-white/5 text-[10px] font-black uppercase tracking-[0.2em] rounded-2xl px-10 h-14 hover:bg-admin-gold hover:text-black transition-all"
           >
             Resetar Filtros Mestres

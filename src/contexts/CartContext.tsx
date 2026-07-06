@@ -72,7 +72,12 @@ function saveTombstones(map: Map<string, CartTombstone>) {
 export function CartProvider({ children }: { children: React.ReactNode }) {
     const { config } = useStore();
     const { user, loading: authLoading } = useAuth();
-    console.log('[CartContext-Trace] Init - Auth User:', user?.id || 'null');
+    const userId = user?.id;
+    
+    useEffect(() => {
+        console.log('[CartContext-Trace] Init - Auth User:', userId || 'null');
+    }, [userId]);
+
     const [cart, setCart] = useState<CartItem[]>(() => {
         const saved = localStorage.getItem(CART_STORAGE_KEY);
         if (saved) {
@@ -102,7 +107,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         if (authLoading) return;
 
-        if (!user) {
+        if (!userId) {
             setIsLoading(false);
             syncLocked.current = false;
             // IMPORTANT: We do NOT set isInitialLoad.current = false here.
@@ -119,7 +124,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             }
         }, 8000);
         return () => clearTimeout(safetyTimeout);
-    }, [isLoading, user, authLoading]);
+    }, [isLoading, userId, authLoading]);
 
     // Persistence to LocalStorage
     useEffect(() => {
@@ -137,7 +142,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         let isMounted = true;
         
         // Detection of user change: Reset state if the ID changes (null <-> UUID)
-        const currentUserId = user?.id || null;
+        const currentUserId = userId || null;
         if (currentUserId !== lastSessionUserId.current) {
             console.log('[CartContext] ℹ️ User session changed. Resetting initial load state.');
             isInitialLoad.current = true;
@@ -151,7 +156,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 return;
             }
 
-            if (!user) {
+            if (!userId) {
                 console.log('[CartContext] ℹ️ No user detected. Preserving local cart.');
                 if (isMounted) {
                     setIsLoading(false);
@@ -169,7 +174,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 const { data: dbItems, error } = await supabase
                     .from('cart_items')
                     .select('*')
-                    .eq('user_id', user.id);
+                    .eq('user_id', userId);
 
                 if (error) throw error;
                 const endTime = Date.now();
@@ -287,7 +292,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
         syncFromDB();
         return () => { isMounted = false; };
-    }, [user, authLoading]); // Added authLoading to deps
+    }, [userId, authLoading]); // Added authLoading to deps
 
     const syncPending = useRef(false);
     const lastSyncedCart = useRef<string>('');

@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from 'react';
+import { useState, useMemo, memo, useRef, useEffect } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -9,7 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Trash, Edit, ArrowLeft, Ticket, Calendar, Users, HelpCircle, TrendingUp, Sparkles, Copy, Check } from 'lucide-react';
+import { Plus, Trash, Edit, ArrowLeft, Ticket, Calendar, Users, HelpCircle, TrendingUp, Sparkles, Copy, Check, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { useCoupons } from '@/hooks/useCoupons';
 import type { Coupon, View } from '@/types';
@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { LocalBufferedInput } from '@/components/admin/LocalBufferedInput';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -37,16 +38,30 @@ const itemVariants: Variants = {
 
 interface AdminCouponsViewProps {
     onNavigate: (view: View) => void;
+    active?: boolean;
+    onSetDirty?: (dirty: boolean) => void;
 }
 
-export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: AdminCouponsViewProps) {
-    const { coupons, loading, addCoupon, updateCoupon, deleteCoupon } = useCoupons(true);
+export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate, active = true, onSetDirty }: AdminCouponsViewProps) {
+    const { coupons, loading, addCoupon, updateCoupon, deleteCoupon, refreshCoupons } = useCoupons(true);
     const isOffline = useOnlineStatus();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [showHelpModal, setShowHelpModal] = useState(false);
     const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
     const [copiedCode, setCopiedCode] = useState<string | null>(null);
     const [couponToDelete, setCouponToDelete] = useState<string | null>(null);
+
+    // Auto-refresh when coming back online
+    const wasOfflineRef = useRef(isOffline);
+    useEffect(() => {
+        if (wasOfflineRef.current && !isOffline && active) {
+            toast.success('Conexão restabelecida. Atualizando cupons...', {
+                icon: '⚡'
+            });
+            refreshCoupons();
+        }
+        wasOfflineRef.current = isOffline;
+    }, [isOffline, active, refreshCoupons]);
 
     const [formData, setFormData] = useState<Partial<Coupon>>({
         code: '',
@@ -56,6 +71,33 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
         usageLimit: 0,
         minPurchase: 0
     });
+
+    // Controlar estado dirty do formulário para evitar descarte involuntário
+    useEffect(() => {
+        if (!onSetDirty) return;
+        if (!isDialogOpen) {
+            onSetDirty(false);
+            return;
+        }
+        const initial = editingCoupon || {
+            code: '',
+            type: 'percentage',
+            value: 0,
+            active: true,
+            usageLimit: 0,
+            minPurchase: 0
+        };
+
+        const isDirty =
+            (formData.code || '') !== (initial.code || '') ||
+            formData.type !== initial.type ||
+            Number(formData.value) !== Number(initial.value) ||
+            formData.active !== initial.active ||
+            Number(formData.usageLimit) !== Number(initial.usageLimit) ||
+            Number(formData.minPurchase) !== Number(initial.minPurchase);
+
+        onSetDirty(isDirty);
+    }, [isDialogOpen, formData, editingCoupon, onSetDirty]);
 
     const handleCopyCode = (code: string) => {
         navigator.clipboard.writeText(code);
@@ -89,7 +131,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
             });
             return;
         }
-        if (!formData.code || !formData.code.trim()) {
+        
+        const cleanCode = formData.code ? formData.code.trim().toUpperCase().replace(/\s+/g, '') : '';
+        if (!cleanCode) {
             toast.error('O código do cupom é obrigatório.');
             return;
         }
@@ -118,11 +162,16 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
             return;
         }
 
+        const dataToSubmit = {
+            ...formData,
+            code: cleanCode
+        };
+
         try {
             if (editingCoupon) {
-                await updateCoupon(editingCoupon.id, formData);
+                await updateCoupon(editingCoupon.id, dataToSubmit);
             } else {
-                await addCoupon(formData as Required<Omit<Coupon, 'id' | 'usageCount'>>);
+                await addCoupon(dataToSubmit as Required<Omit<Coupon, 'id' | 'usageCount'>>);
             }
             setIsDialogOpen(false);
         } catch (error) {
@@ -282,7 +331,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
                 {/* Stats Carousel Row */}
                 {(coupons.length > 0 || loading) && (
                     <div className="space-y-4 mb-8">
-                        <AdminKpiCarousel cards={kpiCards} loading={loading} title="Métricas de Campanhas" />
+                        <AdminKpiCarousel cards={kpiCards} loading={loading} active={active} title="Métricas de Campanhas" />
                     </div>
                 )}
 
@@ -410,12 +459,26 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
                                                     )}
                                                 </button>
 
-                                                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[8px] font-black uppercase tracking-widest ${coupon.active
-                                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                                    : 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
-                                                    }`}>
-                                                    <div className={`w-1 h-1 rounded-full ${coupon.active ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
-                                                    {coupon.active ? 'Ativo' : 'Inativo'}
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[8px] font-black uppercase tracking-widest ${coupon.active
+                                                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                                        : 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
+                                                        }`}>
+                                                        <div className={`w-1 h-1 rounded-full ${coupon.active ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
+                                                        {coupon.active ? 'Ativo' : 'Inativo'}
+                                                    </div>
+                                                    <Switch
+                                                        checked={coupon.active}
+                                                        disabled={isOffline}
+                                                        onCheckedChange={async (checked) => {
+                                                            try {
+                                                                await updateCoupon(coupon.id, { active: checked });
+                                                            } catch (err) {
+                                                                console.error(err);
+                                                            }
+                                                        }}
+                                                        className="data-[state=checked]:bg-emerald-500 scale-75 origin-right"
+                                                    />
                                                 </div>
                                             </div>
                                             
@@ -521,6 +584,18 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
                             </div>
                         </DialogHeader>
 
+                        {isOffline && (
+                            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-450 select-none animate-in fade-in slide-in-from-top duration-300">
+                                <AlertTriangle className="w-5 h-5 shrink-0 text-red-400" />
+                                <div className="text-left">
+                                    <p className="text-[10px] font-black uppercase tracking-wider text-red-400">Modo Offline Ativo</p>
+                                    <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest leading-none mt-1">
+                                        Criação e edição de cupons estão temporariamente desabilitadas.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="space-y-6">
                             {/* Live Preview Block */}
                             <div className="space-y-2 border-b border-white/5 pb-6">
@@ -569,13 +644,15 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
                                 </div>
                             </div>
 
-                            <div className="space-y-2 w-full">
+                             <div className="space-y-2 w-full">
                                 <Label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Código Promocional</Label>
-                                <Input
-                                    value={formData.code}
-                                    onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                                <LocalBufferedInput
+                                    value={formData.code || ''}
+                                    onFlush={(val) => setFormData(prev => ({ ...prev, code: val.toUpperCase().trim().replace(/\s+/g, '') }))}
                                     placeholder="EX: VERÃO2026"
-                                    className="h-14 bg-white/[0.03] border-white/10 rounded-2xl text-lg font-black tracking-tight focus:ring-emerald-500/20 focus:border-emerald-500/30 transition-all uppercase italic w-full"
+                                    useShadcn={true}
+                                    disabled={isOffline}
+                                    className="h-14 bg-white/[0.03] border-white/10 rounded-2xl text-lg font-black tracking-tight focus:ring-emerald-500/20 focus:border-emerald-500/30 transition-all uppercase italic w-full disabled:opacity-50"
                                 />
                             </div>
 
@@ -585,15 +662,17 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
                                     <div className="flex bg-white/[0.03] border border-white/10 p-1 rounded-2xl h-14 relative w-full overflow-hidden">
                                         <button
                                             type="button"
-                                            onClick={() => setFormData({ ...formData, type: 'percentage' })}
-                                            className={`flex-1 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all relative z-10 ${formData.type === 'percentage' ? 'text-black font-extrabold' : 'text-zinc-400 hover:text-white font-bold'}`}
+                                            onClick={() => !isOffline && setFormData({ ...formData, type: 'percentage' })}
+                                            disabled={isOffline}
+                                            className={`flex-1 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all relative z-10 disabled:opacity-50 ${formData.type === 'percentage' ? 'text-black font-extrabold' : 'text-zinc-400 hover:text-white font-bold'}`}
                                         >
                                             Porcentagem (%)
                                         </button>
                                         <button
                                             type="button"
-                                            onClick={() => setFormData({ ...formData, type: 'fixed' })}
-                                            className={`flex-1 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all relative z-10 ${formData.type === 'fixed' ? 'text-black font-extrabold' : 'text-zinc-400 hover:text-white font-bold'}`}
+                                            onClick={() => !isOffline && setFormData({ ...formData, type: 'fixed' })}
+                                            disabled={isOffline}
+                                            className={`flex-1 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all relative z-10 disabled:opacity-50 ${formData.type === 'fixed' ? 'text-black font-extrabold' : 'text-zinc-400 hover:text-white font-bold'}`}
                                         >
                                             Valor Fixo (R$)
                                         </button>
@@ -610,15 +689,17 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
                                         />
                                     </div>
                                 </div>
-                                <div className="space-y-2">
+                                 <div className="space-y-2">
                                     <Label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Valor do Desconto</Label>
-                                    <Input
+                                    <LocalBufferedInput
                                         type="number"
                                         min={0}
                                         max={formData.type === 'percentage' ? 100 : undefined}
                                         value={formData.value || ''}
-                                        onChange={(e) => setFormData({ ...formData, value: Number(e.target.value) })}
-                                        className="h-14 bg-white/[0.03] border-white/10 rounded-2xl text-lg font-black focus:ring-emerald-500/20"
+                                        onFlush={(val) => setFormData(prev => ({ ...prev, value: Number(val) }))}
+                                        useShadcn={true}
+                                        disabled={isOffline}
+                                        className="h-14 bg-white/[0.03] border-white/10 rounded-2xl text-lg font-black focus:ring-emerald-500/20 disabled:opacity-50"
                                         placeholder="EX: 15"
                                     />
                                 </div>
@@ -627,24 +708,28 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Pedido Mínimo (R$)</Label>
-                                    <Input
+                                    <LocalBufferedInput
                                         type="number"
                                         min={0}
                                         value={formData.minPurchase || ''}
-                                        onChange={(e) => setFormData({ ...formData, minPurchase: Number(e.target.value) })}
-                                        className="h-14 bg-white/[0.03] border-white/10 rounded-2xl font-bold"
+                                        onFlush={(val) => setFormData(prev => ({ ...prev, minPurchase: Number(val) }))}
+                                        useShadcn={true}
+                                        disabled={isOffline}
+                                        className="h-14 bg-white/[0.03] border-white/10 rounded-2xl font-bold disabled:opacity-50"
                                         placeholder="EX: 50"
                                     />
                                 </div>
                                 <div className="space-y-2">
                                     <Label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 ml-1">Limite de Uso</Label>
-                                    <Input
+                                    <LocalBufferedInput
                                         type="number"
                                         min={0}
                                         value={formData.usageLimit || ''}
-                                        onChange={(e) => setFormData({ ...formData, usageLimit: Number(e.target.value) })}
+                                        onFlush={(val) => setFormData(prev => ({ ...prev, usageLimit: Number(val) }))}
+                                        useShadcn={true}
+                                        disabled={isOffline}
                                         placeholder="0 = Ilimitado"
-                                        className="h-14 bg-white/[0.03] border-white/10 rounded-2xl font-bold"
+                                        className="h-14 bg-white/[0.03] border-white/10 rounded-2xl font-bold disabled:opacity-50"
                                     />
                                 </div>
                             </div>
@@ -660,6 +745,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
                                             const d = new Date(formData.validUntil);
                                             return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : '';
                                         })()}
+                                        disabled={isOffline}
                                         onChange={(e) => {
                                             if (!e.target.value) {
                                                 setFormData({ ...formData, validUntil: undefined });
@@ -670,7 +756,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
                                                 setFormData({ ...formData, validUntil: d.toISOString() });
                                             }
                                         }}
-                                        className="h-14 bg-white/[0.03] border-white/10 rounded-2xl pl-12 font-bold focus:ring-emerald-500/20"
+                                        className="h-14 bg-white/[0.03] border-white/10 rounded-2xl pl-12 font-bold focus:ring-emerald-500/20 disabled:opacity-50"
                                     />
                                 </div>
                             </div>
@@ -682,6 +768,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
                                 </div>
                                 <Switch
                                     checked={formData.active}
+                                    disabled={isOffline}
                                     onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
                                     className="data-[state=checked]:bg-emerald-500"
                                 />
@@ -698,7 +785,8 @@ export const AdminCouponsView = memo(function AdminCouponsView({ onNavigate }: A
                             </Button>
                             <Button
                                 onClick={handleSubmit}
-                                className="flex-[2] h-14 bg-white text-black rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-xl shadow-white/5 active:scale-95"
+                                disabled={isOffline}
+                                className="flex-[2] h-14 bg-white text-black rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-xl shadow-white/5 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
                             >
                                 Salvar Campanha
                             </Button>

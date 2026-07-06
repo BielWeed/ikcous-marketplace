@@ -2,6 +2,46 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 
+async function callRpcWithRetry<T>(
+    fn: () => Promise<{ data: T | null; error: any }>,
+    retries = 3,
+    delay = 500
+): Promise<{ data: T | null; error: any }> {
+    let lastError: any = null;
+    for (let i = 0; i <= retries; i++) {
+        try {
+            const res = await fn();
+            if (!res.error) {
+                return res;
+            }
+            lastError = res.error;
+            
+            if (lastError.message?.includes('JWT') || lastError.status === 401) {
+                const { data: { session } } = await supabase.auth.refreshSession();
+                if (session) {
+                    const retryRes = await fn();
+                    if (!retryRes.error) return retryRes;
+                    lastError = retryRes.error;
+                }
+            }
+            
+            if (i < retries && (!lastError.status || lastError.status >= 500 || lastError.status === 408)) {
+                await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+            } else {
+                break;
+            }
+        } catch (err: any) {
+            lastError = err;
+            if (i < retries) {
+                await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+            } else {
+                break;
+            }
+        }
+    }
+    return { data: null, error: lastError };
+}
+
 export interface DashboardStats {
     today: {
         revenue: number;
@@ -58,6 +98,13 @@ let lastStatsFetchTime = 0;
 let lastCategoryFetchTime = 0;
 const REVALIDATION_THROTTLE_MS = 30000; // 30 seconds
 
+export function clearAnalyticsCache() {
+    cachedStats = null;
+    cachedCategoryData = null;
+    lastStatsFetchTime = 0;
+    lastCategoryFetchTime = 0;
+}
+
 export function useAnalytics() {
     const { isAdmin } = useAuth();
     const [summaryLoading, setSummaryLoading] = useState(false);
@@ -92,9 +139,12 @@ export function useAnalytics() {
             // Background revalidation
             (async () => {
                 try {
-                    const { data, error: err } = await supabase.rpc('get_admin_analytics_v2');
+                    const { data, error: err } = await callRpcWithRetry<DashboardStats>(async () => {
+                        const { data, error } = await supabase.rpc('get_admin_analytics_v2');
+                        return { data: data as DashboardStats | null, error };
+                    });
                     if (!err && data) {
-                        cachedStats = data as any as DashboardStats;
+                        cachedStats = data;
                         lastStatsFetchTime = Date.now();
                         setStats(cachedStats);
                     }
@@ -109,7 +159,10 @@ export function useAnalytics() {
             setSummaryLoading(true);
             setError(null);
             
-            const { data, error: err } = await supabase.rpc('get_admin_analytics_v2');
+            const { data, error: err } = await callRpcWithRetry<DashboardStats>(async () => {
+                const { data, error } = await supabase.rpc('get_admin_analytics_v2');
+                return { data: data as DashboardStats | null, error };
+            });
             
             if (err) throw err;
             cachedStats = data as any as DashboardStats;
@@ -134,7 +187,8 @@ export function useAnalytics() {
                 return null;
             }
 
-            const { data } = await (supabase as any).rpc('get_retention_rate');
+            const { data, error } = await callRpcWithRetry<any>(() => (supabase as any).rpc('get_retention_rate'));
+            if (error) throw error;
             return data;
         } catch (err) {
             console.error('Error fetching retention analytics:', err);
@@ -161,10 +215,10 @@ export function useAnalytics() {
             // Background revalidation
             (async () => {
                 try {
-                    const { data } = await (supabase as any).rpc('get_category_analytics', { 
+                    const { data } = await callRpcWithRetry<any>(() => (supabase as any).rpc('get_category_analytics', { 
                         start_date: start, 
                         end_date: end 
-                    });
+                    }));
                     if (data) {
                         cachedCategoryData = data;
                         lastCategoryFetchTime = Date.now();
@@ -179,10 +233,10 @@ export function useAnalytics() {
 
         try {
             setCategoryLoading(true);
-            const { data, error } = await (supabase as any).rpc('get_category_analytics', { 
+            const { data, error } = await callRpcWithRetry<any>(() => (supabase as any).rpc('get_category_analytics', { 
                 start_date: start, 
                 end_date: end 
-            });
+            }));
             if (error) throw error;
             cachedCategoryData = data;
             lastCategoryFetchTime = Date.now();

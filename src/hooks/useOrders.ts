@@ -4,11 +4,13 @@ import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { mapOrderFromDB } from '@/lib/mappers';
 import type { Order, OrderStatus, DashboardSummary } from '@/types';
+import { clearAnalyticsCache } from '@/hooks/useAnalytics';
 
 interface SharedSubscription {
   channel: any;
   refCount: number;
   callbacks: Set<(payload: any) => void>;
+  cleanupTimeout?: ReturnType<typeof setTimeout>;
 }
 const globalOrderSubscriptions = new Map<string, SharedSubscription>();
 
@@ -28,14 +30,21 @@ const validateStatusUpdate = (order: Order | undefined, isAdmin: boolean, status
   }
 };
 
+// Memory cache for Admin Orders (SWR Pattern)
+let cachedAdminOrders: Order[] | null = null;
+let cachedAdminTotalOrders = 0;
+
 export function useOrders(
   enabled: boolean = true, 
   isAdmin: boolean = false,
   options?: { onRealtimeEvent?: (payload: any) => void }
 ) {
   const { user, isAdmin: isUserAdmin } = useAuth();
+  const userOrdersAbortControllerRef = useRef<AbortController | null>(null);
+  const adminOrdersAbortControllerRef = useRef<AbortController | null>(null);
   const [orders, setOrders] = useState<Order[]>(() => {
-    if (typeof window === 'undefined' || !user?.id || isAdmin) return [];
+    if (isAdmin) return cachedAdminOrders || [];
+    if (typeof window === 'undefined' || !user?.id) return [];
     try {
       const cacheKey = `ikcous_orders_cache_${user.id}`;
       const cached = localStorage.getItem(cacheKey);
@@ -51,7 +60,9 @@ export function useOrders(
     return [];
   });
   const [loading, setLoading] = useState(enabled);
-  const [totalOrders, setTotalOrders] = useState(0);
+  const [totalOrders, setTotalOrders] = useState(() => {
+    return isAdmin ? cachedAdminTotalOrders : 0;
+  });
 
   // Synchronously load cache on mount or when user changes
   useEffect(() => {
@@ -87,11 +98,17 @@ export function useOrders(
       // ignore localStorage issues
     }
 
+    if (userOrdersAbortControllerRef.current) {
+      userOrdersAbortControllerRef.current.abort();
+    }
+    userOrdersAbortControllerRef.current = new AbortController();
+    const signal = userOrdersAbortControllerRef.current.signal;
+
     if (!hasCache) {
       setLoading(true);
     }
     try {
-      const { data, error } = await supabase
+      const query = supabase
         .from('marketplace_orders')
         .select(`
           *,
@@ -99,7 +116,10 @@ export function useOrders(
           address:user_addresses(*)
         `)
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .abortSignal(signal);
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -110,7 +130,10 @@ export function useOrders(
         return mappedOrders;
       }
       return [];
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.message === 'Fetch is aborted' || err?.message?.includes('aborted')) {
+        return [];
+      }
       console.error('Error fetching user orders:', err);
       toast.error('Erro ao carregar seus pedidos');
       return [];
@@ -126,55 +149,53 @@ export function useOrders(
     statusFilter?: string,
     searchQuery?: string,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    silent = false
   ) => {
     if (!enabled) return { orders: [], total: 0 };
+
+    if (adminOrdersAbortControllerRef.current) {
+      adminOrdersAbortControllerRef.current.abort();
+    }
+    adminOrdersAbortControllerRef.current = new AbortController();
+    const signal = adminOrdersAbortControllerRef.current.signal;
+
     try {
-      setLoading(true);
-      let query = supabase
-        .from('marketplace_orders')
-        .select(`
-          *,
-          items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)),
-          address:user_addresses(*)
-        `, { count: 'exact' });
-
-      if (statusFilter && statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
+      if (!silent) {
+        setLoading(true);
       }
 
-      if (searchQuery) {
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(searchQuery);
-        if (isUuid) {
-          query = query.eq('id', searchQuery);
-        } else {
-          query = query.ilike('customer_name', `%${searchQuery}%`);
-        }
-      }
+      const query = (supabase.rpc as any)('get_admin_orders_paged', {
+        p_search: searchQuery || '',
+        p_status: statusFilter || 'all',
+        p_start_date: startDate || '',
+        p_end_date: endDate || '',
+        p_page: page,
+        p_page_size: pageSize
+      }).abortSignal(signal);
 
-      if (startDate) {
-        query = query.gte('created_at', startDate);
-      }
-      if (endDate) {
-        query = query.lte('created_at', endDate);
-      }
-
-      query = query.order('created_at', { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
-
-      const { data, error, count } = await query;
+      const { data, error } = await query;
 
       if (error) throw error;
 
       if (data) {
-        // Explicit casting to match Mapper expectations for joined data
-        const mappedOrders = data.map(item => mapOrderFromDB(item as any));
+        const orderData = data.data || [];
+        const totalCount = Number(data.total_count) || 0;
+
+        const mappedOrders = orderData.map((item: any) => mapOrderFromDB(item));
         setOrders(mappedOrders);
-        if (count !== null) setTotalOrders(count);
-        return { orders: mappedOrders, total: count || 0 };
+        setTotalOrders(totalCount);
+        
+        cachedAdminOrders = mappedOrders;
+        cachedAdminTotalOrders = totalCount;
+
+        return { orders: mappedOrders, total: totalCount };
       }
       return { orders: [], total: 0 };
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.message === 'Fetch is aborted' || err?.message?.includes('aborted')) {
+        return { orders: [], total: 0 };
+      }
       console.error('Error loading orders:', err);
       toast.error('Erro ao carregar pedidos');
       return { orders: [], total: 0 };
@@ -370,6 +391,11 @@ export function useOrders(
 
     const existing = globalOrderSubscriptions.get(channelId);
     if (existing) {
+      if (existing.cleanupTimeout) {
+        clearTimeout(existing.cleanupTimeout);
+        delete existing.cleanupTimeout;
+        console.log(`[Realtime] Cancelled cleanup timeout for channel (existing mount): ${channelId}`);
+      }
       existing.refCount++;
       existing.callbacks.add(onEvent);
     } else {
@@ -381,7 +407,7 @@ export function useOrders(
         clearTimeout(visibilityTimeout);
         visibilityTimeout = setTimeout(() => {
           const sub = globalOrderSubscriptions.get(channelId);
-          if (!sub && !isUnmounting && !isConnecting) {
+          if ((!sub || sub.refCount <= 0) && !isUnmounting && !isConnecting) {
             console.log('[Realtime] Orders foregrounded. Forcing reconnect...');
             retryCount = 0;
             clearTimeout(reconnectTimeout);
@@ -397,7 +423,7 @@ export function useOrders(
       clearTimeout(onlineTimeout);
       onlineTimeout = setTimeout(() => {
         const sub = globalOrderSubscriptions.get(channelId);
-        if (!sub && !isUnmounting && !isConnecting) {
+        if ((!sub || sub.refCount <= 0) && !isUnmounting && !isConnecting) {
           console.log('[Realtime] Orders online. Checking...');
           retryCount = 0;
           clearTimeout(reconnectTimeout);
@@ -424,22 +450,49 @@ export function useOrders(
         sub.callbacks.delete(onEvent);
         sub.refCount--;
         if (sub.refCount <= 0) {
-          globalOrderSubscriptions.delete(channelId);
-          supabase.removeChannel(sub.channel).catch(() => {});
-          console.log(`[Realtime] Cleaned up shared channel: ${channelId}`);
+          if (sub.cleanupTimeout) {
+            clearTimeout(sub.cleanupTimeout);
+          }
+          sub.cleanupTimeout = setTimeout(() => {
+            const currentSub = globalOrderSubscriptions.get(channelId);
+            if (currentSub && currentSub.refCount <= 0) {
+              globalOrderSubscriptions.delete(channelId);
+              supabase.removeChannel(currentSub.channel).catch(() => {});
+              console.log(`[Realtime] Cleaned up shared channel after debounce: ${channelId}`);
+            }
+          }, 4000); // 4 seconds debounce
+          console.log(`[Realtime] Scheduled cleanup for channel: ${channelId} (refCount: ${sub.refCount})`);
         }
       }
     };
   }, [enabled, user?.id, isAdmin]);
 
-
   const updateOrderStatus = useCallback(async (orderId: string, status: OrderStatus, notes?: string, silent: boolean = false) => {
+    const originalOrders = [...orders];
+    let originalCache: Order[] | null = null;
     try {
       // Find the order in the current state to check its existing status
       const order = orders.find(o => o.id === orderId);
 
       // Validation logic extracted for clarity
       validateStatusUpdate(order, isAdmin, status, silent);
+
+      // Optimistic update
+      originalCache = cachedAdminOrders ? [...cachedAdminOrders] : null;
+      cachedAdminOrders = (cachedAdminOrders || []).map(o =>
+        o.id === orderId ? { ...o, status } : o
+      );
+
+      setOrders(prev => {
+        const updated = prev.map(o =>
+          o.id === orderId ? { ...o, status } : o
+        );
+        if (user?.id && !isAdmin) {
+          const cacheKey = `ikcous_orders_cache_${user.id}`;
+          localStorage.setItem(cacheKey, JSON.stringify(updated));
+        }
+        return updated;
+      });
 
       const { error } = await (supabase.rpc as any)('update_order_status_atomic', {
         p_order_id: orderId,
@@ -450,19 +503,17 @@ export function useOrders(
 
       if (error) throw error;
 
-      setOrders(prev => {
-        const updated = prev.map(order =>
-          order.id === orderId ? { ...order, status } : order
-        );
-        if (user?.id && !isAdmin) {
-          const cacheKey = `ikcous_orders_cache_${user.id}`;
-          localStorage.setItem(cacheKey, JSON.stringify(updated));
-        }
-        return updated;
-      });
+      clearAnalyticsCache();
       if (!silent) toast.success('Status atualizado com sucesso');
     } catch (err: any) {
       console.error('Error updating status:', err);
+      cachedAdminOrders = cachedAdminOrders ? [...(cachedAdminOrders || [])] : null; // will revert below or use originalCache
+      cachedAdminOrders = originalCache;
+      setOrders(originalOrders);
+      if (user?.id && !isAdmin) {
+        const cacheKey = `ikcous_orders_cache_${user.id}`;
+        localStorage.setItem(cacheKey, JSON.stringify(originalOrders));
+      }
       if (!silent) toast.error(err.message || 'Erro ao atualizar status');
       throw err;
     }
@@ -633,6 +684,17 @@ export function useOrders(
       supabase.removeChannel(channel).catch(() => {});
     };
   }, [user, isAdmin]);
+
+  useEffect(() => {
+    return () => {
+      if (userOrdersAbortControllerRef.current) {
+        userOrdersAbortControllerRef.current.abort();
+      }
+      if (adminOrdersAbortControllerRef.current) {
+        adminOrdersAbortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   return {
     orders,

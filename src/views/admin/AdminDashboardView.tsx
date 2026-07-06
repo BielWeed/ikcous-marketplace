@@ -26,6 +26,7 @@ import { LocalErrorBoundary } from '@/components/ui/custom/LocalErrorBoundary';
 import { cn } from '@/lib/utils';
 import type { View } from '@/types';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { toast } from 'sonner';
 
 interface AdminDashboardViewProps {
   onNavigate: (view: View, id?: string) => void;
@@ -101,8 +102,20 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     }
   }, [loadDashboardData, session, active]);
 
+  // Auto-refresh when coming back online
+  const wasOfflineRef = useRef(isOffline);
+  useEffect(() => {
+    if (wasOfflineRef.current && !isOffline && active) {
+      toast.success('Conexão restabelecida. Atualizando dashboard...', {
+        icon: '⚡'
+      });
+      loadDashboardData(true);
+    }
+    wasOfflineRef.current = isOffline;
+  }, [isOffline, active, loadDashboardData]);
+
   return (
-    <div className="bg-[#09090b] text-white selection:bg-emerald-500/30 w-full overflow-x-hidden pb-10">
+    <div className="bg-[#09090b] text-white selection:bg-emerald-500/30 w-full overflow-x-hidden pb-28 lg:pb-10">
         {/* Dashboard Headers Section */}
         <div className="px-6 flex items-center justify-between gap-4 pt-6 pb-2">
             <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase leading-none select-none flex items-center gap-3 shrink-0">
@@ -151,23 +164,20 @@ export const AdminDashboardView = memo(function AdminDashboardView({
         <div className="space-y-6 sm:space-y-12 px-4 mt-6">
             {/* KPI Overview Section */}
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                {active && (
-                    <LocalErrorBoundary>
-                        <KpiSummaryCards stats={stats} loading={isLoading && !stats} active={active} />
-                    </LocalErrorBoundary>
-                )}
+                <LocalErrorBoundary>
+                    <KpiSummaryCards stats={stats} loading={isLoading && !stats} active={active} />
+                </LocalErrorBoundary>
             </div>
 
             {/* Strategic Intelligence Section */}
             <div className="animate-in fade-in slide-in-from-bottom-6 duration-700 delay-150 px-0 sm:px-6">
-                {active && (
-                    <LocalErrorBoundary>
-                        <StrategicIntelligenceBlocks 
-                            categoryData={mappedCategoryData}
-                            loading={isLoading && !stats}
-                        />
-                    </LocalErrorBoundary>
-                )}
+                <LocalErrorBoundary>
+                    <StrategicIntelligenceBlocks 
+                        categoryData={mappedCategoryData}
+                        loading={isLoading && !stats}
+                        active={active}
+                    />
+                </LocalErrorBoundary>
             </div>
 
             {/* Performance Grid - Old chart as secondary or removed */}
@@ -184,15 +194,13 @@ export const AdminDashboardView = memo(function AdminDashboardView({
 
             {/* Bottom Grid */}
             <div className="grid grid-cols-1 gap-6 sm:gap-10 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-500">
-                {active && (
-                    <LocalErrorBoundary>
-                        <TopProductsList
-                            stats={stats}
-                            loading={isLoading && !stats}
-                            onNavigate={onNavigate}
-                        />
-                    </LocalErrorBoundary>
-                )}
+                <LocalErrorBoundary>
+                    <TopProductsList
+                        stats={stats}
+                        loading={isLoading && !stats}
+                        onNavigate={onNavigate}
+                    />
+                </LocalErrorBoundary>
             </div>
         </div>
 

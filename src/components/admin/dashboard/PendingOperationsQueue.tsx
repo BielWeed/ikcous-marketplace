@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { AlertCircle, Package, ShoppingBag } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,7 @@ const SectionTitle = ({ title, icon: Icon }: { title: string; icon: any }) => (
     </div>
 );
 
-export function PendingOperationsQueue({ stats, loading, onNavigate }: PendingOperationsQueueProps) {
+export const PendingOperationsQueue = memo(function PendingOperationsQueue({ stats, loading, onNavigate }: PendingOperationsQueueProps) {
     const pendingCount = stats?.today?.pending || 0;
 
     return (
@@ -69,5 +70,5 @@ export function PendingOperationsQueue({ stats, loading, onNavigate }: PendingOp
             </div>
         </div>
     );
-}
+});
 

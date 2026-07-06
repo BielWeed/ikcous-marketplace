@@ -42,6 +42,16 @@ const DebugPanel = React.lazy(() => import('@/components/debug/DebugPanel').then
 import { toast } from 'sonner';
 import { Toaster } from '@/components/ui/sonner';
 import { LocalErrorBoundary } from '@/components/ui/custom/LocalErrorBoundary';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 declare global {
   interface Window {
@@ -64,6 +74,7 @@ import { usePrefetchOnHover } from '@/hooks/usePrefetchOnHover';
 import { useViewTransition } from '@/hooks/useViewTransition';
 import { useSwipeBack } from '@/hooks/useSwipeBack';
 import { useWebVitals } from '@/hooks/useWebVitals';
+import { useDeferredRender } from '@/hooks/useDeferredRender';
 
 function DeferredTabContent({ active, children }: { readonly active: boolean; readonly children: React.ReactNode }) {
   const [hasBeenActive, setHasBeenActive] = useState(active);
@@ -89,12 +100,9 @@ function TabWrapper({ active, children, isTransitionSupported }: TabWrapperProps
     return (
       <div
         className={cn(
-          "w-full h-full overflow-y-auto pb-36 lg:pb-44 admin-scroll-container scroll-smooth",
-          active ? "active-scroll-container block relative" : "invisible absolute top-0 left-0 pointer-events-none"
+          "w-full h-full overflow-y-auto pb-36 lg:pb-44 admin-scroll-container scroll-smooth absolute top-0 left-0 gpu-accelerated",
+          active ? "active-scroll-container opacity-100 pointer-events-auto z-10" : "opacity-0 pointer-events-none z-0"
         )}
-        style={{
-          opacity: active ? 1 : 0,
-        }}
       >
         {children}
       </div>
@@ -106,13 +114,13 @@ function TabWrapper({ active, children, isTransitionSupported }: TabWrapperProps
       initial={false}
       animate={
         active
-          ? { opacity: 1, y: 0, scale: 1, position: "relative", visibility: "visible", pointerEvents: "auto" }
-          : { opacity: 0, y: 8, scale: 0.99, position: "absolute", pointerEvents: "none", transitionEnd: { visibility: "hidden" } }
+          ? { opacity: 1, pointerEvents: "auto", zIndex: 10 }
+          : { opacity: 0, pointerEvents: "none", zIndex: 0 }
       }
-      transition={{ duration: 0.20, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.15, ease: "linear" }}
       className={cn(
-        "w-full h-full overflow-y-auto pb-36 lg:pb-44 admin-scroll-container scroll-smooth",
-        active ? "active-scroll-container block relative" : "invisible absolute top-0 left-0 pointer-events-none"
+        "w-full h-full overflow-y-auto pb-36 lg:pb-44 admin-scroll-container scroll-smooth absolute top-0 left-0 gpu-accelerated",
+        active ? "active-scroll-container" : ""
       )}
     >
       {children}
@@ -121,6 +129,8 @@ function TabWrapper({ active, children, isTransitionSupported }: TabWrapperProps
 }
 
 function ViewLoadingFallback() {
+  const isReady = useDeferredRender(150);
+  if (!isReady) return null;
   return (
     <div className="flex flex-col items-center justify-center min-h-[40vh] space-y-4">
       <div className="w-10 h-10 border-3 border-zinc-900/10 border-t-zinc-900 rounded-full animate-spin"></div>
@@ -130,6 +140,8 @@ function ViewLoadingFallback() {
 }
 
 function AdminRouteLoading() {
+  const isReady = useDeferredRender(150);
+  if (!isReady) return null;
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
       <div className="w-12 h-12 border-4 border-zinc-900 border-t-transparent rounded-full animate-spin"></div>
@@ -138,26 +150,177 @@ function AdminRouteLoading() {
   );
 }
 
-function AdminViewLoadingFallback() {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 bg-[#09090b] text-white">
-      <div className="relative w-16 h-16">
-        {/* Outer glowing ring */}
-        <div className="absolute inset-0 rounded-full border-2 border-amber-500/10 animate-ping duration-1000"></div>
-        {/* Spinner */}
-        <div className="w-16 h-16 border-2 border-amber-500/10 border-t-amber-500 rounded-full animate-spin"></div>
-        {/* Center hub */}
-        <div className="absolute inset-4 rounded-full bg-zinc-900 border border-white/5 flex items-center justify-center">
-          <span className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
+  const isReady = useDeferredRender(150);
+  const isFormOrDetail = view === 'admin-product-form' || view === 'admin-user-detail' || view === 'admin-push';
+  const isDashboard = view === 'admin-dashboard' || view === 'admin';
+  const isSettings = view === 'admin-settings';
+
+  if (!isReady) {
+    return <div className="w-full min-h-[80vh] bg-[#09090b]" />;
+  }
+
+  if (isDashboard) {
+    return (
+      <div className="bg-[#09090b] text-white w-full min-h-[80vh] px-6 py-6 space-y-8 select-none">
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <div className="h-8 w-48 premium-shimmer rounded-xl" />
+          <div className="h-10 w-32 premium-shimmer rounded-2xl" />
+        </div>
+        
+        {/* KPI Carousel */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 p-5 rounded-[1.5rem] border border-white/[0.04] space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl premium-shimmer" />
+                <div className="h-3 w-16 premium-shimmer rounded" />
+              </div>
+              <div className="h-6 w-24 premium-shimmer rounded" />
+            </div>
+          ))}
+        </div>
+
+        {/* Large Chart Area */}
+        <div className="bg-zinc-950 border border-white/[0.04] rounded-[2rem] p-6 h-[350px]">
+          <div className="h-6 w-48 premium-shimmer rounded-lg mb-6" />
+          <div className="w-full h-4/5 premium-shimmer rounded-2xl" />
+        </div>
+
+        {/* Bottom grid list */}
+        <div className="bg-zinc-950 border border-white/[0.04] rounded-[2rem] p-6 h-[300px]">
+          <div className="h-6 w-36 premium-shimmer rounded-lg mb-6" />
+          <div className="space-y-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl premium-shimmer" />
+                  <div className="space-y-2">
+                    <div className="h-3.5 w-32 premium-shimmer rounded" />
+                    <div className="h-3 w-20 premium-shimmer rounded" />
+                  </div>
+                </div>
+                <div className="h-4 w-16 premium-shimmer rounded" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-      <div className="flex flex-col items-center gap-1.5 text-center">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500 animate-pulse">
-          Carregando Módulos
-        </p>
-        <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest leading-none">
-          Painel Administrativo
-        </p>
+    );
+  }
+
+  if (isSettings) {
+    return (
+      <div className="bg-[#09090b] text-white w-full min-h-[80vh] px-6 py-6 space-y-6 select-none">
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <div className="h-8 w-32 premium-shimmer rounded-xl" />
+        </div>
+        
+        {/* Accordions */}
+        <div className="space-y-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-zinc-950 border border-white/[0.04] rounded-3xl p-5 h-20 flex justify-between items-center">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl premium-shimmer" />
+                <div className="space-y-2">
+                  <div className="h-4 w-36 premium-shimmer rounded" />
+                  <div className="h-3 w-48 premium-shimmer rounded" />
+                </div>
+              </div>
+              <div className="w-6 h-6 rounded-full premium-shimmer" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (isFormOrDetail) {
+    return (
+      <div className="bg-[#09090b] text-white w-full min-h-[80vh] px-6 py-6 space-y-6 select-none">
+        {/* Header Back Button & Title */}
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl premium-shimmer" />
+          <div className="h-6 w-48 premium-shimmer rounded-xl" />
+        </div>
+
+        {/* Two-Column Form Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Main Form Fields */}
+          <div className="lg:col-span-8 bg-zinc-950 border border-white/[0.04] rounded-[2rem] p-6 space-y-6 h-[600px]">
+            <div className="h-5 w-32 premium-shimmer rounded" />
+            <div className="space-y-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-2">
+                  <div className="h-3 w-20 premium-shimmer rounded" />
+                  <div className="h-10 w-full premium-shimmer rounded-xl" />
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* Side Preview/Upload */}
+          <div className="lg:col-span-4 bg-zinc-950 border border-white/[0.04] rounded-[2rem] p-6 space-y-6 h-[400px]">
+            <div className="h-5 w-24 premium-shimmer rounded" />
+            <div className="aspect-square w-full premium-shimmer rounded-2xl" />
+            <div className="h-10 w-full premium-shimmer rounded-xl" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Default Grid/List Skeleton (Products, Orders, Customers, Coupons, Banners, Reviews, QA)
+  return (
+    <div className="bg-[#09090b] text-white w-full min-h-[80vh] px-6 py-6 space-y-6 select-none">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg premium-shimmer" />
+          <div className="h-6 w-32 premium-shimmer rounded-lg" />
+        </div>
+        <div className="h-10 w-28 premium-shimmer rounded-xl" />
+      </div>
+
+      {/* KPI Carousel */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="bg-zinc-950 bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 p-5 rounded-[1.5rem] border border-white/[0.04] space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl premium-shimmer" />
+              <div className="h-3 w-16 premium-shimmer rounded" />
+            </div>
+            <div className="h-6 w-24 premium-shimmer rounded" />
+          </div>
+        ))}
+      </div>
+
+      {/* Search Input Skeleton */}
+      <div className="flex gap-4">
+        <div className="h-11 flex-1 premium-shimmer rounded-2xl" />
+        <div className="h-11 w-11 premium-shimmer rounded-2xl" />
+      </div>
+
+      {/* Grid of Items */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="bg-zinc-950 border border-white/[0.04] rounded-[2rem] p-6 space-y-4 h-[220px] flex flex-col justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl premium-shimmer" />
+              <div className="space-y-2 flex-1">
+                <div className="h-4 w-3/4 premium-shimmer rounded" />
+                <div className="h-3 w-1/2 premium-shimmer rounded" />
+              </div>
+            </div>
+            <div className="h-3 w-full premium-shimmer rounded" />
+            <div className="flex justify-between items-center pt-2 border-t border-white/5">
+              <div className="h-4 w-16 premium-shimmer rounded" />
+              <div className="w-8 h-8 rounded-lg premium-shimmer" />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -203,6 +366,7 @@ export default function App() {
       <CartProvider>
         <FavoritesProvider>
           <AppContent />
+          <PWAUpdateManager />
         </FavoritesProvider>
       </CartProvider>
     </StoreProvider>
@@ -262,17 +426,22 @@ const pageVariants = {
     return {
       x: direction === 'forward' ? '100%' : '-30%',
       opacity: direction === 'forward' ? 1 : 0.5,
+      willChange: 'transform, opacity'
     };
   },
   animate: {
     x: 0,
     opacity: 1,
+    transitionEnd: {
+      willChange: 'auto'
+    }
   },
   exit: (direction: 'forward' | 'back' | 'none') => {
     if (direction === 'none') return { opacity: 0 };
     return {
       x: direction === 'forward' ? '-30%' : '100%',
       opacity: direction === 'forward' ? 0.5 : 0,
+      willChange: 'transform, opacity'
     };
   },
 };
@@ -288,6 +457,13 @@ const AppContent = () => {
 
   const [currentView, setCurrentView] = useState<View>('home');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [isAdminDirty, setIsAdminDirty] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<{ view: View; id?: string } | null>(null);
+
+  const isAdminDirtyRef = useRef(false);
+  useEffect(() => {
+    isAdminDirtyRef.current = isAdminDirty;
+  }, [isAdminDirty]);
 
   const currentViewRef = useRef<View>(currentView);
   const selectedProductIdRef = useRef<string | null>(selectedProductId);
@@ -321,6 +497,7 @@ const AppContent = () => {
   const scrollSentinelRef = useRef<HTMLDivElement>(null);
   const backOverrideRef = useRef<(() => void) | null>(null);
   const isTransitioningRef = useRef(false);
+  const latestTargetViewRef = useRef<{ view: View; id?: string } | null>(null);
   const activeTransitionRef = useRef<any>(null);
   const scrollPositionsRef = useRef<Record<string, number>>({});
   const navigationDirectionRef = useRef<'forward' | 'back' | 'none'>('forward');
@@ -328,48 +505,34 @@ const AppContent = () => {
   const [navigationDirection, setNavigationDirection] = useState<'forward' | 'back' | 'none'>('forward');
 
   const { setBadge, clearBadge } = useAppBadge();
-  const { checkUpdate, updateAvailable, newVersion, performNuclearPurge } = useUpdateCheck();
 
   const { prefetchView, prefetchAll, prefetchViewPromise } = usePrefetchOnHover();
-  useCacheWarmer();
-  useNetworkAdaptive();
-  usePredictiveNavigation(currentView);
-  useBehavioralPrefetch(currentView, prefetchView);
-  useWebVitals();
-
-  // Eagerly prefetch all admin views in the background to ensure instantaneous tab switches
-  useEffect(() => {
-    if (isAdmin) {
-      const adminViews = [
-        'admin-dashboard', 'admin-products', 'admin-orders', 'admin-customers',
-        'admin-settings', 'admin-coupons', 'admin-banners', 'admin-reviews',
-        'admin-qa', 'admin-user-detail', 'admin-push'
-      ];
-      const timeoutId = setTimeout(() => {
-        adminViews.forEach(view => prefetchView(view));
-      }, 1000);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [isAdmin, prefetchView]);
-
-  const favoriteIds = React.useMemo(() => favorites.map(p => p.id), [favorites]);
 
   const saveCurrentScroll = useCallback(() => {
-    if (!mainRef.current) return;
     const currView = currentViewRef.current;
     const selProdId = selectedProductIdRef.current;
     const viewKey = currView === 'product-detail' && selProdId
       ? `product-detail-${selProdId}`
       : currView;
-    scrollPositionsRef.current[viewKey] = mainRef.current.scrollTop;
+
+    if (currView.startsWith('admin')) {
+      const activeScrollContainer = document.querySelector('.active-scroll-container');
+      if (activeScrollContainer) {
+        scrollPositionsRef.current[viewKey] = activeScrollContainer.scrollTop;
+        return;
+      }
+    }
+
+    if (mainRef.current) {
+      scrollPositionsRef.current[viewKey] = mainRef.current.scrollTop;
+    }
   }, []);
 
-  // Sync ref with state to avoid listener closure issues
-  useEffect(() => {
-    backOverrideRef.current = backOverride;
-  }, [backOverride]);
-
-  const handleNavigate = useCallback(async (view: View, id?: string) => {
+  const handleNavigate = useCallback(async (view: View, id?: string, bypassDirtyCheck = false) => {
+    if (isAdminDirtyRef.current && !bypassDirtyCheck) {
+      setPendingNavigation({ view, id });
+      return;
+    }
     saveCurrentScroll();
     const currView = currentViewRef.current;
     const isAuthL = authLoadingRef.current;
@@ -377,7 +540,7 @@ const AppContent = () => {
 
     const isMainTabNav = ['home', 'favorites', 'cart', 'profile', 'admin-dashboard', 'admin', 'admin-products', 'admin-orders', 'admin-customers', 'admin-settings'].includes(view);
 
-    if (isTransitioningRef.current && currView !== view && !isMainTabNav) {
+    if (isTransitioningRef.current && (currView !== view || selectedProductIdRef.current !== (id || null)) && !isMainTabNav) {
       // Exceções para redirecionamentos programáticos críticos (Auth, Login, Home, Profile, Admin)
       if (!['auth', 'login', 'home', 'profile', 'admin'].includes(view)) {
         console.warn(`[App] Navigation to ${view} throttled to prevent animation race conditions`);
@@ -429,8 +592,8 @@ const AppContent = () => {
 
       // Sync URL without full reload
       let path = targetView === 'home' ? '/' : `/${targetView}`;
-      if (targetView === 'product-detail' && id) {
-        path = `/product-detail?id=${id}`;
+      if (['product-detail', 'order-details', 'admin-product-form', 'admin-user-detail', 'admin-orders', 'admin-push'].includes(targetView) && id) {
+        path = `/${targetView}?id=${id}`;
       }
       const currentPathAndSearch = globalThis.location.pathname + globalThis.location.search;
       if (currentPathAndSearch !== path) {
@@ -438,17 +601,35 @@ const AppContent = () => {
       }
     };
 
+    latestTargetViewRef.current = { view: targetView, id };
+
     if (isDifferentView) {
       isTransitioningRef.current = true;
       setIsRouteLoading(true);
+
+      const safetyTimeout = setTimeout(() => {
+        if (isTransitioningRef.current) {
+          console.warn('[App] View prefetch/transition safety timeout reached. Unlocking navigation.');
+          isTransitioningRef.current = false;
+          setIsRouteLoading(false);
+        }
+      }, 1500);
+
       prefetchViewPromise(targetView)
         .then(() => {
-          performTransition();
+          clearTimeout(safetyTimeout);
+          if (latestTargetViewRef.current?.view === targetView && latestTargetViewRef.current?.id === id) {
+            performTransition();
+          } else {
+            console.log(`[App] Throttling outdated transition to: ${targetView} in favor of: ${latestTargetViewRef.current?.view}`);
+          }
         })
         .catch((err) => {
+          clearTimeout(safetyTimeout);
           console.error('[App] Failed to prefetch route chunk:', err);
-          // Fallback to navigate anyway if prefetch fails
-          performTransition();
+          if (latestTargetViewRef.current?.view === targetView && latestTargetViewRef.current?.id === id) {
+            performTransition();
+          }
         })
         .finally(() => {
           setIsRouteLoading(false);
@@ -458,6 +639,76 @@ const AppContent = () => {
     }
   }, [startTransition, isTransitionSupported, prefetchViewPromise, saveCurrentScroll]);
 
+  useCacheWarmer();
+  useNetworkAdaptive();
+  usePredictiveNavigation(currentView);
+  useBehavioralPrefetch(currentView, prefetchView);
+  useWebVitals();
+
+  // Eagerly prefetch all admin views in the background to ensure instantaneous tab switches
+  useEffect(() => {
+    if (isAdmin) {
+      const adminViews = [
+        'admin-dashboard', 'admin-products', 'admin-orders', 'admin-customers',
+        'admin-settings', 'admin-coupons', 'admin-banners', 'admin-reviews',
+        'admin-qa', 'admin-user-detail', 'admin-push'
+      ];
+      const timeoutId = setTimeout(() => {
+        adminViews.forEach(view => prefetchView(view));
+      }, 1000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isAdmin, prefetchView]);
+
+  const favoriteIds = React.useMemo(() => favorites.map(p => p.id), [favorites]);
+
+  // Sync ref with state to avoid listener closure issues
+  useEffect(() => {
+    backOverrideRef.current = backOverride;
+  }, [backOverride]);
+
+  // Keyboard Shortcuts for Admin Navigation
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Ctrl + Alt + Key
+      if (e.ctrlKey && e.altKey) {
+        let targetView: View | null = null;
+        switch (e.key.toLowerCase()) {
+          case 'd':
+            targetView = 'admin-dashboard';
+            break;
+          case 'o':
+            targetView = 'admin-orders';
+            break;
+          case 'p':
+            targetView = 'admin-products';
+            break;
+          case 'c':
+            targetView = 'admin-customers';
+            break;
+          case 's':
+            targetView = 'admin-settings';
+            break;
+          default:
+            break;
+        }
+
+        if (targetView) {
+          e.preventDefault();
+          handleNavigate(targetView);
+          toast.success(`Navegando para o painel de ${targetView.replace('admin-', '').toUpperCase()}...`, {
+            duration: 1000,
+            icon: '⌨️'
+          });
+        }
+      }
+    };
+
+    globalThis.addEventListener('keydown', handleKeyDown);
+    return () => globalThis.removeEventListener('keydown', handleKeyDown);
+  }, [isAdmin, handleNavigate]);
 
   const handleProductClick = useCallback((productId: string) => {
     handleNavigate('product-detail', productId);
@@ -512,7 +763,6 @@ const AppContent = () => {
       }
     };
   }, [currentView, selectedProductId]);
-
 
   const handleBack = useCallback(() => {
     haptic.light();
@@ -718,7 +968,7 @@ const AppContent = () => {
         const queryId = urlParams.get('id');
         const stateId = globalThis.history.state?.id;
         const nextSelectedProductId = queryId || stateId || (
-          (targetView !== 'product-detail' && targetView !== 'order-details' && targetView !== 'admin-product-form' && targetView !== 'admin-user-detail' && targetView !== 'admin-orders')
+          (targetView !== 'product-detail' && targetView !== 'order-details' && targetView !== 'admin-product-form' && targetView !== 'admin-user-detail' && targetView !== 'admin-orders' && targetView !== 'admin-push')
             ? null
             : selectedProductId
         );
@@ -757,13 +1007,33 @@ const AppContent = () => {
 
     syncWithUrl();
     const handlePopState = (e: PopStateEvent) => {
+      if (isAdminDirtyRef.current) {
+        console.warn('[App] Popstate blocked by unsaved changes.');
+        const path = currentViewRef.current === 'home' 
+          ? '/' 
+          : (['product-detail', 'order-details', 'admin-product-form', 'admin-user-detail', 'admin-orders', 'admin-push'].includes(currentViewRef.current) && selectedProductIdRef.current 
+              ? `/${currentViewRef.current}?id=${selectedProductIdRef.current}` 
+              : `/${currentViewRef.current}`);
+        globalThis.history.pushState(globalThis.history.state || { view: currentViewRef.current }, '', path);
+        
+        const targetState = e.state;
+        let targetView: View = 'home';
+        let targetId: string | undefined;
+        if (targetState && targetState.view) {
+          targetView = targetState.view;
+          targetId = targetState.id;
+        }
+        setPendingNavigation({ view: targetView, id: targetId });
+        return;
+      }
+
       if (isTransitioningRef.current) {
         console.warn('[App] Popstate blocked by transition lock. Reverting history to maintain sync.');
         // Re-push the state to prevent URL getting out of sync with current locked view
         const path = currentView === 'home' 
           ? '/' 
-          : (currentView === 'product-detail' && selectedProductId 
-              ? `/product-detail?id=${selectedProductId}` 
+          : (['product-detail', 'order-details', 'admin-product-form', 'admin-user-detail', 'admin-orders', 'admin-push'].includes(currentView) && selectedProductId 
+              ? `/${currentView}?id=${selectedProductId}` 
               : `/${currentView}`);
         globalThis.history.pushState(globalThis.history.state || { view: currentView }, '', path);
         return;
@@ -845,14 +1115,7 @@ const AppContent = () => {
     }
   }, [cartCount, setBadge, clearBadge]);
 
-  // Real-time updates for deployment
-  const handleUpdate = useCallback(() => {
-    // Force version re-check
-    console.log('[RealtimeUpdate] Update ping detected. Triggering deep checkUpdate...');
-    checkUpdate();
-  }, [checkUpdate]);
 
-  useRealtimeUpdate(handleUpdate, user?.id);
 
   // Force loader removal once data is ready
   // Force loader removal once data is ready or after a safe timeout
@@ -915,13 +1178,12 @@ const AppContent = () => {
     const isMainTab = ['admin-dashboard', 'admin', 'admin-products', 'admin-orders', 'admin-customers', 'admin-settings'].includes(currentView);
 
     return (
-      <div className="relative w-full h-full overflow-x-hidden flex flex-col">
+      <div className="relative w-full h-full overflow-hidden">
         {/* Main Tabs Container - Kept mounted in the DOM to preserve loaded states & scroll positions */}
         {isTransitionSupported ? (
           <div
-            className="w-full h-full"
+            className="w-full h-full absolute top-0 left-0 overflow-hidden"
             style={{
-              position: isMainTab ? "relative" : "absolute",
               opacity: isMainTab ? 1 : 0,
               pointerEvents: isMainTab ? "auto" : "none",
               visibility: isMainTab ? "visible" : "hidden",
@@ -958,18 +1220,18 @@ const AppContent = () => {
             <TabWrapper active={currentView === 'admin-settings'} isTransitionSupported={isTransitionSupported}>
               <LocalErrorBoundary>
                 <DeferredTabContent active={currentView === 'admin-settings'}>
-                  <AdminSettings onNavigate={handleNavigate} active={currentView === 'admin-settings'} />
+                  <AdminSettings onNavigate={handleNavigate} active={currentView === 'admin-settings'} onSetDirty={setIsAdminDirty} />
                 </DeferredTabContent>
               </LocalErrorBoundary>
             </TabWrapper>
           </div>
         ) : (
           <motion.div
-            className="w-full h-full"
+            className="w-full h-full absolute top-0 left-0 overflow-hidden"
             initial={false}
             animate={isMainTab
-              ? { opacity: 1, y: 0, position: "relative", pointerEvents: "auto", visibility: "visible" }
-              : { opacity: 0, y: -8, position: "absolute", pointerEvents: "none", transitionEnd: { visibility: "hidden" } }
+              ? { opacity: 1, y: 0, pointerEvents: "auto", visibility: "visible" }
+              : { opacity: 0, y: -8, pointerEvents: "none", transitionEnd: { visibility: "hidden" } }
             }
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           >
@@ -1004,7 +1266,7 @@ const AppContent = () => {
             <TabWrapper active={currentView === 'admin-settings'} isTransitionSupported={isTransitionSupported}>
               <LocalErrorBoundary>
                 <DeferredTabContent active={currentView === 'admin-settings'}>
-                  <AdminSettings onNavigate={handleNavigate} active={currentView === 'admin-settings'} />
+                  <AdminSettings onNavigate={handleNavigate} active={currentView === 'admin-settings'} onSetDirty={setIsAdminDirty} />
                 </DeferredTabContent>
               </LocalErrorBoundary>
             </TabWrapper>
@@ -1020,46 +1282,67 @@ const AppContent = () => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: isTransitionSupported ? 0 : 0.22, ease: [0.16, 1, 0.3, 1] }}
-              className="w-full h-full overflow-y-auto pb-36 lg:pb-44 admin-scroll-container active-scroll-container scroll-smooth gpu-accelerated"
+              className="w-full h-full overflow-y-auto pb-36 lg:pb-44 admin-scroll-container active-scroll-container scroll-smooth gpu-accelerated absolute top-0 left-0"
             >
-              <LocalErrorBoundary>
-                {(() => {
-                  switch (currentView) {
-                    case 'admin-product-form':
-                      return (
+              {(() => {
+                switch (currentView) {
+                  case 'admin-product-form':
+                    return (
+                      <LocalErrorBoundary key="admin-product-form">
                         <AdminProductForm
                           productId={selectedProductId || undefined}
                           onNavigate={handleNavigate}
+                          onSetDirty={setIsAdminDirty}
                         />
-                      );
-                    case 'admin-coupons':
-                      return <AdminCoupons onNavigate={handleNavigate} />;
-                    case 'admin-banners':
-                      return <AdminBanners onNavigate={handleNavigate} />;
-                    case 'admin-reviews':
-                      return <AdminReviews onNavigate={handleNavigate} active={true} />;
-                    case 'admin-qa':
-                      return <AdminQA onNavigate={handleNavigate} active={true} />;
-                    case 'admin-user-detail':
-                      return (
+                      </LocalErrorBoundary>
+                    );
+                  case 'admin-coupons':
+                    return (
+                      <LocalErrorBoundary key="admin-coupons">
+                        <AdminCoupons onNavigate={handleNavigate} active={currentView === 'admin-coupons'} onSetDirty={setIsAdminDirty} />
+                      </LocalErrorBoundary>
+                    );
+                  case 'admin-banners':
+                    return (
+                      <LocalErrorBoundary key="admin-banners">
+                        <AdminBanners onNavigate={handleNavigate} active={currentView === 'admin-banners'} onSetDirty={setIsAdminDirty} />
+                      </LocalErrorBoundary>
+                    );
+                  case 'admin-reviews':
+                    return (
+                      <LocalErrorBoundary key="admin-reviews">
+                        <AdminReviews onNavigate={handleNavigate} active={true} />
+                      </LocalErrorBoundary>
+                    );
+                  case 'admin-qa':
+                    return (
+                      <LocalErrorBoundary key="admin-qa">
+                        <AdminQA onNavigate={handleNavigate} active={true} onSetDirty={setIsAdminDirty} />
+                      </LocalErrorBoundary>
+                    );
+                  case 'admin-user-detail':
+                    return (
+                      <LocalErrorBoundary key="admin-user-detail">
                         <AdminUserDetail
                           userId={selectedProductId || ''}
                           onBack={handleAdminUserDetailBack}
                           onNavigate={handleNavigate}
                         />
-                      );
-                    case 'admin-push':
-                      return (
+                      </LocalErrorBoundary>
+                    );
+                  case 'admin-push':
+                    return (
+                      <LocalErrorBoundary key="admin-push">
                         <AdminPush
                           onNavigate={handleNavigate}
                           targetUserId={selectedProductId || undefined}
                         />
-                      );
-                    default:
-                      return null;
-                  }
-                })()}
-              </LocalErrorBoundary>
+                      </LocalErrorBoundary>
+                    );
+                  default:
+                    return null;
+                }
+              })()}
             </motion.div>
           )}
         </AnimatePresence>
@@ -1095,7 +1378,7 @@ const AppContent = () => {
 
       return (
         <AdminLayout currentView={currentView} onNavigate={handleNavigate}>
-          <React.Suspense fallback={<AdminViewLoadingFallback />}>
+          <React.Suspense fallback={<AdminViewLoadingFallback view={currentView} />}>
             {renderAdminContent()}
           </React.Suspense>
         </AdminLayout>
@@ -1330,7 +1613,7 @@ const AppContent = () => {
             key="admin-layout"
             className="h-full pt-0"
           >
-            <React.Suspense fallback={<AdminViewLoadingFallback />}>
+            <React.Suspense fallback={<AdminViewLoadingFallback view={currentView} />}>
               {renderView()}
             </React.Suspense>
           </div>
@@ -1387,14 +1670,62 @@ const AppContent = () => {
         />
       </React.Suspense>
 
-      <UpdateNotification
-        show={updateAvailable}
-        onUpdate={() => performNuclearPurge(true)}
-        newVersion={newVersion}
-      />
+
+
+      <AlertDialog open={!!pendingNavigation} onOpenChange={(open) => !open && setPendingNavigation(null)}>
+        <AlertDialogContent className="bg-zinc-950 border border-white/10 rounded-[2rem] max-w-md shadow-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white font-black uppercase tracking-wider text-sm flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              Alterações Não Salvas
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400 text-xs mt-2 leading-relaxed">
+              Você tem modificações pendentes que serão perdidas permanentemente se você sair desta tela. Deseja sair mesmo assim?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-6 flex gap-3 justify-end">
+            <AlertDialogCancel className="bg-zinc-900 border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl text-[10px] font-black uppercase tracking-widest px-4 py-2">
+              Permanecer
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setIsAdminDirty(false);
+                if (pendingNavigation) {
+                  handleNavigate(pendingNavigation.view, pendingNavigation.id, true);
+                }
+                setPendingNavigation(null);
+              }}
+              className="bg-red-500 text-black hover:bg-red-600 rounded-xl text-[10px] font-black uppercase tracking-widest px-4 py-2"
+            >
+              Descartar e Sair
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Toaster />
     </div>
   );
 };
+
+function PWAUpdateManager() {
+  const { user } = useAuth();
+  const { checkUpdate, updateAvailable, newVersion, performNuclearPurge } = useUpdateCheck();
+
+  const handleUpdate = useCallback(() => {
+    console.log('[RealtimeUpdate] Update ping detected. Triggering deep checkUpdate...');
+    checkUpdate();
+  }, [checkUpdate]);
+
+  useRealtimeUpdate(handleUpdate, user?.id);
+
+  return (
+    <UpdateNotification
+      show={updateAvailable}
+      onUpdate={() => performNuclearPurge(true)}
+      newVersion={newVersion}
+    />
+  );
+}
 
 

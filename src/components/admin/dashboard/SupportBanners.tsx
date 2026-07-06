@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import { ArrowUpRight, Star, MessageSquare } from 'lucide-react';
 
 interface SupportBannersProps {
     onNavigate: (view: any, id?: string) => void;
 }
 
-export function SupportBanners({ onNavigate }: SupportBannersProps) {
+export const SupportBanners = memo(function SupportBanners({ onNavigate }: SupportBannersProps) {
     return (
         <div className="grid grid-cols-2 gap-3">
             {/* Experience Metrics Card */}
@@ -56,4 +57,4 @@ export function SupportBanners({ onNavigate }: SupportBannersProps) {
             </div>
         </div>
     );
-}
+});

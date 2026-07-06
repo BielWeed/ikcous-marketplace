@@ -43,6 +43,7 @@ import { AdminKpiCarousel, type KpiCardConfig } from '@/components/admin/AdminKp
 interface AdminQAViewProps {
     readonly onNavigate: (view: View) => void;
     readonly active?: boolean;
+    readonly onSetDirty?: (dirty: boolean) => void;
 }
 
 const containerVariants: Variants = {
@@ -92,11 +93,75 @@ let cachedQAStats: {
     rate: number;
 } | null = null;
 
-export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true }: AdminQAViewProps) {
+let cachedScrollPosition = 0;
+
+export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true, onSetDirty }: AdminQAViewProps) {
     const { questions, loading, getAllQuestions, addAnswer, deleteQuestion, subscribeToQuestions } = useQuestions();
     const isOffline = useOnlineStatus();
     const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
     const [answer, setAnswer] = useState('');
+    const [activeDialogQuestion, setActiveDialogQuestion] = useState<Question | null>(null);
+
+    const viewRef = useRef<HTMLDivElement>(null);
+    const hasRestoredScrollRef = useRef(false);
+
+    // Save scroll on unmount
+    useEffect(() => {
+        const currentEl = viewRef.current;
+        return () => {
+            const container = currentEl?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+            if (container) {
+                cachedScrollPosition = container.scrollTop;
+            }
+        };
+    }, []);
+
+    // Restore scroll on data loaded
+    useEffect(() => {
+        if (!active) {
+            hasRestoredScrollRef.current = false;
+            return;
+        }
+
+        if (active && !loading && questions.length > 0 && cachedScrollPosition > 0 && !hasRestoredScrollRef.current) {
+            const container = viewRef.current?.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+            if (container) {
+                hasRestoredScrollRef.current = true;
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        container.scrollTop = cachedScrollPosition;
+                    });
+                });
+            }
+        }
+    }, [active, loading, questions.length]);
+
+    // Sync activeDialogQuestion when selectedQuestion changes with exit buffer
+    useEffect(() => {
+        if (selectedQuestion) {
+            setActiveDialogQuestion(selectedQuestion);
+        } else {
+            const timer = setTimeout(() => {
+                setActiveDialogQuestion(null);
+            }, 300);
+            return () => clearTimeout(timer);
+        }
+    }, [selectedQuestion]);
+
+    // Sincronizar preenchimento com selectedQuestion e resetar ao fechar
+    useEffect(() => {
+        if (selectedQuestion) {
+            const isAnswered = selectedQuestion.answers && selectedQuestion.answers.length > 0;
+            setAnswer(isAnswered ? selectedQuestion.answers[0].answer : '');
+        } else {
+            setAnswer('');
+        }
+    }, [selectedQuestion]);
+
+    // Comunicar estado dirty para o roteador global
+    useEffect(() => {
+        onSetDirty?.(answer.trim().length > 0);
+    }, [answer, onSetDirty]);
     const [showHelpModal, setShowHelpModal] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [filter, setFilter] = useState<'pending' | 'all'>('pending');
@@ -152,9 +217,14 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
     }, [fetchStats, refreshTrigger, questions, active]);
 
     const firstLoadRef = useRef(true);
+    const questionsLengthRef = useRef(questions.length);
 
-    const loadQuestions = useCallback((pageToFetch: number) => {
-        getAllQuestions(pageToFetch, pageSize, filter, searchQuery).then(result => {
+    useEffect(() => {
+        questionsLengthRef.current = questions.length;
+    }, [questions.length]);
+
+    const loadQuestions = useCallback((pageToFetch: number, silent = false) => {
+        getAllQuestions(pageToFetch, pageSize, filter, searchQuery, silent).then(result => {
             if (result) {
                 setTotalQuestions(result.total);
                 const maxPage = Math.max(0, Math.ceil(result.total / pageSize) - 1);
@@ -168,26 +238,24 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
         });
     }, [getAllQuestions, pageSize, filter, searchQuery]);
 
-    const prevFilter = useRef(filter);
-    const prevSearch = useRef(searchQuery);
+    // Removed ref tracking for filter changes in favor of direct state resets
+
+    // Auto-refresh when coming back online
+    const wasOfflineRef = useRef(isOffline);
+    useEffect(() => {
+        if (wasOfflineRef.current && !isOffline && active) {
+            toast.success('Conexão restabelecida. Atualizando dúvidas...', {
+                icon: '⚡'
+            });
+            loadQuestions(page);
+            fetchStats();
+        }
+        wasOfflineRef.current = isOffline;
+    }, [isOffline, active, page, loadQuestions, fetchStats]);
 
     useEffect(() => {
         if (!active) return;
-
-        const filterChanged = prevFilter.current !== filter || prevSearch.current !== searchQuery;
-        prevFilter.current = filter;
-        prevSearch.current = searchQuery;
-
-        let pageToFetch = page;
-        if (filterChanged) {
-            pageToFetch = 0;
-            if (page !== 0) {
-                setPage(0);
-                return;
-            }
-        }
-
-        loadQuestions(pageToFetch);
+        loadQuestions(page, false);
     }, [page, filter, searchQuery, active, loadQuestions]);
 
     const onQuestionEventRef = useRef<() => void>(() => {});
@@ -213,13 +281,19 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
             });
             return;
         }
-        if (!selectedQuestion || !answer.trim()) return;
+        if (!selectedQuestion) return;
+        
+        const cleanAnswer = answer.replace(/<[^>]*>/g, '').trim();
+        if (!cleanAnswer) {
+            toast.error('A resposta não pode ser vazia.');
+            return;
+        }
 
         setIsSubmitting(true);
         try {
             const success = await addAnswer({
                 questionId: selectedQuestion.id,
-                answer: answer
+                answer: cleanAnswer
             }, { silent: true });
 
             if (success) {
@@ -409,7 +483,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
                             key={q.id}
                             variants={itemVariants}
                             layout
-                            className="p-4 flex flex-col hover:bg-white/[0.02] transition-all group"
+                            className="p-4 flex flex-col hover:bg-white/[0.02] transition-all group content-visibility-auto"
                         >
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 <div 
@@ -572,7 +646,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
                             key={q.id}
                             variants={itemVariants}
                             layout
-                            className="group relative bg-[#121214]/60 hover:bg-[#161619]/80 border border-white/5 hover:border-white/10 rounded-[2rem] overflow-hidden transition-all duration-300 shadow-xl hover:shadow-[0_10px_30px_rgba(0,0,0,0.4)]"
+                            className="group relative bg-[#121214]/60 hover:bg-[#161619]/80 border border-white/5 hover:border-white/10 rounded-[2rem] overflow-hidden transition-all duration-300 shadow-xl hover:shadow-[0_10px_30px_rgba(0,0,0,0.4)] content-visibility-auto"
                         >
                             <div className="absolute inset-0 bg-radial-gradient from-emerald-500/[0.01] via-transparent to-transparent pointer-events-none" />
 
@@ -734,7 +808,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
     };
 
     const renderContent = () => {
-        if ((loading || firstLoadRef.current) && questions.length === 0) {
+        if (firstLoadRef.current && loading && questions.length === 0) {
             return (
                 <motion.div
                     key="loading"
@@ -760,7 +834,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
     };
 
     return (
-        <div className="h-auto bg-[#09090b] text-zinc-100 selection:bg-emerald-500/30 pb-8 animate-in fade-in duration-500">
+        <div ref={viewRef} className="h-auto bg-[#09090b] text-zinc-100 selection:bg-emerald-500/30 pb-8 animate-in fade-in duration-500">
             
             {/* Header Sticky */}
             <div className="sticky top-0 z-50 p-2 sm:p-4 pb-0 bg-[#09090b]/80 backdrop-blur-md">
@@ -825,7 +899,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
                                     placeholder="Buscar por cliente ou pergunta..."
                                     className="w-full pl-9 pr-3 py-2 bg-black/40 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-admin-gold/20 focus:border-admin-gold/50 focus:bg-zinc-950/60 transition-all font-bold"
                                     value={searchQuery}
-                                    onChange={setSearchQuery}
+                                    onChange={(val) => { setSearchQuery(val); setPage(0); }}
                                     onTyping={setIsTyping}
                                     delay={300}
                                 />
@@ -834,7 +908,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
                             <div className="flex items-center gap-2 shrink-0">
                                 <div className="flex items-center gap-1 p-0.5 bg-black/40 rounded-xl border border-zinc-800 overflow-x-auto no-scrollbar">
                                     <button
-                                        onClick={() => setFilter('pending')}
+                                        onClick={() => { setFilter('pending'); setPage(0); }}
                                         className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${filter === 'pending'
                                             ? 'bg-admin-gold text-black shadow-lg shadow-admin-gold/20'
                                             : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
@@ -842,7 +916,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
                                         Pendentes
                                     </button>
                                     <button
-                                        onClick={() => setFilter('all')}
+                                        onClick={() => { setFilter('all'); setPage(0); }}
                                         className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${filter === 'all'
                                             ? 'bg-admin-gold text-black shadow-lg shadow-admin-gold/20'
                                             : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
@@ -871,7 +945,7 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
 
             {/* KPI Dashboard Section */}
             <div className="max-w-7xl mx-auto px-4 mt-6 space-y-4">
-                <AdminKpiCarousel cards={kpiCards} loading={loading && !cachedQAStats} title="Métricas de Suporte (SAC)" />
+                <AdminKpiCarousel cards={kpiCards} loading={loading && !cachedQAStats} active={active} title="Métricas de Suporte (SAC)" />
             </div>
 
             <main className="max-w-7xl mx-auto px-4 mt-8">
@@ -901,7 +975,11 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
 
                         <div className="flex items-center gap-3">
                             <button
-                                onClick={() => setPage(prev => Math.max(0, prev - 1))}
+                                onClick={(e) => {
+                                    setPage(prev => Math.max(0, prev - 1));
+                                    const mainEl = e.currentTarget.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+                                    if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
                                 disabled={page === 0}
                                 className="h-12 px-6 flex items-center gap-3 bg-white/[0.03] border border-white/10 rounded-2xl text-zinc-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all disabled:opacity-30 disabled:pointer-events-none group"
                             >
@@ -909,7 +987,11 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
                                 <span className="text-[10px] font-black uppercase tracking-widest mt-0.5">Anterior</span>
                             </button>
                             <button
-                                onClick={() => setPage(prev => Math.min(totalPages - 1, prev + 1))}
+                                onClick={(e) => {
+                                    setPage(prev => Math.min(totalPages - 1, prev + 1));
+                                    const mainEl = e.currentTarget.closest('.admin-scroll-container') || document.querySelector('.active-scroll-container') || document.querySelector('main');
+                                    if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
                                 disabled={page === totalPages - 1}
                                 className="h-12 px-6 flex items-center gap-3 bg-emerald-500 text-white rounded-2xl border border-emerald-400 shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 transition-all disabled:opacity-30 disabled:pointer-events-none group font-black"
                             >
@@ -922,91 +1004,93 @@ export const AdminQAView = memo(function AdminQAView({ onNavigate, active = true
             </main>
 
             {/* Answer Modal Premium */}
-            <Dialog open={!!selectedQuestion} onOpenChange={() => setSelectedQuestion(null)}>
+            <Dialog open={!!selectedQuestion} onOpenChange={(open) => { if (!open) setSelectedQuestion(null); }}>
                 <DialogContent className="sm:max-w-xl bg-[#09090b] border-white/10 p-0 overflow-hidden rounded-[2.5rem] shadow-2xl">
-                    <div className="p-8 md:p-10">
-                        <DialogHeader className="mb-8">
-                            <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-6">
-                                <MessageSquare className="w-8 h-8 text-emerald-400" />
-                            </div>
-                            <DialogTitle className="text-2xl font-black text-white tracking-tight flex items-center gap-3 uppercase">
-                                Enviar Resposta
-                            </DialogTitle>
-                            <DialogDescription className="text-xs font-bold text-zinc-500 uppercase tracking-[0.1em] mt-2 flex items-center gap-2">
-                                Atendimento ao cliente • {selectedQuestion?.customerName}
-                            </DialogDescription>
-                        </DialogHeader>
-
-                        <div className="space-y-8">
-                            <div className="relative p-6 rounded-3xl bg-white/[0.02] border border-white/5 overflow-hidden">
-                                <div className="absolute top-0 right-0 p-4 opacity-10">
-                                    <MessageSquare className="w-12 h-12" />
+                    {activeDialogQuestion && (
+                        <div className="p-8 md:p-10">
+                            <DialogHeader className="mb-8">
+                                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-6">
+                                    <MessageSquare className="w-8 h-8 text-emerald-400" />
                                 </div>
-                                <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest block mb-2">Pergunta Original</span>
-                                <p className="text-sm font-medium text-zinc-300 italic leading-relaxed relative z-10">
-                                    "{selectedQuestion?.question}"
-                                </p>
-                            </div>
+                                <DialogTitle className="text-2xl font-black text-white tracking-tight flex items-center gap-3 uppercase">
+                                    Enviar Resposta
+                                </DialogTitle>
+                                <DialogDescription className="text-xs font-bold text-zinc-500 uppercase tracking-[0.1em] mt-2 flex items-center gap-2">
+                                    Atendimento ao cliente • {activeDialogQuestion.customerName}
+                                </DialogDescription>
+                            </DialogHeader>
 
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center ml-1">
-                                    <label htmlFor="merchant-answer" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Sua Mensagem Specialist</label>
-                                    <span className="text-[10px] text-zinc-500 font-bold">{answer.length} caracteres</span>
+                            <div className="space-y-8">
+                                <div className="relative p-6 rounded-3xl bg-white/[0.02] border border-white/5 overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10">
+                                        <MessageSquare className="w-12 h-12" />
+                                    </div>
+                                    <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest block mb-2">Pergunta Original</span>
+                                    <p className="text-sm font-medium text-zinc-300 italic leading-relaxed relative z-10">
+                                        "{activeDialogQuestion.question}"
+                                    </p>
                                 </div>
-                                <div className="relative">
-                                    <textarea
-                                        id="merchant-answer"
-                                        value={answer}
-                                        onChange={(e) => setAnswer(e.target.value)}
-                                        disabled={isOffline}
-                                        placeholder={isOffline ? "Você está offline. Não é possível responder no momento." : "Dê uma resposta completa e persuasiva para encantar o cliente..."}
-                                        className="w-full h-48 px-6 py-6 bg-white/[0.03] border border-white/10 rounded-[2rem] text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 transition-all resize-none shadow-inner scrollbar-hide disabled:opacity-40"
-                                    />
-                                    <div className="absolute bottom-4 right-6 flex items-center gap-2 pointer-events-none opacity-40">
-                                        <Send className="w-4 h-4 text-emerald-400" />
-                                        <span className="text-[10px] font-bold text-white uppercase tracking-widest">Notificar Cliente</span>
+
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center ml-1">
+                                        <label htmlFor="merchant-answer" className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Sua Mensagem Specialist</label>
+                                        <span className="text-[10px] text-zinc-500 font-bold">{answer.length} caracteres</span>
+                                    </div>
+                                    <div className="relative">
+                                        <textarea
+                                            id="merchant-answer"
+                                            value={answer}
+                                            onChange={(e) => setAnswer(e.target.value)}
+                                            disabled={isOffline}
+                                            placeholder={isOffline ? "Você está offline. Não é possível responder no momento." : "Dê uma resposta completa e persuasiva para encantar o cliente..."}
+                                            className="w-full h-48 px-6 py-6 bg-white/[0.03] border border-white/10 rounded-[2rem] text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 transition-all resize-none shadow-inner scrollbar-hide disabled:opacity-40"
+                                        />
+                                        <div className="absolute bottom-4 right-6 flex items-center gap-2 pointer-events-none opacity-40">
+                                            <Send className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-[10px] font-bold text-white uppercase tracking-widest">Notificar Cliente</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {isOffline && (
-                                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-400">
-                                    <AlertCircle className="w-4 h-4 shrink-0" />
-                                    <span className="text-xs font-bold uppercase tracking-wider">Modo Offline Ativo</span>
+                                {isOffline && (
+                                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-400">
+                                        <AlertCircle className="w-4 h-4 shrink-0" />
+                                        <span className="text-xs font-bold uppercase tracking-wider">Modo Offline Ativo</span>
+                                    </div>
+                                )}
+
+                                <div className="flex flex-col sm:flex-row gap-4 pt-2">
+                                    <motion.button
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={() => setSelectedQuestion(null)}
+                                        className="flex-1 h-14 bg-white/5 text-zinc-400 rounded-2xl text-[11px] font-black uppercase tracking-widest border border-white/10 hover:bg-white/10 hover:text-white transition-colors duration-200"
+                                    >
+                                        Descartar
+                                    </motion.button>
+                                    <motion.button
+                                        whileHover={isOffline ? {} : { scale: 1.02 }}
+                                        whileTap={isOffline ? {} : { scale: 0.98 }}
+                                        onClick={handleSendAnswer}
+                                        disabled={isSubmitting || !answer.trim() || isOffline}
+                                        className="flex-[2] h-14 bg-emerald-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 border border-emerald-400 hover:bg-emerald-400 transition-colors duration-200 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-3"
+                                    >
+                                        {isSubmitting ? (
+                                            <>
+                                                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                                                <span>Enviando...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Send className="w-4 h-4" />
+                                                <span>Publicar Resposta</span>
+                                            </>
+                                        )}
+                                    </motion.button>
                                 </div>
-                            )}
-
-                            <div className="flex flex-col sm:flex-row gap-4 pt-2">
-                                <motion.button
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
-                                    onClick={() => setSelectedQuestion(null)}
-                                    className="flex-1 h-14 bg-white/5 text-zinc-400 rounded-2xl text-[11px] font-black uppercase tracking-widest border border-white/10 hover:bg-white/10 hover:text-white transition-colors duration-200"
-                                >
-                                    Descartar
-                                </motion.button>
-                                <motion.button
-                                    whileHover={isOffline ? {} : { scale: 1.02 }}
-                                    whileTap={isOffline ? {} : { scale: 0.98 }}
-                                    onClick={handleSendAnswer}
-                                    disabled={isSubmitting || !answer.trim() || isOffline}
-                                    className="flex-[2] h-14 bg-emerald-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 border border-emerald-400 hover:bg-emerald-400 transition-colors duration-200 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-3"
-                                >
-                                    {isSubmitting ? (
-                                        <>
-                                            <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                                            <span>Enviando...</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Send className="w-4 h-4" />
-                                            <span>Publicar Resposta</span>
-                                        </>
-                                    )}
-                                </motion.button>
                             </div>
                         </div>
-                    </div>
+                    )}
                 </DialogContent>
             </Dialog>
 

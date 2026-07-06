@@ -40,16 +40,16 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-[#09090b] flex flex-col text-zinc-100 selection:bg-admin-gold/30">
       {/* Header */}
       <div className="admin-glass px-6 py-4 flex items-center justify-between border-b border-white/5">
         <button
           onClick={() => onNavigate('home')}
-          className="text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-zinc-950 transition-colors"
+          className="text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-white transition-colors"
         >
           Voltar à loja
         </button>
-        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-950">IKCOUS Admin</span>
+        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">IKCOUS Admin</span>
         <div className="w-20" />
       </div>
 
@@ -61,8 +61,8 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
             <div className="w-20 h-20 bg-zinc-950 text-white rounded-[20px] flex items-center justify-center mx-auto mb-6 shadow-premium border border-white/10">
               <span className="text-3xl font-black italic">I</span>
             </div>
-            <h1 className="text-xl font-black text-zinc-950 uppercase tracking-tighter">Painel Administrativo</h1>
-            <p className="text-[10px] font-bold text-zinc-400 mt-2 uppercase tracking-[0.2em]">
+            <h1 className="text-xl font-black text-white uppercase tracking-tighter">Painel Administrativo</h1>
+            <p className="text-[10px] font-bold text-zinc-500 mt-2 uppercase tracking-[0.2em]">
               Acesso exclusivo à gestão do lojista
             </p>
           </div>
@@ -70,7 +70,7 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
           {/* Form */}
           <form onSubmit={handleSubmit} action="#" className="space-y-4">
             <div>
-              <label htmlFor="admin-email" className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2 ml-1">
+              <label htmlFor="admin-email" className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 ml-1">
                 Email
               </label>
               <input
@@ -81,14 +81,14 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="username"
                 placeholder="admin@exemplo.com"
-                className="w-full px-5 py-4 bg-white border border-zinc-100 rounded-2xl text-sm font-medium focus:outline-none focus:ring-4 focus:ring-zinc-950/5 focus:border-zinc-950 transition-all mb-4 shadow-premium-sm"
+                className="w-full px-5 py-4 bg-zinc-900/50 border border-white/10 rounded-2xl text-sm font-medium focus:outline-none focus:ring-4 focus:ring-admin-gold/20 focus:border-admin-gold transition-all mb-4 text-white placeholder:text-zinc-700"
                 required
               />
-              <label htmlFor="admin-password" title="Senha de Acesso" className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2 ml-1">
+              <label htmlFor="admin-password" title="Senha de Acesso" className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 ml-1">
                 Senha de Acesso
               </label>
               <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-300 group-focus-within:text-zinc-950 transition-colors" />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 group-focus-within:text-admin-gold transition-colors" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   id="admin-password"
@@ -97,13 +97,13 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Digite a senha"
-                  className="w-full pl-11 pr-12 py-4 bg-white border border-zinc-100 rounded-2xl text-sm font-medium focus:outline-none focus:ring-4 focus:ring-zinc-950/5 focus:border-zinc-950 transition-all shadow-premium-sm"
+                  className="w-full pl-11 pr-12 py-4 bg-zinc-900/50 border border-white/10 rounded-2xl text-sm font-medium focus:outline-none focus:ring-4 focus:ring-admin-gold/20 focus:border-admin-gold transition-all text-white placeholder:text-zinc-700"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -111,7 +111,7 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
             </div>
 
             {error && (
-              <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg">
+              <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-xl">
                 {error}
               </div>
             )}
@@ -119,7 +119,7 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
             <button
               type="submit"
               disabled={!email || !password || isLoading}
-              className="w-full py-5 bg-zinc-950 text-white font-black uppercase tracking-[0.3em] text-[10px] rounded-2xl hover:bg-black disabled:bg-zinc-100 disabled:text-zinc-400 disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-3 shadow-premium border border-white/10"
+              className="w-full py-5 bg-admin-gold text-black font-black uppercase tracking-[0.3em] text-[10px] rounded-2xl hover:bg-admin-gold/90 disabled:bg-zinc-900 disabled:text-zinc-600 disabled:border-white/5 disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(212,175,55,0.2)] hover:shadow-[0_0_40px_rgba(212,175,55,0.3)]"
             >
               {isLoading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />

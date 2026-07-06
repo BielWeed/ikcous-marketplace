@@ -10,10 +10,11 @@ import {
     ResponsiveContainer
 } from 'recharts';
 import { BarChart3, Activity } from 'lucide-react';
-import { useState, useEffect, useMemo, memo } from 'react';
+import { useState, useEffect, useMemo, memo, useTransition } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { DashboardStats } from '@/hooks/useAnalytics';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface OperationalPerformanceChartProps {
     stats: DashboardStats | null;
@@ -23,9 +24,29 @@ interface OperationalPerformanceChartProps {
 }
 
 export const OperationalPerformanceChart = memo(function OperationalPerformanceChart({ stats, loading, className, active = true }: OperationalPerformanceChartProps) {
+    const _isMobile = useMediaQuery('(max-width: 1023px)');
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+    const isMobile = mounted ? _isMobile : false;
+
     const [isChartReady, setIsChartReady] = useState(false);
     const [chartMode, setChartMode] = useState<'revenue' | 'roi'>('revenue');
     const [timeframe, setTimeframe] = useState<'30' | '90' | 'all'>('30');
+    const [isPending, startTransition] = useTransition();
+
+    const handleTimeframeChange = (t: '30' | '90' | 'all') => {
+        startTransition(() => {
+            setTimeframe(t);
+        });
+    };
+
+    const handleChartModeChange = (mode: 'revenue' | 'roi') => {
+        startTransition(() => {
+            setChartMode(mode);
+        });
+    };
 
     useEffect(() => {
         if (active) {
@@ -35,7 +56,6 @@ export const OperationalPerformanceChart = memo(function OperationalPerformanceC
             return () => clearTimeout(timer);
         } else {
             setIsChartReady(false);
-            return undefined;
         }
     }, [active]);
 
@@ -115,7 +135,7 @@ export const OperationalPerformanceChart = memo(function OperationalPerformanceC
                         {(['30', '90', 'all'] as const).map((t) => (
                             <button
                                 key={t}
-                                onClick={() => setTimeframe(t)}
+                                onClick={() => handleTimeframeChange(t)}
                                 className={cn(
                                     "px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[8px] sm:text-[9px] font-black uppercase tracking-wider transition-all select-none",
                                     timeframe === t 
@@ -131,7 +151,7 @@ export const OperationalPerformanceChart = memo(function OperationalPerformanceC
                     {/* Toggle Chart Mode Buttons */}
                     <div className="flex items-center gap-1 sm:gap-2 bg-white/5 border border-white/10 rounded-2xl p-1 shrink-0">
                         <button
-                            onClick={() => setChartMode('revenue')}
+                            onClick={() => handleChartModeChange('revenue')}
                             className={cn(
                                 "px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[8px] sm:text-[9px] font-black uppercase tracking-wider transition-all select-none",
                                 chartMode === 'revenue' 
@@ -142,7 +162,7 @@ export const OperationalPerformanceChart = memo(function OperationalPerformanceC
                             Faturamento
                         </button>
                         <button
-                            onClick={() => setChartMode('roi')}
+                            onClick={() => handleChartModeChange('roi')}
                             className={cn(
                                 "px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[8px] sm:text-[9px] font-black uppercase tracking-wider transition-all select-none",
                                 chartMode === 'roi' 
@@ -194,7 +214,7 @@ export const OperationalPerformanceChart = memo(function OperationalPerformanceC
                 </div>
             )}
 
-            <div className="h-[200px] sm:h-[300px] w-full relative z-10 px-0">
+            <div className={cn("h-[200px] sm:h-[300px] w-full relative z-10 px-0 transition-opacity duration-300", isPending && "opacity-60")}>
                 {loading || !isChartReady ? (
                     <Skeleton className="w-full h-full rounded-3xl bg-white/5 animate-pulse" />
                 ) : !stats?.revenueHistory || stats.revenueHistory.length === 0 ? (
@@ -205,179 +225,183 @@ export const OperationalPerformanceChart = memo(function OperationalPerformanceC
                         <p className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em]">Nenhum dado disponível no período</p>
                     </div>
                 ) : chartMode === 'revenue' ? (
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                        <BarChart data={filteredRevenueHistory} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-                            <CartesianGrid vertical={false} stroke="#ffffff" strokeOpacity={0.03} strokeDasharray="4 4" />
-                            <XAxis
-                                dataKey="date"
-                                axisLine={false}
-                                tickLine={false}
-                                fontSize={9}
-                                tick={{ fill: '#71717a', fontWeight: 900 }}
-                                tickFormatter={(val) => {
-                                    const part = val.split('-');
-                                    return part.length >= 3 ? `${part[2]}/${part[1]}` : val;
-                                }}
-                                dy={10}
-                            />
-                            <YAxis
-                                axisLine={false}
-                                tickLine={false}
-                                fontSize={8}
-                                tick={{ fill: '#71717a', fontWeight: 900 }}
-                                tickFormatter={(val) => val >= 1000 ? `R$ ${(val/1000).toFixed(0)}k` : `R$ ${val}`}
-                                width={45}
-                            />
-                            <Tooltip
-                                cursor={{ fill: 'rgba(16, 185, 129, 0.05)', radius: 8 }}
-                                offset={20}
-                                content={({ active, payload }) => {
-                                    if (active && payload && payload.length) {
-                                        const data = payload[0].payload;
-                                        const orderCount = typeof data.orders === 'number' ? data.orders : 0;
-                                        
-                                        return (
-                                            <div className="bg-zinc-950/98 border border-white/10 px-2.5 py-1.5 rounded-xl backdrop-blur-3xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] flex flex-col gap-1.5 inline-flex pointer-events-none ring-1 ring-white/10 select-none z-50">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[7px] font-black text-white/50 uppercase tracking-[0.2em] leading-none whitespace-nowrap">
-                                                        {data.full_date || data.date}
-                                                    </span>
-                                                    <div className="h-[1px] flex-1 bg-white/10" />
-                                                </div>
-
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]" />
-                                                        <div className="flex flex-col">
-                                                            <span className="text-[5.5px] font-black text-white/40 uppercase tracking-widest leading-none">Receita</span>
-                                                            <span className="text-[10px] font-black text-white italic tracking-tighter whitespace-nowrap leading-tight mt-0.5">
-                                                                R${(data.revenue || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-                                                            </span>
+                    <div className="w-full h-full animate-in fade-in duration-500">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                            <BarChart data={filteredRevenueHistory} margin={{ top: 10, right: 10, left: -8, bottom: 0 }}>
+                                <CartesianGrid vertical={false} stroke="#ffffff" strokeOpacity={0.03} strokeDasharray="4 4" />
+                                <XAxis
+                                    dataKey="date"
+                                    axisLine={false}
+                                    tickLine={false}
+                                    fontSize={9}
+                                    tick={{ fill: '#71717a', fontWeight: 900 }}
+                                    tickFormatter={(val) => {
+                                        const part = val.split('-');
+                                        return part.length >= 3 ? `${part[2]}/${part[1]}` : val;
+                                    }}
+                                    dy={10}
+                                />
+                                <YAxis
+                                    axisLine={false}
+                                    tickLine={false}
+                                    fontSize={8}
+                                    tick={{ fill: '#71717a', fontWeight: 900 }}
+                                    tickFormatter={(val) => val >= 1000 ? `R$ ${(val/1000).toFixed(0)}k` : `R$ ${val}`}
+                                    width={45}
+                                />
+                                <Tooltip
+                                    cursor={{ fill: 'rgba(16, 185, 129, 0.05)', radius: 8 }}
+                                    offset={20}
+                                    content={({ active, payload }) => {
+                                        if (active && payload && payload.length) {
+                                            const data = payload[0].payload;
+                                            const orderCount = typeof data.orders === 'number' ? data.orders : 0;
+                                            
+                                            return (
+                                                <div className="bg-zinc-950/98 border border-white/10 px-2.5 py-1.5 rounded-xl backdrop-blur-3xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] flex flex-col gap-1.5 inline-flex pointer-events-none ring-1 ring-white/10 select-none z-50">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[7px] font-black text-white/50 uppercase tracking-[0.2em] leading-none whitespace-nowrap">
+                                                            {data.full_date || data.date}
+                                                        </span>
+                                                        <div className="h-[1px] flex-1 bg-white/10" />
+                                                    </div>
+     
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]" />
+                                                            <div className="flex flex-col">
+                                                                <span className="text-[5.5px] font-black text-white/40 uppercase tracking-widest leading-none">Receita</span>
+                                                                <span className="text-[10px] font-black text-white italic tracking-tighter whitespace-nowrap leading-tight mt-0.5">
+                                                                    R${(data.revenue || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+     
+                                                        <div className="flex items-center gap-1.5 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                                                            <div className="flex flex-col">
+                                                                <span className="text-[5.5px] font-black text-emerald-500/50 uppercase tracking-widest leading-none">Pedidos</span>
+                                                                <span className="text-[10px] font-black text-emerald-500 italic tracking-tighter leading-tight mt-0.5">
+                                                                    {orderCount}
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     </div>
-
-                                                    <div className="flex items-center gap-1.5 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                                                        <div className="flex flex-col">
-                                                            <span className="text-[5.5px] font-black text-emerald-500/50 uppercase tracking-widest leading-none">Pedidos</span>
-                                                            <span className="text-[10px] font-black text-emerald-500 italic tracking-tighter leading-tight mt-0.5">
-                                                                {orderCount}
-                                                            </span>
-                                                        </div>
-                                                    </div>
                                                 </div>
-                                            </div>
-                                        );
-                                    }
-                                    return null;
-                                }}
-                            />
-                            <Bar dataKey="revenue" fill="#10b981" radius={[6, 6, 6, 6]} opacity={0.3} barSize={20} className="hover:opacity-60 transition-opacity cursor-pointer" isAnimationActive={false} />
-                        </BarChart>
-                    </ResponsiveContainer>
+                                            );
+                                        }
+                                        return null;
+                                    }}
+                                />
+                                <Bar dataKey="revenue" fill="#10b981" radius={[6, 6, 6, 6]} opacity={0.3} barSize={20} className="hover:opacity-60 transition-opacity cursor-pointer" isAnimationActive={!isMobile} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
                 ) : (
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                        <AreaChart data={processedRoiData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-                            <defs>
-                                <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.15}/>
-                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                                </linearGradient>
-                                <linearGradient id="colorInventory" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.08}/>
-                                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid vertical={false} stroke="#ffffff" strokeOpacity={0.03} strokeDasharray="4 4" />
-                            <XAxis
-                                dataKey="date"
-                                axisLine={false}
-                                tickLine={false}
-                                fontSize={9}
-                                tick={{ fill: '#71717a', fontWeight: 900 }}
-                                tickFormatter={(val) => {
-                                    const part = val.split('-');
-                                    return part.length >= 3 ? `${part[2]}/${part[1]}` : val;
-                                }}
-                                dy={10}
-                            />
-                            <YAxis
-                                axisLine={false}
-                                tickLine={false}
-                                fontSize={8}
-                                tick={{ fill: '#71717a', fontWeight: 900 }}
-                                tickFormatter={(val) => val >= 1000 ? `R$ ${(val/1000).toFixed(0)}k` : `R$ ${val}`}
-                                width={45}
-                            />
-                            <Tooltip
-                                cursor={{ stroke: 'rgba(255, 255, 255, 0.05)', strokeWidth: 1, strokeDasharray: '4 4' }}
-                                offset={20}
-                                content={({ active, payload }) => {
-                                    if (active && payload && payload.length) {
-                                        const data = payload[0].payload;
-                                        return (
-                                            <div className="bg-zinc-950/98 border border-white/10 px-2.5 py-2 rounded-xl backdrop-blur-3xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] flex flex-col gap-1.5 inline-flex pointer-events-none ring-1 ring-white/10 select-none z-50">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[7px] font-black text-white/50 uppercase tracking-[0.2em] leading-none whitespace-nowrap">
-                                                        {data.full_date || data.date}
-                                                    </span>
-                                                    <div className="h-[1px] flex-1 bg-white/10" />
-                                                </div>
-
-                                                <div className="flex flex-col gap-1.5">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-                                                        <div className="flex flex-col">
-                                                            <span className="text-[5.5px] font-black text-emerald-500/70 uppercase tracking-widest leading-none">Lucro Acumulado</span>
-                                                            <span className="text-[10px] font-black text-white italic tracking-tighter whitespace-nowrap leading-tight mt-0.5">
-                                                                R${data.cumulativeProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                            </span>
+                    <div className="w-full h-full animate-in fade-in duration-500">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                            <AreaChart data={processedRoiData} margin={{ top: 10, right: 10, left: -8, bottom: 0 }}>
+                                <defs>
+                                    <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.15}/>
+                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                    </linearGradient>
+                                    <linearGradient id="colorInventory" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.08}/>
+                                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid vertical={false} stroke="#ffffff" strokeOpacity={0.03} strokeDasharray="4 4" />
+                                <XAxis
+                                    dataKey="date"
+                                    axisLine={false}
+                                    tickLine={false}
+                                    fontSize={9}
+                                    tick={{ fill: '#71717a', fontWeight: 900 }}
+                                    tickFormatter={(val) => {
+                                        const part = val.split('-');
+                                        return part.length >= 3 ? `${part[2]}/${part[1]}` : val;
+                                    }}
+                                    dy={10}
+                                />
+                                <YAxis
+                                    axisLine={false}
+                                    tickLine={false}
+                                    fontSize={8}
+                                    tick={{ fill: '#71717a', fontWeight: 900 }}
+                                    tickFormatter={(val) => val >= 1000 ? `R$ ${(val/1000).toFixed(0)}k` : `R$ ${val}`}
+                                    width={45}
+                                />
+                                <Tooltip
+                                    cursor={{ stroke: 'rgba(255, 255, 255, 0.05)', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                    offset={20}
+                                    content={({ active, payload }) => {
+                                        if (active && payload && payload.length) {
+                                            const data = payload[0].payload;
+                                            return (
+                                                <div className="bg-zinc-950/98 border border-white/10 px-2.5 py-2 rounded-xl backdrop-blur-3xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] flex flex-col gap-1.5 inline-flex pointer-events-none ring-1 ring-white/10 select-none z-50">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[7px] font-black text-white/50 uppercase tracking-[0.2em] leading-none whitespace-nowrap">
+                                                            {data.full_date || data.date}
+                                                        </span>
+                                                        <div className="h-[1px] flex-1 bg-white/10" />
+                                                    </div>
+     
+                                                    <div className="flex flex-col gap-1.5">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                                                            <div className="flex flex-col">
+                                                                <span className="text-[5.5px] font-black text-emerald-500/70 uppercase tracking-widest leading-none">Lucro Acumulado</span>
+                                                                <span className="text-[10px] font-black text-white italic tracking-tighter whitespace-nowrap leading-tight mt-0.5">
+                                                                    R${data.cumulativeProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+     
+                                                        <div className="flex items-center gap-1.5">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
+                                                            <div className="flex flex-col">
+                                                                <span className="text-[5.5px] font-black text-amber-500/70 uppercase tracking-widest leading-none">Valor Investido (Estoque)</span>
+                                                                <span className="text-[10px] font-black text-white italic tracking-tighter whitespace-nowrap leading-tight mt-0.5">
+                                                                    R${data.inventoryCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     </div>
-
-                                                    <div className="flex items-center gap-1.5">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]" />
-                                                        <div className="flex flex-col">
-                                                            <span className="text-[5.5px] font-black text-amber-500/70 uppercase tracking-widest leading-none">Valor Investido (Estoque)</span>
-                                                            <span className="text-[10px] font-black text-white italic tracking-tighter whitespace-nowrap leading-tight mt-0.5">
-                                                                R${data.inventoryCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                            </span>
-                                                        </div>
-                                                    </div>
                                                 </div>
-                                            </div>
-                                        );
-                                    }
-                                    return null;
-                                }}
-                            />
-                            <Area 
-                                type="monotone" 
-                                dataKey="cumulativeProfit" 
-                                stroke="#10b981" 
-                                strokeWidth={2.5} 
-                                fillOpacity={1}
-                                fill="url(#colorProfit)"
-                                dot={false}
-                                activeDot={{ r: 5, fill: '#10b981', stroke: '#fff', strokeWidth: 1.5 }}
-                                name="Lucro Acumulado"
-                                isAnimationActive={false}
-                            />
-                            <Area 
-                                type="monotone" 
-                                dataKey="inventoryCost" 
-                                stroke="#f59e0b" 
-                                strokeWidth={2} 
-                                strokeDasharray="4 4"
-                                fillOpacity={1}
-                                fill="url(#colorInventory)"
-                                dot={false}
-                                activeDot={{ r: 5, fill: '#f59e0b', stroke: '#fff', strokeWidth: 1.5 }}
-                                name="Valor Investido (Estoque)"
-                                isAnimationActive={false}
-                            />
-                        </AreaChart>
-                    </ResponsiveContainer>
+                                            );
+                                        }
+                                        return null;
+                                    }}
+                                />
+                                <Area 
+                                    type="monotone" 
+                                    dataKey="cumulativeProfit" 
+                                    stroke="#10b981" 
+                                    strokeWidth={2.5} 
+                                    fillOpacity={1}
+                                    fill="url(#colorProfit)"
+                                    dot={false}
+                                    activeDot={{ r: 5, fill: '#10b981', stroke: '#fff', strokeWidth: 1.5 }}
+                                    name="Lucro Acumulado"
+                                    isAnimationActive={!isMobile}
+                                 />
+                                <Area 
+                                    type="monotone" 
+                                    dataKey="inventoryCost" 
+                                    stroke="#f59e0b" 
+                                    strokeWidth={2} 
+                                    strokeDasharray="4 4"
+                                    fillOpacity={1}
+                                    fill="url(#colorInventory)"
+                                    dot={false}
+                                    activeDot={{ r: 5, fill: '#f59e0b', stroke: '#fff', strokeWidth: 1.5 }}
+                                    name="Valor Investido (Estoque)"
+                                    isAnimationActive={!isMobile}
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
                 )}
             </div>
         </div>

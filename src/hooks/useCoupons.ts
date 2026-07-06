@@ -118,6 +118,11 @@ export function useCoupons(autoFetch: boolean = false) {
       toast.error('Permissão negada');
       return;
     }
+    
+    // Optimistic Update
+    const oldCoupons = [...coupons];
+    setCoupons(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+
     try {
       const { error } = await supabase
         .from('coupons')
@@ -139,6 +144,7 @@ export function useCoupons(autoFetch: boolean = false) {
     } catch (error) {
       console.error('Error updating coupon:', error);
       toast.error('Erro ao atualizar cupom');
+      setCoupons(oldCoupons);
       throw error;
     }
   };

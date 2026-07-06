@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
@@ -62,6 +62,8 @@ export function useQuestions() {
     const [questions, setQuestions] = useState<Question[]>([]);
     const [loading, setLoading] = useState(false);
     const latestProductIdRef = useRef<string | null>(null);
+    const productQuestionsAbortControllerRef = useRef<AbortController | null>(null);
+    const allQuestionsAbortControllerRef = useRef<AbortController | null>(null);
 
     const getQuestionsByProduct = useCallback(async (productId: string) => {
         latestProductIdRef.current = productId;
@@ -75,6 +77,12 @@ export function useQuestions() {
             setQuestions([]); // Clear previous product questions if not cached
             setLoading(true);
         }
+
+        if (productQuestionsAbortControllerRef.current) {
+            productQuestionsAbortControllerRef.current.abort();
+        }
+        productQuestionsAbortControllerRef.current = new AbortController();
+        const signal = productQuestionsAbortControllerRef.current.signal;
 
         try {
             const selectQuery = isAdmin
@@ -94,7 +102,8 @@ export function useQuestions() {
                 .from('questions' as any)
                 .select(selectQuery)
                 .eq('product_id', productId)
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .abortSignal(signal);
 
             if (error) throw error;
             if (!data) return;
@@ -102,11 +111,12 @@ export function useQuestions() {
             // Fetch product info if guest/non-admin
             let productInfo: { nome: string; imagem_url: string } | null = null;
             if (!isAdmin) {
-                const { data: prodData } = await supabase
+                const query = supabase
                     .from('vw_produtos_public' as any)
                     .select('nome, imagem_url')
                     .eq('id', productId)
                     .maybeSingle();
+                const { data: prodData } = await (query as any).abortSignal(signal);
                 if (prodData) {
                     productInfo = prodData as any;
                 }
@@ -116,12 +126,13 @@ export function useQuestions() {
             const userIds = data.map((q: any) => q.user_id);
             let orders: any[] | null = null;
             if (userIds.length > 0) {
-                const { data: ordersData, error: ordersError } = await supabase
+                const query = supabase
                     .from('marketplace_orders')
                     .select('user_id, status, marketplace_order_items!inner(product_id)')
                     .in('user_id', userIds)
                     .eq('status', 'delivered')
                     .eq('marketplace_order_items.product_id', productId);
+                const { data: ordersData, error: ordersError } = await (query as any).abortSignal(signal);
 
                 if (ordersError) {
                     console.error('Error fetching verified status:', ordersError);
@@ -155,6 +166,9 @@ export function useQuestions() {
             }
             updateQuestionsCache(productId, formattedQuestions);
         } catch (error: any) {
+            if (error?.name === 'AbortError' || error?.message === 'Fetch is aborted' || error?.message?.includes('aborted')) {
+                return;
+            }
             console.error('Error fetching questions:', error);
             toast.error('Erro ao carregar perguntas.');
         } finally {
@@ -222,9 +236,56 @@ export function useQuestions() {
         }
     }, [user, isAdmin]);
 
-    const getAllQuestions = useCallback(async (page: number = 0, pageSize: number = 20, filter: 'all' | 'pending' = 'all', search?: string) => {
+    const getAllQuestions = useCallback(async (page: number = 0, pageSize: number = 20, filter: 'all' | 'pending' = 'all', search?: string, silent = false) => {
+        if (allQuestionsAbortControllerRef.current) {
+            allQuestionsAbortControllerRef.current.abort();
+        }
+        allQuestionsAbortControllerRef.current = new AbortController();
+        const signal = allQuestionsAbortControllerRef.current.signal;
+
         try {
-            setLoading(true);
+            if (!silent) {
+                setLoading(true);
+            }
+
+            // High Optimization: If Admin, run single unified RPC on Supabase
+            if (isAdmin) {
+                const { data, error } = await (supabase.rpc as any)('get_admin_questions_paged', {
+                    p_search: search || '',
+                    p_filter: filter,
+                    p_page: page,
+                    p_page_size: pageSize
+                }).abortSignal(signal);
+
+                if (error) throw error;
+                
+                const rpcData = data as any;
+                const questionsList = rpcData?.data || [];
+                const totalCount = rpcData?.total_count || 0;
+
+                const formatted: Question[] = questionsList.map((item: any) => ({
+                    id: item.id,
+                    userId: item.user_id,
+                    productId: item.product_id,
+                    productName: item.product?.nome || 'Produto removido',
+                    productImage: item.product?.imagem_url,
+                    customerName: item.user?.full_name || 'Usuário Anônimo',
+                    question: item.question,
+                    createdAt: item.created_at,
+                    isVerified: item.is_verified ?? false,
+                    answers: (item.answers || []).map((ans: any) => ({
+                        id: ans.id,
+                        questionId: ans.question_id,
+                        answer: ans.answer,
+                        createdAt: ans.created_at,
+                    })).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                }));
+
+                setQuestions(formatted);
+                return { questions: formatted, total: totalCount };
+            }
+
+            // Guest/Non-admin fallback flow (original)
             let query: any = supabase
                 .from('vw_questions_with_answers_count' as any);
 
@@ -237,26 +298,21 @@ export function useQuestions() {
                   .from('public_profiles')
                   .select('id')
                   .ilike('full_name', q)
-                  .limit(25);
+                  .limit(25)
+                  .abortSignal(signal);
                 const profileIds = profiles?.map((p: any) => p.id) || [];
                 const profileFilter = profileIds.length > 0 ? profileIds : ['00000000-0000-0000-0000-000000000000'];
 
                 const { data: products } = await supabase
-                  .from((isAdmin ? 'produtos' : 'vw_produtos_public') as any)
+                  .from('vw_produtos_public' as any)
                   .select('id')
                   .ilike('nome', q)
-                  .limit(25);
+                  .limit(25)
+                  .abortSignal(signal);
                 const productIds = products?.map((p: any) => p.id) || [];
                 const productFilter = productIds.length > 0 ? productIds : ['00000000-0000-0000-0000-000000000000'];
 
-                const selectFields = isAdmin
-                  ? `
-                  *,
-                  user:public_profiles(full_name),
-                  product:produtos(nome, imagem_url),
-                  answers:answers(*)
-                `
-                  : `
+                const selectFields = `
                   *,
                   user:public_profiles(full_name),
                   answers:answers(*)
@@ -265,14 +321,7 @@ export function useQuestions() {
                 query = query.select(selectFields, { count: 'exact' })
                 .or(`question.ilike.${q},user_id.in.(${profileFilter.join(',')}),product_id.in.(${productFilter.join(',')})`);
             } else {
-                const selectFields = isAdmin
-                  ? `
-                  *,
-                  user:public_profiles(full_name),
-                  product:produtos(nome, imagem_url),
-                  answers:answers(*)
-                `
-                  : `
+                const selectFields = `
                   *,
                   user:public_profiles(full_name),
                   answers:answers(*)
@@ -287,17 +336,19 @@ export function useQuestions() {
 
             const { data, error, count } = await query
                 .order('created_at', { ascending: false })
-                .range(page * pageSize, (page + 1) * pageSize - 1);
+                .range(page * pageSize, (page + 1) * pageSize - 1)
+                .abortSignal(signal);
 
             if (error) throw error;
 
             const productMap = new Map<string, { nome: string; imagem_url: string }>();
-            if (!isAdmin && data && data.length > 0) {
+            if (data && data.length > 0) {
                 const productIds = Array.from(new Set(data.map((q: any) => q.product_id)));
                 const { data: prodData } = await supabase
                     .from('vw_produtos_public' as any)
                     .select('id, nome, imagem_url')
-                    .in('id', productIds);
+                    .in('id', productIds)
+                    .abortSignal(signal);
                 if (prodData) {
                     prodData.forEach((p: any) => {
                         productMap.set(p.id, { nome: p.nome, imagem_url: p.imagem_url });
@@ -306,7 +357,7 @@ export function useQuestions() {
             }
 
             const formatted: Question[] = (data || []).map((item: any) => {
-                const prod = isAdmin ? item.product : productMap.get(item.product_id);
+                const prod = productMap.get(item.product_id);
                 return {
                     id: item.id,
                     userId: item.user_id,
@@ -328,6 +379,9 @@ export function useQuestions() {
             setQuestions(formatted);
             return { questions: formatted, total: count || 0 };
         } catch (error: any) {
+            if (error?.name === 'AbortError' || error?.message === 'Fetch is aborted' || error?.message?.includes('aborted')) {
+                return { questions: [], total: 0 };
+            }
             console.error('Error fetching all questions:', error);
             toast.error('Erro ao carregar perguntas.');
             return { questions: [], total: 0 };
@@ -413,6 +467,17 @@ export function useQuestions() {
             supabase.removeChannel(channel).catch(() => {});
         };
     }, [getQuestionsByProduct, getAllQuestions]);
+
+    useEffect(() => {
+        return () => {
+            if (productQuestionsAbortControllerRef.current) {
+                productQuestionsAbortControllerRef.current.abort();
+            }
+            if (allQuestionsAbortControllerRef.current) {
+                allQuestionsAbortControllerRef.current.abort();
+            }
+        };
+    }, []);
 
     return {
         questions,

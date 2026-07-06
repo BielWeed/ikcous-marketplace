@@ -2,9 +2,8 @@ import { useState, useEffect, useCallback, memo } from 'react';
 import { ArrowLeft, Send, Users, Info, Sparkles, Zap, History, Target, HelpCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import { Input } from '@/components/ui/input';
+import { LocalBufferedInput, LocalBufferedTextarea } from '@/components/admin/LocalBufferedInput';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useVOR } from '@/hooks/useVOR';
@@ -470,34 +469,37 @@ export const AdminPushView = memo(function AdminPushView({ onNavigate, targetUse
 
                                 <div className="space-y-3">
                                     <Label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Título do Gancho</Label>
-                                    <Input
+                                    <LocalBufferedInput
                                         value={notification.title}
-                                        onChange={e => setNotification({ ...notification, title: e.target.value })}
+                                        onFlush={val => setNotification(prev => ({ ...prev, title: val }))}
                                         disabled={isOffline || loading}
                                         placeholder={isOffline ? "Indisponível offline" : "Ex: Almoço VIP Liberado! 🥂"}
+                                        useShadcn={true}
                                         className="h-16 bg-black/40 border-white/10 rounded-2xl focus:ring-admin-gold/50 focus:bg-black/60 focus:border-admin-gold/50 text-white placeholder:text-zinc-700 shadow-inner transition-all disabled:opacity-40"
                                     />
                                 </div>
 
                                 <div className="space-y-3">
                                     <Label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Mensagem Persuasiva</Label>
-                                    <Textarea
+                                    <LocalBufferedTextarea
                                         value={notification.body}
-                                        onChange={e => setNotification({ ...notification, body: e.target.value })}
+                                        onFlush={val => setNotification(prev => ({ ...prev, body: val }))}
                                         disabled={isOffline || loading}
                                         placeholder={isOffline ? "Indisponível offline" : "Os primeiros 10 clientes ganham um presente exclusivo..."}
                                         rows={4}
+                                        useShadcn={true}
                                         className="bg-black/40 border-white/10 rounded-2xl focus:ring-admin-gold/50 focus:bg-black/60 focus:border-admin-gold/50 text-sm font-medium text-white placeholder:text-zinc-700 resize-none p-5 shadow-inner transition-all disabled:opacity-40"
                                     />
                                 </div>
 
                                 <div className="space-y-3">
                                     <Label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Caminho de Destino</Label>
-                                    <Input
+                                    <LocalBufferedInput
                                         value={notification.url}
-                                        onChange={e => setNotification({ ...notification, url: e.target.value })}
+                                        onFlush={val => setNotification(prev => ({ ...prev, url: val }))}
                                         disabled={isOffline || loading}
                                         placeholder="/"
+                                        useShadcn={true}
                                         className="h-16 bg-black/40 border-white/10 rounded-2xl focus:ring-admin-gold/50 focus:bg-black/60 focus:border-admin-gold/50 text-sm font-bold font-mono text-white placeholder:text-zinc-700 shadow-inner transition-all disabled:opacity-40"
                                     />
                                 </div>

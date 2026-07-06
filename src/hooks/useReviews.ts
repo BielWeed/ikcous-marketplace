@@ -202,10 +202,56 @@ export function useReviews() {
   const getAllReviews = useCallback(async (
     page: number = 0,
     pageSize: number = 20,
-    filters?: { rating?: number | 'all', search?: string }
+    filters?: { rating?: number | 'all', search?: string, silent?: boolean }
   ) => {
     try {
-      setLoading(true);
+      if (!filters?.silent) {
+        setLoading(true);
+      }
+
+      // High Optimization: If Admin, run single unified RPC on Supabase
+      if (isAdmin) {
+        const { data, error } = await (supabase.rpc as any)('get_admin_reviews_paged', {
+          p_search: filters?.search || '',
+          p_rating: filters?.rating !== undefined ? filters.rating.toString() : 'all',
+          p_page: page,
+          p_page_size: pageSize
+        });
+
+        if (error) throw error;
+
+        const rpcData = data as any;
+        const reviewsList = rpcData?.data || [];
+        const totalCount = rpcData?.total_count || 0;
+        const averageRating = Number(rpcData?.average_rating) || 0;
+        const globalVerifiedCount = Number(rpcData?.total_verified) || 0;
+        const globalRepliedCount = Number(rpcData?.total_replied) || 0;
+
+        const formatted: AdminReview[] = reviewsList.map((item: any) => ({
+          id: item.id,
+          productId: item.product_id,
+          userId: item.user_id,
+          customerName: item.user?.full_name || 'Anônimo',
+          productName: item.product?.nome || 'Produto removido',
+          rating: item.rating,
+          comment: item.comment || '',
+          verified: item.verified ?? false,
+          helpful: item.helpful ?? 0,
+          createdAt: item.created_at,
+          merchantReply: item.merchant_reply,
+        }));
+
+        setAdminReviews(formatted);
+        return { 
+          reviews: formatted, 
+          total: totalCount, 
+          averageRating,
+          globalVerifiedCount,
+          globalRepliedCount
+        };
+      }
+
+      // Guest/Non-admin fallback flow (original)
       let query: any = supabase
         .from('reviews' as any);
 
@@ -305,7 +351,7 @@ export function useReviews() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAdmin]);
 
   const deleteReview = useCallback(async (reviewId: string) => {
     if (!isAdmin) {

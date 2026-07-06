@@ -1,4 +1,4 @@
-import { useState, useMemo, type ChangeEvent, memo } from 'react';
+import { useState, useMemo, type ChangeEvent, memo, useRef, useEffect } from 'react';
 import { LazyImage } from '@/components/LazyImage';
 import {
   AlertDialog,
@@ -10,13 +10,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, ArrowLeft, Upload, ArrowUp, ArrowDown, Layout, Sparkles, Eye, Zap, Trash, Edit, ExternalLink, HelpCircle, Smartphone, SlidersHorizontal } from 'lucide-react';
+import { Plus, ArrowLeft, Upload, ArrowUp, ArrowDown, Layout, Sparkles, Eye, Zap, Trash, Edit, ExternalLink, HelpCircle, Smartphone, SlidersHorizontal, Loader2 } from 'lucide-react';
 import { motion, type Variants } from 'framer-motion';
 import { useBanners } from '@/hooks/useBanners';
 import type { Banner, View } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LocalBufferedInput } from '@/components/admin/LocalBufferedInput';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -29,6 +30,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 interface AdminBannersViewProps {
     onNavigate: (view: View) => void;
+    active?: boolean;
+    onSetDirty?: (dirty: boolean) => void;
 }
 
 const containerVariants: Variants = {
@@ -41,7 +44,7 @@ const itemVariants: Variants = {
     visible: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 120, damping: 14 } }
 };
 
-export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: AdminBannersViewProps) {
+export const AdminBannersView = memo(function AdminBannersView({ onNavigate, active = true, onSetDirty }: AdminBannersViewProps) {
     const { banners, isLoaded, uploadBannerImage, addBanner, updateBanner, deleteBanner, reorderBanners, refreshBanners } = useBanners(true);
     const isOffline = useOnlineStatus();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -52,6 +55,19 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
     const [selectedTab, setSelectedTab] = useState<'all' | 'home_top' | 'home_middle' | 'home_bottom'>('all');
     const [bannerToDelete, setBannerToDelete] = useState<{ id: string; imageUrl: string } | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [activeAction, setActiveAction] = useState<{ id: string; type: 'up' | 'down' | 'toggle' | 'delete' } | null>(null);
+
+    // Auto-refresh when coming back online
+    const wasOfflineRef = useRef(isOffline);
+    useEffect(() => {
+        if (wasOfflineRef.current && !isOffline && active) {
+            toast.success('Conexão restabelecida. Atualizando banners...', {
+                icon: '⚡'
+            });
+            refreshBanners(false, true);
+        }
+        wasOfflineRef.current = isOffline;
+    }, [isOffline, active, refreshBanners]);
 
     // Image Adjuster integration
     const [isAdjusterOpen, setIsAdjusterOpen] = useState(false);
@@ -97,6 +113,36 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
         order: 0
     });
 
+    // Controlar estado dirty do formulário para evitar descarte involuntário
+    useEffect(() => {
+        if (!onSetDirty) return;
+        if (!isDialogOpen) {
+            onSetDirty(false);
+            return;
+        }
+
+        const defaultPosition = editingBanner?.position || (selectedTab !== 'all' ? selectedTab : 'home_top');
+        const defaultOrder = banners.filter(b => b.position === defaultPosition).length + 1;
+
+        const initial = editingBanner || {
+            title: '',
+            imageUrl: '',
+            link: '',
+            position: defaultPosition,
+            active: true,
+            order: defaultOrder
+        };
+
+        const isDirty =
+            (formData.title || '') !== (initial.title || '') ||
+            (formData.imageUrl || '') !== (initial.imageUrl || '') ||
+            (formData.link || '') !== (initial.link || '') ||
+            formData.position !== initial.position ||
+            formData.active !== initial.active ||
+            Number(formData.order) !== Number(initial.order);
+
+        onSetDirty(isDirty);
+    }, [isDialogOpen, formData, editingBanner, banners, selectedTab, onSetDirty]);
 
     const handleBack = () => onNavigate('admin-settings');
 
@@ -157,10 +203,20 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                 return;
             }
 
+            let sanitizedLink = formData.link ? formData.link.trim() : '';
+            if (sanitizedLink && !sanitizedLink.startsWith('/') && !sanitizedLink.startsWith('http://') && !sanitizedLink.startsWith('https://')) {
+                sanitizedLink = '/' + sanitizedLink;
+            }
+
+            const dataToSubmit = {
+                ...formData,
+                link: sanitizedLink
+            };
+
             if (editingBanner) {
-                await updateBanner(editingBanner.id, formData);
+                await updateBanner(editingBanner.id, dataToSubmit);
             } else {
-                await addBanner(formData as Required<Omit<Banner, 'id'>>);
+                await addBanner(dataToSubmit as Required<Omit<Banner, 'id'>>);
             }
             await refreshBanners(false, true);
             setIsDialogOpen(false);
@@ -185,6 +241,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
     const confirmDeleteBanner = async () => {
         if (!bannerToDelete) return;
         setIsProcessing(true);
+        setActiveAction({ id: bannerToDelete.id, type: 'delete' });
         try {
             await deleteBanner(bannerToDelete.id, bannerToDelete.imageUrl);
             await refreshBanners(false, true);
@@ -193,6 +250,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
             toast.error('Erro ao deletar o banner.');
         } finally {
             setIsProcessing(false);
+            setActiveAction(null);
             setBannerToDelete(null);
         }
     };
@@ -205,6 +263,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
             return;
         }
         setIsProcessing(true);
+        setActiveAction({ id: banner.id, type: 'toggle' });
         try {
             await updateBanner(banner.id, { active: !banner.active });
             await refreshBanners(false, true);
@@ -212,6 +271,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
             console.error('Erro ao alternar status do banner:', error);
         } finally {
             setIsProcessing(false);
+            setActiveAction(null);
         }
     };
 
@@ -232,6 +292,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
         if (targetIndex >= 0 && targetIndex < bannersInPosition.length) {
             const targetBanner = bannersInPosition[targetIndex];
             setIsProcessing(true);
+            setActiveAction({ id: banner.id, type: direction });
             try {
                 await reorderBanners(banner.id, targetBanner.id);
                 await refreshBanners(false, true);
@@ -240,6 +301,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                 toast.error('Erro ao reordenar banners.');
             } finally {
                 setIsProcessing(false);
+                setActiveAction(null);
             }
         }
     };
@@ -398,7 +460,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                 {/* Stats Carousel Row */}
                 {isLoaded && banners.length > 0 && (
                     <div className="space-y-4">
-                        <AdminKpiCarousel cards={kpiCards} title="Métricas Visuais" />
+                        <AdminKpiCarousel cards={kpiCards} active={active} title="Métricas Visuais" />
                     </div>
                 )}
 
@@ -480,7 +542,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                 )}
 
                 {/* Banner Content List */}
-                {!isLoaded ? (
+                {(!isLoaded && banners.length === 0) ? (
                     <div className="py-6">
                         {renderSkeleton()}
                     </div>
@@ -576,7 +638,11 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                                                                         className="w-8 h-8 shrink-0 bg-zinc-900 border border-white/5 text-zinc-500 rounded-lg flex items-center justify-center hover:bg-zinc-800 hover:text-white disabled:opacity-10 disabled:pointer-events-none transition-all active:scale-95"
                                                                         title="Mover para cima"
                                                                     >
-                                                                        <ArrowUp className="w-4 h-4" />
+                                                                        {activeAction?.id === banner.id && activeAction?.type === 'up' ? (
+                                                                            <Loader2 className="w-3.5 h-3.5 animate-spin text-admin-gold" />
+                                                                        ) : (
+                                                                            <ArrowUp className="w-4 h-4" />
+                                                                        )}
                                                                     </button>
                                                                     <button
                                                                         onClick={() => moveBanner(banner, 'down')}
@@ -584,7 +650,11 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                                                                         className="w-8 h-8 shrink-0 bg-zinc-900 border border-white/5 text-zinc-500 rounded-lg flex items-center justify-center hover:bg-zinc-800 hover:text-white disabled:opacity-10 disabled:pointer-events-none transition-all active:scale-95"
                                                                         title="Mover para baixo"
                                                                     >
-                                                                        <ArrowDown className="w-4 h-4" />
+                                                                        {activeAction?.id === banner.id && activeAction?.type === 'down' ? (
+                                                                            <Loader2 className="w-3.5 h-3.5 animate-spin text-admin-gold" />
+                                                                        ) : (
+                                                                            <ArrowDown className="w-4 h-4" />
+                                                                        )}
                                                                     </button>
                                                                 </div>
                                                             </div>
@@ -604,7 +674,7 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                                                                     <Switch
                                                                         checked={banner.active}
                                                                         onCheckedChange={() => handleToggleActive(banner)}
-                                                                        disabled={isProcessing || isOffline}
+                                                                        disabled={(activeAction?.id === banner.id && activeAction?.type === 'toggle') || isOffline}
                                                                         className="data-[state=checked]:bg-[#FFBF00]"
                                                                     />
                                                                 </div>
@@ -623,7 +693,11 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                                                                     disabled={isProcessing || isOffline}
                                                                     className="h-9 px-4 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/20 hover:border-transparent rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
                                                                 >
-                                                                    <Trash className="w-3.5 h-3.5 shrink-0" /> Excluir
+                                                                    {activeAction?.id === banner.id && activeAction?.type === 'delete' ? (
+                                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                    ) : (
+                                                                        <Trash className="w-3.5 h-3.5 shrink-0" />
+                                                                    )} Excluir
                                                                 </button>
                                                             </div>
                                                         </div>
@@ -661,7 +735,12 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
                             {/* Left Column: Form Controls */}
                             <div className="lg:col-span-7 space-y-5">
                                 <div className="space-y-2">
-                                    <Label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic opacity-85">Imagem do Banner</Label>
+                                    <div className="flex justify-between items-baseline select-none mb-1">
+                                        <Label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic opacity-85">Imagem do Banner</Label>
+                                        <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">
+                                            {formData.position === 'home_top' ? 'Recomendado: 4:1 (ex: 1200x300px)' : 'Recomendado: 21:9 (ex: 1200x500px)'}
+                                        </span>
+                                    </div>
                                     <div className="flex flex-col gap-6">
                                         {uploading ? (
                                             <div className="w-full h-40 flex flex-col items-center justify-center gap-4 bg-zinc-900/40 border border-white/5 rounded-2xl">
@@ -696,10 +775,11 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
 
                                 <div className="space-y-2">
                                     <Label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Título da Campanha</Label>
-                                    <Input
+                                    <LocalBufferedInput
                                         value={formData.title || ''}
-                                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                        onFlush={(val) => setFormData(prev => ({ ...prev, title: val }))}
                                         placeholder="Ex: Coleção de Verão"
+                                        useShadcn={true}
                                         className="h-12 bg-zinc-900/50 border-white/10 rounded-xl focus:ring-[#FFBF00] focus:border-[#FFBF00]/50 text-base font-bold text-white transition-all"
                                     />
                                 </div>
@@ -737,10 +817,11 @@ export const AdminBannersView = memo(function AdminBannersView({ onNavigate }: A
 
                                 <div className="space-y-2">
                                     <Label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1 italic">Link de Redirecionamento (Rota)</Label>
-                                    <Input
+                                    <LocalBufferedInput
                                         value={formData.link || ''}
-                                        onChange={(e) => setFormData({ ...formData, link: e.target.value })}
+                                        onFlush={(val) => setFormData(prev => ({ ...prev, link: val }))}
                                         placeholder="Ex: /produtos, /categoria/calcados ou URL completa"
+                                        useShadcn={true}
                                         className="h-12 bg-zinc-900/50 border-white/10 rounded-xl focus:ring-[#FFBF00] focus:border-[#FFBF00]/50 text-xs font-mono tracking-wide placeholder:text-zinc-700 transition-all"
                                     />
                                 </div>

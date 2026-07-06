@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { TrendingUp, Trophy, Star } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
@@ -23,7 +24,7 @@ const SectionTitle = ({ title, icon: Icon }: { title: string; icon: any }) => (
     </div>
 );
 
-export function TopProductsList({ stats, loading, onNavigate }: TopProductsListProps) {
+export const TopProductsList = memo(function TopProductsList({ stats, loading, onNavigate }: TopProductsListProps) {
     const products = stats?.topProducts || [];
     const maxTotal = products.length > 0 ? Math.max(...products.map(p => Number(p.total || 0))) : 0;
 
@@ -85,6 +86,7 @@ export function TopProductsList({ stats, loading, onNavigate }: TopProductsListP
                                 {products.map((item, idx) => {
                                     const isFirst = idx === 0;
                                     const sharePercentage = maxTotal > 0 ? (Number(item.total || 0) / maxTotal) * 100 : 0;
+                                    const displayName = item.name || 'Produto sem nome';
                                     
                                     return (
                                         <motion.div
@@ -113,24 +115,24 @@ export function TopProductsList({ stats, loading, onNavigate }: TopProductsListP
                                                         </span>
                                                     )}
                                                 </div>
-
+ 
                                                 <div className={cn(
                                                     "w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-zinc-950 overflow-hidden border relative group-hover:scale-105 transition-transform duration-500 shadow-2xl",
                                                     isFirst ? "border-admin-gold/40 scale-105" : "border-white/10"
                                                 )}>
                                                     <LazyImage
-                                                        src={item.image || `https://placehold.co/100x100/18181b/d4af37?text=${encodeURIComponent(item.name.substring(0, 2))}`}
-                                                        alt={item.name}
+                                                        src={item.image || `https://placehold.co/100x100/18181b/d4af37?text=${encodeURIComponent(displayName.substring(0, 2))}`}
+                                                        alt={displayName}
                                                         className="w-full h-full object-cover group-hover:opacity-80 transition-opacity"
                                                     />
                                                 </div>
-
+ 
                                                 <div className="flex flex-col gap-1">
                                                     <h4 className={cn(
                                                         "text-xs sm:text-sm font-black transition-all tracking-tight leading-tight",
                                                         isFirst ? "text-white" : "text-zinc-400 group-hover:text-white"
                                                     )}>
-                                                        {item.name}
+                                                        {displayName}
                                                     </h4>
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-[9px] font-black text-admin-gold/80 uppercase tracking-tighter">
@@ -171,6 +173,6 @@ export function TopProductsList({ stats, loading, onNavigate }: TopProductsListP
             </div>
         </div>
     );
-}
+});
 
 
