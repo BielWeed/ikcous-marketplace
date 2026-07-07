@@ -12,7 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { ArrowLeft, Plus, Camera, Check, Layers, Trash2, Edit2, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Info, Package, ShieldCheck, Image as ImageIcon, Flame, Truck, Scissors, BookOpen, Smartphone, HelpCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Camera, Check, Layers, Trash2, Edit2, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Info, Package, ShieldCheck, Image as ImageIcon, Flame, Truck, Scissors, BookOpen, Smartphone, HelpCircle, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { View, ProductVariant } from '@/types';
 import { useProducts } from '@/hooks/useProducts';
@@ -112,6 +112,65 @@ const containerVariants = {
 //   visible: { opacity: 1, y: 0 }
 // };
 
+interface ProductFormFields {
+  name: string;
+  description: string;
+  price: string;
+  costPrice: string;
+  originalPrice: string;
+  stock: string;
+  category: string;
+  images: string[];
+  freeShipping: boolean;
+  isBestseller: boolean;
+  isActive: boolean;
+  metaTitle: string;
+  metaDescription: string;
+  sku: string;
+  variants: ProductVariant[];
+}
+
+function isProductFormDirty(a: ProductFormFields, b: ProductFormFields): boolean {
+  if (a.name !== b.name) return true;
+  if (a.description !== b.description) return true;
+  if (a.price !== b.price) return true;
+  if (a.costPrice !== b.costPrice) return true;
+  if (a.originalPrice !== b.originalPrice) return true;
+  if (a.stock !== b.stock) return true;
+  if (a.category !== b.category) return true;
+  if (a.freeShipping !== b.freeShipping) return true;
+  if (a.isBestseller !== b.isBestseller) return true;
+  if (a.isActive !== b.isActive) return true;
+  if (a.metaTitle !== b.metaTitle) return true;
+  if (a.metaDescription !== b.metaDescription) return true;
+  if (a.sku !== b.sku) return true;
+
+  if (a.images.length !== b.images.length) return true;
+  for (let i = 0; i < a.images.length; i++) {
+    if (a.images[i] !== b.images[i]) return true;
+  }
+
+  if (a.variants.length !== b.variants.length) return true;
+  for (let i = 0; i < a.variants.length; i++) {
+    const vA = a.variants[i];
+    const vB = b.variants[i];
+    if (
+      vA.id !== vB.id ||
+      vA.productId !== vB.productId ||
+      vA.sku !== vB.sku ||
+      vA.name !== vB.name ||
+      vA.value !== vB.value ||
+      vA.stockIncrement !== vB.stockIncrement ||
+      vA.stock !== vB.stock ||
+      vA.priceOverride !== vB.priceOverride ||
+      vA.active !== vB.active ||
+      vA.imageUrl !== vB.imageUrl
+    ) return true;
+  }
+
+  return false;
+}
+
 export const AdminProductFormView = React.memo(function AdminProductFormView({ productId, onNavigate, onBack, onSetDirty }: AdminProductFormViewProps) {
   const { addProduct, updateProduct, upsertVariants, deleteVariants, uploadProductImages, fetchProduct } = useProducts({ autoFetch: false });
   const { categories: dbCategories, addCategory } = useCategories();
@@ -193,6 +252,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
   const [adjustingImgUrl, setAdjustingImgUrl] = useState('');
   const [adjustingImgIndex, setAdjustingImgIndex] = useState<number | null>(null);
   const [isUploadingAdjusted, setIsUploadingAdjusted] = useState(false);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [imageUploadStep, setImageUploadStep] = useState<'compressing' | 'uploading' | 'idle'>('idle');
+  const isImageUploading = isUploadingImages || isUploadingAdjusted;
   const [isDragging, setIsDragging] = useState(false);
 
   const [showPhotoGuide, setShowPhotoGuide] = useState(false);
@@ -405,10 +467,64 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
     }
   }, [productId]);
 
+  // Draft recovery on mount for existing products
+  useEffect(() => {
+    if (productId && !isLoading) {
+      const draftKey = `ikcous_product_form_draft_edit_${productId}`;
+      const savedDraft = localStorage.getItem(draftKey);
+      if (savedDraft) {
+        try {
+          const parsed = JSON.parse(savedDraft);
+          
+          // Only prompt if the draft actually contains modified data compared to DB (initialData)
+          const draftFields = {
+            name: parsed.name ?? initialData.name,
+            description: parsed.description ?? initialData.description,
+            price: parsed.price ?? initialData.price,
+            costPrice: parsed.costPrice ?? initialData.costPrice,
+            originalPrice: parsed.originalPrice ?? initialData.originalPrice,
+            stock: parsed.stock ?? initialData.stock,
+            category: parsed.category ?? initialData.category,
+            images: parsed.images ?? initialData.images,
+            freeShipping: parsed.freeShipping !== undefined ? !!parsed.freeShipping : initialData.freeShipping,
+            isBestseller: parsed.isBestseller !== undefined ? !!parsed.isBestseller : initialData.isBestseller,
+            isActive: parsed.isActive !== undefined ? !!parsed.isActive : initialData.isActive,
+            metaTitle: parsed.metaTitle ?? initialData.metaTitle,
+            metaDescription: parsed.metaDescription ?? initialData.metaDescription,
+            sku: parsed.sku ?? initialData.sku,
+            variants: parsed.variants ?? initialData.variants,
+          };
+
+          const isDraftDifferent = isProductFormDirty(draftFields, initialData);
+
+          if (isDraftDifferent) {
+            toast.info('Rascunho não salvo encontrado para este produto', {
+              description: 'Deseja restaurar as alterações que você fez anteriormente?',
+              action: {
+                label: 'Restaurar',
+                onClick: () => {
+                  setFormData(draftFields);
+                  setIsPromoActive(!!draftFields.originalPrice);
+                  toast.success('Rascunho restaurado!');
+                }
+              },
+              duration: 10000
+            });
+          } else {
+            // Draft matches database state, clean it up
+            localStorage.removeItem(draftKey);
+          }
+        } catch (e) {
+          console.error('[AdminProductFormView] Failed to parse edit draft:', e);
+        }
+      }
+    }
+  }, [productId, isLoading, initialData]);
+
   // Prevent leaving with unsaved changes
   useEffect(() => {
     if (!onSetDirty) return;
-    const isDirty = JSON.stringify(formData) !== JSON.stringify(initialData);
+    const isDirty = isProductFormDirty(formData, initialData);
     onSetDirty(isDirty);
     return () => {
       onSetDirty(false);
@@ -483,16 +599,20 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
 
   // Draft auto-save on changes
   useEffect(() => {
-    if (!productId && !isLoading) {
-      const timer = setTimeout(() => {
-        const isDirty = formData.name || formData.description || formData.price || formData.stock || formData.category || formData.images.length > 0;
-        if (isDirty) {
-          localStorage.setItem('ikcous_product_form_draft', JSON.stringify(formData));
-        }
-      }, 800);
-      return () => clearTimeout(timer);
-    }
-  }, [formData, productId, isLoading]);
+    if (isLoading) return;
+    
+    const timer = setTimeout(() => {
+      const isDirty = isProductFormDirty(formData, initialData);
+      const draftKey = !productId ? 'ikcous_product_form_draft' : `ikcous_product_form_draft_edit_${productId}`;
+      if (isDirty) {
+        localStorage.setItem(draftKey, JSON.stringify(formData));
+      } else {
+        localStorage.removeItem(draftKey);
+      }
+    }, 1000);
+    
+    return () => clearTimeout(timer);
+  }, [formData, initialData, productId, isLoading]);
 
   const processAndUploadImages = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
@@ -520,11 +640,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
       return;
     }
 
-    const loadingToast = toast.loading(`Comprimindo e enviando ${files.length} imagem(ns)...`);
+    setIsUploadingImages(true);
+    setImageUploadStep('compressing');
+    const loadingToast = toast.loading(`Comprimindo ${files.length} imagem(ns)...`);
     try {
       const compressedFiles = await Promise.all(
         files.map(file => compressImage(file))
       );
+
+      setImageUploadStep('uploading');
+      toast.loading(`Enviando imagens processadas...`, { id: loadingToast });
 
       const urls = await uploadProductImages(compressedFiles);
       if (urls && urls.length > 0) {
@@ -538,7 +663,13 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
       }
     } catch (error) {
       console.error('[Upload] Process error:', error);
-      toast.error('Erro ao processar ou enviar imagens.', { id: loadingToast });
+      toast.error('Erro ao processar ou enviar imagens.', { 
+        id: loadingToast,
+        description: 'Por favor, verifique sua conexão e tente enviar novamente.'
+      });
+    } finally {
+      setIsUploadingImages(false);
+      setImageUploadStep('idle');
     }
   }, [formData.images.length, uploadProductImages]);
 
@@ -729,6 +860,8 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
       setShowSuccess(true);
       if (!productId) {
         localStorage.removeItem('ikcous_product_form_draft');
+      } else {
+        localStorage.removeItem(`ikcous_product_form_draft_edit_${productId}`);
       }
 
       setTimeout(() => {
@@ -828,7 +961,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
   const marginPct = priceVal > 0 ? ((priceVal - costPriceVal) / priceVal) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white pb-12">
+    <div className="h-full overflow-y-auto bg-zinc-950 text-white pb-12 custom-scrollbar relative">
       {/* Background Decor */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-500/5 blur-[120px] rounded-full" />
@@ -1044,9 +1177,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                       <LocalBufferedInput
                         id="variant-price"
                         name="variant-price"
-                        type="number"
-                        min="0"
-                        step="0.01"
+                        mask="currency"
                         value={variantFormData.priceOverride}
                         onFlush={val => setVariantFormData(p => ({ ...p, priceOverride: val }))}
                         className="w-full pl-11 pr-5 py-4 bg-zinc-950 border border-white/5 rounded-2xl text-sm font-black focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all"
@@ -1126,7 +1257,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
           <div className="flex items-center gap-3 md:gap-4">
             <button
               onClick={() => onBack ? onBack() : onNavigate('admin-products')}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isImageUploading}
               className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 text-white rounded-xl border border-white/10 transition-all active:scale-90 group shrink-0 disabled:opacity-50 disabled:pointer-events-none"
             >
               <ArrowLeft className="w-4 h-4 md:w-4.5 md:h-4.5 group-hover:-translate-x-1 transition-transform" />
@@ -1168,12 +1299,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
             <button
               type="button"
               onClick={() => handleSubmit()}
-              disabled={!isValid || isSubmitting || isOffline}
+              disabled={!isValid || isSubmitting || isOffline || isImageUploading}
               className={cn(
                 "px-3 py-2 md:px-4 md:py-2.5 rounded-xl flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-[0.98] font-black uppercase tracking-wider text-[9px] md:text-[10px] border shrink-0",
                 isOffline
                   ? "bg-zinc-900 border-rose-500/20 text-rose-400 cursor-not-allowed"
-                  : "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-emerald-950 border-white/10 shadow-lg shadow-emerald-500/20 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-650"
+                  : "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-emerald-950 border-white/10 shadow-lg shadow-emerald-500/20 disabled:from-zinc-800/80 disabled:to-zinc-800/80 disabled:text-zinc-500 disabled:border-white/5 disabled:shadow-none disabled:pointer-events-none"
               )}
             >
               {isSubmitting ? (
@@ -1322,6 +1453,21 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                       </motion.div>
                     );
                   })}
+
+                  {isUploadingImages && (
+                    <motion.div
+                      key="uploading-shimmer"
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.8, opacity: 0 }}
+                      className="relative w-36 h-36 rounded-3xl border border-white/10 bg-white/5 flex flex-col items-center justify-center space-y-2 animate-pulse overflow-hidden"
+                    >
+                      <Loader2 className="w-5 h-5 text-emerald-400 animate-spin" />
+                      <span className="text-[8px] font-black text-zinc-500 uppercase tracking-wider">
+                        {imageUploadStep === 'compressing' ? 'Comprimindo...' : 'Enviando...'}
+                      </span>
+                    </motion.div>
+                  )}
                 </AnimatePresence>
 
                 <label 
@@ -1337,6 +1483,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                       toast.error('Não é possível enviar imagens offline.');
                       return;
                     }
+                    if (isImageUploading) return;
                     const files = Array.from(e.dataTransfer.files || []);
                     await processAndUploadImages(files);
                   }}
@@ -1345,7 +1492,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                     isDragging 
                       ? "border-emerald-500 bg-emerald-500/10 scale-105 shadow-[0_0_20px_rgba(16,185,129,0.2)]" 
                       : "border-white/10 border-emerald-500/10 hover:bg-emerald-500/5 hover:border-emerald-500/30",
-                    isSubmitting && "opacity-40 pointer-events-none"
+                    (isSubmitting || isImageUploading) && "opacity-40 pointer-events-none"
                   )}
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-emerald-500/5" />
@@ -1353,7 +1500,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                   <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest relative z-10 group-hover/upload:text-emerald-400">
                     {isDragging ? 'Solte as Fotos' : 'Adicionar Imagem'}
                   </span>
-                  <input type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" disabled={isSubmitting} />
+                  <input type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" disabled={isSubmitting || isImageUploading} />
                 </label>
               </div>
             </section>
@@ -1755,9 +1902,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                   <div className="relative group">
                     <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-bold text-sm">R$</span>
                     <LocalBufferedInput
-                      type="number"
-                      step="0.01"
-                      min="0"
+                      mask="currency"
                       value={formData.costPrice}
                       onFlush={(val) => setFormData(prev => ({ ...prev, costPrice: val }))}
                       className="w-full pl-14 pr-6 py-5 bg-zinc-950/50 border border-white/5 rounded-2xl text-lg font-black text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all tabular-nums"
@@ -1776,9 +1921,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                   <div className="relative group">
                     <span className="absolute left-6 top-1/2 -translate-y-1/2 text-emerald-500/50 font-bold text-sm">R$</span>
                     <LocalBufferedInput
-                      type="number"
-                      step="0.01"
-                      min="0"
+                      mask="currency"
                       value={formData.price}
                       onFlush={(val) => setFormData(prev => ({ ...prev, price: val }))}
                       className="w-full pl-14 pr-6 py-5 bg-zinc-950 shadow-inner border border-emerald-500/20 rounded-2xl text-lg font-black text-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all tabular-nums"
@@ -1814,9 +1957,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                       <div className="relative group">
                         <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-bold text-sm">R$</span>
                         <LocalBufferedInput
-                          type="number"
-                          step="0.01"
-                          min="0"
+                          mask="currency"
                           value={formData.originalPrice}
                           onFlush={(val) => setFormData(prev => ({ ...prev, originalPrice: val }))}
                           placeholder="Ex: 99.90"
@@ -2098,7 +2239,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
       </AnimatePresence>
 
       {/* Floating Action Button */}
-      <div className="fixed bottom-28 right-6 z-50">
+      <div className="absolute bottom-28 right-6 z-50">
         <button
           type="button"
           onClick={() => setIsPreviewOpen(true)}
@@ -2114,19 +2255,22 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
       </div>
 
       {/* Live Preview Fullscreen Modal */}
-      <PhoneSimulator
-        isOpen={isPreviewOpen}
-        onClose={() => setIsPreviewOpen(false)}
-        formData={formData}
-        previewMode={previewMode}
-        setPreviewMode={setPreviewMode}
-        previewImgIndex={previewImgIndex}
-        setPreviewImgIndex={setPreviewImgIndex}
-        previewSelectedVariants={previewSelectedVariants}
-        setPreviewSelectedVariants={setPreviewSelectedVariants}
-        activeDetailTab={activeDetailTab}
-        setActiveDetailTab={setActiveDetailTab}
-      />
+      <AnimatePresence>
+        {isPreviewOpen && (
+          <PhoneSimulator
+            onClose={() => setIsPreviewOpen(false)}
+            formData={formData}
+            previewMode={previewMode}
+            setPreviewMode={setPreviewMode}
+            previewImgIndex={previewImgIndex}
+            setPreviewImgIndex={setPreviewImgIndex}
+            previewSelectedVariants={previewSelectedVariants}
+            setPreviewSelectedVariants={setPreviewSelectedVariants}
+            activeDetailTab={activeDetailTab}
+            setActiveDetailTab={setActiveDetailTab}
+          />
+        )}
+      </AnimatePresence>
         {/* Modal de Ajuda */}
         {showHelpModal && (
           <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">

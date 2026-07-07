@@ -50,6 +50,13 @@ module.exports = {
           DEFAULT: "#ffffff",
           glow: "rgba(255, 255, 255, 0.4)",
         },
+        // Custom intermediate zinc shades to support non-standard palette usage
+        zinc: {
+          550: "#61616a",
+          650: "#48484e",
+          750: "#333338",
+          850: "#1f1f23",
+        },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
