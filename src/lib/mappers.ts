@@ -14,6 +14,35 @@ type OrderRow = Database["public"]["Tables"]["marketplace_orders"]["Row"];
 type OrderItemRow =
   Database["public"]["Tables"]["marketplace_order_items"]["Row"];
 
+function extractProductImages(row: any, name: string): string[] {
+  const rawImages =
+    row.imagem_urls || row.images || (row.imagem_url ? [row.imagem_url] : []);
+  const sanitizedImages = Array.isArray(rawImages)
+    ? rawImages.filter(
+        (img: any) => typeof img === "string" && img.trim() !== "",
+      )
+    : [];
+
+  if (name?.includes("Aliança Luxo")) {
+    return ["https://m.media-amazon.com/images/I/51-mYyA-zXL._AC_SL1000_.jpg"];
+  }
+  if (sanitizedImages.length > 0) {
+    return sanitizedImages;
+  }
+  return ["https://placehold.co/600x400?text=Sem+Imagem"];
+}
+
+function extractProductDimensions(row: any) {
+  const parseDim = (val: any) =>
+    val !== undefined && val !== null ? Number(val) : undefined;
+  return {
+    weightKg: parseDim(row.peso_kg),
+    widthCm: parseDim(row.largura_cm),
+    heightCm: parseDim(row.altura_cm),
+    lengthCm: parseDim(row.comprimento_cm),
+  };
+}
+
 /**
  * Maps a database product row to the application Product interface
  */
@@ -32,73 +61,48 @@ export function mapProductFromDB(
       rawCusto !== null && rawCusto !== undefined
         ? Number(rawCusto)
         : undefined;
-    const stock =
-      row.estoque !== undefined
-        ? Number(row.estoque)
-        : row.stock !== undefined
-          ? Number(row.stock)
-          : 0;
-    const rawImages =
-      row.imagem_urls || row.images || (row.imagem_url ? [row.imagem_url] : []);
-    const sanitizedImages = Array.isArray(rawImages)
-      ? rawImages.filter(
-          (img: any) => typeof img === "string" && img.trim() !== "",
-        )
-      : [];
+    const stock = Number(row.estoque ?? row.stock ?? 0);
+
+    const images = extractProductImages(row, name);
     const category = row.categoria || row.category || "Geral";
     const isActive = row.ativo ?? row.is_active ?? true;
     const freeShipping = !!(row.frete_gratis ?? row.free_shipping);
     const isBestseller = !!(row.is_bestseller ?? row.is_bestseller); // Same name usually
 
-    const weightKg =
-      row.peso_kg !== undefined && row.peso_kg !== null
-        ? Number(row.peso_kg)
-        : undefined;
-    const widthCm =
-      row.largura_cm !== undefined && row.largura_cm !== null
-        ? Number(row.largura_cm)
-        : undefined;
-    const heightCm =
-      row.altura_cm !== undefined && row.altura_cm !== null
-        ? Number(row.altura_cm)
-        : undefined;
-    const lengthCm =
-      row.comprimento_cm !== undefined && row.comprimento_cm !== null
-        ? Number(row.comprimento_cm)
-        : undefined;
+    const { weightKg, widthCm, heightCm, lengthCm } = extractProductDimensions(row);
 
     const createdAt =
       row.data_cadastro || row.created_at || "1970-01-01T00:00:00.000Z";
     const updatedAt = row.ultima_atualizacao || row.updated_at || createdAt;
     const createdTime = new Date(createdAt).getTime();
 
+    const formattedName =
+      name === "boobie goods" || name === "Boobie Goods"
+        ? "Bobbie Goods"
+        : name;
+
+    const variantStock =
+      Array.isArray(row.product_variants) &&
+      row.product_variants.some((v: any) => v.active)
+        ? row.product_variants.reduce(
+            (acc: number, v: any) =>
+              acc + (v.active ? Number(v.stock_increment) || 0 : 0),
+            0,
+          )
+        : stock;
+
     return {
       id: row.id,
-      name:
-        name === "boobie goods" || name === "Boobie Goods"
-          ? "Bobbie Goods"
-          : name,
+      name: formattedName,
       description,
       price,
       costPrice,
       originalPrice: row.preco_original
         ? Number(row.preco_original)
         : undefined,
-      images: name?.includes("Aliança Luxo")
-        ? ["https://m.media-amazon.com/images/I/51-mYyA-zXL._AC_SL1000_.jpg"]
-        : sanitizedImages.length > 0
-          ? sanitizedImages
-          : ["https://placehold.co/600x400?text=Sem+Imagem"],
+      images,
       category,
-      stock:
-        Array.isArray(row.product_variants) &&
-        row.product_variants.some((v: any) => v.active)
-          ? row.product_variants.reduce(
-              (acc: number, v: any) =>
-                acc + (v.active ? Number(v.stock_increment) || 0 : 0),
-              0,
-            )
-          : stock,
+      stock: variantStock,
       sold: Number(row.sold) || 0,
       isActive,
       isBestseller,
@@ -170,8 +174,13 @@ export function mapOrderFromDB(
 ): Order {
   const customerData = (row.customer_data as any) || {};
 
-  // Prioritize direct joined address, then snapshotted address, then root fields
-  const addressSource = row.address || customerData.address || {};
+  // Prioritize direct joined address, then snapshotted addressData, then customerData root fields
+  const addressSource =
+    row.address ||
+    customerData.addressData ||
+    (typeof customerData.address === "object" ? customerData.address : null) ||
+    customerData ||
+    {};
 
   return {
     id: row.id,
@@ -179,15 +188,19 @@ export function mapOrderFromDB(
     customer: {
       ...customerData,
       name: row.customer_name || customerData?.name || "Cliente",
-      whatsapp: customerData?.whatsapp || "",
+      whatsapp: customerData?.whatsapp || customerData?.phone || "",
       address:
         addressSource.street ||
         customerData.address_text ||
-        customerData.address ||
+        (typeof customerData.address === "string" ? customerData.address : "") ||
         "",
       number: addressSource.number || customerData.number || "",
+      complement: addressSource.complement || customerData.complement || "",
       neighborhood:
         addressSource.neighborhood || customerData.neighborhood || "",
+      city: addressSource.city || customerData.city || "",
+      state: addressSource.state || customerData.state || "",
+      cep: addressSource.cep || customerData.cep || "",
       reference: addressSource.reference || customerData.reference || "",
     },
     items:

@@ -92,9 +92,14 @@ export const ProductCard = memo(function ProductCard({
   const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
     activeTransitionCardId = instanceId;
     if (isViewTransitionSupported) {
+      document
+        .querySelectorAll<HTMLElement>('img, [style*="view-transition-name"]')
+        .forEach((el) => {
+          el.style.removeProperty("view-transition-name");
+        });
       const img = e.currentTarget.querySelector("img");
       if (img) {
-        img.style.viewTransitionName = "product-image";
+        img.style.setProperty("view-transition-name", "product-image");
       }
     }
     onClick(product.id);
@@ -105,9 +110,14 @@ export const ProductCard = memo(function ProductCard({
       e.preventDefault();
       activeTransitionCardId = instanceId;
       if (isViewTransitionSupported) {
+        document
+          .querySelectorAll<HTMLElement>('img, [style*="view-transition-name"]')
+          .forEach((el) => {
+            el.style.removeProperty("view-transition-name");
+          });
         const img = e.currentTarget.querySelector("img");
         if (img) {
-          img.style.viewTransitionName = "product-image";
+          img.style.setProperty("view-transition-name", "product-image");
         }
       }
       onClick(product.id);
@@ -272,12 +282,12 @@ export const ProductCard = memo(function ProductCard({
             onClick={handleAddToCartClick}
             disabled={product.stock <= 0 || cartStatus !== "idle"}
             className={cn(
-              "w-full py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 shadow-[0_4px_10px_rgba(0,0,0,0.1)] flex items-center justify-center gap-1.5",
+              "w-full py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 shadow-[0_4px_10px_rgba(199,65,86,0.1)] flex items-center justify-center gap-1.5",
               product.stock <= 0
                 ? "bg-zinc-100 text-zinc-400 cursor-not-allowed shadow-none"
                 : cartStatus === "success"
                   ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                  : "bg-zinc-900 hover:bg-black text-white",
+                  : "bg-primary hover:opacity-90 text-primary-foreground",
             )}
           >
             {cartStatus === "loading" && (

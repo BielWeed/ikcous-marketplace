@@ -127,7 +127,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           (item: any) => item.product_id,
         );
         const { data: products, error: prodError } = await supabase
-          .from("produtos")
+          .from("vw_produtos_admin")
           .select("*, product_variants(*)")
           .in("id", productIds);
 
@@ -368,7 +368,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   );
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-4 pb-20 duration-200 animate-in fade-in md:px-0">
+    <div className="mx-auto max-w-7xl space-y-6 px-4 pb-admin lg:pb-12 duration-200 animate-in fade-in md:px-0">
       {/* Header / Actions */}
       <div className="mt-6 flex items-center gap-4">
         <div>

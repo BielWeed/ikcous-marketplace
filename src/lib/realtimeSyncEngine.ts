@@ -111,6 +111,13 @@ const TABLE_CONFIGS: TableConfig[] = [
       originCep: raw.origin_cep,
       shippingProvider: raw.shipping_provider,
       enabledShippingMethods: raw.enabled_shipping_methods,
+      shippingCoverage: raw.shipping_coverage,
+      localDeliveryFee:
+        raw.local_delivery_fee !== null && raw.local_delivery_fee !== undefined
+          ? Number(raw.local_delivery_fee)
+          : undefined,
+      localCepRange: raw.local_cep_range,
+      homeSections: raw.home_sections,
     }),
   },
   {
@@ -229,9 +236,15 @@ export const RealtimeSyncEngine = {
             (typeof (err as any) === "string" ? (err as any) : "");
           const isNormalClose =
             errMessage.includes("1000") || errMessage.includes("normal");
+          const isAbnormalClose =
+            errMessage.includes("1006") || errMessage.includes("abnormal");
           if (isNormalClose) {
             console.log(
               "[RealtimeSyncEngine] Channel closed normally (socket closed: 1000)",
+            );
+          } else if (isAbnormalClose) {
+            console.warn(
+              "[RealtimeSyncEngine] Channel closed abnormally (socket closed: 1006). SDK will auto-reconnect.",
             );
           } else {
             console.error(
@@ -595,6 +608,23 @@ export const RealtimeSyncEngine = {
         productsQuery,
       ]);
 
+      // Log queries with errors so they don't fail silently
+      if (configResult.error) {
+        console.warn("[RealtimeSyncEngine] configResult sync failed:", configResult.error);
+      }
+      if (categoriesResult.error) {
+        console.warn("[RealtimeSyncEngine] categoriesResult sync failed:", categoriesResult.error);
+      }
+      if (bannersResult.error) {
+        console.warn("[RealtimeSyncEngine] bannersResult sync failed:", bannersResult.error);
+      }
+      if (couponsResult.error) {
+        console.warn("[RealtimeSyncEngine] couponsResult sync failed:", couponsResult.error);
+      }
+      if (summaryResult.error) {
+        console.warn("[RealtimeSyncEngine] summaryResult sync failed:", summaryResult.error);
+      }
+
       // 1. Sync store_config
       const rawConfig = configResult.data;
       if (rawConfig) {
@@ -806,7 +836,10 @@ export const RealtimeSyncEngine = {
       }
       console.log("[RealtimeSyncEngine] ✅ CatchUp complete.");
     } catch (err) {
-      console.error("[RealtimeSyncEngine] Catch-up error:", err);
+      console.error(
+        "[RealtimeSyncEngine] Catch-up error:",
+        err ?? new Error("Unknown error during catch-up (null/undefined rejection)")
+      );
     } finally {
       _isCatchingUp = false;
     }

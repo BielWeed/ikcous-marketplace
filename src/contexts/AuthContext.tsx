@@ -85,9 +85,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const cachedSession = getCachedSession();
   const cachedIsAdmin = (() => {
     if (!cachedSession?.user) return false;
-    if (cachedSession.user.app_metadata?.role === "admin") return true;
-    const cacheKey = `ikcous_is_admin_${cachedSession.user.id}`;
-    return localStorage.getItem(cacheKey) === "true";
+    return cachedSession.user.app_metadata?.role === "admin";
   })();
 
   const [session, setSession] = useState<Session | null>(cachedSession);
@@ -139,14 +137,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Fast Path 2: Local Cache (Immediate return for confirmed customers, keyed by user ID)
     const cachedAdmin = localStorage.getItem(cacheKey);
-    if (cachedAdmin === "true") {
-      setIsAdmin(true);
-      // Run background check to sync with potential admin status updates without blocking initial load
-      networkCheck().catch((err) =>
-        console.error("[Auth] background networkCheck error:", err),
-      );
-      return;
-    }
     if (cachedAdmin === "false") {
       setIsAdmin(false);
       // Run background check to sync with potential admin status updates without blocking initial load

@@ -361,7 +361,7 @@ export const StrategicIntelligenceBlocks = React.memo(
               className="absolute left-0 top-0 size-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-admin-gold/5 blur-[100px] transition-colors duration-1000 group-hover:bg-admin-gold/10"
               style={{ willChange: "background-color" }}
             />
-            <div className="relative z-10 mb-3 sm:mb-5 flex items-center justify-between">
+            <div className="relative z-10 mb-3 flex items-center justify-between sm:mb-5">
               <div className="space-y-1">
                 <h3 className="text-[11px] font-black uppercase tracking-[0.4em] text-zinc-500">
                   Divisão de Faturamento
@@ -378,7 +378,7 @@ export const StrategicIntelligenceBlocks = React.memo(
             {/* CONTAINER DO GRÁFICO E DA LEGENDA DETALHADA */}
             <div className="relative z-10 flex flex-col items-center justify-between gap-4 sm:gap-10 lg:flex-row">
               {/* COLUNA DO GRÁFICO DONUT */}
-              <div className="relative flex h-[210px] w-full items-center justify-center sm:h-[260px] lg:h-[320px] lg:w-[55%]">
+              <div className="relative flex h-[210px] w-full min-w-0 overflow-hidden items-center justify-center sm:h-[260px] lg:h-[320px] lg:w-[55%]">
                 <ResponsiveContainer
                   width="100%"
                   height="100%"

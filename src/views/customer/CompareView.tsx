@@ -19,7 +19,7 @@ export function CompareView({
 }: CompareViewProps) {
   if (products.length === 0) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center px-4 pb-customer">
+      <div className="pb-customer flex min-h-dvh flex-col items-center justify-center px-4">
         <div className="mb-4 flex size-24 items-center justify-center rounded-full bg-gray-100">
           <Package className="size-10 text-gray-400" />
         </div>
@@ -98,7 +98,7 @@ export function CompareView({
   };
 
   return (
-    <div className="min-h-screen pb-customer">
+    <div className="pb-customer min-h-dvh">
       {/* Header */}
       <div className="sticky top-[-2px] z-10 border-b border-gray-100 bg-white p-4">
         <div className="flex items-center justify-between">

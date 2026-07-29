@@ -463,7 +463,7 @@ export const AdminProductsView = memo(function AdminProductsView({
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-admin-bg pb-8 text-white duration-200 animate-in fade-in"
+      className="h-auto bg-admin-bg pb-admin lg:pb-12 text-white duration-200 animate-in fade-in"
     >
       <style>{`
         @keyframes help-vertical-scroll {
@@ -507,7 +507,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           </button>
         </h1>
 
-        <div className="mr-auto flex items-center gap-3 md:ml-2">
+        <div className="flex items-center gap-3">
           <div
             className={cn(
               "inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full transition-all duration-300",
@@ -528,27 +528,27 @@ export const AdminProductsView = memo(function AdminProductsView({
               {loading ? "Sincronizando..." : "Operações ao Vivo"}
             </span>
           </div>
-        </div>
 
-        <Button
-          disabled={isOffline}
-          className="hidden h-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold px-5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:scale-105 hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:flex"
-          onClick={() => handleLocalNavigate("admin-product-form")}
-        >
-          <Plus className="mr-2 size-4 shrink-0 stroke-[3]" />
-          Novo Produto
-        </Button>
-        <Button
-          disabled={isOffline}
-          size="icon"
-          className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:hidden"
-          onClick={() => handleLocalNavigate("admin-product-form")}
-        >
-          <Plus className="size-5 stroke-[3]" />
-        </Button>
+          <Button
+            disabled={isOffline}
+            className="hidden h-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold px-5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:scale-105 hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:flex"
+            onClick={() => handleLocalNavigate("admin-product-form")}
+          >
+            <Plus className="mr-2 size-4 shrink-0 stroke-[3]" />
+            Novo Produto
+          </Button>
+          <Button
+            disabled={isOffline}
+            size="icon"
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:hidden"
+            onClick={() => handleLocalNavigate("admin-product-form")}
+          >
+            <Plus className="size-5 stroke-[3]" />
+          </Button>
+        </div>
       </div>
 
-      <div className="mt-6 space-y-6 px-4 sm:space-y-12 sm:px-6">
+      <div className="space-y-8 p-4 sm:p-6 lg:p-8">
         {/* Shortcuts Section */}
         <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
           <ProductBanners onNavigate={handleLocalNavigate} />
@@ -777,8 +777,8 @@ export const AdminProductsView = memo(function AdminProductsView({
 
         {/* Empty State */}
         {!loading && products?.length === 0 && (
-          <div className="admin-glass relative flex flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-white/5 py-12 px-6 text-center">
-            <div className="absolute inset-0 bg-gradient-to-b from-admin-gold/[0.02] to-transparent pointer-events-none" />
+          <div className="admin-glass relative flex flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-white/5 px-6 py-12 text-center">
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-admin-gold/[0.02] to-transparent" />
             <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
               <Package className="size-6 text-zinc-600" />
             </div>
@@ -1051,9 +1051,11 @@ export const AdminProductsView = memo(function AdminProductsView({
                         <DollarSign className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-zinc-500" />
                         <input
                           id="sim-cost"
+                          name="cost"
                           type="number"
                           step="0.01"
                           min="0"
+                          autoComplete="off"
                           value={simCost}
                           onChange={(e) => setSimCost(e.target.value)}
                           className="w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-admin-gold focus:outline-none"
@@ -1073,9 +1075,11 @@ export const AdminProductsView = memo(function AdminProductsView({
                         <DollarSign className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-zinc-500" />
                         <input
                           id="sim-price"
+                          name="price"
                           type="number"
                           step="0.01"
                           min="0"
+                          autoComplete="off"
                           value={simPrice}
                           onChange={(e) => setSimPrice(e.target.value)}
                           className="w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-admin-gold focus:outline-none"
@@ -1095,8 +1099,10 @@ export const AdminProductsView = memo(function AdminProductsView({
                         <Package className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-zinc-500" />
                         <input
                           id="sim-stock"
+                          name="stock"
                           type="number"
                           min="0"
+                          autoComplete="off"
                           value={simStock}
                           onChange={(e) => setSimStock(e.target.value)}
                           className="w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-admin-gold focus:outline-none"

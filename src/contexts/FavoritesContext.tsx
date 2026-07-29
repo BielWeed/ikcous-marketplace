@@ -131,14 +131,19 @@ export function FavoritesProvider({
           )
           .subscribe((status: any, err?: any) => {
             if (status === "CHANNEL_ERROR") {
+              const errMessage =
+                err?.message || (typeof err === "string" ? err : "");
               const isNormalClose =
-                err?.message?.includes("1000") ||
-                err?.message?.includes("normal") ||
-                (typeof err === "string" &&
-                  (err.includes("1000") || err.includes("normal")));
+                errMessage.includes("1000") || errMessage.includes("normal");
+              const isAbnormalClose =
+                errMessage.includes("1006") || errMessage.includes("abnormal");
               if (isNormalClose) {
                 console.log(
                   "[Favorites] Channel closed normally (socket closed: 1000)",
+                );
+              } else if (isAbnormalClose) {
+                console.warn(
+                  "[Favorites] Channel closed abnormally (socket closed: 1006). SDK will auto-reconnect.",
                 );
               } else {
                 console.error(

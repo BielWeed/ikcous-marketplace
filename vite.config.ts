@@ -35,6 +35,54 @@ try {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
 
+  const isDev = mode === "development";
+  const gitSha = process.env.VERCEL_GIT_COMMIT_SHA || "";
+  const buildTime = new Date().toISOString();
+
+  const appVersion = isDev
+    ? `${packageJson.version}-dev`
+    : gitSha
+      ? `${packageJson.version}-sha.${gitSha.slice(0, 7)}`
+      : `${packageJson.version}-build.${Date.now().toString().slice(-5)}`;
+
+  console.log(`[PWA Build] Version determined: ${appVersion}`);
+
+  const pwaVersionPlugin = {
+    name: "pwa-version-generator",
+    writeBundle() {
+      const distPath = path.resolve(process.cwd(), "dist");
+      const versionJsonPath = path.resolve(distPath, "version.json");
+      const versionData = {
+        version: appVersion,
+        buildDate: buildTime,
+        etag: gitSha || Date.now().toString(),
+        swVersion: `v${packageJson.version}`
+      };
+
+      try {
+        if (!fs.existsSync(distPath)) {
+          fs.mkdirSync(distPath, { recursive: true });
+        }
+        fs.writeFileSync(versionJsonPath, JSON.stringify(versionData, null, 2), "utf-8");
+        console.log(`[PWA Version Plugin] Generated version.json with version: ${appVersion}`);
+      } catch (err) {
+        console.error("[PWA Version Plugin] Failed to generate version.json:", err);
+      }
+
+      const silentGuardianPath = path.resolve(distPath, "silent-guardian.js");
+      try {
+        if (fs.existsSync(silentGuardianPath)) {
+          let content = fs.readFileSync(silentGuardianPath, "utf-8");
+          content = content.replace(/"1773003981700"/g, JSON.stringify(appVersion));
+          fs.writeFileSync(silentGuardianPath, content, "utf-8");
+          console.log(`[PWA Version Plugin] Updated silent-guardian.js with version: ${appVersion}`);
+        }
+      } catch (err) {
+        console.error("[PWA Version Plugin] Failed to update silent-guardian.js:", err);
+      }
+    }
+  };
+
   // Conversor de hex para rgb
   function hexToRgb(hexStr: string) {
     let hex = hexStr.replace(/^#/, "");
@@ -65,9 +113,10 @@ export default defineConfig(({ mode }) => {
       },
     },
     define: {
-      __APP_VERSION__: JSON.stringify(packageJson.version),
+      __APP_VERSION__: JSON.stringify(appVersion),
     },
     plugins: [
+      pwaVersionPlugin,
       process.env.ANALYZE === "true" &&
         visualizer({
           emitFile: false,

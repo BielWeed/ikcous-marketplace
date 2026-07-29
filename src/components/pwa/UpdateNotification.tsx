@@ -4,10 +4,10 @@ import { ArrowRight, Rocket } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 interface UpdateNotificationProps {
-  show: boolean;
-  onUpdate: () => void;
-  currentVersion?: string;
-  newVersion?: string | null;
+  readonly show: boolean;
+  readonly onUpdate: () => void;
+  readonly currentVersion?: string;
+  readonly newVersion?: string | null;
 }
 
 declare const __APP_VERSION__: string;
@@ -43,15 +43,6 @@ export function UpdateNotification({
     return () => timers.forEach(clearTimeout);
   }, [isUpdating]);
 
-  // Auto-update effect
-  useEffect(() => {
-    if (show && !isUpdating) {
-      const timer = setTimeout(() => {
-        handleUpdate();
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [show, isUpdating, handleUpdate]);
 
   return (
     <AnimatePresence>
@@ -65,72 +56,84 @@ export function UpdateNotification({
             className="pointer-events-auto absolute inset-0 bg-black/60 backdrop-blur-md"
           />
 
-          {/* Notification Card */}
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0, y: 10 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 10 }}
-            transition={{ type: "spring", stiffness: 350, damping: 30 }}
-            className={cn(
-              "relative pointer-events-auto mx-4 overflow-hidden",
-              "backdrop-blur-2xl border shadow-2xl",
-              "w-full max-w-[340px] rounded-[2rem] p-6 bg-zinc-950/90 border-white/10 text-white",
-            )}
-          >
-            {/* Top shine */}
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-
-            <div className="flex flex-col items-center space-y-5 text-center">
-              <div className="relative">
-                <div className="absolute inset-0 animate-pulse rounded-full bg-primary/20 blur-2xl" />
-                <div className="relative rounded-2xl border border-primary/20 bg-primary/10 p-4">
-                  <Rocket className="size-8 text-primary" />
-                </div>
-              </div>
-
-              <div className="space-y-1.5 px-2">
-                <h3 className="text-lg font-bold tracking-tight">
-                  Otimizando sua Experiência
-                </h3>
-                <p className="text-xs leading-relaxed text-zinc-400">
-                  Uma nova versão está sendo sincronizada automaticamente para
-                  garantir performance máxima.
-                </p>
-              </div>
-
-              {/* Version De→Para */}
-              {toVer && (
-                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 font-mono text-[10px]">
-                  <span className="text-zinc-500">{fromVer}</span>
-                  <ArrowRight className="size-2.5 text-zinc-700" />
-                  <span className="font-bold text-primary">{toVer}</span>
-                </div>
+            {/* Notification Card */}
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              transition={{ type: "spring", stiffness: 350, damping: 30 }}
+              className={cn(
+                "relative pointer-events-auto mx-4 overflow-hidden",
+                "backdrop-blur-2xl border shadow-2xl",
+                "w-full max-w-[340px] rounded-[2rem] p-6 bg-zinc-950/95 border-amber-500/30 text-white",
               )}
+            >
+              {/* Top shine */}
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" />
 
-              {/* Progress bar */}
-              <div className="w-full space-y-3">
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
-                  <motion.div
-                    className="h-full bg-primary shadow-[0_0_10px_rgba(234,179,8,0.3)]"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${isUpdating ? progress : 0}%` }}
-                    transition={{ duration: 0.3, ease: "easeOut" }}
-                  />
+              <div className="flex flex-col items-center space-y-5 text-center">
+                <div className="relative">
+                  <div className="absolute inset-0 animate-pulse rounded-full bg-amber-500/20 blur-2xl" />
+                  <div className="relative rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+                    <Rocket className="size-8 text-amber-400 animate-bounce" />
+                  </div>
                 </div>
-                <div className="flex items-center justify-between px-1">
-                  <p className="text-[10px] font-medium uppercase tracking-widest text-zinc-500">
-                    {isUpdating ? "Sincronizando" : "Aguardando"}
+
+                <div className="space-y-1.5 px-2">
+                  <h3 className="text-lg font-black tracking-tight text-white">
+                    Nova Versão Disponível
+                  </h3>
+                  <p className="text-xs leading-relaxed text-zinc-300">
+                    Uma nova atualização do IKCOUS Marketplace está pronta para ser instalada com melhorias de desempenho.
                   </p>
-                  <p className="font-mono text-[10px] font-bold text-primary">
-                    {isUpdating ? `${progress}%` : "Iniciando..."}
-                  </p>
+                </div>
+
+                {/* Version De→Para */}
+                {toVer && (
+                  <div className="flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3.5 py-1.5 font-mono text-xs">
+                    <span className="text-zinc-400">{fromVer}</span>
+                    <ArrowRight className="size-3 text-amber-400" />
+                    <span className="font-black text-amber-300">{toVer}</span>
+                  </div>
+                )}
+
+                {/* Action Button & Progress */}
+                <div className="w-full space-y-3 pt-2">
+                  {isUpdating ? (
+                    <>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-900 border border-amber-500/20">
+                        <motion.div
+                          className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 shadow-[0_0_12px_rgba(245,158,11,0.5)]"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${progress}%` }}
+                          transition={{ duration: 0.3, ease: "easeOut" }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between px-1">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-amber-400/80">
+                          Instalando atualização...
+                        </p>
+                        <p className="font-mono text-[11px] font-black text-amber-400">
+                          {progress}%
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleUpdate}
+                      className="w-full h-12 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-zinc-950 font-black text-xs uppercase tracking-wider transition-all duration-200 hover:brightness-110 active:scale-[0.98] shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 cursor-pointer border border-amber-300/40"
+                    >
+                      <Rocket className="size-4 text-zinc-950" />
+                      Atualizar Agora
+                    </button>
+                  )}
                 </div>
               </div>
-            </div>
 
-            {/* Bottom shine */}
-            <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-          </motion.div>
+              {/* Bottom shine */}
+              <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-400/30 to-transparent" />
+            </motion.div>
         </div>
       )}
     </AnimatePresence>

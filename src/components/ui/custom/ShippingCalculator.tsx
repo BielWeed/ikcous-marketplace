@@ -167,14 +167,14 @@ export function ShippingCalculator({
             onChange={(e) => handleCepChange(e.target.value)}
             placeholder="00000-000"
             maxLength={9}
-            className="w-full rounded-2xl border border-zinc-200 bg-white py-2.5 pl-9 pr-4 text-xs font-semibold text-zinc-800 transition-all focus:border-zinc-950 focus:outline-none focus:ring-1 focus:ring-zinc-950/20"
+            className="w-full rounded-2xl border border-zinc-200 bg-white py-2.5 pl-9 pr-4 text-xs font-semibold text-zinc-800 transition-all focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
           />
           <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-zinc-400" />
         </div>
         <button
           type="submit"
           disabled={loading || cep.replace(/\D/g, "").length !== 8}
-          className="shrink-0 select-none rounded-2xl bg-zinc-950 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white transition-colors hover:bg-zinc-800 disabled:pointer-events-none disabled:opacity-40"
+          className="shrink-0 select-none rounded-2xl bg-[#5C061E] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white transition-colors hover:bg-[#720E28] disabled:pointer-events-none disabled:opacity-40"
         >
           {loading ? "Cotando..." : "Calcular"}
         </button>
@@ -213,7 +213,7 @@ export function ShippingCalculator({
                   }}
                   className={`flex w-full select-none items-center justify-between rounded-2xl border p-3 text-left transition-all duration-200 ${
                     isSelected
-                      ? "border-zinc-950 bg-zinc-950 text-white shadow-md"
+                      ? "border-primary bg-primary text-white shadow-md shadow-rose-100/20"
                       : "border-zinc-100 bg-white text-zinc-800 hover:border-zinc-200"
                   }`}
                 >
@@ -221,7 +221,7 @@ export function ShippingCalculator({
                     <div
                       className={`flex size-7 items-center justify-center rounded-lg border transition-colors ${
                         isSelected
-                          ? "border-white/10 bg-white/10 text-white"
+                          ? "border-white/20 bg-white/20 text-white"
                           : "border-zinc-100 bg-zinc-50 text-zinc-500"
                       }`}
                     >

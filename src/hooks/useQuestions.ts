@@ -588,14 +588,20 @@ export function useQuestions() {
           if (status === "SUBSCRIBED") {
             console.log("[Realtime-Questions] Active: %s", channelId);
           } else if (status === "CHANNEL_ERROR") {
+            const errMessage =
+              err?.message || (typeof err === "string" ? err : "");
             const isNormalClose =
-              err?.message?.includes("1000") ||
-              err?.message?.includes("normal") ||
-              (typeof err === "string" &&
-                (err.includes("1000") || err.includes("normal")));
+              errMessage.includes("1000") || errMessage.includes("normal");
+            const isAbnormalClose =
+              errMessage.includes("1006") || errMessage.includes("abnormal");
             if (isNormalClose) {
               console.log(
                 "[Realtime-Questions] Channel closed normally in %s (socket closed: 1000)",
+                channelId,
+              );
+            } else if (isAbnormalClose) {
+              console.warn(
+                "[Realtime-Questions] Channel closed abnormally in %s (socket closed: 1006). SDK will auto-reconnect.",
                 channelId,
               );
             } else {

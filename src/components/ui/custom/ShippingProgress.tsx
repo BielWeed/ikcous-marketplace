@@ -173,7 +173,12 @@ export function ShippingProgress({
                   if (onNavigate) {
                     onNavigate("product-detail", p.id);
                   } else {
-                    window.location.href = `?product=${p.id}`;
+                    globalThis.history.pushState(
+                      { view: "product-detail", id: p.id },
+                      "",
+                      `?product=${p.id}`,
+                    );
+                    globalThis.dispatchEvent(new PopStateEvent("popstate"));
                   }
                 }}
                 role="button"
@@ -185,7 +190,12 @@ export function ShippingProgress({
                     if (onNavigate) {
                       onNavigate("product-detail", p.id);
                     } else {
-                      window.location.href = `?product=${p.id}`;
+                      globalThis.history.pushState(
+                        { view: "product-detail", id: p.id },
+                        "",
+                        `?product=${p.id}`,
+                      );
+                      globalThis.dispatchEvent(new PopStateEvent("popstate"));
                     }
                   }
                 }}

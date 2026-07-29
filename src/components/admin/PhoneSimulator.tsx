@@ -523,9 +523,9 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                       ),
                     ).map(([name, values]) => (
                       <div key={name} className="mt-1 space-y-1.5">
-                        <label className="ml-0.5 block text-[8px] font-black uppercase tracking-widest text-zinc-400">
+                        <span className="ml-0.5 block text-[8px] font-black uppercase tracking-widest text-zinc-400">
                           Selecione {name}
-                        </label>
+                        </span>
                         <div className="flex flex-wrap gap-1.5">
                           {values.map((v) => {
                             const isSelected =

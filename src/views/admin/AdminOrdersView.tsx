@@ -549,7 +549,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-admin-bg pb-0 font-sans text-white duration-200 animate-in fade-in selection:bg-admin-gold/30 lg:pb-0"
+      className="h-auto bg-admin-bg pb-admin lg:pb-12 font-sans text-white duration-200 animate-in fade-in selection:bg-admin-gold/30"
     >
       {/* Header Elite */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
@@ -569,7 +569,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         <div className="flex items-center gap-3">
           <div
             className={cn(
-              "inline-flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300",
+              "inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full transition-all duration-300",
               !isLoaded
                 ? "bg-amber-500/10 border-amber-500/20 text-amber-500"
                 : "bg-emerald-500/10 border-emerald-500/20 text-emerald-500",
@@ -583,28 +583,30 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   : "bg-emerald-500 animate-pulse",
               )}
             />
-            <span className="text-[10px] font-black uppercase tracking-widest">
+            <span className="text-[9px] font-black uppercase tracking-widest sm:text-[10px]">
               {!isLoaded ? "Sincronizando..." : "Operações ao Vivo"}
             </span>
           </div>
         </div>
       </div>
 
-      <div className="space-y-12 p-4 sm:p-6 lg:p-8">
+      <div className="space-y-8 p-4 sm:p-6 lg:p-8">
         {/* Support Section */}
         <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
           <SupportBanners onNavigate={onNavigate} />
         </div>
 
         {active && (
-          <LocalErrorBoundary>
-            <AdminKpiCarousel
-              cards={kpiCards}
-              loading={(!isLoaded || loading) && !analyticsStats}
-              active={active}
-              title="Métricas de Pedidos"
-            />
-          </LocalErrorBoundary>
+          <div className="space-y-4">
+            <LocalErrorBoundary>
+              <AdminKpiCarousel
+                cards={kpiCards}
+                loading={(!isLoaded || loading) && !analyticsStats}
+                active={active}
+                title="Métricas de Pedidos"
+              />
+            </LocalErrorBoundary>
+          </div>
         )}
 
         {/* Unified Control Bar Compacta */}
@@ -619,7 +621,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     <Search className="size-5 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
                   )}
                 </div>
+                <label htmlFor="orders-search" className="sr-only">
+                  Buscar pedidos
+                </label>
                 <DebouncedSearchInput
+                  id="orders-search"
+                  name="search"
                   placeholder="Buscar pedidos..."
                   className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 pl-14 text-sm font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
                   value={searchQuery}
@@ -656,6 +663,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                           id="filter-date-start"
                           name="start-date"
                           type="date"
+                          autoComplete="off"
                           className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 px-4 pb-1 pt-5 text-xs font-bold text-white transition-all [color-scheme:dark] focus:border-admin-gold/50 focus:ring-admin-gold/20"
                           value={dateRange.start}
                           onChange={(e) => {
@@ -678,6 +686,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                           id="filter-date-end"
                           name="end-date"
                           type="date"
+                          autoComplete="off"
                           className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 px-4 pb-1 pt-5 text-xs font-bold text-white transition-all [color-scheme:dark] focus:border-admin-gold/50 focus:ring-admin-gold/20"
                           value={dateRange.end}
                           onChange={(e) => {
@@ -853,8 +862,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 </div>
               )
             ) : paginatedOrders.length === 0 ? (
-              <div className="admin-glass relative flex flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-white/5 py-12 px-6 text-center">
-                <div className="absolute inset-0 bg-gradient-to-b from-admin-gold/[0.02] to-transparent pointer-events-none" />
+              <div className="admin-glass relative flex flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-white/5 px-6 py-12 text-center">
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-admin-gold/[0.02] to-transparent" />
                 <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
                   <Package className="size-6 text-zinc-600" />
                 </div>

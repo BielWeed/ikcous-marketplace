@@ -12,6 +12,20 @@ interface State {
   error: Error | null;
 }
 
+function isChunkLoadError(error: Error | null | undefined): boolean {
+  if (!error?.message) return false;
+  const msg = error.message.toLowerCase();
+  return (
+    msg.includes("failed to fetch dynamically imported module") ||
+    msg.includes("error loading dynamically imported module") ||
+    msg.includes("loading chunk") ||
+    msg.includes("chunkloaderror") ||
+    msg.includes("importing a module script failed") ||
+    msg.includes("css chunk load failed") ||
+    msg.includes("unexpected token '<'")
+  );
+}
+
 export class GlobalErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
@@ -24,6 +38,32 @@ export class GlobalErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught fatal error:", error, errorInfo);
+
+    // Automatic chunk reloading logic for Vite dynamic imports
+    const isChunkError = isChunkLoadError(error);
+
+    if (isChunkError) {
+      console.warn(
+        "[GlobalErrorBoundary] Dynamic chunk import error caught. Attempting silent reload for update recovery...",
+      );
+      try {
+        const lastReload = Number(
+          sessionStorage.getItem("pwa_chunk_reload_time") || "0",
+        );
+        const now = Date.now();
+        if (now - lastReload > 10000) {
+          sessionStorage.setItem("pwa_chunk_reload_time", String(now));
+          localStorage.setItem(
+            "pwa_reload_reason",
+            "Failed to fetch dynamically imported module",
+          );
+          window.location.reload();
+          return;
+        }
+      } catch (e) {
+        console.error("Failed to execute chunk error auto-reload", e);
+      }
+    }
 
     // Log to PWA forensics if available
     try {
@@ -50,7 +90,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
     }
   }
 
-  private handleReset = () => {
+  private readonly handleReset = () => {
     // Clear potentially corrupted application state
     localStorage.clear();
     sessionStorage.clear();
@@ -59,8 +99,25 @@ export class GlobalErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
+      const isChunkError = isChunkLoadError(this.state.error);
+
+      if (isChunkError) {
+        return (
+          <div className="flex size-full flex-col items-center justify-center bg-[#09090b] p-6 text-center antialiased">
+            <div className="size-10 animate-spin rounded-full border-3 border-white/10 border-t-admin-gold" />
+            <h1 className="mt-6 text-sm font-black uppercase tracking-[0.2em] text-white">
+              Atualizando o Aplicativo
+            </h1>
+            <p className="mt-2 max-w-xs text-xs leading-relaxed text-zinc-400">
+              Instalando uma nova versão do marketplace. Isso levará apenas um
+              instante...
+            </p>
+          </div>
+        );
+      }
+
       return (
-        <div className="flex h-full w-full flex-col items-center justify-center bg-zinc-950 p-6 text-center antialiased">
+        <div className="flex size-full flex-col items-center justify-center bg-zinc-950 p-6 text-center antialiased">
           <div className="inset-0 mb-6 flex size-16 items-center justify-center rounded-full bg-red-500/10">
             <AlertTriangle className="size-8 text-red-500" />
           </div>

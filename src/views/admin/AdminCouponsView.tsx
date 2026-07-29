@@ -1,5 +1,4 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
-import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,28 +9,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { useStore } from "@/contexts/StoreContext";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { cn } from "@/lib/utils";
-import type { Coupon, View } from "@/types";
+import type { View } from "@/types";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
 import {
-  AlertTriangle,
   Calendar,
   Check,
+  ChevronDown,
+  ChevronUp,
   Copy,
   Edit,
   HelpCircle,
@@ -65,27 +57,43 @@ const itemVariants: Variants = {
 };
 
 interface AdminCouponsViewProps {
-  onNavigate: (view: View) => void;
+  onNavigate: (view: View, id?: string) => void;
   active?: boolean;
-  onSetDirty?: (dirty: boolean) => void;
 }
 
 export const AdminCouponsView = memo(function AdminCouponsView({
+  onNavigate,
   active = true,
-  onSetDirty,
 }: AdminCouponsViewProps) {
-  const {
-    coupons,
-    loading,
-    addCoupon,
-    updateCoupon,
-    deleteCoupon,
-    refreshCoupons,
-  } = useCoupons(true);
+  const { coupons, loading, updateCoupon, deleteCoupon, refreshCoupons } =
+    useCoupons(true);
   const isOffline = useOnlineStatus();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const { config, isLoaded: configLoaded, updateConfig } = useStore();
+
+  const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
+  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
+
+  const handleToggleCoupons = async (checked: boolean) => {
+    if (isOffline) {
+      toast.error("Você está offline");
+      return;
+    }
+    setIsUpdatingConfig(true);
+    try {
+      await updateConfig({ enableCoupons: checked });
+      toast.success(
+        checked
+          ? "Cupons de desconto ativados no aplicativo"
+          : "Cupons de desconto desativados no aplicativo",
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao atualizar a configuração");
+    } finally {
+      setIsUpdatingConfig(false);
+    }
+  };
   const [showHelpModal, setShowHelpModal] = useState(false);
-  const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [couponToDelete, setCouponToDelete] = useState<string | null>(null);
 
@@ -107,138 +115,20 @@ export const AdminCouponsView = memo(function AdminCouponsView({
     wasOfflineRef.current = isOffline;
   }, [isOffline, active, refreshCoupons]);
 
-  const [formData, setFormData] = useState<Partial<Coupon>>({
-    code: "",
-    type: "percentage",
-    value: 0,
-    active: true,
-    usageLimit: 0,
-    minPurchase: 0,
-  });
-
-  // Reset modal and dialog states when active is false to prevent focus traps and scroll lock
+  // Reset states when active is false to prevent focus traps and scroll lock
   useEffect(() => {
     if (!active) {
-      setIsDialogOpen(false);
-      setEditingCoupon(null);
       setCouponToDelete(null);
       setCopiedCode(null);
       setShowHelpModal(false);
     }
   }, [active]);
 
-  // Controlar estado dirty do formulário para evitar descarte involuntário
-  useEffect(() => {
-    if (!onSetDirty) return;
-    if (!isDialogOpen) {
-      onSetDirty(false);
-      return;
-    }
-    const initial = editingCoupon || {
-      code: "",
-      type: "percentage",
-      value: 0,
-      active: true,
-      usageLimit: 0,
-      minPurchase: 0,
-    };
-
-    const isDirty =
-      (formData.code || "") !== (initial.code || "") ||
-      formData.type !== initial.type ||
-      Number(formData.value) !== Number(initial.value) ||
-      formData.active !== initial.active ||
-      Number(formData.usageLimit) !== Number(initial.usageLimit) ||
-      Number(formData.minPurchase) !== Number(initial.minPurchase);
-
-    onSetDirty(isDirty);
-  }, [isDialogOpen, formData, editingCoupon, onSetDirty]);
-
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code);
     setCopiedCode(code);
     toast.success(`Código "${code}" copiado!`);
     setTimeout(() => setCopiedCode(null), 2000);
-  };
-
-  const handleOpenDialog = (coupon?: Coupon) => {
-    if (coupon) {
-      setEditingCoupon(coupon);
-      setFormData({ ...coupon });
-    } else {
-      setEditingCoupon(null);
-      setFormData({
-        code: "",
-        type: "percentage",
-        value: 0,
-        active: true,
-        usageLimit: 0,
-        minPurchase: 0,
-      });
-    }
-    setIsDialogOpen(true);
-  };
-
-  const handleSubmit = async () => {
-    if (isOffline) {
-      toast.error("Sem conexão com a internet", {
-        description: "Você precisa estar online para salvar ou alterar cupons.",
-      });
-      return;
-    }
-
-    const cleanCode = formData.code
-      ? formData.code.trim().toUpperCase().replace(/\s+/g, "")
-      : "";
-    if (!cleanCode) {
-      toast.error("O código do cupom é obrigatório.");
-      return;
-    }
-
-    const value = formData.value ?? 0;
-    const minPurchase = formData.minPurchase ?? 0;
-    const usageLimit = formData.usageLimit ?? 0;
-
-    if (value <= 0) {
-      toast.error("O valor do desconto deve ser maior que zero.");
-      return;
-    }
-
-    if (formData.type === "percentage" && value > 100) {
-      toast.error(
-        "O valor do desconto em porcentagem não pode ser maior que 100%.",
-      );
-      return;
-    }
-
-    if (minPurchase < 0) {
-      toast.error("O valor mínimo de compra não pode ser negativo.");
-      return;
-    }
-
-    if (usageLimit < 0) {
-      toast.error("O limite de uso não pode ser negativo.");
-      return;
-    }
-
-    const dataToSubmit = {
-      ...formData,
-      code: cleanCode,
-    };
-
-    try {
-      if (editingCoupon) {
-        await updateCoupon(editingCoupon.id, dataToSubmit);
-      } else {
-        await addCoupon(
-          dataToSubmit as Required<Omit<Coupon, "id" | "usageCount">>,
-        );
-      }
-      setIsDialogOpen(false);
-    } catch (error) {
-      console.error("Erro ao salvar cupom:", error);
-      toast.error("Erro ao salvar o cupom. Revise as regras de preenchimento.");
-    }
   };
 
   const handleDelete = (id: string) => {
@@ -351,7 +241,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   return (
     <div
       ref={viewRef}
-      className="relative h-auto bg-[#09090b] pb-8 font-sans text-zinc-400 duration-500 animate-in fade-in selection:bg-emerald-500/30 selection:text-emerald-200"
+      className="relative h-auto bg-[#09090b] pb-admin lg:pb-12 font-sans text-zinc-400 duration-500 animate-in fade-in selection:bg-emerald-500/30 selection:text-emerald-200"
     >
       {/* Header */}
       <div className="sticky top-0 z-50 p-4 pb-0">
@@ -383,7 +273,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
 
           {coupons.length > 0 && (
             <button
-              onClick={() => handleOpenDialog()}
+              onClick={() => onNavigate("admin-coupon-form")}
               disabled={isOffline}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white px-5 py-2.5 text-[9px] font-black uppercase tracking-wider text-black shadow-lg shadow-white/5 transition-all hover:scale-[1.02] active:scale-95 disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:w-auto"
             >
@@ -403,6 +293,104 @@ export const AdminCouponsView = memo(function AdminCouponsView({
               active={active}
               title="Métricas de Campanhas"
             />
+          </div>
+        )}
+
+        {configLoaded && (
+          <div className="mb-6">
+            <div
+              className={`flex flex-col rounded-2xl border p-4 transition-all duration-300 ${
+                config.enableCoupons
+                  ? "border-amber-500/20 bg-amber-500/5 shadow-[0_0_15px_rgba(245,158,11,0.05)]"
+                  : "border-white/5 bg-zinc-950/40 hover:border-white/10"
+              }`}
+            >
+              {/* Main Compact Row */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex size-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-300 ${
+                      config.enableCoupons
+                        ? "border-amber-500/30 bg-amber-500/10 text-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.15)]"
+                        : "border-white/5 bg-zinc-900/60 text-zinc-500"
+                    }`}
+                  >
+                    <Ticket className="size-4.5" />
+                  </div>
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <Label
+                        htmlFor="enable-coupons-switch"
+                        className="cursor-pointer text-[12px] font-bold text-white animate-none"
+                      >
+                        Cupons de Desconto
+                      </Label>
+                      <span
+                        className={`inline-block size-1.5 rounded-full ${config.enableCoupons ? "animate-pulse bg-emerald-500" : "bg-zinc-600"}`}
+                      />
+                      <span className="text-[9px] font-semibold tracking-wider text-zinc-500 uppercase">
+                        {config.enableCoupons ? "Ativo" : "Inativo"}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <p className="text-[11px] text-zinc-400 leading-none">
+                        Permitir que clientes usem cupons no carrinho.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
+                        className="flex items-center gap-0.5 text-[11px] font-medium text-amber-400 hover:text-amber-300 transition-colors leading-none"
+                      >
+                        Saiba mais
+                        {isDetailsExpanded ? (
+                          <ChevronUp className="size-3.5" />
+                        ) : (
+                          <ChevronDown className="size-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="pl-1.5">
+                  <Switch
+                    id="enable-coupons-switch"
+                    checked={config.enableCoupons}
+                    onCheckedChange={handleToggleCoupons}
+                    className="scale-90 data-[state=checked]:bg-amber-500"
+                    disabled={isOffline || isUpdatingConfig}
+                  />
+                </div>
+              </div>
+
+              {/* Collapsible Explanatory Details */}
+              <AnimatePresence initial={false}>
+                {isDetailsExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-3 pt-3 border-t border-white/5 text-[11px] leading-relaxed text-zinc-500 text-left space-y-1.5">
+                      <p>
+                        Ativando esta opção, seus clientes poderão digitar
+                        códigos de cupom (ex: GANHE10) no carrinho para receber
+                        discounts especiais.
+                      </p>
+                      <p>
+                        Se desativado, o campo de cupom ficará totalmente oculto
+                        na loja.
+                      </p>
+                      <p>
+                        Use isso para criar campanhas promocionais e incentivar
+                        novas vendas!
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         )}
 
@@ -494,7 +482,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
               </p>
 
               <button
-                onClick={() => handleOpenDialog()}
+                onClick={() => onNavigate("admin-coupon-form")}
                 disabled={isOffline}
                 className="mt-8 flex items-center gap-2 rounded-2xl bg-white px-6 py-3.5 text-[10px] font-black uppercase tracking-widest text-black shadow-xl shadow-white/5 transition-all hover:scale-[1.02] hover:bg-zinc-200 active:scale-95 disabled:pointer-events-none disabled:opacity-50 disabled:grayscale"
               >
@@ -667,7 +655,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                         {/* Action Buttons */}
                         <div className="flex items-center gap-2 border-t border-white/5 pt-4">
                           <button
-                            onClick={() => handleOpenDialog(coupon)}
+                            onClick={() =>
+                              onNavigate("admin-coupon-form", coupon.id)
+                            }
                             disabled={isOffline}
                             className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-4 py-2.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:bg-white/10 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
                           >
@@ -690,327 +680,6 @@ export const AdminCouponsView = memo(function AdminCouponsView({
           )}
         </AnimatePresence>
       </div>
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="custom-scrollbar max-h-[92vh] overflow-y-auto rounded-[2.5rem] border-white/10 bg-[#09090b] p-0 text-white sm:max-w-xl">
-          <div className="w-full bg-gradient-to-b from-white/[0.02] to-transparent p-8 sm:p-10">
-            <DialogHeader className="mb-8">
-              <div className="mb-2 flex items-center gap-4">
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3">
-                  <Ticket className="size-6 text-emerald-400" />
-                </div>
-                <div className="text-left">
-                  <DialogTitle className="text-2xl font-black tracking-tight">
-                    {editingCoupon ? "Editar Campanha" : "Nova Campanha"}
-                  </DialogTitle>
-                  <DialogDescription className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                    Configure os detalhes do seu cupom
-                  </DialogDescription>
-                </div>
-              </div>
-            </DialogHeader>
-
-            {isOffline && (
-              <div className="text-red-450 mb-6 flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 duration-300 animate-in fade-in slide-in-from-top">
-                <AlertTriangle className="size-5 shrink-0 text-red-400" />
-                <div className="text-left">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-red-400">
-                    Modo Offline Ativo
-                  </p>
-                  <p className="mt-1 text-[9px] font-bold uppercase leading-none tracking-widest text-zinc-500">
-                    Criação e edição de cupons estão temporariamente
-                    desabilitadas.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-6">
-              {/* Live Preview Block */}
-              <div className="space-y-2 border-b border-white/5 pb-6">
-                <span className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                  PRÉ-VISUALIZAÇÃO EM TEMPO REAL
-                </span>
-
-                <div className="relative flex min-h-[150px] flex-col justify-between overflow-hidden rounded-[2rem] border border-white/5 bg-zinc-900/40 p-6 shadow-xl">
-                  {/* Preview Left Notch */}
-                  <div className="pointer-events-none absolute -left-3 top-[48%] z-10 size-6 -translate-y-1/2 rounded-full border border-white/5 bg-[#09090b]" />
-                  {/* Preview Right Notch */}
-                  <div className="pointer-events-none absolute -right-3 top-[48%] z-10 size-6 -translate-y-1/2 rounded-full border border-white/5 bg-[#09090b]" />
-                  {/* Preview Dashed Line */}
-                  <div className="pointer-events-none absolute inset-x-3 top-[48%] -translate-y-1/2 border-t-2 border-dashed border-white/10" />
-
-                  {/* Preview Upper Section */}
-                  <div className="flex items-center justify-between pb-3">
-                    <div className="max-w-[65%] rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-1.5">
-                      <span className="block truncate font-mono text-sm font-black uppercase italic tracking-tighter text-white">
-                        {formData.code || "EX: CAMPANHA10"}
-                      </span>
-                    </div>
-                    <div
-                      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[7px] font-black uppercase tracking-widest ${
-                        formData.active
-                          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                          : "border-zinc-500/20 bg-zinc-500/10 text-zinc-500"
-                      }`}
-                    >
-                      {formData.active ? "Ativo" : "Inativo"}
-                    </div>
-                  </div>
-
-                  {/* Preview Lower Section */}
-                  <div className="flex items-end justify-between pt-3">
-                    <div>
-                      <p className="mb-0.5 text-[7px] font-black uppercase tracking-widest text-zinc-500">
-                        Desconto
-                      </p>
-                      <p className="text-xl font-black italic text-white">
-                        {formData.type === "percentage"
-                          ? `${formData.value || 0}% OFF`
-                          : `R$ ${Number(formData.value || 0).toFixed(2)}`}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="mb-0.5 text-[7px] font-black uppercase tracking-widest text-zinc-500">
-                        Mínimo Compra
-                      </p>
-                      <p className="text-sm font-bold text-zinc-400">
-                        R$ {Number(formData.minPurchase || 0).toFixed(0)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="w-full space-y-2">
-                <Label
-                  htmlFor="coupon-code"
-                  className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                >
-                  Código Promocional
-                </Label>
-                <LocalBufferedInput
-                  id="coupon-code"
-                  name="code"
-                  value={formData.code || ""}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      code: val.toUpperCase().trim().replace(/\s+/g, ""),
-                    }))
-                  }
-                  placeholder="EX: VERÃO2026"
-                  useShadcn={true}
-                  disabled={isOffline}
-                  className="h-14 w-full rounded-2xl border-white/10 bg-white/[0.03] text-lg font-black uppercase italic tracking-tight transition-all focus:border-emerald-500/30 focus:ring-emerald-500/20 disabled:opacity-50"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <span className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                    Modalidade
-                  </span>
-                  <div className="relative flex h-14 w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        !isOffline &&
-                        setFormData({ ...formData, type: "percentage" })
-                      }
-                      disabled={isOffline}
-                      className={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50 ${formData.type === "percentage" ? "font-extrabold text-black" : "font-bold text-zinc-400 hover:text-white"}`}
-                    >
-                      Porcentagem (%)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        !isOffline &&
-                        setFormData({ ...formData, type: "fixed" })
-                      }
-                      disabled={isOffline}
-                      className={`relative z-10 flex flex-1 items-center justify-center gap-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50 ${formData.type === "fixed" ? "font-extrabold text-black" : "font-bold text-zinc-400 hover:text-white"}`}
-                    >
-                      Valor Fixo (R$)
-                    </button>
-
-                    {/* Animated Pill Background */}
-                    <motion.div
-                      layoutId="modalidade-pill"
-                      className="absolute inset-y-1 rounded-xl bg-white"
-                      animate={{
-                        left: formData.type === "percentage" ? "4px" : "50%",
-                        right: formData.type === "percentage" ? "50%" : "4px",
-                      }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 320,
-                        damping: 28,
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="coupon-value"
-                    className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                  >
-                    Valor do Desconto
-                  </Label>
-                  <LocalBufferedInput
-                    id="coupon-value"
-                    name="value"
-                    type="number"
-                    min={0}
-                    max={formData.type === "percentage" ? 100 : undefined}
-                    value={formData.value || ""}
-                    onFlush={(val) =>
-                      setFormData((prev) => ({ ...prev, value: Number(val) }))
-                    }
-                    useShadcn={true}
-                    disabled={isOffline}
-                    className="h-14 rounded-2xl border-white/10 bg-white/[0.03] text-lg font-black focus:ring-emerald-500/20 disabled:opacity-50"
-                    placeholder="EX: 15"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="coupon-min-purchase"
-                    className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                  >
-                    Pedido Mínimo (R$)
-                  </Label>
-                  <LocalBufferedInput
-                    id="coupon-min-purchase"
-                    name="minPurchase"
-                    type="number"
-                    min={0}
-                    value={formData.minPurchase || ""}
-                    onFlush={(val) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        minPurchase: Number(val),
-                      }))
-                    }
-                    useShadcn={true}
-                    disabled={isOffline}
-                    className="h-14 rounded-2xl border-white/10 bg-white/[0.03] font-bold disabled:opacity-50"
-                    placeholder="EX: 50"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="coupon-usage-limit"
-                    className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                  >
-                    Limite de Uso
-                  </Label>
-                  <LocalBufferedInput
-                    id="coupon-usage-limit"
-                    name="usageLimit"
-                    type="number"
-                    min={0}
-                    value={formData.usageLimit || ""}
-                    onFlush={(val) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        usageLimit: Number(val),
-                      }))
-                    }
-                    useShadcn={true}
-                    disabled={isOffline}
-                    placeholder="0 = Ilimitado"
-                    className="h-14 rounded-2xl border-white/10 bg-white/[0.03] font-bold disabled:opacity-50"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label
-                  htmlFor="coupon-valid-until"
-                  className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                >
-                  Data de Expiração (Opcional)
-                </Label>
-                <div className="relative">
-                  <Calendar className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
-                  <Input
-                    id="coupon-valid-until"
-                    name="validUntil"
-                    type="date"
-                    value={(() => {
-                      if (!formData.validUntil) return "";
-                      const d = new Date(formData.validUntil);
-                      return !Number.isNaN(d.getTime())
-                        ? d.toISOString().split("T")[0]
-                        : "";
-                    })()}
-                    disabled={isOffline}
-                    onChange={(e) => {
-                      if (!e.target.value) {
-                        setFormData({ ...formData, validUntil: undefined });
-                        return;
-                      }
-                      const d = new Date(e.target.value);
-                      if (!Number.isNaN(d.getTime())) {
-                        setFormData({
-                          ...formData,
-                          validUntil: d.toISOString(),
-                        });
-                      }
-                    }}
-                    className="h-14 rounded-2xl border-white/10 bg-white/[0.03] pl-12 font-bold focus:ring-emerald-500/20 disabled:opacity-50"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/[0.02] p-4">
-                <div className="space-y-0.5 text-left">
-                  <Label
-                    htmlFor="coupon-active"
-                    className="text-xs font-black uppercase italic tracking-tight text-white"
-                  >
-                    Status da Oferta
-                  </Label>
-                  <p className="text-[9px] font-medium uppercase tracking-wide text-zinc-500">
-                    Tornar este cupom disponível para uso
-                  </p>
-                </div>
-                <Switch
-                  id="coupon-active"
-                  checked={formData.active}
-                  disabled={isOffline}
-                  onCheckedChange={(checked) =>
-                    setFormData({ ...formData, active: checked })
-                  }
-                  className="data-[state=checked]:bg-emerald-500"
-                />
-              </div>
-            </div>
-
-            <div className="mt-10 flex gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setIsDialogOpen(false)}
-                className="h-14 flex-1 rounded-2xl border-white/10 bg-white/5 text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:bg-white/10"
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleSubmit}
-                disabled={isOffline}
-                className="h-14 flex-[2] rounded-2xl bg-white text-[10px] font-black uppercase tracking-widest text-black shadow-xl shadow-white/5 transition-all hover:scale-[1.02] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-              >
-                Salvar Campanha
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Help Modal */}
       <AdminHelpModal

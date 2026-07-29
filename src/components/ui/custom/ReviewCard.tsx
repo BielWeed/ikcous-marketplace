@@ -143,8 +143,8 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
           disabled={hasMarkedHelpful}
           className={`flex w-fit items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
             hasMarkedHelpful
-              ? "border-zinc-950 bg-zinc-950 text-white shadow-sm"
-              : "border-zinc-200/50 bg-zinc-50 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 active:scale-95"
+              ? "border-primary bg-primary text-white shadow-sm"
+              : "border-rose-100 bg-rose-50/30 text-rose-500 hover:bg-rose-50 hover:text-[#5C061E] active:scale-95"
           }`}
         >
           <ThumbsUp
@@ -156,8 +156,8 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
         {review.merchantReply && (
           <div className="relative mt-1 rounded-2xl border border-zinc-100 bg-zinc-50/80 p-3.5 text-xs duration-300 animate-in slide-in-from-left-1">
             <div className="mb-1.5 flex items-center gap-1.5">
-              <span className="size-1.5 rounded-full bg-zinc-900" />
-              <span className="text-[9px] font-black uppercase tracking-wider text-zinc-800">
+              <span className="size-1.5 rounded-full bg-primary" />
+              <span className="text-[9px] font-black uppercase tracking-wider text-slate-800">
                 Resposta da Loja
               </span>
             </div>

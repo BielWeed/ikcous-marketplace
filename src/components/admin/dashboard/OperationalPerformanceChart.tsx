@@ -295,7 +295,7 @@ export const OperationalPerformanceChart = memo(
 
         <div
           className={cn(
-            "h-[200px] sm:h-[300px] w-full relative z-10 px-0 transition-opacity duration-300",
+            "h-[200px] sm:h-[300px] w-full min-w-0 overflow-hidden relative z-10 px-0 transition-opacity duration-300",
             isPending && "opacity-60",
           )}
         >

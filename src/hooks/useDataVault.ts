@@ -320,7 +320,9 @@ export function useSyncListener(
   callback: (event: SyncEvent) => void,
 ): void {
   const callbackRef = useRef(callback);
-  callbackRef.current = callback;
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
   useEffect(() => {
     const unsubscribe = RealtimeSyncEngine.onSync((event) => {

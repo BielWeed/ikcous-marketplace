@@ -4,7 +4,10 @@ import {
   type KpiCardConfig,
 } from "@/components/admin/AdminKpiCarousel";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { useStore } from "@/contexts/StoreContext";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useReviews } from "@/hooks/useReviews";
@@ -16,6 +19,8 @@ import { AnimatePresence, type Variants, motion } from "framer-motion";
 import {
   AlertCircle,
   ArrowLeft,
+  ChevronDown,
+  ChevronUp,
   Clock,
   HelpCircle,
   LayoutGrid,
@@ -79,6 +84,32 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     subscribeToReviews,
   } = useReviews();
   const isOffline = useOnlineStatus();
+  const { config, isLoaded: configLoaded, updateConfig } = useStore();
+  const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
+  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
+
+  const handleToggleReviews = async (checked: boolean) => {
+    if (isOffline) {
+      toast.error("Você está offline");
+      return;
+    }
+    haptic.light();
+    setIsUpdatingConfig(true);
+    try {
+      await updateConfig({ enableReviews: checked });
+      toast.success(
+        checked
+          ? "Sistema de avaliações habilitado"
+          : "Sistema de avaliações desabilitado",
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao atualizar a configuração");
+    } finally {
+      setIsUpdatingConfig(false);
+    }
+  };
+
   const [page, setPage] = useLocalStorage<number>("admin_reviews_page", 0);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [totalReviews, setTotalReviews] = useState(0);
@@ -427,7 +458,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-[#09090b] pb-8 font-sans text-zinc-400 duration-200 animate-in fade-in selection:bg-admin-gold/30 selection:text-white"
+      className="h-auto bg-[#09090b] pb-admin lg:pb-12 font-sans text-zinc-400 duration-200 animate-in fade-in selection:bg-admin-gold/30 selection:text-white"
     >
       {/* Header / Stats Overlay */}
       <div className="sticky top-0 z-50 bg-[#09090b]/80 p-2 pb-0 backdrop-blur-md sm:p-4">
@@ -582,6 +613,107 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       </div>
 
       <div className="mx-auto max-w-7xl p-4 lg:p-8">
+        {configLoaded && (
+          <div className="mb-6">
+            <div
+              className={`flex flex-col rounded-2xl border p-4 transition-all duration-300 ${
+                config.enableReviews
+                  ? "border-blue-500/20 bg-blue-500/5 shadow-[0_0_15px_rgba(59,130,246,0.05)]"
+                  : "border-white/5 bg-zinc-950/40 hover:border-white/10"
+              }`}
+            >
+              {/* Main Compact Row */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex size-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-300 ${
+                      config.enableReviews
+                        ? "border-blue-500/30 bg-blue-500/10 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.15)]"
+                        : "border-white/5 bg-zinc-900/60 text-zinc-500"
+                    }`}
+                  >
+                    <MessageSquare className="size-4.5" />
+                  </div>
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <Label
+                        htmlFor="enable-reviews-switch"
+                        className="cursor-pointer text-[12px] font-bold text-white"
+                      >
+                        Avaliações dos Clientes
+                      </Label>
+                      <span
+                        className={`inline-block size-1.5 rounded-full ${config.enableReviews ? "animate-pulse bg-emerald-500" : "bg-zinc-600"}`}
+                      />
+                      <span className="text-[9px] font-semibold tracking-wider text-zinc-500 uppercase">
+                        {config.enableReviews ? "Ativo" : "Inativo"}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <p className="text-[11px] text-zinc-400 leading-none">
+                        Exibir notas e comentários nas páginas dos produtos.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
+                        className="flex items-center gap-0.5 text-[11px] font-medium text-blue-400 hover:text-blue-300 transition-colors leading-none"
+                      >
+                        Saiba mais
+                        {isDetailsExpanded ? (
+                          <ChevronUp className="size-3.5" />
+                        ) : (
+                          <ChevronDown className="size-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="pl-1.5">
+                  <Switch
+                    id="enable-reviews-switch"
+                    checked={config.enableReviews}
+                    onCheckedChange={handleToggleReviews}
+                    className="scale-90 data-[state=checked]:bg-blue-500"
+                    disabled={isOffline || isUpdatingConfig}
+                  />
+                </div>
+              </div>
+
+              {/* Collapsible Humanized Explanatory Details */}
+              <AnimatePresence initial={false}>
+                {isDetailsExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-3 pt-3 border-t border-white/5 text-[11px] leading-relaxed text-zinc-500 text-left space-y-1.5">
+                      <p>
+                        Ativando esta opção, seus clientes poderão dar notas de
+                        1 a 5 estrelas e escrever depoimentos sobre os produtos
+                        comprados.
+                      </p>
+                      <p>
+                        Isso ajuda a construir{" "}
+                        <strong>confiança para novos compradores</strong>, tira
+                        dúvidas frequentes e pode aumentar significativamente
+                        suas vendas!
+                      </p>
+                      <p>
+                        Aqui no painel administrativo você terá total controle
+                        para ler, responder e decidir quais avaliações serão
+                        publicadas na sua loja.
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
           {(loading || firstLoadRef.current) && adminReviews.length === 0 ? (
             <motion.div

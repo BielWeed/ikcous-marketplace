@@ -110,16 +110,18 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
           </div>
           <div className="relative flex items-center">
             <input
+              id="qa-new-question"
+              name="newQuestion"
               type="text"
               value={newQuestion}
               onChange={(e) => setNewQuestion(e.target.value)}
               placeholder="Escreva sua dúvida sobre o produto..."
-              className="w-full rounded-2xl border border-zinc-200 bg-zinc-50/50 px-4 py-3.5 pr-12 text-sm transition-all duration-300 placeholder:text-zinc-400 focus:border-zinc-950 focus:bg-white focus:shadow-md focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
+              className="w-full rounded-2xl border border-zinc-200 bg-zinc-50/50 px-4 py-3.5 pr-12 text-sm transition-all duration-300 placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/10"
             />
             <button
               onClick={handleAsk}
               disabled={!newQuestion.trim()}
-              className="absolute right-2 top-2 flex size-10 items-center justify-center rounded-xl bg-zinc-950 text-white shadow-sm transition-all duration-300 hover:bg-zinc-800 hover:shadow-md active:scale-95 disabled:pointer-events-none disabled:opacity-20"
+              className="absolute right-2 top-2 flex size-10 items-center justify-center rounded-xl bg-primary text-white shadow-sm transition-all duration-300 hover:opacity-90 hover:shadow-md active:scale-95 disabled:pointer-events-none disabled:opacity-20"
               title="Enviar pergunta"
             >
               <Send className="size-3.5" />
@@ -140,7 +142,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
           </p>
           <button
             onClick={handleNavigateToAuth}
-            className="rounded-full bg-zinc-950 px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-zinc-800 active:scale-95"
+            className="rounded-full bg-primary px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:opacity-90 active:scale-95"
           >
             Entrar na Conta
           </button>
@@ -271,7 +273,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                     >
                       <div className="flex-shrink-0">
                         <Avatar className="size-7 border border-zinc-950/10 shadow-sm">
-                          <AvatarFallback className="flex select-none items-center justify-center bg-zinc-950 text-[9px] font-black text-white">
+                          <AvatarFallback className="flex select-none items-center justify-center bg-primary text-[9px] font-black text-white">
                             IK
                           </AvatarFallback>
                         </Avatar>
@@ -282,7 +284,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                             <span className="text-[9px] font-black uppercase tracking-wider text-zinc-900">
                               Resposta da Equipe
                             </span>
-                            <span className="flex size-3 select-none items-center justify-center rounded-full bg-zinc-950 text-[7px] font-bold text-white">
+                            <span className="flex size-3 select-none items-center justify-center rounded-full bg-[#5C061E] text-[7px] font-bold text-white">
                               ✓
                             </span>
                           </div>
@@ -309,15 +311,18 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                     <div className="space-y-2 duration-200 animate-in fade-in">
                       <div className="relative">
                         <input
+                          id={`qa-reply-${q.id}`}
+                          name="replyText"
+                          type="text"
                           value={replyText}
                           onChange={(e) => setReplyText(e.target.value)}
                           placeholder="Escreva sua resposta oficial..."
-                          className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 pr-10 text-xs transition-all placeholder:text-zinc-400 focus:border-zinc-950 focus:bg-white focus:outline-none focus:ring-1 focus:ring-zinc-950"
+                          className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 pr-10 text-xs transition-all placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                         <button
                           onClick={() => handleReply(q.id)}
                           disabled={!replyText.trim()}
-                          className="absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-lg bg-zinc-950 text-white transition-all hover:bg-zinc-800 active:scale-95 disabled:opacity-20"
+                          className="absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-lg bg-[#5C061E] text-white transition-all hover:bg-[#720E28] active:scale-95 disabled:opacity-20"
                         >
                           <Send className="size-3" />
                         </button>

@@ -969,7 +969,7 @@ export const AdminQAView = memo(function AdminQAView({
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-[#09090b] pb-8 text-zinc-100 duration-200 animate-in fade-in selection:bg-emerald-500/30"
+      className="h-auto bg-[#09090b] pb-admin lg:pb-12 text-zinc-100 duration-200 animate-in fade-in selection:bg-emerald-500/30"
     >
       {/* Header Sticky */}
       <div className="sticky top-0 z-50 bg-[#09090b]/80 p-2 pb-0 backdrop-blur-md sm:p-4">
@@ -1231,6 +1231,8 @@ export const AdminQAView = memo(function AdminQAView({
                   <div className="relative">
                     <textarea
                       id="merchant-answer"
+                      name="answer"
+                      autoComplete="off"
                       value={answer}
                       onChange={(e) => setAnswer(e.target.value)}
                       disabled={isOffline}

@@ -1,5 +1,6 @@
 import { BannerCarousel } from "@/components/ui/custom/BannerCarousel";
 import { CategoryFilter } from "@/components/ui/custom/CategoryFilter";
+import { useStore } from "@/contexts/StoreContext";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
 import { cn } from "@/lib/utils";
@@ -63,6 +64,7 @@ export const HomeView = React.memo(function HomeView({
   onSortByChange,
   onHeaderDockChange,
 }: HomeViewProps) {
+  const { config } = useStore();
   const [showSortMenu, setShowSortMenu] = useState(false);
   const { categories, isLoading: isLoadingCategories } = useCategories();
   const { getBannersByPosition, isLoaded: bannersLoaded } = useBanners();
@@ -263,71 +265,95 @@ export const HomeView = React.memo(function HomeView({
       </Helmet>
 
       {/* Top Banners - Full Width */}
-      {!bannersLoaded && topBanners.length === 0 ? (
-        <div className="mb-2 flex h-[200px] w-full animate-pulse items-center justify-center bg-zinc-100 sm:h-[400px]">
-          <div className="size-8 animate-spin rounded-full border-4 border-zinc-200 border-t-primary" />
-        </div>
-      ) : topBanners.length > 0 ? (
-        <div className="relative mb-2 w-full">
-          <BannerCarousel
-            banners={topBanners}
-            autoPlay={true}
-            interval={5000}
-          />
+      {!searchQuery &&
+        selectedCategory === "Todas" &&
+        (!bannersLoaded && topBanners.length === 0 ? (
+          <div className="mb-2 flex h-[200px] w-full animate-pulse items-center justify-center bg-zinc-100 sm:h-[400px]">
+            <div className="size-8 animate-spin rounded-full border-4 border-zinc-200 border-t-primary" />
+          </div>
+        ) : topBanners.length > 0 ? (
+          <div className="relative mb-2 w-full">
+            <BannerCarousel
+              banners={topBanners}
+              autoPlay={true}
+              interval={5000}
+            />
 
-          {/* Premium Info Carousel */}
-          <InfoBlockCarousel>
-            <FreeShippingBlock onNavigate={onNavigate} />
-          </InfoBlockCarousel>
-        </div>
-      ) : null}
+            {/* Premium Info Carousel */}
+            <InfoBlockCarousel>
+              <FreeShippingBlock onNavigate={onNavigate} />
+            </InfoBlockCarousel>
+          </div>
+        ) : null)}
 
       {/* Recently Viewed - Removed and moved to Profile */}
 
-      {/* New Arrivals Section */}
-      {!searchQuery && selectedCategory === "Todas" && (
-        <ProductCarousel
-          title="Últimos Lançamentos"
-          products={newArrivals}
-          favorites={favorites}
-          onToggleFavorite={onToggleFavorite}
-          onProductClick={onProductClick}
-          onAddToCart={onAddToCart}
-          onQuickBuy={onQuickBuy}
-          selectedProductId={selectedProductId}
-        />
-      )}
-
-      {/* Offers Section */}
+      {/* Dynamic Showcases / Carousels */}
       {!searchQuery &&
         selectedCategory === "Todas" &&
-        offerProducts.length > 0 && (
-          <PremiumOffers
-            products={offerProducts}
-            favorites={favorites}
-            onToggleFavorite={onToggleFavorite}
-            onProductClick={onProductClick}
-            onAddToCart={onAddToCart}
-            onQuickBuy={onQuickBuy}
-          />
-        )}
+        (
+          config.homeSections ?? [
+            {
+              id: "new_arrivals",
+              title: "Últimos Lançamentos",
+              active: true,
+            },
+            { id: "offers", title: "Ofertas Imperdíveis", active: true },
+            { id: "bestsellers", title: "Destaques em Alta", active: true },
+          ]
+        ).map((section) => {
+          if (!section.active) return null;
+          const max = section.maxItems ?? 6;
 
-      {/* Bestsellers Section - Converted to Carousel! */}
-      {!searchQuery &&
-        selectedCategory === "Todas" &&
-        bestsellerProducts.length > 0 && (
-          <ProductCarousel
-            title="Destaques em Alta"
-            products={bestsellerProducts}
-            favorites={favorites}
-            onToggleFavorite={onToggleFavorite}
-            onProductClick={onProductClick}
-            onAddToCart={onAddToCart}
-            onQuickBuy={onQuickBuy}
-            className="bg-zinc-50/50"
-            selectedProductId={selectedProductId}
-          />
-        )}
+          let secProducts: typeof products = [];
+          if (section.productIds && section.productIds.length > 0) {
+            const productMap = new Map(products.map((p) => [p.id, p]));
+            secProducts = section.productIds
+              .map((id) => productMap.get(id))
+              .filter((p): p is (typeof products)[0] => Boolean(p))
+              .slice(0, max);
+          } else if (section.id === "offers") {
+            secProducts = offerProducts.slice(0, max);
+          } else if (section.id === "bestsellers") {
+            secProducts = bestsellerProducts.slice(0, max);
+          } else {
+            secProducts = newArrivals.slice(0, max);
+          }
+
+          if (secProducts.length === 0) return null;
+
+          if (section.id === "offers") {
+            return (
+              <PremiumOffers
+                key={section.id}
+                title={section.title}
+                products={secProducts}
+                favorites={favorites}
+                onToggleFavorite={onToggleFavorite}
+                onProductClick={onProductClick}
+                onAddToCart={onAddToCart}
+                onQuickBuy={onQuickBuy}
+              />
+            );
+          }
+
+          return (
+            <ProductCarousel
+              key={section.id}
+              title={section.title}
+              products={secProducts}
+              favorites={favorites}
+              onToggleFavorite={onToggleFavorite}
+              onProductClick={onProductClick}
+              onAddToCart={onAddToCart}
+              onQuickBuy={onQuickBuy}
+              className={
+                section.id === "bestsellers" ? "bg-zinc-50/50" : undefined
+              }
+              selectedProductId={selectedProductId}
+            />
+          );
+        })}
 
       {/* Middle Banners - Full Width */}
       {!searchQuery &&
@@ -385,7 +411,7 @@ export const HomeView = React.memo(function HomeView({
                     haptic.light();
                     setShowSortMenu(!showSortMenu);
                   }}
-                  className="flex size-10 items-center justify-center rounded-full bg-zinc-900 text-white shadow-lg shadow-zinc-200 transition-all hover:bg-black active:scale-95"
+                  className="flex size-10 items-center justify-center rounded-full bg-[#5C061E] text-white shadow-lg shadow-rose-100 transition-all hover:bg-[#720E28] active:scale-95"
                   aria-expanded={showSortMenu}
                   aria-haspopup="listbox"
                   title="Filtrar e Ordenar"
@@ -433,7 +459,7 @@ export const HomeView = React.memo(function HomeView({
                             }}
                             className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
                               sortBy === option.value
-                                ? "translate-x-1 bg-zinc-900 text-white"
+                                ? "translate-x-1 bg-[#5C061E] text-white"
                                 : "text-zinc-400 hover:bg-zinc-50 hover:text-zinc-900"
                             }`}
                           >

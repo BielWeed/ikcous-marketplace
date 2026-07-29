@@ -11,18 +11,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useVOR } from "@/hooks/useVOR";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  ExternalLink,
   HelpCircle,
   History,
   Info,
+  Radio,
   Send,
+  Smartphone,
   Sparkles,
   Target,
   Users,
@@ -44,6 +54,30 @@ export const AdminPushView = memo(function AdminPushView({
 }: AdminPushViewProps) {
   const { user } = useAuth();
   const isOffline = useOnlineStatus();
+  const { config, isLoaded: configLoaded, updateConfig } = useStore();
+  const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
+  const [isSocialProofExpanded, setIsSocialProofExpanded] = useState(false);
+
+  const handleToggleRealTimeSalesAlerts = async (checked: boolean) => {
+    if (isOffline) {
+      toast.error("Você está offline");
+      return;
+    }
+    setIsUpdatingConfig(true);
+    try {
+      await updateConfig({ realTimeSalesAlerts: checked });
+      toast.success(
+        checked
+          ? "Notificações de prova social ativadas"
+          : "Notificações de prova social desativadas",
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao atualizar a configuração");
+    } finally {
+      setIsUpdatingConfig(false);
+    }
+  };
   const [loading, setLoading] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [subCount, setSubCount] = useState(0);
@@ -70,14 +104,17 @@ export const AdminPushView = memo(function AdminPushView({
       setLoadingProducts(true);
       try {
         const { data, error } = await supabase
-          .from("produtos")
+          .from("vw_produtos_public")
           .select("id, nome")
           .eq("ativo", true)
           .order("nome", { ascending: true });
         if (!error && data) {
-          setProducts(data);
-          if (data.length > 0) {
-            setSelectedProductId(data[0].id);
+          const validProducts = (data as any[])
+            .filter((p) => p.id && p.nome)
+            .map((p) => ({ id: p.id as string, nome: p.nome as string }));
+          setProducts(validProducts);
+          if (validProducts.length > 0) {
+            setSelectedProductId(validProducts[0].id);
           }
         }
       } catch (err) {
@@ -140,9 +177,14 @@ export const AdminPushView = memo(function AdminPushView({
       if (destType !== "orders") setDestType("orders");
     } else if (url === "/profile") {
       if (destType !== "profile") setDestType("profile");
-    } else if (url.startsWith("/product-detail?id=")) {
+    } else if (
+      url.startsWith("/product-detail?id=") ||
+      url.startsWith("/product/")
+    ) {
       if (destType !== "product") setDestType("product");
-      const id = url.split("?id=")[1] || "";
+      const id = url.includes("?id=")
+        ? url.split("?id=")[1] || ""
+        : url.split("/product/")[1] || "";
       if (selectedProductId !== id) setSelectedProductId(id);
     } else {
       if (destType !== "custom") setDestType("custom");
@@ -260,10 +302,8 @@ export const AdminPushView = memo(function AdminPushView({
 
     setLoading(true);
     try {
-      // ZENITH v21.7: Rely on AuthContext's verified user
       if (!user) throw new Error("Administrador não autenticado");
 
-      // 1. Fetch real targets based on segment
       const { data: targets, error: targetError } = await (supabase.rpc as any)(
         "get_segmented_push_targets",
         {
@@ -281,7 +321,6 @@ export const AdminPushView = memo(function AdminPushView({
         return;
       }
 
-      // 2. Save to logs
       const { error: logError } = await supabase
         .from("push_notifications_log")
         .insert({
@@ -294,7 +333,6 @@ export const AdminPushView = memo(function AdminPushView({
 
       if (logError) throw logError;
 
-      // 2.5. Save in-app notifications
       try {
         if (targetUserId) {
           await supabase.from("notificacoes").insert({
@@ -335,7 +373,6 @@ export const AdminPushView = memo(function AdminPushView({
         console.error("Error saving in-app notification:", inAppErr);
       }
 
-      // 3. Call Edge Function to send real push notifications
       const { error: pushError } = await supabase.functions.invoke(
         "send-push",
         {
@@ -382,92 +419,125 @@ export const AdminPushView = memo(function AdminPushView({
     }
   };
 
+  const effectiveReach = segment === "all" ? subCount : predictedReach;
+
   return (
-    <div className="h-auto bg-[#09090b] pb-8 text-white duration-200 animate-in fade-in selection:bg-emerald-500/30 selection:text-emerald-200">
-      {/* Header Executivo */}
-      <div className="p-4 border-b border-white/5">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-[#09090b] pb-admin lg:pb-12 text-white duration-200 animate-in fade-in selection:bg-emerald-500/30 selection:text-emerald-200">
+      {/* Header Limpo e Direto */}
+      <div className="sticky top-0 z-20 border-b border-white/10 bg-[#09090b]/90 backdrop-blur-xl px-4 py-3">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.2)]">
+              <Send className="size-4" />
+            </div>
             <div>
-              <h1 className="flex items-center gap-2 text-lg font-black tracking-tight text-white">
-                <span>Push Center</span>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base font-black tracking-tight text-white leading-none">
+                  Enviar Notificações
+                </h1>
                 <button
                   type="button"
                   onClick={() => setShowHelpModal(true)}
-                  className="flex size-6 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
-                  title="Guia do Push Center e Ajuda"
+                  className="flex size-5 shrink-0 items-center justify-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400 transition-all hover:border-white/20 hover:text-white active:scale-95"
+                  title="Ajuda e explicação desta tela"
                 >
                   <HelpCircle className="size-3" />
                 </button>
-                <Target className="size-3.5 animate-pulse text-emerald-500" />
-              </h1>
-              <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500">
-                Centro de Comando de Engajamento
+              </div>
+              <p className="text-[9px] font-extrabold uppercase tracking-widest text-zinc-500 mt-0.5">
+                Envie mensagens e avisos direto no celular dos clientes
               </p>
+            </div>
+          </div>
+
+          {/* Indicadores no Topbar */}
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[10px] font-semibold text-zinc-300">
+              <Smartphone className="size-3.5 text-emerald-400" />
+              <span>
+                <strong className="text-white font-bold">{subCount}</strong>{" "}
+                Celulares Cadastrados
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[10px] font-semibold">
+              <span
+                className={`size-2 rounded-full ${config.realTimeSalesAlerts ? "bg-emerald-500 animate-pulse" : "bg-zinc-600"}`}
+              />
+              <span className="text-zinc-400 uppercase tracking-wider text-[9px]">
+                {config.realTimeSalesAlerts ? "Avisos de Vendas Ativos" : "Avisos Desativados"}
+              </span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="mx-auto max-w-5xl p-4">
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-5">
-          {/* Coluna Principal: Modelos e Formulário (3 Colunas no md) */}
-          <div className="space-y-5 md:col-span-3">
-            {/* Modelos de Campanha Card */}
-            <div className="admin-glass rounded-2xl border border-white/5 bg-zinc-900/40 p-5 shadow-xl backdrop-blur-2xl">
-              <div className="mb-4 flex items-center gap-2">
-                <Sparkles className="size-4 text-emerald-400" />
-                <div>
+      {/* Conteúdo Principal */}
+      <div className="mx-auto max-w-6xl px-3 pt-3 sm:px-4 sm:pt-4">
+        <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-12">
+          {/* COLUNA PRINCIPAL: Mensagens Prontas e Envio (lg:col-span-7) */}
+          <div className="space-y-3.5 lg:col-span-7">
+            {/* Mensagens Prontas */}
+            <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl">
+              <div className="mb-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-3.5 text-emerald-400" />
                   <h3 className="text-xs font-black uppercase tracking-wider text-white">
-                    Modelos de Campanha
+                    Exemplos de Mensagens Prontas
                   </h3>
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                    Selecione um modelo para preencher a cópia
-                  </p>
                 </div>
+                <span className="text-[9px] font-semibold uppercase tracking-widest text-zinc-500">
+                  Clique para usar
+                </span>
               </div>
 
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 {[
                   {
                     id: "fomo",
-                    title: "Promoção Relâmpago",
-                    desc: "Gera urgência com tempo limitado.",
+                    title: "Desconto Relâmpago",
+                    tag: "Oferta ⚡",
+                    desc: "Preenche oferta de 10% OFF",
                     icon: Zap,
+                    border: "hover:border-amber-500/40 hover:bg-amber-500/5",
                   },
                   {
                     id: "auth",
-                    title: "Carrinho Abandonado",
-                    desc: "Recupera clientes inativos.",
+                    title: "Lembrete de Carrinho",
+                    tag: "Vendas 🛒",
+                    desc: "Lembrar de finalizar compra",
                     icon: Info,
+                    border: "hover:border-sky-500/40 hover:bg-sky-500/5",
                   },
                   {
                     id: "value",
-                    title: "Cupom de Desconto",
-                    desc: "Oferece vantagens exclusivas.",
+                    title: "Cupom de R$20",
+                    tag: "Presente 🎁",
+                    desc: "Cupom de desconto especial",
                     icon: Target,
+                    border:
+                      "hover:border-emerald-500/40 hover:bg-emerald-500/5",
                   },
                 ].map((arch) => (
                   <button
                     key={arch.id}
-                    className="group/arch flex flex-col justify-between rounded-xl border border-white/5 bg-white/5 p-3.5 text-left transition-all hover:bg-white/10 active:scale-95"
+                    className={`group/arch flex flex-col justify-between rounded-lg border border-white/5 bg-white/[0.03] p-2.5 text-left transition-all duration-200 active:scale-[0.98] ${arch.border}`}
                     onClick={() => {
                       if (arch.id === "fomo") {
                         setNotification({
-                          title: "Cupom Relâmpago: 10% OFF ativo por 1h! ⚡",
-                          body: "Aproveite o desconto exclusivo nos produtos da sua lista de desejos. Garanta o seu antes que acabe!",
+                          title: "Cupom Relâmpago: 10% OFF ativo por 1 hora! ⚡",
+                          body: "Aproveite o desconto exclusivo nos produtos da loja. Garanta o seu antes que acabe!",
                           url: "/search",
                         });
                       } else if (arch.id === "auth") {
                         setNotification({
-                          title: "Seu carrinho está te esperando! 🛒",
-                          body: "Finalize sua compra agora e garanta frete grátis para Monte Carmelo. Não perca!",
+                          title: "Seu carrinho de compras está te esperando! 🛒",
+                          body: "Finalize seu pedido agora e garanta seus produtos com rapidez. Não perca!",
                           url: "/cart",
                         });
                       } else {
                         setNotification({
                           title: "Presente para você: Cupom de R$20! 🎁",
-                          body: "Use o cupom BEMVINDO e garanta um desconto especial na sua próxima compra no marketplace.",
+                          body: "Use o cupom BEMVINDO e garanta um desconto especial na sua próxima compra na loja.",
                           url: "/profile",
                         });
                       }
@@ -481,316 +551,478 @@ export const AdminPushView = memo(function AdminPushView({
                         },
                       );
 
-                      toast.success(`Modelo "${arch.title}" Carregado!`);
+                      toast.success(`Mensagem pronta "${arch.title}" preenchida!`);
                     }}
                   >
-                    <div className="flex items-center gap-1.5 mb-1.5">
-                      <arch.icon className="size-3.5 text-emerald-400" />
-                      <h4 className="text-[10px] font-black uppercase tracking-wider text-white">
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-white">
+                        <arch.icon className="size-3 text-emerald-400" />
                         {arch.title}
-                      </h4>
+                      </span>
                     </div>
-                    <p className="text-[9px] font-medium leading-tight text-zinc-500">
-                      {arch.desc}
-                    </p>
+                    <div className="flex items-center justify-between text-[9px] font-medium text-zinc-400">
+                      <span>{arch.desc}</span>
+                      <span className="font-mono text-[8px] text-emerald-400/80 font-bold">
+                        {arch.tag}
+                      </span>
+                    </div>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Formulário de Envio */}
-            <div className="admin-glass rounded-2xl border border-white/5 bg-zinc-900/40 p-5 shadow-xl backdrop-blur-2xl">
-              <div className="mb-4 flex items-center gap-2.5">
-                <div className="flex size-9 items-center justify-center rounded-xl border border-white/5 bg-zinc-950 text-white">
-                  <Send className="size-4 text-emerald-400" />
+            <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl">
+              <div className="mb-3 flex items-center justify-between border-b border-white/5 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="flex size-7 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
+                    <Send className="size-3.5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-white leading-none">
+                      Escrever Nova Notificação
+                    </h3>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 mt-0.5">
+                      Crie e envie mensagens para os clientes
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-xs font-black uppercase tracking-wider text-white">
-                    Redigir Campanha
-                  </h3>
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                    Disparo imediato segmentado
-                  </p>
+
+                <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400">
+                  <Radio className="size-3 animate-pulse" />
+                  <span>Receberão: {effectiveReach} clientes</span>
                 </div>
               </div>
 
               {isOffline && (
-                <div className="mb-4 flex items-center gap-3 rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-rose-400 animate-in fade-in slide-in-from-top-2">
+                <div className="mb-3 flex items-center gap-2.5 rounded-lg border border-rose-500/30 bg-rose-500/10 p-2.5 text-rose-300 animate-in fade-in">
                   <AlertCircle className="size-4 shrink-0" />
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-wider">
-                      Modo Offline Ativo
-                    </p>
-                    <p className="mt-0.5 text-[9px] font-medium text-zinc-500">
-                      Disparos de notificação desativados temporariamente.
-                    </p>
+                  <div className="text-[10px]">
+                    <span className="font-bold uppercase">
+                      Você está offline:
+                    </span>{" "}
+                    Conecte-se à internet para poder enviar notificações aos clientes.
                   </div>
                 </div>
               )}
 
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <span className="ml-1 text-[9px] font-black uppercase tracking-widest text-zinc-400">
-                    Segmentação do Público
-                  </span>
+              <div className="space-y-3">
+                {/* Quem vai receber */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
+                      Quem vai receber esta mensagem?
+                    </span>
+                  </div>
+
                   {targetUserId ? (
-                    <div className="flex items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-                      <div>
-                        <p className="text-[9px] font-black uppercase leading-none tracking-widest text-emerald-400">
-                          Envio Direcionado
-                        </p>
-                        <p className="mt-1 text-xs font-bold leading-none text-white">
-                          Cliente: {targetUserName || "Carregando..."}
-                        </p>
+                    <div className="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="size-4 text-emerald-400" />
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-emerald-400 leading-none">
+                            Mensagem para Cliente Específico
+                          </p>
+                          <p className="text-xs font-bold text-white mt-0.5">
+                            Cliente: {targetUserName || "Carregando..."}
+                          </p>
+                        </div>
                       </div>
                       <button
-                        onClick={() => {
-                          onNavigate("admin-push");
-                        }}
+                        onClick={() => onNavigate("admin-push")}
                         disabled={isOffline}
-                        className="rounded-lg border border-white/10 bg-zinc-900 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-white shadow-sm transition-all hover:bg-zinc-800 active:scale-95 disabled:opacity-40"
+                        className="rounded-md border border-white/10 bg-zinc-900 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-zinc-300 hover:bg-zinc-800 hover:text-white"
                       >
-                        Cancelar
+                        Mudar para todos os clientes
                       </button>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 gap-1.5">
+                    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                       {[
-                        { id: "all", label: "Todos" },
-                        { id: "vip", label: "Clientes VIP" },
-                        { id: "inactive", label: "Inativos (30d)" },
-                        { id: "new", label: "Novos" },
+                        {
+                          id: "all",
+                          label: "Todos os Clientes",
+                          count: segment === "all" ? effectiveReach : subCount,
+                        },
+                        {
+                          id: "vip",
+                          label: "Clientes Frequentes",
+                          count:
+                            segment === "vip"
+                              ? effectiveReach
+                              : Math.ceil(subCount * 0.3),
+                        },
+                        {
+                          id: "inactive",
+                          label: "Sem comprar há 30d",
+                          count:
+                            segment === "inactive"
+                              ? effectiveReach
+                              : Math.floor(subCount * 0.25),
+                        },
+                        {
+                          id: "new",
+                          label: "Novos Clientes",
+                          count:
+                            segment === "new"
+                              ? effectiveReach
+                              : Math.floor(subCount * 0.45),
+                        },
                       ].map((s) => (
                         <button
                           key={s.id}
                           onClick={() => !isOffline && setSegment(s.id)}
                           disabled={isOffline}
-                          className={`h-9 rounded-lg border text-[9px] font-black uppercase tracking-widest transition-all ${
+                          className={`flex h-8 items-center justify-between rounded-lg border px-2.5 text-[9px] font-black uppercase tracking-wider transition-all ${
                             segment === s.id
-                              ? "border-white bg-white text-black shadow-md shadow-white/10"
-                              : "border-white/5 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white"
-                          } disabled:pointer-events-none disabled:opacity-30`}
+                              ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.15)]"
+                              : "border-white/5 bg-white/[0.02] text-zinc-400 hover:bg-white/5 hover:text-white"
+                          } disabled:opacity-30`}
                         >
-                          {s.label}
+                          <span className="truncate pr-1">{s.label}</span>
+                          <span
+                            className={`text-[8px] font-mono rounded px-1 shrink-0 ${segment === s.id ? "bg-emerald-500/20 text-emerald-200" : "bg-zinc-800 text-zinc-500"}`}
+                          >
+                            {s.count}
+                          </span>
                         </button>
                       ))}
                     </div>
                   )}
-                  <p className="ml-1 text-[9px] font-bold uppercase tracking-widest text-emerald-400">
-                    Alcance Estimado:{" "}
-                    {segment === "all" ? subCount : predictedReach} dispositivos
-                  </p>
                 </div>
 
+                {/* Título & Mensagem */}
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="push-title"
-                    className="ml-1 text-[9px] font-black uppercase tracking-widest text-zinc-400"
-                  >
-                    Título da Notificação
-                  </Label>
-                  <LocalBufferedInput
-                    id="push-title"
-                    name="title"
-                    value={notification.title}
-                    onFlush={(val) =>
-                      setNotification((prev) => ({ ...prev, title: val }))
-                    }
-                    disabled={isOffline || loading}
-                    placeholder={
-                      isOffline
-                        ? "Indisponível offline"
-                        : "Ex: Oferta Especial Ativada! 🎁"
-                    }
-                    useShadcn={true}
-                    className="h-11 rounded-xl border-white/10 bg-black/40 text-sm text-white shadow-inner transition-all placeholder:text-zinc-700 focus:border-admin-gold/50 focus:bg-black/60 focus:ring-0 focus:ring-offset-0 disabled:opacity-40"
-                  />
-                  <Label
-                    htmlFor="push-body"
-                    className="ml-1 text-[9px] font-black uppercase tracking-widest text-zinc-400"
-                  >
-                    Mensagem da Notificação
-                  </Label>
-                  <LocalBufferedTextarea
-                    id="push-body"
-                    name="body"
-                    value={notification.body}
-                    onFlush={(val) =>
-                      setNotification((prev) => ({ ...prev, body: val }))
-                    }
-                    disabled={isOffline || loading}
-                    placeholder={
-                      isOffline
-                        ? "Indisponível offline"
-                        : "Digite o texto da notificação..."
-                    }
-                    rows={3}
-                    useShadcn={true}
-                    className="resize-none rounded-xl border-white/10 bg-black/40 p-3.5 text-xs font-medium text-white shadow-inner transition-all placeholder:text-zinc-700 focus:border-admin-gold/50 focus:bg-black/60 focus:ring-0 focus:ring-offset-0 disabled:opacity-40"
-                  />
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <Label
+                        htmlFor="push-title"
+                        className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
+                      >
+                        Título da mensagem
+                      </Label>
+                      <span className="text-[8px] font-mono text-zinc-500">
+                        {notification.title.length}/60
+                      </span>
+                    </div>
+                    <LocalBufferedInput
+                      id="push-title"
+                      name="title"
+                      autoComplete="off"
+                      value={notification.title}
+                      onFlush={(val) =>
+                        setNotification((prev) => ({ ...prev, title: val }))
+                      }
+                      disabled={isOffline || loading}
+                      placeholder={
+                        isOffline
+                          ? "Indisponível offline"
+                          : "Ex: Oferta especial liberada para você! 🎁"
+                      }
+                      useShadcn={true}
+                      className="h-9 rounded-lg border-white/10 bg-black/50 px-3 text-xs text-white shadow-inner focus:border-emerald-500/50 focus:ring-0 placeholder:text-zinc-600 disabled:opacity-40"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <Label
+                        htmlFor="push-body"
+                        className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
+                      >
+                        Texto da mensagem
+                      </Label>
+                      <span className="text-[8px] font-mono text-zinc-500">
+                        {notification.body.length}/140
+                      </span>
+                    </div>
+                    <LocalBufferedTextarea
+                      id="push-body"
+                      name="body"
+                      autoComplete="off"
+                      value={notification.body}
+                      onFlush={(val) =>
+                        setNotification((prev) => ({ ...prev, body: val }))
+                      }
+                      disabled={isOffline || loading}
+                      placeholder={
+                        isOffline
+                          ? "Indisponível offline"
+                          : "Escreva aqui a mensagem curta que o cliente vai ver no celular..."
+                      }
+                      rows={2}
+                      useShadcn={true}
+                      className="resize-none rounded-lg border-white/10 bg-black/50 p-2.5 text-xs font-medium text-white shadow-inner focus:border-emerald-500/50 focus:ring-0 placeholder:text-zinc-600 disabled:opacity-40"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="push-destination"
-                    className="ml-1 text-[9px] font-black uppercase tracking-widest text-zinc-400"
-                  >
-                    Tela de Destino (Redirecionamento)
-                  </Label>
-                  <Select
-                    value={destType}
-                    onValueChange={handleDestTypeChange}
-                    disabled={isOffline || loading}
-                  >
-                    <SelectTrigger
-                      id="push-destination"
-                      className="h-11 w-full rounded-xl border border-white/10 bg-black/40 px-3.5 text-xs text-white shadow-inner transition-all focus:border-admin-gold/50 focus:bg-black/60 focus:ring-0 focus:ring-offset-0 disabled:opacity-40 [&>svg]:opacity-50"
-                    >
-                      <SelectValue placeholder="Selecione a tela de destino" />
-                    </SelectTrigger>
-                    <SelectContent className="border border-white/10 bg-zinc-950 text-white rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)]">
-                      <SelectItem value="home">
-                        Página Inicial (Home)
-                      </SelectItem>
-                      <SelectItem value="search">Tela de Busca</SelectItem>
-                      <SelectItem value="cart">Carrinho de Compras</SelectItem>
-                      <SelectItem value="favorites">
-                        Lista de Desejos (Favoritos)
-                      </SelectItem>
-                      <SelectItem value="orders">Meus Pedidos</SelectItem>
-                      <SelectItem value="profile">Perfil do Usuário</SelectItem>
-                      <SelectItem value="product">
-                        Produto Específico
-                      </SelectItem>
-                      <SelectItem value="custom">
-                        Caminho Manual (Avançado)
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {destType === "product" && (
-                  <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                {/* Destino Selector & Dynamic Inputs */}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="space-y-1">
                     <Label
-                      htmlFor="push-product-select"
-                      className="ml-1 text-[9px] font-black uppercase tracking-widest text-zinc-400"
+                      htmlFor="push-destination"
+                      className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
                     >
-                      Selecionar Produto para Divulgar
+                      Para onde o cliente vai ao clicar?
                     </Label>
                     <Select
-                      value={selectedProductId}
-                      onValueChange={handleProductChange}
-                      disabled={isOffline || loading || loadingProducts}
+                      name="destType"
+                      value={destType}
+                      onValueChange={handleDestTypeChange}
+                      disabled={isOffline || loading}
                     >
                       <SelectTrigger
-                        id="push-product-select"
-                        className="h-11 w-full rounded-xl border border-white/10 bg-black/40 px-3.5 text-xs text-white shadow-inner transition-all focus:border-admin-gold/50 focus:bg-black/60 focus:ring-0 focus:ring-offset-0 disabled:opacity-40 [&>svg]:opacity-50"
+                        id="push-destination"
+                        className="h-9 w-full rounded-lg border border-white/10 bg-black/50 px-2.5 text-xs text-white shadow-inner focus:border-emerald-500/50 focus:ring-0 [&>svg]:opacity-50"
                       >
-                        <SelectValue
-                          placeholder={
-                            loadingProducts
-                              ? "Carregando produtos..."
-                              : "Selecione um produto"
-                          }
-                        />
+                        <SelectValue placeholder="Selecione a tela..." />
                       </SelectTrigger>
-                      <SelectContent className="max-h-60 border border-white/10 bg-zinc-950 text-white rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-y-auto">
-                        {products.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.nome}
-                          </SelectItem>
-                        ))}
-                        {products.length === 0 && !loadingProducts && (
-                          <div className="p-2 text-center text-xs text-zinc-500">
-                            Nenhum produto ativo encontrado
-                          </div>
-                        )}
+                      <SelectContent className="rounded-xl border border-white/10 bg-zinc-950 text-white shadow-2xl">
+                        <SelectItem value="home">
+                          Página Inicial da Loja
+                        </SelectItem>
+                        <SelectItem value="search">Página de Busca de Produtos</SelectItem>
+                        <SelectItem value="cart">
+                          Carrinho de Compras
+                        </SelectItem>
+                        <SelectItem value="favorites">
+                          Lista de Favoritos
+                        </SelectItem>
+                        <SelectItem value="orders">Meus Pedidos</SelectItem>
+                        <SelectItem value="profile">
+                          Perfil do Cliente
+                        </SelectItem>
+                        <SelectItem value="product">
+                          Abrir um Produto Específico
+                        </SelectItem>
+                        <SelectItem value="custom">Outra Página (Link manual)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                )}
 
-                {destType === "custom" && (
-                  <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                    <Label
-                      htmlFor="push-custom-path"
-                      className="ml-1 text-[9px] font-black uppercase tracking-widest text-zinc-400"
-                    >
-                      Caminho Manual (Ex: /search?q=promo)
-                    </Label>
-                    <LocalBufferedInput
-                      id="push-custom-path"
-                      name="customPath"
-                      value={customPath}
-                      onFlush={handleCustomPathChange}
-                      disabled={isOffline || loading}
-                      placeholder="/caminho-da-pagina"
-                      useShadcn={true}
-                      className="h-11 rounded-xl border-white/10 bg-black/40 font-mono text-xs text-white shadow-inner transition-all placeholder:text-zinc-700 focus:border-admin-gold/50 focus:bg-black/60 focus:ring-0 focus:ring-offset-0 disabled:opacity-40"
-                    />
-                  </div>
-                )}
+                  {destType === "product" && (
+                    <div className="space-y-1 duration-200 animate-in fade-in">
+                      <Label
+                        htmlFor="push-product-select"
+                        className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
+                      >
+                        Selecione o produto
+                      </Label>
+                      <Select
+                        name="productId"
+                        value={selectedProductId}
+                        onValueChange={handleProductChange}
+                        disabled={isOffline || loading || loadingProducts}
+                      >
+                        <SelectTrigger
+                          id="push-product-select"
+                          className="h-9 w-full rounded-lg border border-white/10 bg-black/50 px-2.5 text-xs text-white shadow-inner focus:border-emerald-500/50 focus:ring-0 [&>svg]:opacity-50"
+                        >
+                          <SelectValue
+                            placeholder={
+                              loadingProducts ? "Carregando..." : "Escolha o produto..."
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-zinc-950 text-white shadow-2xl">
+                          {products.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
+                  {destType === "custom" && (
+                    <div className="space-y-1 duration-200 animate-in fade-in">
+                      <Label
+                        htmlFor="push-custom-path"
+                        className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
+                      >
+                        Digite o caminho da página
+                      </Label>
+                      <LocalBufferedInput
+                        id="push-custom-path"
+                        name="customPath"
+                        autoComplete="off"
+                        value={customPath}
+                        onFlush={handleCustomPathChange}
+                        disabled={isOffline || loading}
+                        placeholder="/exemplo-pagina"
+                        useShadcn={true}
+                        className="h-9 rounded-lg border-white/10 bg-black/50 font-mono text-xs text-white shadow-inner focus:border-emerald-500/50 focus:ring-0 placeholder:text-zinc-600"
+                      />
+                    </div>
+                  )}
+
+                  {destType !== "product" && destType !== "custom" && (
+                    <div className="flex items-end">
+                      <div className="flex h-9 w-full items-center gap-1.5 rounded-lg border border-white/5 bg-black/20 px-3 text-[10px] font-mono text-zinc-400">
+                        <ExternalLink className="size-3 text-emerald-400 shrink-0" />
+                        <span className="truncate">Ao clicar abrirá: {notification.url}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Botão de Ação */}
                 <button
-                  className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 text-xs font-black uppercase tracking-[0.2em] text-white shadow-md transition-all hover:bg-emerald-400 active:scale-95 disabled:opacity-30 disabled:grayscale disabled:active:scale-100"
+                  className="mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 text-xs font-black uppercase tracking-[0.15em] text-white shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all hover:bg-emerald-400 hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] active:scale-[0.98] disabled:opacity-30 disabled:grayscale disabled:shadow-none"
                   onClick={handleSend}
-                  disabled={loading || subCount === 0 || isOffline}
+                  disabled={loading || effectiveReach === 0 || isOffline}
                 >
                   {loading ? (
-                    <div className="size-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+                    <div className="flex items-center gap-2">
+                      <div className="size-4 animate-spin rounded-full border-2 border-white/25 border-t-white" />
+                      <span>Enviando Notificação...</span>
+                    </div>
                   ) : (
                     <>
-                      <Zap className="size-4 fill-current" />
-                      Lançar Notificação
+                      <Send className="size-4 fill-current" />
+                      Enviar Notificação Agora ({effectiveReach} clientes)
                     </>
                   )}
                 </button>
               </div>
             </div>
 
-            {/* Conversão Tip Card */}
-            <div className="flex gap-3 rounded-xl border border-emerald-500/10 bg-emerald-500/5 p-4 backdrop-blur-md">
-              <div className="flex size-9 flex-shrink-0 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10">
-                <Info className="size-5 text-emerald-400" />
+            {/* Dica de Vendas Card */}
+            <div className="flex items-center gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 backdrop-blur-md">
+              <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+                <Clock className="size-3.5 text-emerald-400" />
               </div>
-              <div className="space-y-0.5">
-                <h4 className="text-[9px] font-black uppercase tracking-wider text-emerald-400">
-                  Diretriz de Conversão
-                </h4>
-                <p className="text-[10px] font-bold uppercase italic leading-relaxed tracking-tight text-zinc-400">
-                  Notificações entre 10h e 12h têm{" "}
-                  <span className="font-black text-white">
-                    40% mais cliques
-                  </span>
-                  .
-                </p>
-              </div>
+              <p className="text-[10px] font-medium text-zinc-300 leading-tight">
+                <span className="font-bold text-emerald-400 uppercase tracking-wider">
+                  Dica de Vendas:
+                </span>{" "}
+                Enviar mensagens entre{" "}
+                <strong className="text-white">10h e 12h</strong> costuma atrair{" "}
+                <span className="font-black text-emerald-300">
+                  mais clientes e aumentar as vendas
+                </span>
+                .
+              </p>
             </div>
           </div>
 
-          {/* Coluna Lateral: Alcance e Histórico (2 Colunas no md) */}
-          <div className="space-y-5 md:col-span-2">
-            {/* Alcance Card (Stats) */}
-            <div className="admin-glass rounded-2xl border border-white/5 bg-zinc-900/40 p-5 shadow-xl backdrop-blur-2xl">
-              <p className="mb-1.5 flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-500">
-                <Users className="size-3.5 text-emerald-400" /> Alcance
-                Instantâneo
-              </p>
-              <div className="flex items-baseline gap-2">
-                <h2 className="text-4xl font-black tabular-nums tracking-tight text-white">
-                  {subCount}
-                </h2>
-                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
-                  Dispositivos
+          {/* COLUNA LATERAL: Avisos de Vendas, Celulares e Histórico (lg:col-span-5) */}
+          <div className="space-y-3.5 lg:col-span-5">
+            {/* Avisos de Compras Recentes */}
+            {configLoaded && (
+              <div
+                className={`rounded-xl border p-3.5 transition-all duration-300 ${
+                  config.realTimeSalesAlerts
+                    ? "border-emerald-500/30 bg-emerald-500/5 shadow-[0_0_15px_rgba(16,185,129,0.08)]"
+                    : "border-white/10 bg-zinc-900/60"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`flex size-8 shrink-0 items-center justify-center rounded-lg border transition-all duration-300 ${
+                        config.realTimeSalesAlerts
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                          : "border-white/5 bg-zinc-950 text-zinc-500"
+                      }`}
+                    >
+                      <Sparkles className="size-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Label
+                          htmlFor="realtime-sales-alerts-switch"
+                          className="cursor-pointer text-xs font-bold text-white"
+                        >
+                          Avisos de Compras Recentes
+                        </Label>
+                        <span
+                          className={`size-1.5 rounded-full ${
+                            config.realTimeSalesAlerts
+                              ? "bg-emerald-500 animate-pulse"
+                              : "bg-zinc-600"
+                          }`}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-[10px] text-zinc-400 leading-none">
+                          Mostra na loja avisos de compras em tempo real.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setIsSocialProofExpanded(!isSocialProofExpanded)
+                          }
+                          className="flex items-center text-[10px] font-bold text-emerald-400 hover:text-emerald-300 leading-none"
+                        >
+                          {isSocialProofExpanded ? (
+                            <ChevronUp className="size-3" />
+                          ) : (
+                            <ChevronDown className="size-3" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <Switch
+                    id="realtime-sales-alerts-switch"
+                    checked={config.realTimeSalesAlerts}
+                    onCheckedChange={handleToggleRealTimeSalesAlerts}
+                    className="scale-90 data-[state=checked]:bg-emerald-500"
+                    disabled={isOffline || isUpdatingConfig}
+                  />
+                </div>
+
+                <AnimatePresence initial={false}>
+                  {isSocialProofExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2, ease: "easeInOut" }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-2.5 pt-2.5 border-t border-white/5 text-[10px] leading-relaxed text-zinc-400 space-y-1">
+                        <p>
+                          Esta opção exibe pequenas notificações discretas na loja quando alguém faz um pedido, passando mais segurança e confiança aos novos clientes.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {/* Metric Card - Celulares Cadastrados */}
+            <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl">
+              <div className="flex items-center justify-between mb-2">
+                <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400">
+                  <Users className="size-3.5 text-emerald-400" /> Clientes Prontos para Receber
+                </p>
+                <span className="text-[9px] font-mono text-emerald-400 font-bold uppercase">
+                  Ativos
                 </span>
               </div>
 
-              <div className="mt-4 flex gap-2 border-t border-white/5 pt-3.5">
-                <div className="flex-1 rounded-lg border border-white/5 bg-zinc-950/60 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-zinc-400 text-center">
-                  iOS: {Math.floor(subCount * 0.4)}
+              <div className="flex items-baseline justify-between border-b border-white/5 pb-2.5">
+                <div className="flex items-baseline gap-2">
+                  <h2 className="text-3xl font-black tabular-nums tracking-tight text-white">
+                    {subCount}
+                  </h2>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                    Celulares e Computadores Cadastrados
+                  </span>
                 </div>
-                <div className="flex-1 rounded-lg border border-white/5 bg-zinc-950/60 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-zinc-400 text-center">
-                  Android: {Math.ceil(subCount * 0.6)}
+
+                <div className="flex items-center gap-1.5 text-[9px] font-mono text-zinc-400">
+                  <span className="rounded bg-zinc-800 px-1.5 py-0.5">
+                    iOS: {Math.floor(subCount * 0.4)}
+                  </span>
+                  <span className="rounded bg-zinc-800 px-1.5 py-0.5">
+                    Android: {Math.ceil(subCount * 0.6)}
+                  </span>
                 </div>
               </div>
 
@@ -798,56 +1030,67 @@ export const AdminPushView = memo(function AdminPushView({
                 <button
                   onClick={handleTestSubscription}
                   disabled={isOffline}
-                  className="mt-3.5 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 py-2.5 text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                  className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 py-1.5 text-[9px] font-black uppercase tracking-wider text-emerald-400 hover:bg-emerald-500/20 active:scale-95 disabled:opacity-40"
                 >
                   <Zap className="size-3 fill-emerald-400" />
-                  Monitorar este Dispositivo
+                  Testar Recebimento Neste Aparelho
                 </button>
               )}
             </div>
 
-            {/* Histórico/Log Card */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 px-2">
-                <History className="size-4 text-zinc-500" />
-                <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                  Log de Campanhas
-                </h3>
+            {/* Log de Envios */}
+            <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl">
+              <div className="mb-2.5 flex items-center justify-between border-b border-white/5 pb-2">
+                <div className="flex items-center gap-1.5">
+                  <History className="size-3.5 text-zinc-400" />
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-300">
+                    Histórico de Mensagens Enviadas
+                  </h3>
+                </div>
+                <span className="text-[8px] font-mono text-zinc-500">
+                  Últimas 20 mensagens
+                </span>
               </div>
 
-              <div className="relative space-y-3 before:absolute before:bottom-0 before:left-3 before:top-2 before:w-px before:bg-white/5">
+              <div className="max-h-[350px] overflow-y-auto pr-1 space-y-2 scrollbar-thin scrollbar-thumb-zinc-700">
                 {history.length === 0 ? (
-                  <div className="py-8 text-center italic opacity-30">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                      Sem histórico
+                  <div className="py-6 text-center italic text-zinc-600">
+                    <p className="text-[9px] font-bold uppercase tracking-widest">
+                      Nenhuma mensagem enviada até o momento
                     </p>
                   </div>
                 ) : (
                   history.map((item) => (
-                    <div key={item.id} className="group relative pl-8">
-                      <div className="absolute left-1 top-3.5 z-10 size-2.5 rounded-full border-2 border-zinc-800 bg-zinc-950 shadow-md transition-transform group-hover:scale-125" />
-                      <div className="cursor-default rounded-xl border border-white/5 bg-zinc-900/40 p-4 backdrop-blur-md transition-all hover:border-white/10 hover:bg-white/[0.05] hover:shadow-lg">
-                        <div className="mb-2 flex items-start justify-between">
-                          <span className="text-[8px] font-black uppercase tracking-widest text-emerald-400/70">
-                            {new Date(item.sent_at).toLocaleDateString()} •{" "}
-                            {new Date(item.sent_at).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                        </div>
-                        <h4 className="mb-2 line-clamp-2 text-[10px] font-black uppercase tracking-wider text-white">
-                          {item.title}
-                        </h4>
-                        <div className="flex items-center justify-between text-[8px] font-bold uppercase tracking-widest text-zinc-500 border-t border-white/5 pt-2">
-                          <span className="flex items-center gap-1 text-zinc-400">
-                            <Users className="size-3" /> {item.recipient_count}
-                          </span>
-                          <span className="text-zinc-700">|</span>
-                          <span className="max-w-[120px] truncate text-zinc-400 font-mono">
-                            {item.url}
-                          </span>
-                        </div>
+                    <div
+                      key={item.id}
+                      className="rounded-lg border border-white/5 bg-black/30 p-2.5 transition-all hover:border-white/10 hover:bg-black/50"
+                    >
+                      <div className="flex items-center justify-between text-[8px] font-bold uppercase tracking-widest text-zinc-400 mb-1">
+                        <span className="text-emerald-400 font-mono">
+                          {new Date(item.sent_at).toLocaleDateString()} às{" "}
+                          {new Date(item.sent_at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                        <span className="flex items-center gap-1 bg-zinc-800/80 px-1.5 py-0.5 rounded text-zinc-300">
+                          <Users className="size-2.5 text-emerald-400" />{" "}
+                          {item.recipient_count} clientes
+                        </span>
+                      </div>
+                      <h4 className="text-[10px] font-bold text-white line-clamp-1">
+                        {item.title}
+                      </h4>
+                      <p className="text-[9px] text-zinc-400 line-clamp-1 mt-0.5 font-medium">
+                        {item.body}
+                      </p>
+                      <div className="mt-1.5 flex items-center justify-between border-t border-white/5 pt-1 text-[8px]">
+                        <span className="font-mono text-zinc-500 truncate max-w-[150px]">
+                          Ao clicar: {item.url}
+                        </span>
+                        <span className="text-emerald-400 font-bold uppercase">
+                          Enviada
+                        </span>
                       </div>
                     </div>
                   ))
@@ -858,67 +1101,59 @@ export const AdminPushView = memo(function AdminPushView({
         </div>
       </div>
 
-      {/* Modal de Ajuda */}
+      {/* Modal de Ajuda Limpo */}
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
-        title="Push Center & Engajamento"
+        title="Ajuda - Notificações para Clientes"
       >
         <div className="space-y-4">
           <p className="text-xs leading-relaxed text-zinc-400">
-            O Push Center é o centro de comando de engajamento do marketplace.
-            Aqui você pode disparar notificações em massa para todos os usuários
-            inscritos no sistema de notificações Web Push.
+            Nesta tela você pode criar e enviar mensagens curtas direto para os celulares dos clientes que aceitaram receber avisos da sua loja.
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
-              Seções Principais
+            <h4 className="border-l-2 border-emerald-500 pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+              O que você pode fazer aqui
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-xl border border-white/5 bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Target className="size-3.5 text-emerald-500" />
-                  Disparo de Campanhas
+                  <Send className="size-3.5 text-emerald-500" />
+                  Enviar Notificação
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Configure o título da notificação, a mensagem (corpo) e uma
-                  URL interna ou externa. Os usuários que clicarem na
-                  notificação serão direcionados para esse link.
+                  Escreva o título, a mensagem e escolha qual tela abre quando o cliente clica.
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-xl border border-white/5 bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Sparkles className="size-3.5 text-emerald-400" />
-                  Modelos de Campanha
+                  Mensagens Prontas
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Modelos pré-definidos para preencher as copys promocionais de
-                  forma rápida e com gatilhos de vendas comprovados.
+                  Escolha exemplos prontos para preencher o texto rapidamente com apenas 1 clique.
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-xl border border-white/5 bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Users className="size-3.5 text-sky-500" />
-                  Usuários Inscritos
+                  Quem Vai Receber
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Exibe a quantidade total de dispositivos aptos a receber as
-                  notificações disparadas.
+                  Escolha enviar para todos os clientes ou para grupos (ex: clientes novos ou sem comprar há 30 dias).
                 </p>
               </div>
 
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+              <div className="space-y-1 rounded-xl border border-white/5 bg-zinc-900/40 p-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <History className="size-3.5 text-purple-500" />
-                  Log de Campanhas
+                  Histórico de Envios
                 </div>
                 <p className="text-xs text-zinc-400">
-                  O histórico completo das notificações enviadas no passado,
-                  incluindo data, quantidade de destinatários e link de
-                  redirecionamento.
+                  Veja a lista das últimas mensagens que você enviou e quantas pessoas receberam.
                 </p>
               </div>
             </div>

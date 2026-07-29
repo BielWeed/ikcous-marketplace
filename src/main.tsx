@@ -43,6 +43,7 @@ import { applyBranding } from "@/config/branding";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { initSentinel } from "@/pwa-sentinel";
+import { initHeaderToastInterceptor } from "@/utils/headerToast";
 import { HelmetProvider } from "react-helmet-async";
 import App from "./App.tsx";
 
@@ -51,6 +52,9 @@ applyBranding();
 
 // Initialize external PWA health monitor
 initSentinel();
+
+// Initialize Dynamic Header Toast Interceptor
+initHeaderToastInterceptor();
 
 // PWA health monitor initialized above
 

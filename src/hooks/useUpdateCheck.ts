@@ -18,6 +18,20 @@ export function useUpdateCheck() {
   const [registration, setRegistration] =
     useState<ServiceWorkerRegistration | null>(null);
 
+  const fetchServerVersion = useCallback(async () => {
+    if (import.meta.env.DEV) return SAFE_APP_VERSION;
+    try {
+      const response = await fetch(`/version.json?t=${Date.now()}`);
+      if (response.ok) {
+        const data = await response.json();
+        return data.version as string;
+      }
+    } catch (e) {
+      console.error("[Update] Failed to fetch server version:", e);
+    }
+    return null;
+  }, []);
+
   const {
     offlineReady: [offlineReady, setOfflineReady],
     needRefresh: [needRefresh, _setNeedRefresh],
@@ -37,22 +51,35 @@ export function useUpdateCheck() {
   useEffect(() => {
     if (!registration) return;
 
-    console.log("[PWA] Starting SW update check interval (3 minutes)...");
-    const intervalId = setInterval(
-      () => {
-        console.log("[PWA] Checking for SW updates...");
-        registration.update().catch((err) => {
-          console.error("[PWA] Failed to check for SW update:", err);
-        });
-      },
-      3 * 60 * 1000,
-    );
+    const checkUpdateNow = async () => {
+      console.log("[PWA] Checking for updates...");
+      const ver = await fetchServerVersion();
+      if (ver && ver !== SAFE_APP_VERSION) {
+        console.log(`[PWA] Server version (${ver}) differs from local (${SAFE_APP_VERSION}). Updating SW.`);
+        setNewVersion(ver);
+      }
+      registration.update().catch((err) => {
+        console.error("[PWA] Failed to check for SW update:", err);
+      });
+    };
+
+    const intervalId = setInterval(checkUpdateNow, 3 * 60 * 1000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        console.log("[PWA] App became visible. Checking SW update...");
+        checkUpdateNow();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      console.log("[PWA] Clearing SW update check interval...");
+      console.log("[PWA] Clearing SW update check interval & visibility listener...");
       clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [registration]);
+  }, [registration, fetchServerVersion, SAFE_APP_VERSION]);
 
   // ==============================
   // CORE: Nuclear Purge (mandatory)
@@ -107,11 +134,11 @@ export function useUpdateCheck() {
         "favorites_",
       ];
       try {
-        Object.keys(localStorage).forEach((key) => {
+        for (const key of Object.keys(localStorage)) {
           if (!whitelist.some((prefix) => key.startsWith(prefix))) {
             localStorage.removeItem(key);
           }
-        });
+        }
       } catch (e) {
         console.error("[Purge] LocalStorage error:", e);
       }
@@ -196,20 +223,6 @@ export function useUpdateCheck() {
       console.log(
         `[Update] Local: ${SAFE_APP_VERSION} | Required: ${config.minAppVersion}`,
       );
-
-      // Reload Loop Guard
-      const lastReload = sessionStorage.getItem("pwa_mandatory_reload_timestamp");
-      const now = Date.now();
-      if (lastReload && now - Number.parseInt(lastReload) < 15000) {
-        console.warn("[Update] 🛡️ Mandatory Update Reload Guard Active. Loop blocked.");
-        toast.error("Atualização necessária", {
-          description: `Seu aplicativo precisa ser atualizado para a versão ${config.minAppVersion}. Caso as alterações não tenham sido aplicadas, limpe o cache do seu navegador.`,
-          duration: 10000,
-        });
-        setIsMandatory(true);
-        return true;
-      }
-
       setIsMandatory(true);
 
       // Grava log para o próximo boot saber o que aconteceu
@@ -217,7 +230,6 @@ export function useUpdateCheck() {
         "pwa_update_log",
         `Version Mismatch: ${SAFE_APP_VERSION} -> ${config.minAppVersion}`,
       );
-      sessionStorage.setItem("pwa_mandatory_reload_timestamp", now.toString());
 
       performNuclearPurge(true);
       return true;
@@ -235,9 +247,13 @@ export function useUpdateCheck() {
   useEffect(() => {
     if (needRefresh) {
       console.log("[PWA] New content available! User prompt should appear.");
-      setNewVersion((prev) => prev || "Nova Versão");
+      if (!newVersion || newVersion === "Nova Versão") {
+        fetchServerVersion().then((ver) => {
+          setNewVersion(ver || "Nova Versão");
+        });
+      }
     }
-  }, [needRefresh]);
+  }, [needRefresh, newVersion, fetchServerVersion]);
 
   useEffect(() => {
     if (offlineReady) {
@@ -257,9 +273,12 @@ export function useUpdateCheck() {
       const msg = (e.message || "").toLowerCase();
       const isChunkError =
         msg.includes("loading chunk") ||
+        msg.includes("chunkloaderror") ||
         msg.includes("unexpected token") ||
         msg.includes("failed to fetch dynamically imported module") ||
-        msg.includes("importing a module script failed");
+        msg.includes("error loading dynamically imported module") ||
+        msg.includes("importing a module script failed") ||
+        msg.includes("css chunk load failed");
 
       if (isChunkError) {
         console.error("[Update] 💥 ChunkLoadError detected");
@@ -298,16 +317,28 @@ export function useUpdateCheck() {
     isMandatory,
     updateAvailable: needRefresh,
     newVersion,
-    checkUpdate: useCallback(
-      (version?: string) => {
-        if (version) {
-          setNewVersion(version);
+    checkUpdate: useCallback(async (realtimeVersion?: string) => {
+      let targetVer = realtimeVersion;
+      if (!targetVer) {
+        targetVer = await fetchServerVersion() || undefined;
+      }
+      
+      if (targetVer && targetVer !== SAFE_APP_VERSION) {
+        console.log(`[Update] Server version (${targetVer}) differs from local (${SAFE_APP_VERSION})`);
+        setNewVersion(targetVer);
+      }
+
+      if (registration) {
+        console.log("[Update] Triggering manual service worker update check...");
+        try {
+          await registration.update();
+        } catch (err) {
+          console.error("[PWA] Manual SW update check failed:", err);
         }
-        // Fallback: check mandatory version manually if called
-        checkMandatoryUpdate();
-      },
-      [checkMandatoryUpdate],
-    ),
+      }
+
+      checkMandatoryUpdate();
+    }, [registration, fetchServerVersion, SAFE_APP_VERSION, checkMandatoryUpdate]),
     performNuclearPurge: handleUpdate,
   };
 }

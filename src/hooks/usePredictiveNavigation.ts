@@ -29,7 +29,11 @@ export function usePredictiveNavigation(currentView: string) {
     } else if (currentView === "admin-products") {
       predictions = ["admin-product-form", "admin-dashboard"];
     } else if (currentView === "admin-customers") {
-      predictions = ["admin-user-detail", "admin-dashboard"];
+      predictions = [
+        "admin-user-detail",
+        "admin-dashboard",
+        "admin-whatsapp-config",
+      ];
     } else if (currentView === "admin-orders") {
       predictions = ["admin-dashboard"];
     } else if (currentView === "admin-settings") {

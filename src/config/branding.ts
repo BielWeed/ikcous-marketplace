@@ -85,11 +85,11 @@ export function applyBranding(): void {
   const favicon = document.querySelector("link[rel*='icon']");
   if (favicon) {
     // Aponta para o favicon dinâmico se a pasta branding estiver presente
-    favicon.setAttribute("href", "/branding/favicon.ico");
+    favicon.setAttribute("href", "/branding/favicon.ico?v=2");
   }
   const appleTouch = document.querySelector("link[rel='apple-touch-icon']");
   if (appleTouch) {
-    appleTouch.setAttribute("href", "/branding/logo.png");
+    appleTouch.setAttribute("href", "/branding/logo.png?v=2");
   }
 
   // 3. Atualizar o loader silencioso inicial (silent-guardian-loader) se ele ainda estiver no DOM

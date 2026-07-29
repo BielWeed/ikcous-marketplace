@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1";
+    PostgrestVersion: "14.5";
   };
   public: {
     Tables: {
@@ -145,35 +145,102 @@ export type Database = {
       banners: {
         Row: {
           active: boolean | null;
+          badge_text: string | null;
+          button_bg_color: string | null;
+          button_text: string | null;
+          button_text_color: string | null;
           created_at: string;
+          end_date: string | null;
+          font_family: string | null;
           id: string;
           image_url: string;
           link: string | null;
           order: number | null;
+          overlay_color: string | null;
+          overlay_opacity: number | null;
           position: string | null;
+          product_id: string | null;
+          start_date: string | null;
+          subtitle: string | null;
+          subtitle_color: string | null;
+          template_type: string | null;
           title: string | null;
+          title_color: string | null;
+          show_text_overlay: boolean | null;
         };
         Insert: {
           active?: boolean | null;
+          badge_text?: string | null;
+          button_bg_color?: string | null;
+          button_text?: string | null;
+          button_text_color?: string | null;
           created_at?: string;
+          end_date?: string | null;
+          font_family?: string | null;
           id?: string;
           image_url: string;
           link?: string | null;
           order?: number | null;
+          overlay_color?: string | null;
+          overlay_opacity?: number | null;
           position?: string | null;
+          product_id?: string | null;
+          start_date?: string | null;
+          subtitle?: string | null;
+          subtitle_color?: string | null;
+          template_type?: string | null;
           title?: string | null;
+          title_color?: string | null;
+          show_text_overlay?: boolean | null;
         };
         Update: {
           active?: boolean | null;
+          badge_text?: string | null;
+          button_bg_color?: string | null;
+          button_text?: string | null;
+          button_text_color?: string | null;
           created_at?: string;
+          end_date?: string | null;
+          font_family?: string | null;
           id?: string;
           image_url?: string;
           link?: string | null;
           order?: number | null;
+          overlay_color?: string | null;
+          overlay_opacity?: number | null;
           position?: string | null;
+          product_id?: string | null;
+          start_date?: string | null;
+          subtitle?: string | null;
+          subtitle_color?: string | null;
+          template_type?: string | null;
           title?: string | null;
+          title_color?: string | null;
+          show_text_overlay?: boolean | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "banners_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "produtos";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "banners_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "vw_produtos_admin";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "banners_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "vw_produtos_public";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       cart_items: {
         Row: {
@@ -407,6 +474,13 @@ export type Database = {
             foreignKeyName: "marketplace_order_items_product_id_fkey";
             columns: ["product_id"];
             isOneToOne: false;
+            referencedRelation: "vw_produtos_admin";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "marketplace_order_items_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
             referencedRelation: "vw_produtos_public";
             referencedColumns: ["id"];
           },
@@ -621,6 +695,13 @@ export type Database = {
             foreignKeyName: "product_variants_product_id_fkey";
             columns: ["product_id"];
             isOneToOne: false;
+            referencedRelation: "vw_produtos_admin";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "product_variants_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
             referencedRelation: "vw_produtos_public";
             referencedColumns: ["id"];
           },
@@ -634,7 +715,6 @@ export type Database = {
           categoria: string | null;
           codigo: string | null;
           comprimento_cm: number | null;
-          custo: number;
           data_cadastro: string;
           deleted_at: string | null;
           descricao: string | null;
@@ -666,7 +746,6 @@ export type Database = {
           categoria?: string | null;
           codigo?: string | null;
           comprimento_cm?: number | null;
-          custo: number;
           data_cadastro?: string;
           deleted_at?: string | null;
           descricao?: string | null;
@@ -698,7 +777,6 @@ export type Database = {
           categoria?: string | null;
           codigo?: string | null;
           comprimento_cm?: number | null;
-          custo?: number;
           data_cadastro?: string;
           deleted_at?: string | null;
           descricao?: string | null;
@@ -724,6 +802,43 @@ export type Database = {
           ultima_atualizacao?: string;
         };
         Relationships: [];
+      };
+      produtos_custo: {
+        Row: {
+          custo: number;
+          product_id: string;
+        };
+        Insert: {
+          custo?: number;
+          product_id: string;
+        };
+        Update: {
+          custo?: number;
+          product_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "produtos_custo_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: true;
+            referencedRelation: "produtos";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "produtos_custo_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: true;
+            referencedRelation: "vw_produtos_admin";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "produtos_custo_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: true;
+            referencedRelation: "vw_produtos_public";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       profiles: {
         Row: {
@@ -897,6 +1012,13 @@ export type Database = {
             foreignKeyName: "questions_product_id_fkey";
             columns: ["product_id"];
             isOneToOne: false;
+            referencedRelation: "vw_produtos_admin";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "questions_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
             referencedRelation: "vw_produtos_public";
             referencedColumns: ["id"];
           },
@@ -965,6 +1087,13 @@ export type Database = {
             foreignKeyName: "reviews_product_id_fkey";
             columns: ["product_id"];
             isOneToOne: false;
+            referencedRelation: "vw_produtos_admin";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reviews_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
             referencedRelation: "vw_produtos_public";
             referencedColumns: ["id"];
           },
@@ -994,7 +1123,7 @@ export type Database = {
           created_at?: string;
           destination_cep: string;
           error_message?: string | null;
-          id?: number;
+          id: number;
           origin_cep: string;
           provider: string;
           response_time_ms: number;
@@ -1048,6 +1177,7 @@ export type Database = {
           enable_reviews: boolean | null;
           enabled_shipping_methods: string[] | null;
           free_shipping_min: number | null;
+          home_sections: Json;
           id: number;
           local_cep_range: string | null;
           local_delivery_fee: number;
@@ -1072,6 +1202,7 @@ export type Database = {
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
           free_shipping_min?: number | null;
+          home_sections?: Json;
           id: number;
           local_cep_range?: string | null;
           local_delivery_fee?: number;
@@ -1096,6 +1227,7 @@ export type Database = {
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
           free_shipping_min?: number | null;
+          home_sections?: Json;
           id?: number;
           local_cep_range?: string | null;
           local_delivery_fee?: number;
@@ -1240,6 +1372,7 @@ export type Database = {
           enable_reviews: boolean | null;
           enabled_shipping_methods: string[] | null;
           free_shipping_min: number | null;
+          home_sections: Json | null;
           id: number | null;
           local_cep_range: string | null;
           local_delivery_fee: number | null;
@@ -1264,6 +1397,7 @@ export type Database = {
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
           free_shipping_min?: number | null;
+          home_sections?: Json | null;
           id?: number | null;
           local_cep_range?: string | null;
           local_delivery_fee?: number | null;
@@ -1288,6 +1422,7 @@ export type Database = {
           enable_reviews?: boolean | null;
           enabled_shipping_methods?: string[] | null;
           free_shipping_min?: number | null;
+          home_sections?: Json | null;
           id?: number | null;
           local_cep_range?: string | null;
           local_delivery_fee?: number | null;
@@ -1304,6 +1439,41 @@ export type Database = {
           theme_mode?: string | null;
           updated_at?: string | null;
           whatsapp_number?: string | null;
+        };
+        Relationships: [];
+      };
+      vw_produtos_admin: {
+        Row: {
+          altura_cm: number | null;
+          ativo: boolean | null;
+          calculated_points: number | null;
+          categoria: string | null;
+          codigo: string | null;
+          comprimento_cm: number | null;
+          custo: number | null;
+          data_cadastro: string | null;
+          deleted_at: string | null;
+          descricao: string | null;
+          estoque: number | null;
+          estoque_minimo: number | null;
+          fornecedor_id: string | null;
+          frete_gratis: boolean | null;
+          id: string | null;
+          imagem_url: string | null;
+          imagem_urls: string[] | null;
+          is_bestseller: boolean | null;
+          largura_cm: number | null;
+          meta_description: string | null;
+          meta_title: string | null;
+          nome: string | null;
+          peso_kg: number | null;
+          preco_original: number | null;
+          preco_venda: number | null;
+          rating: number | null;
+          review_count: number | null;
+          sold: number | null;
+          tags: string[] | null;
+          ultima_atualizacao: string | null;
         };
         Relationships: [];
       };
@@ -1438,6 +1608,13 @@ export type Database = {
             foreignKeyName: "questions_product_id_fkey";
             columns: ["product_id"];
             isOneToOne: false;
+            referencedRelation: "vw_produtos_admin";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "questions_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
             referencedRelation: "vw_produtos_public";
             referencedColumns: ["id"];
           },
@@ -1522,7 +1699,6 @@ export type Database = {
           categoria: string | null;
           codigo: string | null;
           comprimento_cm: number | null;
-          custo: number;
           data_cadastro: string;
           deleted_at: string | null;
           descricao: string | null;
@@ -1708,7 +1884,6 @@ export type Database = {
           categoria: string | null;
           codigo: string | null;
           comprimento_cm: number | null;
-          custo: number;
           data_cadastro: string;
           deleted_at: string | null;
           descricao: string | null;

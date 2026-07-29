@@ -46,70 +46,57 @@ const UserProfileView = lazyWithPreload(() =>
   })),
 );
 
-import { useStore } from "@/contexts/StoreContext";
 import { supabase } from "@/lib/supabase";
 // --- LAZY LOADED ADMIN VIEWS ---
 import { cn } from "@/lib/utils";
 import { PreloadedOrLazy, lazyWithPreload } from "@/utils/lazyWithPreload";
 
-const AdminDashboard = lazyWithPreload(() =>
-  import("@/views/admin/AdminDashboardView").then((m) => ({
-    default: m.AdminDashboardView,
-  })),
-);
-const AdminProducts = lazyWithPreload(() =>
-  import("@/views/admin/AdminProductsView").then((m) => ({
-    default: m.AdminProductsView,
-  })),
-);
-const AdminProductForm = lazyWithPreload(() =>
-  import("@/views/admin/AdminProductFormView").then((m) => ({
-    default: m.AdminProductFormView,
-  })),
-);
-const AdminOrders = lazyWithPreload(() =>
-  import("@/views/admin/AdminOrdersView").then((m) => ({
-    default: m.AdminOrdersView,
-  })),
-);
-const AdminCoupons = lazyWithPreload(() =>
-  import("@/views/admin/AdminCouponsView").then((m) => ({
-    default: m.AdminCouponsView,
-  })),
-);
-const AdminBanners = lazyWithPreload(() =>
-  import("@/views/admin/AdminBannersView").then((m) => ({
-    default: m.AdminBannersView,
-  })),
-);
-const AdminSettings = lazyWithPreload(() =>
-  import("@/views/admin/AdminSettingsView").then((m) => ({
-    default: m.AdminSettingsView,
-  })),
-);
-const AdminReviews = lazyWithPreload(() =>
-  import("@/views/admin/AdminReviewsView").then((m) => ({
-    default: m.AdminReviewsView,
-  })),
-);
-const AdminQA = lazyWithPreload(() =>
-  import("@/views/admin/AdminQAView").then((m) => ({ default: m.AdminQAView })),
-);
-const AdminCustomers = lazyWithPreload(() =>
-  import("@/views/admin/AdminCustomersView").then((m) => ({
-    default: m.AdminCustomersView,
-  })),
-);
-const AdminUserDetail = lazyWithPreload(() =>
-  import("@/views/admin/AdminUserDetailView").then((m) => ({
-    default: m.AdminUserDetailView,
-  })),
-);
-const AdminPush = lazyWithPreload(() =>
-  import("@/views/admin/AdminPushView").then((m) => ({
-    default: m.AdminPushView,
-  })),
-);
+const AdminArea = React.lazy(async () => {
+  try {
+    const { data, error } = await supabase.rpc("is_admin");
+    if (error || !data) {
+      return {
+        default: function AdminUnauthorized() {
+          React.useEffect(() => {
+            import("sonner").then(({ toast }) => {
+              toast.error("Acesso restrito a administradores.");
+            });
+            window.location.href = "/";
+          }, []);
+          return (
+            <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
+              <div className="size-12 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
+              <p className="animate-pulse font-medium text-muted-foreground">
+                Verificando permissões...
+              </p>
+            </div>
+          );
+        },
+      };
+    }
+  } catch (e) {
+    console.error("[App] Admin verification error:", e);
+    return {
+      default: function AdminError() {
+        React.useEffect(() => {
+          window.location.href = "/";
+        }, []);
+        return (
+          <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
+            <div className="size-12 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
+            <p className="animate-pulse font-medium text-muted-foreground">
+              Verificando permissões...
+            </p>
+          </div>
+        );
+      },
+    };
+  }
+  return import("@/components/layouts/AdminArea").then((m) => ({
+    default: m.AdminArea,
+  }));
+});
+
 const AdminLogin = lazyWithPreload(() =>
   import("@/views/admin/AdminLoginView").then((m) => ({
     default: m.AdminLoginView,
@@ -151,11 +138,6 @@ const FavoritesView = lazyWithPreload(() =>
   })),
 );
 
-const AdminLayout = React.lazy(() =>
-  import("@/components/layouts/AdminLayout").then((m) => ({
-    default: m.AdminLayout,
-  })),
-);
 const DebugPanel = React.lazy(() =>
   import("@/components/debug/DebugPanel").then((m) => ({
     default: m.DebugPanel,
@@ -168,8 +150,8 @@ const VIEW_COMPONENTS = {
   "product-detail": ProductView,
   checkout: CheckoutView,
   profile: ProfileView,
-  admin: AdminDashboard,
-  "admin-dashboard": AdminDashboard,
+  admin: AdminArea,
+  "admin-dashboard": AdminArea,
   search: SearchView,
   auth: AuthView,
   login: AuthView,
@@ -181,17 +163,20 @@ const VIEW_COMPONENTS = {
   "recently-viewed": HomeView,
   compare: CompareView,
   "account-settings": AccountSettings,
-  "admin-products": AdminProducts,
-  "admin-product-form": AdminProductForm,
-  "admin-orders": AdminOrders,
-  "admin-coupons": AdminCoupons,
-  "admin-banners": AdminBanners,
-  "admin-settings": AdminSettings,
-  "admin-reviews": AdminReviews,
-  "admin-qa": AdminQA,
-  "admin-customers": AdminCustomers,
-  "admin-user-detail": AdminUserDetail,
-  "admin-push": AdminPush,
+  "admin-products": AdminArea,
+  "admin-product-form": AdminArea,
+  "admin-orders": AdminArea,
+  "admin-coupons": AdminArea,
+  "admin-coupon-form": AdminArea,
+  "admin-banners": AdminArea,
+  "admin-shipping": AdminArea,
+  "admin-settings": AdminArea,
+  "admin-reviews": AdminArea,
+  "admin-qa": AdminArea,
+  "admin-customers": AdminArea,
+  "admin-user-detail": AdminArea,
+  "admin-push": AdminArea,
+  "admin-whatsapp-config": AdminArea,
   "address-form": AddressFormView,
   "admin-login": AdminLogin,
   "user-profile": UserProfileView,
@@ -254,10 +239,10 @@ function DeferredTabContent({
 
 interface TabWrapperProps {
   readonly active: boolean;
-  readonly isTransitionSupported: boolean;
   readonly children: React.ReactNode;
   readonly index?: number;
   readonly activeIndex?: number;
+  readonly isTransitionSupported?: boolean;
 }
 
 function TabWrapper({ active, children, index, activeIndex }: TabWrapperProps) {
@@ -279,11 +264,10 @@ function TabWrapper({ active, children, index, activeIndex }: TabWrapperProps) {
   return (
     <div
       className={cn(
-        "w-full h-full overflow-y-auto admin-scroll-container scroll-smooth absolute top-0 left-0 gpu-accelerated admin-tab-pane",
+        "w-full h-full overflow-y-auto scroll-smooth absolute top-0 left-0 gpu-accelerated admin-tab-pane",
         positionClass,
         active ? "active-scroll-container" : "",
       )}
-      style={{ paddingBottom: "var(--admin-tab-pb)" }}
     >
       {children}
     </div>
@@ -316,252 +300,7 @@ function AdminRouteLoading() {
   );
 }
 
-function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
-  const isReady = useDeferredRender(150);
-  const isFormOrDetail =
-    view === "admin-product-form" ||
-    view === "admin-user-detail" ||
-    view === "admin-push";
-  const isDashboard = view === "admin-dashboard" || view === "admin";
-  const isSettings = view === "admin-settings";
-
-  if (!isReady) {
-    return <div className="size-full bg-[#09090b]" />;
-  }
-
-  let title = "Painel";
-  if (view === "admin-dashboard" || view === "admin") title = "Dashboard";
-  else if (view === "admin-products") title = "Produtos";
-  else if (view === "admin-orders") title = "Pedidos";
-  else if (view === "admin-customers") title = "Clientes";
-  else if (view === "admin-settings") title = "Ajustes";
-  else if (view === "admin-coupons") title = "Cupons";
-  else if (view === "admin-banners") title = "Banners";
-  else if (view === "admin-reviews") title = "Avaliações";
-  else if (view === "admin-qa") title = "Suporte Q&A";
-  else if (view === "admin-push") title = "Notificações";
-  else if (view === "admin-product-form") title = "Produto";
-  else if (view === "admin-user-detail") title = "Detalhes";
-
-  if (isDashboard) {
-    return (
-      <div className="size-full select-none bg-[#09090b] pb-28 text-white lg:pb-10">
-        {/* Dashboard Headers Section */}
-        <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-          <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-            <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-              <span className="italic text-white">{title}</span>
-            </span>
-          </h1>
-          <div className="premium-shimmer h-10 w-32 rounded-2xl" />
-        </div>
-
-        <div className="mt-6 space-y-6 px-4 sm:space-y-12">
-          {/* KPI Carousel */}
-          <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex h-[128px] flex-col justify-between rounded-3xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 p-5"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="premium-shimmer size-10 rounded-xl" />
-                  <div className="premium-shimmer h-3 w-16 rounded" />
-                </div>
-                <div className="premium-shimmer h-6 w-24 rounded" />
-              </div>
-            ))}
-          </div>
-
-          {/* Strategic Intelligence Blocks Skeleton */}
-          <div className="px-0 sm:px-6">
-            <div className="grid h-[220px] grid-cols-1 gap-6 md:grid-cols-2">
-              <div className="premium-shimmer rounded-[2rem] border border-white/[0.04] bg-zinc-950 p-6" />
-              <div className="premium-shimmer rounded-[2rem] border border-white/[0.04] bg-zinc-950 p-6" />
-            </div>
-          </div>
-
-          {/* Large Chart Area */}
-          <div className="h-[350px] rounded-[2rem] border border-white/[0.04] bg-zinc-950 p-6">
-            <div className="premium-shimmer mb-6 h-6 w-48 rounded-lg" />
-            <div className="premium-shimmer h-4/5 w-full rounded-2xl" />
-          </div>
-
-          {/* Bottom grid list */}
-          <div className="h-[300px] rounded-[2rem] border border-white/[0.04] bg-zinc-950 p-6">
-            <div className="premium-shimmer mb-6 h-6 w-36 rounded-lg" />
-            <div className="space-y-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between gap-4"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="premium-shimmer size-10 rounded-xl" />
-                    <div className="space-y-2">
-                      <div className="premium-shimmer h-3.5 w-32 rounded" />
-                      <div className="premium-shimmer h-3 w-20 rounded" />
-                    </div>
-                  </div>
-                  <div className="premium-shimmer h-4 w-16 rounded" />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (isSettings) {
-    return (
-      <div className="size-full select-none bg-[#09090b] pb-28 text-white lg:pb-8">
-        {/* Elite Header */}
-        <div className="sticky top-0 z-30 mb-4 border-b border-white/5 bg-[#09090b]/90 px-6 py-4 backdrop-blur-md">
-          <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
-            <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-              <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-                <span className="italic text-white">{title}</span>
-              </span>
-            </h1>
-            <div className="premium-shimmer h-11 w-36 rounded-xl" />
-          </div>
-        </div>
-
-        {/* Accordions */}
-        <div className="mx-auto max-w-2xl space-y-6 px-4 pb-10">
-          <div className="mt-4 space-y-6">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex h-20 items-center justify-between rounded-[2rem] border border-white/[0.04] bg-zinc-950 p-5"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="premium-shimmer size-10 rounded-xl" />
-                  <div className="space-y-2">
-                    <div className="premium-shimmer h-4 w-36 rounded" />
-                    <div className="premium-shimmer h-3 w-48 rounded" />
-                  </div>
-                </div>
-                <div className="premium-shimmer size-6 rounded-full" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (isFormOrDetail) {
-    return (
-      <div className="size-full select-none bg-[#09090b] pb-8 text-white">
-        {/* Header Back Button & Title */}
-        <div className="p-6">
-          <div className="mx-auto flex max-w-4xl items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="premium-shimmer size-12 rounded-2xl" />
-              <div className="space-y-1">
-                <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-                  <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-                    <span className="italic text-white">{title}</span>
-                  </span>
-                </h1>
-                <div className="premium-shimmer h-3 w-48 rounded" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Two-Column Form Layout */}
-        <div className="mx-auto grid max-w-4xl grid-cols-1 gap-8 p-6 lg:grid-cols-12">
-          {/* Main Form Fields */}
-          <div className="h-[600px] space-y-6 rounded-[2rem] border border-white/[0.04] bg-zinc-950 p-6 lg:col-span-8">
-            <div className="premium-shimmer h-5 w-32 rounded" />
-            <div className="space-y-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="space-y-2">
-                  <div className="premium-shimmer h-3 w-20 rounded" />
-                  <div className="premium-shimmer h-10 w-full rounded-xl" />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Side Preview/Upload */}
-          <div className="h-[400px] space-y-6 rounded-[2rem] border border-white/[0.04] bg-zinc-950 p-6 lg:col-span-4">
-            <div className="premium-shimmer h-5 w-24 rounded" />
-            <div className="premium-shimmer aspect-square w-full rounded-2xl" />
-            <div className="premium-shimmer h-10 w-full rounded-xl" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Default Grid/List Skeleton (Products, Orders, Customers, Coupons, Banners, Reviews, QA)
-  return (
-    <div className="size-full select-none bg-[#09090b] pb-8 text-white">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-        <div className="flex items-center gap-3">
-          <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-            <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-              <span className="italic text-white">{title}</span>
-            </span>
-          </h1>
-        </div>
-        <div className="premium-shimmer h-11 w-32 rounded-xl" />
-      </div>
-
-      <div className="mt-6 space-y-6 px-4 sm:space-y-12 sm:px-6">
-        {/* KPI Carousel */}
-        <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="flex h-[128px] flex-col justify-between rounded-3xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 p-5"
-            >
-              <div className="flex items-center gap-3">
-                <div className="premium-shimmer size-10 rounded-xl" />
-                <div className="premium-shimmer h-3 w-16 rounded" />
-              </div>
-              <div className="premium-shimmer h-6 w-24 rounded" />
-            </div>
-          ))}
-        </div>
-
-        {/* Control Bar */}
-        <div className="flex gap-4">
-          <div className="premium-shimmer h-11 flex-1 rounded-2xl" />
-          <div className="premium-shimmer size-11 rounded-2xl" />
-        </div>
-
-        {/* Grid of Items */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              className="flex h-[220px] flex-col justify-between space-y-4 rounded-[2rem] border border-white/[0.04] bg-zinc-950 p-6"
-            >
-              <div className="flex items-center gap-4">
-                <div className="premium-shimmer size-16 rounded-2xl" />
-                <div className="flex-1 space-y-2">
-                  <div className="premium-shimmer h-4.5 w-3/4 animate-pulse rounded" />
-                  <div className="premium-shimmer h-3.5 w-1/2 animate-pulse rounded" />
-                </div>
-              </div>
-              <div className="premium-shimmer h-3.5 w-full animate-pulse rounded" />
-              <div className="flex items-center justify-between border-t border-white/5 pt-2">
-                <div className="premium-shimmer h-4 w-16 animate-pulse rounded" />
-                <div className="premium-shimmer size-8 rounded-lg" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
+// Skeletons and fallback moved to AdminArea.tsx to prevent structural exposure before auth check completes.
 
 function AdminAccessDenied({
   onNavigate,
@@ -584,10 +323,11 @@ function AdminAccessDenied({
 
   return <AdminRouteLoading />;
 }
+import { PushNotificationBanner } from "@/components/pwa/PushNotificationBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { CartProvider } from "@/contexts/CartContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
-import { StoreProvider } from "@/contexts/StoreContext";
+import { StoreProvider, useStore } from "@/contexts/StoreContext";
 import { useCartActions, useCartState } from "@/hooks/useCart";
 import { useRealtimeUpdate } from "@/hooks/useRealtimeUpdate";
 import type { Product, SortOption, View } from "@/types";
@@ -635,8 +375,11 @@ const getNavigationDirection = (
     "admin-products": 2,
     "admin-product-form": 2.4,
     "admin-coupons": 2.5,
+    "admin-coupon-form": 2.52,
     "admin-banners": 2.6,
+    "admin-shipping": 2.7,
     "admin-customers": 3,
+    "admin-whatsapp-config": 3.4,
     "admin-user-detail": 3.5,
     "admin-settings": 4,
   };
@@ -759,6 +502,13 @@ const AppContent = () => {
   const { config } = useStore();
 
   const [currentView, setCurrentView] = useState<View>("home");
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [, setVisualBottomOffset] = useState(0);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
+  const isMainTab = ["home", "favorites", "cart", "orders", "profile"].includes(
+    currentView,
+  );
   const [transitionScroll, setTransitionScroll] = useState({
     oldScroll: 0,
     newScroll: 0,
@@ -782,7 +532,6 @@ const AppContent = () => {
     if (!isAdminDirty) return;
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
-      e.returnValue = "";
       return "";
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -795,17 +544,17 @@ const AppContent = () => {
     const root = document.documentElement;
     if (currentView.startsWith("admin")) {
       root.classList.add("dark");
-      root.removeAttribute("data-theme-mode");
+      delete root.dataset.themeMode;
     } else if (config?.themeMode) {
       if (config.themeMode === "dark") {
         root.classList.add("dark");
-        root.removeAttribute("data-theme-mode");
+        delete root.dataset.themeMode;
       } else if (config.themeMode === "glass") {
         root.classList.add("dark");
-        root.setAttribute("data-theme-mode", "glass");
+        root.dataset.themeMode = "glass";
       } else {
         root.classList.remove("dark");
-        root.removeAttribute("data-theme-mode");
+        delete root.dataset.themeMode;
       }
     }
   }, [currentView, config?.themeMode]);
@@ -814,6 +563,7 @@ const AppContent = () => {
   const selectedProductIdRef = useRef<string | null>(selectedProductId);
   const userRef = useRef(user);
   const authLoadingRef = useRef(authLoading);
+  const isAdminRef = useRef(isAdmin);
   const isInitialMountRef = useRef(true);
   const isInitialAuthCheckedRef = useRef(false);
 
@@ -834,14 +584,41 @@ const AppContent = () => {
     authLoadingRef.current = authLoading;
   }, [authLoading]);
 
+  useEffect(() => {
+    isAdminRef.current = isAdmin;
+  }, [isAdmin]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [isDebugOpen, setIsDebugOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isHeaderDocked, setIsHeaderDocked] = useState(false);
   const [isRouteLoading, setIsRouteLoading] = useState(false);
   const [backOverride, setBackOverride] = useState<(() => void) | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState("Todas");
+  const [selectedCategory, setSelectedCategory] = useState(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(globalThis.location.search);
+      return params.get("category") || "Todas";
+    }
+    return "Todas";
+  });
   const [sortBy, setSortBy] = useState<SortOption>("default");
+
+  const handleCategoryChange = useCallback((category: string) => {
+    setSelectedCategory(category);
+    if (typeof window !== "undefined") {
+      const url = new URL(globalThis.location.href);
+      if (category && category !== "Todas") {
+        url.searchParams.set("category", category);
+      } else {
+        url.searchParams.delete("category");
+      }
+      globalThis.history.replaceState(
+        globalThis.history.state,
+        "",
+        url.pathname + url.search,
+      );
+    }
+  }, []);
   const mainRef = useRef<HTMLElement>(null);
   const scrollSentinelRef = useRef<HTMLDivElement>(null);
   const backOverrideRef = useRef<(() => void) | null>(null);
@@ -907,6 +684,7 @@ const AppContent = () => {
       const currView = currentViewRef.current;
       const isAuthL = authLoadingRef.current;
       const usr = userRef.current;
+      const isAdm = isAdminRef.current;
 
       const isMainTabNav = [
         "home",
@@ -951,6 +729,18 @@ const AppContent = () => {
         !usr
       ) {
         targetView = "auth";
+      }
+
+      if (
+        view.startsWith("admin") &&
+        view !== "admin-login" &&
+        !isAuthL &&
+        !isAdm
+      ) {
+        console.warn(
+          "[App] Unauthorized admin navigation blocked in handleNavigate.",
+        );
+        targetView = "home";
       }
 
       const isDifferentView = currView !== targetView;
@@ -1079,6 +869,7 @@ const AppContent = () => {
             "user-profile",
             "order-details",
             "admin-product-form",
+            "admin-coupon-form",
             "admin-user-detail",
             "admin-orders",
             "admin-push",
@@ -1197,28 +988,7 @@ const AppContent = () => {
   useBehavioralPrefetch(currentView, prefetchView);
   useWebVitals();
 
-  // Eagerly prefetch all admin views in the background to ensure instantaneous tab switches
-  useEffect(() => {
-    if (isAdmin) {
-      const adminViews = [
-        "admin-dashboard",
-        "admin-products",
-        "admin-orders",
-        "admin-customers",
-        "admin-settings",
-        "admin-coupons",
-        "admin-banners",
-        "admin-reviews",
-        "admin-qa",
-        "admin-user-detail",
-        "admin-push",
-      ];
-      const timeoutId = setTimeout(() => {
-        adminViews.forEach((view) => prefetchView(view));
-      }, 1000);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [isAdmin, prefetchView]);
+  // Prefetching of admin views is handled internally within the secure AdminArea.tsx bundle.
 
   const favoriteIds = React.useMemo(
     () => favorites.map((p) => p.id),
@@ -1405,7 +1175,11 @@ const AppContent = () => {
       console.log(`[PWA] Consuming reload reason: ${reason}`);
       import("sonner").then(({ toast }) => {
         toast.success("Sistema Atualizado", {
-          description: reason,
+          description: reason.includes(
+            "Failed to fetch dynamically imported module",
+          )
+            ? "O aplicativo foi atualizado para a versão mais recente."
+            : reason,
           duration: 5000,
         });
       });
@@ -1413,11 +1187,114 @@ const AppContent = () => {
     }
   }, []);
 
+  // Keyboard, standalone and visualBottomOffset observers for mobile layout stabilization
+  useEffect(() => {
+    if (globalThis.window === undefined) return;
+    const mediaQuery =
+      window.location.search.includes("standalone") ||
+      window.matchMedia("(display-mode: standalone)");
+    const checkStandalone = () => {
+      const standalone =
+        window.location.search.includes("standalone") ||
+        (typeof mediaQuery === "object" && mediaQuery.matches) ||
+        (window.navigator as any).standalone === true;
+      setIsStandalone(standalone);
+      document.documentElement.style.setProperty(
+        "--is-standalone",
+        standalone ? "1" : "0",
+      );
+    };
+    checkStandalone();
+    if (typeof mediaQuery === "object" && mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", checkStandalone);
+      return () => mediaQuery.removeEventListener("change", checkStandalone);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (globalThis.window === undefined) return;
+    const viewport = window.visualViewport;
+    if (!viewport) {
+      setVisualBottomOffset(isStandalone ? 0 : 56);
+      return;
+    }
+
+    const updateOffset = () => {
+      const layoutHeight = window.innerHeight;
+      const visualBottom = viewport.offsetTop + viewport.height;
+      const offset = Math.max(0, layoutHeight - visualBottom);
+
+      const finalOffset = offset > 0 && offset < 150 ? offset : 0;
+      setVisualBottomOffset(finalOffset);
+      document.documentElement.style.setProperty(
+        "--visual-bottom-offset",
+        `${finalOffset}px`,
+      );
+    };
+
+    viewport.addEventListener("resize", updateOffset);
+    viewport.addEventListener("scroll", updateOffset);
+    window.addEventListener("resize", updateOffset);
+    updateOffset();
+
+    return () => {
+      viewport.removeEventListener("resize", updateOffset);
+      viewport.removeEventListener("scroll", updateOffset);
+      window.removeEventListener("resize", updateOffset);
+    };
+  }, [isStandalone]);
+
+  useEffect(() => {
+    if (globalThis.window === undefined) return;
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    let rafId: number;
+    const handleResize = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const activeEl = document.activeElement;
+        const isInputActive =
+          activeEl &&
+          ((activeEl.tagName === "INPUT" &&
+            ![
+              "button",
+              "submit",
+              "checkbox",
+              "radio",
+              "file",
+              "image",
+              "range",
+              "hidden",
+              "reset",
+            ].includes(activeEl.getAttribute("type") || "")) ||
+            activeEl.tagName === "TEXTAREA" ||
+            activeEl.getAttribute("contenteditable") === "true");
+        const keyboardActive =
+          isInputActive && viewport.height < window.innerHeight * 0.85;
+        setIsKeyboardOpen(!!keyboardActive);
+      });
+    };
+
+    viewport.addEventListener("resize", handleResize);
+    return () => {
+      cancelAnimationFrame(rafId);
+      viewport.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
   // Scroll tracking for animations
 
   // Freeze safe areas to prevent mobile shrinking/expanding on scroll
   useEffect(() => {
     if (globalThis.window === undefined) return;
+
+    const updateViewportHeight = () => {
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty("--vh", `${vh}px`);
+    };
+    updateViewportHeight();
+
     const lockSafeAreas = () => {
       const div = document.createElement("div");
       div.style.paddingTop = "env(safe-area-inset-top, 0px)";
@@ -1430,11 +1307,21 @@ const AppContent = () => {
       const sat = computed.paddingTop;
       const sab = computed.paddingBottom;
 
+      const sanitizeSafeArea = (val: string | null) => {
+        if (!val) return "";
+        const trimmed = val.trim();
+        if (trimmed === "0" || trimmed === "0px" || trimmed === "") return "";
+        if (/^\d+(\.\d+)?$/.test(trimmed)) return `${trimmed}px`;
+        return trimmed;
+      };
+
+      const cleanSat = sanitizeSafeArea(sat);
+      const cleanSab = sanitizeSafeArea(sab);
+
       const root = document.documentElement;
-      if (sat && sat !== "0px")
-        root.style.setProperty("--safe-area-top-fixed", sat);
-      if (sab && sab !== "0px")
-        root.style.setProperty("--safe-area-bottom-fixed", sab);
+      if (cleanSat) root.style.setProperty("--safe-area-top-fixed", cleanSat);
+      if (cleanSab)
+        root.style.setProperty("--safe-area-bottom-fixed", cleanSab);
 
       div.remove();
     };
@@ -1444,7 +1331,10 @@ const AppContent = () => {
     const handleOrientation = () => {
       document.documentElement.style.removeProperty("--safe-area-top-fixed");
       document.documentElement.style.removeProperty("--safe-area-bottom-fixed");
-      setTimeout(lockSafeAreas, 300);
+      setTimeout(() => {
+        lockSafeAreas();
+        updateViewportHeight();
+      }, 300);
     };
 
     // IntersectionObserver scroll tracking for HomeView and header components
@@ -1467,9 +1357,11 @@ const AppContent = () => {
       observer.observe(sentinel);
     }
 
+    globalThis.addEventListener("resize", updateViewportHeight);
     globalThis.addEventListener("orientationchange", handleOrientation);
     return () => {
       clearTimeout(timer);
+      globalThis.removeEventListener("resize", updateViewportHeight);
       globalThis.removeEventListener("orientationchange", handleOrientation);
       if (observer) {
         observer.disconnect();
@@ -1525,13 +1417,16 @@ const AppContent = () => {
         "admin-product-form",
         "admin-orders",
         "admin-coupons",
+        "admin-coupon-form",
         "admin-banners",
+        "admin-shipping",
         "admin-settings",
         "admin-reviews",
         "admin-qa",
         "admin-customers",
         "admin-user-detail",
         "admin-push",
+        "admin-whatsapp-config",
         "address-form",
         "admin-login",
         "user-profile",
@@ -1545,6 +1440,13 @@ const AppContent = () => {
           "admin-product-form",
           "admin-user-detail",
           "admin-push",
+          "admin-banners",
+          "admin-coupons",
+          "admin-coupon-form",
+          "admin-shipping",
+          "admin-reviews",
+          "admin-qa",
+          "admin-whatsapp-config",
         ];
         if (
           subAdminViews.includes(currView) &&
@@ -1553,26 +1455,50 @@ const AppContent = () => {
           console.log(
             `[App] Intercepted popstate exit from sub-admin: ${currView} to ${targetView}. Rerouting to parent admin view.`,
           );
-          if (currView === "admin-product-form") {
+          if (currView === "admin-coupon-form") {
+            targetView = "admin-coupons";
+            globalThis.history.replaceState(
+              { view: "admin-coupons" },
+              "",
+              "/admin-coupons",
+            );
+          } else if (
+            currView === "admin-product-form" ||
+            currView === "admin-coupons" ||
+            currView === "admin-shipping"
+          ) {
             targetView = "admin-products";
             globalThis.history.replaceState(
               { view: "admin-products" },
               "",
               "/admin-products",
             );
-          } else if (currView === "admin-user-detail") {
+          } else if (
+            currView === "admin-user-detail" ||
+            currView === "admin-whatsapp-config"
+          ) {
             targetView = "admin-customers";
             globalThis.history.replaceState(
               { view: "admin-customers" },
               "",
               "/admin-customers",
             );
-          } else if (currView === "admin-push") {
+          } else if (
+            currView === "admin-push" ||
+            currView === "admin-banners"
+          ) {
             targetView = "admin-dashboard";
             globalThis.history.replaceState(
               { view: "admin-dashboard" },
               "",
               "/admin-dashboard",
+            );
+          } else if (currView === "admin-reviews" || currView === "admin-qa") {
+            targetView = "admin-orders";
+            globalThis.history.replaceState(
+              { view: "admin-orders" },
+              "",
+              "/admin-orders",
             );
           }
         }
@@ -1590,6 +1516,21 @@ const AppContent = () => {
           }
         }
 
+        if (
+          targetView.startsWith("admin") &&
+          targetView !== "admin-login" &&
+          !authLoading &&
+          !isAdmin
+        ) {
+          console.warn(
+            "[App] Unauthorized admin access attempt blocked in syncWithUrl.",
+          );
+          targetView = "home";
+          if (globalThis.location.pathname !== "/") {
+            globalThis.history.replaceState({ view: "home" }, "", "/");
+          }
+        }
+
         if (targetView === "admin-login" && !authLoading && isAdmin) {
           targetView = "admin";
           if (globalThis.location.pathname !== "/admin") {
@@ -1598,6 +1539,8 @@ const AppContent = () => {
         }
 
         const urlParams = new URLSearchParams(globalThis.location.search);
+        const categoryParam = urlParams.get("category") || "Todas";
+        setSelectedCategory(categoryParam);
         const queryId = urlParams.get("id");
         const stateId = globalThis.history.state?.id;
         const nextSelectedProductId =
@@ -1607,6 +1550,7 @@ const AppContent = () => {
           targetView !== "user-profile" &&
           targetView !== "order-details" &&
           targetView !== "admin-product-form" &&
+          targetView !== "admin-coupon-form" &&
           targetView !== "admin-user-detail" &&
           targetView !== "admin-orders" &&
           targetView !== "admin-push"
@@ -1747,6 +1691,7 @@ const AppContent = () => {
                   "user-profile",
                   "order-details",
                   "admin-product-form",
+                  "admin-coupon-form",
                   "admin-user-detail",
                   "admin-orders",
                   "admin-push",
@@ -1784,6 +1729,7 @@ const AppContent = () => {
                   "user-profile",
                   "order-details",
                   "admin-product-form",
+                  "admin-coupon-form",
                   "admin-user-detail",
                   "admin-orders",
                   "admin-push",
@@ -2157,13 +2103,16 @@ const AppContent = () => {
       "admin-product-form",
       "admin-orders",
       "admin-coupons",
+      "admin-coupon-form",
       "admin-banners",
+      "admin-shipping",
       "admin-settings",
       "admin-reviews",
       "admin-qa",
       "admin-customers",
       "admin-user-detail",
       "admin-push",
+      "admin-whatsapp-config",
     ];
 
     const privateViews: View[] = [
@@ -2205,7 +2154,7 @@ const AppContent = () => {
     else if (currentView === "profile") activeTabIdx = 3;
 
     return (
-      <div className="relative flex flex-1 flex-col w-full h-full min-h-full">
+      <div className="relative flex size-full min-h-full flex-1 flex-col">
         {/* Main Tabs Container - Kept mounted in the DOM to preserve loaded states & scroll positions */}
         {isTransitionSupported ? (
           <div
@@ -2237,9 +2186,11 @@ const AppContent = () => {
                       onQuickBuy: handleQuickBuy,
                       scrollProgress: scrollProgress,
                       isLoading: productsLoading,
-                      selectedProductId: selectedProductId || undefined,
+                      selectedProductId: isMainTab
+                        ? selectedProductId || undefined
+                        : undefined,
                       selectedCategory: selectedCategory,
-                      onCategoryChange: setSelectedCategory,
+                      onCategoryChange: handleCategoryChange,
                       sortBy: sortBy,
                       onSortByChange: setSortBy,
                       onHeaderDockChange: setIsHeaderDocked,
@@ -2268,7 +2219,9 @@ const AppContent = () => {
                       onToggleFavorite: handleToggleFavorite,
                       onProductClick: handleProductClick,
                       onNavigate: handleNavigate,
-                      selectedProductId: selectedProductId || undefined,
+                      selectedProductId: isMainTab
+                        ? selectedProductId || undefined
+                        : undefined,
                       isActive: currentView === "favorites",
                     }}
                   />
@@ -2369,7 +2322,7 @@ const AppContent = () => {
                       isLoading: productsLoading,
                       selectedProductId: selectedProductId || undefined,
                       selectedCategory: selectedCategory,
-                      onCategoryChange: setSelectedCategory,
+                      onCategoryChange: handleCategoryChange,
                       sortBy: sortBy,
                       onSortByChange: setSortBy,
                       onHeaderDockChange: setIsHeaderDocked,
@@ -2458,7 +2411,7 @@ const AppContent = () => {
         {isTransitionSupported ? (
           !isMainTab && (
             <div
-              className="flex flex-1 flex-col w-full min-h-full !outline-none focus:!outline-none"
+              className="flex min-h-full w-full flex-1 flex-col !outline-none focus:!outline-none"
               style={{ viewTransitionName: "main-content" }}
             >
               {renderCustomerSecondaryView()}
@@ -2483,7 +2436,7 @@ const AppContent = () => {
                   duration: getFramerMotionDuration(),
                   y: { duration: 0 },
                 }}
-                className="flex flex-1 flex-col w-full min-h-full !outline-none focus:!outline-none"
+                className="flex min-h-full w-full flex-1 flex-col !outline-none focus:!outline-none"
               >
                 {renderCustomerSecondaryView()}
               </motion.div>
@@ -2494,381 +2447,7 @@ const AppContent = () => {
     );
   };
 
-  const renderAdminContent = () => {
-    const isMainTab = [
-      "admin-dashboard",
-      "admin",
-      "admin-products",
-      "admin-orders",
-      "admin-customers",
-      "admin-settings",
-    ].includes(currentView);
-
-    let activeTabIdx = -1;
-    if (currentView === "admin" || currentView === "admin-dashboard")
-      activeTabIdx = 0;
-    else if (currentView === "admin-orders") activeTabIdx = 1;
-    else if (currentView === "admin-products") activeTabIdx = 2;
-    else if (currentView === "admin-customers") activeTabIdx = 3;
-    else if (currentView === "admin-settings") activeTabIdx = 4;
-
-    return (
-      <div className="relative size-full overflow-hidden">
-        {/* Main Tabs Container - Kept mounted in the DOM to preserve loaded states & scroll positions */}
-        {isTransitionSupported ? (
-          <div
-            className="absolute left-0 top-0 size-full overflow-hidden"
-            style={{
-              opacity: isMainTab ? 1 : 0,
-              pointerEvents: isMainTab ? "auto" : "none",
-              visibility: isMainTab ? "visible" : "hidden",
-            }}
-          >
-            <TabWrapper
-              active={
-                currentView === "admin-dashboard" || currentView === "admin"
-              }
-              isTransitionSupported={isTransitionSupported}
-              index={0}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent
-                  active={
-                    currentView === "admin-dashboard" || currentView === "admin"
-                  }
-                >
-                  <PreloadedOrLazy
-                    component={AdminDashboard}
-                    props={{
-                      onNavigate: handleNavigate,
-                      active:
-                        currentView === "admin-dashboard" ||
-                        currentView === "admin",
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
-            <TabWrapper
-              active={currentView === "admin-products"}
-              isTransitionSupported={isTransitionSupported}
-              index={2}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent active={currentView === "admin-products"}>
-                  <PreloadedOrLazy
-                    component={AdminProducts}
-                    props={{
-                      onNavigate: handleNavigate,
-                      active: currentView === "admin-products",
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
-            <TabWrapper
-              active={currentView === "admin-orders"}
-              isTransitionSupported={isTransitionSupported}
-              index={1}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent active={currentView === "admin-orders"}>
-                  <PreloadedOrLazy
-                    component={AdminOrders}
-                    props={{
-                      onNavigate: handleNavigate,
-                      active: currentView === "admin-orders",
-                      selectedOrderId: selectedProductId,
-                      onSetBackOverride: setBackOverride,
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
-            <TabWrapper
-              active={currentView === "admin-customers"}
-              isTransitionSupported={isTransitionSupported}
-              index={3}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent active={currentView === "admin-customers"}>
-                  <PreloadedOrLazy
-                    component={AdminCustomers}
-                    props={{
-                      onNavigate: handleNavigate,
-                      active: currentView === "admin-customers",
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
-            <TabWrapper
-              active={currentView === "admin-settings"}
-              isTransitionSupported={isTransitionSupported}
-              index={4}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent active={currentView === "admin-settings"}>
-                  <PreloadedOrLazy
-                    component={AdminSettings}
-                    props={{
-                      onNavigate: handleNavigate,
-                      active: currentView === "admin-settings",
-                      onSetDirty: setIsAdminDirty,
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
-          </div>
-        ) : (
-          <motion.div
-            className="absolute left-0 top-0 size-full overflow-hidden"
-            initial={false}
-            animate={
-              isMainTab
-                ? {
-                    opacity: 1,
-                    y: 0,
-                    pointerEvents: "auto",
-                    visibility: "visible",
-                  }
-                : {
-                    opacity: 0,
-                    y: -8,
-                    pointerEvents: "none",
-                    transitionEnd: { visibility: "hidden" },
-                  }
-            }
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <TabWrapper
-              active={
-                currentView === "admin-dashboard" || currentView === "admin"
-              }
-              isTransitionSupported={isTransitionSupported}
-              index={0}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent
-                  active={
-                    currentView === "admin-dashboard" || currentView === "admin"
-                  }
-                >
-                  <PreloadedOrLazy
-                    component={AdminDashboard}
-                    props={{
-                      onNavigate: handleNavigate,
-                      active:
-                        currentView === "admin-dashboard" ||
-                        currentView === "admin",
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
-            <TabWrapper
-              active={currentView === "admin-products"}
-              isTransitionSupported={isTransitionSupported}
-              index={2}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent active={currentView === "admin-products"}>
-                  <PreloadedOrLazy
-                    component={AdminProducts}
-                    props={{
-                      onNavigate: handleNavigate,
-                      active: currentView === "admin-products",
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
-            <TabWrapper
-              active={currentView === "admin-orders"}
-              isTransitionSupported={isTransitionSupported}
-              index={1}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent active={currentView === "admin-orders"}>
-                  <PreloadedOrLazy
-                    component={AdminOrders}
-                    props={{
-                      onNavigate: handleNavigate,
-                      active: currentView === "admin-orders",
-                      selectedOrderId: selectedProductId,
-                      onSetBackOverride: setBackOverride,
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
-            <TabWrapper
-              active={currentView === "admin-customers"}
-              isTransitionSupported={isTransitionSupported}
-              index={3}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent active={currentView === "admin-customers"}>
-                  <PreloadedOrLazy
-                    component={AdminCustomers}
-                    props={{
-                      onNavigate: handleNavigate,
-                      active: currentView === "admin-customers",
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
-            <TabWrapper
-              active={currentView === "admin-settings"}
-              isTransitionSupported={isTransitionSupported}
-              index={4}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent active={currentView === "admin-settings"}>
-                  <PreloadedOrLazy
-                    component={AdminSettings}
-                    props={{
-                      onNavigate: handleNavigate,
-                      active: currentView === "admin-settings",
-                      onSetDirty: setIsAdminDirty,
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
-          </motion.div>
-        )}
-
-        {/* Secondary Views (Rendered on demand) */}
-        <AnimatePresence mode="wait">
-          {!isMainTab && (
-            <motion.div
-              key={currentView}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{
-                duration: isTransitionSupported ? 0 : 0.22,
-                ease: [0.16, 1, 0.3, 1],
-              }}
-              className="admin-scroll-container active-scroll-container absolute left-0 top-0 size-full overflow-y-auto scroll-smooth pb-12 lg:pb-6"
-            >
-              {(() => {
-                switch (currentView) {
-                  case "admin-product-form":
-                    return (
-                      <LocalErrorBoundary key="admin-product-form">
-                        <PreloadedOrLazy
-                          component={AdminProductForm}
-                          props={{
-                            productId: selectedProductId || undefined,
-                            onNavigate: handleNavigate,
-                            onSetDirty: setIsAdminDirty,
-                          }}
-                        />
-                      </LocalErrorBoundary>
-                    );
-                  case "admin-coupons":
-                    return (
-                      <LocalErrorBoundary key="admin-coupons">
-                        <PreloadedOrLazy
-                          component={AdminCoupons}
-                          props={{
-                            onNavigate: handleNavigate,
-                            active: currentView === "admin-coupons",
-                            onSetDirty: setIsAdminDirty,
-                          }}
-                        />
-                      </LocalErrorBoundary>
-                    );
-                  case "admin-banners":
-                    return (
-                      <LocalErrorBoundary key="admin-banners">
-                        <PreloadedOrLazy
-                          component={AdminBanners}
-                          props={{
-                            onNavigate: handleNavigate,
-                            active: currentView === "admin-banners",
-                            onSetDirty: setIsAdminDirty,
-                            onSetBackOverride: setBackOverride,
-                          }}
-                        />
-                      </LocalErrorBoundary>
-                    );
-                  case "admin-reviews":
-                    return (
-                      <LocalErrorBoundary key="admin-reviews">
-                        <PreloadedOrLazy
-                          component={AdminReviews}
-                          props={{
-                            onNavigate: handleNavigate,
-                            active: currentView === "admin-reviews",
-                            onSetDirty: setIsAdminDirty,
-                          }}
-                        />
-                      </LocalErrorBoundary>
-                    );
-                  case "admin-qa":
-                    return (
-                      <LocalErrorBoundary key="admin-qa">
-                        <PreloadedOrLazy
-                          component={AdminQA}
-                          props={{
-                            onNavigate: handleNavigate,
-                            active: true,
-                            onSetDirty: setIsAdminDirty,
-                          }}
-                        />
-                      </LocalErrorBoundary>
-                    );
-                  case "admin-user-detail":
-                    return (
-                      <LocalErrorBoundary key="admin-user-detail">
-                        <PreloadedOrLazy
-                          component={AdminUserDetail}
-                          props={{
-                            userId: selectedProductId || "",
-                            onBack: handleAdminUserDetailBack,
-                            onNavigate: handleNavigate,
-                          }}
-                        />
-                      </LocalErrorBoundary>
-                    );
-                  case "admin-push":
-                    return (
-                      <LocalErrorBoundary key="admin-push">
-                        <PreloadedOrLazy
-                          component={AdminPush}
-                          props={{
-                            onNavigate: handleNavigate,
-                            targetUserId: selectedProductId || undefined,
-                            onSetDirty: setIsAdminDirty,
-                          }}
-                        />
-                      </LocalErrorBoundary>
-                    );
-                  default:
-                    return null;
-                }
-              })()}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  };
+  // Admin views rendering has been moved to src/components/layouts/AdminArea.tsx for strict code separation.
 
   const MaintenanceView = () => {
     return (
@@ -2920,31 +2499,10 @@ const AppContent = () => {
     );
   };
 
-  const renderView = () => {
-    const isMaintenanceMode = import.meta.env.VITE_MAINTENANCE_MODE === "true";
-    if (isMaintenanceMode && !currentView.startsWith("admin")) {
-      return <MaintenanceView />;
-    }
-
-    if (!isAdmin) return <AdminAccessDenied onNavigate={handleNavigate} />;
-
-    return (
-      <AdminLayout
-        currentView={currentView}
-        onNavigate={handleNavigate}
-        onBack={backOverride || undefined}
-      >
-        <React.Suspense
-          fallback={<AdminViewLoadingFallback view={currentView} />}
-        >
-          {renderAdminContent()}
-        </React.Suspense>
-      </AdminLayout>
-    );
-  };
+  // renderView has been extracted to AdminArea.tsx to ensure layouts are only parsed post-verification.
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
+    <div className="flex size-full min-h-[100dvh] h-[100dvh] flex-col overflow-hidden bg-background text-foreground">
       <AppBadgeSynchronizer />
       <AnimatePresence>
         {isRouteLoading && (
@@ -2968,7 +2526,7 @@ const AppContent = () => {
         )}
       </AnimatePresence>
       {!currentView.startsWith("admin") && (
-        <div className="gpu-accelerated flex-shrink-0">
+        <div className="gpu-accelerated flex-shrink-0 relative z-[100]">
           <Header
             onNavigate={handleNavigate}
             showBackButton={
@@ -2994,8 +2552,12 @@ const AppContent = () => {
         ref={mainRef}
         onScroll={handleScroll}
         className={cn(
-          "relative flex-1 flex flex-col overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch] gpu-accelerated",
-          currentView.startsWith("admin") && "h-full pt-0 overflow-y-hidden",
+          "relative flex-1 flex flex-col overflow-x-hidden [-webkit-overflow-scrolling:touch]",
+          currentView.startsWith("admin")
+            ? "h-full pt-0 overflow-y-hidden"
+            : isMainTab
+              ? "overflow-y-hidden"
+              : "overflow-y-auto gpu-accelerated",
         )}
       >
         {/* Scroll Sentinel for header visual transitions */}
@@ -3027,12 +2589,23 @@ const AppContent = () => {
           />
         )}
 
-        {currentView.startsWith("admin") ? (
+        {currentView.startsWith("admin") && currentView !== "admin-login" ? (
           <div key="admin-layout" className="h-full pt-0">
-            <React.Suspense
-              fallback={<AdminViewLoadingFallback view={currentView} />}
-            >
-              {renderView()}
+            <React.Suspense fallback={<AdminRouteLoading />}>
+              {isAdmin ? (
+                <AdminArea
+                  currentView={currentView}
+                  onNavigate={handleNavigate}
+                  selectedProductId={selectedProductId}
+                  setIsAdminDirty={setIsAdminDirty}
+                  setBackOverride={setBackOverride}
+                  handleAdminUserDetailBack={handleAdminUserDetailBack}
+                  backOverride={backOverride}
+                  isTransitionSupported={isTransitionSupported}
+                />
+              ) : (
+                <AdminAccessDenied onNavigate={handleNavigate} />
+              )}
             </React.Suspense>
           </div>
         ) : (
@@ -3042,16 +2615,24 @@ const AppContent = () => {
         )}
       </main>
 
-      {currentView === "home" && (
+      {currentView === "home" && !isKeyboardOpen && (
         <CartReminder
           onAction={() => handleNavigate("cart")}
           docked={isHeaderDocked}
         />
       )}
 
-      {!currentView.startsWith("admin") && currentView !== "order-success" && (
-        <BottomNav currentView={currentView} onNavigate={handleNavigate} />
-      )}
+      {!currentView.startsWith("admin") &&
+        currentView !== "order-success" &&
+        !isKeyboardOpen && (
+          <>
+            <PushNotificationBanner
+              currentView={currentView}
+              isKeyboardOpen={isKeyboardOpen}
+            />
+            <BottomNav currentView={currentView} onNavigate={handleNavigate} />
+          </>
+        )}
 
       <React.Suspense fallback={null}>
         <DebugPanel
@@ -3104,8 +2685,6 @@ const AppContent = () => {
   );
 };
 
-declare const __APP_VERSION__: string;
-
 function PWAUpdateManager() {
   const { user } = useAuth();
   const { checkUpdate, updateAvailable, newVersion, performNuclearPurge } =
@@ -3114,7 +2693,7 @@ function PWAUpdateManager() {
   const handleUpdate = useCallback(
     (newVer?: string) => {
       console.log(
-        `[RealtimeUpdate] Update ping detected (${newVer || "sem versão"}). Triggering deep checkUpdate...`,
+        `[RealtimeUpdate] Update ping detected (${newVer || "no-ver"}). Triggering deep checkUpdate...`,
       );
       checkUpdate(newVer);
     },
@@ -3127,7 +2706,6 @@ function PWAUpdateManager() {
     <UpdateNotification
       show={updateAvailable}
       onUpdate={() => performNuclearPurge(true)}
-      currentVersion={__APP_VERSION__}
       newVersion={newVersion}
     />
   );

@@ -225,7 +225,7 @@ export function useProducts({ autoFetch = true } = {}) {
         let pQuery: any;
         if (isAdmin) {
           pQuery = supabase
-            .from("produtos")
+            .from("vw_produtos_admin")
             .select("*")
             .eq("id", id)
             .is("deleted_at", null)
@@ -480,7 +480,7 @@ export function useProducts({ autoFetch = true } = {}) {
         TruthGate.verifyProductAxiom(productData);
 
         const { data, error } = await supabase
-          .from("produtos")
+          .from("vw_produtos_admin")
           .insert({
             nome: productData.name,
             descricao: productData.description,
@@ -514,7 +514,7 @@ export function useProducts({ autoFetch = true } = {}) {
 
           if (productData.variants && productData.variants.length > 0) {
             const variantsToInsert = productData.variants.map((v) => ({
-              product_id: data.id,
+              product_id: data.id as string,
               name: v.name,
               value: v.value,
               sku: v.sku || null,
@@ -665,8 +665,9 @@ export function useProducts({ autoFetch = true } = {}) {
         if (updates.lengthCm !== undefined)
           dbUpdates.comprimento_cm = updates.lengthCm;
 
-        const { data, error } = await supabase
-          .from("produtos")
+        const { data, error } = await (
+          supabase.from("vw_produtos_admin") as any
+        )
           .update(dbUpdates)
           .eq("id", id)
           .select(

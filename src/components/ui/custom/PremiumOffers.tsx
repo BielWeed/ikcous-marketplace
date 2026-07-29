@@ -25,6 +25,7 @@ interface PremiumOffersProps {
   onProductClick: (productId: string) => void;
   onAddToCart?: (product: Product) => void;
   onQuickBuy?: (product: Product) => void;
+  title?: string;
 }
 
 // Helper to get time remaining until midnight
@@ -52,6 +53,7 @@ export const PremiumOffers = React.memo(function PremiumOffers({
   onProductClick,
   onAddToCart,
   onQuickBuy,
+  title = "Super Descontos",
 }: PremiumOffersProps) {
   const { config } = useStore();
   const { prefetchView } = usePrefetchOnHover();
@@ -161,7 +163,7 @@ export const PremiumOffers = React.memo(function PremiumOffers({
             <span className="relative inline-flex size-2 rounded-full bg-rose-500" />
           </span>
           <h2 className="text-xl font-extrabold leading-none tracking-tight text-zinc-950 sm:text-2xl">
-            Super Descontos
+            {title}
           </h2>
         </div>
 
@@ -187,7 +189,7 @@ export const PremiumOffers = React.memo(function PremiumOffers({
             {sortedOffers.map((offer) => (
               <div
                 key={offer.product.id}
-                className="min-w-0 flex-[0_0_100%] p-1.5"
+                className="flex min-w-0 flex-[0_0_100%] flex-col p-1.5"
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
               >
@@ -218,7 +220,7 @@ export const PremiumOffers = React.memo(function PremiumOffers({
                 className={cn(
                   "h-1.5 rounded-full transition-all duration-300 ease-out focus:outline-none",
                   idx === activeHeroIndex
-                    ? "w-6 bg-zinc-950 shadow-sm"
+                    ? "w-6 bg-primary shadow-sm"
                     : "w-1.5 bg-zinc-200/80 hover:bg-zinc-400",
                 )}
                 aria-label={`Ver oferta ${idx + 1}`}
@@ -321,7 +323,7 @@ function HeroOfferCard({
           handleCardClick();
         }
       }}
-      className="gpu-accelerated group relative flex cursor-pointer flex-col gap-4 overflow-hidden rounded-[2rem] border border-rose-200/40 bg-gradient-to-br from-rose-50/60 via-orange-50/15 to-white p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_48px_-15px_rgba(244,63,94,0.06)] active:scale-[0.995] sm:p-5"
+      className="gpu-accelerated group relative flex h-full flex-1 cursor-pointer flex-col gap-4 overflow-hidden rounded-[2rem] border border-rose-200/40 bg-gradient-to-br from-rose-50/60 via-orange-50/15 to-white p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_48px_-15px_rgba(244,63,94,0.06)] active:scale-[0.995] sm:p-5"
     >
       {/* Floating Sparkle / Highlight elements */}
       <div className="pointer-events-none absolute right-0 top-0 size-32 rounded-full bg-rose-200/20 blur-3xl" />
@@ -330,8 +332,8 @@ function HeroOfferCard({
       {/* Clean Premium Tag Header (Does NOT overlap image) */}
       <div className="relative z-10 flex w-full items-center justify-center border-b border-rose-100/50 pb-3">
         <div className="flex select-none items-center rounded-full border border-zinc-200/30 bg-zinc-100/80 p-0.5 text-[10px] font-black uppercase tracking-wider shadow-sm transition-transform duration-300 group-hover:scale-[1.02]">
-          <span className="flex items-center gap-1.5 rounded-full bg-zinc-950 px-3 py-0.5 text-white shadow-[0_2px_4px_rgba(0,0,0,0.05)]">
-            <Flame className="size-3 animate-pulse fill-rose-500 text-rose-500" />
+          <span className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-0.5 text-white shadow-[0_2px_4px_rgba(199,65,86,0.1)]">
+            <Flame className="size-3 animate-pulse fill-white text-white" />
             Super Oferta
           </span>
           {discount > 0 && (
@@ -359,7 +361,7 @@ function HeroOfferCard({
       </div>
 
       {/* Main columns for Image & Details */}
-      <div className="z-10 flex flex-col gap-4 sm:gap-5 md:flex-row">
+      <div className="z-10 flex flex-1 flex-col gap-4 sm:gap-5 md:flex-row">
         {/* Hero Image Container - Completely Clean! */}
         <div className="relative aspect-[4/3] w-full flex-shrink-0 overflow-hidden rounded-2xl border border-slate-100 bg-slate-100/40 shadow-inner md:aspect-square md:w-2/5">
           <LazyImage
@@ -385,7 +387,7 @@ function HeroOfferCard({
               )}
             </div>
 
-            <h3 className="mb-1.5 text-lg font-extrabold leading-snug tracking-tight text-slate-900 transition-colors duration-300 group-hover:text-rose-600 sm:text-xl">
+            <h3 className="mb-1.5 line-clamp-2 text-lg font-extrabold leading-snug tracking-tight text-slate-900 transition-colors duration-300 group-hover:text-rose-600 sm:text-xl">
               {product.name}
             </h3>
 
@@ -457,7 +459,7 @@ function HeroOfferCard({
                   ? "bg-zinc-100 text-zinc-400 border-zinc-200/50 cursor-not-allowed shadow-none"
                   : cartStatus === "success"
                     ? "bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700"
-                    : "bg-zinc-950 hover:bg-black text-white border-zinc-950 shadow-zinc-950/5",
+                    : "bg-primary hover:opacity-90 text-white border-primary shadow-rose-100/10",
               )}
             >
               {cartStatus === "loading" && (

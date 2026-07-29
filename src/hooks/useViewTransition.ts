@@ -42,6 +42,24 @@ export function useViewTransition() {
         docEl.classList.add(`view-transition-${direction}`);
       }
 
+      const cleanupTransitionNames = () => {
+        document
+          .querySelectorAll<HTMLElement>('img, [style*="view-transition-name"]')
+          .forEach((el) => {
+            if (direction === "forward") {
+              if (!el.classList.contains("main-product-image")) {
+                el.style.removeProperty("view-transition-name");
+              }
+            } else if (direction === "back") {
+              if (el.classList.contains("main-product-image")) {
+                el.style.removeProperty("view-transition-name");
+              }
+            } else {
+              el.style.removeProperty("view-transition-name");
+            }
+          });
+      };
+
       const transition = (
         document as Document & {
           startViewTransition: (cb: () => void) => {
@@ -53,6 +71,7 @@ export function useViewTransition() {
       ).startViewTransition(() => {
         flushSync(() => {
           updateFn();
+          cleanupTransitionNames();
         });
       });
 
@@ -65,6 +84,7 @@ export function useViewTransition() {
               "view-transition-forward",
               "view-transition-back",
             );
+            cleanupTransitionNames();
             onFinished?.();
           })
           .catch(() => {
@@ -72,6 +92,7 @@ export function useViewTransition() {
               "view-transition-forward",
               "view-transition-back",
             );
+            cleanupTransitionNames();
             onFinished?.();
           });
       }

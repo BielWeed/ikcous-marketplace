@@ -66,28 +66,32 @@ export function useWebVitals() {
 
     // LCP
     try {
-      const lcpObs = new PerformanceObserver((list) => {
-        const entries = list.getEntries();
-        const last = entries[entries.length - 1];
-        logVital("LCP", last.startTime, last.startTime);
-      });
-      lcpObs.observe({ type: "largest-contentful-paint", buffered: true });
-      observers.push(lcpObs);
+      if (PerformanceObserver.supportedEntryTypes?.includes("largest-contentful-paint")) {
+        const lcpObs = new PerformanceObserver((list) => {
+          const entries = list.getEntries();
+          const last = entries[entries.length - 1];
+          logVital("LCP", last.startTime, last.startTime);
+        });
+        lcpObs.observe({ type: "largest-contentful-paint", buffered: true });
+        observers.push(lcpObs);
+      }
     } catch {
       /* not supported */
     }
 
     // FCP
     try {
-      const fcpObs = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          if (entry.name === "first-contentful-paint") {
-            logVital("FCP", entry.startTime, entry.startTime);
+      if (PerformanceObserver.supportedEntryTypes?.includes("paint")) {
+        const fcpObs = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            if (entry.name === "first-contentful-paint") {
+              logVital("FCP", entry.startTime, entry.startTime);
+            }
           }
-        }
-      });
-      fcpObs.observe({ type: "paint", buffered: true });
-      observers.push(fcpObs);
+        });
+        fcpObs.observe({ type: "paint", buffered: true });
+        observers.push(fcpObs);
+      }
     } catch {
       /* not supported */
     }
@@ -95,19 +99,21 @@ export function useWebVitals() {
     // CLS
     let clsValue = 0;
     try {
-      const clsObs = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          const layoutShiftEntry = entry as PerformanceEntry & {
-            hadRecentInput?: boolean;
-            value?: number;
-          };
-          if (!layoutShiftEntry.hadRecentInput) {
-            clsValue += layoutShiftEntry.value || 0;
+      if (PerformanceObserver.supportedEntryTypes?.includes("layout-shift")) {
+        const clsObs = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            const layoutShiftEntry = entry as PerformanceEntry & {
+              hadRecentInput?: boolean;
+              value?: number;
+            };
+            if (!layoutShiftEntry.hadRecentInput) {
+              clsValue += layoutShiftEntry.value || 0;
+            }
           }
-        }
-      });
-      clsObs.observe({ type: "layout-shift", buffered: true });
-      observers.push(clsObs);
+        });
+        clsObs.observe({ type: "layout-shift", buffered: true });
+        observers.push(clsObs);
+      }
       // Log CLS on page unload
       document.addEventListener(
         "visibilitychange",
@@ -124,49 +130,53 @@ export function useWebVitals() {
 
     // INP (Interaction to Next Paint)
     try {
-      const inpObs = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          const interactionEntry = entry as PerformanceEntry & {
-            duration?: number;
-            interactionId?: number;
-          };
-          if (
-            interactionEntry.interactionId &&
-            (interactionEntry.duration || 0) > 0
-          ) {
-            logVital(
-              "INP",
-              interactionEntry.duration || 0,
-              interactionEntry.duration || 0,
-            );
+      if (PerformanceObserver.supportedEntryTypes?.includes("event")) {
+        const inpObs = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            const interactionEntry = entry as PerformanceEntry & {
+              duration?: number;
+              interactionId?: number;
+            };
+            if (
+              interactionEntry.interactionId &&
+              (interactionEntry.duration || 0) > 0
+            ) {
+              logVital(
+                "INP",
+                interactionEntry.duration || 0,
+                interactionEntry.duration || 0,
+              );
+            }
           }
-        }
-      });
-      inpObs.observe({
-        type: "event",
-        buffered: true,
-        durationThreshold: 16,
-      } as PerformanceObserverInit);
-      observers.push(inpObs);
+        });
+        inpObs.observe({
+          type: "event",
+          buffered: true,
+          durationThreshold: 16,
+        } as PerformanceObserverInit);
+        observers.push(inpObs);
+      }
     } catch {
       /* not supported */
     }
 
     // TTFB via navigation timing
     try {
-      const navObs = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          const navEntry = entry as PerformanceEntry & {
-            responseStart?: number;
-            requestStart?: number;
-          };
-          const ttfb =
-            (navEntry.responseStart || 0) - (navEntry.requestStart || 0);
-          if (ttfb > 0) logVital("TTFB", ttfb, ttfb);
-        }
-      });
-      navObs.observe({ type: "navigation", buffered: true });
-      observers.push(navObs);
+      if (PerformanceObserver.supportedEntryTypes?.includes("navigation")) {
+        const navObs = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            const navEntry = entry as PerformanceEntry & {
+              responseStart?: number;
+              requestStart?: number;
+            };
+            const ttfb =
+              (navEntry.responseStart || 0) - (navEntry.requestStart || 0);
+            if (ttfb > 0) logVital("TTFB", ttfb, ttfb);
+          }
+        });
+        navObs.observe({ type: "navigation", buffered: true });
+        observers.push(navObs);
+      }
     } catch {
       /* not supported */
     }

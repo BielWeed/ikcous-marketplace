@@ -5,13 +5,13 @@
   }
 
   // Ghost Purge Logic
-  const RESET_KEY = "pwa_reset_v11.5";
+  const RESET_KEY = "pwa_reset_v17.0_all_views_scroll_perfect";
   const isAlreadyReset = localStorage.getItem(RESET_KEY);
 
-  console.log("[SilentGuardian] Ghost Purge v11.5 check...");
+  console.log("[SilentGuardian] Ghost Purge v17.0 check...");
 
   if (!isAlreadyReset) {
-    console.log("[SilentGuardian] Initiating GHOST PURGE v11.5...");
+    console.log("[SilentGuardian] Initiating GHOST PURGE v17.0...");
 
     // 1. Unregister ALL
     if ("serviceWorker" in navigator) {

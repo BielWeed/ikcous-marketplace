@@ -159,7 +159,7 @@ const KpiSkeleton = memo(function KpiSkeleton({
               : "size-10 rounded-xl",
           )}
         />
-        <div className="h-3 w-16 sm:w-20 animate-pulse rounded bg-white/5" />
+        <div className="h-3 w-16 animate-pulse rounded bg-white/5 sm:w-20" />
       </div>
       <div
         className={cn(
@@ -167,8 +167,8 @@ const KpiSkeleton = memo(function KpiSkeleton({
           isCompact ? "items-end sm:items-start" : "items-start",
         )}
       >
-        <div className="h-4 sm:h-6 w-16 sm:w-24 animate-pulse rounded bg-white/5" />
-        <div className="h-2.5 sm:h-3 w-12 sm:w-16 animate-pulse rounded bg-white/5 opacity-60" />
+        <div className="h-4 w-16 animate-pulse rounded bg-white/5 sm:h-6 sm:w-24" />
+        <div className="h-2.5 w-12 animate-pulse rounded bg-white/5 opacity-60 sm:h-3 sm:w-16" />
       </div>
     </div>
   );
@@ -371,7 +371,7 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
         </div>
       ) : (
         <div
-          className="group/carousel relative"
+          className="group/carousel relative w-full max-w-full overflow-x-hidden"
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
@@ -413,7 +413,7 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
                   emblaApi?.scrollPrev();
                 }}
                 className={cn(
-                  "absolute -left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-zinc-950/90 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white opacity-0 group-hover/carousel:opacity-100 transition-all duration-300 shadow-xl z-20 hover:border-admin-gold/30 active:scale-95",
+                  "absolute left-0 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-zinc-950/90 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white opacity-0 group-hover/carousel:opacity-100 transition-all duration-300 shadow-xl z-20 hover:border-admin-gold/30 active:scale-95",
                   !canScrollPrev && "opacity-0 pointer-events-none",
                 )}
                 title="Anterior"
@@ -428,7 +428,7 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
                   emblaApi?.scrollNext();
                 }}
                 className={cn(
-                  "absolute -right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-zinc-950/90 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white opacity-0 group-hover/carousel:opacity-100 transition-all duration-300 shadow-xl z-20 hover:border-admin-gold/30 active:scale-95",
+                  "absolute right-0 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-zinc-950/90 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white opacity-0 group-hover/carousel:opacity-100 transition-all duration-300 shadow-xl z-20 hover:border-admin-gold/30 active:scale-95",
                   !canScrollNext && "opacity-0 pointer-events-none",
                 )}
                 title="Próximo"

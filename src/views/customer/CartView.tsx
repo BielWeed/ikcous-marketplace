@@ -1,4 +1,3 @@
-import { ShippingCalculator } from "@/components/ui/custom/ShippingCalculator";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
@@ -57,8 +56,6 @@ export function CartView({
   const {
     cart: ctxCart,
     shippingFee: ctxShippingFee,
-    selectedShippingOption,
-    setSelectedShippingOption,
     updateQuantity,
     removeFromCart,
   } = useCart();
@@ -309,7 +306,7 @@ export function CartView({
     [onRemove],
   );
   return (
-    <div className="flex min-h-full flex-col bg-zinc-50/30 transition-all duration-300">
+    <div className="pb-customer-summary flex min-h-full flex-col bg-zinc-50/30 transition-all duration-300">
       {/* Tab Switcher Premium */}
       <div className="sticky top-[-2px] z-50 flex flex-col gap-2 border-b border-zinc-100 bg-white/80 px-4 py-2 backdrop-blur-md xs:gap-4 xs:px-6 xs:pb-2.5 xs:pt-3">
         <div className="relative flex overflow-hidden rounded-2xl bg-zinc-100/50 p-1">
@@ -405,45 +402,35 @@ export function CartView({
                       />
                     )}
 
-                    {cart.length > 0 && (
-                      <ShippingCalculator
-                        cart={cart}
-                        subtotal={subtotal}
-                        freeShippingMin={config.freeShippingMin || 0}
-                        selectedOption={selectedShippingOption}
-                        onSelectOption={setSelectedShippingOption}
-                      />
-                    )}
-
                     {!user && cart.length > 0 && (
-                      <div className="group relative overflow-hidden rounded-[2.5rem] bg-zinc-950 p-6 sm:p-8 shadow-2xl shadow-zinc-950/20 border border-zinc-900">
+                      <div className="group relative overflow-hidden rounded-[2.5rem] border border-rose-200/30 bg-rose-50/60 p-6 shadow-lg shadow-rose-100/10 sm:p-8">
                         <div className="relative z-10">
                           {/* Header */}
                           <div className="mb-6 flex items-center gap-3">
-                            <div className="flex size-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-zinc-950 shadow-md">
+                            <div className="flex size-11 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-400 to-rose-600 text-white shadow-md">
                               <Sparkles className="size-5" />
                             </div>
                             <div>
-                              <h3 className="text-sm font-black uppercase tracking-tight text-white">
+                              <h3 className="text-sm font-black uppercase tracking-tight text-slate-800">
                                 Opções de Compra
                               </h3>
-                              <p className="text-[10px] font-black uppercase tracking-widest text-amber-400/90">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-rose-600">
                                 Rápido e Seguro
                               </p>
                             </div>
                           </div>
 
                           {/* Options/Benefits List */}
-                          <div className="mb-6 space-y-4 border-t border-zinc-900 pt-5">
+                          <div className="mb-6 space-y-4 border-t border-rose-100 pt-5">
                             <div className="flex gap-3">
-                              <div className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-zinc-900 border border-zinc-800">
+                              <div className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-rose-100 bg-white/80">
                                 <Truck className="size-3.5 text-emerald-500" />
                               </div>
                               <div className="min-w-0">
-                                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-200">
+                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-800">
                                   Identificar-se (Entrar)
                                 </p>
-                                <p className="text-[9px] font-medium leading-relaxed text-zinc-500 mt-0.5">
+                                <p className="mt-0.5 text-[9px] font-medium leading-relaxed text-slate-500">
                                   Faça login para salvar seus itens, acumular
                                   pontos e ativar o frete grátis (acima de{" "}
                                   {formatCurrency(config.freeShippingMin || 0)}
@@ -453,14 +440,14 @@ export function CartView({
                             </div>
 
                             <div className="flex gap-3">
-                              <div className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-zinc-900 border border-zinc-800">
+                              <div className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-rose-100 bg-white/80">
                                 <Sparkles className="size-3.5 text-amber-500" />
                               </div>
                               <div className="min-w-0">
-                                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-200">
+                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-800">
                                   Comprar como Convidado
                                 </p>
-                                <p className="text-[9px] font-medium leading-relaxed text-zinc-500 mt-0.5">
+                                <p className="mt-0.5 text-[9px] font-medium leading-relaxed text-slate-500">
                                   Finalize sua compra instantaneamente sem
                                   precisar criar senha ou cadastro.
                                 </p>
@@ -482,11 +469,11 @@ export function CartView({
                             </button>
 
                             <div className="flex items-center justify-center gap-2 py-1">
-                              <div className="h-px flex-1 bg-zinc-900" />
-                              <span className="text-[8px] font-black uppercase tracking-widest text-zinc-600">
+                              <div className="h-px flex-1 bg-rose-100" />
+                              <span className="text-[8px] font-black uppercase tracking-widest text-rose-400">
                                 ou se preferir
                               </span>
-                              <div className="h-px flex-1 bg-zinc-900" />
+                              <div className="h-px flex-1 bg-rose-100" />
                             </div>
 
                             <button
@@ -494,7 +481,7 @@ export function CartView({
                                 haptic.light();
                                 onNavigate("checkout");
                               }}
-                              className="w-full rounded-2xl border border-zinc-800 py-3.5 text-[10px] font-black uppercase tracking-widest text-zinc-400 transition-colors hover:text-zinc-200 hover:border-zinc-700 active:scale-95"
+                              className="w-full rounded-2xl border border-rose-200/50 py-3.5 text-[10px] font-black uppercase tracking-widest text-rose-600 transition-colors hover:border-rose-300 hover:text-[#5C061E] active:scale-95"
                             >
                               Continuar como Convidado
                             </button>
@@ -502,8 +489,8 @@ export function CartView({
                         </div>
 
                         {/* Premium Subtle Glow Background */}
-                        <div className="absolute right-0 top-0 -mr-32 -mt-32 size-64 rounded-full bg-emerald-500/5 blur-3xl pointer-events-none" />
-                        <div className="absolute bottom-0 left-0 -mb-16 -ml-16 size-32 rounded-full bg-zinc-400/5 blur-2xl pointer-events-none" />
+                        <div className="pointer-events-none absolute right-0 top-0 -mr-32 -mt-32 size-64 rounded-full bg-emerald-500/5 blur-3xl" />
+                        <div className="pointer-events-none absolute bottom-0 left-0 -mb-16 -ml-16 size-32 rounded-full bg-rose-400/5 blur-2xl" />
                       </div>
                     )}
                   </div>
@@ -593,7 +580,7 @@ export function CartView({
                         haptic.medium();
                         onNavigate("checkout");
                       }}
-                      className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl bg-zinc-950 px-6 text-white shadow-xl shadow-zinc-200 transition-all hover:bg-zinc-800 active:scale-[0.98]"
+                      className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl bg-[#5C061E] px-6 text-white shadow-xl shadow-rose-100 transition-all hover:bg-[#720E28] active:scale-[0.98]"
                     >
                       <span className="relative z-10 text-[11px] font-black uppercase tracking-widest">
                         Finalizar Compra
@@ -628,17 +615,6 @@ export function CartView({
                 </div>
               )}
 
-              {/* Spacer to prevent overlap by the sticky bottom actions */}
-              <div
-                className="lg:hidden"
-                style={{
-                  height:
-                    cart.length > 0
-                      ? "calc(180px + var(--safe-area-bottom, 0px))"
-                      : "calc(80px + var(--safe-area-bottom, 0px))",
-                }}
-                aria-hidden="true"
-              />
             </motion.div>
           ) : (
             <motion.div

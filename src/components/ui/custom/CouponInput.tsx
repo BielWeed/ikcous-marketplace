@@ -61,6 +61,8 @@ export const CouponInput = memo(function CouponInput({
           className={`ml-2 size-4 ${error ? "text-red-400" : "text-gray-400"}`}
         />
         <input
+          id="coupon-code-input"
+          name="couponCode"
           type="text"
           value={code}
           onChange={(e) => setCode(e.target.value)}

@@ -69,7 +69,11 @@ export interface Customer {
   email?: string;
   address?: string; // Legacy support or single address string
   number?: string;
+  complement?: string;
   neighborhood?: string;
+  city?: string;
+  state?: string;
+  cep?: string;
   reference?: string | null;
   total_spent?: number;
   order_count?: number;
@@ -173,6 +177,21 @@ export interface Banner {
   position: "home_top" | "home_middle" | "home_bottom";
   active: boolean;
   order: number | null;
+  subtitle?: string;
+  titleColor?: string;
+  subtitleColor?: string;
+  buttonText?: string;
+  buttonBgColor?: string;
+  buttonTextColor?: string;
+  fontFamily?: string;
+  overlayColor?: string;
+  overlayOpacity?: number;
+  badgeText?: string;
+  templateType?: string;
+  productId?: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  showTextOverlay?: boolean;
 }
 
 export interface StoreConfig {
@@ -195,6 +214,15 @@ export interface StoreConfig {
   shippingCoverage?: "local" | "national";
   localDeliveryFee?: number;
   localCepRange?: string;
+  homeSections?: {
+    id: string;
+    title: string;
+    active: boolean;
+    type?: "new_arrivals" | "offers" | "bestsellers" | "custom";
+    maxItems?: number;
+    productIds?: string[];
+    isCustom?: boolean;
+  }[];
 }
 
 export interface ShippingOption {
@@ -234,13 +262,17 @@ export type View =
   | "admin-product-form"
   | "admin-orders"
   | "admin-coupons"
+  | "admin-coupon-form"
   | "admin-banners"
+  | "admin-carousels"
+  | "admin-shipping"
   | "admin-settings"
   | "admin-reviews"
   | "admin-qa"
   | "admin-customers"
   | "admin-user-detail"
   | "admin-push"
+  | "admin-whatsapp-config"
   | "admin-sros"
   | "referral"
   | "account-settings"

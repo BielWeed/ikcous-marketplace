@@ -187,7 +187,7 @@ export function useOrders(
         .select(
           `
           *,
-          items:marketplace_order_items(*, product:vw_produtos_public(imagem_url, imagem_urls)),
+          items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)),
           address:user_addresses(*)
         `,
         )
@@ -306,7 +306,7 @@ export function useOrders(
       const { data, error } = await supabase
         .from("marketplace_orders")
         .select(
-          "*, items:marketplace_order_items(*, product:vw_produtos_public(imagem_url, imagem_urls)), address:user_addresses(*)",
+          "*, items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)), address:user_addresses(*)",
         )
         .eq("id", newPayload.id)
         .single();
@@ -490,14 +490,19 @@ export function useOrders(
             retryCount = 0;
             console.log(`[Realtime] Active shared channel: ${channelId}`);
           } else if (status === "CHANNEL_ERROR") {
+            const errMessage =
+              err?.message || (typeof err === "string" ? err : "");
             const isNormalClose =
-              err?.message?.includes("1000") ||
-              err?.message?.includes("normal") ||
-              (typeof err === "string" &&
-                (err.includes("1000") || err.includes("normal")));
+              errMessage.includes("1000") || errMessage.includes("normal");
+            const isAbnormalClose =
+              errMessage.includes("1006") || errMessage.includes("abnormal");
             if (isNormalClose) {
               console.log(
                 "[Realtime] Order channel closed normally (socket closed: 1000)",
+              );
+            } else if (isAbnormalClose) {
+              console.warn(
+                "[Realtime] Order channel closed abnormally (socket closed: 1006). SDK will auto-reconnect.",
               );
             } else {
               console.error(
@@ -957,9 +962,15 @@ export function useOrders(
             (typeof (err as any) === "string" ? (err as any) : "");
           const isNormalClose =
             errMessage.includes("1000") || errMessage.includes("normal");
+          const isAbnormalClose =
+            errMessage.includes("1006") || errMessage.includes("abnormal");
           if (isNormalClose) {
             console.log(
               `[Realtime] Orders channel closed normally: ${channelId}`,
+            );
+          } else if (isAbnormalClose) {
+            console.warn(
+              `[Realtime] Orders channel closed abnormally (socket closed: 1006): ${channelId}. SDK will auto-reconnect.`,
             );
           } else {
             console.error(

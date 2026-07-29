@@ -118,7 +118,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
         // 2. Fetch public reviews with product details
         const { data: reviewsData, error: reviewsError } = await supabase
           .from("reviews")
-          .select("*, product:vw_produtos_public(id, nome, imagem_url)")
+          .select("*, product:produtos(id, nome, imagem_url)")
           .eq("user_id", userId)
           .order("created_at", { ascending: false });
 
@@ -129,7 +129,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
         const { data: questionsData, error: questionsError } = await supabase
           .from("questions")
           .select(
-            "*, product:vw_produtos_public(id, nome, imagem_url), answers:answers(*)",
+            "*, product:produtos(id, nome, imagem_url), answers:answers(*)",
           )
           .eq("user_id", userId)
           .order("created_at", { ascending: false });
@@ -182,7 +182,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
 
   if (loading) {
     return (
-      <div className="min-h-full bg-gradient-to-b from-white to-zinc-50/50 pb-customer">
+      <div className="pb-customer min-h-full bg-gradient-to-b from-white to-zinc-50/50">
         {/* Banner Skeleton */}
         <div className="relative h-44 w-full animate-pulse bg-zinc-100" />
 
@@ -222,7 +222,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
 
   if (!profile) {
     return (
-      <div className="flex min-h-full flex-col items-center justify-center p-6 pb-customer text-center">
+      <div className="pb-customer flex min-h-full flex-col items-center justify-center p-6 text-center">
         <div className="mb-4 flex size-16 items-center justify-center rounded-3xl bg-red-50 text-red-500">
           <User className="size-8" />
         </div>
@@ -247,7 +247,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
   }
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-white to-zinc-50/50 pb-customer">
+    <div className="pb-customer min-h-full bg-gradient-to-b from-white to-zinc-50/50">
       {/* Header Cover Banner */}
       <div className="group relative h-44 w-full overflow-hidden bg-zinc-100 shadow-inner">
         <img

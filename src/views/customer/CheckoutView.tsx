@@ -490,7 +490,7 @@ export function CheckoutView({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50/10 pb-10 pt-2">
+    <div className="pb-customer-summary min-h-dvh bg-gray-50/10 pt-2">
       <div className="space-y-4 px-3.5">
         {/* Customer Info */}
         <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
@@ -807,7 +807,7 @@ export function CheckoutView({
                   setEditingAddressId(null);
                   setIsAddressModalOpen(true);
                 }}
-                className="flex h-8 items-center gap-1 rounded-xl bg-zinc-900 px-3 text-[9px] font-bold uppercase tracking-wider text-white transition-all hover:bg-black"
+                className="flex h-8 items-center gap-1 rounded-xl bg-primary px-3 text-[9px] font-bold uppercase tracking-wider text-white transition-all hover:opacity-90"
               >
                 <Plus className="size-3" /> Novo
               </Button>
@@ -815,7 +815,7 @@ export function CheckoutView({
             <div className="p-4 sm:p-5">
               {addressesLoading ? (
                 <div className="flex flex-col items-center justify-center py-8">
-                  <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-zinc-900" />
+                  <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-primary" />
                   <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">
                     Sincronizando endereços...
                   </p>
@@ -834,24 +834,26 @@ export function CheckoutView({
         )}
 
         {/* Coupon */}
-        <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
-            <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-              <Tag className="size-4" />
+        {config.enableCoupons && (
+          <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
+            <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
+              <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
+                <Tag className="size-4" />
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                Vantagem Exclusiva
+              </span>
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-              Vantagem Exclusiva
-            </span>
+            <div className="p-4">
+              <CouponInput
+                onApply={handleApplyCoupon}
+                onRemove={handleRemoveCoupon}
+                appliedCoupon={appliedCoupon}
+                error={couponError}
+              />
+            </div>
           </div>
-          <div className="p-4">
-            <CouponInput
-              onApply={handleApplyCoupon}
-              onRemove={handleRemoveCoupon}
-              appliedCoupon={appliedCoupon}
-              error={couponError}
-            />
-          </div>
-        </div>
+        )}
 
         {/* Payment Method */}
         <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
@@ -907,7 +909,7 @@ export function CheckoutView({
                     {option.label}
                   </span>
                   <div
-                    className={`ml-auto flex size-5 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-zinc-900 bg-zinc-900" : "border-zinc-200"}`}
+                    className={`ml-auto flex size-5 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
                   >
                     {isSelected && <Check className="size-3 text-white" />}
                   </div>
@@ -938,29 +940,31 @@ export function CheckoutView({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Ex: Deixar na portaria, campainha estragada, etc..."
               rows={2}
-              className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+              className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-primary focus:bg-white"
               autoComplete="off"
             />
           </div>
         </div>
 
         {/* Location Notice */}
-        <div className="group relative overflow-hidden rounded-2xl bg-zinc-900 p-5 text-white shadow-lg">
+        <div className="group relative overflow-hidden rounded-2xl border border-rose-200/30 bg-rose-50/60 p-5 text-slate-800 shadow-md">
           <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
-            <MapPin className="size-16" />
+            <MapPin className="size-16 text-rose-500" />
           </div>
           <div className="relative z-10 flex items-start gap-3">
             <div className="mt-0.5 shrink-0">
-              <AlertCircle className="size-5 text-zinc-400" />
+              <AlertCircle className="size-5 text-rose-500" />
             </div>
             <div>
-              <h4 className="mb-1 text-xs font-bold uppercase tracking-wider">
+              <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-900">
                 Aviso de Região
               </h4>
-              <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-zinc-400">
+              <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
                 Nossos serviços de entrega premium estão ativos exclusivamente
                 em{" "}
-                <span className="font-black text-white">Monte Carmelo, MG</span>
+                <span className="font-black text-slate-900">
+                  Monte Carmelo, MG
+                </span>
                 .
               </p>
             </div>
@@ -1020,7 +1024,7 @@ export function CheckoutView({
                       "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
                       !isValid || isSubmitting
                         ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
-                        : "bg-zinc-900 text-white hover:bg-black shadow-zinc-900/10",
+                        : "bg-[#5C061E] text-white hover:bg-[#720E28] shadow-rose-100/30",
                     )}
                   >
                     {isSubmitting ? (
@@ -1058,7 +1062,7 @@ function SuccessView({
   onNavigate,
 }: Readonly<SuccessViewProps>) {
   return (
-    <div className="flex min-h-full flex-col items-center justify-center bg-white px-6 pb-customer text-center">
+    <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center">
       <div className="group relative mb-12">
         <div className="absolute inset-0 scale-[2.5] rounded-2xl bg-emerald-100 opacity-30 blur-3xl transition-opacity duration-1000 group-hover:opacity-50" />
         <div className="relative flex size-32 items-center justify-center rounded-2xl border-4 border-white bg-emerald-50 shadow-2xl transition-transform duration-700 group-hover:scale-110">
@@ -1095,14 +1099,14 @@ function SuccessView({
       <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
         <button
           onClick={() => onNavigate("home")}
-          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-zinc-900 text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-zinc-200 transition-all hover:bg-black active:scale-95"
+          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-[#5C061E] text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-rose-100/20 transition-all hover:bg-[#720E28] active:scale-95"
         >
           Retornar à Vitrine
           <ArrowLeft className="size-5 rotate-180" />
         </button>
         <button
           onClick={() => onNavigate("profile")}
-          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-zinc-900 transition-all hover:border-zinc-900 active:scale-95"
+          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-rose-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-[#C74156] transition-all hover:border-primary active:scale-95"
         >
           Ver Meus Pedidos
         </button>
@@ -1127,7 +1131,7 @@ function AddressSelectionView({
   return (
     <div className="min-h-screen bg-white pb-16 duration-500 animate-in slide-in-from-right">
       <div className="mx-auto max-w-md p-4">
-        <div className="group relative mb-5 overflow-hidden rounded-2xl bg-zinc-900 p-5 shadow-lg">
+        <div className="group relative mb-5 overflow-hidden rounded-2xl bg-primary p-5 shadow-lg">
           <div className="absolute right-0 top-0 -mr-16 -mt-16 size-32 rounded-full bg-white/5 blur-2xl transition-colors group-hover:bg-white/10" />
           <div className="absolute bottom-0 left-0 -mb-12 -ml-12 size-24 rounded-full bg-white/5 blur-xl" />
 
@@ -1136,7 +1140,7 @@ function AddressSelectionView({
               {editingAddressId ? "Editar Endereço" : "Novo Endereço"}
               <Sparkles className="size-4.5 animate-pulse text-amber-400" />
             </h2>
-            <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-zinc-400">
+            <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-rose-100">
               {editingAddressId
                 ? "Atualize os dados para entrega"
                 : "Onde entregaremos seu produto?"}

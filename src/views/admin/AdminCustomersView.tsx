@@ -4,6 +4,7 @@ import {
   type KpiCardConfig,
 } from "@/components/admin/AdminKpiCarousel";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { CustomerBanners } from "@/components/admin/dashboard/CustomerBanners";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -247,7 +248,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   };
   const renderDetailedSkeletons = () => {
     return (
-      <div className="flex flex-col gap-4 divide-y-0 divide-zinc-800/30 p-4 md:gap-0 md:divide-y md:p-0">
+      <div className="flex flex-col gap-4 divide-y-0 divide-zinc-800/30 md:gap-0 md:divide-y">
         {Array.from({ length: 10 }).map((_, i) => (
           <div
             key={i}
@@ -282,7 +283,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
 
   const renderCompactSkeletons = () => {
     return (
-      <div className="grid grid-cols-2 gap-3 p-3 sm:p-4 md:grid-cols-3 md:p-6 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:gap-6 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {Array.from({ length: 10 }).map((_, i) => (
           <div
             key={i}
@@ -315,9 +316,9 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-black pb-0 text-white duration-500 animate-in fade-in selection:bg-admin-gold/30 lg:pb-0"
+      className="h-auto bg-admin-bg pb-admin lg:pb-12 text-white duration-200 animate-in fade-in selection:bg-admin-gold/30"
     >
-      {/* Header */}
+      {/* Header Elite */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
         <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
           <span className="flex flex-nowrap items-baseline whitespace-nowrap">
@@ -332,8 +333,35 @@ export const AdminCustomersView = memo(function AdminCustomersView({
             <HelpCircle className="size-4.5" />
           </button>
         </h1>
+        <div className="flex items-center gap-3">
+          <div
+            className={cn(
+              "inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full transition-all duration-300",
+              loading
+                ? "bg-amber-500/10 border-amber-500/20 text-amber-500"
+                : "bg-emerald-500/10 border-emerald-500/20 text-emerald-500",
+            )}
+          >
+            <div
+              className={cn(
+                "w-1.5 h-1.5 rounded-full",
+                loading
+                  ? "bg-amber-500 animate-pulse"
+                  : "bg-emerald-500 animate-pulse",
+              )}
+            />
+            <span className="text-[9px] font-black uppercase tracking-widest sm:text-[10px]">
+              {loading ? "Sincronizando..." : "Operações ao Vivo"}
+            </span>
+          </div>
+        </div>
       </div>
-      <main className="mx-auto mt-6 max-w-7xl space-y-10 pb-0 sm:px-6">
+
+      <div className="space-y-8 p-4 sm:p-6 lg:p-8">
+        {/* Support & Engagement Banners */}
+        <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
+          <CustomerBanners onNavigate={handleLocalNavigate} />
+        </div>
         {/* Control Bar para Carrossel/Grid de Métricas */}
         <div className="space-y-4">
           <LocalErrorBoundary>
@@ -345,10 +373,9 @@ export const AdminCustomersView = memo(function AdminCustomersView({
             />
           </LocalErrorBoundary>
         </div>
-        {/* Unified Control & Data Block */}
-        <div className="relative flex flex-col overflow-hidden border border-zinc-800/50 bg-zinc-900/40 shadow-2xl backdrop-blur-xl sm:rounded-[3rem]">
-          {/* Control Bar (Topo) */}
-          <div className="relative z-20 flex flex-col gap-6 border-b border-zinc-800/50 bg-zinc-950/30 p-6 sm:px-8 md:flex-row md:items-center">
+        {/* Unified Control Bar Compacta */}
+        <div className="relative mb-8 mt-4 flex flex-col border-t border-white/5 pt-8">
+          <div className="relative z-20 flex flex-col gap-6 md:flex-row md:items-center">
             <div className="flex w-full flex-1 items-center gap-4">
               <div className="group relative w-full">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-5">
@@ -358,8 +385,13 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                     <Search className="size-5 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
                   )}
                 </div>
+                <label htmlFor="customers-search" className="sr-only">
+                  Buscar clientes
+                </label>
                 <DebouncedSearchInput
-                  placeholder="Buscar cliente premium..."
+                  id="customers-search"
+                  name="search"
+                  placeholder="Buscar clientes..."
                   className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 pl-14 text-sm font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
                   value={searchTerm}
                   onChange={(val) => {
@@ -371,13 +403,53 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                   delay={300}
                 />
               </div>
-              <Button
-                variant="outline"
-                size="icon"
-                className="group size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50"
-              >
-                <Filter className="size-5 text-zinc-500 group-hover:text-admin-gold" />
-              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="group size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  >
+                    <Filter className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="mt-2 w-56 rounded-2xl border-zinc-800/50 bg-zinc-950 p-2 shadow-2xl backdrop-blur-3xl">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSortField("total_spent");
+                      setSortDirection("desc");
+                      setPage(0);
+                      shouldScrollToTop.current = true;
+                    }}
+                    className="mb-1 cursor-pointer rounded-xl px-4 py-3 text-xs font-bold text-zinc-400 transition-all focus:bg-white/5 focus:text-white"
+                  >
+                    Maior LTV (Gasto Total)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSortField("orders_count");
+                      setSortDirection("desc");
+                      setPage(0);
+                      shouldScrollToTop.current = true;
+                    }}
+                    className="mb-1 cursor-pointer rounded-xl px-4 py-3 text-xs font-bold text-zinc-400 transition-all focus:bg-white/5 focus:text-white"
+                  >
+                    Mais Pedidos Efetuados
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSortField("full_name");
+                      setSortDirection("asc");
+                      setPage(0);
+                      shouldScrollToTop.current = true;
+                    }}
+                    className="mb-1 cursor-pointer rounded-xl px-4 py-3 text-xs font-bold text-zinc-400 transition-all last:mb-0 focus:bg-white/5 focus:text-white"
+                  >
+                    Ordem Alfabética (Nome)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="outline"
                 size="icon"
@@ -525,7 +597,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                     </div>
 
                     {/* Data Rows */}
-                    <div className="flex flex-col gap-4 divide-y-0 divide-zinc-800/30 p-4 md:gap-0 md:divide-y md:p-0">
+                    <div className="flex flex-col gap-4 divide-y-0 divide-zinc-800/30 md:gap-0 md:divide-y">
                       {paginatedCustomers.map((customer) => (
                         <CustomerRowDetailed
                           key={customer.id}
@@ -537,7 +609,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                     </div>
                   </>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3 p-3 sm:p-4 md:grid-cols-3 md:p-6 lg:grid-cols-4 xl:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-3 sm:gap-6 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                     {paginatedCustomers.map((customer) => (
                       <CustomerRowCompact
                         key={customer.id}
@@ -584,7 +656,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
             </div>
           )}
         </div>
-      </main>
+      </div>
       {/* Modal de Ajuda */}
       <AdminHelpModal
         isOpen={showHelpModal}

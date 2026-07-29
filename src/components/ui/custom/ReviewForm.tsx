@@ -113,7 +113,7 @@ export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
                 <FormControl>
                   <Textarea
                     placeholder="Conte-nos os detalhes que lhe surpreenderam..."
-                    className="min-h-[110px] resize-none rounded-2xl border-zinc-200/60 bg-zinc-50 p-4 text-xs shadow-none transition-all placeholder:text-zinc-400 focus:border-zinc-950 focus:bg-white focus:ring-0 md:text-sm"
+                    className="min-h-[110px] resize-none rounded-2xl border-zinc-200/60 bg-zinc-50 p-4 text-xs shadow-none transition-all placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:ring-0 md:text-sm"
                     {...field}
                   />
                 </FormControl>
@@ -125,7 +125,7 @@ export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="h-12 w-full rounded-2xl bg-zinc-950 text-[11px] font-bold uppercase tracking-widest text-white shadow-sm transition-all hover:bg-zinc-900 active:scale-[0.98] disabled:opacity-40"
+            className="h-12 w-full rounded-2xl bg-primary text-[11px] font-bold uppercase tracking-widest text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-40"
           >
             {isSubmitting ? (
               <div className="flex items-center justify-center gap-2">

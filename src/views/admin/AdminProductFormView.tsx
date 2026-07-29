@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useStore } from "@/contexts/StoreContext";
 import { useCategories } from "@/hooks/useCategories";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
@@ -37,7 +38,6 @@ import {
   Check,
   DollarSign,
   Edit2,
-  Flame,
   HelpCircle,
   Image as ImageIcon,
   Info,
@@ -129,7 +129,7 @@ const compressImage = (
 
 interface AdminProductFormViewProps {
   productId?: string;
-  onNavigate: (view: View) => void;
+  onNavigate: (view: View, id?: string, bypassDirtyCheck?: boolean) => void;
   onSetDirty?: (dirty: boolean) => void;
 }
 
@@ -235,6 +235,8 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   } = useProducts({ autoFetch: false });
   const { categories: dbCategories, addCategory } = useCategories();
   const isOffline = useOnlineStatus();
+  const { config } = useStore();
+  const isLocalShipping = config?.shippingCoverage === "local";
 
   const [isLoading, setIsLoading] = useState(!!productId);
   const [formData, setFormData] = useState({
@@ -415,6 +417,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       img.src = url;
     });
   }, [formData.images]);
+
+  // Lock body scroll when variant or category forms are open
+  useEffect(() => {
+    if (showVariantForm || showCategoryForm) {
+      document.body.classList.add("admin-modal-open");
+      return () => {
+        document.body.classList.remove("admin-modal-open");
+      };
+    }
+  }, [showVariantForm, showCategoryForm]);
 
   const openAdjuster = (url: string, index: number) => {
     setAdjustingImgUrl(url);
@@ -997,9 +1009,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     const sanitizedOriginal = cleanNumberString(formData.originalPrice);
     const sanitizedStock = formData.stock.replace(/\D/g, "");
     const sanitizedWeight = cleanNumberString(formData.weightKg);
-    const sanitizedWidth = formData.widthCm.replace(/\D/g, "");
-    const sanitizedHeight = formData.heightCm.replace(/\D/g, "");
-    const sanitizedLength = formData.lengthCm.replace(/\D/g, "");
+    const sanitizedWidth = cleanNumberString(formData.widthCm);
+    const sanitizedHeight = cleanNumberString(formData.heightCm);
+    const sanitizedLength = cleanNumberString(formData.lengthCm);
 
     const pPrice = Number.parseFloat(sanitizedPrice) || 0;
     const pCostRaw = sanitizedCost
@@ -1024,21 +1036,21 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
         ? pWeightRaw
         : undefined;
     const pWidthRaw = sanitizedWidth
-      ? Number.parseInt(sanitizedWidth)
+      ? Number.parseFloat(sanitizedWidth)
       : undefined;
     const pWidth =
       pWidthRaw !== undefined && !Number.isNaN(pWidthRaw)
         ? pWidthRaw
         : undefined;
     const pHeightRaw = sanitizedHeight
-      ? Number.parseInt(sanitizedHeight)
+      ? Number.parseFloat(sanitizedHeight)
       : undefined;
     const pHeight =
       pHeightRaw !== undefined && !Number.isNaN(pHeightRaw)
         ? pHeightRaw
         : undefined;
     const pLengthRaw = sanitizedLength
-      ? Number.parseInt(sanitizedLength)
+      ? Number.parseFloat(sanitizedLength)
       : undefined;
     const pLength =
       pLengthRaw !== undefined && !Number.isNaN(pLengthRaw)
@@ -1069,10 +1081,26 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       sku: sanitizedSku || undefined,
       variants: formData.variants,
       sold: productId ? currentProduct?.sold || 0 : 0,
-      weightKg: pWeight !== undefined ? Math.max(0, pWeight) : undefined,
-      widthCm: pWidth !== undefined ? Math.max(0, pWidth) : undefined,
-      heightCm: pHeight !== undefined ? Math.max(0, pHeight) : undefined,
-      lengthCm: pLength !== undefined ? Math.max(0, pLength) : undefined,
+      weightKg: isLocalShipping
+        ? undefined
+        : pWeight !== undefined
+          ? Math.max(0, pWeight)
+          : undefined,
+      widthCm: isLocalShipping
+        ? undefined
+        : pWidth !== undefined
+          ? Math.max(0, pWidth)
+          : undefined,
+      heightCm: isLocalShipping
+        ? undefined
+        : pHeight !== undefined
+          ? Math.max(0, pHeight)
+          : undefined,
+      lengthCm: isLocalShipping
+        ? undefined
+        : pLength !== undefined
+          ? Math.max(0, pLength)
+          : undefined,
     };
 
     try {
@@ -1118,7 +1146,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
 
       setTimeout(() => {
         onSetDirty?.(false);
-        onNavigate("admin-products");
+        onNavigate("admin-products", undefined, true);
       }, 1500);
     } catch (error) {
       setIsSubmitting(false);
@@ -1220,359 +1248,388 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   const hasActiveVariants = formData.variants.some((v) => v.active);
 
   return (
-    <div className="relative h-auto min-h-full bg-zinc-950 pb-12 text-white overflow-x-hidden">
+    <div className="relative h-auto min-h-full overflow-x-hidden bg-zinc-950 pb-admin lg:pb-12 text-white">
       {/* Background Decor */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute right-0 top-0 h-[500px] w-[500px] rounded-full bg-emerald-500/5 blur-[120px]" />
         <div className="absolute bottom-0 left-0 h-[500px] w-[500px] rounded-full bg-blue-500/5 blur-[120px]" />
       </div>
 
-      <AnimatePresence>
-        {showCategoryForm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              className="gpu-accelerated relative w-full max-w-md overflow-hidden rounded-[2.5rem] border border-white/10 bg-zinc-900 p-8 shadow-2xl"
-            >
-              <div className="pointer-events-none absolute right-0 top-0 p-8 opacity-5">
-                <Layers className="size-24 text-white" />
-              </div>
-
-              <div className="relative z-10 mb-8 flex items-center gap-4">
-                <div className="flex size-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
-                  <Layers className="size-6 text-emerald-500" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black tracking-tight">
-                    Nova Categoria
-                  </h3>
-                  <p className="mt-1 text-[10px] font-bold uppercase leading-none tracking-widest text-zinc-500">
-                    Classificação de Estoque
-                  </p>
-                </div>
-              </div>
-
-              <div className="relative z-10 space-y-6">
-                <div className="space-y-2">
-                  <label
-                    htmlFor="cat-name"
-                    className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                  >
-                    Nome do Setor / Categoria
-                  </label>
-                  <LocalBufferedInput
-                    id="cat-name"
-                    type="text"
-                    delay={150}
-                    value={newCategoryName}
-                    onFlush={setNewCategoryName}
-                    className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                    placeholder="Ex: Vestuário"
-                  />
-                </div>
-              </div>
-
-              <div className="relative z-10 flex gap-4 pt-8">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCategoryForm(false);
-                    setNewCategoryName("");
-                    setFormData((prev) => ({
-                      ...prev,
-                      category: formData.category || "",
-                    }));
-                  }}
-                  className="flex-1 py-5 text-xs font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {showCategoryForm && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+              >
+                <motion.div
+                  initial={{ scale: 0.9, y: 20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  className="gpu-accelerated relative w-full max-w-md overflow-hidden rounded-[2.5rem] border border-white/10 bg-zinc-900 p-8 shadow-2xl"
                 >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (newCategoryName.trim()) {
-                      const loadingId = toast.loading("Criando categoria...");
-                      try {
-                        await addCategory(
-                          {
-                            name: newCategoryName.trim(),
-                            description: "",
-                            isActive: true,
-                          },
-                          true,
-                        );
-                        setFormData((prev) => ({
-                          ...prev,
-                          category: newCategoryName.trim(),
-                        }));
-                        toast.success("Categoria criada com sucesso!", {
-                          id: loadingId,
-                        });
+                  <div className="pointer-events-none absolute right-0 top-0 p-8 opacity-5">
+                    <Layers className="size-24 text-white" />
+                  </div>
+
+                  <div className="relative z-10 mb-8 flex items-center gap-4">
+                    <div className="flex size-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
+                      <Layers className="size-6 text-emerald-500" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black tracking-tight">
+                        Nova Categoria
+                      </h3>
+                      <p className="mt-1 text-[10px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+                        Classificação de Estoque
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="relative z-10 space-y-6">
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="cat-name"
+                        className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                      >
+                        Nome do Setor / Categoria
+                      </label>
+                      <LocalBufferedInput
+                        id="cat-name"
+                        name="categoryName"
+                        type="text"
+                        delay={150}
+                        value={newCategoryName}
+                        onFlush={setNewCategoryName}
+                        className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        placeholder="Ex: Vestuário"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="relative z-10 flex gap-4 pt-8">
+                    <button
+                      type="button"
+                      onClick={() => {
                         setShowCategoryForm(false);
                         setNewCategoryName("");
-                      } catch {
-                        toast.error("Erro ao salvar categoria", {
-                          id: loadingId,
-                        });
-                      }
-                    }
-                  }}
-                  className="flex-[2] rounded-2xl bg-emerald-500 py-5 text-xs font-black uppercase tracking-widest text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all hover:scale-105 active:scale-95"
-                >
-                  Criar Setor
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-
-        {showVariantForm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              className="gpu-accelerated flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-[2.5rem] border border-white/10 bg-zinc-900 shadow-2xl"
-            >
-              <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-white/5 bg-zinc-900 p-8 pb-5">
-                <div className="flex size-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
-                  <Layers className="size-6 text-emerald-500" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black tracking-tight">
-                    {editingVariant ? "Editar Variante" : "Nova Variante"}
-                  </h3>
-                  <p className="mt-1 text-[10px] font-bold uppercase leading-none tracking-widest text-zinc-500">
-                    Grade de Produto
-                  </p>
-                </div>
-              </div>
-
-              <div className="scrollbar-hide flex-1 space-y-6 overflow-y-auto p-8 py-6">
-                {/* Atributo */}
-                <div className="space-y-2">
-                  <label
-                    htmlFor="variant-name"
-                    className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                  >
-                    Atributo (ex: Cor, Tamanho)
-                  </label>
-                  <LocalBufferedInput
-                    id="variant-name"
-                    name="variant-name"
-                    type="text"
-                    value={variantFormData.name}
-                    onFlush={(val) =>
-                      setVariantFormData((p) => ({ ...p, name: val }))
-                    }
-                    className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                    placeholder="Ex: Cor"
-                  />
-                  {suggestedAttributes.length > 0 && (
-                    <div className="ml-1 mt-1.5 flex flex-wrap gap-1.5">
-                      {suggestedAttributes.map((attr) => (
-                        <button
-                          key={attr}
-                          type="button"
-                          onClick={() =>
-                            setVariantFormData((p) => ({ ...p, name: attr }))
-                          }
-                          className={cn(
-                            "px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all active:scale-95",
-                            variantFormData.name === attr
-                              ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-                              : "bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10",
-                          )}
-                        >
-                          {attr}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Valor do Atributo */}
-                <div className="space-y-2">
-                  <label
-                    htmlFor="variant-value"
-                    className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                  >
-                    Valor do Atributo
-                  </label>
-                  <LocalBufferedInput
-                    id="variant-value"
-                    name="variant-value"
-                    type="text"
-                    value={variantFormData.value}
-                    onFlush={(val) =>
-                      setVariantFormData((p) => ({ ...p, value: val }))
-                    }
-                    className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                    placeholder="Ex: Espacial Grey"
-                  />
-                </div>
-
-                {/* SKU & Status */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="variant-sku"
-                      className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                        setFormData((prev) => ({
+                          ...prev,
+                          category: formData.category || "",
+                        }));
+                      }}
+                      className="flex-1 py-5 text-xs font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
                     >
-                      Código SKU
-                    </label>
-                    <LocalBufferedInput
-                      id="variant-sku"
-                      name="variant-sku"
-                      type="text"
-                      value={variantFormData.sku}
-                      onFlush={(val) =>
-                        setVariantFormData((p) => ({
-                          ...p,
-                          sku: val.trim().toUpperCase().replace(/\s+/g, "-"),
-                        }))
-                      }
-                      className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      placeholder="Ex: SKU-COR-TAM"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="variant-status"
-                      className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                    >
-                      Status no Catálogo
-                    </label>
+                      Cancelar
+                    </button>
                     <button
-                      id="variant-status"
                       type="button"
-                      onClick={() =>
-                        setVariantFormData((p) => ({ ...p, active: !p.active }))
-                      }
-                      className={cn(
-                        "w-full px-5 py-4 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between active:scale-95 select-none",
-                        variantFormData.active
-                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20"
-                          : "bg-zinc-950 border-white/5 text-zinc-500 hover:bg-white/5",
-                      )}
+                      onClick={async () => {
+                        if (newCategoryName.trim()) {
+                          const loadingId = toast.loading(
+                            "Criando categoria...",
+                          );
+                          try {
+                            await addCategory(
+                              {
+                                name: newCategoryName.trim(),
+                                description: "",
+                                isActive: true,
+                              },
+                              true,
+                            );
+                            setFormData((prev) => ({
+                              ...prev,
+                              category: newCategoryName.trim(),
+                            }));
+                            toast.success("Categoria criada com sucesso!", {
+                              id: loadingId,
+                            });
+                            setShowCategoryForm(false);
+                            setNewCategoryName("");
+                          } catch {
+                            toast.error("Erro ao salvar categoria", {
+                              id: loadingId,
+                            });
+                          }
+                        }
+                      }}
+                      className="flex-[2] rounded-2xl bg-emerald-500 py-5 text-xs font-black uppercase tracking-widest text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all hover:scale-105 active:scale-95"
                     >
-                      <span>
-                        {variantFormData.active ? "Ativo" : "Offline"}
-                      </span>
-                      <span
-                        className={cn(
-                          "w-2.5 h-2.5 rounded-full shadow-[0_0_8px_currentColor] transition-all",
-                          variantFormData.active
-                            ? "bg-emerald-500 text-emerald-500/50 scale-100"
-                            : "bg-zinc-700 text-zinc-700/50 scale-90",
-                        )}
-                      />
+                      Criar Setor
                     </button>
                   </div>
-                </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
 
-                {/* Saldo Extra & Sobrescrever Preço */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="variant-stock"
-                      className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                    >
-                      Saldo Extra
-                    </label>
-                    <LocalBufferedInput
-                      id="variant-stock"
-                      name="variant-stock"
-                      type="number"
-                      value={variantFormData.stockIncrement}
-                      onFlush={(val) =>
-                        setVariantFormData((p) => ({
-                          ...p,
-                          stockIncrement: val,
-                        }))
-                      }
-                      className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                    />
-                    <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
-                      Soma ou subtrai do estoque base do produto.
-                    </span>
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {showVariantForm && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+              >
+                <motion.div
+                  initial={{ scale: 0.9, y: 20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  className="gpu-accelerated flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-[2.5rem] border border-white/10 bg-zinc-900 shadow-2xl"
+                >
+                  <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-white/5 bg-zinc-900 p-8 pb-5">
+                    <div className="flex size-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
+                      <Layers className="size-6 text-emerald-500" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black tracking-tight">
+                        {editingVariant ? "Editar Variante" : "Nova Variante"}
+                      </h3>
+                      <p className="mt-1 text-[10px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+                        Grade de Produto
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="variant-price"
-                      className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                    >
-                      Sobrescrever R$
-                    </label>
-                    <div className="relative flex items-center">
-                      <span className="absolute left-5 text-xs font-black text-zinc-600">
-                        R$
-                      </span>
+
+                  <div className="scrollbar-hide flex-1 space-y-6 overflow-y-auto p-8 py-6">
+                    {/* Atributo */}
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="variant-name"
+                        className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                      >
+                        Atributo (ex: Cor, Tamanho)
+                      </label>
                       <LocalBufferedInput
-                        id="variant-price"
-                        name="variant-price"
-                        mask="currency"
-                        value={variantFormData.priceOverride}
+                        id="variant-name"
+                        name="variant-name"
+                        type="text"
+                        value={variantFormData.name}
                         onFlush={(val) =>
-                          setVariantFormData((p) => ({
-                            ...p,
-                            priceOverride: val,
-                          }))
+                          setVariantFormData((p) => ({ ...p, name: val }))
                         }
-                        className="w-full rounded-2xl border border-white/5 bg-zinc-950 py-4 pl-11 pr-5 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                        placeholder="Auto"
+                        className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        placeholder="Ex: Cor"
+                      />
+                      {suggestedAttributes.length > 0 && (
+                        <div className="ml-1 mt-1.5 flex flex-wrap gap-1.5">
+                          {suggestedAttributes.map((attr) => (
+                            <button
+                              key={attr}
+                              type="button"
+                              onClick={() =>
+                                setVariantFormData((p) => ({
+                                  ...p,
+                                  name: attr,
+                                }))
+                              }
+                              className={cn(
+                                "px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all active:scale-95",
+                                variantFormData.name === attr
+                                  ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+                                  : "bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10",
+                              )}
+                            >
+                              {attr}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Valor do Atributo */}
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="variant-value"
+                        className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                      >
+                        Valor do Atributo
+                      </label>
+                      <LocalBufferedInput
+                        id="variant-value"
+                        name="variant-value"
+                        type="text"
+                        value={variantFormData.value}
+                        onFlush={(val) =>
+                          setVariantFormData((p) => ({ ...p, value: val }))
+                        }
+                        className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        placeholder="Ex: Espacial Grey"
                       />
                     </div>
-                    <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
-                      Deixe em branco para usar o preço padrão.
-                    </span>
-                  </div>
-                </div>
 
-                {/* Imagem da Variante */}
-                <div className="space-y-2">
-                  <label
-                    htmlFor="variant-image-input"
-                    className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                  >
-                    Imagem da Variante (Opcional)
-                  </label>
-                  <div className="flex items-center gap-4">
-                    {variantFormData.imageUrl ? (
-                      <div className="group/vimg relative size-16 shrink-0 overflow-hidden rounded-full border border-white/10">
-                        <img
-                          src={variantFormData.imageUrl}
-                          alt=""
-                          className="size-full object-cover"
+                    {/* SKU & Status */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label
+                          htmlFor="variant-sku"
+                          className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                        >
+                          Código SKU
+                        </label>
+                        <LocalBufferedInput
+                          id="variant-sku"
+                          name="variant-sku"
+                          type="text"
+                          value={variantFormData.sku}
+                          onFlush={(val) =>
+                            setVariantFormData((p) => ({
+                              ...p,
+                              sku: val
+                                .trim()
+                                .toUpperCase()
+                                .replace(/\s+/g, "-"),
+                            }))
+                          }
+                          className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          placeholder="Ex: SKU-COR-TAM"
                         />
+                      </div>
+                      <div className="space-y-2">
+                        <label
+                          htmlFor="variant-status"
+                          className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                        >
+                          Status no Catálogo
+                        </label>
                         <button
+                          id="variant-status"
                           type="button"
                           onClick={() =>
-                            setVariantFormData((p) => ({ ...p, imageUrl: "" }))
+                            setVariantFormData((p) => ({
+                              ...p,
+                              active: !p.active,
+                            }))
                           }
-                          className="absolute inset-0 flex items-center justify-center bg-red-500/80 opacity-100 transition-opacity hover-hover:opacity-0 hover-hover:group-hover/vimg:opacity-100"
+                          className={cn(
+                            "w-full px-5 py-4 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between active:scale-95 select-none",
+                            variantFormData.active
+                              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20"
+                              : "bg-zinc-950 border-white/5 text-zinc-500 hover:bg-white/5",
+                          )}
                         >
-                          <Trash2 className="size-4 text-white" />
+                          <span>
+                            {variantFormData.active ? "Ativo" : "Offline"}
+                          </span>
+                          <span
+                            className={cn(
+                              "w-2.5 h-2.5 rounded-full shadow-[0_0_8px_currentColor] transition-all",
+                              variantFormData.active
+                                ? "bg-emerald-500 text-emerald-500/50 scale-100"
+                                : "bg-zinc-700 text-zinc-700/50 scale-90",
+                            )}
+                          />
                         </button>
                       </div>
-                    ) : (
+                    </div>
+
+                    {/* Quantidade em Estoque & Sobrescrever Preço */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label
+                          htmlFor="variant-stock"
+                          className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                        >
+                          Quantidade em Estoque
+                        </label>
+                        <LocalBufferedInput
+                          id="variant-stock"
+                          name="variant-stock"
+                          type="number"
+                          value={variantFormData.stockIncrement}
+                          onFlush={(val) =>
+                            setVariantFormData((p) => ({
+                              ...p,
+                              stockIncrement: val,
+                            }))
+                          }
+                          className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        />
+                        <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
+                          Estoque físico real para esta variação específica.
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <label
+                          htmlFor="variant-price"
+                          className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                        >
+                          Sobrescrever R$
+                        </label>
+                        <div className="relative flex items-center">
+                          <span className="absolute left-5 text-xs font-black text-zinc-600">
+                            R$
+                          </span>
+                          <LocalBufferedInput
+                            id="variant-price"
+                            name="variant-price"
+                            mask="currency"
+                            value={variantFormData.priceOverride}
+                            onFlush={(val) =>
+                              setVariantFormData((p) => ({
+                                ...p,
+                                priceOverride: val,
+                              }))
+                            }
+                            className="w-full rounded-2xl border border-white/5 bg-zinc-950 py-4 pl-11 pr-5 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                            placeholder="Auto"
+                          />
+                        </div>
+                        <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
+                          Deixe em branco para usar o preço padrão.
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Imagem da Variante */}
+                    <div className="space-y-2">
                       <label
                         htmlFor="variant-image-input"
-                        className="flex size-16 shrink-0 cursor-pointer flex-col items-center justify-center rounded-full border-2 border-dashed border-white/10 transition-all hover:bg-white/5"
+                        className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
                       >
-                        <Plus className="size-5 text-zinc-500" />
+                        Imagem da Variante (Opcional)
+                      </label>
+                      <div className="flex items-center gap-4">
+                        {variantFormData.imageUrl ? (
+                          <div className="group/vimg relative size-16 shrink-0 overflow-hidden rounded-full border border-white/10">
+                            <img
+                              src={variantFormData.imageUrl}
+                              alt=""
+                              className="size-full object-cover"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setVariantFormData((p) => ({
+                                  ...p,
+                                  imageUrl: "",
+                                }))
+                              }
+                              className="absolute inset-0 flex items-center justify-center bg-red-500/80 opacity-100 transition-opacity hover-hover:opacity-0 hover-hover:group-hover/vimg:opacity-100"
+                            >
+                              <Trash2 className="size-4 text-white" />
+                            </button>
+                          </div>
+                        ) : (
+                          <label
+                            htmlFor="variant-image-input"
+                            className="flex size-16 shrink-0 cursor-pointer flex-col items-center justify-center rounded-full border-2 border-dashed border-white/10 transition-all hover:bg-white/5"
+                          >
+                            <Plus className="size-5 text-zinc-500" />
+                            <span className="sr-only">
+                              Adicionar imagem da variante
+                            </span>
+                          </label>
+                        )}
                         <input
                           id="variant-image-input"
+                          name="variantImageInput"
                           type="file"
                           accept="image/*"
                           onChange={async (e) => {
@@ -1599,42 +1656,44 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                           }}
                           className="hidden"
                         />
-                      </label>
-                    )}
-                    <span className="flex-1 text-[10px] leading-tight text-zinc-500">
-                      Facilita a visualização do produto na tela de checkout e
-                      na seleção de atributos.
-                    </span>
+                        <span className="flex-1 text-[10px] leading-tight text-zinc-500">
+                          Facilita a visualização do produto na tela de checkout
+                          e na seleção de atributos.
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="relative z-10 flex shrink-0 gap-4 border-t border-white/5 bg-zinc-950/40 p-8 pt-5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowVariantForm(false);
-                    setEditingVariant(null);
-                  }}
-                  className="flex-1 py-4 text-xs font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={async (e) => {
-                    e.preventDefault();
-                    await handleVariantSubmit();
-                  }}
-                  className="flex-[2] rounded-2xl bg-emerald-500 py-4 text-xs font-black uppercase tracking-widest text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all hover:scale-105 active:scale-95"
-                >
-                  {editingVariant ? "Salvar Protocolo" : "Efetivar Variante"}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
+                  <div className="relative z-10 flex shrink-0 gap-4 border-t border-white/5 bg-zinc-950/40 p-8 pt-5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowVariantForm(false);
+                        setEditingVariant(null);
+                      }}
+                      className="flex-1 py-4 text-xs font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        await handleVariantSubmit();
+                      }}
+                      className="flex-[2] rounded-2xl bg-emerald-500 py-4 text-xs font-black uppercase tracking-widest text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all hover:scale-105 active:scale-95"
+                    >
+                      {editingVariant
+                        ? "Salvar Protocolo"
+                        : "Efetivar Variante"}
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body,
         )}
-      </AnimatePresence>
 
       <header className="sticky top-0 z-30 border-b border-white/5 bg-zinc-950/80 px-4 py-3 backdrop-blur-md md:px-6 md:py-4">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
@@ -1722,7 +1781,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
         initial="hidden"
         animate="visible"
         onSubmit={handleSubmit}
-        className="gpu-accelerated mx-auto max-w-screen-xl space-y-4 md:space-y-8 p-4 md:p-6"
+        className="gpu-accelerated mx-auto max-w-5xl space-y-4 p-4 md:space-y-8 md:p-6"
       >
         {isOffline && (
           <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2">
@@ -1733,1289 +1792,1183 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             </span>
           </div>
         )}
+        {/* Visual Media Section */}
+        <section className="group relative">
+          <div className="pointer-events-none absolute right-0 top-0 p-8 opacity-5 transition-opacity group-hover:opacity-10">
+            <ImageIcon className="size-24 text-white" />
+          </div>
 
-        <div className="grid grid-cols-1 gap-4 md:gap-8 lg:grid-cols-12">
-          {/* Left Column - Main Details */}
-          <div className="space-y-4 md:space-y-8 lg:col-span-8">
-            {/* Visual Media Section */}
-            <section className="group relative">
-              <div className="pointer-events-none absolute right-0 top-0 p-8 opacity-5 transition-opacity group-hover:opacity-10">
-                <ImageIcon className="size-24 text-white" />
+          <div className="mb-3 flex items-center justify-between md:mb-6">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10">
+                <Camera className="size-5 text-emerald-500" />
               </div>
+              <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
+                Fotos do Produto
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowPhotoGuide((prev) => !prev)}
+                className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
+                  showPhotoGuide
+                    ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
+                    : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                )}
+                title="Ajuda / Guia de Fotos"
+              >
+                ?
+              </button>
+            </div>
 
-              <div className="mb-3 md:mb-6 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10">
-                    <Camera className="size-5 text-emerald-500" />
+            {/* "+" Button - Only visible when images exist */}
+            {formData.images.length > 0 && (
+              <label
+                htmlFor="product-image-upload"
+                className={cn(
+                  "flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
+                  (isSubmitting || isImageUploading) &&
+                    "opacity-40 pointer-events-none",
+                )}
+                title="Adicionar Mais Imagens"
+              >
+                <Plus className="size-5" />
+                <input
+                  id="product-image-upload"
+                  name="product-images"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageUpload}
+                  className="hidden"
+                  disabled={isSubmitting || isImageUploading}
+                />
+              </label>
+            )}
+          </div>
+
+          <div className="w-full">
+            {formData.images.length === 0 ? (
+              <label
+                htmlFor="product-image-upload"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  if (isOffline) {
+                    toast.error("Não é possível enviar imagens offline.");
+                    return;
+                  }
+                  if (isImageUploading) return;
+                  const files = Array.from(e.dataTransfer.files || []);
+                  await processAndUploadImages(files);
+                }}
+                className={cn(
+                  "w-full h-48 sm:h-64 rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group/upload relative overflow-hidden select-none",
+                  isDragging
+                    ? "border-emerald-500 bg-emerald-500/10 scale-[1.01] shadow-[0_0_30px_rgba(16,185,129,0.15)]"
+                    : "border-white/10 bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
+                  (isSubmitting || isImageUploading) &&
+                    "opacity-40 pointer-events-none",
+                )}
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 via-transparent to-emerald-500/5" />
+                <div className="relative z-10 flex flex-col items-center text-center p-6 space-y-3">
+                  <div className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/80 text-zinc-400 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500 group-hover/upload:scale-110 transition-all duration-300 shadow-xl">
+                    <Camera className="size-6" />
                   </div>
-                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
-                    Fotos do Produto
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setShowPhotoGuide((prev) => !prev)}
-                    className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                      showPhotoGuide
-                        ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                        : "bg-zinc-950/50 border-white/10 text-zinc-400",
-                    )}
-                    title="Ajuda / Guia de Fotos"
-                  >
-                    ?
-                  </button>
+                  <div className="space-y-1">
+                    <p className="text-xs font-black uppercase tracking-widest text-zinc-300 group-hover/upload:text-emerald-400 transition-colors">
+                      {isDragging
+                        ? "Solte para enviar!"
+                        : "Adicionar Fotos do Produto"}
+                    </p>
+                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      Arraste as imagens aqui ou clique para buscar
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 pt-2 text-[8px] font-black uppercase tracking-widest text-zinc-650">
+                    <span>Proporção ideal: 4:5</span>
+                    <span className="size-1 rounded-full bg-zinc-700" />
+                    <span>Máx: 10 fotos</span>
+                    <span className="size-1 rounded-full bg-zinc-700" />
+                    <span>Até 12MB cada</span>
+                  </div>
                 </div>
-              </div>
+                <input
+                  id="product-image-upload"
+                  name="product-images"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageUpload}
+                  className="hidden"
+                  disabled={isSubmitting || isImageUploading}
+                />
+              </label>
+            ) : (
+              <div className="relative w-full">
+                {/* Single horizontal scroll carousel for ALL images */}
+                <div className="flex flex-row gap-4 overflow-x-auto px-2 pb-4 pt-2 snap-x scroll-smooth scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
+                  <AnimatePresence>
+                    {formData.images.map((image, index) => {
+                      const meta = imageMetadata[image];
+                      const isCover = index === 0;
+                      return (
+                        <motion.div
+                          key={image}
+                          initial={{ scale: 0.8, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          exit={{ scale: 0.8, opacity: 0 }}
+                          className={cn(
+                            "group/img relative aspect-[4/5] w-40 sm:w-48 shrink-0 snap-start rounded-2xl",
+                            isCover &&
+                              "ring-2 ring-emerald-500 ring-offset-2 ring-offset-zinc-950",
+                          )}
+                        >
+                          <div className="absolute inset-0 z-0 overflow-hidden rounded-2xl border border-white/5 bg-zinc-900 shadow-md transition-all duration-300 group-hover/img:border-emerald-500/30">
+                            <img
+                              src={image}
+                              alt=""
+                              className="size-full object-cover transition-transform duration-700 group-hover/img:scale-105"
+                            />
 
-              <div className="flex flex-wrap gap-3 md:gap-6">
-                <AnimatePresence>
-                  {formData.images.map((image, index) => {
-                    const meta = imageMetadata[image];
-                    return (
-                      <motion.div
-                        key={index}
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.8, opacity: 0 }}
-                        className="group/img relative size-28 sm:size-36"
-                      >
-                        {/* Wrapper with rounded-3xl and overflow-hidden specifically for the image and its hover overlay */}
-                        <div className="absolute inset-0 z-0 overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 shadow-lg">
-                          <img
-                            src={image}
-                            alt=""
-                            className="size-full object-cover transition-transform duration-700 group-hover/img:scale-110"
-                          />
-
-                          {/* Hover action overlay */}
-                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-100 transition-opacity hover-hover:opacity-0 hover-hover:group-hover/img:opacity-100">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => openAdjuster(image, index)}
-                                className="flex size-8 items-center justify-center rounded-xl bg-emerald-500 text-emerald-950 shadow-lg transition-all hover:scale-110 hover:bg-emerald-400"
-                                title="Ajustar e Cortar"
-                              >
-                                <Scissors className="size-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => removeImage(index)}
-                                className="flex size-8 items-center justify-center rounded-xl bg-red-500 text-white shadow-lg transition-all hover:scale-110 hover:bg-red-400"
-                                title="Excluir"
-                              >
-                                <Trash2 className="size-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Status warning badge and tooltip box (placed outside of overflow-hidden inner wrapper to prevent clipping) */}
-                        {meta && meta.status !== "loading" && (
-                          <div className="absolute right-2 top-2 sm:right-3 sm:top-3 z-20">
-                            <div
-                              className={`group/tooltip relative transition-opacity duration-300 ${
-                                meta.status === "warning_aspect" ||
-                                meta.status === "warning_res"
-                                  ? "opacity-100"
-                                  : "opacity-0 group-hover/img:opacity-100"
-                              }`}
-                            >
-                              <span
-                                className={`flex size-5 cursor-help items-center justify-center rounded-full border border-white/10 text-[9px] font-black shadow-lg ${
-                                  meta.status === "excellent"
-                                    ? "bg-emerald-500 text-emerald-950"
-                                    : meta.status === "warning_aspect"
-                                      ? "bg-amber-500 text-zinc-950"
-                                      : meta.status === "warning_res"
-                                        ? "bg-red-500 text-white"
-                                        : "bg-blue-500 text-white"
-                                }`}
-                              >
-                                {meta.status === "excellent"
-                                  ? "✓"
-                                  : meta.status === "warning_aspect"
-                                    ? "!"
-                                    : meta.status === "warning_res"
-                                      ? "⚠"
-                                      : "i"}
-                              </span>
-
-                              {/* Tooltip box - aligned exactly with the card boundaries (w-36) and positioned above the card (bottom-10 right-0) to prevent screen-edge clipping */}
-                              <div className="pointer-events-none absolute bottom-10 right-0 z-30 w-36 rounded-xl border border-white/10 bg-zinc-950 p-2.5 text-[8px] font-black uppercase leading-normal tracking-wider text-white opacity-0 shadow-2xl transition-opacity group-hover/tooltip:opacity-100">
-                                <span className="mb-0.5 block text-emerald-400">
-                                  Dim: {meta.width}x{meta.height}
-                                </span>
-                                {meta.status === "excellent" &&
-                                  "Excelente Proporção e Resolução!"}
-                                {meta.status === "warning_aspect" &&
-                                  "Proporção inadequada. Clique na tesoura para ajustar para 4:5."}
-                                {meta.status === "warning_res" &&
-                                  "Baixa resolução. Recomendado > 800px."}
-                                {meta.status === "good" &&
-                                  "Proporção e resolution boas."}
+                            {/* Actions Overlay */}
+                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/35 to-transparent opacity-100 transition-opacity hover-hover:opacity-0 hover-hover:group-hover/img:opacity-100 duration-300">
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => openAdjuster(image, index)}
+                                  className="flex size-9 items-center justify-center rounded-lg bg-emerald-500 text-emerald-950 shadow-lg transition-all hover:scale-110 hover:bg-emerald-400 active:scale-95"
+                                  title="Ajustar e Cortar"
+                                >
+                                  <Scissors className="size-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeImage(index)}
+                                  className="flex size-9 items-center justify-center rounded-lg bg-red-500 text-white shadow-lg transition-all hover:scale-110 hover:bg-red-400 active:scale-95"
+                                  title="Excluir"
+                                >
+                                  <Trash2 className="size-4" />
+                                </button>
                               </div>
                             </div>
                           </div>
-                        )}
 
-                        {/* Bottom position/index badge */}
-                        <div
-                          className={`absolute bottom-2 left-2 sm:bottom-3 sm:left-3 z-10 rounded-lg border px-1.5 py-0.5 sm:px-2 sm:py-1 text-[6px] sm:text-[7px] font-black uppercase tracking-widest ${index === 0 ? "border-emerald-400 bg-emerald-500 text-emerald-950 shadow-md" : "border-white/10 bg-black/40 text-white/50 backdrop-blur-md"}`}
-                        >
-                          {index === 0 ? "Principal" : `#${index + 1}`}
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-
-                  {isUploadingImages && (
-                    <motion.div
-                      key="uploading-shimmer"
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0.8, opacity: 0 }}
-                      className="relative flex size-28 sm:size-36 animate-pulse flex-col items-center justify-center space-y-2 overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-white/5"
-                    >
-                      <Loader2 className="size-5 animate-spin text-emerald-400" />
-                      <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500">
-                        {imageUploadStep === "compressing"
-                          ? "Comprimindo..."
-                          : "Enviando..."}
-                      </span>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <label
-                  htmlFor="product-image-upload"
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDragging(true);
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={async (e) => {
-                    e.preventDefault();
-                    setIsDragging(false);
-                    if (isOffline) {
-                      toast.error("Não é possível enviar imagens offline.");
-                      return;
-                    }
-                    if (isImageUploading) return;
-                    const files = Array.from(e.dataTransfer.files || []);
-                    await processAndUploadImages(files);
-                  }}
-                  className={cn(
-                    "flex-shrink-0 w-28 h-28 sm:w-36 sm:h-36 rounded-2xl sm:rounded-3xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all group/upload relative overflow-hidden select-none",
-                    isDragging
-                      ? "border-emerald-500 bg-emerald-500/10 scale-105 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
-                      : "border-white/10 border-emerald-500/10 hover:bg-emerald-500/5 hover:border-emerald-500/30",
-                    (isSubmitting || isImageUploading) &&
-                      "opacity-40 pointer-events-none",
-                  )}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-emerald-500/5" />
-                  <Plus className="relative z-10 mb-0.5 sm:mb-1 size-6 sm:size-8 text-zinc-600 transition-all group-hover/upload:scale-110 group-hover/upload:text-emerald-500" />
-                  <span className="relative z-10 text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-zinc-600 group-hover/upload:text-emerald-400">
-                    {isDragging ? "Solte as Fotos" : "Adicionar Imagem"}
-                  </span>
-                  <input
-                    id="product-image-upload"
-                    name="product-images"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    disabled={isSubmitting || isImageUploading}
-                  />
-                </label>
-              </div>
-            </section>
-
-            {/* Guide Section */}
-            <AnimatePresence>
-              {showPhotoGuide && (
-                <motion.section
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                  className="space-y-4 border-t border-white/5 pt-6"
-                >
-                  <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                    <BookOpen className="size-4 text-emerald-400" />
-                    Guia de Fotos do Produto
-                  </h3>
-                  <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
-                    <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
-                      Imagens de alta qualidade aumentam a conversão de vendas.
-                      Siga as orientações recomendadas:
-                    </p>
-                    <ul className="list-disc space-y-2 pl-4 text-[10px] font-medium text-zinc-500">
-                      <li>
-                        <b className="text-zinc-350">Proporção 4:5 (Card):</b>{" "}
-                        Essencial para que os produtos caibam no card da vitrine
-                        sem cortes laterais automáticos. Use o enquadramento
-                        "Vitrine".
-                      </li>
-                      <li>
-                        <b className="text-zinc-350">
-                          Proporção 1:1 (Detalhe):
-                        </b>{" "}
-                        Ideal para a galeria interna do produto. Mantém a
-                        consistência visual em carrosséis.
-                      </li>
-                      <li>
-                        <b className="text-zinc-350">Resolução Recomendada:</b>{" "}
-                        Imagens com pelo menos 800px a 1200px de altura garantem
-                        nitidez no zoom.
-                      </li>
-                      <li>
-                        <b className="text-zinc-350">Fundo e Contraste:</b>{" "}
-                        Fundos neutros (branco/cinza) e produtos bem iluminados
-                        destacam os detalhes e transmitem profissionalismo.
-                      </li>
-                    </ul>
-                    <div className="flex items-center justify-between border-t border-white/5 pt-3 text-[9px] font-black uppercase tracking-widest text-emerald-400">
-                      <span>Proporção ideal: 4:5 ou 1:1</span>
-                      <span>Res: &gt; 800px</span>
-                    </div>
-                  </div>
-                </motion.section>
-              )}
-            </AnimatePresence>
-
-            {/* Content Section */}
-            <section className="space-y-4 md:space-y-8 border-t border-white/5 pt-6 md:pt-12">
-              <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10">
-                  <Info className="size-5 text-blue-500" />
-                </div>
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
-                  Dados do Produto
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => toggleHelp("productData")}
-                  className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                    expandedHelp.productData
-                      ? "bg-blue-500 border-blue-400 text-blue-950 shadow-md shadow-blue-500/10 scale-110"
-                      : "bg-zinc-950/50 border-white/10 text-zinc-400",
-                  )}
-                  title="Ajuda / Guia de Dados do Produto"
-                >
-                  ?
-                </button>
-              </div>
-
-              {/* Data Guide Section */}
-              <AnimatePresence>
-                {expandedHelp.productData && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                    className="space-y-4 border-b border-white/5 pb-6 pt-2"
-                  >
-                    <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                      <BookOpen className="size-4 text-blue-400" />
-                      Guia de Cadastro e Informações
-                    </h3>
-                    <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
-                      <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
-                        O preenchimento correto dos dados melhora a indexação do
-                        produto e facilita a decisão do cliente.
-                      </p>
-                      <ul className="list-none space-y-3 pl-0 text-[10px] font-medium text-zinc-500">
-                        <li className="flex items-start gap-2.5">
-                          <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
-                          <span>
-                            <b className="text-zinc-300">Nome do Produto:</b>{" "}
-                            Seja claro, indicando o tipo do item, a marca e a
-                            característica principal (ex:{" "}
-                            <i>Camiseta Algodão Egípcio Slim - Preta</i>). Evite
-                            excesso de adjetivos promocionais.
-                          </span>
-                        </li>
-                        <li className="flex items-start gap-2.5">
-                          <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
-                          <span>
-                            <b className="text-zinc-350">
-                              Descrição Detalhada:
-                            </b>{" "}
-                            Informe materiais, dimensões, tabelas de medidas,
-                            garantia e cuidados de conservação. Uma boa
-                            descrição reduz as dúvidas no WhatsApp e diminui
-                            devoluções.
-                          </span>
-                        </li>
-                        <li className="flex items-start gap-2.5">
-                          <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
-                          <span>
-                            <b className="text-zinc-350">Setor / Categoria:</b>{" "}
-                            Classifique adequadamente para que o produto seja
-                            filtrado na vitrine da loja e apareça nos setores
-                            corretos do catálogo.
-                          </span>
-                        </li>
-                        <li className="flex items-start gap-2.5">
-                          <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
-                          <span>
-                            <b className="text-zinc-350">Código SKU:</b> Código
-                            identificador único do produto (Stock Keeping Unit).
-                            Útil para controle interno, integração de estoque e
-                            identificação ágil.
-                          </span>
-                        </li>
-                        <li className="flex items-start gap-2.5">
-                          <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
-                          <span>
-                            <b className="text-zinc-350">Estoque Base:</b>{" "}
-                            Quantidade física disponível. Se utilizar variações,
-                            o estoque de cada variante será somado ou deduzido
-                            deste total conforme as vendas.
-                          </span>
-                        </li>
-                      </ul>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <div className="grid grid-cols-1 gap-4 md:gap-6 md:grid-cols-2">
-                <div className="space-y-1.5 md:space-y-3 md:col-span-2">
-                  <label
-                    htmlFor="product-name"
-                    className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                  >
-                    Nome do Produto *
-                  </label>
-                  <LocalBufferedInput
-                    id="product-name"
-                    name="product-name"
-                    type="text"
-                    value={formData.name}
-                    onFlush={(val) =>
-                      setFormData((prev) => ({ ...prev, name: val }))
-                    }
-                    placeholder="Ex: Camiseta Básica Preta - Tamanho M"
-                    className="w-full rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-950/50 px-4 py-3 sm:px-6 sm:py-5 text-sm sm:text-base font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  />
-                </div>
-
-                <div className="space-y-1.5 md:space-y-3 md:col-span-2">
-                  <label
-                    htmlFor="product-description"
-                    className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                  >
-                    Descrição do Produto *
-                  </label>
-                  <LocalBufferedTextarea
-                    id="product-description"
-                    name="product-description"
-                    value={formData.description}
-                    onFlush={(val) =>
-                      setFormData((prev) => ({ ...prev, description: val }))
-                    }
-                    placeholder="Digite os detalhes e informações do product..."
-                    rows={6}
-                    className="w-full resize-none rounded-2xl sm:rounded-3xl border border-white/5 bg-zinc-950/50 px-4 py-3.5 sm:px-6 sm:py-5 text-sm font-medium leading-relaxed text-zinc-300 transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  />
-                </div>
-
-                <div className="space-y-1.5 md:space-y-3">
-                  <span className="block ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                    Setor / Categoria *
-                  </span>
-                  <div className="group relative">
-                    <Select
-                      value={formData.category || ""}
-                      onValueChange={async (val) => {
-                        if (val === "NEW_CATEGORY") {
-                          setShowCategoryForm(true);
-                        } else {
-                          setFormData((prev) => ({ ...prev, category: val }));
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="h-auto w-full rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-950/50 px-4 py-3 sm:px-6 sm:py-5 text-sm font-black text-white transition-all hover:border-white/10 hover:bg-zinc-900/50 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 [&>svg]:opacity-50">
-                        <SelectValue placeholder="Selecionar Setor" />
-                      </SelectTrigger>
-                      <SelectContent className="rounded-xl border-white/10 bg-zinc-900/95 p-2 shadow-[0_10px_40px_rgba(0,0,0,0.8)] backdrop-blur-xl">
-                        {dbCategories.map((category) => (
-                          <SelectItem
-                            key={category.id}
-                            value={category.name}
-                            className="cursor-pointer rounded-lg px-4 py-3 font-bold text-zinc-300 focus:bg-white/5 focus:text-emerald-400"
-                          >
-                            {category.name.toUpperCase()}
-                          </SelectItem>
-                        ))}
-                        <div className="mx-1 my-2 h-px bg-white/10" />
-                        <SelectItem
-                          value="NEW_CATEGORY"
-                          className="cursor-pointer rounded-lg px-4 py-3 font-black text-emerald-500 focus:bg-emerald-500/10 focus:text-emerald-400"
-                        >
-                          <span className="flex items-center gap-2">
-                            ➕ CRIAR NOVA CATEGORIA
-                          </span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <div className="pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 text-zinc-600 transition-colors group-hover:text-emerald-500">
-                      <Layers className="size-5" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5 md:space-y-3">
-                  <label
-                    htmlFor="product-sku"
-                    className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                  >
-                    Código SKU
-                  </label>
-                  <div className="group relative">
-                    <LocalBufferedInput
-                      id="product-sku"
-                      name="product-sku"
-                      type="text"
-                      value={formData.sku}
-                      onFlush={(val) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          sku: val.trim().toUpperCase().replace(/\s+/g, "-"),
-                        }))
-                      }
-                      placeholder="Ex: SKU-PROD-BASE"
-                      className="w-full rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-950/50 px-4 py-3 sm:px-6 sm:py-5 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                    />
-                    <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600">
-                      <Layers className="size-5" />
-                    </div>
-                  </div>
-                  {skuError && (
-                    <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
-                      {skuError}
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-1.5 md:space-y-3 md:col-span-2">
-                  <span className="block ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                    Quantidade em Estoque *
-                  </span>
-                  <div className="group relative">
-                    <LocalBufferedInput
-                      type="number"
-                      min="0"
-                      value={formData.stock}
-                      onFlush={(val) =>
-                        setFormData((prev) => ({ ...prev, stock: val }))
-                      }
-                      disabled={hasActiveVariants}
-                      className="w-full rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-950/50 px-4 py-3 sm:px-6 sm:py-5 text-sm font-black tabular-nums text-white transition-all focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:text-zinc-400"
-                    />
-                    <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600">
-                      <Package className="size-5" />
-                    </div>
-                  </div>
-                  {hasActiveVariants ? (
-                    <span className="ml-1 mt-1 block text-[10px] font-bold text-amber-500 flex items-center gap-1.5">
-                      <Info className="size-3.5 shrink-0" />
-                      Estoque gerenciado pelas variantes ativas (
-                      {formData.stock} un).
-                    </span>
-                  ) : (
-                    stockError && (
-                      <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
-                        {stockError}
-                      </span>
-                    )
-                  )}
-                </div>
-
-                {/* Peso e Dimensões de Envio (Logística) */}
-                <div className="space-y-3 border-t border-white/5 pt-5 md:col-span-2">
-                  <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                    <Truck className="size-4 animate-pulse text-zinc-500" />
-                    Dimensões e Logística (Frete)
-                  </h3>
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <div className="space-y-1">
-                      <span className="block ml-1 text-[9px] font-black uppercase tracking-wider text-zinc-500">
-                        Peso (kg)
-                      </span>
-                      <LocalBufferedInput
-                        type="number"
-                        step="0.001"
-                        min="0"
-                        placeholder="Ex: 0.350"
-                        value={formData.weightKg}
-                        onFlush={(val) =>
-                          setFormData((prev) => ({ ...prev, weightKg: val }))
-                        }
-                        className="w-full rounded-lg sm:rounded-xl border border-white/5 bg-zinc-950/50 px-3 py-2.5 sm:px-4 sm:py-3.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <span className="block ml-1 text-[9px] font-black uppercase tracking-wider text-zinc-500">
-                        Largura (cm)
-                      </span>
-                      <LocalBufferedInput
-                        type="number"
-                        min="0"
-                        placeholder="Ex: 15"
-                        value={formData.widthCm}
-                        onFlush={(val) =>
-                          setFormData((prev) => ({ ...prev, widthCm: val }))
-                        }
-                        className="w-full rounded-lg sm:rounded-xl border border-white/5 bg-zinc-950/50 px-3 py-2.5 sm:px-4 sm:py-3.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <span className="block ml-1 text-[9px] font-black uppercase tracking-wider text-zinc-500">
-                        Altura (cm)
-                      </span>
-                      <LocalBufferedInput
-                        type="number"
-                        min="0"
-                        placeholder="Ex: 15"
-                        value={formData.heightCm}
-                        onFlush={(val) =>
-                          setFormData((prev) => ({ ...prev, heightCm: val }))
-                        }
-                        className="w-full rounded-lg sm:rounded-xl border border-white/5 bg-zinc-950/50 px-3 py-2.5 sm:px-4 sm:py-3.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <span className="block ml-1 text-[9px] font-black uppercase tracking-wider text-zinc-500">
-                        Comprimento (cm)
-                      </span>
-                      <LocalBufferedInput
-                        type="number"
-                        min="0"
-                        placeholder="Ex: 15"
-                        value={formData.lengthCm}
-                        onFlush={(val) =>
-                          setFormData((prev) => ({ ...prev, lengthCm: val }))
-                        }
-                        className="w-full rounded-lg sm:rounded-xl border border-white/5 bg-zinc-950/50 px-3 py-2.5 sm:px-4 sm:py-3.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      />
-                    </div>
-                  </div>
-                  <span className="text-zinc-455 block text-[8px] font-medium leading-normal">
-                    * O peso e as dimensões da embalagem individual são
-                    utilizados para a cotação de frete automática
-                    (Correios/Melhor Envio/Frenet). Se não informados, o sistema
-                    utilizará valores padrão (0.3 kg e 15x15x15 cm).
-                  </span>
-                </div>
-
-                {/* Product Variants Grade (Moved inside Product Data section) */}
-                <div className="space-y-3 border-t border-white/5 pt-5 md:col-span-2">
-                  <div className="flex items-center justify-between px-2">
-                    <div className="flex items-center gap-3">
-                      <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                        <Layers className="size-4" />
-                        Variações do Produto
-                      </h3>
-                      <button
-                        type="button"
-                        onClick={() => toggleHelp("productVariants")}
-                        className={cn(
-                          "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                          expandedHelp.productVariants
-                            ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                            : "bg-zinc-950/50 border-white/10 text-zinc-400",
-                        )}
-                        title="Ajuda / Guia de Variações"
-                      >
-                        ?
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingVariant(null);
-                        setVariantFormData({
-                          name: "",
-                          value: "",
-                          sku: "",
-                          stockIncrement: "0",
-                          priceOverride: "",
-                          active: true,
-                          imageUrl: "",
-                        });
-                        setShowVariantForm(true);
-                      }}
-                      className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
-                    >
-                      + Novo
-                    </button>
-                  </div>
-
-                  {/* Variants Guide Section */}
-                  <AnimatePresence>
-                    {expandedHelp.productVariants && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                        className="w-full space-y-3 border-b border-white/5 pb-4"
-                      >
-                        <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                          <BookOpen className="size-4 text-emerald-400" />
-                          Como usar as Variações
-                        </h3>
-                        <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4">
-                          <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
-                            Variações permitem vender o mesmo produto com
-                            diferentes opções de cor, tamanho, voltagem, etc.
-                          </p>
-                          <ul className="list-none space-y-2 pl-0 text-[10px] font-medium text-zinc-500">
-                            <li className="flex items-start gap-2.5">
-                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                              <span>
-                                <b className="text-zinc-350">
-                                  Atributo (Nome e Valor):
-                                </b>{" "}
-                                Defina a característica (ex: Nome:{" "}
-                                <i>Tamanho</i>, Valor: <i>G</i>; ou Nome:{" "}
-                                <i>Cor</i>, Valor: <i>Azul</i>).
-                              </span>
-                            </li>
-                            <li className="flex items-start gap-2.5">
-                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                              <span>
-                                <b className="text-zinc-350">
-                                  Ajuste de Preço (Opcional):
-                                </b>{" "}
-                                Se uma variante custar mais caro (ex: tamanho
-                                especial ou material premium), preencha o campo
-                                de preço substituto. Se deixar em branco, o
-                                preço principal do produto será usado.
-                              </span>
-                            </li>
-                            <li className="flex items-start gap-2.5">
-                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                              <span>
-                                <b className="text-zinc-350">
-                                  Ajuste de Estoque:
-                                </b>{" "}
-                                Defina a variação de estoque (ex: se o produto
-                                principal tem 10 unidades e a variante G tem
-                                mais 5, use o incremento correto de estoque para
-                                que o cliente saiba exatamente o que há
-                                disponível).
-                              </span>
-                            </li>
-                            <li className="flex items-start gap-2.5">
-                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                              <span>
-                                <b className="text-zinc-350">
-                                  Foto da Variante:
-                                </b>{" "}
-                                Vincule uma foto específica da variação. Quando
-                                o comprador selecioná-la na página do produto, o
-                                carrossel exibirá automaticamente a foto
-                                correspondente.
-                              </span>
-                            </li>
-                          </ul>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  <div className="space-y-3">
-                    {formData.variants.length === 0 ? (
-                      <div className="rounded-3xl border border-dashed border-white/5 bg-zinc-900 p-8 text-center">
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-700">
-                          Nenhuma Variação Adicionada
-                        </p>
-                      </div>
-                    ) : (
-                      formData.variants.map((v) => (
-                        <VariantItem
-                          key={v.id}
-                          variant={v}
-                          onEdit={handleEditVariant}
-                          onDelete={handleDeleteVariant}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Pricing Section */}
-            <section className="relative space-y-4 border-t border-white/5 pt-6 md:pt-8">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10">
-                    <DollarSign className="size-5 text-emerald-500" />
-                  </div>
-                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
-                    Precificação do Produto
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => toggleHelp("productPricing")}
-                    className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                      expandedHelp.productPricing
-                        ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                        : "bg-zinc-950/50 border-white/10 text-zinc-400",
-                    )}
-                    title="Ajuda / Guia de Precificação"
-                  >
-                    ?
-                  </button>
-                </div>
-
-                {priceVal > 0 && (
-                  <div className="flex gap-3">
-                    <div className="flex flex-col items-end">
-                      <span className="mb-1 text-right text-[8px] font-black uppercase tracking-widest text-zinc-600">
-                        Margem Líquida
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-800">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{
-                              width: `${Math.min(100, Math.max(0, marginPct))}%`,
-                            }}
-                            className={`h-full ${marginPct > 30 ? "bg-emerald-500" : "bg-orange-500"}`}
-                          />
-                        </div>
-                        <span
-                          className={`text-sm font-black ${marginPct > 30 ? "text-emerald-500" : "text-orange-500"}`}
-                        >
-                          {marginPct.toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Pricing Guide Section */}
-              <AnimatePresence>
-                {expandedHelp.productPricing && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                    className="space-y-4 border-b border-white/5 pb-4"
-                  >
-                    <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                      <BookOpen className="size-4 text-emerald-400" />
-                      Guia de Custos e Margens
-                    </h3>
-                    <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
-                      <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
-                        Configure os preços de forma estratégica. O sistema
-                        calcula a lucratividade automaticamente em tempo real.
-                      </p>
-                      <ul className="list-none space-y-3 pl-0 text-[10px] font-medium text-zinc-500">
-                        <li className="flex items-start gap-2.5">
-                          <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                          <span>
-                            <b className="text-zinc-350">
-                              Preço de Custo (Opcional):
-                            </b>{" "}
-                            O valor total que você pagou para adquirir ou
-                            fabricar o produto. Esse dado é estritamente
-                            confidencial e é usado apenas pelo sistema para
-                            calcular a margem de lucro e o retorno sobre
-                            investimento (ROI) exibidos abaixo.
-                          </span>
-                        </li>
-                        <li className="flex items-start gap-2.5">
-                          <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                          <span>
-                            <b className="text-zinc-350">Preço de Venda:</b> O
-                            preço final cobrado do cliente. Pense em embutir
-                            custos fixos, impostos e taxas para manter sua
-                            operação saudável.
-                          </span>
-                        </li>
-                        <li className="flex items-start gap-2.5">
-                          <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                          <span>
-                            <b className="text-zinc-350">
-                              Produto em Promoção:
-                            </b>{" "}
-                            Ative para indicar um preço promocional riscado (ex:
-                            De: R$ 100,00 por R$ 79,90). No aplicativo do
-                            cliente, isso criará etiquetas com o percentual de
-                            desconto (ex: 20% OFF), incentivando a compra
-                            impulsiva.
-                          </span>
-                        </li>
-                        <li className="flex items-start gap-2.5">
-                          <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                          <span>
-                            <b className="text-zinc-350">
-                              Painel de Lucratividade:
-                            </b>{" "}
-                            O sistema analisa a diferença entre o preço de venda
-                            e o preço de custo. É recomendada uma margem de
-                            lucro líquida de pelo menos 30%. O sistema emitirá
-                            um alerta caso a margem esteja zerada ou negativa.
-                          </span>
-                        </li>
-                      </ul>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div className="space-y-1.5 md:space-y-3">
-                  <span className="block ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                    Preço de Custo
-                  </span>
-                  <div className="group relative">
-                    <span className="absolute left-4 sm:left-6 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600">
-                      R$
-                    </span>
-                    <LocalBufferedInput
-                      mask="currency"
-                      value={formData.costPrice}
-                      onFlush={(val) =>
-                        setFormData((prev) => ({ ...prev, costPrice: val }))
-                      }
-                      className="w-full rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-950/50 py-3 sm:py-5 pl-11 pr-4 sm:pl-14 sm:pr-6 text-base sm:text-lg font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                    />
-                  </div>
-                  {costError && (
-                    <span
-                      className={cn(
-                        "text-[10px] font-bold mt-1 ml-1 block",
-                        costError.includes("Aviso")
-                          ? "text-amber-500"
-                          : "text-red-500",
-                      )}
-                    >
-                      {costError}
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-1.5 md:space-y-3">
-                  <span className="block ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                    Preço de Venda
-                  </span>
-                  <div className="group relative">
-                    <span className="absolute left-4 sm:left-6 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-500/50">
-                      R$
-                    </span>
-                    <LocalBufferedInput
-                      mask="currency"
-                      value={formData.price}
-                      onFlush={(val) =>
-                        setFormData((prev) => ({ ...prev, price: val }))
-                      }
-                      className="w-full rounded-xl sm:rounded-2xl border border-emerald-500/20 bg-zinc-950 py-3 sm:py-5 pl-11 pr-4 sm:pl-14 sm:pr-6 text-base sm:text-lg font-black tabular-nums text-emerald-500 shadow-inner transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/10"
-                    />
-                  </div>
-                  {priceError && (
-                    <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
-                      {priceError}
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-3.5">
-                  <label
-                    htmlFor="product-promo-active"
-                    className="flex cursor-pointer select-none items-center justify-between rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/40 p-2.5 sm:p-3.5 transition-all hover:border-emerald-500/10"
-                  >
-                    <div className="space-y-0.5">
-                      <span className="text-[10px] font-black uppercase italic tracking-tight text-white transition-colors group-hover:text-emerald-400">
-                        Produto em Promoção
-                      </span>
-                      <span className="block text-[8px] font-medium uppercase tracking-wider text-zinc-500">
-                        Ativar preço cortado (De/Por)
-                      </span>
-                    </div>
-                    <input
-                      id="product-promo-active"
-                      name="isPromoActive"
-                      type="checkbox"
-                      aria-label="Produto em Promoção"
-                      checked={isPromoActive}
-                      onChange={(e) => {
-                        setIsPromoActive(e.target.checked);
-                        if (!e.target.checked) {
-                          setFormData((prev) => ({
-                            ...prev,
-                            originalPrice: "",
-                          }));
-                        }
-                      }}
-                      className="size-5 cursor-pointer rounded border-white/10 bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20"
-                    />
-                  </label>
-
-                  {isPromoActive && (
-                    <div className="space-y-1.5 md:space-y-3 duration-300 animate-in fade-in slide-in-from-top-2">
-                      <span className="block ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                        Preço Original ("De:")
-                      </span>
-                      <div className="group relative">
-                        <span className="absolute left-4 sm:left-6 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600">
-                          R$
-                        </span>
-                        <LocalBufferedInput
-                          mask="currency"
-                          value={formData.originalPrice}
-                          onFlush={(val) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              originalPrice: val,
-                            }))
-                          }
-                          placeholder="Ex: 99.90"
-                          className="w-full rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-950/50 py-3 sm:py-5 pl-11 pr-4 sm:pl-14 sm:pr-6 text-base sm:text-lg font-black tabular-nums text-zinc-600 transition-all focus:outline-none"
-                        />
-                      </div>
-                      {originalPriceError && (
-                        <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
-                          {originalPriceError}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {priceVal > 0 && costPriceVal > 0 && (
-                <div className="group/roi relative mt-4">
-                  {/* Glassmorphism Background with animated border logic */}
-                  <div
-                    className={cn(
-                      "absolute -inset-[1px] rounded-[2rem] blur-[2px] opacity-50 group-hover/roi:opacity-100 transition-opacity duration-500",
-                      marginPct <= 0
-                        ? "bg-gradient-to-r from-rose-500/20 via-rose-400/40 to-rose-500/20"
-                        : "bg-gradient-to-r from-emerald-500/20 via-emerald-400/40 to-emerald-500/20",
-                    )}
-                  />
-
-                  <div className="relative flex flex-col items-center justify-between gap-4 md:gap-6 overflow-hidden rounded-2xl sm:rounded-[2rem] border border-white/10 bg-zinc-950/40 p-4 sm:p-7 backdrop-blur-3xl md:flex-row">
-                    {/* Animated Glow Decor */}
-                    <div
-                      className={cn(
-                        "absolute top-0 right-0 w-32 h-32 blur-[50px] rounded-full pointer-events-none transition-all duration-700",
-                        marginPct <= 0
-                          ? "bg-rose-500/10 group-hover/roi:bg-rose-500/20"
-                          : "bg-emerald-500/10 group-hover/roi:bg-emerald-500/20",
-                      )}
-                    />
-
-                    <div className="flex w-full items-center gap-4 sm:gap-6 md:w-auto">
-                      <div className="relative">
-                        <div
-                          className={cn(
-                            "absolute inset-0 blur-xl rounded-2xl transition-all",
-                            marginPct <= 0
-                              ? "bg-rose-500/20 group-hover/roi:bg-rose-500/40"
-                              : "bg-emerald-500/20 group-hover/roi:bg-emerald-500/40",
-                          )}
-                        />
-                        <div
-                          className={cn(
-                            "relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center border transition-transform duration-500 shadow-lg",
-                            marginPct <= 0
-                              ? "bg-gradient-to-br from-rose-500/20 to-rose-600/10 border-rose-500/30 group-hover/roi:scale-110 shadow-rose-500/10 text-rose-400"
-                              : "bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-emerald-500/30 group-hover/roi:scale-110 shadow-emerald-500/10 text-emerald-400",
-                          )}
-                        >
-                          {marginPct <= 0 ? (
-                            <TrendingDown className="size-6 sm:size-8 text-rose-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]" />
-                          ) : (
-                            <TrendingUp className="size-6 sm:size-8 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]" />
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col">
-                        <p
-                          className={cn(
-                            "text-[10px] font-black uppercase tracking-[0.3em] mb-1.5 opacity-80",
-                            marginPct <= 0
-                              ? "text-rose-400"
-                              : "text-emerald-400",
-                          )}
-                        >
-                          {marginPct <= 0
-                            ? "Alerta de Margem"
-                            : "Análise de Lucro"}
-                        </p>
-                        <div className="flex items-baseline gap-2.5">
-                          <span className="text-xl sm:text-2xl md:text-3xl font-black tabular-nums tracking-tighter text-white drop-shadow-sm">
-                            R${" "}
-                            {(priceVal - costPriceVal).toLocaleString("pt-BR", {
-                              minimumFractionDigits: 2,
-                            })}
-                          </span>
-                          <span
-                            className={cn(
-                              "text-[10px] font-black uppercase tracking-widest italic",
-                              marginPct <= 0
-                                ? "text-rose-500/40"
-                                : "text-emerald-500/40",
-                            )}
-                          >
-                            / por unidade
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex w-full flex-col items-center gap-2 sm:gap-3 border-t border-white/5 pt-3 md:w-auto md:items-end md:border-t-0 md:pt-0">
-                      <div className="flex flex-col items-center md:items-end">
-                        <span className="mb-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                          Análise do Sistema
-                        </span>
-                        <div className="group/badge relative">
-                          <div
-                            className={cn(
-                              "absolute inset-0 blur-md rounded-xl opacity-0 group-hover/roi:opacity-100 transition-opacity",
-                              marginPct <= 0
-                                ? "bg-rose-500/40"
-                                : "bg-emerald-500/40",
-                            )}
-                          />
-                          <div
-                            className={cn(
-                              "px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-lg sm:rounded-xl font-black text-[9px] sm:text-[11px] uppercase tracking-wider relative z-10 flex items-center gap-2 group-hover/roi:scale-105 transition-transform duration-500",
-                              marginPct <= 0
-                                ? "bg-rose-500 text-rose-950 shadow-[0_10px_20px_rgba(244,63,94,0.3)]"
-                                : "bg-emerald-500 text-emerald-950 shadow-[0_10px_20px_rgba(16,185,129,0.3)]",
-                            )}
-                          >
-                            {marginPct <= 0 ? (
-                              <>
-                                <AlertTriangle className="size-3.5" />
-                                Margem Negativa
-                              </>
-                            ) : (
-                              <>
-                                <Check className="size-3.5" />
-                                Alta Performance
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Interactive background lines */}
-                    <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent opacity-20" />
-                  </div>
-                </div>
-              )}
-            </section>
-          </div>
-
-          {/* Right Column - Secondary Controls */}
-          <div className="space-y-4 md:space-y-6 lg:space-y-8 lg:col-span-4">
-            {/* Status & Options */}
-            <section className="space-y-6">
-              <h3 className="mb-2 text-xs font-black uppercase tracking-[0.2em] text-zinc-500">
-                Configurações de Exibição
-              </h3>
-
-              <div className="space-y-3">
-                {[
-                  {
-                    id: "freeShipping",
-                    label: "Incentivo Frete Grátis",
-                    sub: "Reduz objeção de compra",
-                    key: "freeShipping",
-                    desc: "Oferece frete grátis exclusivamente para este produto, independentemente do valor da compra. Isso anula a taxa de entrega quando o produto está no carrinho e ajuda a reduzir o abandono de compra.",
-                    renderPreview: (checked: boolean) => (
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={cn(
-                            "transition-all duration-300",
-                            checked
-                              ? "opacity-100 scale-100"
-                              : "opacity-35 scale-95 saturate-[0.25]",
-                          )}
-                        >
-                          <div className="flex w-fit items-center gap-1.5 rounded-lg border border-emerald-100/50 bg-emerald-50 px-2.5 py-1 text-[9px] font-black text-emerald-600">
-                            <Truck className="animate-bounce-subtle size-3.5 shrink-0" />
-                            <span>FRETE GRÁTIS</span>
-                          </div>
-                        </div>
-                        <span
-                          className={cn(
-                            "text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border transition-all duration-300",
-                            checked
-                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                              : "bg-zinc-800/80 text-zinc-500 border-white/5",
-                          )}
-                        >
-                          {checked ? "Ativo" : "Inativo"}
-                        </span>
-                      </div>
-                    ),
-                  },
-                  {
-                    id: "isBestseller",
-                    label: "Flag de Destaque (Best)",
-                    sub: "Prioridade no Algoritmo",
-                    key: "isBestseller",
-                    desc: 'Sinaliza o produto com o selo "EM ALTA" de mais vendido (chama a atenção visual na listagem) e o exibe no carrossel de "Destaques em Alta" na página inicial da loja.',
-                    renderPreview: (checked: boolean) => (
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={cn(
-                            "transition-all duration-300",
-                            checked
-                              ? "opacity-100 scale-100"
-                              : "opacity-35 scale-95 saturate-[0.25]",
-                          )}
-                        >
-                          <div className="flex w-fit items-center gap-1.5 rounded-lg border border-white/10 bg-slate-900 px-2.5 py-1 text-[9px] font-black text-white shadow-md">
-                            <Flame className="size-3.5 shrink-0 fill-orange-400 text-orange-400" />
-                            <span>EM ALTA</span>
-                          </div>
-                        </div>
-                        <span
-                          className={cn(
-                            "text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border transition-all duration-300",
-                            checked
-                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                              : "bg-zinc-800/80 text-zinc-500 border-white/5",
-                          )}
-                        >
-                          {checked ? "Ativo" : "Inativo"}
-                        </span>
-                      </div>
-                    ),
-                  },
-                  {
-                    id: "isActive",
-                    label: "Status de Ativo",
-                    sub: "Visibilidade no Catálogo",
-                    key: "isActive",
-                    desc: "Define se o produto está disponível para compra imediata na loja. Quando inativo, o produto fica oculto do catálogo e da busca (ideal para pausar vendas temporariamente).",
-                    renderPreview: (checked: boolean) => (
-                      <div className="mt-1">
-                        {checked ? (
-                          <div className="flex w-fit items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[9px] font-black text-emerald-400">
-                            <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400" />
-                            <span>EM OPERAÇÃO (VISÍVEL)</span>
-                          </div>
-                        ) : (
-                          <div className="flex w-fit items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-800 px-2.5 py-1 text-[9px] font-black text-zinc-400">
-                            <span className="size-1.5 shrink-0 rounded-full bg-zinc-500" />
-                            <span>OFFLINE (OCULTO)</span>
-                          </div>
-                        )}
-                      </div>
-                    ),
-                  },
-                ].map((opt) => {
-                  const isChecked = (formData as any)[opt.key];
-                  return (
-                    <div
-                      key={opt.id}
-                      className="space-y-2 sm:space-y-3.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-950/40 p-4 sm:p-5 transition-all hover:border-white/10"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <label
-                            htmlFor={`product-option-${opt.id}`}
-                            className="cursor-pointer space-y-0.5"
-                          >
-                            <span className="text-[11px] font-black uppercase italic tracking-tight text-white">
-                              {opt.label}
-                            </span>
-                            <span className="block text-[9px] font-bold uppercase tracking-widest text-zinc-600">
-                              {opt.sub}
-                            </span>
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              toggleHelp(opt.id);
-                            }}
-                            className={cn(
-                              "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                              expandedHelp[opt.id]
-                                ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                                : "bg-zinc-950 border-white/10 text-zinc-500",
-                            )}
-                            title="Saiba mais"
-                          >
-                            ?
-                          </button>
-                        </div>
-                        <div className="flex cursor-pointer items-center">
-                          <input
-                            id={`product-option-${opt.id}`}
-                            name={opt.key}
-                            type="checkbox"
-                            aria-label={opt.label}
-                            checked={isChecked}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                [opt.key]: e.target.checked,
-                              }))
-                            }
-                            className="size-5 cursor-pointer rounded border-white/10 bg-zinc-900 text-emerald-500 transition-all focus:ring-emerald-500/20 focus:ring-offset-zinc-900"
-                          />
-                        </div>
-                      </div>
-
-                      <AnimatePresence>
-                        {expandedHelp[opt.id] && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.2 }}
-                          >
-                            <div className="mt-3 space-y-2 border-t border-white/5 pt-3">
-                              <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
-                                {opt.desc}
-                              </p>
-
-                              <div className="space-y-1">
-                                <span className="block text-[8px] font-black uppercase tracking-widest text-zinc-500">
-                                  Como aparece no aplicativo:
+                          {/* Status Warning Badge */}
+                          {meta && meta.status !== "loading" && (
+                            <div className="absolute right-2.5 top-2.5 z-20">
+                              <div
+                                className={`group/tooltip relative transition-opacity duration-300 ${
+                                  meta.status === "warning_aspect" ||
+                                  meta.status === "warning_res"
+                                    ? "opacity-100"
+                                    : "opacity-0 group-hover/img:opacity-100"
+                                }`}
+                              >
+                                <span
+                                  className={`flex size-4.5 cursor-help items-center justify-center rounded-full border border-white/10 text-[8px] font-black shadow-lg ${
+                                    meta.status === "excellent"
+                                      ? "bg-emerald-500 text-emerald-950"
+                                      : meta.status === "warning_aspect"
+                                        ? "bg-amber-500 text-zinc-950"
+                                        : meta.status === "warning_res"
+                                          ? "bg-red-500 text-white"
+                                          : "bg-blue-500 text-white"
+                                  }`}
+                                >
+                                  {meta.status === "excellent"
+                                    ? "✓"
+                                    : meta.status === "warning_aspect"
+                                      ? "!"
+                                      : meta.status === "warning_res"
+                                        ? "⚠"
+                                        : "i"}
                                 </span>
-                                <div className="flex min-h-[28px] items-center">
-                                  {opt.renderPreview(isChecked)}
+                                <div className="pointer-events-none absolute bottom-6 right-0 z-30 w-36 rounded-xl border border-white/10 bg-zinc-950 p-2.5 text-[8px] font-black uppercase leading-normal tracking-wider text-white opacity-0 shadow-2xl transition-opacity group-hover/tooltip:opacity-100">
+                                  <span className="mb-0.5 block text-emerald-400">
+                                    Dim: {meta.width}x{meta.height}
+                                  </span>
+                                  {meta.status === "excellent" && "Excelente!"}
+                                  {meta.status === "warning_aspect" &&
+                                    "Ajuste para 4:5."}
+                                  {meta.status === "warning_res" &&
+                                    "Resolução baixa."}
+                                  {meta.status === "good" && "Boa qualidade."}
                                 </div>
                               </div>
                             </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
+                          )}
 
-            {/* Preview section moved to floating simulator modal */}
+                          {/* Cover / Index Badge */}
+                          <div
+                            className={cn(
+                              "absolute bottom-2.5 left-2.5 z-10 rounded-md border px-1.5 py-0.5 text-[7px] font-black uppercase tracking-widest backdrop-blur-md",
+                              isCover
+                                ? "border-emerald-400/50 bg-emerald-500/90 text-emerald-950 shadow-md"
+                                : "border-white/10 bg-black/55 text-white/60",
+                            )}
+                          >
+                            {isCover ? "Principal" : `#${index + 1}`}
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+
+                    {isUploadingImages && (
+                      <motion.div
+                        key="uploading-shimmer"
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.8, opacity: 0 }}
+                        className="relative flex aspect-[4/5] w-40 sm:w-48 shrink-0 snap-start animate-pulse flex-col items-center justify-center space-y-2 overflow-hidden rounded-2xl border border-white/10 bg-white/5"
+                      >
+                        <Loader2 className="size-5 animate-spin text-emerald-400" />
+                        <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500">
+                          {imageUploadStep === "compressing"
+                            ? "Comprimindo..."
+                            : "Enviando..."}
+                        </span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {formData.images.length > 1 && (
+                  <span className="ml-1 mt-1 block text-[9px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5 animate-pulse select-none">
+                    ↔ Deslize para o lado para ver mais fotos
+                  </span>
+                )}
+              </div>
+            )}
           </div>
-        </div>
+        </section>
+
+        {/* Guide Section */}
+        <AnimatePresence>
+          {showPhotoGuide && (
+            <motion.section
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-4 border-t border-white/5 pt-6"
+            >
+              <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                <BookOpen className="size-4 text-emerald-400" />
+                Guia de Fotos do Produto
+              </h3>
+              <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
+                <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
+                  Imagens de alta qualidade aumentam a conversão de vendas. Siga
+                  as orientações recomendadas:
+                </p>
+                <ul className="list-disc space-y-2 pl-4 text-[10px] font-medium text-zinc-500">
+                  <li>
+                    <b className="text-zinc-350">Proporção 4:5 (Card):</b>{" "}
+                    Essencial para que os produtos caibam no card da vitrine sem
+                    cortes laterais automáticos. Use o enquadramento "Vitrine".
+                  </li>
+                  <li>
+                    <b className="text-zinc-350">Proporção 1:1 (Detalhe):</b>{" "}
+                    Ideal para a galeria interna do produto. Mantém a
+                    consistência visual em carrosséis.
+                  </li>
+                  <li>
+                    <b className="text-zinc-350">Resolução Recomendada:</b>{" "}
+                    Imagens com pelo menos 800px a 1200px de altura garantem
+                    nitidez no zoom.
+                  </li>
+                  <li>
+                    <b className="text-zinc-350">Fundo e Contraste:</b> Fundos
+                    neutros (branco/cinza) e produtos bem iluminados destacam os
+                    detalhes e transmitem profissionalismo.
+                  </li>
+                </ul>
+                <div className="flex items-center justify-between border-t border-white/5 pt-3 text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                  <span>Proporção ideal: 4:5 ou 1:1</span>
+                  <span>Res: &gt; 800px</span>
+                </div>
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
+
+        {/* Product Variants Section */}
+        <section className="relative space-y-4 border-t border-white/5 pt-6 md:pt-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10">
+                <Layers className="size-5 text-emerald-500" />
+              </div>
+              <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
+                Variações do Produto
+              </h3>
+              <button
+                type="button"
+                onClick={() => toggleHelp("productVariants")}
+                className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
+                  expandedHelp.productVariants
+                    ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
+                    : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                )}
+                title="Ajuda / Guia de Variações"
+              >
+                ?
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingVariant(null);
+                setVariantFormData({
+                  name: "",
+                  value: "",
+                  sku: "",
+                  stockIncrement: "0",
+                  priceOverride: "",
+                  active: true,
+                  imageUrl: "",
+                });
+                setShowVariantForm(true);
+              }}
+              className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+            >
+              + Novo
+            </button>
+          </div>
+
+          {/* Variants Guide Section */}
+          <AnimatePresence>
+            {expandedHelp.productVariants && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="w-full space-y-3 border-b border-white/5 pb-4"
+              >
+                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  <BookOpen className="size-4 text-emerald-400" />
+                  Como usar as Variações
+                </h3>
+                <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4">
+                  <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
+                    Variações permitem vender o mesmo produto com diferentes
+                    opções de cor, tamanho, voltagem, etc.
+                  </p>
+                  <ul className="list-none space-y-2 pl-0 text-[10px] font-medium text-zinc-500">
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      <span>
+                        <b className="text-zinc-350">
+                          Atributo (Nome e Valor):
+                        </b>{" "}
+                        Defina a característica (ex: Nome: <i>Tamanho</i>,
+                        Valor: <i>G</i>; ou Nome: <i>Cor</i>, Valor: <i>Azul</i>
+                        ).
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      <span>
+                        <b className="text-zinc-350">
+                          Ajuste de Preço (Opcional):
+                        </b>{" "}
+                        Se uma variante custar mais caro (ex: tamanho especial
+                        ou material premium), preencha o campo de preço
+                        substituto. Se deixar em branco, o preço principal do
+                        produto será usado.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      <span>
+                        <b className="text-zinc-350">Ajuste de Estoque:</b>{" "}
+                        Defina a variação de estoque (ex: se o produto principal
+                        tem 10 unidades e a variante G tem mais 5, use o
+                        incremento correto de estoque para que o cliente saiba
+                        exatamente o que há disponível).
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      <span>
+                        <b className="text-zinc-350">Foto da Variante:</b>{" "}
+                        Vincule uma foto específica da variação. Quando o
+                        comprador selecioná-la na página do produto, o carrossel
+                        exibirá automaticamente a foto correspondente.
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="space-y-3">
+            {formData.variants.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-white/5 bg-zinc-900 p-8 text-center">
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-700">
+                  Nenhuma Variação Adicionada
+                </p>
+              </div>
+            ) : (
+              formData.variants.map((v) => (
+                <VariantItem
+                  key={v.id}
+                  variant={v}
+                  onEdit={handleEditVariant}
+                  onDelete={handleDeleteVariant}
+                />
+              ))
+            )}
+          </div>
+        </section>
+
+        {/* Content Section */}
+        <section className="space-y-4 border-t border-white/5 pt-6 md:space-y-8 md:pt-12">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10">
+              <Info className="size-5 text-blue-500" />
+            </div>
+            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
+              Dados do Produto
+            </h3>
+            <button
+              type="button"
+              onClick={() => toggleHelp("productData")}
+              className={cn(
+                "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
+                expandedHelp.productData
+                  ? "bg-blue-500 border-blue-400 text-blue-950 shadow-md shadow-blue-500/10 scale-110"
+                  : "bg-zinc-950/50 border-white/10 text-zinc-400",
+              )}
+              title="Ajuda / Guia de Dados do Produto"
+            >
+              ?
+            </button>
+          </div>
+
+          {/* Data Guide Section */}
+          <AnimatePresence>
+            {expandedHelp.productData && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4 border-b border-white/5 pb-6 pt-2"
+              >
+                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  <BookOpen className="size-4 text-blue-400" />
+                  Guia de Cadastro e Informações
+                </h3>
+                <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
+                  <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
+                    O preenchimento correto dos dados melhora a indexação do
+                    produto e facilita a decisão do cliente.
+                  </p>
+                  <ul className="list-none space-y-3 pl-0 text-[10px] font-medium text-zinc-500">
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                      <span>
+                        <b className="text-zinc-300">Nome do Produto:</b> Seja
+                        claro, indicando o tipo do item, a marca e a
+                        característica principal (ex:{" "}
+                        <i>Camiseta Algodão Egípcio Slim - Preta</i>). Evite
+                        excesso de adjetivos promocionais.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                      <span>
+                        <b className="text-zinc-350">Descrição Detalhada:</b>{" "}
+                        Informe materiais, dimensões, tabelas de medidas,
+                        garantia e cuidados de conservação. Uma boa descrição
+                        reduz as dúvidas no WhatsApp e diminui devoluções.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                      <span>
+                        <b className="text-zinc-350">Setor / Categoria:</b>{" "}
+                        Classifique adequadamente para que o produto seja
+                        filtrado na vitrine da loja e apareça nos setores
+                        corretos do catálogo.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                      <span>
+                        <b className="text-zinc-350">Código SKU:</b> Código
+                        identificador único do produto (Stock Keeping Unit).
+                        Útil para controle interno, integração de estoque e
+                        identificação ágil.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                      <span>
+                        <b className="text-zinc-350">Estoque Base:</b>{" "}
+                        Quantidade física disponível. Se utilizar variações, o
+                        estoque de cada variante será somado ou deduzido deste
+                        total conforme as vendas.
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+            <div className="space-y-1.5 md:col-span-2 md:space-y-3">
+              <label
+                htmlFor="product-name"
+                className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+              >
+                Nome do Produto *
+              </label>
+              <LocalBufferedInput
+                id="product-name"
+                name="product-name"
+                type="text"
+                value={formData.name}
+                onFlush={(val) =>
+                  setFormData((prev) => ({ ...prev, name: val }))
+                }
+                placeholder="Ex: Camiseta Básica Preta - Tamanho M"
+                className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 sm:text-base"
+              />
+            </div>
+
+            <div className="space-y-1.5 md:col-span-2 md:space-y-3">
+              <label
+                htmlFor="product-description"
+                className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+              >
+                Descrição do Produto *
+              </label>
+              <LocalBufferedTextarea
+                id="product-description"
+                name="product-description"
+                value={formData.description}
+                onFlush={(val) =>
+                  setFormData((prev) => ({ ...prev, description: val }))
+                }
+                placeholder="Digite os detalhes e informações do product..."
+                rows={6}
+                className="w-full resize-none rounded-2xl border border-white/5 bg-zinc-950/50 px-4 py-3.5 text-sm font-medium leading-relaxed text-zinc-300 transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-3xl sm:px-6 sm:py-5"
+              />
+            </div>
+
+            <div className="space-y-1.5 md:space-y-3">
+              <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                Setor / Categoria *
+              </span>
+              <div className="group relative">
+                <Select
+                  name="category"
+                  value={formData.category || ""}
+                  onValueChange={async (val) => {
+                    if (val === "NEW_CATEGORY") {
+                      setShowCategoryForm(true);
+                    } else {
+                      setFormData((prev) => ({ ...prev, category: val }));
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    id="product-category"
+                    className="h-auto w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all hover:border-white/10 hover:bg-zinc-900/50 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 [&>svg]:opacity-50"
+                  >
+                    <SelectValue placeholder="Selecionar Setor" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl border-white/10 bg-zinc-900/95 p-2 shadow-[0_10px_40px_rgba(0,0,0,0.8)] backdrop-blur-xl">
+                    {dbCategories.map((category) => (
+                      <SelectItem
+                        key={category.id}
+                        value={category.name}
+                        className="cursor-pointer rounded-lg px-4 py-3 font-bold text-zinc-300 focus:bg-white/5 focus:text-emerald-400"
+                      >
+                        {category.name.toUpperCase()}
+                      </SelectItem>
+                    ))}
+                    <div className="mx-1 my-2 h-px bg-white/10" />
+                    <SelectItem
+                      value="NEW_CATEGORY"
+                      className="cursor-pointer rounded-lg px-4 py-3 font-black text-emerald-500 focus:bg-emerald-500/10 focus:text-emerald-400"
+                    >
+                      <span className="flex items-center gap-2">
+                        ➕ CRIAR NOVA CATEGORIA
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 text-zinc-600 transition-colors group-hover:text-emerald-500">
+                  <Layers className="size-5" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 md:space-y-3">
+              <label
+                htmlFor="product-sku"
+                className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+              >
+                Código SKU
+              </label>
+              <div className="group relative">
+                <LocalBufferedInput
+                  id="product-sku"
+                  name="product-sku"
+                  type="text"
+                  value={formData.sku}
+                  onFlush={(val) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      sku: val.trim().toUpperCase().replace(/\s+/g, "-"),
+                    }))
+                  }
+                  placeholder="Ex: SKU-PROD-BASE"
+                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                />
+                <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600">
+                  <Layers className="size-5" />
+                </div>
+              </div>
+              {skuError && (
+                <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
+                  {skuError}
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-1.5 md:col-span-2 md:space-y-3">
+              <label
+                htmlFor="product-stock"
+                className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
+              >
+                Quantidade em Estoque *
+              </label>
+              <div className="group relative">
+                <LocalBufferedInput
+                  id="product-stock"
+                  name="stock"
+                  type="number"
+                  min="0"
+                  value={formData.stock}
+                  onFlush={(val) =>
+                    setFormData((prev) => ({ ...prev, stock: val }))
+                  }
+                  disabled={hasActiveVariants}
+                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black tabular-nums text-white transition-all focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:text-zinc-400 disabled:opacity-50 sm:rounded-2xl sm:px-6 sm:py-5"
+                />
+                <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600">
+                  <Package className="size-5" />
+                </div>
+              </div>
+              {hasActiveVariants ? (
+                <span className="ml-1 mt-1 block flex items-center gap-1.5 text-[10px] font-bold text-amber-500">
+                  <Info className="size-3.5 shrink-0" />
+                  Estoque gerenciado pelas variantes ativas ({formData.stock}{" "}
+                  un).
+                </span>
+              ) : (
+                stockError && (
+                  <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
+                    {stockError}
+                  </span>
+                )
+              )}
+            </div>
+
+            {/* Peso e Dimensões de Envio (Logística) */}
+            {!isLocalShipping && (
+              <div className="space-y-3 border-t border-white/5 pt-5 md:col-span-2">
+                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  <Truck className="size-4 animate-pulse text-zinc-500" />
+                  Dimensões e Logística (Frete)
+                </h3>
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="product-weight"
+                      className="ml-1 block cursor-pointer text-[9px] font-black uppercase tracking-wider text-zinc-500"
+                    >
+                      Peso (kg)
+                    </label>
+                    <LocalBufferedInput
+                      id="product-weight"
+                      name="weightKg"
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      placeholder="Ex: 0.350"
+                      value={formData.weightKg}
+                      onFlush={(val) =>
+                        setFormData((prev) => ({ ...prev, weightKg: val }))
+                      }
+                      className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="product-width"
+                      className="ml-1 block cursor-pointer text-[9px] font-black uppercase tracking-wider text-zinc-500"
+                    >
+                      Largura (cm)
+                    </label>
+                    <LocalBufferedInput
+                      id="product-width"
+                      name="widthCm"
+                      type="number"
+                      min="0"
+                      placeholder="Ex: 15"
+                      value={formData.widthCm}
+                      onFlush={(val) =>
+                        setFormData((prev) => ({ ...prev, widthCm: val }))
+                      }
+                      className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="product-height"
+                      className="ml-1 block cursor-pointer text-[9px] font-black uppercase tracking-wider text-zinc-500"
+                    >
+                      Altura (cm)
+                    </label>
+                    <LocalBufferedInput
+                      id="product-height"
+                      name="heightCm"
+                      type="number"
+                      min="0"
+                      placeholder="Ex: 15"
+                      value={formData.heightCm}
+                      onFlush={(val) =>
+                        setFormData((prev) => ({ ...prev, heightCm: val }))
+                      }
+                      className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="product-length"
+                      className="ml-1 block cursor-pointer text-[9px] font-black uppercase tracking-wider text-zinc-500"
+                    >
+                      Comprimento (cm)
+                    </label>
+                    <LocalBufferedInput
+                      id="product-length"
+                      name="lengthCm"
+                      type="number"
+                      min="0"
+                      placeholder="Ex: 15"
+                      value={formData.lengthCm}
+                      onFlush={(val) =>
+                        setFormData((prev) => ({ ...prev, lengthCm: val }))
+                      }
+                      className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                    />
+                  </div>
+                </div>
+                <span className="text-zinc-455 block text-[8px] font-medium leading-normal">
+                  * O peso e as dimensões da embalagem individual são utilizados
+                  para a cotação de frete automática (Correios/Melhor
+                  Envio/Frenet). Se não informados, o sistema utilizará valores
+                  padrão (0.3 kg e 15x15x15 cm).
+                </span>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Pricing Section */}
+        <section className="relative space-y-4 border-t border-white/5 pt-6 md:pt-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10">
+                <DollarSign className="size-5 text-emerald-500" />
+              </div>
+              <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
+                Precificação do Produto
+              </h3>
+              <button
+                type="button"
+                onClick={() => toggleHelp("productPricing")}
+                className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
+                  expandedHelp.productPricing
+                    ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
+                    : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                )}
+                title="Ajuda / Guia de Precificação"
+              >
+                ?
+              </button>
+            </div>
+
+            {priceVal > 0 && (
+              <div className="flex gap-3">
+                <div className="flex flex-col items-end">
+                  <span className="mb-1 text-right text-[8px] font-black uppercase tracking-widest text-zinc-600">
+                    Margem Líquida
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-800">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{
+                          width: `${Math.min(100, Math.max(0, marginPct))}%`,
+                        }}
+                        className={`h-full ${marginPct > 30 ? "bg-emerald-500" : "bg-orange-500"}`}
+                      />
+                    </div>
+                    <span
+                      className={`text-sm font-black ${marginPct > 30 ? "text-emerald-500" : "text-orange-500"}`}
+                    >
+                      {marginPct.toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Pricing Guide Section */}
+          <AnimatePresence>
+            {expandedHelp.productPricing && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4 border-b border-white/5 pb-4"
+              >
+                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  <BookOpen className="size-4 text-emerald-400" />
+                  Guia de Custos e Margens
+                </h3>
+                <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
+                  <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
+                    Configure os preços de forma estratégica. O sistema calcula
+                    a lucratividade automaticamente em tempo real.
+                  </p>
+                  <ul className="list-none space-y-3 pl-0 text-[10px] font-medium text-zinc-500">
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      <span>
+                        <b className="text-zinc-350">
+                          Preço de Custo (Opcional):
+                        </b>{" "}
+                        O valor total que você pagou para adquirir ou fabricar o
+                        produto. Esse dado é estritamente confidencial e é usado
+                        apenas pelo sistema para calcular a margem de lucro e o
+                        retorno sobre investimento (ROI) exibidos abaixo.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      <span>
+                        <b className="text-zinc-350">Preço de Venda:</b> O preço
+                        final cobrado do cliente. Pense em embutir custos fixos,
+                        impostos e taxas para manter sua operação saudável.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      <span>
+                        <b className="text-zinc-350">Produto em Promoção:</b>{" "}
+                        Ative para indicar um preço promocional riscado (ex: De:
+                        R$ 100,00 por R$ 79,90). No aplicativo do cliente, isso
+                        criará etiquetas com o percentual de desconto (ex: 20%
+                        OFF), incentivando a compra impulsiva.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      <span>
+                        <b className="text-zinc-350">
+                          Painel de Lucratividade:
+                        </b>{" "}
+                        O sistema analisa a diferença entre o preço de venda e o
+                        preço de custo. É recomendada uma margem de lucro
+                        líquida de pelo menos 30%. O sistema emitirá um alerta
+                        caso a margem esteja zerada ou negativa.
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="space-y-1.5 md:space-y-3">
+              <label
+                htmlFor="product-cost-price"
+                className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
+              >
+                Preço de Custo
+              </label>
+              <div className="group relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
+                  R$
+                </span>
+                <LocalBufferedInput
+                  id="product-cost-price"
+                  name="costPrice"
+                  mask="currency"
+                  value={formData.costPrice}
+                  onFlush={(val) =>
+                    setFormData((prev) => ({ ...prev, costPrice: val }))
+                  }
+                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                />
+              </div>
+              {costError && (
+                <span
+                  className={cn(
+                    "text-[10px] font-bold mt-1 ml-1 block",
+                    costError.includes("Aviso")
+                      ? "text-amber-500"
+                      : "text-red-500",
+                  )}
+                >
+                  {costError}
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-1.5 md:space-y-3">
+              <label
+                htmlFor="product-sale-price"
+                className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
+              >
+                Preço de Venda
+              </label>
+              <div className="group relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-500/50 sm:left-6">
+                  R$
+                </span>
+                <LocalBufferedInput
+                  id="product-sale-price"
+                  name="price"
+                  mask="currency"
+                  value={formData.price}
+                  onFlush={(val) =>
+                    setFormData((prev) => ({ ...prev, price: val }))
+                  }
+                  className="w-full rounded-xl border border-emerald-500/20 bg-zinc-950 py-3 pl-11 pr-4 text-base font-black tabular-nums text-emerald-500 shadow-inner transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/10 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                />
+              </div>
+              {priceError && (
+                <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
+                  {priceError}
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-3.5">
+              <label
+                htmlFor="product-promo-active"
+                className="flex cursor-pointer select-none items-center justify-between rounded-xl border border-white/5 bg-zinc-900/40 p-2.5 transition-all hover:border-emerald-500/10 sm:rounded-2xl sm:p-3.5"
+              >
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-black uppercase italic tracking-tight text-white transition-colors group-hover:text-emerald-400">
+                    Produto em Promoção
+                  </span>
+                  <span className="block text-[8px] font-medium uppercase tracking-wider text-zinc-500">
+                    Ativar preço cortado (De/Por)
+                  </span>
+                </div>
+                <input
+                  id="product-promo-active"
+                  name="isPromoActive"
+                  type="checkbox"
+                  aria-label="Produto em Promoção"
+                  checked={isPromoActive}
+                  onChange={(e) => {
+                    setIsPromoActive(e.target.checked);
+                    if (!e.target.checked) {
+                      setFormData((prev) => ({
+                        ...prev,
+                        originalPrice: "",
+                      }));
+                    }
+                  }}
+                  className="size-5 cursor-pointer rounded border-white/10 bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20"
+                />
+              </label>
+
+              {isPromoActive && (
+                <div className="space-y-1.5 duration-300 animate-in fade-in slide-in-from-top-2 md:space-y-3">
+                  <label
+                    htmlFor="product-original-price"
+                    className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                  >
+                    Preço Original ("De:")
+                  </label>
+                  <div className="group relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
+                      R$
+                    </span>
+                    <LocalBufferedInput
+                      id="product-original-price"
+                      name="originalPrice"
+                      mask="currency"
+                      value={formData.originalPrice}
+                      onFlush={(val) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          originalPrice: val,
+                        }))
+                      }
+                      placeholder="Ex: 99.90"
+                      className="w-full rounded-xl border border-white/5 bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-zinc-600 transition-all focus:outline-none sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                    />
+                  </div>
+                  {originalPriceError && (
+                    <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
+                      {originalPriceError}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {priceVal > 0 && costPriceVal > 0 && (
+            <div className="group/roi relative mt-4">
+              {/* Glassmorphism Background with animated border logic */}
+              <div
+                className={cn(
+                  "absolute -inset-[1px] rounded-[2rem] blur-[2px] opacity-50 group-hover/roi:opacity-100 transition-opacity duration-500",
+                  marginPct <= 0
+                    ? "bg-gradient-to-r from-rose-500/20 via-rose-400/40 to-rose-500/20"
+                    : "bg-gradient-to-r from-emerald-500/20 via-emerald-400/40 to-emerald-500/20",
+                )}
+              />
+
+              <div className="relative flex flex-col items-center justify-between gap-4 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/40 p-4 backdrop-blur-3xl sm:rounded-[2rem] sm:p-7 md:flex-row md:gap-6">
+                {/* Animated Glow Decor */}
+                <div
+                  className={cn(
+                    "absolute top-0 right-0 w-32 h-32 blur-[50px] rounded-full pointer-events-none transition-all duration-700",
+                    marginPct <= 0
+                      ? "bg-rose-500/10 group-hover/roi:bg-rose-500/20"
+                      : "bg-emerald-500/10 group-hover/roi:bg-emerald-500/20",
+                  )}
+                />
+
+                <div className="flex w-full items-center gap-4 sm:gap-6 md:w-auto">
+                  <div className="relative">
+                    <div
+                      className={cn(
+                        "absolute inset-0 blur-xl rounded-2xl transition-all",
+                        marginPct <= 0
+                          ? "bg-rose-500/20 group-hover/roi:bg-rose-500/40"
+                          : "bg-emerald-500/20 group-hover/roi:bg-emerald-500/40",
+                      )}
+                    />
+                    <div
+                      className={cn(
+                        "relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center border transition-transform duration-500 shadow-lg",
+                        marginPct <= 0
+                          ? "bg-gradient-to-br from-rose-500/20 to-rose-600/10 border-rose-500/30 group-hover/roi:scale-110 shadow-rose-500/10 text-rose-400"
+                          : "bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-emerald-500/30 group-hover/roi:scale-110 shadow-emerald-500/10 text-emerald-400",
+                      )}
+                    >
+                      {marginPct <= 0 ? (
+                        <TrendingDown className="size-6 text-rose-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)] sm:size-8" />
+                      ) : (
+                        <TrendingUp className="size-6 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)] sm:size-8" />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col">
+                    <p
+                      className={cn(
+                        "text-[10px] font-black uppercase tracking-[0.3em] mb-1.5 opacity-80",
+                        marginPct <= 0 ? "text-rose-400" : "text-emerald-400",
+                      )}
+                    >
+                      {marginPct <= 0 ? "Alerta de Margem" : "Análise de Lucro"}
+                    </p>
+                    <div className="flex items-baseline gap-2.5">
+                      <span className="text-xl font-black tabular-nums tracking-tighter text-white drop-shadow-sm sm:text-2xl md:text-3xl">
+                        R${" "}
+                        {(priceVal - costPriceVal).toLocaleString("pt-BR", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                      <span
+                        className={cn(
+                          "text-[10px] font-black uppercase tracking-widest italic",
+                          marginPct <= 0
+                            ? "text-rose-500/40"
+                            : "text-emerald-500/40",
+                        )}
+                      >
+                        / por unidade
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex w-full flex-col items-center gap-2 border-t border-white/5 pt-3 sm:gap-3 md:w-auto md:items-end md:border-t-0 md:pt-0">
+                  <div className="flex flex-col items-center md:items-end">
+                    <span className="mb-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                      Análise do Sistema
+                    </span>
+                    <div className="group/badge relative">
+                      <div
+                        className={cn(
+                          "absolute inset-0 blur-md rounded-xl opacity-0 group-hover/roi:opacity-100 transition-opacity",
+                          marginPct <= 0
+                            ? "bg-rose-500/40"
+                            : "bg-emerald-500/40",
+                        )}
+                      />
+                      <div
+                        className={cn(
+                          "px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-lg sm:rounded-xl font-black text-[9px] sm:text-[11px] uppercase tracking-wider relative z-10 flex items-center gap-2 group-hover/roi:scale-105 transition-transform duration-500",
+                          marginPct <= 0
+                            ? "bg-rose-500 text-rose-950 shadow-[0_10px_20px_rgba(244,63,94,0.3)]"
+                            : "bg-emerald-500 text-emerald-950 shadow-[0_10px_20px_rgba(16,185,129,0.3)]",
+                        )}
+                      >
+                        {marginPct <= 0 ? (
+                          <>
+                            <AlertTriangle className="size-3.5" />
+                            Margem Negativa
+                          </>
+                        ) : (
+                          <>
+                            <Check className="size-3.5" />
+                            Alta Performance
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Interactive background lines */}
+                <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent opacity-20" />
+              </div>
+            </div>
+          )}
+        </section>
       </motion.form>
 
       {/* Image Cropper Modal */}
@@ -3130,12 +3083,11 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <ShieldCheck className="size-4 text-purple-500" />
-                  Exibição & Mídia
+                  Galeria de Mídia
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Adicione fotos, defina se o produto está ativo/visível aos
-                  clientes, se possui frete grátis ou se é um destaque de
-                  vendas.
+                  Adicione fotos e organize a galeria de imagens para a vitrine
+                  do produto.
                 </p>
               </div>
             </div>
@@ -3234,10 +3186,7 @@ const VariantItem = React.memo(function VariantItem({
             <span className="flex items-center gap-1.5 rounded-md border border-white/5 bg-white/5 px-2 py-1">
               <Package className="size-3 text-zinc-400" />
               <span className="text-zinc-300">
-                {variant.stockIncrement > 0
-                  ? `+${variant.stockIncrement}`
-                  : variant.stockIncrement}{" "}
-                UND
+                {variant.stockIncrement} UND
               </span>
             </span>
             {variant.priceOverride && (

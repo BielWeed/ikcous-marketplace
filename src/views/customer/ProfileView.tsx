@@ -322,7 +322,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
   }
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-white to-zinc-50/50 pb-customer">
+    <div className="pb-customer min-h-full bg-gradient-to-b from-white to-zinc-50/50">
       <div className="group relative h-48 w-full overflow-hidden bg-zinc-100 shadow-inner">
         <img
           src={profile?.cover_url || defaultCover}
@@ -680,6 +680,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
             <ChevronRight className="size-4 text-red-200 transition-transform group-hover:translate-x-1" />
           </button>
         </motion.div>
+
       </motion.div>
 
       {/* Custom Avatar Sheet/Dialog Modal */}
@@ -850,7 +851,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
                               className="size-full object-cover duration-300 animate-in fade-in"
                             />
                           </div>
-                          <div className="absolute -bottom-1 -right-1 flex size-8 cursor-pointer items-center justify-center rounded-full bg-zinc-950 text-white shadow-md transition-colors hover:bg-zinc-800">
+                          <div className="absolute -bottom-1 -right-1 flex size-8 cursor-pointer items-center justify-center rounded-full bg-primary text-white shadow-md transition-colors hover:bg-primary/90">
                             <label
                               htmlFor="profile-avatar-upload-icon"
                               className="flex size-full cursor-pointer items-center justify-center"
@@ -889,7 +890,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
                               onChange={handlePhotoUpload}
                               disabled={isUpdatingAvatar}
                             />
-                            <span className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-zinc-950 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-zinc-900 active:scale-95">
+                            <span className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[10px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-primary/90 active:scale-95">
                               <Camera className="size-3.5" />
                               Escolher Outra Foto
                             </span>
@@ -964,20 +965,20 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
 
       {/* Custom Cover Sheet/Dialog Modal */}
       <Dialog open={isCoverModalOpen} onOpenChange={setIsCoverModalOpen}>
-        <DialogContent className="mx-auto w-[90%] max-w-sm overflow-hidden rounded-[2.5rem] border border-white/10 bg-zinc-950 p-6 text-white shadow-2xl">
+        <DialogContent className="mx-auto w-[90%] max-w-sm overflow-hidden rounded-[2.5rem] border border-rose-100 bg-white p-6 text-slate-800 shadow-2xl">
           <DialogHeader className="space-y-1.5">
-            <DialogTitle className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-white">
+            <DialogTitle className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-slate-800">
               <span className="size-1.5 animate-pulse rounded-full bg-rose-500" />
               Capa de Fundo
             </DialogTitle>
-            <DialogDescription className="text-[10px] leading-relaxed text-zinc-400">
+            <DialogDescription className="text-[10px] leading-relaxed text-slate-500">
               Personalize a capa do seu perfil com gradientes premium ou uma
               imagem de sua preferência.
             </DialogDescription>
           </DialogHeader>
 
           {/* Live Preview Banner */}
-          <div className="group relative mb-2 mt-3 h-20 w-full overflow-hidden rounded-2xl border border-white/10 shadow-inner">
+          <div className="group relative mb-2 mt-3 h-20 w-full overflow-hidden rounded-2xl border border-rose-100 shadow-inner">
             <img
               src={profile?.cover_url || defaultCover}
               alt="Capa de Perfil"
@@ -1010,7 +1011,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
           </div>
 
           {/* Tabs navigation */}
-          <div className="my-3.5 flex rounded-2xl border border-white/5 bg-zinc-900/60 p-1">
+          <div className="my-3.5 flex rounded-2xl border border-rose-100 bg-rose-50/50 p-1">
             <button
               type="button"
               onClick={() => {
@@ -1019,8 +1020,8 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
               }}
               className={`flex-1 rounded-xl py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${
                 coverModalTab === "presets"
-                  ? "bg-white text-zinc-950 shadow-md"
-                  : "text-zinc-400 hover:text-white"
+                  ? "bg-primary text-white shadow-md"
+                  : "text-slate-500 hover:text-slate-800"
               }`}
             >
               Gradientes
@@ -1033,8 +1034,8 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
               }}
               className={`flex-1 rounded-xl py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${
                 coverModalTab === "upload"
-                  ? "bg-white text-zinc-950 shadow-md"
-                  : "text-zinc-400 hover:text-white"
+                  ? "bg-primary text-white shadow-md"
+                  : "text-slate-500 hover:text-slate-800"
               }`}
             >
               Enviar Foto
@@ -1065,8 +1066,8 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
                         disabled={isUpdatingCover}
                         className={`group relative flex aspect-[16/10] flex-col justify-end overflow-hidden rounded-xl border-2 p-1.5 transition-all active:scale-95 ${
                           isSelected || isDefault
-                            ? "scale-98 border-rose-500 bg-zinc-900 shadow-[0_0_12px_rgba(244,63,94,0.3)]"
-                            : "border-white/10 bg-zinc-950 hover:border-white/20"
+                            ? "scale-98 border-rose-500 bg-rose-50/30 shadow-[0_0_12px_rgba(244,63,94,0.3)]"
+                            : "border-rose-100 bg-rose-50/30 hover:border-rose-200/50"
                         }`}
                         title={cover.label}
                       >
@@ -1108,20 +1109,20 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
                   <motion.div
                     whileHover={{
                       scale: 1.01,
-                      borderColor: "rgba(255, 255, 255, 0.25)",
-                      backgroundColor: "rgba(255, 255, 255, 0.04)",
+                      borderColor: "rgba(199, 65, 86, 0.25)",
+                      backgroundColor: "rgba(199, 65, 86, 0.04)",
                     }}
                     whileTap={{ scale: 0.99 }}
-                    className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-2xl border-2 border-dashed border-white/10 bg-white/[0.01] p-6 text-center transition-colors"
+                    className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-2xl border-2 border-dashed border-rose-100 bg-rose-50/10 p-6 text-center transition-colors"
                   >
-                    <div className="flex size-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-400 transition-colors group-hover:text-white">
-                      <UploadCloud className="size-5 text-zinc-300" />
+                    <div className="flex size-10 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-400">
+                      <UploadCloud className="size-5 text-rose-500" />
                     </div>
                     <div className="space-y-1">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-zinc-200">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-700">
                         Escolher Imagem do Dispositivo
                       </p>
-                      <p className="px-4 text-[8px] font-bold uppercase leading-normal tracking-tight text-zinc-500">
+                      <p className="px-4 text-[8px] font-bold uppercase leading-normal tracking-tight text-slate-400">
                         Selecione JPEG, PNG até 5MB. A imagem será ajustada para
                         a proporção ideal.
                       </p>
@@ -1131,7 +1132,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
               </div>
             )}
 
-            <div className="mt-4 flex gap-2 border-t border-white/5 pt-3.5">
+            <div className="mt-4 flex gap-2 border-t border-rose-100 pt-3.5">
               {profile?.cover_url && (
                 <motion.div whileTap={{ scale: 0.97 }} className="flex-1">
                   <Button
@@ -1139,7 +1140,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
                     variant="outline"
                     onClick={handleRemoveCover}
                     disabled={isUpdatingCover}
-                    className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border-white/10 bg-transparent text-[9px] font-black uppercase tracking-wider text-red-500 shadow-none transition-all hover:border-red-500/30 hover:bg-red-500/5 hover:text-red-400"
+                    className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border-rose-100 bg-transparent text-[9px] font-black uppercase tracking-wider text-red-500 shadow-none transition-all hover:border-red-500/30 hover:bg-red-500/5"
                   >
                     <Trash2 className="size-3.5" />
                     Remover
@@ -1154,7 +1155,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
                     haptic.light();
                   }}
                   disabled={isUpdatingCover}
-                  className="flex h-10 w-full items-center justify-center rounded-xl bg-white text-[9px] font-black font-bold uppercase tracking-wider text-zinc-950 shadow-md transition-all hover:bg-zinc-200"
+                  className="flex h-10 w-full items-center justify-center rounded-xl bg-[#5C061E] text-[9px] font-black font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-[#720E28]"
                 >
                   {isUpdatingCover ? (
                     <>

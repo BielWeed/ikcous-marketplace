@@ -347,6 +347,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       console.log(
         "[CartContext] ℹ️ User session changed. Resetting initial load state.",
       );
+      // Clean cart state, local storage, and tombstones when logging out or switching user accounts
+      if (lastSessionUserId.current !== null) {
+        console.log(
+          "[CartContext] ℹ️ Cleared old user items and tombstones from state and localStorage to prevent cross-account merge.",
+        );
+        setCart([]);
+        localStorage.removeItem(CART_STORAGE_KEY);
+        localStorage.removeItem(CART_TOMBSTONES_KEY);
+      }
       isInitialLoad.current = true;
       syncLocked.current = true;
       lastSessionUserId.current = currentUserId;
@@ -670,6 +679,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [removeFromCart],
   );
 
+  const [selectedShippingOption, setSelectedShippingOption] =
+    React.useState<ShippingOption | null>(null);
+
   const clearCart = useCallback(() => {
     // Tombstone all current items before clearing
     setCart((prev) => {
@@ -686,9 +698,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(CART_STORAGE_KEY);
     toast.info("Carrinho limpo");
   }, []);
-
-  const [selectedShippingOption, setSelectedShippingOption] =
-    React.useState<ShippingOption | null>(null);
 
   // Reset shipping option when cart becomes empty
   useEffect(() => {

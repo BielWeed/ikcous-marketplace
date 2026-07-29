@@ -138,7 +138,6 @@ export function AddressForm({
               placeholder="Apelido do endereço"
               disabled={loading}
               className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-              autoComplete="nickname"
             />
             {form.formState.errors.name && (
               <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
@@ -235,6 +234,7 @@ export function AddressForm({
                   <div className="relative">
                     <input
                       id="cep"
+                      name="cep"
                       value={field.value}
                       onChange={handleCepChange}
                       readOnly={!isNational}
@@ -304,7 +304,6 @@ export function AddressForm({
               placeholder="123"
               disabled={loading}
               className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-              autoComplete="address-line1"
             />
             {form.formState.errors.number && (
               <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
@@ -449,6 +448,7 @@ export function AddressForm({
               render={({ field }) => (
                 <Checkbox
                   id="is_default"
+                  name="is_default"
                   checked={field.value}
                   onCheckedChange={field.onChange}
                   disabled={loading}

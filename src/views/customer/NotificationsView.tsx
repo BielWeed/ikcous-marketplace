@@ -242,12 +242,12 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
   );
 
   return (
-    <div className="flex min-h-full flex-col bg-zinc-50/40 dark:bg-zinc-950/40 pb-customer">
+    <div className="pb-customer flex min-h-full flex-col bg-zinc-50/40 dark:bg-zinc-950/40">
       {/* Sticky Header & Filters */}
-      <div className="sticky top-[-2px] z-50 border-b border-zinc-100 dark:border-zinc-900/60 bg-white/80 dark:bg-zinc-950/80 px-4 py-3 backdrop-blur-xl">
-        <div className="flex items-center justify-between gap-4 mb-3">
+      <div className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/80 px-4 py-3 backdrop-blur-xl dark:border-zinc-900/60 dark:bg-zinc-950/80">
+        <div className="mb-3 flex items-center justify-between gap-4">
           <div className="flex flex-col">
-            <h1 className="text-lg font-black text-zinc-900 dark:text-zinc-100 leading-tight">
+            <h1 className="text-lg font-black leading-tight text-zinc-900 dark:text-zinc-100">
               Notificações
             </h1>
             {counts.todas > 0 && (
@@ -264,7 +264,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
                 variant="ghost"
                 size="sm"
                 onClick={markAllAsRead}
-                className="h-8 px-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-xl"
+                className="flex h-8 items-center gap-1 rounded-xl px-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
                 title="Marcar todas como lidas"
               >
                 <CheckCheck className="size-4" />
@@ -275,7 +275,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
         </div>
 
         {/* Categories Bar */}
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        <div className="scrollbar-none flex gap-1.5 overflow-x-auto pb-1">
           {(
             [
               { id: "todas", label: "Todas" },
@@ -291,18 +291,18 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative flex items-center shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                className={`relative flex shrink-0 items-center rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
                   isActive
-                    ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-sm"
-                    : "bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800"
+                    ? "bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900"
+                    : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800"
                 }`}
               >
                 {tab.label}
                 {tabUnread > 0 && (
                   <span
-                    className={`ml-1.5 px-1.5 py-0.5 text-[9px] font-black rounded-full leading-none ${
+                    className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-black leading-none ${
                       isActive
-                        ? "bg-amber-500 dark:bg-amber-500 text-white"
+                        ? "bg-amber-500 text-white dark:bg-amber-500"
                         : "bg-amber-500 text-white"
                     }`}
                   >
@@ -334,7 +334,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
                     exit={{ opacity: 0, scale: 0.95 }}
                     transition={{ duration: 0.2 }}
                     onClick={() => handleNotificationClick(notif)}
-                    className={`group relative cursor-pointer rounded-2xl border border-zinc-100 dark:border-zinc-900/60 bg-white dark:bg-zinc-900/50 p-4 shadow-sm transition-all hover:border-zinc-200 dark:hover:border-zinc-800 hover:-translate-y-0.5 hover:shadow-md ${
+                    className={`group relative cursor-pointer rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-zinc-200 hover:shadow-md dark:border-zinc-900/60 dark:bg-zinc-900/50 dark:hover:border-zinc-800 ${
                       !notif.read ? `${config.cardBg} border-l-2` : ""
                     }`}
                     style={{
@@ -348,7 +348,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
                       <div className="absolute right-4 top-4 flex items-center gap-1.5">
                         <span className="relative flex size-2">
                           <span
-                            className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${config.dotColor}`}
+                            className={`absolute inline-flex size-full animate-ping rounded-full opacity-75 ${config.dotColor}`}
                           />
                           <span
                             className={`relative inline-flex size-2 rounded-full ${config.dotColor}`}
@@ -383,7 +383,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
 
                         {/* Interactive Link CTA */}
                         {showAction && (
-                          <div className="pt-2 flex justify-start">
+                          <div className="flex justify-start pt-2">
                             <span
                               className={`inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider ${config.accentColor} group-hover:underline`}
                             >
@@ -400,7 +400,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
                           e.stopPropagation();
                           deleteNotification(notif.id);
                         }}
-                        className="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 xs:relative xs:right-0 xs:bottom-0 xs:self-start p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
+                        className="absolute bottom-3 right-3 rounded-lg p-1.5 text-zinc-400 opacity-0 transition-all hover:bg-zinc-100 hover:text-zinc-600 group-hover:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-300 xs:relative xs:bottom-0 xs:right-0 xs:self-start"
                         title="Excluir notificação"
                       >
                         <X className="size-4" />
@@ -414,7 +414,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
         ) : (
           /* Premium Empty State */
           <div className="flex h-full flex-col items-center justify-center px-6 py-20 text-center">
-            <div className="mb-6 relative flex size-20 items-center justify-center rounded-3xl bg-zinc-100 dark:bg-zinc-900 shadow-inner">
+            <div className="relative mb-6 flex size-20 items-center justify-center rounded-3xl bg-zinc-100 shadow-inner dark:bg-zinc-900">
               <motion.div
                 animate={{
                   rotate: [0, -8, 8, -6, 6, 0],
@@ -435,13 +435,13 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
             <h2 className="mb-2 text-base font-black uppercase tracking-wider text-zinc-800 dark:text-zinc-200">
               {emptyStateConfig.title}
             </h2>
-            <p className="max-w-xs text-xs font-semibold leading-relaxed text-zinc-400 dark:text-zinc-500 mb-8">
+            <p className="mb-8 max-w-xs text-xs font-semibold leading-relaxed text-zinc-400 dark:text-zinc-500">
               {emptyStateConfig.desc}
             </p>
 
             <Button
               onClick={() => onNavigate?.("home")}
-              className="rounded-2xl bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200 px-6 py-4 text-xs font-bold shadow-md hover:shadow-lg transition-all"
+              className="rounded-2xl bg-zinc-900 px-6 py-4 text-xs font-bold text-white shadow-md transition-all hover:bg-zinc-800 hover:shadow-lg dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
             >
               Explorar Ofertas
             </Button>

@@ -11,7 +11,7 @@ import { toast } from "sonner";
  * Abas secundárias recebem os pings via BroadcastChannel local.
  */
 export function useRealtimeUpdate(
-  onUpdateDetected: (newVersion?: string) => void,
+  onUpdateDetected: (version?: string) => void,
   userId?: string,
 ) {
   const callbackRef = useRef(onUpdateDetected);
@@ -97,9 +97,15 @@ export function useRealtimeUpdate(
                 (typeof (err as any) === "string" ? (err as any) : "");
               const isNormalClose =
                 errMessage.includes("1000") || errMessage.includes("normal");
+              const isAbnormalClose =
+                errMessage.includes("1006") || errMessage.includes("abnormal");
               if (isNormalClose) {
                 console.log(
                   "[RealtimeUpdate] Channel closed normally (socket closed: 1000)",
+                );
+              } else if (isAbnormalClose) {
+                console.warn(
+                  "[RealtimeUpdate] Channel closed abnormally (socket closed: 1006). SDK will auto-reconnect.",
                 );
               } else if (import.meta.env.DEV) {
                 console.warn(

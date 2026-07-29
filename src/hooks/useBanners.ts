@@ -75,6 +75,43 @@ export function useBanners(adminMode = false) {
       .catch(() => {});
   }, []);
 
+  const normalizeLocalBannersOrder = useCallback(
+    (
+      pos: "home_top" | "home_middle" | "home_bottom",
+      currentList: Banner[],
+    ): Banner[] => {
+      const samePosBanners = currentList
+        .filter((b) => b.position === pos)
+        .sort(
+          (a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id),
+        );
+
+      const orderMap = new Map(samePosBanners.map((b, idx) => [b.id, idx + 1]));
+
+      return currentList.map((b) =>
+        b.position === pos ? { ...b, order: orderMap.get(b.id) ?? b.order } : b,
+      );
+    },
+    [],
+  );
+
+  const deleteStorageFileByUrl = useCallback(async (imageUrl: string) => {
+    try {
+      if (!imageUrl || imageUrl.includes("placeholder")) return;
+      const url = new URL(imageUrl);
+      const fileName = url.pathname.split("/").pop();
+      if (fileName) {
+        await supabase.storage.from("banners").remove([fileName]);
+      }
+    } catch (err) {
+      console.warn(
+        "[useBanners] Failed to delete storage file from URL:",
+        imageUrl,
+        err,
+      );
+    }
+  }, []);
+
   // Load from DataVault on mount (instant, <5ms)
   useEffect(() => {
     let cancelled = false;
@@ -147,6 +184,24 @@ export function useBanners(adminMode = false) {
                 | "home_bottom",
               active: b.active ?? b.ativo ?? true,
               order: b.order || 0,
+              subtitle: b.subtitle || "",
+              titleColor: b.title_color || "",
+              subtitleColor: b.subtitle_color || "",
+              buttonText: b.button_text || "",
+              buttonBgColor: b.button_bg_color || "",
+              buttonTextColor: b.button_text_color || "",
+              fontFamily: b.font_family || "",
+              overlayColor: b.overlay_color || "",
+              overlayOpacity:
+                b.overlay_opacity !== null && b.overlay_opacity !== undefined
+                  ? Number(b.overlay_opacity)
+                  : undefined,
+              badgeText: b.badge_text || "",
+              templateType: b.template_type || "default",
+              productId: b.product_id || undefined,
+              startDate: b.start_date || null,
+              endDate: b.end_date || null,
+              showTextOverlay: b.show_text_overlay ?? true,
             }));
 
           globalBannersCache = mappedBanners;
@@ -186,8 +241,24 @@ export function useBanners(adminMode = false) {
 
   const getBannersByPosition = useCallback(
     (position: Banner["position"]) => {
+      const now = new Date();
       return banners
-        .filter((b) => b.position === position && (adminMode || b.active))
+        .filter((b) => {
+          if (b.position !== position) return false;
+          if (adminMode) return true;
+          if (!b.active) return false;
+
+          if (b.startDate) {
+            const start = new Date(b.startDate);
+            if (now < start) return false;
+          }
+          if (b.endDate) {
+            const end = new Date(b.endDate);
+            if (now > end) return false;
+          }
+
+          return true;
+        })
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     },
     [banners, adminMode],
@@ -235,6 +306,21 @@ export function useBanners(adminMode = false) {
             position: banner.position,
             active: banner.active,
             order: banner.order,
+            subtitle: banner.subtitle,
+            title_color: banner.titleColor,
+            subtitle_color: banner.subtitleColor,
+            button_text: banner.buttonText,
+            button_bg_color: banner.buttonBgColor,
+            button_text_color: banner.buttonTextColor,
+            font_family: banner.fontFamily,
+            overlay_color: banner.overlayColor,
+            overlay_opacity: banner.overlayOpacity,
+            badge_text: banner.badgeText,
+            template_type: banner.templateType,
+            product_id: banner.productId || null,
+            start_date: banner.startDate || null,
+            end_date: banner.endDate || null,
+            show_text_overlay: banner.showTextOverlay ?? true,
           },
         ])
         .select()
@@ -250,9 +336,30 @@ export function useBanners(adminMode = false) {
         position: data.position as "home_top" | "home_middle" | "home_bottom",
         active: data.active ?? true,
         order: data.order || 0,
+        subtitle: data.subtitle || "",
+        titleColor: data.title_color || "",
+        subtitleColor: data.subtitle_color || "",
+        buttonText: data.button_text || "",
+        buttonBgColor: data.button_bg_color || "",
+        buttonTextColor: data.button_text_color || "",
+        fontFamily: data.font_family || "",
+        overlayColor: data.overlay_color || "",
+        overlayOpacity:
+          data.overlay_opacity !== null && data.overlay_opacity !== undefined
+            ? Number(data.overlay_opacity)
+            : undefined,
+        badgeText: data.badge_text || "",
+        templateType: data.template_type || "default",
+        productId: data.product_id || undefined,
+        startDate: data.start_date || null,
+        endDate: data.end_date || null,
+        showTextOverlay: data.show_text_overlay ?? true,
       };
 
-      const updatedBanners = [...banners, newBanner];
+      const updatedBanners = normalizeLocalBannersOrder(
+        data.position as "home_top" | "home_middle" | "home_bottom",
+        [...banners, newBanner],
+      );
       persistToVault(updatedBanners);
       setBanners(updatedBanners);
 
@@ -276,11 +383,23 @@ export function useBanners(adminMode = false) {
         "Acesso negado: Apenas administradores podem atualizar banners.",
       );
 
+    const oldBanner = banners.find((b) => b.id === id);
+
     // Optimistic Update
     const previousBanners = [...banners];
-    const updated = banners.map((b) =>
-      b.id === id ? { ...b, ...updates } : b,
-    );
+    let updated = banners.map((b) => (b.id === id ? { ...b, ...updates } : b));
+
+    if (
+      updates.position &&
+      oldBanner &&
+      updates.position !== oldBanner.position
+    ) {
+      updated = normalizeLocalBannersOrder(oldBanner.position, updated);
+      updated = normalizeLocalBannersOrder(updates.position, updated);
+    } else if (updates.order !== undefined && oldBanner) {
+      updated = normalizeLocalBannersOrder(oldBanner.position, updated);
+    }
+
     persistToVault(updated);
     setBanners(updated);
 
@@ -293,6 +412,35 @@ export function useBanners(adminMode = false) {
       if (updates.position !== undefined) dbUpdates.position = updates.position;
       if (updates.active !== undefined) dbUpdates.active = updates.active;
       if (updates.order !== undefined) dbUpdates.order = updates.order;
+      if (updates.subtitle !== undefined) dbUpdates.subtitle = updates.subtitle;
+      if (updates.titleColor !== undefined)
+        dbUpdates.title_color = updates.titleColor;
+      if (updates.subtitleColor !== undefined)
+        dbUpdates.subtitle_color = updates.subtitleColor;
+      if (updates.buttonText !== undefined)
+        dbUpdates.button_text = updates.buttonText;
+      if (updates.buttonBgColor !== undefined)
+        dbUpdates.button_bg_color = updates.buttonBgColor;
+      if (updates.buttonTextColor !== undefined)
+        dbUpdates.button_text_color = updates.buttonTextColor;
+      if (updates.fontFamily !== undefined)
+        dbUpdates.font_family = updates.fontFamily;
+      if (updates.overlayColor !== undefined)
+        dbUpdates.overlay_color = updates.overlayColor;
+      if (updates.overlayOpacity !== undefined)
+        dbUpdates.overlay_opacity = updates.overlayOpacity;
+      if (updates.badgeText !== undefined)
+        dbUpdates.badge_text = updates.badgeText;
+      if (updates.templateType !== undefined)
+        dbUpdates.template_type = updates.templateType;
+      if (updates.productId !== undefined)
+        dbUpdates.product_id = updates.productId || null;
+      if (updates.startDate !== undefined)
+        dbUpdates.start_date = updates.startDate || null;
+      if (updates.endDate !== undefined)
+        dbUpdates.end_date = updates.endDate || null;
+      if (updates.showTextOverlay !== undefined)
+        dbUpdates.show_text_overlay = updates.showTextOverlay;
 
       const { error } = await supabase
         .from("banners")
@@ -301,17 +449,25 @@ export function useBanners(adminMode = false) {
 
       if (error) throw error;
 
+      // If image changed, clean up old file from storage
+      if (
+        updates.imageUrl &&
+        oldBanner &&
+        oldBanner.imageUrl !== updates.imageUrl
+      ) {
+        deleteStorageFileByUrl(oldBanner.imageUrl).catch(() => {});
+      }
+
       // Run DB order normalization if position or order changed
-      const previousBanner = previousBanners.find((b) => b.id === id);
-      if (previousBanner) {
-        if (updates.position && updates.position !== previousBanner.position) {
-          normalizeBannersOrder(previousBanner.position).catch(() => {});
+      if (oldBanner) {
+        if (updates.position && updates.position !== oldBanner.position) {
+          normalizeBannersOrder(oldBanner.position).catch(() => {});
           normalizeBannersOrder(updates.position).catch(() => {});
         } else if (
           updates.order !== undefined ||
           updates.position !== undefined
         ) {
-          normalizeBannersOrder(previousBanner.position).catch(() => {});
+          normalizeBannersOrder(oldBanner.position).catch(() => {});
         }
       }
 
@@ -425,27 +581,19 @@ export function useBanners(adminMode = false) {
       if (error) throw error;
 
       const deletedBanner = banners.find((b) => b.id === id);
+
+      if (imageUrl) {
+        deleteStorageFileByUrl(imageUrl).catch(() => {});
+      }
+
+      let updated = banners.filter((b) => b.id !== id);
       if (deletedBanner) {
+        updated = normalizeLocalBannersOrder(deletedBanner.position, updated);
         normalizeBannersOrder(deletedBanner.position).catch(() => {});
       }
 
-      if (imageUrl) {
-        try {
-          const url = new URL(imageUrl);
-          const fileName = url.pathname.split("/").pop();
-          if (fileName && !fileName.includes("placeholder")) {
-            await supabase.storage.from("banners").remove([fileName]);
-          }
-        } catch {
-          const fileName = imageUrl.split("/").pop();
-          if (fileName) {
-            await supabase.storage.from("banners").remove([fileName]);
-          }
-        }
-      }
-      const updated = banners.filter((b) => b.id !== id);
       persistToVault(updated);
-      setBanners((prev) => prev.filter((b) => b.id !== id));
+      setBanners(updated);
       toast.success("Banner excluído com sucesso!");
     } catch (error) {
       console.error("Error deleting banner:", error);
@@ -475,6 +623,7 @@ export function useBanners(adminMode = false) {
     addBanner,
     updateBanner,
     deleteBanner,
+    deleteStorageFile: deleteStorageFileByUrl,
     reorderBanners,
     refreshBanners: fetchBanners,
   };

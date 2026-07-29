@@ -243,7 +243,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-[#09090b] pb-0 text-white selection:bg-emerald-500/30 lg:pb-0"
+      className="h-auto bg-[#09090b] pb-admin lg:pb-12 text-white selection:bg-emerald-500/30"
     >
       {/* Dashboard Headers Section */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">

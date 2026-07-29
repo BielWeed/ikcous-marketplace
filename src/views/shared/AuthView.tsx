@@ -345,7 +345,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   }
 
   return (
-    <div className="relative flex w-full min-h-full flex-shrink-0 flex-col items-center bg-white p-6 pb-customer sm:pb-8 overflow-hidden">
+    <div className="pb-customer relative flex min-h-full w-full flex-shrink-0 flex-col items-center overflow-x-hidden bg-white p-6 sm:pb-8">
       {/* Immersive Ambient Background - Enhanced for screen filling */}
       <div className="pointer-events-none absolute right-[-10%] top-[-20%] h-[800px] w-[800px] rounded-full bg-zinc-100/30 blur-[140px]" />
       <div className="pointer-events-none absolute bottom-[-10%] left-[-20%] h-[1000px] w-[1000px] rounded-full bg-zinc-200/20 blur-[180px]" />

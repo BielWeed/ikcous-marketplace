@@ -179,16 +179,16 @@ const CompactVariantDropdown = React.memo(function CompactVariantDropdown({
                   className={cn(
                     "w-full text-left px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-between gap-2 select-none",
                     isSelected
-                      ? "bg-zinc-950 text-white font-extrabold shadow-sm"
-                      : "text-zinc-700 hover:bg-zinc-100/80 hover:text-zinc-950",
+                      ? "bg-primary text-white font-extrabold shadow-sm"
+                      : "text-zinc-700 hover:bg-rose-50/50 hover:text-primary",
                   )}
                 >
-                  <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate">{v.value}</span>
                     <span
                       className={cn(
                         "text-[8px] font-semibold opacity-60",
-                        isSelected ? "text-zinc-300" : "text-zinc-400",
+                        isSelected ? "text-rose-100" : "text-zinc-400",
                       )}
                     >
                       ({variantStock > 0 ? `${variantStock} un.` : "Esgotado"})
@@ -681,7 +681,7 @@ export const ProductView = React.memo(function ProductView({
   };
 
   return (
-    <div className="relative min-h-full bg-white pb-customer">
+    <div className="pb-customer relative min-h-full bg-white">
       <Helmet>
         <title>{product.metaTitle || `${product.name} | Loja`}</title>
         <meta
@@ -737,7 +737,7 @@ export const ProductView = React.memo(function ProductView({
               key={currentImageIndex}
               src={variantImage || product.images?.[currentImageIndex] || ""}
               alt={product.name}
-              className="h-full w-auto max-w-full object-contain"
+              className="main-product-image h-full w-auto max-w-full object-contain"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -970,8 +970,8 @@ export const ProductView = React.memo(function ProductView({
                           className={cn(
                             "px-3 py-1.5 text-xs font-bold rounded-xl border transition-all duration-300 active:scale-95 flex items-center gap-1.5 select-none",
                             isSelected
-                              ? "border-zinc-950 bg-zinc-950 text-white shadow-md shadow-zinc-950/10"
-                              : "border-zinc-200 bg-zinc-50/50 text-zinc-500 hover:border-zinc-300 hover:text-zinc-950 hover:bg-zinc-50",
+                              ? "border-primary bg-primary text-white shadow-md shadow-rose-100/30"
+                              : "border-zinc-200 bg-zinc-50/50 text-zinc-500 hover:border-rose-300 hover:text-primary hover:bg-rose-50/20",
                           )}
                         >
                           {v.imageUrl && (
@@ -1041,8 +1041,8 @@ export const ProductView = React.memo(function ProductView({
             className={cn(
               "flex-1 h-11 text-white text-[9px] min-[380px]:text-[10px] xs:text-[11px] font-black uppercase tracking-[0.025em] xs:tracking-[0.15em] rounded-2xl transition-all duration-500 flex items-center justify-center gap-1.5 xs:gap-2 overflow-hidden",
               cartStatus === "idle"
-                ? "bg-zinc-900 hover:bg-black shadow-lg shadow-zinc-200 active:scale-[0.98]"
-                : "bg-zinc-800 shadow-none",
+                ? "bg-[#5C061E] hover:bg-[#720E28] shadow-lg shadow-rose-100/30 active:scale-[0.98]"
+                : "bg-[#720E28] shadow-none",
               cartStatus === "success" && "bg-emerald-600 shadow-emerald-200",
               isOutOfStock &&
                 "bg-zinc-100 text-zinc-300 cursor-not-allowed hover:bg-zinc-100 shadow-none active:scale-100",
@@ -1319,7 +1319,7 @@ export const ProductView = React.memo(function ProductView({
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 100, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 260, damping: 24 }}
-                className="border-zinc-150/80 fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom,0px))] z-50 flex items-center justify-between gap-3 border-t border-zinc-200/60 bg-white/95 px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur-xl md:bottom-[88px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-t-2xl md:border-x md:border-zinc-200/60"
+                className="bottom-docked-navigation fixed inset-x-0 z-50 flex items-center justify-between gap-3 border-t border-zinc-200/60 bg-white/95 px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur-xl md:bottom-[88px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-t-2xl md:border-x md:border-zinc-200/60"
               >
                 {/* Product Image and Details */}
                 <div className="flex min-w-0 items-center gap-2.5">
@@ -1385,8 +1385,8 @@ export const ProductView = React.memo(function ProductView({
                   className={cn(
                     "h-9 px-3.5 text-white text-[9px] font-black uppercase tracking-[0.15em] rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 min-w-[82px] flex-shrink-0 active:scale-95",
                     cartStatus === "idle"
-                      ? "bg-zinc-900 hover:bg-black shadow-md shadow-zinc-200/30"
-                      : "bg-zinc-800 shadow-none",
+                      ? "bg-[#5C061E] hover:bg-[#720E28] shadow-md shadow-rose-100/30"
+                      : "bg-[#720E28] shadow-none",
                     cartStatus === "success" &&
                       "bg-emerald-600 shadow-emerald-200/30",
                     isOutOfStock &&

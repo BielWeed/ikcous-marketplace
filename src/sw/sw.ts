@@ -40,9 +40,7 @@ sw.addEventListener("install", (event: any) => {
         .catch((err) => console.warn("[SW] Precache failed:", err));
     }),
   );
-  // Força a ativação imediata após a instalação
-  sw.skipWaiting();
-  console.log("[SW] Installing new version and skipping waiting...");
+  console.log("[SW] Installing new version. Waiting for user/client activation signal...");
 });
 
 sw.addEventListener("activate", (event: any) => {
@@ -103,7 +101,19 @@ sw.addEventListener("fetch", (event: any) => {
           }
           return response;
         })
-        .catch(() => caches.match(event.request)),
+        .catch((err) => {
+          console.log(
+            "[SW] Navigation fetch failed, attempting cache/SPA fallback:",
+            err,
+          );
+          return caches.match(event.request).then((response) => {
+            if (response) return response;
+            return caches.match("/index.html").then((fallback) => {
+              if (fallback) return fallback;
+              return caches.match("/");
+            });
+          });
+        }),
     );
     return;
   }
@@ -120,7 +130,7 @@ sw.addEventListener("fetch", (event: any) => {
         return cache.match(event.request).then((cachedResponse) => {
           const fetchPromise = fetch(event.request)
             .then((networkResponse) => {
-              if (networkResponse && networkResponse.status === 200) {
+              if (networkResponse?.status === 200) {
                 const responseToCache = networkResponse.clone();
                 cache.put(event.request, responseToCache);
                 cleanOldImageCache(cache);
@@ -220,53 +230,51 @@ sw.addEventListener("message", (event: any) => {
     });
   }
 
+async function warmSingleUrl(url: string, imgCache: Cache, appCache: Cache) {
+  try {
+    const parsedUrl = new URL(url, self.location.origin);
+    const allowedHosts = [
+      self.location.hostname,
+      "images.unsplash.com",
+      "placehold.co",
+    ];
+    const isSupabase =
+      parsedUrl.hostname.endsWith(".supabase.co") ||
+      parsedUrl.hostname === "supabase.co";
+
+    if (!allowedHosts.includes(parsedUrl.hostname) && !isSupabase) {
+      console.warn(
+        "[SW] Blocked cache warming for untrusted host:",
+        parsedUrl.hostname,
+      );
+      return;
+    }
+
+    const targetCache = isSupabase ? imgCache : appCache;
+    const existing = await targetCache.match(url);
+    if (existing) return;
+
+    const res = await fetch(url); // ship-safe-ignore
+    if (res.ok && res.status === 200) {
+      await targetCache.put(url, res);
+      if (isSupabase) {
+        cleanOldImageCache(imgCache);
+      }
+    }
+  } catch (e) {
+    console.warn("[SW] Warm fetch failed for:", url, e);
+  }
+}
+
   if (event.data?.type === "WARM_CACHE") {
-    const urls = event.data.urls || [];
+    const urls: string[] = event.data.urls || [];
     console.log("[SW] WARM_CACHE received. Warming:", urls.length, "URLs");
 
     Promise.all([caches.open(CACHE_NAME), caches.open(IMAGE_CACHE_NAME)]).then(
-      ([appCache, imgCache]) => {
-        urls.forEach((url: string) => {
-          try {
-            const parsedUrl = new URL(url, self.location.origin);
-            const allowedHosts = [
-              self.location.hostname,
-              "images.unsplash.com",
-              "placehold.co",
-            ];
-            const isSupabase =
-              parsedUrl.hostname.endsWith(".supabase.co") ||
-              parsedUrl.hostname === "supabase.co";
-
-            if (allowedHosts.includes(parsedUrl.hostname) || isSupabase) {
-              const targetCache = isSupabase ? imgCache : appCache;
-
-              targetCache.match(url).then((existing) => {
-                if (existing) return; // Já cacheado
-
-                fetch(url) // ship-safe-ignore
-                  .then((res) => {
-                    if (res.ok && res.status === 200) {
-                      targetCache.put(url, res);
-                      if (isSupabase) {
-                        cleanOldImageCache(imgCache);
-                      }
-                    }
-                  })
-                  .catch((err) =>
-                    console.warn("[SW] Warm fetch failed for:", url, err),
-                  );
-              });
-            } else {
-              console.warn(
-                "[SW] Blocked cache warming for untrusted host:",
-                parsedUrl.hostname,
-              );
-            }
-          } catch (e) {
-            console.error("[SW] Invalid cache warming URL:", url, e);
-          }
-        });
+      async ([appCache, imgCache]) => {
+        for (const url of urls) {
+          await warmSingleUrl(url, imgCache, appCache);
+        }
       },
     );
   }

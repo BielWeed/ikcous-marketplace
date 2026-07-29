@@ -2,6 +2,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
 import { motion } from "framer-motion";
 import { ArrowRight, Sparkles as SparklesIcon } from "lucide-react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 
 interface CartFooterSummaryProps {
@@ -17,10 +18,51 @@ export function CartFooterSummary({
   total,
   onNavigate,
 }: CartFooterSummaryProps) {
-  if (typeof document === "undefined" || !document.body) return null;
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    let rafId: number;
+    const handleResize = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const activeEl = document.activeElement;
+        const isInputActive =
+          activeEl &&
+          ((activeEl.tagName === "INPUT" &&
+            ![
+              "button",
+              "submit",
+              "checkbox",
+              "radio",
+              "file",
+              "image",
+              "range",
+              "hidden",
+              "reset",
+            ].includes(activeEl.getAttribute("type") || "")) ||
+            activeEl.tagName === "TEXTAREA" ||
+            activeEl.getAttribute("contenteditable") === "true");
+        const keyboardActive =
+          isInputActive && viewport.height < window.innerHeight * 0.85;
+        setIsKeyboardOpen(!!keyboardActive);
+      });
+    };
+
+    viewport.addEventListener("resize", handleResize);
+    return () => {
+      cancelAnimationFrame(rafId);
+      viewport.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  if (typeof document === "undefined" || !document.body || isKeyboardOpen) return null;
 
   return createPortal(
-    <div className="bottom-safe-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 lg:hidden">
+    <div className="bottom-docked-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 lg:hidden">
       <motion.div
         initial={{ y: "100%", opacity: 0.5 }}
         animate={{ y: 0, opacity: 1 }}
@@ -85,19 +127,19 @@ export function CartFooterSummary({
 
             <button
               onClick={() => onNavigate("checkout")}
-              className="group relative flex h-12 flex-shrink-0 items-center gap-2 overflow-hidden rounded-2xl bg-zinc-950 px-4 text-white shadow-xl shadow-zinc-200 transition-all hover:bg-zinc-800 active:scale-[0.98] xs:h-14 xs:gap-3 xs:px-8 md:h-12 md:gap-2.5 md:px-5"
+              className="group relative flex h-12 flex-shrink-0 items-center gap-2 overflow-hidden rounded-2xl bg-[#5C061E] px-4 text-white shadow-xl shadow-rose-100/30 transition-all hover:bg-[#720E28] active:scale-[0.98] xs:h-14 xs:gap-3 xs:px-8 md:h-12 md:gap-2.5 md:px-5"
             >
               <div className="relative z-10 flex items-center gap-3">
                 <span className="text-xs font-bold uppercase tracking-widest">
                   Finalizar
                 </span>
-                <div className="flex size-8 items-center justify-center rounded-xl bg-white/10 transition-colors group-hover:bg-white/20">
+                <div className="flex size-8 items-center justify-center rounded-xl bg-white/20 transition-colors group-hover:bg-white/30">
                   <ArrowRight className="size-4 text-white transition-transform group-hover:translate-x-0.5" />
                 </div>
               </div>
 
               {/* Subtle Shimmer */}
-              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent transition-transform duration-1000 group-hover:translate-x-full" />
+              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-1000 group-hover:translate-x-full" />
             </button>
           </div>
         </div>

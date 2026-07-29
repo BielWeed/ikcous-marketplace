@@ -35,6 +35,11 @@ const defaultStoreConfig: StoreConfig = {
   shippingCoverage: "national",
   localDeliveryFee: 10,
   localCepRange: "",
+  homeSections: [
+    { id: "new_arrivals", title: "Últimos Lançamentos", active: true },
+    { id: "offers", title: "Ofertas Imperdíveis", active: true },
+    { id: "bestsellers", title: "Destaques em Alta", active: true },
+  ],
 };
 
 interface StoreContextType {
@@ -175,42 +180,105 @@ export function StoreProvider({
   }, [config.primaryColor, config.themeMode, applyBranding]);
 
   const mapConfig = useCallback((data: any): StoreConfig => {
+    const getVal = (snake: string, camel: string, fallback: any) => {
+      if (data[snake] !== undefined && data[snake] !== null) return data[snake];
+      if (data[camel] !== undefined && data[camel] !== null) return data[camel];
+      return fallback;
+    };
+
+    const freeMin = getVal(
+      "free_shipping_min",
+      "freeShippingMin",
+      defaultStoreConfig.freeShippingMin,
+    );
+    const shipFee = getVal(
+      "shipping_fee",
+      "shippingFee",
+      defaultStoreConfig.shippingFee,
+    );
+    const localFee = getVal(
+      "local_delivery_fee",
+      "localDeliveryFee",
+      defaultStoreConfig.localDeliveryFee,
+    );
+
     return {
-      freeShippingMin:
-        data.free_shipping_min !== null && data.free_shipping_min !== undefined
-          ? Number(data.free_shipping_min)
-          : defaultStoreConfig.freeShippingMin,
-      shippingFee:
-        data.shipping_fee !== null && data.shipping_fee !== undefined
-          ? Number(data.shipping_fee)
-          : defaultStoreConfig.shippingFee,
-      whatsappNumber: data.whatsapp_number ?? defaultStoreConfig.whatsappNumber,
-      shareText: data.share_text ?? defaultStoreConfig.shareText,
-      businessHours: data.business_hours ?? defaultStoreConfig.businessHours,
-      enableReviews: data.enable_reviews ?? defaultStoreConfig.enableReviews,
-      enableCoupons: data.enable_coupons ?? defaultStoreConfig.enableCoupons,
-      logoUrl: data.logo_url,
-      primaryColor: data.primary_color ?? defaultStoreConfig.primaryColor,
-      themeMode: data.theme_mode ?? defaultStoreConfig.themeMode,
-      realTimeSalesAlerts:
-        data.real_time_sales_alerts ?? defaultStoreConfig.realTimeSalesAlerts,
-      pushMarketingEnabled:
-        data.push_marketing_enabled ?? defaultStoreConfig.pushMarketingEnabled,
-      minAppVersion: data.min_app_version,
-      originCep: data.origin_cep ?? defaultStoreConfig.originCep,
-      shippingProvider:
-        data.shipping_provider ?? defaultStoreConfig.shippingProvider,
-      enabledShippingMethods:
-        data.enabled_shipping_methods ??
+      freeShippingMin: Number(freeMin),
+      shippingFee: Number(shipFee),
+      whatsappNumber: getVal(
+        "whatsapp_number",
+        "whatsappNumber",
+        defaultStoreConfig.whatsappNumber,
+      ),
+      shareText: getVal("share_text", "shareText", defaultStoreConfig.shareText),
+      businessHours: getVal(
+        "business_hours",
+        "businessHours",
+        defaultStoreConfig.businessHours,
+      ),
+      enableReviews: getVal(
+        "enable_reviews",
+        "enableReviews",
+        defaultStoreConfig.enableReviews,
+      ),
+      enableCoupons: getVal(
+        "enable_coupons",
+        "enableCoupons",
+        defaultStoreConfig.enableCoupons,
+      ),
+      logoUrl: getVal("logo_url", "logoUrl", undefined),
+      primaryColor: getVal(
+        "primary_color",
+        "primaryColor",
+        defaultStoreConfig.primaryColor,
+      ),
+      themeMode: getVal(
+        "theme_mode",
+        "themeMode",
+        defaultStoreConfig.themeMode,
+      ),
+      realTimeSalesAlerts: getVal(
+        "real_time_sales_alerts",
+        "realTimeSalesAlerts",
+        defaultStoreConfig.realTimeSalesAlerts,
+      ),
+      pushMarketingEnabled: getVal(
+        "push_marketing_enabled",
+        "pushMarketingEnabled",
+        defaultStoreConfig.pushMarketingEnabled,
+      ),
+      minAppVersion: getVal("min_app_version", "minAppVersion", undefined),
+      originCep: getVal(
+        "origin_cep",
+        "originCep",
+        defaultStoreConfig.originCep,
+      ),
+      shippingProvider: getVal(
+        "shipping_provider",
+        "shippingProvider",
+        defaultStoreConfig.shippingProvider,
+      ),
+      enabledShippingMethods: getVal(
+        "enabled_shipping_methods",
+        "enabledShippingMethods",
         defaultStoreConfig.enabledShippingMethods,
-      shippingCoverage:
-        data.shipping_coverage ?? defaultStoreConfig.shippingCoverage,
-      localDeliveryFee:
-        data.local_delivery_fee !== null &&
-        data.local_delivery_fee !== undefined
-          ? Number(data.local_delivery_fee)
-          : defaultStoreConfig.localDeliveryFee,
-      localCepRange: data.local_cep_range ?? defaultStoreConfig.localCepRange,
+      ),
+      shippingCoverage: getVal(
+        "shipping_coverage",
+        "shippingCoverage",
+        defaultStoreConfig.shippingCoverage,
+      ),
+      localDeliveryFee: Number(localFee),
+      localCepRange: getVal(
+        "local_cep_range",
+        "localCepRange",
+        defaultStoreConfig.localCepRange,
+      ),
+      homeSections: getVal(
+        "home_sections",
+        "homeSections",
+        defaultStoreConfig.homeSections,
+      ),
     };
   }, []);
 
@@ -245,6 +313,7 @@ export function StoreProvider({
             shipping_coverage: defaultStoreConfig.shippingCoverage,
             local_delivery_fee: defaultStoreConfig.localDeliveryFee,
             local_cep_range: defaultStoreConfig.localCepRange,
+            home_sections: defaultStoreConfig.homeSections,
           };
 
           const { data: newData, error: insertError } = (await supabase
@@ -309,7 +378,7 @@ export function StoreProvider({
       let query: any;
       if (isAdmin) {
         query = supabase
-          .from("produtos")
+          .from("vw_produtos_admin")
           .select("*, product_variants(*)")
           .is("deleted_at", null)
           .limit(200)
@@ -398,6 +467,8 @@ export function StoreProvider({
           dbUpdates.local_delivery_fee = updates.localDeliveryFee;
         if (updates.localCepRange !== undefined)
           dbUpdates.local_cep_range = updates.localCepRange;
+        if (updates.homeSections !== undefined)
+          dbUpdates.home_sections = updates.homeSections;
 
         const { error } = await (supabase.rpc as any)("upsert_store_config", {
           config_json: dbUpdates,
@@ -424,12 +495,6 @@ export function StoreProvider({
   );
 
   useEffect(() => {
-    if (loading) {
-      console.log(
-        "[StoreContext] Auth is loading, postponing config and products fetch.",
-      );
-      return;
-    }
     console.log(
       "[StoreContext] Effect triggered. loading:",
       loading,
@@ -438,7 +503,7 @@ export function StoreProvider({
     );
     fetchConfig();
     fetchProducts();
-  }, [fetchConfig, fetchProducts, isAdmin, loading]);
+  }, [fetchConfig, fetchProducts, isAdmin]);
 
   // ── Realtime Sync: Start/Stop engine ──
   useEffect(() => {

@@ -316,7 +316,7 @@ export function useReviews() {
               : ["00000000-0000-0000-0000-000000000000"];
 
           const { data: products } = await supabase
-            .from("vw_produtos_public")
+            .from("vw_produtos_admin")
             .select("id")
             .ilike("nome", q)
             .limit(25);
@@ -331,7 +331,7 @@ export function useReviews() {
               `
           *,
           user:public_profiles(full_name),
-          product:vw_produtos_public(nome)
+          product:produtos(nome)
         `,
               { count: "exact" },
             )
@@ -343,7 +343,7 @@ export function useReviews() {
             `
           *,
           user:public_profiles(full_name),
-          product:vw_produtos_public(nome)
+          product:produtos(nome)
         `,
             { count: "exact" },
           );
@@ -548,14 +548,20 @@ export function useReviews() {
           if (status === "SUBSCRIBED") {
             console.log("[Realtime-Reviews] Active: %s", channelId);
           } else if (status === "CHANNEL_ERROR") {
+            const errMessage =
+              err?.message || (typeof err === "string" ? err : "");
             const isNormalClose =
-              err?.message?.includes("1000") ||
-              err?.message?.includes("normal") ||
-              (typeof err === "string" &&
-                (err.includes("1000") || err.includes("normal")));
+              errMessage.includes("1000") || errMessage.includes("normal");
+            const isAbnormalClose =
+              errMessage.includes("1006") || errMessage.includes("abnormal");
             if (isNormalClose) {
               console.log(
                 "[Realtime-Reviews] Channel closed normally in %s (socket closed: 1000)",
+                channelId,
+              );
+            } else if (isAbnormalClose) {
+              console.warn(
+                "[Realtime-Reviews] Channel closed abnormally in %s (socket closed: 1006). SDK will auto-reconnect.",
                 channelId,
               );
             } else {

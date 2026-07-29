@@ -229,7 +229,7 @@ export function OrderDetailsView({
   const StatusIcon = currentStatus.icon;
 
   return (
-    <div className="min-h-full bg-zinc-50/50 pb-customer">
+    <div className="pb-customer min-h-full bg-zinc-50/50">
       {/* Header Area (Not Sticky) */}
       <div className="px-6 pb-2 pt-6">
         <div className="mb-4 flex items-center justify-between">
@@ -258,7 +258,7 @@ export function OrderDetailsView({
             <div
               role="button"
               tabIndex={0}
-              className="flex cursor-pointer items-center gap-1 transition-opacity hover:opacity-80 focus:outline-none focus:ring-1 focus:ring-white rounded"
+              className="flex cursor-pointer items-center gap-1 rounded transition-opacity hover:opacity-80 focus:outline-none focus:ring-1 focus:ring-white"
               onClick={handleCopyId}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
