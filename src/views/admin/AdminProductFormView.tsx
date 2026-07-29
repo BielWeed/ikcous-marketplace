@@ -1177,7 +1177,6 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                       <LocalBufferedInput
                         id="variant-price"
                         name="variant-price"
-                        mask="currency"
                         value={variantFormData.priceOverride}
                         onFlush={val => setVariantFormData(p => ({ ...p, priceOverride: val }))}
                         className="w-full pl-11 pr-5 py-4 bg-zinc-950 border border-white/5 rounded-2xl text-sm font-black focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all"
@@ -1902,7 +1901,6 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                   <div className="relative group">
                     <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-bold text-sm">R$</span>
                     <LocalBufferedInput
-                      mask="currency"
                       value={formData.costPrice}
                       onFlush={(val) => setFormData(prev => ({ ...prev, costPrice: val }))}
                       className="w-full pl-14 pr-6 py-5 bg-zinc-950/50 border border-white/5 rounded-2xl text-lg font-black text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all tabular-nums"
@@ -1921,7 +1919,6 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                   <div className="relative group">
                     <span className="absolute left-6 top-1/2 -translate-y-1/2 text-emerald-500/50 font-bold text-sm">R$</span>
                     <LocalBufferedInput
-                      mask="currency"
                       value={formData.price}
                       onFlush={(val) => setFormData(prev => ({ ...prev, price: val }))}
                       className="w-full pl-14 pr-6 py-5 bg-zinc-950 shadow-inner border border-emerald-500/20 rounded-2xl text-lg font-black text-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all tabular-nums"
@@ -1957,7 +1954,6 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
                       <div className="relative group">
                         <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 font-bold text-sm">R$</span>
                         <LocalBufferedInput
-                          mask="currency"
                           value={formData.originalPrice}
                           onFlush={(val) => setFormData(prev => ({ ...prev, originalPrice: val }))}
                           placeholder="Ex: 99.90"
@@ -2255,22 +2251,19 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({ p
       </div>
 
       {/* Live Preview Fullscreen Modal */}
-      <AnimatePresence>
-        {isPreviewOpen && (
-          <PhoneSimulator
-            onClose={() => setIsPreviewOpen(false)}
-            formData={formData}
-            previewMode={previewMode}
-            setPreviewMode={setPreviewMode}
-            previewImgIndex={previewImgIndex}
-            setPreviewImgIndex={setPreviewImgIndex}
-            previewSelectedVariants={previewSelectedVariants}
-            setPreviewSelectedVariants={setPreviewSelectedVariants}
-            activeDetailTab={activeDetailTab}
-            setActiveDetailTab={setActiveDetailTab}
-          />
-        )}
-      </AnimatePresence>
+      <PhoneSimulator
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        formData={formData}
+        previewMode={previewMode}
+        setPreviewMode={setPreviewMode}
+        previewImgIndex={previewImgIndex}
+        setPreviewImgIndex={setPreviewImgIndex}
+        previewSelectedVariants={previewSelectedVariants}
+        setPreviewSelectedVariants={setPreviewSelectedVariants}
+        activeDetailTab={activeDetailTab}
+        setActiveDetailTab={setActiveDetailTab}
+      />
         {/* Modal de Ajuda */}
         {showHelpModal && (
           <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
