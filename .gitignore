@@ -58,3 +58,10 @@ scratch_*
 # Unlighthouse & Loki
 .unlighthouse/
 .loki/
+
+# Configuração de MCP das IDEs — já guardou Figma PAT e chave da Cloudflare.
+# Credencial de MCP não entra no repositório; use o .mcp.json da raiz, que só
+# tem comandos npx, ou variáveis de ambiente.
+.vscode/mcp.json
+.cursor/mcp.json
+.agents/mcp_config.json
