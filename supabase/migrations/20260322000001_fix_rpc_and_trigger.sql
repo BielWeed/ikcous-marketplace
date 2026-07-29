@@ -151,7 +151,7 @@ $$;
 
 -- 2. Corrigir sintaxe no gatilho handle_new_order_whatsapp
 CREATE OR REPLACE FUNCTION public.handle_new_order_whatsapp()
-RETURNS TRIGGER
+RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public

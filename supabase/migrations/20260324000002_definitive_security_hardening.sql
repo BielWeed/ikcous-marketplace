@@ -8,7 +8,9 @@ BEGIN;
 
 -- 0. CLEANUP OLD OVERLOADED FUNCTIONS (Crucial to avoid hitting insecure versions)
 DROP FUNCTION IF EXISTS public.update_order_status_atomic(uuid, text, text);
-DROP FUNCTION IF EXISTS public.get_segmented_push_targets(text, numeric, integer);
+DROP FUNCTION IF EXISTS public.get_segmented_push_targets(
+    text, numeric, integer
+);
 DROP FUNCTION IF EXISTS public.get_coupon_stats();
 DROP FUNCTION IF EXISTS public.swap_banner_order(uuid, uuid);
 DROP FUNCTION IF EXISTS public.get_inventory_health();
@@ -18,10 +20,10 @@ DROP FUNCTION IF EXISTS public.get_retention_rate();
 
 -- 1. ENSURE is_admin() HELPER
 CREATE OR REPLACE FUNCTION public.is_admin()
- RETURNS boolean
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
     RETURN EXISTS (
@@ -33,10 +35,10 @@ $$;
 
 -- 2. HARDEN STORE CONFIG
 CREATE OR REPLACE FUNCTION public.upsert_store_config(config_json jsonb)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   result jsonb;
@@ -90,10 +92,10 @@ $$;
 
 -- 3. HARDEN ORDER STATUS (BOLA)
 CREATE OR REPLACE FUNCTION public.update_order_status_atomic(
-    p_order_id uuid, 
-    p_new_status text, 
-    p_notes text DEFAULT NULL, 
-    p_silent boolean DEFAULT false
+    p_order_id uuid,
+    p_new_status text,
+    p_notes text DEFAULT NULL,
+    p_silent boolean DEFAULT FALSE
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -139,10 +141,18 @@ $$;
 
 -- 4. HARDEN ANALYTICS
 CREATE OR REPLACE FUNCTION public.get_customer_intelligence()
- RETURNS TABLE(customer_id uuid, customer_name text, total_spent numeric, order_count bigint, last_order_at timestamp with time zone, ltv_score numeric, is_push_subscribed boolean)
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+RETURNS TABLE (
+    customer_id uuid,
+    customer_name text,
+    total_spent numeric,
+    order_count bigint,
+    last_order_at timestamp with time zone,
+    ltv_score numeric,
+    is_push_subscribed boolean
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -167,10 +177,15 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.get_retention_analytics()
- RETURNS TABLE(month text, total_customers bigint, returning_customers bigint, retention_rate numeric)
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+RETURNS TABLE (
+    month text,
+    total_customers bigint,
+    returning_customers bigint,
+    retention_rate numeric
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -201,10 +216,10 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.get_retention_rate()
- RETURNS numeric
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+RETURNS numeric
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
     total_customers bigint := 0;
@@ -234,10 +249,15 @@ $$;
 
 -- 5. HARDEN SECURITY UTILS
 CREATE OR REPLACE FUNCTION public.get_coupon_stats()
- RETURNS TABLE(total_coupons bigint, active_coupons bigint, total_uses bigint, avg_discount numeric)
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+RETURNS TABLE (
+    total_coupons bigint,
+    active_coupons bigint,
+    total_uses bigint,
+    avg_discount numeric
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -253,11 +273,13 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.swap_banner_order(banner_id_1 uuid, banner_id_2 uuid)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+CREATE OR REPLACE FUNCTION public.swap_banner_order(
+    banner_id_1 uuid, banner_id_2 uuid
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
     order_1 INTEGER; order_2 INTEGER;
@@ -274,10 +296,16 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.get_inventory_health()
- RETURNS TABLE(product_id uuid, product_name text, current_stock integer, sales_last_30d bigint, days_remaining numeric)
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+RETURNS TABLE (
+    product_id uuid,
+    product_name text,
+    current_stock integer,
+    sales_last_30d bigint,
+    days_remaining numeric
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
     IF NOT public.is_admin() THEN

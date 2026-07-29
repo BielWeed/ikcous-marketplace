@@ -1,16 +1,21 @@
-import { Minus, Plus } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from "framer-motion";
+import { Minus, Plus } from "lucide-react";
 
 interface QuantitySelectorProps {
   quantity: number;
   maxQuantity: number;
   onChange: (quantity: number) => void;
-  size?: 'sm' | 'md';
+  size?: "sm" | "md";
 }
 
-export function QuantitySelector({ quantity, maxQuantity, onChange, size = 'md' }: QuantitySelectorProps) {
-  const buttonSize = size === 'sm' ? 'w-7 h-7' : 'w-9 h-9';
-  const iconSize = size === 'sm' ? 'w-3 h-3' : 'w-4 h-4';
+export function QuantitySelector({
+  quantity,
+  maxQuantity,
+  onChange,
+  size = "md",
+}: QuantitySelectorProps) {
+  const buttonSize = size === "sm" ? "w-7 h-7" : "w-8 h-8 xs:w-9 xs:h-9";
+  const iconSize = size === "sm" ? "w-3 h-3" : "w-3.5 h-3.5 xs:w-4 xs:h-4";
 
   const handleDecrease = () => {
     if (quantity > 1) {
@@ -25,27 +30,29 @@ export function QuantitySelector({ quantity, maxQuantity, onChange, size = 'md' 
   };
 
   return (
-    <div className="flex items-center bg-zinc-100/50 backdrop-blur-sm p-1 rounded-2xl border border-zinc-200/50">
+    <div className="flex items-center rounded-2xl border border-zinc-200/50 bg-zinc-100/50 p-1 backdrop-blur-sm">
       <button
         onClick={handleDecrease}
         disabled={quantity <= 1}
         aria-label="Diminuir quantidade"
         type="button"
         title="Diminuir"
-        className={`${buttonSize} flex items-center justify-center rounded-xl bg-white shadow-sm border border-zinc-200/50 hover:bg-zinc-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90`}
+        className={`${buttonSize} flex items-center justify-center rounded-xl border border-zinc-200/50 bg-white shadow-sm transition-all hover:bg-zinc-50 active:scale-90 disabled:cursor-not-allowed disabled:opacity-30`}
       >
         <Minus className={`${iconSize} text-zinc-600`} />
       </button>
 
-      <div className={`relative overflow-hidden flex items-center justify-center ${size === 'sm' ? 'w-8 h-7' : 'w-12 h-9'}`}>
+      <div
+        className={`relative flex items-center justify-center overflow-hidden ${size === "sm" ? "h-7 w-8" : "h-8 w-10 xs:h-9 xs:w-12"}`}
+      >
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.span
             key={quantity}
             initial={{ y: 8, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -8, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 380, damping: 22 }}
-            className="absolute font-black text-sm text-zinc-800"
+            transition={{ type: "spring", stiffness: 380, damping: 22 }}
+            className="absolute text-sm font-black text-zinc-800"
           >
             {quantity}
           </motion.span>
@@ -58,11 +65,10 @@ export function QuantitySelector({ quantity, maxQuantity, onChange, size = 'md' 
         aria-label="Aumentar quantidade"
         type="button"
         title="Aumentar"
-        className={`${buttonSize} flex items-center justify-center rounded-xl bg-white shadow-sm border border-zinc-200/50 hover:bg-zinc-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90`}
+        className={`${buttonSize} flex items-center justify-center rounded-xl border border-zinc-200/50 bg-white shadow-sm transition-all hover:bg-zinc-50 active:scale-90 disabled:cursor-not-allowed disabled:opacity-30`}
       >
         <Plus className={`${iconSize} text-zinc-600`} />
       </button>
     </div>
   );
 }
-

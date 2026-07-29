@@ -1,52 +1,93 @@
-import React, { useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, ShoppingBag, ArrowRight, Sparkles } from 'lucide-react';
-import type { Product, View } from '@/types';
-import { ProductCard } from '@/components/ui/custom/ProductCard';
-import { haptic } from '@/utils/haptic';
-import { useStore } from '@/contexts/StoreContext';
-import { usePrefetchOnHover } from '@/hooks/usePrefetchOnHover';
+import { ProductCard } from "@/components/ui/custom/ProductCard";
+import { ProductCardSkeleton } from "@/components/ui/custom/ProductCardSkeleton";
+import { useStore } from "@/contexts/StoreContext";
+import { useDeferredRender } from "@/hooks/useDeferredRender";
+import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import type { Product, View } from "@/types";
+import { haptic } from "@/utils/haptic";
+import { AnimatePresence, motion, usePresence } from "framer-motion";
+import { ArrowRight, Heart, ShoppingBag } from "lucide-react";
+import React, { useCallback } from "react";
+import { createPortal } from "react-dom";
 
 interface FavoritesViewProps {
   favorites: Product[];
+  loading?: boolean;
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
   onNavigate: (view: View) => void;
   selectedProductId?: string;
+  isActive?: boolean;
 }
 
 export const FavoritesView = React.memo(function FavoritesView({
   favorites,
+  loading = false,
   onToggleFavorite,
   onProductClick,
   onNavigate,
-  selectedProductId
+  selectedProductId,
+  isActive = true,
 }: FavoritesViewProps) {
   const { config } = useStore();
   const { prefetchView } = usePrefetchOnHover();
+  const [isPresent] = usePresence();
+  const isReady = useDeferredRender(380);
 
-  const handleToggleFavorite = useCallback((product: Product) => {
-    haptic.light();
-    onToggleFavorite(product);
-  }, [onToggleFavorite]);
+  const handleToggleFavorite = useCallback(
+    (product: Product) => {
+      haptic.light();
+      onToggleFavorite(product);
+    },
+    [onToggleFavorite],
+  );
 
-  const handleProductClick = useCallback((productId: string) => {
-    haptic.medium();
-    onProductClick(productId);
-  }, [onProductClick]);
+  const handleProductClick = useCallback(
+    (productId: string) => {
+      haptic.medium();
+      onProductClick(productId);
+    },
+    [onProductClick],
+  );
 
   const handlePrefetchProductDetail = useCallback(() => {
-    prefetchView('product-detail');
+    prefetchView("product-detail");
   }, [prefetchView]);
+
+  if (loading) {
+    return (
+      <div className="min-h-full overflow-x-hidden bg-zinc-50/30 pb-customer">
+        {/* Header Premium - Minimalist & Compact */}
+        <div className="sticky top-[-2px] z-40 flex items-center justify-between border-b border-zinc-100 bg-white/80 p-4 backdrop-blur-md transition-all duration-300 xs:px-6">
+          <div className="flex items-center gap-2.5">
+            <Heart className="size-4 fill-zinc-950/10 text-zinc-950" />
+            <h1 className="pt-0.5 text-[13px] font-black uppercase tracking-[0.25em] text-zinc-950">
+              Favoritos
+            </h1>
+          </div>
+        </div>
+
+        {/* Skeletons Grid */}
+        <div className="px-4 py-2">
+          <div className="grid grid-cols-2 gap-4 sm:gap-6">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <ProductCardSkeleton key={idx} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (favorites.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center px-6 pt-4 pb-32 bg-white relative overflow-hidden">
+      <div className="relative flex flex-1 flex-col items-center justify-center overflow-hidden bg-white px-6 pb-customer pt-4">
         {/* Abstract Background Elements */}
-        <div className="absolute top-[-10%] left-[-10%] w-[400px] h-[400px] bg-red-50/30 rounded-full blur-[120px] -z-10" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[300px] h-[300px] bg-zinc-100 rounded-full blur-[100px] -z-10" />
+        <div className="absolute left-[-10%] top-[-10%] -z-10 h-[400px] w-[400px] rounded-full bg-red-50/30 blur-[120px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] -z-10 h-[300px] w-[300px] rounded-full bg-zinc-100 blur-[100px]" />
 
         {/* Center Container - Illustration, Text & Action Button */}
-        <div className="flex flex-col items-center justify-center text-center max-w-xs w-full">
+        <div className="flex w-full max-w-xs flex-col items-center justify-center text-center">
           <motion.div
             initial={{ opacity: 0, scale: 0.8, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -54,23 +95,30 @@ export const FavoritesView = React.memo(function FavoritesView({
             className="relative mb-8 sm:mb-12"
           >
             {/* Animated Icon Container */}
-            <div className="relative w-24 h-24 sm:w-32 sm:h-32 mx-auto">
+            <div className="relative mx-auto size-24 sm:size-32">
               <motion.div
                 animate={{
                   y: [0, -8, 0],
-                  scale: [1, 1.05, 1]
+                  scale: [1, 1.05, 1],
                 }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                className="w-full h-full bg-zinc-950 rounded-[3rem] flex items-center justify-center shadow-[0_20px_50px_-12px_rgba(0,0,0,0.3)] border border-white/10 relative z-10 p-4"
+                transition={{
+                  duration: 4,
+                  repeat: Number.POSITIVE_INFINITY,
+                  ease: "easeInOut",
+                }}
+                className="relative z-10 flex size-full items-center justify-center rounded-[3rem] border border-white/10 bg-zinc-950 p-4 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.3)]"
               >
-                <Heart size={40} className="text-white fill-white relative z-10" />
+                <Heart
+                  size={40}
+                  className="relative z-10 fill-white text-white"
+                />
               </motion.div>
 
               {/* Decorative Rings */}
               <motion.div
                 animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0.05, 0.2] }}
-                transition={{ duration: 3, repeat: Infinity }}
-                className="absolute inset-0 border-2 border-zinc-100 rounded-[3rem] -z-10"
+                transition={{ duration: 3, repeat: Number.POSITIVE_INFINITY }}
+                className="absolute inset-0 -z-10 rounded-[3rem] border-2 border-zinc-100"
               />
             </div>
           </motion.div>
@@ -79,13 +127,15 @@ export const FavoritesView = React.memo(function FavoritesView({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="space-y-4 mb-8 sm:mb-10"
+            className="mb-8 space-y-4 sm:mb-10"
           >
-            <h2 className="text-3xl sm:text-5xl font-black text-zinc-900 tracking-tighter leading-none italic uppercase">
+            <h2 className="text-3xl font-black uppercase italic leading-none tracking-tighter text-zinc-900 sm:text-5xl">
               Lista <br />
-              <span className="text-zinc-400 not-italic text-2xl sm:text-3xl">Vazia</span>
+              <span className="text-2xl not-italic text-zinc-400 sm:text-3xl">
+                Vazia
+              </span>
             </h2>
-            <p className="text-[10px] sm:text-sm font-black uppercase tracking-[0.3em] text-zinc-400 leading-relaxed px-4">
+            <p className="px-4 text-[10px] font-black uppercase leading-relaxed tracking-[0.3em] text-zinc-400 sm:text-sm">
               Salve seus favoritos aqui <br className="hidden sm:block" />
               para não perdê-los de vista!
             </p>
@@ -101,15 +151,15 @@ export const FavoritesView = React.memo(function FavoritesView({
             <button
               onClick={() => {
                 haptic.medium();
-                onNavigate('home');
+                onNavigate("home");
               }}
-              className="w-full group relative overflow-hidden rounded-2xl bg-zinc-950 p-px transition-all hover:scale-[1.02] active:scale-95 shadow-xl shadow-zinc-200"
+              className="group relative w-full overflow-hidden rounded-2xl bg-zinc-950 p-px shadow-xl shadow-zinc-200 transition-all hover:scale-[1.02] active:scale-95"
             >
-              <div className="relative flex items-center justify-center gap-3 bg-zinc-950 px-8 py-4 transition-all group-hover:bg-zinc-900 rounded-2xl">
+              <div className="relative flex items-center justify-center gap-3 rounded-2xl bg-zinc-950 px-8 py-4 transition-all group-hover:bg-zinc-900">
                 <span className="text-[12px] font-black uppercase tracking-[0.2em] text-white">
                   Explorar Produtos
                 </span>
-                <ArrowRight className="w-4 h-4 text-white group-hover:translate-x-1 transition-transform" />
+                <ArrowRight className="size-4 text-white transition-transform group-hover:translate-x-1" />
               </div>
             </button>
           </motion.div>
@@ -119,25 +169,19 @@ export const FavoritesView = React.memo(function FavoritesView({
   }
 
   return (
-    <div className="min-h-full pb-24 bg-zinc-50/30 overflow-x-hidden">
-      {/* Header Premium */}
-      <div className="px-6 pt-12 pb-8 bg-gradient-to-b from-white to-transparent flex flex-col mb-4">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="w-4 h-4 text-zinc-400 fill-zinc-400/10" />
-            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-400 leading-none pt-1">
-              Curadoria Elite
-            </span>
-          </div>
-          <h1 className="text-5xl font-black tracking-tighter text-zinc-900 leading-none mb-3 italic uppercase">
-            Desejos
+    <div className="min-h-full overflow-x-hidden bg-zinc-50/30 pb-customer">
+      {/* Header Premium - Minimalist & Compact */}
+      <div className="sticky top-[-2px] z-40 flex items-center justify-between border-b border-zinc-100 bg-white/80 p-4 backdrop-blur-md transition-all duration-300 xs:px-6">
+        <div className="flex items-center gap-2.5">
+          <Heart className="size-4 fill-zinc-950/10 text-zinc-950" />
+          <h1 className="pt-0.5 text-[13px] font-black uppercase tracking-[0.25em] text-zinc-950">
+            Favoritos
           </h1>
-          <div className="flex items-center gap-3">
-            <div className="h-1 w-12 bg-zinc-900 rounded-full" />
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-              {favorites.length} {favorites.length === 1 ? 'Escolha Premium' : 'Escolhas Premium'}
-            </p>
-          </div>
+        </div>
+        <div className="flex items-center">
+          <span className="rounded-full border border-zinc-200/20 bg-zinc-100/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-400">
+            {favorites.length} {favorites.length === 1 ? "item" : "itens"}
+          </span>
         </div>
       </div>
 
@@ -149,6 +193,7 @@ export const FavoritesView = React.memo(function FavoritesView({
               <motion.div
                 key={product.id}
                 layout
+                className="flex h-full flex-col"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9 }}
@@ -157,7 +202,7 @@ export const FavoritesView = React.memo(function FavoritesView({
                   delay: index * 0.1,
                   type: "spring",
                   stiffness: 100,
-                  damping: 15
+                  damping: 15,
                 }}
               >
                 <ProductCard
@@ -176,30 +221,47 @@ export const FavoritesView = React.memo(function FavoritesView({
         </AnimatePresence>
       </div>
 
-      {/* Futuristic CTA */}
-      <div className="px-6 mt-8 mb-6">
-        <button
-          onClick={() => {
-            haptic.medium();
-            onNavigate('home');
-          }}
-          className="w-full group relative overflow-hidden h-16 bg-zinc-950/95 backdrop-blur-2xl text-white rounded-[2rem] border border-white/10 hover:bg-black transition-all flex items-center justify-center gap-4 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.3)] active:scale-95"
-        >
-          <div className="flex items-center gap-3 relative z-10">
-            <ShoppingBag className="w-5 h-5 text-zinc-400 group-hover:text-white transition-colors" />
-            <span className="text-[11px] font-black uppercase tracking-[0.3em] pt-0.5">
-              Descobrir Mais
-            </span>
-          </div>
+      {/* Futuristic CTA - Portal to Body for Fixed Viewport Position */}
+      {typeof document !== "undefined" &&
+        document.body &&
+        createPortal(
+          <AnimatePresence>
+            {isActive && isPresent && isReady && (
+              <div className="pointer-events-none fixed inset-x-0 bottom-[calc(64px+var(--safe-area-bottom,0px)+12px)] z-[90] px-6 md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2">
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                  className="w-full"
+                >
+                  <button
+                    onClick={() => {
+                      haptic.medium();
+                      onNavigate("home");
+                    }}
+                    className="group pointer-events-auto relative flex h-16 w-full items-center justify-center gap-4 overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950/95 text-white shadow-[0_20px_50px_-10px_rgba(0,0,0,0.3)] backdrop-blur-2xl transition-all hover:bg-black active:scale-95"
+                  >
+                    <div className="relative z-10 flex items-center gap-3">
+                      <ShoppingBag className="size-5 text-zinc-400 transition-colors group-hover:text-white" />
+                      <span className="pt-0.5 text-[11px] font-black uppercase tracking-[0.3em]">
+                        Descobrir Mais
+                      </span>
+                    </div>
 
-          {/* Animated Glow Effect */}
-          <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700">
-            <div className="absolute top-0 left-1/4 w-1/2 h-full bg-gradient-to-r from-transparent via-white/5 to-transparent skew-x-[-20deg] animate-shimmer" />
-          </div>
+                    {/* Animated Glow Effect */}
+                    <div className="absolute inset-0 opacity-0 transition-opacity duration-700 group-hover:opacity-100">
+                      <div className="animate-shimmer absolute left-1/4 top-0 h-full w-1/2 skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+                    </div>
 
-          <ArrowRight className="w-4 h-4 text-zinc-500 group-hover:text-white group-hover:translate-x-1.5 transition-all" />
-        </button>
-      </div>
+                    <ArrowRight className="size-4 text-zinc-500 transition-all group-hover:translate-x-1.5 group-hover:text-white" />
+                  </button>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
     </div>
   );
 });

@@ -13,7 +13,9 @@ BEGIN
 END $$;
 
 -- 2. Função auxiliar para verificar estoque (Atomic Check)
-CREATE OR REPLACE FUNCTION check_stock_v1(p_product_id UUID, p_variant_id UUID, p_quantity INTEGER)
+CREATE OR REPLACE FUNCTION check_stock_v1(
+    p_product_id UUID, p_variant_id UUID, p_quantity INTEGER
+)
 RETURNS BOOLEAN AS $$
 DECLARE
     v_stock INTEGER;
@@ -48,15 +50,15 @@ CREATE POLICY "Anyone can view active coupons"
 ON coupons FOR SELECT
 TO authenticated
 USING (
-    is_admin() OR 
-    (active = true AND (usage_limit IS NULL OR used_count < usage_limit))
+    is_admin()
+    OR (active = true AND (usage_limit IS null OR used_count < usage_limit))
 );
 
 -- 5. RPC v7: create_marketplace_order_v7
 CREATE OR REPLACE FUNCTION create_marketplace_order_v7(
     p_address_id UUID,
     p_items JSONB,
-    p_coupon_code TEXT DEFAULT NULL,
+    p_coupon_code TEXT DEFAULT null,
     p_payment_method TEXT DEFAULT 'pix'
 )
 RETURNS JSONB AS $$

@@ -179,7 +179,7 @@ $$;
 
 -- 3. Update get_admin_analytics_v2
 CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2()
-RETURNS JSONB
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public

@@ -1,13 +1,19 @@
-import { memo, useState } from 'react';
-import { Heart, Truck, Flame, ShoppingCart, Check, Loader2 } from 'lucide-react';
-import type { Product } from '@/types';
-import { StarRating } from './StarRating';
-import { Badge } from '@/components/ui/badge';
-import { StockStatus } from './StockStatus';
-import { UrgencyBadge } from './UrgencyBadge';
-import { cn, formatCurrency } from '@/lib/utils';
-import { LazyImage } from '@/components/LazyImage';
-import { triggerFlyingCartAnimation } from '@/utils/cartAnimation';
+import { LazyImage } from "@/components/LazyImage";
+import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import { cn, formatCurrency } from "@/lib/utils";
+import type { Product } from "@/types";
+import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
+import {
+  Check,
+  Flame,
+  Heart,
+  Loader2,
+  ShoppingCart,
+  Truck,
+} from "lucide-react";
+import { memo, useId, useState } from "react";
+import { StarRating } from "./StarRating";
 
 interface ProductCardProps {
   product: Product;
@@ -24,31 +30,49 @@ interface ProductCardProps {
   selectedProductId?: string;
 }
 
+// Global trackers for view transitions to prevent duplicate view-transition-names
+let activeTransitionCardId: string | null = null;
+
 export const ProductCard = memo(function ProductCard({
   product,
   isFavorite,
   onToggleFavorite,
   onAddToCart,
-  onQuickBuy,
   onClick,
   onMouseEnter,
   onTouchStart,
   className,
   priority = false,
   isEligibleForFreeShipping = false,
-  selectedProductId
+  selectedProductId,
 }: Readonly<ProductCardProps>) {
+  const instanceId = useId();
+  const { prefetchImage } = usePrefetchOnHover();
+
   const discount = product.originalPrice
-    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+    ? Math.round(
+        ((product.originalPrice - product.price) / product.originalPrice) * 100,
+      )
     : 0;
 
-  const [cartStatus, setCartStatus] = useState<'idle' | 'loading' | 'success'>('idle');
+  const [cartStatus, setCartStatus] = useState<"idle" | "loading" | "success">(
+    "idle",
+  );
+
+  // Safely determine if this specific card should have the view transition name applied.
+  // We apply it strictly to the clicked instance (via activeTransitionCardId) to avoid duplicate transition names.
+  let shouldApplyTransitionName = false;
+  if (isViewTransitionSupported && selectedProductId === product.id) {
+    if (activeTransitionCardId === instanceId) {
+      shouldApplyTransitionName = true;
+    }
+  }
 
   const handleAddToCartClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (cartStatus !== 'idle') return;
+    if (cartStatus !== "idle") return;
 
-    setCartStatus('loading');
+    setCartStatus("loading");
 
     if (onAddToCart) {
       onAddToCart(product, e);
@@ -58,27 +82,33 @@ export const ProductCard = memo(function ProductCard({
     triggerFlyingCartAnimation(startEl, product.images[0]);
 
     setTimeout(() => {
-      setCartStatus('success');
+      setCartStatus("success");
       setTimeout(() => {
-        setCartStatus('idle');
+        setCartStatus("idle");
       }, 1500);
     }, 600);
   };
 
   const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const img = e.currentTarget.querySelector('img');
-    if (img) {
-      img.style.viewTransitionName = 'product-image';
+    activeTransitionCardId = instanceId;
+    if (isViewTransitionSupported) {
+      const img = e.currentTarget.querySelector("img");
+      if (img) {
+        img.style.viewTransitionName = "product-image";
+      }
     }
     onClick(product.id);
   };
 
   const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Enter' || e.key === ' ') {
+    if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      const img = e.currentTarget.querySelector('img');
-      if (img) {
-        img.style.viewTransitionName = 'product-image';
+      activeTransitionCardId = instanceId;
+      if (isViewTransitionSupported) {
+        const img = e.currentTarget.querySelector("img");
+        if (img) {
+          img.style.viewTransitionName = "product-image";
+        }
       }
       onClick(product.id);
     }
@@ -89,12 +119,18 @@ export const ProductCard = memo(function ProductCard({
       role="button"
       tabIndex={0}
       onClick={handleCardClick}
-      onMouseEnter={onMouseEnter ? () => onMouseEnter(product.id) : undefined}
-      onTouchStart={onTouchStart ? () => onTouchStart(product.id) : undefined}
+      onMouseEnter={() => {
+        prefetchImage(product.images[0]);
+        if (onMouseEnter) onMouseEnter(product.id);
+      }}
+      onTouchStart={() => {
+        prefetchImage(product.images[0]);
+        if (onTouchStart) onTouchStart(product.id);
+      }}
       onKeyDown={handleCardKeyDown}
       className={cn(
-        "group bg-zinc-50/30 rounded-[2.5rem] overflow-hidden hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] hover:bg-white transition-[transform,box-shadow,background-color] duration-300 ease-out cursor-pointer border border-zinc-200/60 flex flex-col relative active:scale-[0.98] h-full gpu-accelerated",
-        className
+        "group bg-zinc-50/30 rounded-[2rem] overflow-hidden hover:-translate-y-2 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] hover:bg-white transition-[transform,box-shadow,background-color] duration-300 ease-out cursor-pointer border border-zinc-200/60 flex flex-col relative active:scale-[0.98] h-full flex-1 gpu-accelerated",
+        className,
       )}
     >
       {/* Image Container */}
@@ -102,135 +138,164 @@ export const ProductCard = memo(function ProductCard({
         <LazyImage
           src={product.images[0]}
           alt={product.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out"
+          className="size-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
           priority={priority}
-          style={selectedProductId === product.id ? { viewTransitionName: 'product-image' } : undefined}
+          style={
+            shouldApplyTransitionName
+              ? { viewTransitionName: "product-image" }
+              : undefined
+          }
         />
 
         {/* Action Buttons */}
-        <div className="absolute top-3 right-3 flex flex-col gap-2 translate-x-12 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all duration-500 ease-out">
+        <div className="absolute right-3 top-3 flex translate-x-0 flex-col gap-2 opacity-100 transition-all duration-500 ease-out hover-hover:translate-x-12 hover-hover:opacity-0 hover-hover:group-hover:translate-x-0 hover-hover:group-hover:opacity-100">
           <button
             onClick={(e) => {
               e.stopPropagation();
               onToggleFavorite(product, e);
             }}
+            aria-label={
+              isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"
+            }
+            title={
+              isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"
+            }
             className={cn(
               "p-2.5 rounded-full glass transition-all active:scale-75",
-              isFavorite ? "bg-red-500 text-white border-red-500/20 shadow-lg shadow-red-200/50" : "text-slate-600 hover:text-red-500"
+              isFavorite
+                ? "bg-red-500 text-white border-red-500/20 shadow-lg shadow-red-200/50"
+                : "text-slate-600 hover:text-red-500",
             )}
           >
-            <Heart className={`w-4 h-4 ${isFavorite ? 'fill-current' : ''}`} />
+            <Heart
+              className={cn(
+                "size-4",
+                isFavorite && "fill-current animate-heart-pop",
+              )}
+            />
           </button>
         </div>
-
-        {/* Floating Badges */}
-        <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start max-w-[calc(100%-48px)]">
-          {product.stock > 0 ? (
-            <UrgencyBadge stock={product.stock} className="mb-0" />
-          ) : (
-            <StockStatus stock={product.stock} className="mb-0" />
-          )}
-          {discount > 0 && (
-            <Badge variant="destructive" className="bg-red-500 border-none px-2 py-0.5 rounded-md shadow-lg shadow-red-200/50 font-black text-[10px] whitespace-nowrap">
-              {discount}% OFF
-            </Badge>
-          )}
-          {product.isBestseller && (
-            <Badge className="bg-slate-900/90 backdrop-blur-md border-none px-2 py-0.5 rounded-md shadow-lg flex items-center gap-1 font-black text-[10px] whitespace-nowrap">
-              <Flame className="w-3 h-3 text-orange-400 fill-orange-400" />
-              HOT
-            </Badge>
-          )}
-        </div>
-
       </div>
 
       {/* Content */}
-      <div className="p-3 flex-1 flex flex-col gap-1">
+      <div className="flex flex-1 flex-col gap-0.5 p-2.5">
         <div className="space-y-0.5">
           <div className="flex flex-wrap items-center gap-1.5">
-            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest truncate max-w-[80%]">
+            <p className="max-w-[80%] truncate text-[9px] font-bold uppercase tracking-widest text-slate-400">
               {product.category}
             </p>
             {(isEligibleForFreeShipping || product.freeShipping) && (
-              <div className="flex shrink-0 items-center gap-1 bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-md text-[8px] font-black border border-emerald-100/50">
-                <Truck className="w-2.5 h-2.5 animate-bounce-subtle shrink-0" />
+              <div className="flex shrink-0 items-center gap-1 rounded-md border border-emerald-100/50 bg-emerald-50 px-1.5 py-0.5 text-[8px] font-black text-emerald-800">
+                <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
                 <span className="truncate">Frete Grátis</span>
               </div>
             )}
           </div>
-          <h3 className="text-[14px] font-black text-slate-900 line-clamp-2 leading-tight group-hover:text-primary transition-colors duration-300 min-h-[2.5rem]">
+          <h3 className="line-clamp-2 text-[13px] font-black leading-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-[14px]">
             {product.name}
           </h3>
-          <div className="flex items-center pt-0.5">
+          <div className="flex flex-wrap items-center gap-2 pt-0.5">
             <StarRating rating={product.rating || 5} size={11} />
+            <div className="flex items-center gap-1 text-[9px] font-bold">
+              <span
+                className={cn(
+                  "w-1 h-1 rounded-full animate-pulse",
+                  product.stock <= 0
+                    ? "bg-zinc-400"
+                    : product.stock <= 5
+                      ? "bg-rose-500"
+                      : "bg-emerald-500",
+                )}
+              />
+              <span
+                className={
+                  product.stock <= 0
+                    ? "text-zinc-500"
+                    : product.stock <= 5
+                      ? "text-rose-600"
+                      : "text-emerald-600"
+                }
+              >
+                {product.stock <= 0
+                  ? "Esgotado"
+                  : product.stock <= 5
+                    ? `Apenas ${product.stock} restam!`
+                    : `Estoque: ${product.stock}`}
+              </span>
+            </div>
           </div>
         </div>
 
         {/* Price */}
-        <div className="flex items-end mt-auto pt-1">
-          <div className="flex flex-col w-full">
+        <div className="mt-auto flex w-full items-end justify-between gap-2 pt-1">
+          <div className="flex flex-col justify-end">
             {product.originalPrice && product.originalPrice > product.price ? (
               <div className="flex flex-col">
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider leading-none">
-                  De: <span className="line-through">{formatCurrency(product.originalPrice)}</span>
+                <span className="text-[9px] font-bold uppercase leading-none tracking-wider text-slate-400">
+                  De:{" "}
+                  <span className="line-through">
+                    {formatCurrency(product.originalPrice)}
+                  </span>
                 </span>
-                <span className="text-[15px] font-black text-rose-600 tracking-tight leading-none mt-1">
+                <span className="mt-1 text-[15px] font-black leading-none tracking-tight text-rose-600">
                   Por: {formatCurrency(product.price)}
                 </span>
               </div>
             ) : (
               <div className="flex flex-col">
-                <span className="text-[9px] text-transparent select-none leading-none">Spacer</span>
-                <span className="text-[15px] font-black text-slate-900 tracking-tight leading-none mt-1">
+                <span className="text-[15px] font-black leading-none tracking-tight text-slate-900">
                   {formatCurrency(product.price)}
                 </span>
               </div>
             )}
           </div>
+
+          {/* Badges */}
+          <div className="flex shrink-0 items-center gap-1">
+            {discount > 0 && (
+              <span className="shrink-0 select-none rounded border border-rose-100 bg-rose-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-rose-700">
+                {discount}% OFF
+              </span>
+            )}
+            {product.isBestseller && (
+              <span className="flex shrink-0 select-none items-center gap-0.5 rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-700">
+                <Flame className="size-2.5 shrink-0 fill-orange-500/20 text-orange-500" />
+                <span>EM ALTA</span>
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap sm:flex-nowrap gap-1.5 mt-2">
+        {/* Action Button */}
+        <div className="mt-1.5">
           <button
             onClick={handleAddToCartClick}
-            disabled={product.stock <= 0 || cartStatus !== 'idle'}
+            disabled={product.stock <= 0 || cartStatus !== "idle"}
             className={cn(
-              "flex-1 min-w-[70px] py-2 px-1.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] shadow-[0_4px_10px_rgba(0,0,0,0.1)] flex items-center justify-center gap-1",
-              product.stock <= 0 
-                ? "bg-zinc-100 text-zinc-400 cursor-not-allowed shadow-none" 
-                : cartStatus === 'success' 
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
-                  : "bg-zinc-900 hover:bg-black text-white"
-            )}
-          >
-            {cartStatus === 'loading' && <Loader2 className="w-3 h-3 animate-spin shrink-0" />}
-            {cartStatus === 'success' && <Check className="w-3 h-3 shrink-0" />}
-            {cartStatus === 'idle' && product.stock > 0 && <ShoppingCart className="w-3 h-3 shrink-0" />}
-            <span className="truncate">
-              {product.stock <= 0 
-                ? 'Esgotado' 
-                : cartStatus === 'idle' 
-                  ? 'Carrinho' 
-                  : cartStatus === 'loading' 
-                    ? 'Salvando...' 
-                    : 'Salvo!'}
-            </span>
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onQuickBuy?.(product, e);
-            }}
-            disabled={product.stock <= 0}
-            className={cn(
-              "flex-1 min-w-[50px] py-2 px-1.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.98] flex items-center justify-center truncate",
+              "w-full py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 shadow-[0_4px_10px_rgba(0,0,0,0.1)] flex items-center justify-center gap-1.5",
               product.stock <= 0
-                ? "bg-zinc-50 text-zinc-300 border border-zinc-100 cursor-not-allowed"
-                : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/50"
+                ? "bg-zinc-100 text-zinc-400 cursor-not-allowed shadow-none"
+                : cartStatus === "success"
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  : "bg-zinc-900 hover:bg-black text-white",
             )}
           >
-            Comprar
+            {cartStatus === "loading" && (
+              <Loader2 className="size-3 shrink-0 animate-spin" />
+            )}
+            {cartStatus === "success" && <Check className="size-3 shrink-0" />}
+            {cartStatus === "idle" && product.stock > 0 && (
+              <ShoppingCart className="size-3 shrink-0" />
+            )}
+            <span className="truncate">
+              {product.stock <= 0
+                ? "Esgotado"
+                : cartStatus === "idle"
+                  ? "Carrinho"
+                  : cartStatus === "loading"
+                    ? "Salvando..."
+                    : "Salvo!"}
+            </span>
           </button>
         </div>
       </div>

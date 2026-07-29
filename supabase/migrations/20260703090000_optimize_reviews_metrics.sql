@@ -2,13 +2,13 @@
 -- Description: Creates a secure RPC function to aggregate review stats on database side.
 
 CREATE OR REPLACE FUNCTION public.get_reviews_metrics(
-  p_search text DEFAULT NULL,
-  p_rating integer DEFAULT NULL
+    p_search text DEFAULT NULL,
+    p_rating integer DEFAULT NULL
 )
 RETURNS TABLE (
-  average_rating numeric,
-  total_verified bigint,
-  total_replied bigint
+    average_rating numeric,
+    total_verified bigint,
+    total_replied bigint
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -49,5 +49,7 @@ END;
 $$;
 
 -- Grant permissions to authenticated and anon users to run this
-GRANT EXECUTE ON FUNCTION public.get_reviews_metrics(text, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_reviews_metrics(
+    text, integer
+) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_reviews_metrics(text, integer) TO anon;

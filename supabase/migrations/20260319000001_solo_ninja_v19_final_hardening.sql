@@ -15,10 +15,14 @@ CREATE POLICY "Profiles self-update secure" ON public.profiles
 FOR UPDATE TO authenticated
 USING (auth.uid() = id)
 WITH CHECK (
-    (auth.uid() = id) AND 
-    (
+    (auth.uid() = id)
+    AND (
         is_admin() OR (
-            role = (SELECT role FROM public.profiles WHERE id = auth.uid()) -- Preserve existing role
+            -- Preserve existing role
+            role = (
+                SELECT role FROM public.profiles
+                WHERE id = auth.uid()
+            )
             AND id = auth.uid() -- Preserve existing ID
         )
     )
@@ -33,15 +37,16 @@ DROP POLICY IF EXISTS "Users can update their own orders" ON public.marketplace_
 CREATE POLICY "Owners and Admins update orders" ON public.marketplace_orders
 FOR UPDATE TO authenticated
 USING (auth.uid() = user_id OR public.is_admin())
-WITH CHECK (public.is_admin()); -- ONLY ADMIN can perform direct table updates. Users MUST use RPC.
+-- ONLY ADMIN can perform direct table updates. Users MUST use RPC.
+WITH CHECK (public.is_admin());
 
 -- 3. HARDEN ORDER STATUS RPC (State Machine Enforcement)
 -- update_order_status_atomic (redefinition with strict rules)
 CREATE OR REPLACE FUNCTION public.update_order_status_atomic(
-    p_order_id uuid, 
-    p_new_status text, 
-    p_notes text DEFAULT NULL, 
-    p_silent boolean DEFAULT false
+    p_order_id uuid,
+    p_new_status text,
+    p_notes text DEFAULT NULL,
+    p_silent boolean DEFAULT FALSE
 )
 RETURNS void
 LANGUAGE plpgsql

@@ -4,7 +4,7 @@
 .env
 .env.local
 .env.*.local
-.env.vercel.test
+.env.vercel*
 .env.production
 vapid_keys.json
 .gh_token
@@ -39,3 +39,22 @@ lighthouse-report*.json
 node_modules/
 .env*.local
 .agents/
+
+# Tool-generated reports and test artifacts
+nsecure-result.json
+ship-safe-report.html
+hint-report/
+test-results/
+
+# Scratch & local scripts
+scratch/
+scratch_*
+
+# Playwright & test screenshots/configs
+.playwright-mcp/
+*.png
+*.yml
+
+# Unlighthouse & Loki
+.unlighthouse/
+.loki/

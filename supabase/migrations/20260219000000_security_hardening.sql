@@ -5,12 +5,22 @@
 -- ==============================================================================
 -- 1. INDEXES (Performance Optimization)
 -- ==============================================================================
-create index if not exists idx_marketplace_orders_created_at on public.marketplace_orders(created_at desc);
-create index if not exists idx_marketplace_orders_status on public.marketplace_orders(status);
-create index if not exists idx_marketplace_orders_user_id on public.marketplace_orders(user_id);
-create index if not exists idx_marketplace_order_items_order_id on public.marketplace_order_items(order_id);
-create index if not exists idx_marketplace_order_items_product_id on public.marketplace_order_items(product_id);
-create index if not exists idx_profiles_role on public.profiles(role);
+create index if not exists idx_marketplace_orders_created_at on public.marketplace_orders (
+    created_at desc
+);
+create index if not exists idx_marketplace_orders_status on public.marketplace_orders (
+    status
+);
+create index if not exists idx_marketplace_orders_user_id on public.marketplace_orders (
+    user_id
+);
+create index if not exists idx_marketplace_order_items_order_id on public.marketplace_order_items (
+    order_id
+);
+create index if not exists idx_marketplace_order_items_product_id on public.marketplace_order_items (
+    product_id
+);
+create index if not exists idx_profiles_role on public.profiles (role);
 
 -- ==============================================================================
 -- 2. CORE FUNCTIONS
@@ -87,9 +97,11 @@ $$;
 
 -- Restrict execution to Admins/Authenticated
 revoke execute on function public.get_admin_dashboard_summary from public;
-grant execute on function public.get_admin_dashboard_summary to service_role, authenticated;
+grant execute on function public.get_admin_dashboard_summary to service_role,
+authenticated;
 revoke execute on function public.get_product_stats from public;
-grant execute on function public.get_product_stats to service_role, authenticated;
+grant execute on function public.get_product_stats to service_role,
+authenticated;
 
 -- ==============================================================================
 -- 4. ROW LEVEL SECURITY (The Shield)
@@ -98,64 +110,101 @@ grant execute on function public.get_product_stats to service_role, authenticate
 -- Profiles
 alter table public.profiles enable row level security;
 drop policy if exists "Public profiles are viewable by everyone" on public.profiles;
-create policy "Public profiles are viewable by everyone" on public.profiles for select using (true);
+create policy "Public profiles are viewable by everyone" on public.profiles for select using (
+    true
+);
 drop policy if exists "Users can update own profile" on public.profiles;
-create policy "Users can update own profile" on public.profiles for update using (auth.uid() = id);
+create policy "Users can update own profile" on public.profiles for update using (
+    auth.uid() = id
+);
 
 -- Products & Variants
 alter table public.produtos enable row level security;
 drop policy if exists "Public can view active products" on public.produtos;
-create policy "Public can view active products" on public.produtos for select using (ativo = true);
+create policy "Public can view active products" on public.produtos for select using (
+    ativo = true
+);
 drop policy if exists "Admins can manage products" on public.produtos;
-create policy "Admins can manage products" on public.produtos for all using (public.is_admin());
+create policy "Admins can manage products" on public.produtos for all using (
+    public.is_admin()
+);
 
 alter table public.product_variants enable row level security;
 drop policy if exists "Public can view active variants" on public.product_variants;
-create policy "Public can view active variants" on public.product_variants for select using (exists (select 1 from public.produtos p where p.id = product_variants.product_id and p.ativo = true));
+create policy "Public can view active variants" on public.product_variants for select using (
+    exists (
+        select 1 from public.produtos as p
+        where p.id = product_variants.product_id and p.ativo = true
+    )
+);
 drop policy if exists "Admins can manage variants" on public.product_variants;
-create policy "Admins can manage variants" on public.product_variants for all using (public.is_admin());
+create policy "Admins can manage variants" on public.product_variants for all using (
+    public.is_admin()
+);
 
 -- Orders & Items (Critical Security)
 alter table public.marketplace_orders enable row level security;
 drop policy if exists "Admins full access, users see own orders" on public.marketplace_orders;
-create policy "Admins full access, users see own orders" on public.marketplace_orders for all using (public.is_admin() or auth.uid() = user_id);
+create policy "Admins full access, users see own orders" on public.marketplace_orders for all using (
+    public.is_admin() or auth.uid() = user_id
+);
 
 alter table public.marketplace_order_items enable row level security;
 drop policy if exists "Admins full access, users see through orders" on public.marketplace_order_items;
-create policy "Admins full access, users see through orders" on public.marketplace_order_items for all using (public.is_admin() or exists (select 1 from public.marketplace_orders where id = order_id and user_id = auth.uid()));
+create policy "Admins full access, users see through orders" on public.marketplace_order_items for all using (
+    public.is_admin() or exists (
+        select 1 from public.marketplace_orders
+        where id = order_id and user_id = auth.uid()
+    )
+);
 
 -- Auxiliary Tables (Coupons, Reviews, QA, Push)
 alter table public.coupons enable row level security;
 drop policy if exists "Admins manage coupons" on public.coupons;
-create policy "Admins manage coupons" on public.coupons for all using (public.is_admin());
+create policy "Admins manage coupons" on public.coupons for all using (
+    public.is_admin()
+);
 drop policy if exists "Public view active coupons" on public.coupons;
-create policy "Public view active coupons" on public.coupons for select using (active = true);
+create policy "Public view active coupons" on public.coupons for select using (
+    active = true
+);
 
 alter table public.reviews enable row level security;
 drop policy if exists "Public view reviews" on public.reviews;
 create policy "Public view reviews" on public.reviews for select using (true);
 drop policy if exists "Users review own orders" on public.reviews;
-create policy "Users review own orders" on public.reviews for insert with check (auth.uid() = user_id);
+create policy "Users review own orders" on public.reviews for insert with check (
+    auth.uid() = user_id
+);
 drop policy if exists "Admins manage reviews" on public.reviews;
-create policy "Admins manage reviews" on public.reviews for all using (public.is_admin());
+create policy "Admins manage reviews" on public.reviews for all using (
+    public.is_admin()
+);
 
 alter table public.questions enable row level security;
 drop policy if exists "Public view QA" on public.questions;
 create policy "Public view QA" on public.questions for select using (true);
 drop policy if exists "Users ask questions" on public.questions;
-create policy "Users ask questions" on public.questions for insert with check (auth.uid() = user_id);
+create policy "Users ask questions" on public.questions for insert with check (
+    auth.uid() = user_id
+);
 drop policy if exists "Admins manage QA" on public.questions;
-create policy "Admins manage QA" on public.questions for all using (public.is_admin());
+create policy "Admins manage QA" on public.questions for all using (
+    public.is_admin()
+);
 
 alter table public.push_subscriptions enable row level security;
 drop policy if exists "Admins view subscriptions" on public.push_subscriptions;
-create policy "Admins view subscriptions" on public.push_subscriptions for select using (public.is_admin());
+create policy "Admins view subscriptions" on public.push_subscriptions for select using (
+    public.is_admin()
+);
 drop policy if exists "Users manage own subscriptions" on public.push_subscriptions;
-create policy "Users manage own subscriptions" on public.push_subscriptions for all using (auth.uid() = user_id);
+create policy "Users manage own subscriptions" on public.push_subscriptions for all using (
+    auth.uid() = user_id
+);
 
 alter table public.push_notifications_log enable row level security;
 drop policy if exists "Admins manage push logs" on public.push_notifications_log;
-create policy "Admins manage push logs" on public.push_notifications_log for all using (public.is_admin());
-
-
-
+create policy "Admins manage push logs" on public.push_notifications_log for all using (
+    public.is_admin()
+);

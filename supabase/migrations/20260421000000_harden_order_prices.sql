@@ -158,6 +158,6 @@ $$;
 
 -- 2. Permissions
 GRANT EXECUTE ON FUNCTION public.create_marketplace_order TO authenticated;
-REVOKE ALL ON FUNCTION public.create_marketplace_order FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.create_marketplace_order FROM public;
 
 COMMIT;

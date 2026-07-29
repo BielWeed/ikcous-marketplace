@@ -6,11 +6,11 @@ CREATE TABLE IF NOT EXISTS public.otp_verifications (
     otp_code TEXT NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     verified BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- Index for faster cleanup and lookup
-CREATE INDEX IF NOT EXISTS idx_otp_email ON public.otp_verifications(email);
+CREATE INDEX IF NOT EXISTS idx_otp_email ON public.otp_verifications (email);
 
 -- Function to generate OTP
 CREATE OR REPLACE FUNCTION public.generate_order_otp_v1(

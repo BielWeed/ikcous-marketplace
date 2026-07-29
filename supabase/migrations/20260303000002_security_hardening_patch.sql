@@ -8,18 +8,22 @@
 
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 
-CREATE POLICY "Users can update own profile" 
-ON public.profiles 
-FOR UPDATE 
+CREATE POLICY "Users can update own profile"
+ON public.profiles
+FOR UPDATE
 USING (auth.uid() = id)
 WITH CHECK (
-    auth.uid() = id 
+    auth.uid() = id
     AND (
         -- If NOT admin, the role must remain unchanged or be NULL in the update (PostgREST detail)
         -- In practice, we use a trigger for stricter enforcement or check the old value.
         -- RLS 'WITH CHECK' doesn't easily compare to 'OLD' value without a function.
         -- So we use a security definer function for role validation.
-        public.is_admin() OR (role IS NOT DISTINCT FROM (SELECT role FROM public.profiles WHERE id = auth.uid()))
+        public.is_admin()
+        OR (role IS NOT DISTINCT FROM (
+            SELECT role FROM public.profiles
+            WHERE id = auth.uid()
+        ))
     )
 );
 
@@ -41,9 +45,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 DROP TRIGGER IF EXISTS tr_ensure_role_protection ON public.profiles;
 CREATE TRIGGER tr_ensure_role_protection
-    BEFORE UPDATE ON public.profiles
-    FOR EACH ROW
-    EXECUTE FUNCTION public.ensure_role_protection();
+BEFORE UPDATE ON public.profiles
+FOR EACH ROW
+EXECUTE FUNCTION public.ensure_role_protection();
 
 -- 3. Hardened create_marketplace_order RPC
 -- This version re-calculates the prices server-side to prevent price manipulation.

@@ -9,7 +9,7 @@ ALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFA
 -- 2. Update the public view to exclude soft-deleted products
 DROP VIEW IF EXISTS public.vw_produtos_public;
 CREATE VIEW public.vw_produtos_public AS
-SELECT 
+SELECT
     id,
     nome,
     descricao,
@@ -29,12 +29,17 @@ SELECT
     sold,
     calculated_points
 FROM public.produtos
-WHERE ativo = true AND deleted_at IS NULL;
+WHERE ativo = TRUE AND deleted_at IS NULL;
 
 -- 3. Update RLS for non-admins to exclude soft-deleted items
 -- (Non-admins usually use the view, but if they access the table directly...)
 DROP POLICY IF EXISTS "Produtos are viewable by everyone" ON public.produtos;
 CREATE POLICY "Produtos are viewable by everyone" ON public.produtos
-FOR SELECT USING (deleted_at IS NULL OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+FOR SELECT USING (
+    deleted_at IS NULL OR (
+        SELECT role FROM public.profiles
+        WHERE id = auth.uid()
+    ) = 'admin'
+);
 
 COMMIT;

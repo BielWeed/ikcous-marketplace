@@ -110,7 +110,7 @@ serve(async (req: Request) => {
 
                         return { success: true, endpoint: sub.endpoint };
                     } catch (err: any) {
-                        console.error(`Error sending to ${sub.endpoint}:`, err);
+                        console.error("Error sending to endpoint:", sub.endpoint, err);
 
                         // If expired or invalid, we could remove it
                         if (err.statusCode === 410 || err.statusCode === 404) {

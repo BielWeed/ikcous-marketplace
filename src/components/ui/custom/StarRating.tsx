@@ -1,5 +1,6 @@
-import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Star } from "lucide-react";
+import { memo } from "react";
 
 interface StarRatingProps {
   rating: number;
@@ -10,7 +11,7 @@ interface StarRatingProps {
   className?: string;
 }
 
-export function StarRating({
+export const StarRating = memo(function StarRating({
   rating,
   maxRating = 5,
   onRatingChange,
@@ -33,7 +34,7 @@ export function StarRating({
               isFilled
                 ? "fill-yellow-400 text-yellow-400"
                 : "fill-transparent text-gray-300",
-              !readonly && "cursor-pointer hover:text-yellow-500"
+              !readonly && "cursor-pointer hover:text-yellow-500",
             )}
             onClick={() => !readonly && onRatingChange?.(starValue)}
           />
@@ -41,4 +42,4 @@ export function StarRating({
       })}
     </div>
   );
-}
+});

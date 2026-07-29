@@ -1,147 +1,183 @@
-import { ShoppingCart, ChevronRight, Truck } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useCart } from '@/hooks/useCart';
-import { useStore } from '@/contexts/StoreContext';
-import { useAuth } from '@/hooks/useAuth';
-import { formatCurrency } from '@/lib/utils';
+import { useStore } from "@/contexts/StoreContext";
+import { useAuth } from "@/hooks/useAuth";
+import { useCart } from "@/hooks/useCart";
+import { formatCurrency } from "@/lib/utils";
+import { AnimatePresence, motion } from "framer-motion";
+import { ChevronRight, ShoppingCart, Truck } from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface CartReminderProps {
-    onAction: () => void;
+  onAction: () => void;
+  docked?: boolean;
 }
 
-export function CartReminder({ onAction }: CartReminderProps) {
-    const { cart: items, getCartCount, cartTotal } = useCart();
-    const { config } = useStore();
-    const { user } = useAuth();
-    const [isVisible, setIsVisible] = useState(false);
-    const [isDismissed, setIsDismissed] = useState(false);
+export function CartReminder({ onAction, docked }: CartReminderProps) {
+  const { cart: items, getCartCount, cartTotal } = useCart();
+  const { config } = useStore();
+  const { user } = useAuth();
+  const [isVisible, setIsVisible] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
 
-    const totalAmount = cartTotal;
+  const isControlled = docked !== undefined;
 
-    const isFree = totalAmount >= config.freeShippingMin;
-    const amountToFree = Math.max(0, config.freeShippingMin - totalAmount);
-    const progress = Math.min(100, (totalAmount / config.freeShippingMin) * 100);
+  const totalAmount = cartTotal;
 
-    useEffect(() => {
-        if (items.length > 0 && !isDismissed) {
-            const showTimer = setTimeout(() => setIsVisible(true), 1500);
-            return () => clearTimeout(showTimer);
-        } else {
-            setTimeout(() => setIsVisible(false), 0);
-        }
-    }, [items.length, isDismissed]);
+  const isFree = totalAmount >= config.freeShippingMin;
+  const amountToFree = Math.max(0, config.freeShippingMin - totalAmount);
+  const progress = Math.min(100, (totalAmount / config.freeShippingMin) * 100);
 
-    useEffect(() => {
-        if (isVisible) {
-            const hideTimer = setTimeout(() => {
-                setIsVisible(false);
-                setIsDismissed(true);
-            }, 5000); // 5 seconds for more readability
-            return () => clearTimeout(hideTimer);
-        }
-    }, [isVisible]);
+  // Reset dismiss state and visibility when undocked
+  useEffect(() => {
+    if (isControlled && !docked) {
+      setIsVisible(false);
+      setIsDismissed(false);
+    }
+  }, [docked, isControlled]);
 
-    const itemCount = getCartCount();
+  useEffect(() => {
+    if (isControlled && !docked) return;
 
-    return (
-        <div className="fixed bottom-safe-navigation md:bottom-24 left-0 right-0 z-40 flex justify-center pointer-events-none">
-            <AnimatePresence>
-                {isVisible && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 100 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 100, scale: 0.95 }}
-                        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                        className="bg-zinc-950 border-t border-x border-white/10 rounded-t-[2.5rem] px-5 py-5 shadow-[0_-12px_44px_-10px_rgba(0,0,0,0.5)] flex items-center gap-4 pointer-events-auto max-w-lg w-full relative overflow-hidden group"
-                    >
-                        {/* Subtle Glow */}
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
+    if (items.length > 0 && !isDismissed) {
+      const delay = isControlled ? 500 : 1500;
+      const showTimer = setTimeout(() => setIsVisible(true), delay);
+      return () => clearTimeout(showTimer);
+    }
+    const hideTimer = setTimeout(() => setIsVisible(false), 0);
+    return () => clearTimeout(hideTimer);
+  }, [items.length, isDismissed, docked, isControlled]);
 
-                        {/* Ultra Slim Top Progress Bar */}
-                        <div className="absolute top-0 left-0 right-0 h-[2px] bg-white/5">
-                            <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${user ? progress : 0}%` }}
-                                className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] transition-all duration-1000"
-                            />
-                        </div>
+  useEffect(() => {
+    if (isVisible) {
+      const hideTimer = setTimeout(() => {
+        setIsVisible(false);
+        setIsDismissed(true);
+      }, 5000); // 5 seconds for more readability
+      return () => clearTimeout(hideTimer);
+    }
+  }, [isVisible]);
 
-                        {/* Left: Animated Icon with Badge */}
-                        <div className="relative flex-shrink-0">
-                            <div className="w-11 h-11 bg-white/[0.03] rounded-2xl flex items-center justify-center border border-white/10 relative group-hover:scale-105 transition-all duration-500">
-                                <ShoppingCart className="w-5 h-5 text-emerald-500" />
-                                {itemCount > 0 && (
-                                    <motion.span
-                                        initial={{ scale: 0 }}
-                                        animate={{ scale: 1 }}
-                                        className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 bg-emerald-500 text-[9px] font-black text-white rounded-full flex items-center justify-center border-2 border-zinc-950 shadow-lg"
-                                    >
-                                        {itemCount}
-                                    </motion.span>
-                                )}
-                            </div>
-                        </div>
+  const itemCount = getCartCount();
 
-                        {/* Middle: Compressed Info */}
-                        <div className="flex-1 min-w-0 py-0.5 relative z-10">
-                            <div className="flex items-center gap-1.5 mb-1">
-                                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-500">Premium Delivery</span>
-                                <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                            </div>
-                            {!user ? (
-                                <p className="text-[10px] font-bold text-zinc-400 leading-tight">
-                                    Faça login para liberar o <span className="text-emerald-500 italic">Frete VIP</span>
-                                </p>
-                            ) : isFree ? (
-                                <div className="flex items-center gap-1 text-[10px] font-black text-emerald-400 uppercase tracking-tighter">
-                                    <Truck className="w-3 h-3" />
-                                    <span>Frete VIP Liberado</span>
-                                </div>
-                            ) : (
-                                <p className="text-[10px] font-bold text-zinc-400 leading-tight">
-                                    Faltam <span className="text-white">{formatCurrency(amountToFree)}</span> para o <span className="text-emerald-500 italic">Frete VIP</span>
-                                </p>
-                            )}
-                        </div>
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(76px+var(--safe-area-bottom,0px))] z-40 flex justify-center px-4 md:bottom-24">
+      <AnimatePresence>
+        {isVisible && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.95 }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            className="group pointer-events-auto relative flex w-full max-w-md items-center gap-3 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/95 px-3.5 py-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.6)] backdrop-blur-md"
+          >
+            {/* Subtle Glow */}
+            <div className="absolute right-0 top-0 size-20 -translate-y-1/2 translate-x-1/2 rounded-full bg-emerald-500/5 blur-2xl" />
 
-                        {/* Right: Compact Action */}
-                        <button
-                            onClick={onAction}
-                            className="flex-shrink-0 h-10 px-5 bg-white text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500 hover:text-white transition-all active:scale-95 flex items-center gap-1.5 shadow-lg group/btn"
-                        >
-                            Carrinho
-                            <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
-                        </button>
+            {/* Ultra Slim Top Progress Bar */}
+            <div className="absolute inset-x-0 top-0 h-[2px] bg-white/5">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${user ? progress : 0}%` }}
+                className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] transition-all duration-1000"
+              />
+            </div>
 
-                        {/* Vertical Separator for Timer */}
-                        <div className="w-px h-6 bg-white/10 mx-1" />
-
-                        {/* Compact Timer */}
-                        <div className="relative w-6 h-6 flex items-center justify-center opacity-40 group-hover:opacity-60 transition-opacity">
-                            <svg className="w-full h-full -rotate-90" viewBox="0 0 32 32">
-                                <circle cx="16" cy="16" r="14" stroke="white" strokeWidth="3" fill="transparent" className="opacity-10" />
-                                <motion.circle
-                                    cx="16" cy="16" r="14" stroke="#10b981" strokeWidth="3" fill="transparent"
-                                    strokeDasharray={87.96}
-                                    initial={{ strokeDashoffset: 87.96 }}
-                                    animate={{ strokeDashoffset: 0 }}
-                                    transition={{ duration: 5, ease: "linear" }}
-                                />
-                            </svg>
-                        </div>
-                    </motion.div>
+            {/* Left: Animated Icon with Badge */}
+            <div className="relative flex-shrink-0">
+              <div className="relative flex size-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] transition-all duration-500 group-hover:scale-105">
+                <ShoppingCart className="size-4 text-emerald-500" />
+                {itemCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full border-2 border-zinc-950 bg-emerald-500 px-1 text-[8px] font-black text-white shadow-lg"
+                  >
+                    {itemCount}
+                  </motion.span>
                 )}
-            </AnimatePresence>
-        </div>
-    );
+              </div>
+            </div>
+
+            {/* Middle: Compressed Info */}
+            <div className="relative z-10 min-w-0 flex-1 py-0.5">
+              <div className="mb-0.5 flex items-center gap-1.5">
+                <span className="text-[8px] font-black uppercase tracking-[0.15em] text-emerald-500">
+                  Premium Delivery
+                </span>
+                <div className="size-1 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+              </div>
+              {!user ? (
+                <p className="text-[10px] font-semibold leading-tight text-zinc-300">
+                  Faça login para liberar o{" "}
+                  <span className="italic text-emerald-500">Frete VIP</span>
+                </p>
+              ) : isFree ? (
+                <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight text-emerald-400">
+                  <Truck className="size-3" />
+                  <span>Frete VIP Liberado</span>
+                </div>
+              ) : (
+                <p className="text-[10px] font-semibold leading-tight text-zinc-300">
+                  Faltam{" "}
+                  <span className="text-white">
+                    {formatCurrency(amountToFree)}
+                  </span>{" "}
+                  para o{" "}
+                  <span className="italic text-emerald-500">Frete VIP</span>
+                </p>
+              )}
+            </div>
+
+            {/* Right: Compact Action */}
+            <button
+              onClick={onAction}
+              className="group/btn flex h-8 flex-shrink-0 items-center gap-1 rounded-lg bg-white px-3.5 text-[9px] font-black uppercase tracking-wider text-black shadow-md transition-all hover:bg-emerald-500 hover:text-white active:scale-95"
+            >
+              Carrinho
+              <ChevronRight className="size-2.5 transition-transform group-hover:translate-x-0.5" />
+            </button>
+
+            {/* Vertical Separator for Timer */}
+            <div className="mx-0.5 h-5 w-px bg-white/10" />
+
+            {/* Compact Timer */}
+            <div className="relative flex size-5 items-center justify-center opacity-40 transition-opacity group-hover:opacity-60">
+              <svg className="size-full -rotate-90" viewBox="0 0 32 32">
+                <circle
+                  cx="16"
+                  cy="16"
+                  r="14"
+                  stroke="white"
+                  strokeWidth="2.5"
+                  fill="transparent"
+                  className="opacity-10"
+                />
+                <motion.circle
+                  key={isVisible ? "timer-active" : "timer-inactive"}
+                  cx="16"
+                  cy="16"
+                  r="14"
+                  stroke="#10b981"
+                  strokeWidth="2.5"
+                  fill="transparent"
+                  strokeDasharray={87.96}
+                  initial={{ strokeDashoffset: 87.96 }}
+                  animate={{ strokeDashoffset: 0 }}
+                  transition={{ duration: 5, ease: "linear" }}
+                />
+              </svg>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
 
-const style = document.createElement('style');
+const style = document.createElement("style");
 style.textContent = `
     @keyframes timer {
         from { stroke-dashoffset: 87.96; }
         to { stroke-dashoffset: 0; }
     }
 `;
-if (typeof document !== 'undefined') document.head.appendChild(style);
+if (typeof document !== "undefined") document.head.appendChild(style);

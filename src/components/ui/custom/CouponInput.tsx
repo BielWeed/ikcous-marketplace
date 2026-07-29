@@ -1,5 +1,5 @@
-import { memo, useState } from 'react';
-import { Tag, X } from 'lucide-react';
+import { Tag, X } from "lucide-react";
+import { memo, useState } from "react";
 
 interface CouponInputProps {
   onApply: (code: string) => void;
@@ -8,8 +8,13 @@ interface CouponInputProps {
   error?: string;
 }
 
-export const CouponInput = memo(function CouponInput({ onApply, onRemove, appliedCoupon, error }: CouponInputProps) {
-  const [code, setCode] = useState('');
+export const CouponInput = memo(function CouponInput({
+  onApply,
+  onRemove,
+  appliedCoupon,
+  error,
+}: CouponInputProps) {
+  const [code, setCode] = useState("");
   const [isFocused, setIsFocused] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -21,23 +26,25 @@ export const CouponInput = memo(function CouponInput({ onApply, onRemove, applie
 
   if (appliedCoupon) {
     return (
-      <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-xl">
+      <div className="flex items-center justify-between rounded-xl border border-green-200 bg-green-50 p-3">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
-            <Tag className="w-4 h-4 text-white" />
+          <div className="flex size-8 items-center justify-center rounded-lg bg-green-500">
+            <Tag className="size-4 text-white" />
           </div>
           <div>
-            <p className="text-sm font-medium text-green-800">{appliedCoupon.code}</p>
+            <p className="text-sm font-medium text-green-800">
+              {appliedCoupon.code}
+            </p>
             <p className="text-xs text-green-600">
-              -R$ {appliedCoupon.discount.toFixed(2).replace('.', ',')} aplicado
+              -R$ {appliedCoupon.discount.toFixed(2).replace(".", ",")} aplicado
             </p>
           </div>
         </div>
         <button
           onClick={onRemove}
-          className="p-2 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
+          className="rounded-lg p-2 text-green-600 transition-colors hover:bg-green-100"
         >
-          <X className="w-4 h-4" />
+          <X className="size-4" />
         </button>
       </div>
     );
@@ -46,10 +53,13 @@ export const CouponInput = memo(function CouponInput({ onApply, onRemove, applie
   return (
     <form onSubmit={handleSubmit} className="space-y-2">
       <div
-        className={`flex items-center gap-2 p-2 bg-gray-50 border rounded-xl transition-all ${isFocused ? 'border-black ring-2 ring-black/5' : 'border-gray-200'
-          } ${error ? 'border-red-300 bg-red-50' : ''}`}
+        className={`flex items-center gap-2 rounded-xl border bg-gray-50 p-2 transition-all ${
+          isFocused ? "border-black ring-2 ring-black/5" : "border-gray-200"
+        } ${error ? "border-red-300 bg-red-50" : ""}`}
       >
-        <Tag className={`w-4 h-4 ml-2 ${error ? 'text-red-400' : 'text-gray-400'}`} />
+        <Tag
+          className={`ml-2 size-4 ${error ? "text-red-400" : "text-gray-400"}`}
+        />
         <input
           type="text"
           value={code}
@@ -62,14 +72,14 @@ export const CouponInput = memo(function CouponInput({ onApply, onRemove, applie
         <button
           type="submit"
           disabled={!code.trim()}
-          className="px-4 py-2 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-900 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
           Aplicar
         </button>
       </div>
       {error && (
-        <p className="text-xs text-red-500 flex items-center gap-1">
-          <X className="w-3 h-3" />
+        <p className="flex items-center gap-1 text-xs text-red-500">
+          <X className="size-3" />
           {error}
         </p>
       )}

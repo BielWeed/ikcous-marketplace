@@ -173,9 +173,9 @@ $$;
 
 -- 2. Create get_orders_by_whatsapp_v3 (Higher Entropy)
 CREATE OR REPLACE FUNCTION public.get_orders_by_whatsapp_v3(
-    p_phone_number TEXT,
-    p_customer_email TEXT,
-    p_order_fragment TEXT -- Exige 6 digitos para dificultar brute-force
+    p_phone_number text,
+    p_customer_email text,
+    p_order_fragment text -- Exige 6 digitos para dificultar brute-force
 )
 RETURNS SETOF public.marketplace_orders
 LANGUAGE plpgsql
@@ -212,6 +212,7 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.create_marketplace_order_v20 TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_orders_by_whatsapp_v3 TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_orders_by_whatsapp_v3 TO anon,
+authenticated;
 
 COMMIT;

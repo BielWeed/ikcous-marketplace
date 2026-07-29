@@ -7,7 +7,9 @@ BEGIN;
 -- 1. get_category_sales
 -- Returns category sales data for a given date range
 -- Expected by frontend in useAnalytics.ts
-CREATE OR REPLACE FUNCTION public.get_category_sales(start_date TEXT, end_date TEXT)
+CREATE OR REPLACE FUNCTION public.get_category_sales(
+    start_date TEXT, end_date TEXT
+)
 RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -90,7 +92,9 @@ END;
 $$;
 
 -- 3. Grant permissions
-GRANT EXECUTE ON FUNCTION public.get_category_sales(TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_category_sales(
+    TEXT, TEXT
+) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_retention_rate() TO authenticated;
 
 COMMIT;

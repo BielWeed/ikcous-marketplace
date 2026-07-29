@@ -27,6 +27,9 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.check_user_confirmation_status(text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.check_user_confirmation_status(text) TO anon,
+authenticated;
 
-COMMENT ON FUNCTION public.check_user_confirmation_status(text) IS 'Verifica se um e-mail existe na base de auth do Supabase e se já foi confirmado.';
+COMMENT ON FUNCTION public.check_user_confirmation_status(
+    text
+) IS 'Verifica se um e-mail existe na base de auth do Supabase e se já foi confirmado.';

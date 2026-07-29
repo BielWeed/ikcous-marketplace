@@ -1,47 +1,76 @@
-import { Home, Heart, ShoppingCart, User } from 'lucide-react';
-import { useMemo, memo } from 'react';
-import { motion } from 'framer-motion';
-import { haptic } from '@/utils/haptic';
-import { cn } from '@/lib/utils';
-import type { View } from '@/types';
-import { usePrefetchOnHover } from '@/hooks/usePrefetchOnHover';
+import { useCartState } from "@/hooks/useCart";
+import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import { cn } from "@/lib/utils";
+import type { View } from "@/types";
+import { haptic } from "@/utils/haptic";
+import { motion } from "framer-motion";
+import { Heart, Home, ShoppingCart, User } from "lucide-react";
+import { memo, useMemo } from "react";
 
 interface BottomNavProps {
   currentView: View;
   onNavigate: (view: View) => void;
-  cartCount: number;
 }
 
-export const BottomNav = memo(function BottomNav({ currentView, onNavigate, cartCount }: Readonly<BottomNavProps>) {
+export const BottomNav = memo(function BottomNav({
+  currentView,
+  onNavigate,
+}: Readonly<BottomNavProps>) {
+  const { cartCount } = useCartState();
   const { prefetchView } = usePrefetchOnHover();
-  const isAdminView = currentView.startsWith('admin');
+  const isAdminView = currentView.startsWith("admin");
 
-  const navItems = useMemo(() => [
-    { view: 'home' as View, icon: Home, label: 'Início' },
-    { view: 'favorites' as View, icon: Heart, label: 'Favoritos' },
-    { view: 'cart' as View, icon: ShoppingCart, label: 'Carrinho', badge: cartCount },
-    { view: 'profile' as View, icon: User, label: 'Perfil' },
-  ], [cartCount]);
+  const navItems = useMemo(
+    () => [
+      { view: "home" as View, icon: Home, label: "Início" },
+      { view: "favorites" as View, icon: Heart, label: "Favoritos" },
+      {
+        view: "cart" as View,
+        icon: ShoppingCart,
+        label: "Carrinho",
+        badge: cartCount,
+      },
+      { view: "profile" as View, icon: User, label: "Perfil" },
+    ],
+    [cartCount],
+  );
 
   // Hide BottomNav on admin views
   if (isAdminView) return null;
 
   return (
     <nav
-      role="navigation"
       aria-label="Navegação principal"
-      className="fixed bottom-0 left-0 right-0 md:left-1/2 md:right-auto md:-translate-x-1/2 md:bottom-6 md:w-full md:max-w-md md:rounded-2xl md:border md:border-zinc-200/60 z-[100] bg-white/95 backdrop-blur-xl border-t border-zinc-100 pb-safe shadow-[0_-4px_24px_rgba(0,0,0,0.04)] md:shadow-[0_8px_30px_rgba(0,0,0,0.08)] flex-shrink-0"
-      style={{ viewTransitionName: 'bottom-nav' } as React.CSSProperties}
+      className="pb-safe fixed inset-x-0 bottom-0 z-[120] flex-shrink-0 border-t border-zinc-100 bg-white/95 shadow-[0_-4px_24px_rgba(0,0,0,0.04)] backdrop-blur-xl md:bottom-6 md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-2xl md:border md:border-zinc-200/60 md:shadow-[0_8px_30px_rgba(0,0,0,0.08)]"
+      style={
+        (isViewTransitionSupported
+          ? { viewTransitionName: "bottom-nav" }
+          : undefined) as React.CSSProperties
+      }
     >
-      <div className="flex items-center justify-around px-2 h-[64px]">
+      <div className="flex h-[64px] items-center justify-around px-2">
         {navItems.map((item) => {
-          const isActive = currentView === item.view;
+          const isActive =
+            currentView === item.view ||
+            (item.view === "cart" &&
+              ["cart", "orders", "order-details", "checkout"].includes(
+                currentView,
+              )) ||
+            (item.view === "profile" &&
+              [
+                "profile",
+                "account-settings",
+                "address-form",
+                "login",
+                "auth",
+              ].includes(currentView));
           const Icon = item.icon;
 
           return (
             <button
               key={item.view}
-              id={item.view === 'cart' ? 'bottom-nav-cart' : undefined}
+              id={item.view === "cart" ? "bottom-nav-cart" : undefined}
               type="button"
               onClick={() => {
                 haptic.light();
@@ -55,32 +84,37 @@ export const BottomNav = memo(function BottomNav({ currentView, onNavigate, cart
               }}
               className={cn(
                 "flex flex-col items-center justify-center py-1 px-4 rounded-xl relative group active:scale-95 outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-[color,background-color,transform] duration-150",
-                isActive ? "text-primary" : "text-slate-400 hover:text-primary/70"
+                isActive
+                  ? "text-primary"
+                  : "text-slate-400 hover:text-primary/70",
               )}
             >
               <div className="relative transition-transform duration-300 group-hover:scale-110">
-                <Icon className={`w-5 h-5 md:w-6 md:h-6 transition-[stroke-width,opacity] duration-300 ${isActive ? 'stroke-[2.5px]' : 'stroke-2 opacity-70'}`} />
+                <Icon
+                  className={`size-5 transition-[stroke-width,opacity] duration-300 md:size-6 ${isActive ? "stroke-[2.5px]" : "stroke-2 opacity-70"}`}
+                />
                 {item.badge !== undefined && item.badge > 0 && (
-                  <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] bg-black text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white shadow-sm px-1 z-10 pointer-events-none">
-                    {item.badge > 99 ? '99+' : item.badge}
+                  <span className="pointer-events-none absolute -right-2 -top-2 z-10 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-black px-1 text-[10px] font-black text-white shadow-sm">
+                    {item.badge > 99 ? "99+" : item.badge}
                   </span>
                 )}
               </div>
-              <span className={`text-[10px] sm:text-[11px] mt-1.5 font-bold tracking-tight transition-[opacity,transform,font-weight] duration-300 ${isActive ? 'opacity-100 scale-105 font-black' : 'opacity-60 grayscale-[0.5]'}`}>
+              <span
+                className={`mt-1.5 text-[10px] font-bold tracking-tight transition-[opacity,transform,font-weight] duration-300 sm:text-[11px] ${isActive ? "scale-105 font-black opacity-100" : "opacity-60 grayscale-[0.5]"}`}
+              >
                 {item.label}
               </span>
               {isActive && (
                 <motion.div
                   layoutId="activeBottomNavDot"
-                  className="absolute -bottom-1 w-1.5 h-1.5 bg-primary rounded-full"
-                  transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+                  className="absolute -bottom-1 size-1.5 rounded-full bg-primary"
+                  transition={{ type: "spring", stiffness: 350, damping: 25 }}
                 />
               )}
             </button>
           );
         })}
       </div>
-    </nav >
+    </nav>
   );
 });
-

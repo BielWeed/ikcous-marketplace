@@ -60,8 +60,8 @@ DROP POLICY IF EXISTS "Users can create questions" ON public.questions;
 
 -- Table: public.answers
 DROP POLICY IF EXISTS "Admins/Owners delete answers" ON public.answers;
-DROP POLICY IF EXISTS "answers_select_policy" ON public.answers;
-DROP POLICY IF EXISTS "answers_all_policy" ON public.answers;
+DROP POLICY IF EXISTS answers_select_policy ON public.answers;
+DROP POLICY IF EXISTS answers_all_policy ON public.answers;
 
 -- Table: public.notificacoes
 DROP POLICY IF EXISTS "Users view own notifications" ON public.notificacoes;
@@ -105,54 +105,112 @@ DROP POLICY IF EXISTS "Admins can insert VOR receipts" ON public.vor_receipts;
 -- 3. RECREATE CONSOLIDATED & OPTIMIZED RLS POLICIES
 
 -- public.profiles
-CREATE POLICY "profiles_select_policy" ON public.profiles FOR SELECT TO authenticated USING ((SELECT auth.uid()) = id OR public.is_admin());
-CREATE POLICY "profiles_update_policy" ON public.profiles FOR UPDATE TO authenticated USING ((SELECT auth.uid()) = id OR public.is_admin()) WITH CHECK ((SELECT auth.uid()) = id OR public.is_admin());
+CREATE POLICY profiles_select_policy ON public.profiles FOR SELECT TO authenticated USING (
+    (SELECT auth.uid()) = id OR public.is_admin()
+);
+CREATE POLICY profiles_update_policy ON public.profiles FOR UPDATE TO authenticated USING (
+    (SELECT auth.uid()) = id OR public.is_admin()
+) WITH CHECK ((SELECT auth.uid()) = id OR public.is_admin());
 
 -- public.user_addresses
-CREATE POLICY "user_addresses_all_policy" ON public.user_addresses FOR ALL TO authenticated USING ((SELECT auth.uid()) = user_id OR public.is_admin()) WITH CHECK ((SELECT auth.uid()) = user_id OR public.is_admin());
+CREATE POLICY user_addresses_all_policy ON public.user_addresses FOR ALL TO authenticated USING (
+    (SELECT auth.uid()) = user_id OR public.is_admin()
+) WITH CHECK ((SELECT auth.uid()) = user_id OR public.is_admin());
 
 -- public.cart_items
-CREATE POLICY "cart_items_all_policy" ON public.cart_items FOR ALL TO authenticated USING ((SELECT auth.uid()) = user_id) WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY cart_items_all_policy ON public.cart_items FOR ALL TO authenticated USING (
+    (SELECT auth.uid()) = user_id
+) WITH CHECK ((SELECT auth.uid()) = user_id);
 
 -- public.favorites
-CREATE POLICY "favorites_all_policy" ON public.favorites FOR ALL TO authenticated USING ((SELECT auth.uid()) = user_id) WITH CHECK ((SELECT auth.uid()) = user_id);
+CREATE POLICY favorites_all_policy ON public.favorites FOR ALL TO authenticated USING (
+    (SELECT auth.uid()) = user_id
+) WITH CHECK ((SELECT auth.uid()) = user_id);
 
 -- public.reviews
-CREATE POLICY "reviews_select_policy" ON public.reviews FOR SELECT USING (true);
-CREATE POLICY "reviews_insert_policy" ON public.reviews FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid()) = user_id);
-CREATE POLICY "reviews_update_policy" ON public.reviews FOR UPDATE TO authenticated USING ((SELECT auth.uid()) = user_id OR public.is_admin()) WITH CHECK ((SELECT auth.uid()) = user_id OR public.is_admin());
-CREATE POLICY "reviews_delete_policy" ON public.reviews FOR DELETE TO authenticated USING ((SELECT auth.uid()) = user_id OR public.is_admin());
+CREATE POLICY reviews_select_policy ON public.reviews FOR SELECT USING (true);
+CREATE POLICY reviews_insert_policy ON public.reviews FOR INSERT TO authenticated WITH CHECK (
+    (SELECT auth.uid()) = user_id
+);
+CREATE POLICY reviews_update_policy ON public.reviews FOR UPDATE TO authenticated USING (
+    (SELECT auth.uid()) = user_id OR public.is_admin()
+) WITH CHECK ((SELECT auth.uid()) = user_id OR public.is_admin());
+CREATE POLICY reviews_delete_policy ON public.reviews FOR DELETE TO authenticated USING (
+    (SELECT auth.uid()) = user_id OR public.is_admin()
+);
 
 -- public.questions
-CREATE POLICY "questions_select_policy" ON public.questions FOR SELECT USING (true);
-CREATE POLICY "questions_insert_policy" ON public.questions FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid()) = user_id);
-CREATE POLICY "questions_update_policy" ON public.questions FOR UPDATE TO authenticated USING ((SELECT auth.uid()) = user_id OR public.is_admin()) WITH CHECK ((SELECT auth.uid()) = user_id OR public.is_admin());
-CREATE POLICY "questions_delete_policy" ON public.questions FOR DELETE TO authenticated USING ((SELECT auth.uid()) = user_id OR public.is_admin());
+CREATE POLICY questions_select_policy ON public.questions FOR SELECT USING (
+    true
+);
+CREATE POLICY questions_insert_policy ON public.questions FOR INSERT TO authenticated WITH CHECK (
+    (SELECT auth.uid()) = user_id
+);
+CREATE POLICY questions_update_policy ON public.questions FOR UPDATE TO authenticated USING (
+    (SELECT auth.uid()) = user_id OR public.is_admin()
+) WITH CHECK ((SELECT auth.uid()) = user_id OR public.is_admin());
+CREATE POLICY questions_delete_policy ON public.questions FOR DELETE TO authenticated USING (
+    (SELECT auth.uid()) = user_id OR public.is_admin()
+);
 
 -- public.answers
-CREATE POLICY "answers_select_policy" ON public.answers FOR SELECT USING (true);
-CREATE POLICY "answers_all_policy" ON public.answers FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY answers_select_policy ON public.answers FOR SELECT USING (true);
+CREATE POLICY answers_all_policy ON public.answers FOR ALL TO authenticated USING (
+    public.is_admin()
+) WITH CHECK (public.is_admin());
 
 -- public.notificacoes
-CREATE POLICY "notificacoes_select_policy" ON public.notificacoes FOR SELECT TO authenticated USING ((SELECT auth.uid()) = usuario_id OR usuario_id IS NULL OR public.is_admin());
-CREATE POLICY "notificacoes_insert_policy" ON public.notificacoes FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid()) = usuario_id OR public.is_admin());
-CREATE POLICY "notificacoes_update_policy" ON public.notificacoes FOR UPDATE TO authenticated USING ((SELECT auth.uid()) = usuario_id OR public.is_admin()) WITH CHECK ((SELECT auth.uid()) = usuario_id OR public.is_admin());
-CREATE POLICY "notificacoes_delete_policy" ON public.notificacoes FOR DELETE TO authenticated USING ((SELECT auth.uid()) = usuario_id OR public.is_admin());
+CREATE POLICY notificacoes_select_policy ON public.notificacoes FOR SELECT TO authenticated USING (
+    (SELECT auth.uid()) = usuario_id OR usuario_id IS null OR public.is_admin()
+);
+CREATE POLICY notificacoes_insert_policy ON public.notificacoes FOR INSERT TO authenticated WITH CHECK (
+    (SELECT auth.uid()) = usuario_id OR public.is_admin()
+);
+CREATE POLICY notificacoes_update_policy ON public.notificacoes FOR UPDATE TO authenticated USING (
+    (SELECT auth.uid()) = usuario_id OR public.is_admin()
+) WITH CHECK ((SELECT auth.uid()) = usuario_id OR public.is_admin());
+CREATE POLICY notificacoes_delete_policy ON public.notificacoes FOR DELETE TO authenticated USING (
+    (SELECT auth.uid()) = usuario_id OR public.is_admin()
+);
 
 -- public.push_subscriptions
-CREATE POLICY "push_subscriptions_all_policy" ON public.push_subscriptions FOR ALL TO authenticated USING ((SELECT auth.uid()) = user_id OR public.is_admin()) WITH CHECK ((SELECT auth.uid()) = user_id OR public.is_admin());
+CREATE POLICY push_subscriptions_all_policy ON public.push_subscriptions FOR ALL TO authenticated USING (
+    (SELECT auth.uid()) = user_id OR public.is_admin()
+) WITH CHECK ((SELECT auth.uid()) = user_id OR public.is_admin());
 
 -- public.marketplace_orders
-CREATE POLICY "orders_all_policy" ON public.marketplace_orders FOR ALL TO authenticated USING ((SELECT auth.uid()) = user_id OR public.is_admin()) WITH CHECK ((SELECT auth.uid()) = user_id OR public.is_admin());
+CREATE POLICY orders_all_policy ON public.marketplace_orders FOR ALL TO authenticated USING (
+    (SELECT auth.uid()) = user_id OR public.is_admin()
+) WITH CHECK ((SELECT auth.uid()) = user_id OR public.is_admin());
 
 -- public.marketplace_order_items
-CREATE POLICY "order_items_all_policy" ON public.marketplace_order_items FOR ALL TO authenticated USING (public.is_admin() OR EXISTS (SELECT 1 FROM public.marketplace_orders mo WHERE mo.id = order_id AND mo.user_id = (SELECT auth.uid()))) WITH CHECK (public.is_admin() OR EXISTS (SELECT 1 FROM public.marketplace_orders mo WHERE mo.id = order_id AND mo.user_id = (SELECT auth.uid())));
+CREATE POLICY order_items_all_policy ON public.marketplace_order_items FOR ALL TO authenticated USING (
+    public.is_admin() OR EXISTS (
+        SELECT 1 FROM public.marketplace_orders AS mo
+        WHERE mo.id = order_id AND mo.user_id = (SELECT auth.uid())
+    )
+) WITH CHECK (public.is_admin() OR EXISTS (
+    SELECT 1 FROM public.marketplace_orders AS mo
+    WHERE mo.id = order_id AND mo.user_id = (SELECT auth.uid())
+));
 
 -- public.marketplace_order_history
-CREATE POLICY "order_history_all_policy" ON public.marketplace_order_history FOR ALL TO authenticated USING (public.is_admin() OR EXISTS (SELECT 1 FROM public.marketplace_orders mo WHERE mo.id = order_id AND mo.user_id = (SELECT auth.uid()))) WITH CHECK (public.is_admin() OR EXISTS (SELECT 1 FROM public.marketplace_orders mo WHERE mo.id = order_id AND mo.user_id = (SELECT auth.uid())));
+CREATE POLICY order_history_all_policy ON public.marketplace_order_history FOR ALL TO authenticated USING (
+    public.is_admin() OR EXISTS (
+        SELECT 1 FROM public.marketplace_orders AS mo
+        WHERE mo.id = order_id AND mo.user_id = (SELECT auth.uid())
+    )
+) WITH CHECK (public.is_admin() OR EXISTS (
+    SELECT 1 FROM public.marketplace_orders AS mo
+    WHERE mo.id = order_id AND mo.user_id = (SELECT auth.uid())
+));
 
 -- public.analytics_events
-CREATE POLICY "analytics_events_insert_policy" ON public.analytics_events FOR INSERT WITH CHECK (true);
+CREATE POLICY analytics_events_insert_policy ON public.analytics_events FOR INSERT WITH CHECK (
+    true
+);
 
 -- public.vor_receipts
-CREATE POLICY "vor_receipts_insert_policy" ON public.vor_receipts FOR INSERT TO authenticated WITH CHECK (public.is_admin());
+CREATE POLICY vor_receipts_insert_policy ON public.vor_receipts FOR INSERT TO authenticated WITH CHECK (
+    public.is_admin()
+);

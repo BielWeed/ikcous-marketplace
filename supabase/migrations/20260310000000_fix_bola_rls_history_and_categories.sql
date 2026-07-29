@@ -25,9 +25,10 @@ FOR SELECT
 TO authenticated
 USING (
     EXISTS (
-        SELECT 1 FROM public.marketplace_orders mo
-        WHERE mo.id = marketplace_order_history.order_id
-        AND mo.user_id = auth.uid()
+        SELECT 1 FROM public.marketplace_orders AS mo
+        WHERE
+            mo.id = marketplace_order_history.order_id
+            AND mo.user_id = auth.uid()
     )
 );
 

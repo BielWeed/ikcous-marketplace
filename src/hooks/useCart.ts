@@ -1,4 +1,8 @@
-import { useCartContext } from '@/contexts/CartContext';
+import {
+  useCartActions,
+  useCartContext,
+  useCartState,
+} from "@/contexts/CartContext";
 
 /**
  * useCart - Legacy Wrapper
@@ -8,3 +12,5 @@ import { useCartContext } from '@/contexts/CartContext';
 export function useCart() {
   return useCartContext();
 }
+
+export { useCartState, useCartActions };

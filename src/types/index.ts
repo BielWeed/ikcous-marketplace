@@ -15,6 +15,7 @@ export interface Product {
   isBestseller: boolean;
   freeShipping: boolean;
   createdAt: string;
+  updatedAt?: string;
   createdTime?: number;
   rating?: number;
   reviewCount?: number;
@@ -23,6 +24,10 @@ export interface Product {
   metaTitle?: string;
   metaDescription?: string;
   sku?: string;
+  weightKg?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
+  lengthCm?: number | null;
 }
 
 export interface ProductVariant {
@@ -79,7 +84,7 @@ export interface UserProfile {
   favoriteProducts: string[];
   orderHistory: string[];
   createdAt: string;
-  role?: 'admin' | 'customer';
+  role?: "admin" | "customer";
 }
 
 export interface Address {
@@ -98,8 +103,13 @@ export interface Address {
   is_default: boolean | null;
 }
 
-export type OrderStatus = 'pending' | 'processing' | 'shipping' | 'delivered' | 'cancelled';
-export type PaymentMethod = 'pix' | 'card' | 'cash';
+export type OrderStatus =
+  | "pending"
+  | "processing"
+  | "shipping"
+  | "delivered"
+  | "cancelled";
+export type PaymentMethod = "pix" | "card" | "cash";
 
 export interface OrderItem {
   productId: string;
@@ -131,7 +141,9 @@ export interface Order {
 export interface Review {
   id: string;
   productId: string;
+  userId?: string;
   customerName: string;
+  customerAvatar?: string;
   rating: number;
   comment: string;
   images?: string[];
@@ -144,7 +156,7 @@ export interface Review {
 export interface Coupon {
   id: string;
   code: string;
-  type: 'percentage' | 'fixed';
+  type: "percentage" | "fixed";
   value: number;
   minPurchase?: number;
   usageLimit?: number;
@@ -158,7 +170,7 @@ export interface Banner {
   imageUrl: string;
   title: string | null;
   link?: string;
-  position: 'home_top' | 'home_middle' | 'home_bottom';
+  position: "home_top" | "home_middle" | "home_bottom";
   active: boolean;
   order: number | null;
 }
@@ -173,10 +185,24 @@ export interface StoreConfig {
   enableCoupons: boolean;
   logoUrl?: string;
   primaryColor?: string;
-  themeMode?: 'light' | 'dark' | 'glass';
+  themeMode?: "light" | "dark" | "glass";
   realTimeSalesAlerts?: boolean;
   pushMarketingEnabled?: boolean;
   minAppVersion?: string;
+  originCep?: string;
+  shippingProvider?: "flat_fee" | "melhor_envio" | "frenet";
+  enabledShippingMethods?: string[];
+  shippingCoverage?: "local" | "national";
+  localDeliveryFee?: number;
+  localCepRange?: string;
+}
+
+export interface ShippingOption {
+  id: string;
+  name: string;
+  price: number;
+  deliveryDays: number;
+  provider: string;
 }
 
 export interface WaitlistItem {
@@ -188,9 +214,44 @@ export interface WaitlistItem {
   createdAt: string;
 }
 
-export type View = 'home' | 'search' | 'product' | 'cart' | 'checkout' | 'favorites' | 'profile' | 'orders' | 'order-details' | 'compare' | 'recently-viewed' | 'login' | 'admin-login' | 'auth' | 'admin-dashboard' | 'admin-products' | 'admin-product-form' | 'admin-orders' | 'admin-coupons' | 'admin-banners' | 'admin-settings' | 'admin-reviews' | 'admin-qa' | 'admin-customers' | 'admin-user-detail' | 'admin-push' | 'admin-sros' | 'referral' | 'account-settings' | 'notifications' | 'order-success' | 'admin' | 'product-detail' | 'address-form';
+export type View =
+  | "home"
+  | "search"
+  | "product"
+  | "cart"
+  | "checkout"
+  | "favorites"
+  | "profile"
+  | "orders"
+  | "order-details"
+  | "compare"
+  | "recently-viewed"
+  | "login"
+  | "admin-login"
+  | "auth"
+  | "admin-dashboard"
+  | "admin-products"
+  | "admin-product-form"
+  | "admin-orders"
+  | "admin-coupons"
+  | "admin-banners"
+  | "admin-settings"
+  | "admin-reviews"
+  | "admin-qa"
+  | "admin-customers"
+  | "admin-user-detail"
+  | "admin-push"
+  | "admin-sros"
+  | "referral"
+  | "account-settings"
+  | "notifications"
+  | "order-success"
+  | "admin"
+  | "product-detail"
+  | "address-form"
+  | "user-profile";
 
-export type SortOption = 'default' | 'price-asc' | 'price-desc' | 'sold';
+export type SortOption = "default" | "price-asc" | "price-desc" | "sold";
 
 export interface DashboardSummary {
   today: {
@@ -244,7 +305,7 @@ export interface Notification {
   id: string;
   title: string;
   message: string;
-  type: 'order' | 'system' | 'promotion' | 'delivery' | 'aviso' | 'sucesso';
+  type: "order" | "system" | "promotion" | "delivery" | "aviso" | "sucesso";
   read: boolean;
   created_at: string;
   action_url?: string;

@@ -10,7 +10,7 @@ RETURNS TABLE (
     role TEXT,
     avatar_url TEXT,
     created_at TIMESTAMPTZ
-) 
+)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
@@ -30,7 +30,8 @@ END;
 $$;
 
 -- Ensure proper permissions
-GRANT EXECUTE ON FUNCTION public.get_my_complete_profile() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_my_complete_profile() TO anon,
+authenticated;
 
 -- Add a comment for documentation
 COMMENT ON FUNCTION public.get_my_complete_profile() IS 'Returns the authenticated user''s profile. Removed loyalty_points as it is now dynamic.';

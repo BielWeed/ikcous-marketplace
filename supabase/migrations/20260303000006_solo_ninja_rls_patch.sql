@@ -7,9 +7,9 @@ DROP POLICY IF EXISTS "Public Read Coupons" ON public.coupons;
 
 -- Ensure Admins can read all
 DROP POLICY IF EXISTS "Admins can view all coupons" ON public.coupons;
-CREATE POLICY "Admins can view all coupons" 
-ON public.coupons 
-FOR SELECT 
+CREATE POLICY "Admins can view all coupons"
+ON public.coupons
+FOR SELECT
 USING (is_admin());
 
 -- 2. Fix BOLA / Direct Insert Bypass on Orders
@@ -24,7 +24,7 @@ DROP POLICY IF EXISTS "Users can create own orders" ON public.marketplace_orders
 -- is SECURITY DEFINER and executes with DB owner privileges.
 -- We only need to allow admins to insert if necessary, but RPC is preferred.
 DROP POLICY IF EXISTS "Admin insert orders" ON public.marketplace_orders;
-CREATE POLICY "Admin insert orders" 
-ON public.marketplace_orders 
-FOR INSERT 
+CREATE POLICY "Admin insert orders"
+ON public.marketplace_orders
+FOR INSERT
 WITH CHECK (is_admin());

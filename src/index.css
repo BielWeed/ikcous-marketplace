@@ -29,13 +29,18 @@
     --header-height: 52px;
     --nav-height: 56px;
     --safe-area-top: var(--safe-area-top-fixed, env(safe-area-inset-top, 0px));
-    --safe-area-bottom: var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px));
+    --safe-area-bottom: var(
+      --safe-area-bottom-fixed,
+      env(safe-area-inset-bottom, 0px)
+    );
+    --customer-pb: calc(64px + var(--safe-area-bottom, 0px) + 16px);
 
     /* Admin Specific Colors */
     --admin-bg: 240 10% 3.9%;
     --admin-card: 240 10% 6%;
     --admin-border: 240 5% 15%;
     --admin-accent: 142 71% 45%;
+
     /* Emerald */
     --admin-gold: 47 95% 50%;
   }
@@ -63,31 +68,31 @@
   }
 
   /* Theme Palettes */
-  [data-theme='midnight-gold'] {
+  [data-theme="midnight-gold"] {
     --primary: 43 96% 56%;
     --primary-foreground: 20 14.3% 4.1%;
     --ring: 43 96% 56%;
   }
 
-  [data-theme='deep-emerald'] {
+  [data-theme="deep-emerald"] {
     --primary: 161 84% 39%;
     --primary-foreground: 161 85% 10%;
     --ring: 161 84% 39%;
   }
 
-  [data-theme='royal-velvet'] {
+  [data-theme="royal-velvet"] {
     --primary: 240 5% 64.9%;
     --primary-foreground: 240 5.9% 10%;
     --ring: 240 5% 64.9%;
   }
 
-  [data-theme='rose-gold'] {
+  [data-theme="rose-gold"] {
     --primary: 25 95% 61%;
     --primary-foreground: 20 93% 10%;
     --ring: 25 95% 61%;
   }
 
-  [data-theme-mode='glass'] {
+  [data-theme-mode="glass"] {
     --background: transparent;
     --glass-opacity: 0.4;
     --glass-blur: 24px;
@@ -97,15 +102,24 @@
 @layer base {
   * {
     @apply border-border;
+
     /* Hide scrollbars globally */
     -ms-overflow-style: none; /* IE and Edge */
     scrollbar-width: none; /* Firefox */
     outline: none !important;
-    -webkit-tap-highlight-color: rgba(0,0,0,0) !important;
+    -webkit-tap-highlight-color: rgb(0 0 0 / 0%) !important;
+  }
+
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
   }
 
   html {
     @apply bg-background;
+
     -webkit-text-size-adjust: 100%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -116,7 +130,7 @@
   html,
   body,
   #root {
-    height: 100dvh;
+    height: 100%;
     width: 100%;
     margin: 0;
     padding: 0;
@@ -125,14 +139,17 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    text-rendering: optimizeLegibility;
+
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+    text-rendering: optimizelegibility;
     -webkit-font-smoothing: antialiased;
   }
 
   /* Remove default button styles */
   button {
     @apply cursor-pointer;
+
     background: none;
     border: none;
     padding: 0;
@@ -152,6 +169,7 @@
     -moz-appearance: textfield;
     appearance: textfield;
   }
+
   input[type="number"]::-webkit-outer-spin-button,
   input[type="number"]::-webkit-inner-spin-button {
     -webkit-appearance: none;
@@ -169,6 +187,7 @@
 
   *::-webkit-scrollbar {
     display: none;
+
     /* Chrome, Safari and Opera */
   }
 
@@ -182,7 +201,6 @@
 }
 
 @layer utilities {
-
   /* Safe area utilities */
   .pb-safe {
     padding-bottom: var(--safe-area-bottom);
@@ -198,6 +216,10 @@
 
   .pb-safe-home {
     padding-bottom: calc(112px + var(--safe-area-bottom, 0px));
+  }
+
+  .pb-customer {
+    padding-bottom: var(--customer-pb);
   }
 
   /* Utility classes to explicitly hide scrollbars (redundant now but kept for specificity) */
@@ -258,7 +280,8 @@
   /* Prevent breathing effect on fixed elements during viewport changes */
   .fixed,
   .sticky {
-    transition-property: background-color, border-color, box-shadow, color, filter, backdrop-filter;
+    transition-property: background-color, border-color, box-shadow, color,
+      filter, backdrop-filter;
   }
 
   /* Ensure padding and safe areas never transition to avoid layout jumps */
@@ -295,7 +318,6 @@
 }
 
 @keyframes bounce {
-
   0%,
   100% {
     transform: translateY(0);
@@ -307,7 +329,6 @@
 }
 
 @keyframes pulse {
-
   0%,
   100% {
     opacity: 1;
@@ -340,7 +361,6 @@
 }
 
 @keyframes float {
-
   0%,
   100% {
     transform: translateY(0);
@@ -359,7 +379,6 @@
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-
   *,
   *::before,
   *::after {
@@ -403,7 +422,8 @@
   }
 
   .admin-card-glow::before {
-    content: '';
+    content: "";
+
     @apply absolute -inset-[100%] bg-[conic-gradient(from_0deg, transparent_0%, transparent_25%, theme(colors.emerald.500/0.1)_50%, transparent_75%, transparent_100%)] animate-[spin_4s_linear_infinite] opacity-0 group-hover:opacity-100 transition-opacity;
   }
 
@@ -414,9 +434,17 @@
   /* Immersive Backgrounds */
   .immersive-bg {
     @apply fixed inset-0 -z-10 transition-colors duration-1000;
-    background: radial-gradient(circle at top right, hsl(var(--primary) / 0.05), transparent 60%),
-      radial-gradient(circle at bottom left, hsl(var(--primary) / 0.02), transparent 60%),
-      hsl(var(--background));
+
+    background: radial-gradient(
+        circle at top right,
+        hsl(var(--primary) / 5%),
+        transparent 60%
+      ),
+      radial-gradient(
+        circle at bottom left,
+        hsl(var(--primary) / 2%),
+        transparent 60%
+      ), hsl(var(--background));
   }
 
   .text-gradient {
@@ -432,7 +460,8 @@
   }
 
   .button-premium::after {
-    content: '';
+    content: "";
+
     @apply absolute inset-0 bg-white/10 opacity-0 transition-opacity duration-300;
   }
 
@@ -454,6 +483,7 @@
     0% {
       transform: translateX(0);
     }
+
     100% {
       transform: translateX(-100%);
     }
@@ -471,6 +501,7 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
   .custom-scrollbar-hidden::-webkit-scrollbar {
     display: none;
   }
@@ -480,9 +511,11 @@
   0% {
     transform: scale(1);
   }
+
   50% {
     transform: scale(1.3);
   }
+
   100% {
     transform: scale(1);
   }
@@ -492,81 +525,241 @@
   animation: cartPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
 }
 
-/* Native View Transitions API Customizations */
-::view-transition-old(root),
-::view-transition-new(root) {
-  backface-visibility: hidden;
-  will-change: transform, opacity;
+/* Disable default root transition in non-admin mode when main-content handles it */
+html:not(.admin-mode)::view-transition-old(root),
+html:not(.admin-mode)::view-transition-new(root),
+html:not(.admin-mode)::view-transition-group(root) {
+  animation: none !important;
 }
 
-::view-transition-old(root) {
+/* Native View Transitions API Customizations for main-content */
+::view-transition-old(main-content),
+::view-transition-new(main-content) {
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+  mix-blend-mode: normal !important;
+}
+
+::view-transition-old(main-content) {
   animation: 90ms cubic-bezier(0.16, 1, 0.3, 1) both fade-out;
 }
-::view-transition-new(root) {
+
+::view-transition-new(main-content) {
   animation: 140ms cubic-bezier(0.16, 1, 0.3, 1) 20ms both fade-in;
 }
 
 /* Forward (Slide da direita para a esquerda - entrar em subpágina) */
-.view-transition-forward::view-transition-old(root) {
-  animation: 280ms cubic-bezier(0.16, 1, 0.3, 1) both slide-to-left,
-             180ms cubic-bezier(0.16, 1, 0.3, 1) both fade-out;
+html:not(.admin-mode).view-transition-forward::view-transition-old(
+    main-content
+  ) {
+  animation: 280ms cubic-bezier(0.16, 1, 0.3, 1) both slide-to-left, 180ms
+    cubic-bezier(0.16, 1, 0.3, 1) both fade-out;
+  z-index: 1;
 }
-.view-transition-forward::view-transition-new(root) {
+
+html:not(.admin-mode).view-transition-forward::view-transition-new(
+    main-content
+  ) {
   animation: 280ms cubic-bezier(0.16, 1, 0.3, 1) both slide-from-right;
+  z-index: 2;
 }
 
 /* Back (Slide da esquerda para a direita - voltar para anterior) */
-.view-transition-back::view-transition-old(root) {
-  animation: 240ms cubic-bezier(0.16, 1, 0.3, 1) both slide-to-right,
-             160ms cubic-bezier(0.16, 1, 0.3, 1) both fade-out;
+html:not(.admin-mode).view-transition-back::view-transition-old(main-content) {
+  animation: 240ms cubic-bezier(0.16, 1, 0.3, 1) both slide-to-right, 160ms
+    cubic-bezier(0.16, 1, 0.3, 1) both fade-out;
+  z-index: 2;
 }
-.view-transition-back::view-transition-new(root) {
+
+html:not(.admin-mode).view-transition-back::view-transition-new(main-content) {
   animation: 240ms cubic-bezier(0.16, 1, 0.3, 1) both slide-from-left;
+  z-index: 1;
+}
+
+/* Confine main content transitions so they do not bleed/overlap */
+::view-transition-group(main-content) {
+  overflow: hidden !important;
+  mix-blend-mode: normal !important;
+}
+
+/* Admin Content View Transition - Premium & Smooth (300ms) */
+::view-transition-old(admin-content),
+::view-transition-new(admin-content) {
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+
+html.admin-mode.view-transition-forward::view-transition-old(admin-content) {
+  animation: 300ms cubic-bezier(0.22, 1, 0.36, 1) both admin-slide-to-left,
+    200ms cubic-bezier(0.22, 1, 0.36, 1) both fade-out;
+}
+
+html.admin-mode.view-transition-forward::view-transition-new(admin-content) {
+  animation: 300ms cubic-bezier(0.22, 1, 0.36, 1) both admin-slide-from-right,
+    250ms cubic-bezier(0.22, 1, 0.36, 1) 50ms both fade-in;
+}
+
+html.admin-mode.view-transition-back::view-transition-old(admin-content) {
+  animation: 300ms cubic-bezier(0.22, 1, 0.36, 1) both admin-slide-to-right,
+    200ms cubic-bezier(0.22, 1, 0.36, 1) both fade-out;
+}
+
+html.admin-mode.view-transition-back::view-transition-new(admin-content) {
+  animation: 300ms cubic-bezier(0.22, 1, 0.36, 1) both admin-slide-from-left,
+    250ms cubic-bezier(0.22, 1, 0.36, 1) 50ms both fade-in;
+}
+
+/* Keyframes de Slide Suaves e Curtos para Painel Admin */
+@keyframes admin-slide-to-left {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: translate3d(-30px, 0, 0);
+  }
+}
+
+@keyframes admin-slide-from-right {
+  from {
+    transform: translate3d(30px, 0, 0);
+  }
+
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes admin-slide-to-right {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: translate3d(30px, 0, 0);
+  }
+}
+
+@keyframes admin-slide-from-left {
+  from {
+    transform: translate3d(-30px, 0, 0);
+  }
+
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* In admin mode, keep root transition container static */
+html.admin-mode::view-transition-old(root),
+html.admin-mode::view-transition-new(root),
+html.admin-mode::view-transition-group(root) {
+  animation: none !important;
+}
+
+/* Confine admin content transitions so they do not overlap sidebar/header */
+::view-transition-group(admin-content) {
+  overflow: hidden !important;
 }
 
 /* Keyframes de Slide para Transição de Telas */
 @keyframes slide-to-left {
-  from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(-30%, 0, 0); }
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: translate3d(-30%, 0, 0);
+  }
 }
+
 @keyframes slide-from-right {
-  from { transform: translate3d(100%, 0, 0); }
-  to { transform: translate3d(0, 0, 0); }
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
+
+  to {
+    transform: translate3d(0, 0, 0);
+  }
 }
+
 @keyframes slide-to-right {
-  from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(100%, 0, 0); }
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: translate3d(100%, 0, 0);
+  }
 }
+
 @keyframes slide-from-left {
-  from { transform: translate3d(-30%, 0, 0); }
-  to { transform: translate3d(0, 0, 0); }
+  from {
+    transform: translate3d(-30%, 0, 0);
+  }
+
+  to {
+    transform: translate3d(0, 0, 0);
+  }
 }
 
-/* Isolate header and bottom nav from view transitions — prevents trembling */
-::view-transition-old(app-header),
+/* Isolate header, bottom nav, and sidebar from view transitions — prevents trembling */
 ::view-transition-new(app-header),
-::view-transition-old(bottom-nav),
 ::view-transition-new(bottom-nav),
-::view-transition-old(admin-header),
 ::view-transition-new(admin-header),
-::view-transition-old(admin-bottom-nav),
-::view-transition-new(admin-bottom-nav) {
+::view-transition-new(admin-bottom-nav),
+::view-transition-new(admin-sidebar) {
   animation: none !important;
-  mix-blend-mode: normal;
+  opacity: 1 !important;
+  mix-blend-mode: normal !important;
 }
 
-/* Ensure view-transition groups for header/nav don't get any transform */
+::view-transition-old(app-header),
+::view-transition-old(bottom-nav),
+::view-transition-old(admin-header),
+::view-transition-old(admin-bottom-nav),
+::view-transition-old(admin-sidebar) {
+  animation: none !important;
+  opacity: 0 !important;
+  mix-blend-mode: normal !important;
+}
+
+/* Ensure view-transition groups for header/nav/sidebar don't get any transform */
 ::view-transition-group(app-header),
 ::view-transition-group(bottom-nav),
 ::view-transition-group(admin-header),
-::view-transition-group(admin-bottom-nav) {
+::view-transition-group(admin-bottom-nav),
+::view-transition-group(admin-sidebar) {
   animation: none !important;
+}
+
+/* Springy native transitions for active indicators in admin panel */
+::view-transition-group(admin-active-pill-desktop),
+::view-transition-group(admin-active-pill-mobile),
+::view-transition-group(admin-active-dot-mobile) {
+  animation-duration: 320ms !important;
+  animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1) !important; /* Premium spring ease-out */
+}
+
+::view-transition-old(admin-active-pill-desktop),
+::view-transition-new(admin-active-pill-desktop),
+::view-transition-old(admin-active-pill-mobile),
+::view-transition-new(admin-active-pill-mobile),
+::view-transition-old(admin-active-dot-mobile),
+::view-transition-new(admin-active-dot-mobile) {
+  animation: none !important;
+  mix-blend-mode: normal !important;
+}
+
+/* Prevent white background bleeding during page transitions in dark mode */
+html.dark::view-transition {
+  background-color: #09090b;
 }
 
 /* Optimize rendering of long lists */
 .content-visibility-auto {
   content-visibility: auto;
-  contain-intrinsic-size: 1px 200px;
+  contain-intrinsic-size: auto 200px;
 }
 
 .content-visibility-detailed-card {
@@ -579,19 +772,34 @@
   contain-intrinsic-size: auto 250px;
 }
 
-
-
 @keyframes fade-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
 }
+
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
+
 @keyframes scale-up {
-  from { transform: scale(0.98); }
-  to { transform: scale(1); }
+  from {
+    transform: scale(0.98);
+  }
+
+  to {
+    transform: scale(1);
+  }
 }
 
 /* Shared Element Transition (Product Image) */
@@ -599,9 +807,11 @@
   animation-duration: 380ms;
   animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); /* Premium micro-spring physics */
 }
+
 ::view-transition-old(product-image) {
   animation: 90ms ease-out both fade-out;
 }
+
 ::view-transition-new(product-image) {
   animation: 180ms ease-out 40ms both fade-in;
 }
@@ -623,7 +833,7 @@
   background: linear-gradient(
     to right,
     hsl(var(--primary)) 0%,
-    hsl(var(--primary) / 0.4) 50%,
+    hsl(var(--primary) / 40%) 50%,
     hsl(var(--primary)) 100%
   );
   background-size: 200% 100%;
@@ -634,6 +844,7 @@
   0% {
     background-position: 200% 0;
   }
+
   100% {
     background-position: -200% 0;
   }
@@ -662,6 +873,12 @@ main {
   contain: paint; /* Reduce paint invalidation areas during scrolling */
 }
 
+/* Lock admin dashboard scroll when help modal is open */
+body.admin-modal-open .admin-scroll-container,
+body.admin-modal-open .active-scroll-container {
+  overflow: hidden !important;
+}
+
 /* Custom Scrollbars for Admin Containers */
 .admin-scroll-container::-webkit-scrollbar,
 .admin-scroll-container *::-webkit-scrollbar {
@@ -671,13 +888,13 @@ main {
 
 .admin-scroll-container::-webkit-scrollbar-track,
 .admin-scroll-container *::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgb(255 255 255 / 2%);
   border-radius: 9999px;
 }
 
 .admin-scroll-container::-webkit-scrollbar-thumb,
 .admin-scroll-container *::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(255 255 255 / 8%);
   border-radius: 9999px;
   border: 1.5px solid transparent;
   background-clip: padding-box;
@@ -695,25 +912,22 @@ main {
 .premium-shimmer {
   position: relative;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.03) !important;
+  background: rgb(255 255 255 / 3%) !important;
 }
 
 .premium-shimmer::after {
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  inset: 0;
   transform: translateX(-100%);
   background-image: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.02) 20%,
-    rgba(255, 255, 255, 0.06) 60%,
-    rgba(255, 255, 255, 0) 100%
+    rgb(255 255 255 / 0%) 0%,
+    rgb(255 255 255 / 2%) 20%,
+    rgb(255 255 255 / 6%) 60%,
+    rgb(255 255 255 / 0%) 100%
   );
   animation: premium-shimmer-ani 1.6s infinite cubic-bezier(0.25, 1, 0.5, 1);
-  content: '';
+  content: "";
   will-change: transform;
 }
 
@@ -734,7 +948,7 @@ main {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(212, 175, 55, 0.4) 50%,
+    rgb(212 175 55 / 40%) 50%,
     transparent 100%
   );
   background-size: 200% 100%;
@@ -746,7 +960,203 @@ main {
   0% {
     background-position: 200% 0;
   }
+
   100% {
     background-position: -200% 0;
   }
+}
+
+/* Spring Dialog/Popover transitions for Premium Admin Panel */
+[data-slot="dialog-content"],
+[data-slot="alert-dialog-content"] {
+  transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+  animation-duration: 350ms !important;
+  will-change: transform, opacity;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+[data-slot="dropdown-menu-content"],
+[data-slot="dropdown-menu-sub-content"] {
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1) !important;
+  animation-duration: 250ms !important;
+  will-change: transform, opacity;
+}
+
+[data-slot="dialog-overlay"],
+[data-slot="alert-dialog-overlay"] {
+  animation-duration: 250ms !important;
+  will-change: opacity;
+}
+
+/* Custom Premium Transitions for Admin Tabs */
+.admin-tab-pane {
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms
+    cubic-bezier(0.16, 1, 0.3, 1), visibility 220ms
+    cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.admin-tab-left {
+  transform: translate3d(-16px, 0, 0);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  visibility: hidden;
+}
+
+.admin-tab-active {
+  transform: translate3d(0, 0, 0);
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 10;
+  visibility: visible;
+}
+
+.admin-tab-right {
+  transform: translate3d(16px, 0, 0);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  visibility: hidden;
+}
+
+:root {
+  --customer-pb: calc(64px + var(--safe-area-bottom, 0px) + 16px);
+  --admin-tab-pb: calc(
+    5rem +
+    var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)) *
+    0.5
+  );
+}
+
+@media (min-width: 768px) {
+  :root {
+    --customer-pb: calc(24px + 64px + 16px); /* 104px */
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --admin-tab-pb: 1.5rem;
+  }
+}
+
+/* Premium GPU-accelerated Shimmer Effect */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer {
+  --bg-shimmer-from: #f4f4f5;
+  --bg-shimmer-via: #e4e4e7;
+  --bg-shimmer-to: #f4f4f5;
+  background: linear-gradient(
+    90deg,
+    var(--bg-shimmer-from) 25%,
+    var(--bg-shimmer-via) 50%,
+    var(--bg-shimmer-to) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite linear;
+  will-change: background-position;
+}
+
+.dark .shimmer {
+  --bg-shimmer-from: #27272a;
+  --bg-shimmer-via: #3f3f46;
+  --bg-shimmer-to: #27272a;
+}
+
+/* Premium micro-interactions: springy bounce animation for favorited heart icons */
+@keyframes heart-pulse {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.35);
+  }
+  60% {
+    transform: scale(0.85);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-heart-pop {
+  animation: heart-pulse 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  will-change: transform;
+}
+
+/* Custom View Transition Animations (PWA slide-in/slide-out) */
+@keyframes slide-in-from-right {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes slide-in-from-left {
+  from {
+    transform: translate3d(-100%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes slide-out-to-right {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(100%, 0, 0);
+  }
+}
+
+@keyframes slide-out-to-left {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-100%, 0, 0);
+  }
+}
+
+.view-transition-forward::view-transition-old(root) {
+  animation: 320ms cubic-bezier(0.16, 1, 0.3, 1) both slide-out-to-left;
+}
+
+.view-transition-forward::view-transition-new(root) {
+  animation: 320ms cubic-bezier(0.16, 1, 0.3, 1) both slide-in-from-right;
+}
+
+.view-transition-back::view-transition-old(root) {
+  animation: 320ms cubic-bezier(0.16, 1, 0.3, 1) both slide-out-to-right;
+}
+
+.view-transition-back::view-transition-new(root) {
+  animation: 320ms cubic-bezier(0.16, 1, 0.3, 1) both slide-in-from-left;
+}
+
+/* Keep bottom navigation stable during page transitions */
+::view-transition-group(bottom-nav) {
+  animation: none;
+}
+
+/* Ensure the animations don't blend weirdly */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 320ms;
+  animation-fill-mode: both;
 }

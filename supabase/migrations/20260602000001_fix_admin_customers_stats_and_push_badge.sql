@@ -1,7 +1,9 @@
 -- Migration: fix_admin_customers_stats_and_push_badge
 -- Description: Updates get_admin_customers_paged to return global statistics, map is_push_subscribed from push_subscriptions, and prioritize profile whatsapp with auth user phone fallback.
 
-DROP FUNCTION IF EXISTS public.get_admin_customers_paged(TEXT, TEXT, TEXT, INTEGER, INTEGER);
+DROP FUNCTION IF EXISTS public.get_admin_customers_paged(
+    TEXT, TEXT, TEXT, INTEGER, INTEGER
+);
 
 CREATE OR REPLACE FUNCTION public.get_admin_customers_paged(
     p_search TEXT DEFAULT '',

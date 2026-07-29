@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
+import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -67,6 +68,12 @@ const LogisticsSection = memo(function LogisticsSection({
   onChangeShippingProvider,
   onChangeEnabledShippingMethods,
   onChangeShippingCreds,
+  shippingCoverage,
+  localDeliveryFee,
+  localCepRange,
+  onChangeShippingCoverage,
+  onChangeLocalDeliveryFee,
+  onChangeLocalCepRange,
 }: {
   freeShippingMin: number;
   shippingFee: number;
@@ -83,6 +90,12 @@ const LogisticsSection = memo(function LogisticsSection({
   ) => void;
   onChangeEnabledShippingMethods: (val: string[]) => void;
   onChangeShippingCreds: (provider: string, creds: any) => void;
+  shippingCoverage?: "local" | "national";
+  localDeliveryFee?: number;
+  localCepRange?: string;
+  onChangeShippingCoverage: (val: "local" | "national") => void;
+  onChangeLocalDeliveryFee: (val: number) => void;
+  onChangeLocalCepRange: (val: string) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [localFreeShippingMin, setLocalFreeShippingMin] =
@@ -97,6 +110,15 @@ const LogisticsSection = memo(function LogisticsSection({
   const [localEnabledMethods, setLocalEnabledMethods] = useState<string[]>(
     enabledShippingMethods || ["sedex", "pac"],
   );
+  const [localShippingCoverage, setLocalShippingCoverage] = useState<
+    "local" | "national"
+  >(shippingCoverage || "national");
+  const [localLocalDeliveryFee, setLocalLocalDeliveryFee] = useState(
+    localDeliveryFee || 10,
+  );
+  const [localLocalCepRange, setLocalLocalCepRange] = useState(
+    localCepRange || "",
+  );
   const [isTestingCreds, setIsTestingCreds] = useState(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -105,6 +127,23 @@ const LogisticsSection = memo(function LogisticsSection({
   const [logs, setLogs] = useState<any[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [isLogsOpen, setIsLogsOpen] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   const freeShippingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -112,7 +151,17 @@ const LogisticsSection = memo(function LogisticsSection({
   const shippingFeeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const lastPropsRef = useRef({ freeShippingMin, shippingFee });
+  const localDeliveryFeeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const localCepRangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const lastPropsRef = useRef({
+    freeShippingMin,
+    shippingFee,
+    localDeliveryFee,
+  });
 
   const fetchLogs = useCallback(async () => {
     setLoadingLogs(true);
@@ -216,6 +265,44 @@ const LogisticsSection = memo(function LogisticsSection({
     [onChangeShippingFee],
   );
 
+  const updateLocalDeliveryFee = useCallback(
+    (val: number) => {
+      setLocalLocalDeliveryFee(val);
+      lastPropsRef.current.localDeliveryFee = val;
+
+      if (localDeliveryFeeTimerRef.current) {
+        clearTimeout(localDeliveryFeeTimerRef.current);
+      }
+      localDeliveryFeeTimerRef.current = setTimeout(() => {
+        onChangeLocalDeliveryFee(val);
+      }, 300);
+    },
+    [onChangeLocalDeliveryFee],
+  );
+
+  const updateLocalCepRange = useCallback(
+    (val: string) => {
+      setLocalLocalCepRange(val);
+
+      if (localCepRangeTimerRef.current) {
+        clearTimeout(localCepRangeTimerRef.current);
+      }
+      localCepRangeTimerRef.current = setTimeout(() => {
+        onChangeLocalCepRange(val);
+      }, 300);
+    },
+    [onChangeLocalCepRange],
+  );
+
+  const updateShippingCoverage = useCallback(
+    (val: "local" | "national") => {
+      haptic.light();
+      setLocalShippingCoverage(val);
+      onChangeShippingCoverage(val);
+    },
+    [onChangeShippingCoverage],
+  );
+
   // Sync local state when external props change (e.g. from database sync)
   useEffect(() => {
     if (lastPropsRef.current.freeShippingMin !== freeShippingMin) {
@@ -230,6 +317,21 @@ const LogisticsSection = memo(function LogisticsSection({
       lastPropsRef.current.shippingFee = shippingFee;
     }
   }, [shippingFee]);
+
+  useEffect(() => {
+    if (lastPropsRef.current.localDeliveryFee !== localDeliveryFee) {
+      setLocalLocalDeliveryFee(localDeliveryFee || 10);
+      lastPropsRef.current.localDeliveryFee = localDeliveryFee;
+    }
+  }, [localDeliveryFee]);
+
+  useEffect(() => {
+    setLocalLocalCepRange(localCepRange || "");
+  }, [localCepRange]);
+
+  useEffect(() => {
+    setLocalShippingCoverage(shippingCoverage || "national");
+  }, [shippingCoverage]);
 
   useEffect(() => {
     setLocalOriginCep(originCep || "38500-000");
@@ -250,6 +352,10 @@ const LogisticsSection = memo(function LogisticsSection({
         clearTimeout(freeShippingTimerRef.current);
       if (shippingFeeTimerRef.current)
         clearTimeout(shippingFeeTimerRef.current);
+      if (localDeliveryFeeTimerRef.current)
+        clearTimeout(localDeliveryFeeTimerRef.current);
+      if (localCepRangeTimerRef.current)
+        clearTimeout(localCepRangeTimerRef.current);
     };
   }, []);
 
@@ -363,6 +469,8 @@ const LogisticsSection = memo(function LogisticsSection({
                           R$
                         </span>
                         <input
+                          id="shipping-free-min"
+                          name="freeShippingMin"
                           type="number"
                           min="0"
                           step="1"
@@ -501,6 +609,8 @@ const LogisticsSection = memo(function LogisticsSection({
                           R$
                         </span>
                         <input
+                          id="shipping-flat-fee"
+                          name="shippingFee"
                           type="number"
                           min="0"
                           step="0.01"
@@ -564,229 +674,568 @@ const LogisticsSection = memo(function LogisticsSection({
                     </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Provedor de cálculo e CEP de origem */}
-              <div className="mt-4 space-y-4 border-t border-white/5 pt-4">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {/* CEP de Origem */}
-                  <div className="flex flex-col gap-1">
-                    <label htmlFor="origin-cep" className="text-left text-[9px] font-black uppercase tracking-wider text-white">
-                      CEP de Origem (Lojista)
-                    </label>
-                    <input
-                      id="origin-cep"
-                      type="text"
-                      maxLength={9}
-                      value={localOriginCep}
-                      onChange={(e) => {
-                        const val = formatCEP(e.target.value);
-                        setLocalOriginCep(val);
-                        onChangeOriginCep(val);
-                      }}
-                      placeholder="00000-000"
-                      className="animate-fade-in h-9 rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-xs font-medium text-white transition-all focus:border-admin-gold focus:outline-none"
-                    />
-                    <p className="text-left text-[8px] text-zinc-500">
-                      CEP de onde os seus produtos serão despachados para
-                      cálculo da cotação.
-                    </p>
-                  </div>
-
-                  {/* Tipo de Frete / Provedor */}
-                  <div className="flex flex-col gap-1">
-                    <label htmlFor="shipping-provider" className="text-left text-[9px] font-black uppercase tracking-wider text-white">
-                      Tipo de Cálculo de Frete
-                    </label>
-                    <select
-                      id="shipping-provider"
-                      value={localShippingProvider}
-                      onChange={(e) => {
-                        const val = e.target.value as any;
-                        setLocalShippingProvider(val);
-                        onChangeShippingProvider(val);
-                      }}
-                      className="h-9 rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-xs font-medium text-white transition-all focus:border-admin-gold focus:outline-none"
-                    >
-                      <option value="flat_fee">Taxa Única Fixa (Padrão)</option>
-                      <option value="melhor_envio">Melhor Envio (API)</option>
-                      <option value="frenet">Frenet (API)</option>
-                    </select>
-                    <p className="text-left text-[8px] text-zinc-500">
-                      Selecione se deseja cobrar taxa fixa ou integrar com
-                      serviços de cálculo automático de frete.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Conditional settings for Melhor Envio / Frenet */}
-                {localShippingProvider !== "flat_fee" && (
-                  <div className="animate-fade-in space-y-2.5 rounded-xl border border-white/5 bg-white/[0.02] p-3.5">
-                    <div className="flex items-center gap-2">
-                      <div className="flex size-7.5 items-center justify-center rounded-lg border border-admin-gold/30 bg-admin-gold/10 text-admin-gold">
-                        <Lock className="size-3.5 text-admin-gold" />
+                {/* Provedor de cálculo, abrangência e CEP de origem */}
+                <div className="mt-4 space-y-4 border-t border-white/5 pt-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {/* Abrangência de Envio */}
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-left text-[9px] font-black uppercase tracking-wider text-white">
+                        Abrangência de Envio
+                      </span>
+                      <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/5 bg-black/40 p-1">
+                        <button
+                          key="local-coverage"
+                          type="button"
+                          onClick={() => updateShippingCoverage("local")}
+                          className={`h-7.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-200 ${
+                            localShippingCoverage === "local"
+                              ? "bg-admin-gold text-white shadow-[0_0_15px_rgba(212,175,55,0.2)]"
+                              : "text-zinc-400 hover:text-white"
+                          }`}
+                        >
+                          Apenas Local
+                        </button>
+                        <button
+                          key="national-coverage"
+                          type="button"
+                          onClick={() => updateShippingCoverage("national")}
+                          className={`h-7.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-200 ${
+                            localShippingCoverage === "national"
+                              ? "bg-admin-gold text-white shadow-[0_0_15px_rgba(212,175,55,0.2)]"
+                              : "text-zinc-400 hover:text-white"
+                          }`}
+                        >
+                          Todo o Brasil
+                        </button>
                       </div>
-                      <div className="text-left">
-                        <span className="block text-[9px] font-black uppercase tracking-wider text-white">
-                          Credenciais do Provedor:{" "}
-                          {localShippingProvider === "melhor_envio"
-                            ? "Melhor Envio"
-                            : "Frenet"}
-                        </span>
-                        <span className="mt-0.5 block text-[7.5px] font-bold uppercase leading-none tracking-widest text-zinc-500">
-                          Salvas de forma segura no servidor
-                        </span>
-                      </div>
+                      <p className="text-left text-[8px] text-zinc-500">
+                        {localShippingCoverage === "local"
+                          ? "Sua loja fará entregas exclusivamente na sua cidade/região local."
+                          : "Sua loja fará entregas para todo o Brasil, calculando frete via taxas fixas ou APIs."}
+                      </p>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-3">
-                      <div className="flex flex-col gap-1">
-                        <label htmlFor="shipping-token" className="text-left text-[9px] font-black uppercase tracking-wider text-zinc-400">
-                          Token de Acesso (API Token)
-                        </label>
-                        <div className="flex gap-2">
+                    {/* CEP de Origem */}
+                    <div className="flex flex-col gap-1">
+                      <label
+                        htmlFor="origin-cep"
+                        className="text-left text-[9px] font-black uppercase tracking-wider text-white"
+                      >
+                        CEP de Origem (Lojista)
+                      </label>
+                      <input
+                        id="origin-cep"
+                        type="text"
+                        maxLength={9}
+                        value={localOriginCep}
+                        onChange={(e) => {
+                          const val = formatCEP(e.target.value);
+                          setLocalOriginCep(val);
+                          onChangeOriginCep(val);
+                        }}
+                        placeholder="00000-000"
+                        className="animate-fade-in h-9 rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-xs font-medium text-white transition-all focus:border-admin-gold focus:outline-none"
+                      />
+                      <p className="text-left text-[8px] text-zinc-500">
+                        CEP de onde os seus produtos serão despachados para
+                        cálculo da cotação.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Configurações de Entrega Local (Moto-entrega / Cidade) */}
+                  <div className="grid grid-cols-1 gap-4 rounded-xl border border-white/5 bg-white/[0.01] p-3 md:grid-cols-2">
+                    {/* Taxa de Entrega Local */}
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-left text-[9px] font-black uppercase tracking-wider text-white">
+                        Taxa de Entrega Local (Na Cidade)
+                      </span>
+                      <div className="flex h-9 items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/40 p-1">
+                        <button
+                          type="button"
+                          disabled={localLocalDeliveryFee <= 0 || isOffline}
+                          onClick={() =>
+                            updateLocalDeliveryFee(
+                              Math.max(0, localLocalDeliveryFee - 1),
+                            )
+                          }
+                          className="flex size-7 shrink-0 select-none items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-sm font-bold text-white transition-all hover:border-white/10 hover:bg-zinc-800 active:scale-95 disabled:pointer-events-none disabled:opacity-30"
+                        >
+                          <Minus className="size-3 text-zinc-400" />
+                        </button>
+                        <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
+                          <span className="text-xs font-black text-admin-gold text-zinc-500">
+                            R$
+                          </span>
                           <input
-                            id="shipping-token"
-                            type="password"
+                            id="shipping-local-fee"
+                            name="localDeliveryFee"
+                            type="number"
+                            min="0"
+                            step="0.01"
                             value={
-                              shippingCreds[localShippingProvider]?.token || ""
+                              localLocalDeliveryFee === 0
+                                ? ""
+                                : localLocalDeliveryFee
                             }
                             onChange={(e) => {
-                              const current =
-                                shippingCreds[localShippingProvider] || {};
-                              onChangeShippingCreds(localShippingProvider, {
-                                ...current,
-                                token: e.target.value,
-                              });
+                              const val = e.target.value;
+                              updateLocalDeliveryFee(
+                                val === "" ? 0 : Number(val),
+                              );
                             }}
-                            placeholder={
-                              localShippingProvider === "melhor_envio"
-                                ? "Insira o token do Melhor Envio"
-                                : "Insira o token da Frenet"
-                            }
-                            className="flex-1 h-9 rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs font-medium text-white transition-all focus:border-admin-gold focus:outline-none"
+                            className="w-16 border-0 bg-transparent p-0 text-center text-base font-black text-white [appearance:textfield] focus:border-0 focus:outline-none focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            autoComplete="off"
+                            disabled={isOffline}
                           />
-                          <button
-                            type="button"
-                            disabled={
-                              isTestingCreds ||
-                              !shippingCreds[localShippingProvider]?.token
-                            }
-                            onClick={handleTestCredentials}
-                            className="flex shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3 py-2 text-[9px] font-black uppercase tracking-wider text-zinc-300 transition-all hover:border-admin-gold/40 hover:text-white active:scale-95 disabled:opacity-40"
-                          >
-                            {isTestingCreds ? (
-                              <>
-                                <RefreshCw className="size-3 animate-spin text-admin-gold" />
-                                <span>Testando...</span>
-                              </>
-                            ) : (
-                              <>
-                                <RefreshCw className="size-3 text-admin-gold" />
-                                <span>Testar</span>
-                              </>
-                            )}
-                          </button>
                         </div>
-
-                        {testResult && (
-                          <div
-                            className={`animate-fade-in mt-1.5 flex items-start gap-1.5 rounded-lg border p-2.5 text-left text-[9px] leading-normal ${
-                              testResult.success
-                                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                                : "border-red-500/20 bg-red-500/10 text-red-400"
+                        <button
+                          type="button"
+                          disabled={localLocalDeliveryFee === 0 || isOffline}
+                          onClick={() =>
+                            updateLocalDeliveryFee(localLocalDeliveryFee + 1)
+                          }
+                          className="flex size-7 shrink-0 select-none items-center justify-center rounded-lg border border-white/5 bg-zinc-900 text-sm font-bold text-white transition-all hover:border-white/10 hover:bg-zinc-800 active:scale-95 disabled:pointer-events-none disabled:opacity-30"
+                        >
+                          <Plus className="size-3 text-zinc-400" />
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap justify-start gap-1">
+                        {[0, 5, 7, 10, 12, 15].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            disabled={isOffline}
+                            onClick={() => updateLocalDeliveryFee(preset)}
+                            className={`rounded-lg border select-none px-2 py-1 text-[8px] font-bold uppercase tracking-wider transition-all duration-200 ${
+                              localLocalDeliveryFee === preset
+                                ? "border-admin-gold/40 bg-admin-gold/10 text-admin-gold shadow-[0_0_8px_rgba(212,175,55,0.1)]"
+                                : "border-white/5 bg-zinc-900/60 text-zinc-400 hover:border-white/10 hover:text-white"
                             }`}
                           >
-                            <Info className="mt-0.5 size-3.5 shrink-0" />
-                            <div>
-                              <span className="mb-0.5 block font-bold uppercase tracking-wider">
-                                {testResult.success
-                                  ? "Conexão Estabelecida"
-                                  : "Erro de Autenticação"}
-                              </span>
-                              <span>{testResult.message}</span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {localShippingProvider === "melhor_envio" && (
-                        <div className="flex items-center justify-between rounded-lg border border-white/5 bg-black/30 p-2.5">
-                          <div className="text-left">
-                            <span className="block text-[9px] font-black uppercase tracking-wider text-white">
-                              Ambiente de Testes (Sandbox)
-                            </span>
-                            <span className="mt-0.5 block text-[8px] text-zinc-400">
-                              Habilite para testar a integração usando a URL de
-                              sandbox do Melhor Envio.
-                            </span>
-                          </div>
-                          <Switch
-                            checked={
-                              shippingCreds.melhor_envio?.sandbox === true
-                            }
-                            onCheckedChange={(checked) => {
-                              const current = shippingCreds.melhor_envio || {};
-                              onChangeShippingCreds("melhor_envio", {
-                                ...current,
-                                sandbox: checked,
-                              });
-                            }}
-                            className="data-[state=checked]:bg-admin-gold scale-90"
-                          />
-                        </div>
-                      )}
-
-                      {/* Métodos de frete habilitados */}
-                      <div className="flex flex-col gap-1 pt-1">
-                        <span className="text-left text-[9px] font-black uppercase tracking-wider text-zinc-400">
-                          Métodos de Envio Ativos
-                        </span>
-                        <div className="flex flex-wrap justify-start gap-1.5">
-                          {["SEDEX", "PAC", "Jadlog"].map((method) => {
-                            const isSelected = localEnabledMethods.some(
-                              (m) => m.toLowerCase() === method.toLowerCase(),
-                            );
-                            return (
-                              <button
-                                key={method}
-                                type="button"
-                                onClick={() => {
-                                  let newMethods;
-                                  if (isSelected) {
-                                    newMethods = localEnabledMethods.filter(
-                                      (m) =>
-                                        m.toLowerCase() !==
-                                        method.toLowerCase(),
-                                    );
-                                  } else {
-                                    newMethods = [
-                                      ...localEnabledMethods,
-                                      method.toLowerCase(),
-                                    ];
-                                  }
-                                  setLocalEnabledMethods(newMethods);
-                                  onChangeEnabledShippingMethods(newMethods);
-                                }}
-                                className={`rounded-lg border select-none px-2 py-1 text-[8px] font-bold uppercase tracking-wider transition-all duration-200 ${
-                                  isSelected
-                                    ? "border-admin-gold/40 bg-admin-gold/10 text-admin-gold shadow-[0_0_8px_rgba(212,175,55,0.1)]"
-                                    : "border-white/5 bg-zinc-950/60 text-zinc-400 hover:border-white/10 hover:text-white"
-                                }`}
-                              >
-                                {method}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <p className="mt-0.5 text-left text-[8px] text-zinc-500">
-                          Selecione quais serviços serão calculados e oferecidos
-                          ao cliente na hora do checkout.
-                        </p>
+                            {preset === 0 ? "Grátis" : `R$ ${preset}`}
+                          </button>
+                        ))}
                       </div>
                     </div>
+
+                    {/* Faixas de CEP Locais */}
+                    <div className="flex flex-col gap-1.5">
+                      <label
+                        htmlFor="local-cep-range"
+                        className="text-left text-[9px] font-black uppercase tracking-wider text-white"
+                      >
+                        Faixas de CEP Locais (Opcional)
+                      </label>
+                      <input
+                        id="local-cep-range"
+                        type="text"
+                        value={localLocalCepRange}
+                        onChange={(e) => updateLocalCepRange(e.target.value)}
+                        placeholder="Ex: 38500, 38501 ou 38500000-38505000"
+                        className="h-9 rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-xs font-medium text-white transition-all focus:border-admin-gold focus:outline-none placeholder:text-zinc-600 focus:ring-0"
+                      />
+                      <p className="text-left text-[8px] text-zinc-500">
+                        Lista de CEPs ou prefixos separados por vírgula. Se
+                        deixado vazio, o sistema usará o CEP de Origem
+                        (primeiros 5 dígitos).
+                      </p>
+                    </div>
                   </div>
-                )}
+
+                  {/* Tipo de cálculo de frete (Nacional) */}
+                  {localShippingCoverage === "national" && (
+                    <>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="flex flex-col gap-1">
+                          <label
+                            htmlFor="shipping-provider"
+                            className="text-left text-[9px] font-black uppercase tracking-wider text-white"
+                          >
+                            Tipo de Cálculo de Frete
+                          </label>
+                          <div className="relative" ref={dropdownRef}>
+                            <button
+                              id="shipping-provider"
+                              type="button"
+                              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                              className={`flex h-9 w-full select-none items-center justify-between rounded-lg border bg-zinc-900 px-3 py-2 text-xs font-semibold text-white transition-all duration-200 focus:outline-none ${
+                                isDropdownOpen
+                                  ? "border-admin-gold shadow-[0_0_12px_rgba(212,175,55,0.15)] ring-1 ring-admin-gold/30"
+                                  : "border-white/10 hover:border-white/20"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                {localShippingProvider === "flat_fee" && (
+                                  <>
+                                    <Tag className="size-3.5 text-admin-gold" />
+                                    <span>Taxa Única Fixa (Padrão)</span>
+                                  </>
+                                )}
+                                {localShippingProvider === "melhor_envio" && (
+                                  <>
+                                    <Truck
+                                      className="size-3.5 text-admin-gold"
+                                      strokeWidth={2.5}
+                                    />
+                                    <span>Melhor Envio (API)</span>
+                                  </>
+                                )}
+                                {localShippingProvider === "frenet" && (
+                                  <>
+                                    <Sparkles className="size-3.5 text-admin-gold" />
+                                    <span>Frenet (API)</span>
+                                  </>
+                                )}
+                              </div>
+                              <ChevronDown
+                                className={`size-4 text-zinc-400 transition-transform duration-300 ${
+                                  isDropdownOpen
+                                    ? "rotate-180 text-admin-gold"
+                                    : ""
+                                }`}
+                              />
+                            </button>
+
+                            {/* Dropdown Options List */}
+                            {isDropdownOpen && (
+                              <div className="absolute bottom-full left-0 right-0 z-50 mb-1.5 overflow-hidden rounded-xl border border-white/10 bg-zinc-950/95 p-1 shadow-[0_-15px_30px_rgba(0,0,0,0.8)] backdrop-blur-xl animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setLocalShippingProvider("flat_fee");
+                                    onChangeShippingProvider("flat_fee");
+                                    setIsDropdownOpen(false);
+                                  }}
+                                  className={`group flex w-full items-start gap-3 rounded-lg p-2.5 text-left transition-all hover:bg-white/5 ${
+                                    localShippingProvider === "flat_fee"
+                                      ? "bg-white/[0.02]"
+                                      : ""
+                                  }`}
+                                >
+                                  <div
+                                    className={`flex size-8 shrink-0 items-center justify-center rounded-lg border transition-all ${
+                                      localShippingProvider === "flat_fee"
+                                        ? "border-admin-gold/30 bg-admin-gold/10 text-admin-gold shadow-[0_0_10px_rgba(212,175,55,0.1)]"
+                                        : "border-white/5 bg-zinc-900 text-zinc-400"
+                                    }`}
+                                  >
+                                    <Tag className="size-4" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between">
+                                      <span
+                                        className={`block text-[11px] font-black uppercase tracking-wider transition-colors ${
+                                          localShippingProvider === "flat_fee"
+                                            ? "text-admin-gold"
+                                            : "text-zinc-300 group-hover:text-white"
+                                        }`}
+                                      >
+                                        Taxa Única Fixa (Padrão)
+                                      </span>
+                                      {localShippingProvider === "flat_fee" && (
+                                        <span className="text-[10px] text-admin-gold font-bold">
+                                          ✓
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="mt-0.5 block text-[9px] leading-normal text-zinc-500 transition-colors group-hover:text-zinc-400">
+                                      Define um valor fixo padrão para todas as
+                                      entregas nacionais.
+                                    </span>
+                                  </div>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setLocalShippingProvider("melhor_envio");
+                                    onChangeShippingProvider("melhor_envio");
+                                    setIsDropdownOpen(false);
+                                  }}
+                                  className={`group flex w-full items-start gap-3 rounded-lg p-2.5 text-left transition-all hover:bg-white/5 ${
+                                    localShippingProvider === "melhor_envio"
+                                      ? "bg-white/[0.02]"
+                                      : ""
+                                  }`}
+                                >
+                                  <div
+                                    className={`flex size-8 shrink-0 items-center justify-center rounded-lg border transition-all ${
+                                      localShippingProvider === "melhor_envio"
+                                        ? "border-admin-gold/30 bg-admin-gold/10 text-admin-gold shadow-[0_0_10px_rgba(212,175,55,0.1)]"
+                                        : "border-white/5 bg-zinc-900 text-zinc-400"
+                                    }`}
+                                  >
+                                    <Truck
+                                      className="size-4"
+                                      strokeWidth={2.5}
+                                    />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between">
+                                      <span
+                                        className={`block text-[11px] font-black uppercase tracking-wider transition-colors ${
+                                          localShippingProvider ===
+                                          "melhor_envio"
+                                            ? "text-admin-gold"
+                                            : "text-zinc-300 group-hover:text-white"
+                                        }`}
+                                      >
+                                        Melhor Envio (API)
+                                      </span>
+                                      {localShippingProvider ===
+                                        "melhor_envio" && (
+                                        <span className="text-[10px] text-admin-gold font-bold">
+                                          ✓
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="mt-0.5 block text-[9px] leading-normal text-zinc-500 transition-colors group-hover:text-zinc-400">
+                                      Cotações em tempo real via Correios,
+                                      Jadlog, Azul Cargo e mais.
+                                    </span>
+                                  </div>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setLocalShippingProvider("frenet");
+                                    onChangeShippingProvider("frenet");
+                                    setIsDropdownOpen(false);
+                                  }}
+                                  className={`group flex w-full items-start gap-3 rounded-lg p-2.5 text-left transition-all hover:bg-white/5 ${
+                                    localShippingProvider === "frenet"
+                                      ? "bg-white/[0.02]"
+                                      : ""
+                                  }`}
+                                >
+                                  <div
+                                    className={`flex size-8 shrink-0 items-center justify-center rounded-lg border transition-all ${
+                                      localShippingProvider === "frenet"
+                                        ? "border-admin-gold/30 bg-admin-gold/10 text-admin-gold shadow-[0_0_10px_rgba(212,175,55,0.1)]"
+                                        : "border-white/5 bg-zinc-900 text-zinc-400"
+                                    }`}
+                                  >
+                                    <Sparkles className="size-4" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between">
+                                      <span
+                                        className={`block text-[11px] font-black uppercase tracking-wider transition-colors ${
+                                          localShippingProvider === "frenet"
+                                            ? "text-admin-gold"
+                                            : "text-zinc-300 group-hover:text-white"
+                                        }`}
+                                      >
+                                        Frenet (API)
+                                      </span>
+                                      {localShippingProvider === "frenet" && (
+                                        <span className="text-[10px] text-admin-gold font-bold">
+                                          ✓
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="mt-0.5 block text-[9px] leading-normal text-zinc-500 transition-colors group-hover:text-zinc-400">
+                                      Integração com transportadoras diversas e
+                                      cálculo dinâmico de frete.
+                                    </span>
+                                  </div>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-left text-[8px] text-zinc-500">
+                            Selecione se deseja cobrar taxa fixa ou integrar com
+                            serviços de cálculo automático de frete.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Conditional settings for Melhor Envio / Frenet */}
+                      {localShippingProvider !== "flat_fee" && (
+                        <div className="animate-fade-in space-y-2.5 rounded-xl border border-white/5 bg-white/[0.02] p-3.5">
+                          <div className="flex items-center gap-2">
+                            <div className="flex size-7.5 items-center justify-center rounded-lg border border-admin-gold/30 bg-admin-gold/10 text-admin-gold">
+                              <Lock className="size-3.5 text-admin-gold" />
+                            </div>
+                            <div className="text-left">
+                              <span className="block text-[9px] font-black uppercase tracking-wider text-white">
+                                Credenciais do Provedor:{" "}
+                                {localShippingProvider === "melhor_envio"
+                                  ? "Melhor Envio"
+                                  : "Frenet"}
+                              </span>
+                              <span className="mt-0.5 block text-[7.5px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+                                Salvas de forma segura no servidor
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-3">
+                            <div className="flex flex-col gap-1">
+                              <label
+                                htmlFor="shipping-token"
+                                className="text-left text-[9px] font-black uppercase tracking-wider text-zinc-400"
+                              >
+                                Token de Acesso (API Token)
+                              </label>
+                              <div className="flex gap-2">
+                                <input
+                                  id="shipping-token"
+                                  type="password"
+                                  value={
+                                    shippingCreds[localShippingProvider]
+                                      ?.token || ""
+                                  }
+                                  onChange={(e) => {
+                                    const current =
+                                      shippingCreds[localShippingProvider] ||
+                                      {};
+                                    onChangeShippingCreds(
+                                      localShippingProvider,
+                                      {
+                                        ...current,
+                                        token: e.target.value,
+                                      },
+                                    );
+                                  }}
+                                  placeholder={
+                                    localShippingProvider === "melhor_envio"
+                                      ? "Insira o token do Melhor Envio"
+                                      : "Insira o token da Frenet"
+                                  }
+                                  className="flex-1 h-9 rounded-lg border border-white/10 bg-zinc-950 px-3 py-2 font-mono text-xs font-medium text-white transition-all focus:border-admin-gold focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={
+                                    isTestingCreds ||
+                                    !shippingCreds[localShippingProvider]?.token
+                                  }
+                                  onClick={handleTestCredentials}
+                                  className="flex shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3 py-2 text-[9px] font-black uppercase tracking-wider text-zinc-300 transition-all hover:border-admin-gold/40 hover:text-white active:scale-95 disabled:opacity-40"
+                                >
+                                  {isTestingCreds ? (
+                                    <>
+                                      <RefreshCw className="size-3 animate-spin text-admin-gold" />
+                                      <span>Testando...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <RefreshCw className="size-3 text-admin-gold" />
+                                      <span>Testar</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+
+                              {testResult && (
+                                <div
+                                  className={`animate-fade-in mt-1.5 flex items-start gap-1.5 rounded-lg border p-2.5 text-left text-[9px] leading-normal ${
+                                    testResult.success
+                                      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                                      : "border-red-500/20 bg-red-500/10 text-red-400"
+                                  }`}
+                                >
+                                  <Info className="mt-0.5 size-3.5 shrink-0" />
+                                  <div>
+                                    <span className="mb-0.5 block font-bold uppercase tracking-wider">
+                                      {testResult.success
+                                        ? "Conexão Estabelecida"
+                                        : "Erro de Autenticação"}
+                                    </span>
+                                    <span>{testResult.message}</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {localShippingProvider === "melhor_envio" && (
+                              <div className="flex items-center justify-between rounded-lg border border-white/5 bg-black/30 p-2.5">
+                                <div className="text-left">
+                                  <span className="block text-[9px] font-black uppercase tracking-wider text-white">
+                                    Ambiente de Testes (Sandbox)
+                                  </span>
+                                  <span className="mt-0.5 block text-[8px] text-zinc-400">
+                                    Habilite para testar a integração usando a
+                                    URL de sandbox do Melhor Envio.
+                                  </span>
+                                </div>
+                                <Switch
+                                  checked={
+                                    shippingCreds.melhor_envio?.sandbox === true
+                                  }
+                                  onCheckedChange={(checked) => {
+                                    const current =
+                                      shippingCreds.melhor_envio || {};
+                                    onChangeShippingCreds("melhor_envio", {
+                                      ...current,
+                                      sandbox: checked,
+                                    });
+                                  }}
+                                  className="data-[state=checked]:bg-admin-gold scale-90"
+                                />
+                              </div>
+                            )}
+
+                            {/* Métodos de frete habilitados */}
+                            <div className="flex flex-col gap-1 pt-1">
+                              <span className="text-left text-[9px] font-black uppercase tracking-wider text-zinc-400">
+                                Métodos de Envio Ativos
+                              </span>
+                              <div className="flex flex-wrap justify-start gap-1.5">
+                                {["SEDEX", "PAC", "Jadlog"].map((method) => {
+                                  const isSelected = localEnabledMethods.some(
+                                    (m) =>
+                                      m.toLowerCase() === method.toLowerCase(),
+                                  );
+                                  return (
+                                    <button
+                                      key={method}
+                                      type="button"
+                                      onClick={() => {
+                                        let newMethods;
+                                        if (isSelected) {
+                                          newMethods =
+                                            localEnabledMethods.filter(
+                                              (m) =>
+                                                m.toLowerCase() !==
+                                                method.toLowerCase(),
+                                            );
+                                        } else {
+                                          newMethods = [
+                                            ...localEnabledMethods,
+                                            method.toLowerCase(),
+                                          ];
+                                        }
+                                        setLocalEnabledMethods(newMethods);
+                                        onChangeEnabledShippingMethods(
+                                          newMethods,
+                                        );
+                                      }}
+                                      className={`rounded-lg border select-none px-2 py-1 text-[8px] font-bold uppercase tracking-wider transition-all duration-200 ${
+                                        isSelected
+                                          ? "border-admin-gold/40 bg-admin-gold/10 text-admin-gold shadow-[0_0_8px_rgba(212,175,55,0.1)]"
+                                          : "border-white/5 bg-zinc-950/60 text-zinc-400 hover:border-white/10 hover:text-white"
+                                      }`}
+                                    >
+                                      {method}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <p className="mt-0.5 text-left text-[8px] text-zinc-500">
+                                Selecione quais serviços serão calculados e
+                                oferecidos ao cliente na hora do checkout.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
 
                 {/* Collapsible Logistics Logs Section */}
                 <div className="mt-3 border-t border-white/5 pt-3">
@@ -980,7 +1429,10 @@ const SupportSection = memo(function SupportSection({
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="flex-grow space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                    <Label
+                      htmlFor="settings-whatsapp"
+                      className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                    >
                       WhatsApp da Operação
                     </Label>
                     <span className="rounded-full border border-[#25d366]/20 bg-[#25d366]/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-[#25d366]">
@@ -998,6 +1450,8 @@ const SupportSection = memo(function SupportSection({
                       </span>
                     </div>
                     <LocalBufferedInput
+                      id="settings-whatsapp"
+                      name="whatsapp"
                       useShadcn
                       mask="phone"
                       delay={350}
@@ -1036,7 +1490,10 @@ const SupportSection = memo(function SupportSection({
 
                 <div className="flex-grow space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                    <Label
+                      htmlFor="settings-business-hours"
+                      className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                    >
                       Horário de Funcionamento
                     </Label>
                     <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-blue-400">
@@ -1051,6 +1508,8 @@ const SupportSection = memo(function SupportSection({
                       <Clock className="size-3.5 text-admin-gold" />
                     </div>
                     <LocalBufferedInput
+                      id="settings-business-hours"
+                      name="businessHours"
                       useShadcn
                       delay={350}
                       value={businessHours}
@@ -1083,7 +1542,10 @@ const SupportSection = memo(function SupportSection({
               <div className="space-y-2.5 border-t border-white/5 pt-3">
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <Label className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                    <Label
+                      htmlFor="settings-share-message"
+                      className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                    >
                       Mensagem de Compartilhamento de Produtos
                     </Label>
                     <span className="rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-purple-400">
@@ -1091,7 +1553,8 @@ const SupportSection = memo(function SupportSection({
                     </span>
                   </div>
                   <p className="ml-1 text-[9.5px] leading-snug text-zinc-500">
-                    Texto anexado quando um usuário compartilha um produto. O nome do produto, o preço e o link serão adicionados abaixo.
+                    Texto anexado quando um usuário compartilha um produto. O
+                    nome do produto, o preço e o link serão adicionados abaixo.
                   </p>
                 </div>
 
@@ -1102,6 +1565,8 @@ const SupportSection = memo(function SupportSection({
                         <Share2 className="size-3.5 text-zinc-500" />
                       </div>
                       <LocalBufferedTextarea
+                        id="settings-share-message"
+                        name="shareMessage"
                         useShadcn
                         delay={350}
                         value={shareText}
@@ -1423,8 +1888,8 @@ const NotificationsSection = memo(function NotificationsSection({
                   </p>
                   <p className="text-[9.5px] leading-snug text-zinc-500">
                     Exibe popups discretos no site informando sobre compras
-                    recentes de outros usuários. Estimula o gatilho da escassez e da
-                    prova social.
+                    recentes de outros usuários. Estimula o gatilho da escassez
+                    e da prova social.
                   </p>
                   <div className="flex items-center gap-1.5 pt-0.5">
                     <span
@@ -1768,6 +2233,12 @@ const cleanConfigForForm = (cfg: StoreConfig): StoreConfig => {
       cfg.shippingFee !== undefined && cfg.shippingFee !== null
         ? Number(cfg.shippingFee)
         : 0,
+    shippingCoverage: cfg.shippingCoverage || "national",
+    localDeliveryFee:
+      cfg.localDeliveryFee !== undefined && cfg.localDeliveryFee !== null
+        ? Number(cfg.localDeliveryFee)
+        : 10,
+    localCepRange: cfg.localCepRange || "",
   };
 };
 
@@ -1787,6 +2258,7 @@ function isConfigDirty(
 
   if (getNum(a.freeShippingMin) !== getNum(b.freeShippingMin)) return true;
   if (getNum(a.shippingFee) !== getNum(b.shippingFee)) return true;
+  if (getNum(a.localDeliveryFee) !== getNum(b.localDeliveryFee)) return true;
   if (getCleanPhone(a.whatsappNumber) !== getCleanPhone(b.whatsappNumber))
     return true;
 
@@ -1799,6 +2271,9 @@ function isConfigDirty(
   if (!!a.realTimeSalesAlerts !== !!b.realTimeSalesAlerts) return true;
   if (!!a.pushMarketingEnabled !== !!b.pushMarketingEnabled) return true;
   if ((a.originCep || "") !== (b.originCep || "")) return true;
+  if ((a.shippingCoverage || "national") !== (b.shippingCoverage || "national"))
+    return true;
+  if ((a.localCepRange || "") !== (b.localCepRange || "")) return true;
   if ((a.shippingProvider || "flat_fee") !== (b.shippingProvider || "flat_fee"))
     return true;
   if ((a.logoUrl || "") !== (b.logoUrl || "")) return true;
@@ -1882,6 +2357,18 @@ export const AdminSettingsView = memo(function AdminSettingsView({
 
   const onChangeShippingFee = useCallback((val: number) => {
     setFormData((prev) => ({ ...prev, shippingFee: val }));
+  }, []);
+
+  const onChangeShippingCoverage = useCallback((val: "local" | "national") => {
+    setFormData((prev) => ({ ...prev, shippingCoverage: val }));
+  }, []);
+
+  const onChangeLocalDeliveryFee = useCallback((val: number) => {
+    setFormData((prev) => ({ ...prev, localDeliveryFee: val }));
+  }, []);
+
+  const onChangeLocalCepRange = useCallback((val: string) => {
+    setFormData((prev) => ({ ...prev, localCepRange: val }));
   }, []);
 
   const onChangeWhatsappNumber = useCallback((val: string) => {
@@ -2028,7 +2515,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // Removed early return loading block to prevent visual layout shifts
 
   return (
-    <div className="h-auto bg-admin-bg pb-28 duration-200 animate-in fade-in lg:pb-8">
+    <div className="h-auto bg-admin-bg pb-0 duration-200 animate-in fade-in lg:pb-0">
       {/* Elite Header */}
       <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
@@ -2106,6 +2593,12 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               onChangeShippingProvider={onChangeShippingProvider}
               onChangeEnabledShippingMethods={onChangeEnabledShippingMethods}
               onChangeShippingCreds={onChangeShippingCreds}
+              shippingCoverage={formData.shippingCoverage}
+              localDeliveryFee={formData.localDeliveryFee}
+              localCepRange={formData.localCepRange}
+              onChangeShippingCoverage={onChangeShippingCoverage}
+              onChangeLocalDeliveryFee={onChangeLocalDeliveryFee}
+              onChangeLocalCepRange={onChangeLocalCepRange}
             />
 
             <SupportSection
@@ -2140,102 +2633,73 @@ export const AdminSettingsView = memo(function AdminSettingsView({
       </div>
 
       {/* Modal de Ajuda */}
-      {showHelpModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 text-left backdrop-blur-md duration-300 animate-in fade-in sm:p-6">
-          <div className="relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950/95 p-5 text-sm text-zinc-300 shadow-[0_0_50px_rgba(0,0,0,0.8)] duration-300 animate-in zoom-in-95 sm:max-h-[85vh] sm:rounded-[2.5rem] sm:p-8">
-            {/* Header */}
-            <div className="mb-4 flex shrink-0 items-center justify-between border-b border-white/5 pb-4">
-              <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.2em] text-admin-gold">
-                <HelpCircle className="size-5 animate-pulse text-admin-gold" />
-                Guia de Configurações do Sistema
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowHelpModal(false)}
-                className="flex size-8 items-center justify-center rounded-xl border border-white/5 bg-zinc-900/50 text-sm font-bold text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
+      <AdminHelpModal
+        isOpen={showHelpModal}
+        onClose={() => setShowHelpModal(false)}
+        title="Guia de Configurações do Sistema"
+      >
+        <div className="space-y-4">
+          <p className="text-xs leading-relaxed text-zinc-400">
+            Nesta tela são ajustados os parâmetros gerais e regras de
+            funcionamento do seu marketplace, como fretes, raio de atuação e
+            canais de atendimento.
+          </p>
 
-            {/* Scrollable Content */}
-            <div className="custom-scrollbar flex-1 space-y-6 overflow-y-auto pb-6 pr-1 text-sm text-zinc-300">
-              <div className="space-y-4">
-                <p className="text-xs leading-relaxed text-zinc-400">
-                  Nesta tela são ajustados os parâmetros gerais e regras de
-                  funcionamento do seu marketplace, como fretes, raio de atuação
-                  e canais de atendimento.
-                </p>
-
-                <div className="space-y-3">
-                  <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
-                    Seções de Ajustes
-                  </h4>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                        <Truck className="size-4 text-emerald-500" />
-                        Logística & Entregas
-                      </div>
-                      <p className="text-xs text-zinc-400">
-                        Define o preço de frete cobrado por padrão, o tempo de
-                        entrega informado ao cliente e a distância máxima (raio)
-                        que o marketplace atende.
-                      </p>
-                    </div>
-
-                    <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                        <Headset className="size-4 text-admin-gold" />
-                        Atendimento & WhatsApp
-                      </div>
-                      <p className="text-xs text-zinc-400">
-                        O número de telefone configurado para o WhatsApp da
-                        loja. É para onde as mensagens automáticas de
-                        confirmação de pedido serão enviadas.
-                      </p>
-                    </div>
-
-                    <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                        <Boxes className="size-4 text-sky-500" />
-                        Contatos Oficiais
-                      </div>
-                      <p className="text-xs text-zinc-400">
-                        Informações institucionais como endereço físico,
-                        telefone fixo e e-mail de suporte que aparecem no rodapé
-                        do app dos clientes.
-                      </p>
-                    </div>
-
-                    <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                        <Bell className="size-4 text-purple-500" />
-                        Notificações e Ajustes
-                      </div>
-                      <p className="text-xs text-zinc-400">
-                        Controla parâmetros visuais, atalhos rápidos para cupons
-                        e banners da loja na base do painel.
-                      </p>
-                    </div>
-                  </div>
+          <div className="space-y-3">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+              Seções de Ajustes
+            </h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
+                  <Truck className="size-4 text-emerald-500" />
+                  Logística & Entregas
                 </div>
+                <p className="text-xs text-zinc-400">
+                  Define o preço de frete cobrado por padrão, o tempo de entrega
+                  informado ao cliente e a distância máxima (raio) que o
+                  marketplace atende.
+                </p>
               </div>
-            </div>
 
-            {/* Footer */}
-            <div className="flex shrink-0 justify-end border-t border-white/5 pt-4">
-              <button
-                type="button"
-                onClick={() => setShowHelpModal(false)}
-                className="rounded-xl bg-admin-gold px-5 py-2.5 text-[10px] font-black uppercase tracking-widest text-black transition-all hover:bg-admin-gold/90"
-              >
-                Entendi
-              </button>
+              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
+                  <Headset className="size-4 text-admin-gold" />
+                  Atendimento & WhatsApp
+                </div>
+                <p className="text-xs text-zinc-400">
+                  O número de telefone configurado para o WhatsApp da loja. É
+                  para onde as mensagens automáticas de confirmação de pedido
+                  serão enviadas.
+                </p>
+              </div>
+
+              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
+                  <Boxes className="size-4 text-sky-500" />
+                  Contatos Oficiais
+                </div>
+                <p className="text-xs text-zinc-400">
+                  Informações institucionais como endereço físico, telefone fixo
+                  e e-mail de suporte que aparecem no rodapé do app dos
+                  clientes.
+                </p>
+              </div>
+
+              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
+                  <Bell className="size-4 text-purple-500" />
+                  Notificações e Ajustes
+                </div>
+                <p className="text-xs text-zinc-400">
+                  Controla parâmetros visuais, atalhos rápidos para cupons e
+                  banners da loja na base do painel.
+                </p>
+              </div>
             </div>
           </div>
         </div>
-      )}
+      </AdminHelpModal>
     </div>
   );
 });

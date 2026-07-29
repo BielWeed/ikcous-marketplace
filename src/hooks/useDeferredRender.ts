@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from "react";
 
 export function useDeferredRender(delayMs = 250) {
   const [isReady, setIsReady] = useState(false);

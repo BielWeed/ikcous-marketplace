@@ -5,10 +5,10 @@ BEGIN;
 
 -- 1. Redefine get_orders_by_otp_v1
 CREATE OR REPLACE FUNCTION public.get_orders_by_otp_v1(p_email text, p_otp text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $function$
 DECLARE
     v_valid_record RECORD;
@@ -103,9 +103,9 @@ $function$;
 DROP FUNCTION IF EXISTS public.get_orders_by_whatsapp_v3(text, text, text);
 
 CREATE OR REPLACE FUNCTION public.get_orders_by_whatsapp_v3(
-    p_phone_number TEXT,
-    p_customer_email TEXT,
-    p_order_fragment TEXT
+    p_phone_number text,
+    p_customer_email text,
+    p_order_fragment text
 )
 RETURNS SETOF jsonb
 LANGUAGE plpgsql
@@ -177,7 +177,11 @@ END;
 $$;
 
 -- 3. Grant execute permissions
-GRANT EXECUTE ON FUNCTION public.get_orders_by_otp_v1(text, text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_orders_by_whatsapp_v3(text, text, text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_orders_by_otp_v1(text, text) TO anon,
+authenticated;
+GRANT EXECUTE ON FUNCTION public.get_orders_by_whatsapp_v3(
+    text, text, text
+) TO anon,
+authenticated;
 
 COMMIT;

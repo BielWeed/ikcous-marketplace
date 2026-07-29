@@ -5,6 +5,7 @@ BEGIN;
 ALTER TABLE public._ninja_migrations ENABLE ROW LEVEL SECURITY;
 
 -- 2. Limpar a chave service_role obsoleta da tabela app_settings
-DELETE FROM public.app_settings WHERE key = 'supabase_service_role_key';
+DELETE FROM public.app_settings
+WHERE key = 'supabase_service_role_key';
 
 COMMIT;

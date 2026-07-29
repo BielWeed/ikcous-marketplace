@@ -6,8 +6,12 @@ BEGIN;
 -- 1. Ensure any invalid address_id in marketplace_orders is set to NULL to prevent FK violation during constraint creation
 UPDATE public.marketplace_orders
 SET address_id = NULL
-WHERE address_id IS NOT NULL 
-AND NOT EXISTS (SELECT 1 FROM public.user_addresses WHERE id = marketplace_orders.address_id);
+WHERE
+    address_id IS NOT NULL
+    AND NOT EXISTS (
+        SELECT 1 FROM public.user_addresses
+        WHERE user_addresses.id = marketplace_orders.address_id
+    );
 
 -- 2. Add the foreign key constraint if it doesn't exist
 DO $$

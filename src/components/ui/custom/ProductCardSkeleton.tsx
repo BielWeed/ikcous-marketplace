@@ -1,26 +1,26 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function ProductCardSkeleton() {
-    return (
-        <div className="bg-white rounded-xl overflow-hidden border border-gray-100 shadow-sm p-3">
-            {/* Image Skeleton */}
-            <Skeleton className="aspect-square w-full rounded-lg mb-3" />
+  return (
+    <div className="flex h-full flex-1 flex-col gap-0.5 overflow-hidden rounded-[2rem] border border-zinc-200/60 bg-zinc-50/30 p-2.5">
+      {/* Image Skeleton */}
+      <Skeleton className="mb-2 aspect-[4/5] w-full rounded-2xl" />
 
-            {/* Category Skeleton */}
-            <Skeleton className="h-3 w-1/3 mb-1.5" />
+      {/* Category Skeleton */}
+      <Skeleton className="mb-1 h-3 w-1/3" />
 
-            {/* Title Skeleton */}
-            <Skeleton className="h-4 w-full mb-1" />
-            <Skeleton className="h-4 w-2/3 mb-3" />
+      {/* Title Skeleton */}
+      <Skeleton className="mb-1 h-4 w-full" />
+      <Skeleton className="mb-2 h-4 w-2/3" />
 
-            {/* Price & Action Skeleton */}
-            <div className="flex items-center justify-between gap-2 mt-auto">
-                <div className="space-y-1">
-                    <Skeleton className="h-3 w-12" />
-                    <Skeleton className="h-5 w-20" />
-                </div>
-                <Skeleton className="w-9 h-9 rounded-xl flex-shrink-0" />
-            </div>
+      {/* Price & Action Skeleton */}
+      <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+        <div className="space-y-1">
+          <Skeleton className="h-3 w-12" />
+          <Skeleton className="h-5 w-20" />
         </div>
-    );
+        <Skeleton className="h-8 w-16 flex-shrink-0 rounded-xl" />
+      </div>
+    </div>
+  );
 }
