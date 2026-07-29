@@ -1,4 +1,3 @@
-import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 // Suppress Recharts "should be greater than 0" console warning which happens during initial layout calculations
@@ -34,46 +33,10 @@ if (
 }
 
 import './index.css'
-import App from './App.tsx'
-import { AuthProvider } from '@/contexts/AuthContext'
-import { HelmetProvider } from 'react-helmet-async'
-import { GlobalErrorBoundary } from '@/components/ui/custom/GlobalErrorBoundary'
-import { NotificationProvider } from '@/contexts/NotificationContext'
 import { initSentinel } from '@/pwa-sentinel'
 
 // Initialize external PWA health monitor
 initSentinel();
-
-// PWA health monitor initialized above
-
-// Environment Audit (Alpha Zero)
-const rootElement = document.getElementById('root');
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-
-if (!SUPABASE_URL || SUPABASE_URL.includes('undefined')) {
-  if (rootElement) {
-    const root = createRoot(rootElement);
-    root.render(
-      <div className="flex flex-col items-center justify-center h-svh bg-red-600 text-white p-10 font-sans text-center">
-        <h1 className="text-4xl font-black mb-5">🚨 ERRO DE AMBIENTE</h1>
-        <p className="text-lg max-w-sm leading-relaxed">
-          As chaves do banco de dados (Supabase) não foram detectadas no seu dispositivo.<br /><br />
-          Isso acontece quando o PWA está servindo uma versão zumbi ou o build falhou silenciosamente.
-        </p>
-        <button
-          onClick={() => { localStorage.clear(); sessionStorage.clear(); globalThis.location.reload(); }}
-          className="mt-8 px-8 py-4 bg-white text-red-600 border-none rounded-xl font-bold cursor-pointer transition-transform active:scale-95"
-        >
-          LIMPAR E TENTAR DE NOVO
-        </button>
-      </div>
-    );
-  }
-  throw new Error('[AlphaZero] Missing Supabase Configuration');
-}
-
-// Initial removal attempt, App.tsx will call this again once data is ready
-// No longer needed here as App.tsx handles synchronization
 
 // Fade out loader once React is ready to take over
 // This is now exposed to be called by App.tsx for total synchronization
@@ -85,16 +48,50 @@ if (!SUPABASE_URL || SUPABASE_URL.includes('undefined')) {
   }
 };
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <GlobalErrorBoundary>
-      <AuthProvider>
-        <NotificationProvider>
-          <HelmetProvider>
-            <App />
-          </HelmetProvider>
-        </NotificationProvider>
-      </AuthProvider>
-    </GlobalErrorBoundary>
-  </StrictMode>,
-)
+// Environment Audit (Alpha Zero)
+//
+// Nenhum import estático deste arquivo pode alcançar `@/lib/supabase`: aquele
+// módulo lança erro quando as variáveis faltam, e imports são avaliados antes
+// do corpo deste arquivo. A árvore React vive em `./bootstrap` e só é importada
+// depois que a auditoria passa.
+const rootElement = document.getElementById('root');
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const missing = [
+  (!SUPABASE_URL || SUPABASE_URL.includes('undefined')) && 'VITE_SUPABASE_URL',
+  (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('undefined')) && 'VITE_SUPABASE_ANON_KEY',
+].filter(Boolean) as string[];
+
+if (missing.length > 0) {
+  if (rootElement) {
+    const root = createRoot(rootElement);
+    root.render(
+      <div className="flex flex-col items-center justify-center h-svh bg-red-600 text-white p-10 font-sans text-center">
+        <h1 className="text-4xl font-black mb-5">🚨 ERRO DE AMBIENTE</h1>
+        <p className="text-lg max-w-sm leading-relaxed">
+          As chaves do banco de dados (Supabase) não foram detectadas neste build.
+        </p>
+        <ul className="mt-6 mb-2 list-none p-0 font-mono text-sm">
+          {missing.map(name => (
+            <li key={name} className="mb-1">❌ {name}</li>
+          ))}
+        </ul>
+        <p className="text-sm max-w-sm leading-relaxed opacity-90">
+          Defina {missing.length > 1 ? 'essas variáveis' : 'essa variável'} no
+          ambiente de deploy e publique de novo — o Vite embute os valores no
+          build, então alterá-las exige um novo deploy.
+        </p>
+        <button
+          onClick={() => { localStorage.clear(); sessionStorage.clear(); globalThis.location.reload(); }}
+          className="mt-8 px-8 py-4 bg-white text-red-600 border-none rounded-xl font-bold cursor-pointer transition-transform active:scale-95"
+        >
+          LIMPAR E TENTAR DE NOVO
+        </button>
+      </div>
+    );
+  }
+  console.error(`[AlphaZero] Missing Supabase configuration: ${missing.join(', ')}`);
+} else {
+  void import('./bootstrap');
+}
