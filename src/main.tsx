@@ -92,6 +92,11 @@ const missing = [
 ].filter(Boolean) as string[];
 
 if (missing.length > 0) {
+  // O splash do Silent Guardian cobre a tela toda (inset 0, z-index 10000) e só
+  // some quando o App.tsx sinaliza que carregou — o que nunca acontece aqui.
+  // Sem isso, o erro fica escondido atrás de um splash parado.
+  (globalThis as any).removeSilentGuardianLoader();
+
   if (rootElement) {
     const root = createRoot(rootElement);
     root.render(
