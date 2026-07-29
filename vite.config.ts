@@ -363,6 +363,21 @@ export default defineConfig(({ mode }) => {
         },
         injectManifest: {
           globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2}"],
+          // O precache é baixado inteiro no primeiro acesso, inclusive em 4G.
+          // Sem estes ignores ele passava de 6,5 MB, dos quais ~5 MB nenhum
+          // cliente comum chega a usar. Os chunks do admin continuam disponíveis:
+          // saem do precache e passam a ser buscados sob demanda pela rede.
+          globIgnores: [
+            // Fotos de um template antigo, sem nenhuma referência no código (~3,2 MB).
+            "images/demo/**",
+            // Só é lida por crawler de link (WhatsApp, Google); o app nunca busca (~670 kB).
+            "og-image.png",
+            // Telas exclusivas da área administrativa (~1,2 MB).
+            "assets/Admin*.js",
+            "assets/vendor-charts-*.js",
+            "assets/ImageAdjuster-*.js",
+            "assets/PhoneSimulator-*.js",
+          ],
           maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         },
         devOptions: {
@@ -414,9 +429,6 @@ export default defineConfig(({ mode }) => {
               }
               if (normalizedId.includes("react-resizable-panels")) {
                 return "vendor-panels";
-              }
-              if (normalizedId.includes("react-helmet-async")) {
-                return "vendor-helmet";
               }
               if (normalizedId.includes("lucide-react")) {
                 return "vendor-lucide";

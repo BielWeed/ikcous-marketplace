@@ -1,0 +1,223 @@
+#!/usr/bin/env node
+/**
+ * Aplica migrations específicas no banco Supabase, uma por uma.
+ *
+ * POR QUE ISTO EXISTE, em vez de `supabase db push`:
+ * o histórico deste projeto está fora de sincronia — em 29/07/2026 havia ~50
+ * migrations locais nunca aplicadas e ~25 migrations no banco sem arquivo local
+ * (aplicadas por fora, provavelmente pelo SQL Editor). Um `db push` tentaria
+ * replayar as ~50 pendentes em cima de um banco que já divergiu, reescrevendo
+ * políticas RLS e substituindo funções numa loja no ar. Aqui você escolhe
+ * explicitamente o que aplicar.
+ *
+ * O QUE ELE FAZ, nesta ordem:
+ *   1. Salva num arquivo a definição ATUAL de cada função que a migration toca,
+ *      para servir de rollback.
+ *   2. Aplica cada migration numa transação própria. Se falhar, faz ROLLBACK e para.
+ *   3. Registra a versão em supabase_migrations.schema_migrations.
+ *   4. Reexecuta uma verificação: confere se os marcadores esperados estão mesmo
+ *      na função que ficou no banco.
+ *
+ * USO:
+ *   node scripts/db-apply.cjs <arquivo.sql> [outro.sql ...]
+ *   node scripts/db-apply.cjs --dry-run <arquivo.sql>    # só mostra o plano
+ *
+ * EXEMPLO:
+ *   node scripts/db-apply.cjs \
+ *     20260729000000_fix_free_shipping_rule_parity.sql \
+ *     20260729000001_fix_upsert_store_config_partial.sql
+ *
+ * A conexão sai de DATABASE_URL (variável de ambiente ou .env do projeto).
+ * Requer o pacote `pg`:  npm i -D pg
+ */
+
+const fs = require("node:fs");
+const path = require("node:path");
+
+const PROJECT_ROOT = path.resolve(__dirname, "..");
+const MIGRATIONS_DIR = path.join(PROJECT_ROOT, "supabase", "migrations");
+
+let Client;
+try {
+  ({ Client } = require("pg"));
+} catch {
+  console.error(
+    "Pacote 'pg' não encontrado. Instale uma vez com:\n\n  npm i -D pg\n",
+  );
+  process.exit(1);
+}
+
+/** Marcadores que devem existir na função depois de aplicada. */
+const VERIFICACOES = {
+  "20260729000000_fix_free_shipping_rule_parity.sql": {
+    funcao: "create_marketplace_order_v22",
+    esperado: [
+      "v_user_id IS NOT NULL AND v_calculated_subtotal >= v_free_shipping_min",
+      "NULLIF(v_store_config.free_shipping_min, 0)",
+      "Os valores do pedido mudaram",
+    ],
+  },
+  "20260729000001_fix_upsert_store_config_partial.sql": {
+    funcao: "upsert_store_config",
+    esperado: [
+      "config_json ? 'logo_url'",
+      "config_json ? 'whatsapp_number'",
+      "ELSE store_config.primary_color END",
+    ],
+  },
+};
+
+function lerDatabaseUrl() {
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+  for (const arquivo of [".env.local", ".env"]) {
+    const caminho = path.join(PROJECT_ROOT, arquivo);
+    if (!fs.existsSync(caminho)) continue;
+    const linha = fs
+      .readFileSync(caminho, "utf8")
+      .split(/\r?\n/)
+      .find((l) => l.startsWith("DATABASE_URL="));
+    if (linha) return linha.slice("DATABASE_URL=".length).replace(/^"|"$/g, "");
+  }
+  throw new Error(
+    "DATABASE_URL não encontrada (nem no ambiente, nem em .env.local, nem em .env).",
+  );
+}
+
+/** Descobre quais funções a migration redefine, para conseguir salvar o rollback. */
+function funcoesAlteradas(sql) {
+  const nomes = new Set();
+  const re = /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.(\w+)/gi;
+  let m;
+  while ((m = re.exec(sql))) nomes.add(m[1]);
+  return [...nomes];
+}
+
+async function definicaoAtual(client, nomeFuncao) {
+  const { rows } = await client.query(
+    `SELECT pg_get_functiondef(p.oid) AS def
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = $1`,
+    [nomeFuncao],
+  );
+  return rows.map((r) => r.def);
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const dryRun = args.includes("--dry-run");
+  const arquivos = args.filter((a) => !a.startsWith("--"));
+
+  if (arquivos.length === 0) {
+    console.error("Informe ao menos um arquivo de migration.\n");
+    console.error("  node scripts/db-apply.cjs <arquivo.sql> [outro.sql ...]");
+    process.exit(1);
+  }
+
+  for (const nome of arquivos) {
+    const caminho = path.join(MIGRATIONS_DIR, path.basename(nome));
+    if (!fs.existsSync(caminho)) {
+      console.error(`Migration não encontrada: ${caminho}`);
+      process.exit(1);
+    }
+  }
+
+  const client = new Client({
+    connectionString: lerDatabaseUrl(),
+    ssl: { rejectUnauthorized: false },
+  });
+  await client.connect();
+
+  const host = new URL(lerDatabaseUrl()).hostname;
+  console.log(`Conectado em ${host}`);
+  console.log(`Migrations a aplicar: ${arquivos.length}\n`);
+
+  // 1. Rollback das definições atuais.
+  const partesRollback = [
+    `-- Rollback gerado automaticamente antes de aplicar: ${arquivos.join(", ")}`,
+    "-- Para desfazer, rode este arquivo inteiro no SQL Editor.",
+    "",
+  ];
+  for (const nome of arquivos) {
+    const sql = fs.readFileSync(
+      path.join(MIGRATIONS_DIR, path.basename(nome)),
+      "utf8",
+    );
+    for (const fn of funcoesAlteradas(sql)) {
+      const defs = await definicaoAtual(client, fn);
+      if (defs.length === 0) {
+        partesRollback.push(`-- ${fn}: não existe hoje no banco (será criada).`, "");
+        continue;
+      }
+      partesRollback.push(`-- ${fn}`, ...defs.map((d) => `${d};`), "");
+    }
+  }
+  const arquivoRollback = path.join(
+    PROJECT_ROOT,
+    `rollback-${arquivos[0].replace(/\.sql$/, "")}.sql`,
+  );
+  fs.writeFileSync(arquivoRollback, partesRollback.join("\n"));
+  console.log(`Rollback salvo em: ${path.relative(PROJECT_ROOT, arquivoRollback)}\n`);
+
+  if (dryRun) {
+    console.log("--dry-run: nada foi aplicado.");
+    await client.end();
+    return;
+  }
+
+  // 2. Aplica cada uma em transação própria.
+  for (const nome of arquivos) {
+    const base = path.basename(nome);
+    const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, base), "utf8");
+    const versao = base.split("_")[0];
+    const rotulo = base.replace(/^\d+_/, "").replace(/\.sql$/, "");
+
+    try {
+      await client.query("BEGIN");
+      await client.query(sql);
+      await client.query(
+        `INSERT INTO supabase_migrations.schema_migrations (version, name)
+         VALUES ($1, $2) ON CONFLICT (version) DO NOTHING`,
+        [versao, rotulo],
+      );
+      await client.query("COMMIT");
+      console.log(`  aplicada  ${base}`);
+    } catch (erro) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error(`  FALHOU    ${base}\n            ${erro.message}`);
+      console.error("\nNada foi comitado desta migration. Parando aqui.");
+      await client.end();
+      process.exit(1);
+    }
+  }
+
+  // 3. Verificação pós-aplicação.
+  console.log("\nVerificação:");
+  let tudoOk = true;
+  for (const nome of arquivos) {
+    const base = path.basename(nome);
+    const checagem = VERIFICACOES[base];
+    if (!checagem) {
+      console.log(`  ${base}: sem verificação registrada, pulando.`);
+      continue;
+    }
+    const [def] = await definicaoAtual(client, checagem.funcao);
+    for (const marcador of checagem.esperado) {
+      const ok = Boolean(def?.includes(marcador));
+      if (!ok) tudoOk = false;
+      console.log(`  ${ok ? "ok     " : "AUSENTE"}  ${marcador.slice(0, 64)}`);
+    }
+  }
+
+  await client.end();
+  console.log(
+    tudoOk
+      ? "\nTudo aplicado e verificado."
+      : "\nATENÇÃO: algum marcador esperado não apareceu. Confira antes de confiar.",
+  );
+  process.exit(tudoOk ? 0 : 1);
+}
+
+main().catch((erro) => {
+  console.error("Erro:", erro.message);
+  process.exit(1);
+});

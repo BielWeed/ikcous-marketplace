@@ -119,6 +119,9 @@ export const BannerCarousel = memo(function BannerCarousel({
                 alt={banner.title || ""}
                 className="size-full transition-transform [transition-duration:2000ms] [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] group-hover:scale-105"
                 priority={index === 0}
+                // Banner ocupa a largura toda; era o pior caso (PNG de 1340 kB).
+                sizes="100vw"
+                quality={70}
               />
               {/* Dynamic Custom Overlay & Content */}
               {(() => {

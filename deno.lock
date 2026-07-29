@@ -92,7 +92,6 @@
         "npm:postcss@^8.5.16",
         "npm:puppeteer@^25.3.0",
         "npm:react-dom@^19.2.0",
-        "npm:react-helmet-async@^2.0.5",
         "npm:react-hook-form@^7.70.0",
         "npm:react@^19.2.0",
         "npm:recharts@^2.15.4",

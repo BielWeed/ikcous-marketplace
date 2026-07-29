@@ -34,7 +34,7 @@ import {
   Users,
 } from "lucide-react";
 import React from "react";
-import { Helmet } from "react-helmet-async";
+import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -512,6 +512,12 @@ export function AdminLayout({
   const parentView = getParentView(currentView);
   const isSubView = parentView !== "profile" || isOrderDetailsSubView;
 
+  useDocumentMeta({
+    title: `${branding.appName} | Admin Dashboard`,
+    names: { description: "Sistema de navegação unificada e operação." },
+    properties: { "og:title": `${branding.appName} Admin` },
+  });
+
   return (
     <div
       className="flex size-full flex-col overflow-hidden bg-[#09090b] font-sans text-zinc-50 lg:flex-row"
@@ -523,15 +529,6 @@ export function AdminLayout({
         } as React.CSSProperties
       }
     >
-      <Helmet>
-        <title>{branding.appName} | Admin Dashboard</title>
-        <meta
-          name="description"
-          content="Sistema de navegação unificada e operação."
-        />
-        <meta property="og:title" content={`${branding.appName} Admin`} />
-      </Helmet>
-
       {/* Desktop Sidebar */}
       <aside
         className="z-50 hidden w-64 flex-shrink-0 flex-col justify-between border-r border-white/5 bg-[#09090b]/80 p-6 backdrop-blur-xl lg:flex"

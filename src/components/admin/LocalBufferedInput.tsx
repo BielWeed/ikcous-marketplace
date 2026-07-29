@@ -45,6 +45,16 @@ const parseCurrencyToFloatString = (val: string) => {
   return num.toFixed(2);
 };
 
+// O valor que chega pela prop `value` já está em reais (ex.: 100 ou "100.00"),
+// diferente do que o usuário digita, que é interpretado em centavos.
+// Converter para centavos antes de formatar, senão R$ 100,00 é exibido como R$ 1,00.
+const decimalToCurrencyDisplay = (val: string) => {
+  if (val.trim() === "") return "";
+  const floatVal = Number.parseFloat(val);
+  if (Number.isNaN(floatVal)) return "";
+  return formatCurrency(Math.round(floatVal * 100).toString());
+};
+
 export const LocalBufferedInput = memo(function LocalBufferedInput({
   value,
   onFlush,
@@ -62,14 +72,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         return formatPhone(str);
       }
       if (mask === "currency") {
-        if (str.includes(".")) {
-          const floatVal = Number.parseFloat(str);
-          if (!Number.isNaN(floatVal)) {
-            const cents = Math.round(floatVal * 100).toString();
-            return formatCurrency(cents);
-          }
-        }
-        return formatCurrency(str);
+        return decimalToCurrencyDisplay(str);
       }
       return str;
     },
@@ -94,7 +97,9 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         if (mask === "phone") {
           rawVal = rawVal.replace(/\D/g, "");
         } else if (mask === "currency") {
-          rawVal = parseCurrencyToFloatString(rawVal);
+          // `value` já vem em reais: normalizar sem reinterpretar como centavos.
+          const floatVal = Number.parseFloat(rawVal);
+          rawVal = Number.isNaN(floatVal) ? "" : floatVal.toFixed(2);
         }
         setError(validate(rawVal));
       }

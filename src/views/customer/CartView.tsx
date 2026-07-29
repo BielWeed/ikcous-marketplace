@@ -24,6 +24,7 @@ import { CartItemsList } from "@/components/ui/custom/CartItemsList";
 import { EmptyCart } from "@/components/ui/custom/EmptyCart";
 import { OrderList } from "@/components/ui/custom/OrderList";
 import { OrderSearch } from "@/components/ui/custom/OrderSearch";
+import { ShippingCalculator } from "@/components/ui/custom/ShippingCalculator";
 import { ShippingProgress } from "@/components/ui/custom/ShippingProgress";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 
@@ -58,6 +59,9 @@ export function CartView({
     shippingFee: ctxShippingFee,
     updateQuantity,
     removeFromCart,
+    selectedShippingOption,
+    setSelectedShippingOption,
+    setShippingCep,
   } = useCart();
 
   const cart = propCart ?? ctxCart;
@@ -387,6 +391,19 @@ export function CartView({
                       onRemove={handleRemove}
                       handleClearCart={handleClearCart}
                     />
+
+                    {cart.length > 0 && !hasFreeShippingItem && (
+                      <div className="mt-3">
+                        <ShippingCalculator
+                          cart={cart}
+                          subtotal={subtotal}
+                          freeShippingMin={config.freeShippingMin || 0}
+                          selectedOption={selectedShippingOption}
+                          onSelectOption={setSelectedShippingOption}
+                          onCepValidated={setShippingCep}
+                        />
+                      </div>
+                    )}
 
                     {user && cart.length > 0 && (
                       <ShippingProgress

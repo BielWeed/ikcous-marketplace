@@ -60,3 +60,31 @@ Deno.test("isLocalCep - custom range", () => {
   assertEquals(isLocalCep("38500-000", "38502000", "38500000-38505000"), true);
   assertEquals(isLocalCep("38500-000", "38506000", "38500000-38505000"), false);
 });
+
+Deno.test("isLocalCep - formato do placeholder do admin (dois CEPs formatados)", () => {
+  // O placeholder do AdminShippingView ensina "Ex: 38500-000, 38500-999".
+  // Antes, o hífen do CEP era lido como separador de faixa e nada casava.
+  const range = "38500-000, 38500-999";
+  assertEquals(isLocalCep("38500-000", "38500-123", range), true);
+  assertEquals(isLocalCep("38500-000", "38500-000", range), true);
+  assertEquals(isLocalCep("38500-000", "38500-999", range), true);
+  // Fora da faixa
+  assertEquals(isLocalCep("38500-000", "38501-000", range), false);
+  assertEquals(isLocalCep("38500-000", "38400-123", range), false);
+});
+
+Deno.test("isLocalCep - CEP completo isolado casa exato, prefixo curto casa por início", () => {
+  assertEquals(isLocalCep("38500-000", "38500-123", "38500-123"), true);
+  assertEquals(isLocalCep("38500-000", "38500-124", "38500-123"), false);
+  // Três ou mais itens continuam valendo como lista, não como faixa
+  assertEquals(isLocalCep("38500-000", "38400-123", "38500, 38400, 38300"), true);
+  assertEquals(isLocalCep("38500-000", "38100-123", "38500, 38400, 38300"), false);
+});
+
+Deno.test("isLocalCep - faixa invertida e espaços extras", () => {
+  // Lojista digita o maior primeiro: deve continuar funcionando
+  assertEquals(isLocalCep("38500-000", "38500-500", "38500-999 ,  38500-000"), true);
+  // Campo vazio ou só pontuação cai no fallback dos 5 primeiros dígitos
+  assertEquals(isLocalCep("38500-000", "38500-120", "   "), true);
+  assertEquals(isLocalCep("38500-000", "38400-120", "   "), false);
+});

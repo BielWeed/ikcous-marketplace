@@ -78,6 +78,7 @@ export function CheckoutView({
     shippingFee: ctxShipping,
     clearCart: ctxClearCart,
     selectedShippingOption,
+    shippingCep,
   } = useCart();
 
   const cart = propCart ?? ctxCart;
@@ -418,6 +419,10 @@ export function CheckoutView({
       })),
       totalAmount: finalTotal,
       shippingCost: shipping,
+      // Identificam a cotação que o servidor gravou; sem isso o banco cai na
+      // taxa padrão da loja e o total não fecha.
+      destinationCep: shippingCep,
+      shippingOptionId: selectedShippingOption?.id ?? null,
       paymentMethod,
       addressId: user ? selectedAddressId : null,
       addressData: user

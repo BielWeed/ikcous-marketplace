@@ -61,7 +61,7 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 export function StoreProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const { isAdmin, loading } = useAuth();
+  const { isAdmin, loading, user } = useAuth();
   const { isLeader } = useLeaderElection();
   const vaultRef = useRef<DataVault | null>(null);
   const [config, setConfig] = useState<StoreConfig>(defaultStoreConfig);
@@ -594,7 +594,14 @@ export function StoreProvider({
         return sum + price * item.quantity;
       }, 0);
 
-      if (config.freeShippingMin > 0 && totalAmount >= config.freeShippingMin)
+      // Frete grátis exige login — mesma regra do CartContext, da RPC
+      // create_marketplace_order_v22 e do que o FreeShippingBlock promete na Home.
+      // Sem o `user` aqui, esta função divergia das outras duas.
+      if (
+        config.freeShippingMin > 0 &&
+        totalAmount >= config.freeShippingMin &&
+        user
+      )
         return 0;
 
       if (selectedOption) {
@@ -603,7 +610,7 @@ export function StoreProvider({
 
       return config.shippingFee;
     },
-    [config.freeShippingMin, config.shippingFee],
+    [config.freeShippingMin, config.shippingFee, user],
   );
 
   const refresh = useCallback(

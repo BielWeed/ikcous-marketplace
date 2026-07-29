@@ -44,6 +44,29 @@ export function calculateSmartFallback(origin: string, dest: string, baseFee: nu
     return Math.max(38, baseFee + 20); // Remote regions
 }
 
+/**
+ * Dispara uma query sem bloquear a resposta, sem quebrar a função.
+ *
+ * O PostgrestBuilder do supabase-js implementa apenas `PromiseLike` — tem `then`,
+ * mas NÃO tem `catch`. O código anterior fazia `.insert({...}).catch(...)`, o que
+ * lançava `TypeError: .catch is not a function`. Esse erro subia até o try/catch
+ * de topo e a função descartava as cotações reais da transportadora para devolver
+ * o fallback fixo de R$ 15 — ou seja, o frete calculado nunca chegava ao cliente.
+ *
+ * Envolver em `Promise.resolve()` converte o thenable em Promise de verdade (o que
+ * também dispara a execução da query, já que o builder é lazy) e permite tratar
+ * tanto a rejeição quanto o `{ error }` que o PostgREST devolve sem rejeitar.
+ */
+function fireAndForget(query: PromiseLike<unknown>, label: string): void {
+    Promise.resolve(query).then(
+        (result) => {
+            const error = (result as { error?: unknown } | null)?.error
+            if (error) console.error(label, error)
+        },
+        (err) => console.error(label, err),
+    )
+}
+
 // Helper to check if destination is a local CEP
 export function isLocalCep(originCep: string, destCep: string, localCepRange?: string): boolean {
     const cleanOrigin = originCep.replace(/\D/g, '')
@@ -52,26 +75,44 @@ export function isLocalCep(originCep: string, destCep: string, localCepRange?: s
     if (cleanOrigin.length === 0 || cleanDest.length === 0) return false
     
     if (localCepRange && localCepRange.trim().length > 0) {
-        const ranges = localCepRange.split(',').map(r => r.trim())
-        for (const r of ranges) {
-            if (r.includes('-')) {
-                const parts = r.split('-').map(p => p.replace(/\D/g, '')).filter(Boolean)
-                if (parts.length === 2) {
-                    const start = Number(parts[0])
-                    const end = Number(parts[1])
-                    const destVal = Number(cleanDest)
-                    if (!isNaN(start) && !isNaN(end) && !isNaN(destVal) && destVal >= start && destVal <= end) {
-                        return true
-                    }
-                }
+        // O hífen faz parte do formato do CEP brasileiro ("38500-000"), então NÃO
+        // pode ser tratado como separador de faixa: a versão anterior lia
+        // "38500-000, 38500-999" como duas faixas [38500..0] e [38500..999],
+        // que nunca casavam com um CEP de 8 dígitos. Resultado: a faixa configurada
+        // pelo lojista — exatamente no formato que o placeholder do admin ensina —
+        // era sempre ignorada e ninguém recebia a taxa de entrega local.
+        const destVal = Number(cleanDest.padEnd(8, '0'))
+        const ranges: Array<[number, number]> = []
+        const singles: string[] = []
+
+        for (const rawToken of localCepRange.split(',')) {
+            const parts = rawToken.split('-').map(p => p.replace(/\D/g, '')).filter(Boolean)
+            if (parts.length === 0) continue
+
+            // "38500000-38505000": dois blocos longos = faixa explícita.
+            // "38500-000": 5+3 dígitos = um único CEP formatado.
+            if (parts.length === 2 && parts[0].length >= 6 && parts[1].length >= 6) {
+                const start = Number(parts[0].padEnd(8, '0'))
+                const end = Number(parts[1].padEnd(8, '9'))
+                ranges.push(start <= end ? [start, end] : [end, start])
             } else {
-                const prefix = r.replace(/\D/g, '')
-                if (prefix && cleanDest.startsWith(prefix)) {
-                    return true
-                }
+                singles.push(parts.join(''))
             }
         }
-        return false
+
+        if (ranges.some(([start, end]) => destVal >= start && destVal <= end)) {
+            return true
+        }
+
+        // Formato do placeholder do admin ("38500-000, 38500-999"):
+        // dois CEPs completos = início e fim de uma faixa.
+        if (ranges.length === 0 && singles.length === 2 && singles.every(s => s.length === 8)) {
+            const bounds = singles.map(Number).sort((a, b) => a - b)
+            return destVal >= bounds[0] && destVal <= bounds[1]
+        }
+
+        // Demais casos: CEP completo casa exato; item mais curto vale como prefixo.
+        return singles.some(s => (s.length === 8 ? cleanDest === s : cleanDest.startsWith(s)))
     }
     
     // Default fallback: match first 5 digits
@@ -422,14 +463,17 @@ serve(async (req: Request) => {
             console.log(`[calculate-shipping] Caching hit for CEP: ${cleanCep}`)
             
             // Log cache hit asynchronously (fire and forget)
-            supabaseClient.from('shipping_calculation_logs').insert({
-                origin_cep: originCep,
-                destination_cep: cleanCep,
-                provider: `${provider} (Cache)`,
-                cart_items: cart,
-                response_time_ms: 0,
-                status: 'success'
-            }).catch((err) => console.error('Failed to log cache hit:', err))
+            fireAndForget(
+                supabaseClient.from('shipping_calculation_logs').insert({
+                    origin_cep: originCep,
+                    destination_cep: cleanCep,
+                    provider: `${provider} (Cache)`,
+                    cart_items: cart,
+                    response_time_ms: 0,
+                    status: 'success'
+                }),
+                'Failed to log cache hit:',
+            )
 
             return new Response(
                 JSON.stringify({ options: cachedQuote.options }),
@@ -658,33 +702,42 @@ serve(async (req: Request) => {
             ]
 
             // Log contingency
-            supabaseClient.from('shipping_calculation_logs').insert({
-                origin_cep: originCep,
-                destination_cep: cleanCep,
-                provider: provider,
-                cart_items: cart,
-                response_time_ms: latency,
-                status: 'contingency',
-                error_message: apiError || 'Nenhum método de envio retornado.'
-            }).catch((err) => console.error('Failed to log contingency:', err))
+            fireAndForget(
+                supabaseClient.from('shipping_calculation_logs').insert({
+                    origin_cep: originCep,
+                    destination_cep: cleanCep,
+                    provider: provider,
+                    cart_items: cart,
+                    response_time_ms: latency,
+                    status: 'contingency',
+                    error_message: apiError || 'Nenhum método de envio retornado.'
+                }),
+                'Failed to log contingency:',
+            )
         } else {
             // Save to cache
-            supabaseClient.from('shipping_quotes_cache').insert({
-                origin_cep: originCep,
-                destination_cep: cleanCep,
-                cart_hash: cartHash,
-                options: shippingOptions
-            }).catch((err) => console.error('Failed to cache shipping options:', err))
+            fireAndForget(
+                supabaseClient.from('shipping_quotes_cache').insert({
+                    origin_cep: originCep,
+                    destination_cep: cleanCep,
+                    cart_hash: cartHash,
+                    options: shippingOptions
+                }),
+                'Failed to cache shipping options:',
+            )
 
             // Log success
-            supabaseClient.from('shipping_calculation_logs').insert({
-                origin_cep: originCep,
-                destination_cep: cleanCep,
-                provider: provider,
-                cart_items: cart,
-                response_time_ms: latency,
-                status: 'success'
-            }).catch((err) => console.error('Failed to log success:', err))
+            fireAndForget(
+                supabaseClient.from('shipping_calculation_logs').insert({
+                    origin_cep: originCep,
+                    destination_cep: cleanCep,
+                    provider: provider,
+                    cart_items: cart,
+                    response_time_ms: latency,
+                    status: 'success'
+                }),
+                'Failed to log success:',
+            )
         }
 
         return new Response(

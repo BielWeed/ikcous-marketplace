@@ -150,6 +150,8 @@ export const ProductCard = memo(function ProductCard({
           alt={product.name}
           className="size-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
           priority={priority}
+          // Grade de 2 colunas no celular, card fixo a partir do tablet.
+          sizes="(min-width: 640px) 280px, 50vw"
           style={
             shouldApplyTransitionName
               ? { viewTransitionName: "product-image" }

@@ -30,6 +30,9 @@ export interface CartState {
   cartCount: number;
   shippingFee: number;
   selectedShippingOption: ShippingOption | null;
+  /** CEP para o qual a cotação de frete escolhida foi calculada. O banco precisa
+   *  dele para localizar a cotação gravada e confirmar o valor do frete. */
+  shippingCep: string | null;
 }
 
 export interface CartActions {
@@ -49,6 +52,7 @@ export interface CartActions {
   getCartTotal: () => number;
   getCartCount: () => number;
   setSelectedShippingOption: (option: ShippingOption | null) => void;
+  setShippingCep: (cep: string | null) => void;
 }
 
 export interface CartContextType extends CartState, CartActions {}
@@ -681,6 +685,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const [selectedShippingOption, setSelectedShippingOption] =
     React.useState<ShippingOption | null>(null);
+  const [shippingCep, setShippingCep] = React.useState<string | null>(null);
 
   const clearCart = useCallback(() => {
     // Tombstone all current items before clearing
@@ -695,16 +700,28 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return [];
     });
     setSelectedShippingOption(null);
+    setShippingCep(null);
     localStorage.removeItem(CART_STORAGE_KEY);
     toast.info("Carrinho limpo");
   }, []);
 
-  // Reset shipping option when cart becomes empty
+  // A cotação de frete vale para uma composição específica de carrinho: o preço
+  // depende de peso e dimensões. Mudou item ou quantidade, a cotação anterior
+  // deixa de valer e o cliente precisa recalcular — senão pagaria o frete de um
+  // carrinho que não é mais o dele.
+  const assinaturaDoCarrinho = React.useMemo(
+    () =>
+      cart
+        .map((i) => [i.product.id, i.variantId || "", i.quantity].join(":"))
+        .sort()
+        .join("|"),
+    [cart],
+  );
+
   useEffect(() => {
-    if (cart.length === 0) {
-      setSelectedShippingOption(null);
-    }
-  }, [cart.length]);
+    setSelectedShippingOption(null);
+    setShippingCep(null);
+  }, [assinaturaDoCarrinho]);
 
   const cartTotal = React.useMemo(() => {
     return cart.reduce((total, item) => {
@@ -766,6 +783,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       cartCount,
       shippingFee,
       selectedShippingOption,
+      shippingCep,
     }),
     [
       cart,
@@ -774,6 +792,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       cartCount,
       shippingFee,
       selectedShippingOption,
+      shippingCep,
     ],
   );
 
@@ -786,6 +805,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       getCartTotal,
       getCartCount,
       setSelectedShippingOption,
+      setShippingCep,
     }),
     [
       addToCart,

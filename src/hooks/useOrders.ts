@@ -836,7 +836,7 @@ export function useOrders(
       // O backend recalcula o total consultando os preços diretamente do banco (produtos/variants)
       // e usa o 'p_total_amount' como um Checksum para garantir integridade.
       const { data, error } = await (supabase as any).rpc(
-        "create_marketplace_order_v22",
+        "create_marketplace_order_v23",
         {
           p_items: orderData.items.map((item: any) => ({
             product_id: item.product_id || item.productId,
@@ -852,6 +852,10 @@ export function useOrders(
           p_customer_phone: orderData.customer.whatsapp,
           p_observation: orderData.notes || null,
           p_address_data: orderData.addressData || null,
+          // O banco usa estes dois para localizar a cotação que ELE gravou e
+          // confirmar o valor do frete. O preço enviado pelo cliente é ignorado.
+          p_destination_cep: orderData.destinationCep || null,
+          p_shipping_option_id: orderData.shippingOptionId || null,
         },
       );
 

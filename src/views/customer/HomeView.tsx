@@ -21,7 +21,7 @@ import { ProductCarousel } from "@/components/ui/custom/ProductCarousel";
 import { ProductList } from "@/components/ui/custom/ProductList";
 import { branding } from "@/config/branding";
 import { haptic } from "@/utils/haptic";
-import { Helmet } from "react-helmet-async";
+import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 
 interface HomeViewProps {
   products: Product[];
@@ -211,58 +211,43 @@ export const HomeView = React.memo(function HomeView({
     { value: "price-desc", label: "Maior Preço", icon: ArrowUp },
   ];
 
+  const homeDescription =
+    "Descubra produtos exclusivos com frete grátis e entrega expressa em Monte Carmelo, MG.";
+  const homeSocialTitle = `${branding.appName} - Seu Shopping Local`;
+  const homeLogo = `${globalThis.location.origin}/branding/logo.png`;
+
+  useDocumentMeta({
+    title: `${branding.appName} | Monte Carmelo, MG`,
+    names: {
+      description: `O melhor marketplace de Monte Carmelo com entrega ultrarrápida e troca garantida - ${branding.appName}`,
+      "twitter:card": "summary_large_image",
+      "twitter:title": homeSocialTitle,
+      "twitter:description": homeDescription,
+      "twitter:image": homeLogo,
+    },
+    properties: {
+      "og:title": homeSocialTitle,
+      "og:description": homeDescription,
+      "og:type": "website",
+      "og:image": homeLogo,
+      "og:url": globalThis.location.origin,
+    },
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: branding.appName,
+      url: globalThis.location.origin,
+      potentialAction: {
+        "@type": "SearchAction",
+        target: `${globalThis.location.origin}/?search={search_term_string}`,
+        "query-input": "required name=search_term_string",
+      },
+    },
+    jsonLdId: "home-structured-data",
+  });
+
   return (
     <div className="pb-customer min-h-full">
-      <Helmet>
-        <title>{branding.appName} | Monte Carmelo, MG</title>
-        <meta
-          name="description"
-          content={`O melhor marketplace de Monte Carmelo com entrega ultrarrápida e troca garantida - ${branding.appName}`}
-        />
-        <meta
-          property="og:title"
-          content={`${branding.appName} - Seu Shopping Local`}
-        />
-        <meta
-          property="og:description"
-          content="Descubra produtos exclusivos com frete grátis e entrega expressa em Monte Carmelo, MG."
-        />
-        <meta property="og:type" content="website" />
-        <meta
-          property="og:image"
-          content={`${globalThis.location.origin}/branding/logo.png`}
-        />
-        <meta property="og:url" content={globalThis.location.origin} />
-
-        {/* Twitter Card */}
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta
-          name="twitter:title"
-          content={`${branding.appName} - Seu Shopping Local`}
-        />
-        <meta
-          name="twitter:description"
-          content="Descubra produtos exclusivos com frete grátis e entrega expressa em Monte Carmelo, MG."
-        />
-        <meta
-          name="twitter:image"
-          content={`${globalThis.location.origin}/branding/logo.png`}
-        />
-
-        <script type="application/ld+json">
-          {JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "WebSite",
-            name: branding.appName,
-            url: globalThis.location.origin,
-            potentialAction: {
-              "@type": "SearchAction",
-              target: `${globalThis.location.origin}/?search={search_term_string}`,
-              "query-input": "required name=search_term_string",
-            },
-          })}
-        </script>
-      </Helmet>
 
       {/* Top Banners - Full Width */}
       {!searchQuery &&

@@ -1,22 +1,11 @@
 import type { Database } from "@/types/database.types";
 import { createClient } from "@supabase/supabase-js";
+// Importar `env` primeiro \u00E9 intencional: ele valida as vari\u00E1veis e, se faltarem,
+// pinta a tela de erro antes de interromper o boot. Sem isso o app morria em sil\u00EAncio
+// aqui mesmo, deixando o usu\u00E1rio preso no loader.
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/env";
 
-// Production fallback values (anon keys are safe to expose)
-const cleanEnvVar = (val: string) =>
-  val.replace(/[\uFEFF\u200B-\u200D\u00A0]/g, "").trim();
-
-const supabaseUrl = cleanEnvVar(import.meta.env.VITE_SUPABASE_URL || "");
-const supabaseAnonKey = cleanEnvVar(
-  import.meta.env.VITE_SUPABASE_ANON_KEY || "",
-);
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    "CRITICAL: Supabase Environment Variables Missing. Check your .env file and ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set.",
-  );
-}
-
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,

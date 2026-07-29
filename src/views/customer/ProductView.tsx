@@ -31,7 +31,8 @@ import {
 } from "lucide-react";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Helmet } from "react-helmet-async";
+import { useDocumentMeta } from "@/hooks/useDocumentMeta";
+import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
 import { toast } from "sonner";
 
 const RECS_CACHE_KEY_PREFIX = "ikcous_recs_cache_";
@@ -680,54 +681,33 @@ export const ProductView = React.memo(function ProductView({
     }),
   };
 
+  const metaDescription =
+    product.metaDescription || product.description?.substring(0, 150) || "";
+  const metaTitle = product.metaTitle || product.name;
+  const metaImage = product.images?.[0] || "";
+
+  useDocumentMeta({
+    title: product.metaTitle || `${product.name} | Loja`,
+    names: {
+      description: metaDescription,
+      "twitter:card": "summary_large_image",
+      "twitter:title": metaTitle,
+      "twitter:description": metaDescription,
+      "twitter:image": metaImage,
+    },
+    properties: {
+      "og:title": metaTitle,
+      "og:description": metaDescription,
+      "og:image": metaImage,
+      "og:type": "product",
+      "og:url": `${globalThis.location?.origin || "https://ickous-marketplace.vercel.app"}/product-detail?id=${product.id}`,
+    },
+    jsonLd: structuredData,
+    jsonLdId: "product-structured-data",
+  });
+
   return (
     <div className="pb-customer relative min-h-full bg-white">
-      <Helmet>
-        <title>{product.metaTitle || `${product.name} | Loja`}</title>
-        <meta
-          name="description"
-          content={
-            product.metaDescription ||
-            product.description?.substring(0, 150) ||
-            ""
-          }
-        />
-        <meta property="og:title" content={product.metaTitle || product.name} />
-        <meta
-          property="og:description"
-          content={
-            product.metaDescription ||
-            product.description?.substring(0, 150) ||
-            ""
-          }
-        />
-        <meta property="og:image" content={product.images?.[0] || ""} />
-        <meta property="og:type" content="product" />
-        <meta
-          property="og:url"
-          content={`${globalThis.location?.origin || "https://ickous-marketplace.vercel.app"}/product-detail?id=${product.id}`}
-        />
-
-        {/* Twitter Card */}
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta
-          name="twitter:title"
-          content={product.metaTitle || product.name}
-        />
-        <meta
-          name="twitter:description"
-          content={
-            product.metaDescription ||
-            product.description?.substring(0, 150) ||
-            ""
-          }
-        />
-        <meta name="twitter:image" content={product.images?.[0] || ""} />
-
-        <script type="application/ld+json">
-          {JSON.stringify(structuredData)}
-        </script>
-      </Helmet>
 
       {/* Image Gallery */}
       <div className="group relative aspect-[4/3] overflow-hidden rounded-b-[2rem] bg-[#F8F9FA] sm:aspect-[4/3] lg:aspect-square">
@@ -735,7 +715,19 @@ export const ProductView = React.memo(function ProductView({
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.img
               key={currentImageIndex}
-              src={variantImage || product.images?.[currentImageIndex] || ""}
+              src={imagemRedimensionada(
+                variantImage || product.images?.[currentImageIndex] || "",
+                { width: 960, quality: 80 },
+              )}
+              srcSet={
+                conjuntoDeImagens(
+                  variantImage || product.images?.[currentImageIndex] || "",
+                  [480, 640, 960, 1280],
+                  80,
+                ) || undefined
+              }
+              // Ocupa a largura toda no celular; a partir do desktop fica limitada pela altura.
+              sizes="(min-width: 1024px) 70vh, 100vw"
               alt={product.name}
               className="main-product-image h-full w-auto max-w-full object-contain"
               initial={{ opacity: 0 }}
@@ -976,8 +968,15 @@ export const ProductView = React.memo(function ProductView({
                         >
                           {v.imageUrl && (
                             <img
-                              src={v.imageUrl}
+                              // Miniatura de 20px: baixar o original aqui era o
+                              // desperdício mais extremo da tela.
+                              src={imagemRedimensionada(v.imageUrl, {
+                                width: 80,
+                                quality: 70,
+                              })}
                               alt=""
+                              loading="lazy"
+                              decoding="async"
                               className="size-5 rounded-md bg-white object-cover shadow-sm"
                             />
                           )}

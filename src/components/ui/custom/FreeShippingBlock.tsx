@@ -14,7 +14,15 @@ export function FreeShippingBlock({ onNavigate }: FreeShippingBlockProps) {
   const { cartTotal } = useCartContext();
   const { user } = useAuth();
 
-  const minShipping = config.freeShippingMin || 100;
+  // Regra desligada no admin: não anunciar frete grátis que a loja não oferece.
+  if (!(config.freeShippingMin > 0)) {
+    return null;
+  }
+
+  // freeShippingMin = 0 significa que o lojista DESLIGOU a regra no admin.
+  // O fallback `|| 100` fazia a Home anunciar uma meta de R$ 100 que não existe
+  // e chegar a exibir "Frete Grátis Liberado!" enquanto o carrinho cobrava frete.
+  const minShipping = config.freeShippingMin || 0;
   const totalCartValue = cartTotal || 0;
   const remaining = Math.max(0, minShipping - totalCartValue);
   const isGoalReached = totalCartValue >= minShipping && minShipping > 0;
