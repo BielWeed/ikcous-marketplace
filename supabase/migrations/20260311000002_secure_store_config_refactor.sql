@@ -7,7 +7,7 @@ BEGIN;
 -- 1. Create Public View for Store Config (LEAK PROTECTION)
 -- This view ONLY exposes safe columns to the public.
 CREATE OR REPLACE VIEW public.vw_store_config_public AS
-SELECT 
+SELECT
     id,
     free_shipping_min,
     shipping_fee,
@@ -35,23 +35,24 @@ DROP POLICY IF EXISTS "Admins manage everything" ON public.store_config;
 
 -- Policy for Admins: Full Access
 CREATE POLICY "Admins manage everything" ON public.store_config
-    FOR ALL
-    TO authenticated
-    USING (public.is_admin())
-    WITH CHECK (public.is_admin());
+FOR ALL
+TO authenticated
+USING (public.is_admin())
+WITH CHECK (public.is_admin());
 
 -- Policy for Public: No direct access to base table for non-admins (force using the view)
 -- Or, we can keep direct access but use a dynamic RLS that hides columns (more complex in Supabase)
 -- Better approach: Revoke direct select from base table for anon, authenticated
 -- and force them to use the view.
 REVOKE SELECT ON public.store_config FROM anon, authenticated;
-GRANT SELECT ON public.store_config TO authenticated; -- Admins are authenticated
+-- Admins are authenticated
+GRANT SELECT ON public.store_config TO authenticated;
 
 -- Re-refining the policy for direct table access if scripts need it
 DROP POLICY IF EXISTS "Admins read base table" ON public.store_config;
 CREATE POLICY "Admins read base table" ON public.store_config
-    FOR SELECT
-    TO authenticated
-    USING (public.is_admin());
+FOR SELECT
+TO authenticated
+USING (public.is_admin());
 
 COMMIT;

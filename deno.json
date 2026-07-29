@@ -1,0 +1,8 @@
+{
+  "exclude": ["scratch", "node_modules", "dist"],
+  "lint": {
+    "rules": {
+      "exclude": ["no-import-prefix", "no-explicit-any", "ban-ts-comment"]
+    }
+  }
+}

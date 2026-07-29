@@ -39,8 +39,10 @@ AS $$
 $$;
 
 -- Revoke execute from public first for safety, then grant to selected roles
-REVOKE EXECUTE ON FUNCTION public.get_active_products_internal() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.get_active_products_internal() TO anon, authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION public.get_active_products_internal() FROM public;
+GRANT EXECUTE ON FUNCTION public.get_active_products_internal() TO anon,
+authenticated,
+service_role;
 
 -------------------------------------------------------------------------------
 -- 3. Hardened View
@@ -50,7 +52,7 @@ GRANT EXECUTE ON FUNCTION public.get_active_products_internal() TO anon, authent
 -- We EXPLICITLY list all public columns, EXCLUDING 'custo' if it exists.
 -- If 'custo' is NOT in the table, this will still work and future-proof it.
 CREATE OR REPLACE VIEW public.vw_produtos_public AS
-SELECT 
+SELECT
     id,
     nome,
     descricao,
@@ -85,9 +87,9 @@ REVOKE SELECT ON public.produtos FROM anon, authenticated;
 
 -- Ensure Admins can still see everything directly on the table
 DROP POLICY IF EXISTS "Admins full access on products" ON public.produtos;
-CREATE POLICY "Admins full access on products" 
-ON public.produtos 
-FOR ALL 
+CREATE POLICY "Admins full access on products"
+ON public.produtos
+FOR ALL
 TO authenticated
 USING (public.is_admin());
 

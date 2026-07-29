@@ -1,0 +1,1929 @@
+{
+  "version": "9.3.2",
+  "generatedAt": "2026-07-15T05:02:09.238Z",
+  "rootPath": "C:\\Users\\Gabriel\\Downloads\\app_mkt",
+  "recon": null,
+  "fileIndex": {
+    ".commitlintrc.json": {
+      "hash": "274caad59d0f625a71b71d104572d3dbc42a1e7e99d2af22f138fa1519c9a3aa",
+      "size": 53,
+      "lastScanned": "2026-07-15T05:02:09.183Z"
+    },
+    ".dependency-cruiser.cjs": {
+      "hash": "b53053ded77f6fde52d6ecd573613527e8821f953bc304c9144da60f818aa79a",
+      "size": 429,
+      "lastScanned": "2026-07-15T05:02:09.183Z"
+    },
+    ".dockerignore": {
+      "hash": "99fa61dc643557076f88ee2c4f0373aaca9387a3d4face6bd94958cb9dbf14b9",
+      "size": 534,
+      "lastScanned": "2026-07-15T05:02:09.183Z"
+    },
+    ".env": {
+      "hash": "b4ac340c8d5ca8aa662476bd63988af3a89e8a3e730ad20c466925f3050f6df3",
+      "size": 496,
+      "lastScanned": "2026-07-15T05:02:09.183Z"
+    },
+    ".env.example": {
+      "hash": "e1f72196494bb113b2cf34820348a2eb783211a0f1e2a7e78b94945f9f4619ac",
+      "size": 157,
+      "lastScanned": "2026-07-15T05:02:09.183Z"
+    },
+    ".env.production": {
+      "hash": "449daf612371d4c18042899e22c2f7e5c19992a8cb0cadefeb9990c661ea5112",
+      "size": 160,
+      "lastScanned": "2026-07-15T05:02:09.183Z"
+    },
+    ".gitignore": {
+      "hash": "d032562b1986d899b47fb34b7a00baf45b672345dda9ef7c37f66acc3802f5ee",
+      "size": 834,
+      "lastScanned": "2026-07-15T05:02:09.183Z"
+    },
+    ".htmlhintrc": {
+      "hash": "360f885c0d7a9d143cd5cb1548c8918032d647f328a9468a3e81631c0cbfe8ff",
+      "size": 495,
+      "lastScanned": "2026-07-15T05:02:09.184Z"
+    },
+    ".markdownlint.json": {
+      "hash": "4d76aaae438d13c3ced40924d5ccd35e373aa9d1c5a8d3577eeb82c428ea861b",
+      "size": 40,
+      "lastScanned": "2026-07-15T05:02:09.184Z"
+    },
+    ".npmrc": {
+      "hash": "b5f70d161e81325982e873403095387d45efa658aeee6c7c04c4de528f52ec81",
+      "size": 44,
+      "lastScanned": "2026-07-15T05:02:09.184Z"
+    },
+    ".secretlintignore": {
+      "hash": "841060bdce7b1f068a36560879e7309700686e45bba1fb5e852d90e82e87718a",
+      "size": 102,
+      "lastScanned": "2026-07-15T05:02:09.184Z"
+    },
+    ".secretlintrc.json": {
+      "hash": "1c0e86ca72216c22cc77b1c94c27f975b731aa9e104167f5d57a5befa654c10e",
+      "size": 92,
+      "lastScanned": "2026-07-15T05:02:09.184Z"
+    },
+    ".size-limit.json": {
+      "hash": "5821ddbf46b0991dcdf162ae0948def98c93f073dbfb8a2528349bc7eefdc6ad",
+      "size": 152,
+      "lastScanned": "2026-07-15T05:02:09.184Z"
+    },
+    ".sqlfluff": {
+      "hash": "a2c9c065bc64f70777eddff18065c750b0bbf5162dc00cb51e3053ccd6720418",
+      "size": 172,
+      "lastScanned": "2026-07-15T05:02:09.184Z"
+    },
+    ".stylelintrc.json": {
+      "hash": "ce0b41446af67e14bbf516c09bdca76fa30c8bff501e534f835ec61ec10f3bb6",
+      "size": 473,
+      "lastScanned": "2026-07-15T05:02:09.184Z"
+    },
+    ".vercelignore": {
+      "hash": "5b2f67f520151736742698bbce56769bf98faafce045cf4f2b79acf4369a269a",
+      "size": 34,
+      "lastScanned": "2026-07-15T05:02:09.185Z"
+    },
+    "AGENTS_inactive.md": {
+      "hash": "c06181aac63fcd932a185fc46e084cde5186953a614395473edeaabee81e13cd",
+      "size": 2462,
+      "lastScanned": "2026-07-15T05:02:09.185Z"
+    },
+    "biome.json": {
+      "hash": "3e53ffc501cc047a53a330186bc710d798ced418ed9d3ce878188e68e5cb4a73",
+      "size": 1599,
+      "lastScanned": "2026-07-15T05:02:09.185Z"
+    },
+    "components.json": {
+      "hash": "22643b642f17cd817ec94d8439a272dac28119af0aebf8219a96ac1c2f4c61dd",
+      "size": 461,
+      "lastScanned": "2026-07-15T05:02:09.185Z"
+    },
+    "cspell.json": {
+      "hash": "7e832345c9e5290222924716be267d989fa2158a587b1cdfaf813592dafe5229",
+      "size": 2828,
+      "lastScanned": "2026-07-15T05:02:09.185Z"
+    },
+    "deno.json": {
+      "hash": "b5ca075276abd5e0064776702a6f837c78dc7bd2d669dabf4fa35fc24339ce77",
+      "size": 166,
+      "lastScanned": "2026-07-15T05:02:09.185Z"
+    },
+    "DEPLOYMENT.md": {
+      "hash": "689cdd26f27d29884c762b5cb553418f07340f825b52830a4ddb722c636946f4",
+      "size": 1663,
+      "lastScanned": "2026-07-15T05:02:09.186Z"
+    },
+    "email_template.html": {
+      "hash": "2658ef691385c3d5f728b404045258834673bd3a399bfe1dd746332663c8f3c8",
+      "size": 4657,
+      "lastScanned": "2026-07-15T05:02:09.186Z"
+    },
+    "eslint.config.js": {
+      "hash": "ec37b182ac7d9459d40e9098409fd7dee321a925a2ca9643951bbc4dfae7a4a2",
+      "size": 2944,
+      "lastScanned": "2026-07-15T05:02:09.186Z"
+    },
+    "GEMINI_inactive.md": {
+      "hash": "a156670b59bc6f7f7c7efb92812908caca26887b301287d31667547e8f0cd205",
+      "size": 5412,
+      "lastScanned": "2026-07-15T05:02:09.186Z"
+    },
+    "index.html": {
+      "hash": "8d2a02b777ae89ee911cdfc0764efe3e372a966143ab7dcc26a9c91dd6644bef",
+      "size": 4483,
+      "lastScanned": "2026-07-15T05:02:09.186Z"
+    },
+    "knip.json": {
+      "hash": "01cfe0e094cc55f2b1d6c64379a65da1a7caacd66c2e918dc8846a10dcea8465",
+      "size": 326,
+      "lastScanned": "2026-07-15T05:02:09.186Z"
+    },
+    "middleware.ts": {
+      "hash": "287687f00dd573aec97476da7a12a2e0c8376010b8302dd692a17366cccc7672",
+      "size": 3473,
+      "lastScanned": "2026-07-15T05:02:09.187Z"
+    },
+    "package.json": {
+      "hash": "a2e28aa373b2fe84e2b9e1ecedaab89a76e7c71aa6f065480e9da148d4a27900",
+      "size": 3467,
+      "lastScanned": "2026-07-15T05:02:09.187Z"
+    },
+    "postcss.config.js": {
+      "hash": "e32657baf631d7c5f4dc67b4b2ee0ec8e7d5b3c41860e09cddce7c0377cd80bc",
+      "size": 81,
+      "lastScanned": "2026-07-15T05:02:09.187Z"
+    },
+    "README.md": {
+      "hash": "d94f46f196637bf60c1e9674e7ff16602c07f669bce96c22afa9bffd2a58605d",
+      "size": 1937,
+      "lastScanned": "2026-07-15T05:02:09.187Z"
+    },
+    "SECURITY_REPORT.md": {
+      "hash": "35222878e98da5074d61a28d60a0ee77420e3044a78a9230971274e9aa02b995",
+      "size": 2800,
+      "lastScanned": "2026-07-15T05:02:09.187Z"
+    },
+    "tailwind.config.js": {
+      "hash": "b69a2cd28100567b54876148c08eec190ece3086a850cbf6fc14c656c626a129",
+      "size": 4224,
+      "lastScanned": "2026-07-15T05:02:09.188Z"
+    },
+    "tsconfig.app.json": {
+      "hash": "67fe88434039e77cb1258a1bd3f9bb8afec8cca4c966e7b78839db56b576e4cd",
+      "size": 844,
+      "lastScanned": "2026-07-15T05:02:09.188Z"
+    },
+    "tsconfig.json": {
+      "hash": "b3ff28e241f4eb552d45c2f7869581e14cffc92a28541eec2b52fe7593a195b7",
+      "size": 233,
+      "lastScanned": "2026-07-15T05:02:09.188Z"
+    },
+    "tsconfig.node.json": {
+      "hash": "c3dd0fb522feba3596713f51b95bd53d781d845d24aedbfa2ac093d8b39c5120",
+      "size": 653,
+      "lastScanned": "2026-07-15T05:02:09.188Z"
+    },
+    "vercel.json": {
+      "hash": "14c24d757572e268f47c7fe4e0516f4c716d1f034da6c8f1198c74592c678b28",
+      "size": 2551,
+      "lastScanned": "2026-07-15T05:02:09.188Z"
+    },
+    "vite.config.ts": {
+      "hash": "4ee9c1a5522790dde6c952affb04cf78de733ef1a41c9baeef3997911d904617",
+      "size": 6267,
+      "lastScanned": "2026-07-15T05:02:09.188Z"
+    },
+    ".agents_inactive/AGENTS.md": {
+      "hash": "7ac280e95fcb9e0c3b16d637609887b4409a1076235ec851ec1e23ec36c30ff9",
+      "size": 7878,
+      "lastScanned": "2026-07-15T05:02:09.188Z"
+    },
+    ".agents_inactive/experience_ledger.json": {
+      "hash": "8cbcdb3485c1ed69472190ba04573b353b9f2b00e3a4326093bdddaad696bf60",
+      "size": 40269,
+      "lastScanned": "2026-07-15T05:02:09.189Z"
+    },
+    ".agents_inactive/mcp_config.json": {
+      "hash": "346d97c10f4b990250a10feb18f05eb34c598d03185f579a7afed2f8a73fb10c",
+      "size": 799,
+      "lastScanned": "2026-07-15T05:02:09.189Z"
+    },
+    ".agents_inactive/task.md": {
+      "hash": "1b8041a680ab94ae39e86bbcf393561aba700330b36e6600e34ec790009a4a99",
+      "size": 947,
+      "lastScanned": "2026-07-15T05:02:09.189Z"
+    },
+    ".agents_inactive/vercel_mcp.cjs": {
+      "hash": "d39c232b930aa6678aea1f3c9a0244ce1cd5c09215a53d9ab186d85d18cb09fd",
+      "size": 8752,
+      "lastScanned": "2026-07-15T05:02:09.189Z"
+    },
+    ".vscode/settings.json": {
+      "hash": "7710565a95d60c54e5fa25808daff06e1eb73975b1b2fa7d8d92759cb4ff8fc7",
+      "size": 42,
+      "lastScanned": "2026-07-15T05:02:09.189Z"
+    },
+    "public/google8e0e5366e254e024.html": {
+      "hash": "02a273eac7e6c041f41d9b7c2bac71125c1e937f15d6e0aff4252051be5d40b2",
+      "size": 53,
+      "lastScanned": "2026-07-15T05:02:09.189Z"
+    },
+    "public/loading.css": {
+      "hash": "e57b509fb615eafb824a3b260fb5188ad1eaf79f1539dab236cdfbd22517a185",
+      "size": 7371,
+      "lastScanned": "2026-07-15T05:02:09.189Z"
+    },
+    "public/offline.html": {
+      "hash": "68dd079ceb8847f7d1f2b2ae91059b9f58d5553d9ef441117009cd1bc20b4e79",
+      "size": 8994,
+      "lastScanned": "2026-07-15T05:02:09.190Z"
+    },
+    "public/silent-guardian.js": {
+      "hash": "633305f4e8b8b61f3e74edb3078f07c3d18c553faef6442ef7fadc6da355b180",
+      "size": 2694,
+      "lastScanned": "2026-07-15T05:02:09.190Z"
+    },
+    "public/sitemap.xml": {
+      "hash": "590d7599e386dd8b0392d31833159ae364bd000cdf42f218d403e847fc3ed06b",
+      "size": 850,
+      "lastScanned": "2026-07-15T05:02:09.190Z"
+    },
+    "public/sros_manifest.json": {
+      "hash": "8f568d19ba5e62bfd5c4468229a0dca429cee9eae4566ec9d08ea7017f79f875",
+      "size": 1008,
+      "lastScanned": "2026-07-15T05:02:09.190Z"
+    },
+    "public/version.json": {
+      "hash": "7a3be40a5e83aca2ee8f974935906f5a16ccd73a95a75f9df56f3cd09ece5c5f",
+      "size": 137,
+      "lastScanned": "2026-07-15T05:02:09.190Z"
+    },
+    "src/App.css": {
+      "hash": "13a0203a28d33866fe8f3936515769b947f0932475726e9cc93fe086294f0470",
+      "size": 2744,
+      "lastScanned": "2026-07-15T05:02:09.190Z"
+    },
+    "src/App.tsx": {
+      "hash": "d6e1f91f7647d6179d0152d04e8cdf20245e113b009e489dfb1afd9962d8c083",
+      "size": 107373,
+      "lastScanned": "2026-07-15T05:02:09.191Z"
+    },
+    "src/index.css": {
+      "hash": "8720c261702ca81a698d60cb0de817d02bc81362da13841d68fae53101a6e252",
+      "size": 25556,
+      "lastScanned": "2026-07-15T05:02:09.191Z"
+    },
+    "src/main.tsx": {
+      "hash": "12a87f90d83ecb4af5787bb76c5f2bba5ac31916553080202f68a10c926659d7",
+      "size": 4211,
+      "lastScanned": "2026-07-15T05:02:09.191Z"
+    },
+    "src/pwa-sentinel.ts": {
+      "hash": "84d11c88765474a5d277e6709d3df5fc3efe6ee83c4aae845c6fce7a26fd285f",
+      "size": 2821,
+      "lastScanned": "2026-07-15T05:02:09.191Z"
+    },
+    "src/pwa.d.ts": {
+      "hash": "235ee4e8c58fde6e19cc17bf83727f0ceaebee7879a1b09abf6a03386951d53b",
+      "size": 512,
+      "lastScanned": "2026-07-15T05:02:09.191Z"
+    },
+    "src/shared-brain.ts": {
+      "hash": "f1abddd097df842f95d7ccf9b63bf2fee0322fdaa29d1ad54b15ebbde609a9ce",
+      "size": 1065,
+      "lastScanned": "2026-07-15T05:02:09.191Z"
+    },
+    "src/state-worker.ts": {
+      "hash": "586df435680185f113948a2fef237c59847ead36ba1af2bb11853c62ea5b188d",
+      "size": 1223,
+      "lastScanned": "2026-07-15T05:02:09.191Z"
+    },
+    "supabase/.temp/cli-latest": {
+      "hash": "0daaac4eb443724f347b3d1df0dbacffb1e0755f345412d1f9032eb664aa9b18",
+      "size": 8,
+      "lastScanned": "2026-07-15T05:02:09.191Z"
+    },
+    "supabase/.temp/gotrue-version": {
+      "hash": "87e2ae5da65ef4de87e99ea3ef080f46c261e2c3e7a90a2a95764c3543430526",
+      "size": 8,
+      "lastScanned": "2026-07-15T05:02:09.191Z"
+    },
+    "supabase/.temp/linked-project.json": {
+      "hash": "7b7195d56e037b0b0165ed5dc6c8408aff80899d526acb6e8d6295e7431dbeb9",
+      "size": 142,
+      "lastScanned": "2026-07-15T05:02:09.192Z"
+    },
+    "supabase/.temp/pooler-url": {
+      "hash": "fd94cbd4f67f8d2eaf4f893b3eb6d7e88bc9a5790a1c5e938162c198dd38b473",
+      "size": 92,
+      "lastScanned": "2026-07-15T05:02:09.192Z"
+    },
+    "supabase/.temp/postgres-version": {
+      "hash": "c4a0260c55e7ee46ba613ac8fb5592cf54bb439455566d2565cb86fcf2a9c7fb",
+      "size": 10,
+      "lastScanned": "2026-07-15T05:02:09.192Z"
+    },
+    "supabase/.temp/project-ref": {
+      "hash": "5a8f80a3293edc9874251dd581f6322f2b3bb768e35b531cfb16ac390eaa0852",
+      "size": 20,
+      "lastScanned": "2026-07-15T05:02:09.192Z"
+    },
+    "supabase/.temp/rest-version": {
+      "hash": "e11097a0744cbed511316beb39cc525d72506732b802d47e814eecf32cb492f6",
+      "size": 5,
+      "lastScanned": "2026-07-15T05:02:09.192Z"
+    },
+    "supabase/.temp/storage-migration": {
+      "hash": "7bb944cc973a24ce8bdae0705f7ad6e0a7173c358911c9762ac5d69508dade96",
+      "size": 29,
+      "lastScanned": "2026-07-15T05:02:09.192Z"
+    },
+    "supabase/.temp/storage-version": {
+      "hash": "a48cafe6d819563a6afce7bec6c59e2ef4cbde767ad2f8ccfd672390c167a7b9",
+      "size": 7,
+      "lastScanned": "2026-07-15T05:02:09.192Z"
+    },
+    "supabase/functions/tsconfig.json": {
+      "hash": "70dd963e53aa039f7477e4d58c8ae2c9b8004f76d03f2bfb3d2dc07b5e0bf1c0",
+      "size": 102,
+      "lastScanned": "2026-07-15T05:02:09.193Z"
+    },
+    "src/components/LazyImage.tsx": {
+      "hash": "31f478235c88777cc61311f6dc9b8eeef5d73269d36f5c565bc306329615e711",
+      "size": 3135,
+      "lastScanned": "2026-07-15T05:02:09.193Z"
+    },
+    "supabase/migrations/20240304000000_fix_admin_rpcs_auth.sql": {
+      "hash": "a8e3a6302e5b1cf3b113949ce00c16c962e016029b1ea8f983e6da4ed06b6df9",
+      "size": 9415,
+      "lastScanned": "2026-07-15T05:02:09.193Z"
+    },
+    "supabase/migrations/20240323000000_update_handle_new_user_metadata.sql": {
+      "hash": "379350b9e9bab64afd4cdc7048007c05fcf3ef93c0238a652384ca0fbcc945f9",
+      "size": 514,
+      "lastScanned": "2026-07-15T05:02:09.193Z"
+    },
+    "supabase/migrations/20240523000000_order_otp_system.sql": {
+      "hash": "820b5fa7720b67dd2eb7b4cd022cdd735566eca10ee00ab3c7fd05eeb8b60429",
+      "size": 2629,
+      "lastScanned": "2026-07-15T05:02:09.193Z"
+    },
+    "supabase/migrations/20260218000000_optimize_admin_queries.sql": {
+      "hash": "e1aac60d37443c6adb3b3bc4ec41d2bba8df786b988e5df34b0228f194368039",
+      "size": 5153,
+      "lastScanned": "2026-07-15T05:02:09.193Z"
+    },
+    "supabase/migrations/20260219000000_security_hardening.sql": {
+      "hash": "0fa4a44859aa6c84886b2e8389706e6e2cf2af31774a7a6a5cdd3b4478930466",
+      "size": 9446,
+      "lastScanned": "2026-07-15T05:02:09.193Z"
+    },
+    "supabase/migrations/20260220000000_add_retention_rate_rpc.sql": {
+      "hash": "5e710d49280c54c9a270c576f48ef954e65dd4e1020a100c9f1387a45ba540d9",
+      "size": 1240,
+      "lastScanned": "2026-07-15T05:02:09.194Z"
+    },
+    "supabase/migrations/20260220000001_rls_optimization.sql": {
+      "hash": "64dbda68aaec480425c960e56480a21343f80dcc3fcf6df8ccc4cf4fb28b95c9",
+      "size": 1339,
+      "lastScanned": "2026-07-15T05:02:09.194Z"
+    },
+    "supabase/migrations/20260224000000_cart_sync.sql": {
+      "hash": "e069df11914abcfa8f4ccbcd0883766b1e70af3c9a42c228457ee6931d92c5fe",
+      "size": 1407,
+      "lastScanned": "2026-07-15T05:02:09.194Z"
+    },
+    "supabase/migrations/20260224000001_fix_cart_nulls.sql": {
+      "hash": "b93f2a8c6851a1e3052db25f73d59ee7bc8239be9889aa68e0fca072532f69f9",
+      "size": 548,
+      "lastScanned": "2026-07-15T05:02:09.194Z"
+    },
+    "supabase/migrations/20260226100000_restore_customers_rpc.sql": {
+      "hash": "088ff04f36f0192234e474f9bcb38a0d2f4263f29df6497150f0afeeec4f7f93",
+      "size": 3681,
+      "lastScanned": "2026-07-15T05:02:09.194Z"
+    },
+    "supabase/migrations/20260227000000_fix_admin_profile_and_trigger.sql": {
+      "hash": "ae6b07936ad86f77fdba014e53634ccd2c8109ea75f740187e6d81db8d02eab2",
+      "size": 1372,
+      "lastScanned": "2026-07-15T05:02:09.195Z"
+    },
+    "supabase/migrations/20260303000000_consolidated_remediation_v3.sql": {
+      "hash": "4a778445d70f0bb2a27182c5d7be56e6694d42190d8a8d36d42de7f2e11f74a7",
+      "size": 10046,
+      "lastScanned": "2026-07-15T05:02:09.195Z"
+    },
+    "supabase/migrations/20260303000001_fix_profiles_pii_leak.sql": {
+      "hash": "7b4c45f9b71cbf06dd5bbe2c056f6d5aa524c5f82cb407e813c078e66abcd0c8",
+      "size": 2066,
+      "lastScanned": "2026-07-15T05:02:09.195Z"
+    },
+    "supabase/migrations/20260303000002_security_hardening_patch.sql": {
+      "hash": "6e403c93b97fe45a6ff5be99ac2df6ffa0782c8bb67b01fa26bc15d345da951a",
+      "size": 6158,
+      "lastScanned": "2026-07-15T05:02:09.195Z"
+    },
+    "supabase/migrations/20260303000003_security_remediation_final.sql": {
+      "hash": "dd9e2f2ce88d10aebe0dc3b68f37389dcf4904f0d935651f746e7196e0ab21f9",
+      "size": 5007,
+      "lastScanned": "2026-07-15T05:02:09.195Z"
+    },
+    "supabase/migrations/20260303000004_solo_ninja_deep_security_v2.sql": {
+      "hash": "7c577568cf36ed30c9766293621dc37aa667882f796b3dc85d344be6d9fa6d5c",
+      "size": 4859,
+      "lastScanned": "2026-07-15T05:02:09.195Z"
+    },
+    "supabase/migrations/20260303000005_solo_ninja_deep_security.sql": {
+      "hash": "ff9ebf54f761d35ea4c57d2b488dc8bb69b93153d6b12ea8e0c0542deefe55b4",
+      "size": 4565,
+      "lastScanned": "2026-07-15T05:02:09.195Z"
+    },
+    "supabase/migrations/20260303000006_solo_ninja_rls_patch.sql": {
+      "hash": "f247f48541d6a0850dec430ed1c15d4f2058d4f2164e741d18d3c10d93f0244a",
+      "size": 1449,
+      "lastScanned": "2026-07-15T05:02:09.195Z"
+    },
+    "supabase/migrations/20260305000000_restore_rls_policies.sql": {
+      "hash": "013d44635b9d7271c45aa643e80307ba4712916b613949f8e20ba52c6438234d",
+      "size": 5397,
+      "lastScanned": "2026-07-15T05:02:09.195Z"
+    },
+    "supabase/migrations/20260305000001_secure_order_bola_patch.sql": {
+      "hash": "5d7b3726887fca2a80aafe734d536bf016c0ab0ece0dd4e515e79415d725426b",
+      "size": 4954,
+      "lastScanned": "2026-07-15T05:02:09.196Z"
+    },
+    "supabase/migrations/20260306000000_marketplace_v7_hardening.sql": {
+      "hash": "d38dba0297052da455b0f11af7123334fc7e1195d632a05913695da29a8b03f4",
+      "size": 6871,
+      "lastScanned": "2026-07-15T05:02:09.196Z"
+    },
+    "supabase/migrations/20260307000000_fix_inventory_bypass.sql": {
+      "hash": "8acc81454b92fae0551842f9d9ef566df85955021bcc0a58c6c1deb578115c59",
+      "size": 7541,
+      "lastScanned": "2026-07-15T05:02:09.196Z"
+    },
+    "supabase/migrations/20260308000000_security_gold_standard.sql": {
+      "hash": "f55f13bbc216ed0e7a7171b9960283997f9236959c2de27e0c349db5af8b3292",
+      "size": 9427,
+      "lastScanned": "2026-07-15T05:02:09.196Z"
+    },
+    "supabase/migrations/20260309000000_solo_ninja_v12_final_security_consolidation.sql": {
+      "hash": "f442ed3609c5626a173e3c761317f312d7e51c553b45fb174a0331203b816912",
+      "size": 9193,
+      "lastScanned": "2026-07-15T05:02:09.196Z"
+    },
+    "supabase/migrations/20260310000000_fix_bola_rls_history_and_categories.sql": {
+      "hash": "a551f69fed7f89f9239cb332fedb425fa1f578e4baac40d586209deb23967fc3",
+      "size": 1350,
+      "lastScanned": "2026-07-15T05:02:09.196Z"
+    },
+    "supabase/migrations/20260310000001_fix_bola_rls.sql": {
+      "hash": "c59991ca704cc958c41902337bed4275d543f110ff1b74c8e929826592aaaf68",
+      "size": 3382,
+      "lastScanned": "2026-07-15T05:02:09.196Z"
+    },
+    "supabase/migrations/20260310000002_fix_coupon_race_condition.sql": {
+      "hash": "8a2fa6112d24d64986e57b77713b59bdc98ffceb24f1ccaf90afbeaef1823b7c",
+      "size": 6802,
+      "lastScanned": "2026-07-15T05:02:09.196Z"
+    },
+    "supabase/migrations/20260311000000_deadlock_prevention_v13.sql": {
+      "hash": "29874c0c7089859236aba17918ef76673444905cd6a59cd629746eb4b447e041",
+      "size": 7271,
+      "lastScanned": "2026-07-15T05:02:09.197Z"
+    },
+    "supabase/migrations/20260311000001_fix_cart_sync_atomic.sql": {
+      "hash": "851f2f28c00c9b5014dc63db5b80a8f0adf1db257d0056fbf52a5a3b6c358a55",
+      "size": 1706,
+      "lastScanned": "2026-07-15T05:02:09.197Z"
+    },
+    "supabase/migrations/20260311000002_secure_store_config_refactor.sql": {
+      "hash": "72cbc08a60c635c6ad3371940abf6c4cc3a23403629291e3cf4caa1235161103",
+      "size": 1919,
+      "lastScanned": "2026-07-15T05:02:09.197Z"
+    },
+    "supabase/migrations/20260311115512_v27_analytics_real_growth_and_optimization.sql": {
+      "hash": "392c50e70893f68601ffb093f1b953db6790af24e72ed4ace834bbce55b8a9e5",
+      "size": 4804,
+      "lastScanned": "2026-07-15T05:02:09.197Z"
+    },
+    "supabase/migrations/20260312000000_fix_ambiguity_and_analytics_v3.sql": {
+      "hash": "e563200a1b3c7272397973763e26178822465d6e5aa7ee4cc2ee88618e1aafba",
+      "size": 2400,
+      "lastScanned": "2026-07-15T05:02:09.197Z"
+    },
+    "supabase/migrations/20260312000001_harden_cart_sync_atomic_v2.sql": {
+      "hash": "f548a97280fdc328ac8746fc821362e09ac598a1b16d503a902aa7e4755d256b",
+      "size": 1068,
+      "lastScanned": "2026-07-15T05:02:09.197Z"
+    },
+    "supabase/migrations/20260312000002_solo_ninja_final_hardening.sql": {
+      "hash": "5d34376ba9da1345a8eab75786727e7822a5a6125fa191bf1dac5fe88d875415",
+      "size": 3013,
+      "lastScanned": "2026-07-15T05:02:09.197Z"
+    },
+    "supabase/migrations/20260313000000_consolidate_rls_policies.sql": {
+      "hash": "36fef70c485865e59a9bc5cadf2caf40954177ac14175a0e94148ccd8437dd04",
+      "size": 1497,
+      "lastScanned": "2026-07-15T05:02:09.197Z"
+    },
+    "supabase/migrations/20260313000001_harden_order_v14_definitive.sql": {
+      "hash": "2341ad83a4dd9bd634259b0c6826fd6eb7001d615e034087c73c8f9e91125a2c",
+      "size": 6178,
+      "lastScanned": "2026-07-15T05:02:09.198Z"
+    },
+    "supabase/migrations/20260314000000_harden_admin_rpcs_and_history_rls.sql": {
+      "hash": "1e401f7c6bb9fc2169c92e97c444f3db117d1a909e0ea4c9dfe13cf6cd4d0ea0",
+      "size": 10683,
+      "lastScanned": "2026-07-15T05:02:09.198Z"
+    },
+    "supabase/migrations/20260315000000_final_ninja_hardening.sql": {
+      "hash": "c66d0f4752590a4b619209b45a173cdd7bb64d4660160330982b9aed392ada12",
+      "size": 4815,
+      "lastScanned": "2026-07-15T05:02:09.198Z"
+    },
+    "supabase/migrations/20260315000001_patch_remaining_rpcs.sql": {
+      "hash": "82b1656a1ef9380ddb9c53f729f2a2b169f42450bcd47f80cd666cf10eddeaa8",
+      "size": 1880,
+      "lastScanned": "2026-07-15T05:02:09.198Z"
+    },
+    "supabase/migrations/20260316000000_consolidated_security_v17.sql": {
+      "hash": "9ea6f65ea7d6625564df4c827f79efcb049e1b892c84234aa66942b33f9b6481",
+      "size": 2127,
+      "lastScanned": "2026-07-15T05:02:09.198Z"
+    },
+    "supabase/migrations/20260317000000_security_hardening_v17.sql": {
+      "hash": "3ef70fc57f91120d21d12c0348e60206bcf9595e5a64ae6cb41476773e0579f9",
+      "size": 6406,
+      "lastScanned": "2026-07-15T05:02:09.198Z"
+    },
+    "supabase/migrations/20260317000001_final_security_hardening.sql": {
+      "hash": "cecbbb3acf4e1b5830f0497bdb1265e878a27234fee4ad51070e1c86b9103434",
+      "size": 8997,
+      "lastScanned": "2026-07-15T05:02:09.198Z"
+    },
+    "supabase/migrations/20260318000000_solo_ninja_security_patch_v18.sql": {
+      "hash": "d8025827f50e4e6042037d137d588cea51f298088e8aa19add9344855a5abec8",
+      "size": 7896,
+      "lastScanned": "2026-07-15T05:02:09.198Z"
+    },
+    "supabase/migrations/20260318000001_solo_ninja_v18_polish.sql": {
+      "hash": "326e7c9e73c7c197fa22d2687fb66dcc9d3f8f7da183eff81293d6ce1b4e02aa",
+      "size": 800,
+      "lastScanned": "2026-07-15T05:02:09.199Z"
+    },
+    "supabase/migrations/20260319000000_fix_get_my_complete_profile_rpc.sql": {
+      "hash": "9afe537d4cc2d35fe932cab63bb2365d0bde15642b06d0925260889afb073d84",
+      "size": 923,
+      "lastScanned": "2026-07-15T05:02:09.199Z"
+    },
+    "supabase/migrations/20260319000001_solo_ninja_v19_final_hardening.sql": {
+      "hash": "0b6473ab250fa30cb00accbdd3f2be1413ba3357a84164fe2e1d1f5db9bbc060",
+      "size": 4458,
+      "lastScanned": "2026-07-15T05:02:09.199Z"
+    },
+    "supabase/migrations/20260320000000_security_logic_fix_v20.sql": {
+      "hash": "6e966505959790f3cba2f251d601355b3758d4d4fdc6cd62e98edc65dcee073f",
+      "size": 7584,
+      "lastScanned": "2026-07-15T05:02:09.199Z"
+    },
+    "supabase/migrations/20260320000001_security_patch_v21.sql": {
+      "hash": "f40f9193893ba125cd53dbe9241f3bd66be587957bbc57c56d74e955dadf1f04",
+      "size": 7306,
+      "lastScanned": "2026-07-15T05:02:09.199Z"
+    },
+    "supabase/migrations/20260321000000_cleanup_legacy_rpcs_v23.sql": {
+      "hash": "b3336a44eb1604b5a63b86cd19ee03bc78bb86d7a1a676fd7ccad7931bf89937",
+      "size": 788,
+      "lastScanned": "2026-07-15T05:02:09.199Z"
+    },
+    "supabase/migrations/20260321000001_security_hardening_v22.sql": {
+      "hash": "6f150b517bc252cce0a20b95b60833a9df616dd42fb52b91f506634efcf01f02",
+      "size": 1724,
+      "lastScanned": "2026-07-15T05:02:09.199Z"
+    },
+    "supabase/migrations/20260322000000_fix_missing_analytics_rpcs.sql": {
+      "hash": "115cea10a2168966e43c251227304cc6dd0a4abfb22182e1f964da7896e6309a",
+      "size": 2879,
+      "lastScanned": "2026-07-15T05:02:09.200Z"
+    },
+    "supabase/migrations/20260322000001_fix_rpc_and_trigger.sql": {
+      "hash": "22dc45d0b70a2ab6531641fd975ade306a244ac77b4bc219bbdf05b12575bc09",
+      "size": 6567,
+      "lastScanned": "2026-07-15T05:02:09.200Z"
+    },
+    "supabase/migrations/20260322000002_setup_whatsapp_webhook.sql": {
+      "hash": "6fafab97b1db9e23bf5bceae0b121af1ba39eae89286e45d489c4335b1568f88",
+      "size": 1400,
+      "lastScanned": "2026-07-15T05:02:09.200Z"
+    },
+    "supabase/migrations/20260322000003_solo_ninja_v24_hardened_data.sql": {
+      "hash": "41423e58b2f3d28ec377fda7e3c661d0674fc2d236351fa52806bfa75970da57",
+      "size": 1532,
+      "lastScanned": "2026-07-15T05:02:09.200Z"
+    },
+    "supabase/migrations/20260323000000_fix_pgrst200_rpc_variants.sql": {
+      "hash": "6d9b58a30a881445861aaf98a0a4fb7666485a1ebb3d9b7edc0a982610255802",
+      "size": 2239,
+      "lastScanned": "2026-07-15T05:02:09.200Z"
+    },
+    "supabase/migrations/20260323000001_fix_produtos_custo_leak.sql": {
+      "hash": "51198ca1442a98de7d1d83035a132330953db42e07cae03ebc39bfb5057d500d",
+      "size": 3335,
+      "lastScanned": "2026-07-15T05:02:09.200Z"
+    },
+    "supabase/migrations/20260323000002_repair_missing_rpcs_v25.sql": {
+      "hash": "f927d80393a66c41fc7a01d6c0876bcd2224f86cad0f4410fb03198bbaac2023",
+      "size": 12173,
+      "lastScanned": "2026-07-15T05:02:09.200Z"
+    },
+    "supabase/migrations/20260324000000_01_fix_produtos_permissions_v26.sql": {
+      "hash": "93bcdc5d31afe4d8ce1e985b08653c18d41e99c427955716ee9f529c7a9950bc",
+      "size": 1283,
+      "lastScanned": "2026-07-15T05:02:09.201Z"
+    },
+    "supabase/migrations/20260324000001_atomic_inventory_v22.sql": {
+      "hash": "20f910db087ddeec2e274ef7e5f80c2b16e65275997699c28e59f9b098c74357",
+      "size": 7388,
+      "lastScanned": "2026-07-15T05:02:09.201Z"
+    },
+    "supabase/migrations/20260324000002_definitive_security_hardening.sql": {
+      "hash": "940f4e718dbcde4dfd940f3c20eddf35938b2e552123a0f9eeee5a34c3d659e5",
+      "size": 10765,
+      "lastScanned": "2026-07-15T05:02:09.201Z"
+    },
+    "supabase/migrations/20260326000000_fix_order_schema_and_rpc.sql": {
+      "hash": "4cae9fff8bae986e5db61fca4e0fc105f86cdc7fef71187e240c624c6005bd30",
+      "size": 9208,
+      "lastScanned": "2026-07-15T05:02:09.201Z"
+    },
+    "supabase/migrations/20260327000000_backfill_order_images.sql": {
+      "hash": "dd3d4776a4d10964f4f5e50bb610c89f3e645a66127983ec5bd5873cea0b7853",
+      "size": 366,
+      "lastScanned": "2026-07-15T05:02:09.201Z"
+    },
+    "supabase/migrations/20260327000001_fix_notification_trigger_robust.sql": {
+      "hash": "2e866b083e127751b6906676988f8a5028b41474b78de5b32f149b7b05976096",
+      "size": 2534,
+      "lastScanned": "2026-07-15T05:02:09.201Z"
+    },
+    "supabase/migrations/20260327000002_fix_order_address_fk.sql": {
+      "hash": "09f1da46bf0d43c9bcf911c696d388ddead3b64041849fa88ac28977c2687b48",
+      "size": 975,
+      "lastScanned": "2026-07-15T05:02:09.201Z"
+    },
+    "supabase/migrations/20260327000003_sync_order_status_constraint.sql": {
+      "hash": "fe60f8ff9e6206405ab514f5687e480efc7121fcbd915b98dfd4eb682576920c",
+      "size": 895,
+      "lastScanned": "2026-07-15T05:02:09.202Z"
+    },
+    "supabase/migrations/20260327000004_upgrade_admin_analytics_v26.sql": {
+      "hash": "8d3bca45f73effcee44e19866482154891cb5744b293a6f0f071bc8ea5e7244c",
+      "size": 4388,
+      "lastScanned": "2026-07-15T05:02:09.202Z"
+    },
+    "supabase/migrations/20260328000000_fix_order_history_schema.sql": {
+      "hash": "127945c73d14aca112e540a4d62652c8a71da11250115a5c8059491247f94bd2",
+      "size": 609,
+      "lastScanned": "2026-07-15T05:02:09.202Z"
+    },
+    "supabase/migrations/20260328000001_fix_stock_restoration_on_cancel.sql": {
+      "hash": "1b48d1416c9237869414dd2fcd3c04d3581aee787f52ea9558cc5410e8a076d0",
+      "size": 2591,
+      "lastScanned": "2026-07-15T05:02:09.202Z"
+    },
+    "supabase/migrations/20260328000002_optimize_admin_analytics_v28.sql": {
+      "hash": "2c2117e214bb9e39049bae5c125a78408540f9d3f03379836a120034dcfbdfb4",
+      "size": 5398,
+      "lastScanned": "2026-07-15T05:02:09.202Z"
+    },
+    "supabase/migrations/20260330000000_product_soft_delete.sql": {
+      "hash": "71f2a893a9c3597b34c6dc157f280b735736082d4bb074a61799a11ccf4bc9bd",
+      "size": 1199,
+      "lastScanned": "2026-07-15T05:02:09.202Z"
+    },
+    "supabase/migrations/20260331000000_fix_analytics_stock_column.sql": {
+      "hash": "9d2d5cbc471bc7706d51dd85b3217cffe4825d13277b61bc7b199e22dfedb5a4",
+      "size": 5430,
+      "lastScanned": "2026-07-15T05:02:09.202Z"
+    },
+    "supabase/migrations/20260331000001_fix_order_schema_final.sql": {
+      "hash": "cf2e314bc96de35641beefc21ab4a388bf4d4f2a9d9d4f1f4e0394e4537aaad1",
+      "size": 8305,
+      "lastScanned": "2026-07-15T05:02:09.202Z"
+    },
+    "supabase/migrations/20260401000000_secure_checkout_v22.sql": {
+      "hash": "2d4ab88fadd59ee00d187be9dcc948153b037c965b0dc47fa17c6d469fa7dd31",
+      "size": 6721,
+      "lastScanned": "2026-07-15T05:02:09.203Z"
+    },
+    "supabase/migrations/20260420000000_standardize_orders.sql": {
+      "hash": "b8019b2a15d5dae1f846c0bfc3e748d6b60f0948105f90dbaef2edd841d0c61e",
+      "size": 7807,
+      "lastScanned": "2026-07-15T05:02:09.203Z"
+    },
+    "supabase/migrations/20260421000000_harden_order_prices.sql": {
+      "hash": "8d0ed726182bcfcfbe21b2f4dd7c07f5554c6d77384d3211f3268b2ff9bb4f13",
+      "size": 6269,
+      "lastScanned": "2026-07-15T05:02:09.203Z"
+    },
+    "supabase/migrations/20260422000000_secure_marketplace_orders_v22.sql": {
+      "hash": "f88041fcbe4044e9ccc050faa70173690b1ed920f65f23c59394c6552b78c169",
+      "size": 2218,
+      "lastScanned": "2026-07-15T05:02:09.203Z"
+    },
+    "supabase/migrations/20260423000000_sync_v_store_config_view.sql": {
+      "hash": "d45a2da76bad7661449f729bf250ceb6a0c17af9971f563c43a41f50df921c74",
+      "size": 1054,
+      "lastScanned": "2026-07-15T05:02:09.203Z"
+    },
+    "supabase/migrations/20260526000000_coupon_percentage_fixes.sql": {
+      "hash": "8b1ad19e98384096867090990d07f1183767a0a99250c3220bd3ff93f55b771f",
+      "size": 9915,
+      "lastScanned": "2026-07-15T05:02:09.203Z"
+    },
+    "supabase/migrations/20260601000000_fix_dashboard_analytics_regression.sql": {
+      "hash": "0b5fe9beb0089fda52c2897c29a3e68031bd7dad505692086d461a93fa31bc56",
+      "size": 9837,
+      "lastScanned": "2026-07-15T05:02:09.203Z"
+    },
+    "supabase/migrations/20260601000001_remove_whatsapp_infrastructure.sql": {
+      "hash": "df8cd8e12b091bdfedb284ddde0758f11780419dae846d1e8dfa6e39473c023f",
+      "size": 497,
+      "lastScanned": "2026-07-15T05:02:09.203Z"
+    },
+    "supabase/migrations/20260602000000_admin_user_detail_rpc_and_hardening.sql": {
+      "hash": "2dc8c9960601713bd34361ef71e7960c017947302a657c009d978331de8845a1",
+      "size": 2084,
+      "lastScanned": "2026-07-15T05:02:09.204Z"
+    },
+    "supabase/migrations/20260602000001_fix_admin_customers_stats_and_push_badge.sql": {
+      "hash": "4689c615d2ff6626fe92a9eb0e1d169d42f971654e9b07339186adfafbb4493c",
+      "size": 5357,
+      "lastScanned": "2026-07-15T05:02:09.204Z"
+    },
+    "supabase/migrations/20260606000000_fix_sync_cart_atomic_updated_at.sql": {
+      "hash": "7986beeb9b5c86ca1b7feb99f42da34624bb653ab65c950ccfb9374075bc98d4",
+      "size": 1385,
+      "lastScanned": "2026-07-15T05:02:09.204Z"
+    },
+    "supabase/migrations/20260612000000_security_definer_and_otp_fix.sql": {
+      "hash": "a1e7dd225b467746120e4f1d11530a9e24d3819031a7057cf50fc4aadda9c479",
+      "size": 39881,
+      "lastScanned": "2026-07-15T05:02:09.204Z"
+    },
+    "supabase/migrations/20260625000000_fix_guest_tracking_items.sql": {
+      "hash": "dbd82e1daa52fb7c2ec6d517a98dedc3a74e9ebdf55ffa31441f839bd4764f9b",
+      "size": 6675,
+      "lastScanned": "2026-07-15T05:02:09.204Z"
+    },
+    "supabase/migrations/20260628100000_add_user_confirmation_check.sql": {
+      "hash": "85220038eb83e8fc42608b37f4b99b24ce7225e8cfb927bf2992dba795185647",
+      "size": 967,
+      "lastScanned": "2026-07-15T05:02:09.204Z"
+    },
+    "supabase/migrations/20260630024501_dashboard_all_time_analytics.sql": {
+      "hash": "786d9baba37c6e25b295dd5b29e677e85838e77df6b3f112d60ed941657a83ba",
+      "size": 7481,
+      "lastScanned": "2026-07-15T05:02:09.204Z"
+    },
+    "supabase/migrations/20260630130000_dashboard_investments_and_profit.sql": {
+      "hash": "a6d29dbcaaf7bfd22ab151085adf508c4b46d277f898e812e6058bed99e4e6e1",
+      "size": 8521,
+      "lastScanned": "2026-07-15T05:02:09.204Z"
+    },
+    "supabase/migrations/20260630140000_enable_ninja_migrations_rls_and_cleanup.sql": {
+      "hash": "ace884d182a5539cb65f8c46d9b6f7407a3f0452585608927a5eaf1292097186",
+      "size": 353,
+      "lastScanned": "2026-07-15T05:02:09.204Z"
+    },
+    "supabase/migrations/20260630150000_restore_get_segmented_push_targets.sql": {
+      "hash": "57142f328b7fb04b6ed3c8e3feb17817f03047f0188a54a49c8d24f27d7b0517",
+      "size": 2943,
+      "lastScanned": "2026-07-15T05:02:09.205Z"
+    },
+    "supabase/migrations/20260701000000_add_sku_to_public_view.sql": {
+      "hash": "a168fb0840e2728882c8c605100c168bf900a55002d2300688d697b3ca2d97f2",
+      "size": 691,
+      "lastScanned": "2026-07-15T05:02:09.205Z"
+    },
+    "supabase/migrations/20260701144200_admin_database_opt.sql": {
+      "hash": "64a6886d7299c21e00a68d80cec8bd40b43026ff8bdfa34ad68fabf729fdd2d6",
+      "size": 4069,
+      "lastScanned": "2026-07-15T05:02:09.205Z"
+    },
+    "supabase/migrations/20260703080000_optimize_remaining_rls.sql": {
+      "hash": "c3e5dc418f33a1c81d8e1e0ce9a0e92c6cfd8737dac1985c675e8953b739a3e5",
+      "size": 10095,
+      "lastScanned": "2026-07-15T05:02:09.205Z"
+    },
+    "supabase/migrations/20260703090000_optimize_reviews_metrics.sql": {
+      "hash": "3c6ddf3256dc00bae0c00f54dfa8180faa427ae7725d45747c14622d4ff19d0d",
+      "size": 1723,
+      "lastScanned": "2026-07-15T05:02:09.205Z"
+    },
+    "supabase/migrations/20260704170000_reconcile_category_analytics_frete.sql": {
+      "hash": "2841cbecec4bcf11c7384a03ddaf9ea0a6b9da9886d95645ebf770b2781434fb",
+      "size": 2093,
+      "lastScanned": "2026-07-15T05:02:09.205Z"
+    },
+    "supabase/migrations/20260704210000_admin_search_rpc_optimization.sql": {
+      "hash": "5f4917a1fe9135083e0c5dcd90df7315281f0fb77505219bd3025ad9bd808983",
+      "size": 13723,
+      "lastScanned": "2026-07-15T05:02:09.205Z"
+    },
+    "supabase/migrations/20260706000000_admin_qa_reviews_search_rpc.sql": {
+      "hash": "8c85aad35f6f2678b3c44010b6ca9853bdd1e248216f042675303c4c08cc4b00",
+      "size": 7121,
+      "lastScanned": "2026-07-15T05:02:09.205Z"
+    },
+    "supabase/migrations/20260706010000_consolidate_rls_and_performance.sql": {
+      "hash": "5f85dc2af1e7d1c6c2e00deb6fca16a2bfb09bffde2de05bf76c76a757681ee8",
+      "size": 8725,
+      "lastScanned": "2026-07-15T05:02:09.206Z"
+    },
+    "supabase/migrations/20260707000000_fix_update_order_status_atomic.sql": {
+      "hash": "50c2900433a7d60e25db0afc4115130356eda260f4ada193b1fcb051e4ef8739",
+      "size": 3235,
+      "lastScanned": "2026-07-15T05:02:09.206Z"
+    },
+    "supabase/migrations/20260707151000_add_avatar_to_profile_update.sql": {
+      "hash": "56f94f63360bddd535dc6157a0ff06c1fd6c8355b1f1d4eb2a8700f79f572ec3",
+      "size": 1080,
+      "lastScanned": "2026-07-15T05:02:09.206Z"
+    },
+    "supabase/migrations/20260707173500_add_cover_url_to_profiles.sql": {
+      "hash": "1479c96e900d15c8fe6b206a78d817769a6d07eb2e14ca1c48f2cffd11acba50",
+      "size": 2309,
+      "lastScanned": "2026-07-15T05:02:09.206Z"
+    },
+    "supabase/migrations/20260708020000_add_avatar_url_to_admin_questions_rpc.sql": {
+      "hash": "9df55b5e96bdadfb8ed8844ab07cc1efd1655dfbdce72475458a337e7468dc63",
+      "size": 3516,
+      "lastScanned": "2026-07-15T05:02:09.206Z"
+    },
+    "supabase/migrations/20260708020000_enable_realtime_for_monitored_tables.sql": {
+      "hash": "274000d476b30dae9f47f8a985c326d538808de67358237af47ac37825fefa82",
+      "size": 654,
+      "lastScanned": "2026-07-15T05:02:09.207Z"
+    },
+    "supabase/migrations/20260708030000_enable_realtime_for_reviews.sql": {
+      "hash": "1df9e100ea0f9a0700bf4dd89a72a9e32f2cff279f4decefa76626da47146717",
+      "size": 354,
+      "lastScanned": "2026-07-15T05:02:09.207Z"
+    },
+    "supabase/migrations/20260708040000_enable_realtime_for_cart.sql": {
+      "hash": "dc0844e6c1f69df4768fa4547db9aae1d015645edb9d00fbe33f497d3411505f",
+      "size": 363,
+      "lastScanned": "2026-07-15T05:02:09.207Z"
+    },
+    "supabase/migrations/20260708050000_enable_realtime_for_favorites.sql": {
+      "hash": "bf5d8452ba1113cca3c8e371388e0967aa1fe05cf041a512c89e0d35127d0650",
+      "size": 360,
+      "lastScanned": "2026-07-15T05:02:09.207Z"
+    },
+    "supabase/migrations/20260708060000_add_cover_url_to_public_profiles.sql": {
+      "hash": "3c7ac2dd2d3d0ab97f6e2469c220eea54783561a90cd41045bc30f7a0c3aa118",
+      "size": 380,
+      "lastScanned": "2026-07-15T05:02:09.207Z"
+    },
+    "supabase/migrations/20260708070000_add_ultima_atualizacao_to_public_view.sql": {
+      "hash": "c82608a85a0acd0d448b185ab16533fd8416aeccd712ff6dc878efae58b6523c",
+      "size": 753,
+      "lastScanned": "2026-07-15T05:02:09.207Z"
+    },
+    "supabase/migrations/20260708080000_add_shipping_api_config.sql": {
+      "hash": "65f6844026f39283efd2aab8aa380f5bc5fa53faa0a8604de5c56ca4ec718814",
+      "size": 5138,
+      "lastScanned": "2026-07-15T05:02:09.207Z"
+    },
+    "supabase/migrations/20260708090000_add_product_dimensions.sql": {
+      "hash": "00a4c26181fd5bbdb9e7cac2c70fac04b05bf02f60873f3e4b40d46decff6108",
+      "size": 1224,
+      "lastScanned": "2026-07-15T05:02:09.208Z"
+    },
+    "supabase/migrations/20260708100000_add_shipping_api_enhancements.sql": {
+      "hash": "b31529d4fb533e9ae741ff4a733675a991479064735791a5ef270401fe1825b2",
+      "size": 2027,
+      "lastScanned": "2026-07-15T05:02:09.208Z"
+    },
+    "supabase/migrations/20260708110000_database_deep_optimization.sql": {
+      "hash": "eeb40cb47b9250aa6913cc95c81ccddd1c965ece8a05e51ee8cf5cde8ce0ca8a",
+      "size": 9596,
+      "lastScanned": "2026-07-15T05:02:09.208Z"
+    },
+    "supabase/migrations/20260708120000_db_security_rls_and_rpc_hardening.sql": {
+      "hash": "a988245517a8a216bd8493f508b1228fd8bd5c3515df76cabd8609d205cf7171",
+      "size": 19192,
+      "lastScanned": "2026-07-15T05:02:09.208Z"
+    },
+    "supabase/migrations/20260708130000_revoke_anon_rpc_permissions.sql": {
+      "hash": "2b715e56ef8280f9dcf2856e02927207f6dc3d601f2512893ec5164936d115e5",
+      "size": 4060,
+      "lastScanned": "2026-07-15T05:02:09.208Z"
+    },
+    "supabase/migrations/20260708140000_split_all_policies.sql": {
+      "hash": "53c5c3fdc625f6766128eae5c5df53e6d04bc71f7d7562cb1481b5dfa3e87176",
+      "size": 7548,
+      "lastScanned": "2026-07-15T05:02:09.209Z"
+    },
+    "supabase/migrations/20260708150000_database_deep_cleanup_and_optimization.sql": {
+      "hash": "617282acdf2f2594aa5f45656caabaec013c40125a9fbd30b59bdd67ddf0d8b9",
+      "size": 16337,
+      "lastScanned": "2026-07-15T05:02:09.209Z"
+    },
+    "supabase/migrations/20260708160000_db_final_security_and_performance_tuning.sql": {
+      "hash": "1a9e6757119125e88337e231d8ec639d86cd4ee00d4dbccdef2ca4ee550204f0",
+      "size": 23672,
+      "lastScanned": "2026-07-15T05:02:09.209Z"
+    },
+    "supabase/migrations/20260708170000_fix_admin_customers_rpc_cte.sql": {
+      "hash": "2edd352d3474d60bf8d2a999f66e0a585930ed5c6be561d11532b0aa5b39b444",
+      "size": 6362,
+      "lastScanned": "2026-07-15T05:02:09.209Z"
+    },
+    "supabase/migrations/20260708180000_add_foreign_keys_for_public_profiles_joins.sql": {
+      "hash": "f2ffc59799bde27b8b6a533da5da5480b33be8437ebcb7c2ff89ead7068c64ef",
+      "size": 928,
+      "lastScanned": "2026-07-15T05:02:09.209Z"
+    },
+    "supabase/migrations/20260708190000_secure_otp_flow.sql": {
+      "hash": "04d85dfe3db135fc2ad3f8c6e67b346218e5d985a83ce4c3c18c9366a79bdaaa",
+      "size": 3788,
+      "lastScanned": "2026-07-15T05:02:09.209Z"
+    },
+    "supabase/migrations/20260708200000_harden_database_profiles_and_legacy_rpcs.sql": {
+      "hash": "8fa07133d557174143ad75a0814b04299e7df5a32047715315b5f03d52b7878b",
+      "size": 1486,
+      "lastScanned": "2026-07-15T05:02:09.209Z"
+    },
+    "supabase/migrations/20260708210000_enable_missing_rls_and_cleanup.sql": {
+      "hash": "347a1d6777ae77c9201eb4ae1b01e9668952f72ddf94acb0014f05c75ec5ddfe",
+      "size": 2056,
+      "lastScanned": "2026-07-15T05:02:09.209Z"
+    },
+    "supabase/migrations/20260708220000_fix_profiles_rls_recursion.sql": {
+      "hash": "4f019ca1cbb4d5ce2e09c23212a71d89f6d9c923d4e30d04e45d0e3a78cb169c",
+      "size": 2096,
+      "lastScanned": "2026-07-15T05:02:09.210Z"
+    },
+    "supabase/migrations/20260708230000_optimize_is_admin_rls.sql": {
+      "hash": "784c77182a54f998fde818b9e85e5eb6be7cf56ac17954126fa1a3be8b4c6bde",
+      "size": 15525,
+      "lastScanned": "2026-07-15T05:02:09.210Z"
+    },
+    "supabase/migrations/20260709000000_final_rpc_permissions_hardening.sql": {
+      "hash": "3311d860c550fb73b83f0f71a41bdcc9cedaed137e3d6511e9269c043b279105",
+      "size": 3056,
+      "lastScanned": "2026-07-15T05:02:09.210Z"
+    },
+    "supabase/migrations/20260709001500_cleanup_legacy_rls_policies.sql": {
+      "hash": "319b346c760eb7795066b42af97a928f583024b7e3ba6333d4cd3b9fdc77a06d",
+      "size": 4030,
+      "lastScanned": "2026-07-15T05:02:09.210Z"
+    },
+    "supabase/migrations/20260709002000_harden_remaining_rls_policies.sql": {
+      "hash": "8663ab6530fac224b437b188e1fda7d0c0293d32eae2e1a11260e98fe695cbda",
+      "size": 1687,
+      "lastScanned": "2026-07-15T05:02:09.210Z"
+    },
+    "supabase/migrations/20260709003000_grant_is_admin_to_anon.sql": {
+      "hash": "91432cbf07ebe870f5311652af35064bae00dab230718f530ad60b2759da437a",
+      "size": 494,
+      "lastScanned": "2026-07-15T05:02:09.210Z"
+    },
+    "supabase/migrations/20260711190000_add_cpf_to_handle_new_user.sql": {
+      "hash": "d6fa772b78356111ae32b66dc35d69ca54241c8dac1466c234342110390561f1",
+      "size": 694,
+      "lastScanned": "2026-07-15T05:02:09.210Z"
+    },
+    "supabase/migrations/20260712230000_add_local_shipping_config.sql": {
+      "hash": "16410876d84176e5a8b355e569ca6532cbf2cc5a9f9bd2cbe49dd6e06ddcd43e",
+      "size": 4869,
+      "lastScanned": "2026-07-15T05:02:09.210Z"
+    },
+    "supabase/migrations/20260713000000_fix_public_products_view.sql": {
+      "hash": "3d93940cdd8e93ce62194f4f6ae9ff03a940dd30c503115fe61d92d527ee07da",
+      "size": 958,
+      "lastScanned": "2026-07-15T05:02:09.210Z"
+    },
+    "supabase/migrations/20260714100000_setup_storage_policies.sql": {
+      "hash": "a93daae5681f7788bde5651898e14b098316ebd02779864251fc61cf5f3415be",
+      "size": 2741,
+      "lastScanned": "2026-07-15T05:02:09.211Z"
+    },
+    "supabase/migrations/add_user_id_to_orders.sql": {
+      "hash": "f2cdced823568e934ea652d5fc0a303767c9348ba6a56610f2e175be5f82468e",
+      "size": 613,
+      "lastScanned": "2026-07-15T05:02:09.211Z"
+    },
+    "supabase/migrations/favorites_migration.sql": {
+      "hash": "5ee40a082297afdf8409b142be34234474a96d79f3155ddd184a631ba8519ef6",
+      "size": 800,
+      "lastScanned": "2026-07-15T05:02:09.211Z"
+    },
+    "supabase/setup/Executar_Verificacao_Completa.bat": {
+      "hash": "18141186a72146284e44f1f661627bc55ca43d0a152273af96ad66e2ef17f075",
+      "size": 257,
+      "lastScanned": "2026-07-15T05:02:09.211Z"
+    },
+    "supabase/setup/README.md": {
+      "hash": "0994c7ef3aaf4803fcc12300efb5063a6782502df3d28b7a66366aedcf60c9ac",
+      "size": 3946,
+      "lastScanned": "2026-07-15T05:02:09.211Z"
+    },
+    "supabase/setup/relatorio_verificacao.md": {
+      "hash": "a0f644c69b6538d17d7badaffa78694a90e8cbedbfbb84078e4e6a4f663a67a8",
+      "size": 5738,
+      "lastScanned": "2026-07-15T05:02:09.211Z"
+    },
+    "supabase/setup/Verificar_Completo.ps1": {
+      "hash": "54ab40845bc9b79503ba432cb2e931491c2146fd7595dbd0ee0a545529930602",
+      "size": 7390,
+      "lastScanned": "2026-07-15T05:02:09.211Z"
+    },
+    "src/contexts/AuthContext.tsx": {
+      "hash": "2945b1747253d2b0b6e1a19b29be83048e57b4adc919fe1cdd151fcdf20a48fc",
+      "size": 24255,
+      "lastScanned": "2026-07-15T05:02:09.211Z"
+    },
+    "src/contexts/CartContext.tsx": {
+      "hash": "63f24a99e5d3b3cae72c2f1da0947e0ee7e53e634787ed32dd29760d97c80388",
+      "size": 24818,
+      "lastScanned": "2026-07-15T05:02:09.212Z"
+    },
+    "src/contexts/FavoritesContext.tsx": {
+      "hash": "554e255c39a464fa6c93edf478755ec13446e622a7bbc5ea833646a3c932aafd",
+      "size": 8310,
+      "lastScanned": "2026-07-15T05:02:09.212Z"
+    },
+    "src/contexts/NotificationContext.tsx": {
+      "hash": "e9bf0cadbeb4eb2c450ce23393b6da41f6efe7630ab2c6c37d93a56863852663",
+      "size": 5335,
+      "lastScanned": "2026-07-15T05:02:09.212Z"
+    },
+    "src/contexts/NotificationContextCore.ts": {
+      "hash": "dd14f192aa8974a2782b5fe8e393e594d3e042585f05b71a81fcde91a45d84a3",
+      "size": 465,
+      "lastScanned": "2026-07-15T05:02:09.212Z"
+    },
+    "src/contexts/StoreContext.tsx": {
+      "hash": "85f54c83dd6dbaabf980a213bdce3e2644b2fe529e2cfe8fcc1aaa7bf3da24a1",
+      "size": 18249,
+      "lastScanned": "2026-07-15T05:02:09.212Z"
+    },
+    "src/hooks/use-mobile.ts": {
+      "hash": "738d8e4520edeca7caa2ca56a4923839e30be14a00fc32b5a770f5d5b451a63e",
+      "size": 585,
+      "lastScanned": "2026-07-15T05:02:09.212Z"
+    },
+    "src/hooks/useAddresses.ts": {
+      "hash": "7b78fb46fe729de86715e53e2166f5938f600e8349944ef1895d2d2bae3ae0c7",
+      "size": 6953,
+      "lastScanned": "2026-07-15T05:02:09.212Z"
+    },
+    "src/hooks/useAnalytics.ts": {
+      "hash": "9064d84eac25630a61bdcd510afb1513361885b824ca9dcd2b2ccf567dbf8195",
+      "size": 12073,
+      "lastScanned": "2026-07-15T05:02:09.213Z"
+    },
+    "src/hooks/useAppBadge.ts": {
+      "hash": "b080a85230d5bdceb52e10183db9a8ce2cb2bfa6e07648ef53e30c67a37583be",
+      "size": 1499,
+      "lastScanned": "2026-07-15T05:02:09.213Z"
+    },
+    "src/hooks/useAuth.ts": {
+      "hash": "51fe88cc249be83eaf88299796bbf5ef965b5cdbf1de5047fd9bc167a953b57d",
+      "size": 213,
+      "lastScanned": "2026-07-15T05:02:09.213Z"
+    },
+    "src/hooks/useBanners.ts": {
+      "hash": "3360fd6258e41e916e3c51b0c0559b4f6db36106b316ec95200ceaaded99db0c",
+      "size": 14938,
+      "lastScanned": "2026-07-15T05:02:09.213Z"
+    },
+    "src/hooks/useBehavioralPrefetch.ts": {
+      "hash": "6ac1b73c17463d929493f1cb6f30c6bca508deff8a54445615f8ea182a0d1b1f",
+      "size": 2411,
+      "lastScanned": "2026-07-15T05:02:09.214Z"
+    },
+    "src/hooks/useCacheWarmer.ts": {
+      "hash": "d6b69dcf4c86bbbf774799068791ae606b25451ade583e8cc442ec9a77c504fd",
+      "size": 3367,
+      "lastScanned": "2026-07-15T05:02:09.214Z"
+    },
+    "src/hooks/useCart.ts": {
+      "hash": "341bc03afb865edb16fdc129f8b851dc2978f4d12f2e1ee7648c5f52ed7737bf",
+      "size": 363,
+      "lastScanned": "2026-07-15T05:02:09.214Z"
+    },
+    "src/hooks/useCategories.ts": {
+      "hash": "079aa9e0b044dbb173a4bc8f304c8c15a504f0ea88ac49713ce9b824ed540f54",
+      "size": 8584,
+      "lastScanned": "2026-07-15T05:02:09.214Z"
+    },
+    "src/hooks/useCoupons.ts": {
+      "hash": "0f254b876e97316f023388be78c7fd7d52c121f7d9fbd9f5e1a03db89b6d7a8f",
+      "size": 6051,
+      "lastScanned": "2026-07-15T05:02:09.214Z"
+    },
+    "src/hooks/useDataVault.ts": {
+      "hash": "d3de812f7f21543b3bc55ab968e999636594517cf39f74cab742c5d8a7c746ac",
+      "size": 11585,
+      "lastScanned": "2026-07-15T05:02:09.214Z"
+    },
+    "src/hooks/useDebounce.ts": {
+      "hash": "3235f096987dbd2607dd25980dd7218eac702fa03c367dfb3e4d8be85c8e5c0d",
+      "size": 383,
+      "lastScanned": "2026-07-15T05:02:09.214Z"
+    },
+    "src/hooks/useDeferredRender.ts": {
+      "hash": "e5546d37358a272ea6b229da9c30f7579f5692bee5fced8e98f6b1fe631e768d",
+      "size": 321,
+      "lastScanned": "2026-07-15T05:02:09.215Z"
+    },
+    "src/hooks/useFavorites.ts": {
+      "hash": "e4f21667ee90498be51895b1489fe383a3f7c88fe37e44cbb695ec6c51fc216c",
+      "size": 314,
+      "lastScanned": "2026-07-15T05:02:09.215Z"
+    },
+    "src/hooks/useLeaderElection.ts": {
+      "hash": "1a7ac4dbf696af58488a3e30a810089813d7bc60edd03660e4a5cbf81c61d1a7",
+      "size": 6282,
+      "lastScanned": "2026-07-15T05:02:09.215Z"
+    },
+    "src/hooks/useLocalStorage.ts": {
+      "hash": "9a07c02ef780e6529b53019c5987dd8d0cd1135fc658d6523e815c37e9ccd904",
+      "size": 2113,
+      "lastScanned": "2026-07-15T05:02:09.215Z"
+    },
+    "src/hooks/useMediaQuery.ts": {
+      "hash": "259431fbf8c503cf4b12790b36d5d6acdf903b88d645d2464dcd4d7e081922a7",
+      "size": 575,
+      "lastScanned": "2026-07-15T05:02:09.215Z"
+    },
+    "src/hooks/useNetworkAdaptive.ts": {
+      "hash": "5346e691fbe531c10cffdefdaff8f5bb74080ac822706b914d6ffc55080af66d",
+      "size": 2684,
+      "lastScanned": "2026-07-15T05:02:09.215Z"
+    },
+    "src/hooks/useOnlineStatus.ts": {
+      "hash": "9fcdd97f8bc1f55305f17d06a1aaad8158c0aa0d627ad27e47b8423c95d9a177",
+      "size": 4547,
+      "lastScanned": "2026-07-15T05:02:09.216Z"
+    },
+    "src/hooks/useOrders.ts": {
+      "hash": "1cc22445ca0ed9f5d7d6d4252896c4928059a77160c2f2e5be8b01f0eadd19f3",
+      "size": 31960,
+      "lastScanned": "2026-07-15T05:02:09.216Z"
+    },
+    "src/hooks/usePredictiveNavigation.ts": {
+      "hash": "abde1426bf59dc4fd067d8e477ff970dac89ee11c8023a6a3985e07ddc4b6893",
+      "size": 1768,
+      "lastScanned": "2026-07-15T05:02:09.216Z"
+    },
+    "src/hooks/usePrefetchOnHover.ts": {
+      "hash": "68ee66e1033a33daf3d67b39db8307b3c824cc8d866d6c2d469c0f011437707a",
+      "size": 3992,
+      "lastScanned": "2026-07-15T05:02:09.216Z"
+    },
+    "src/hooks/useProducts.ts": {
+      "hash": "703b19bc837d1fd888eb234e0734cd2afc10e539f53d98b62e7357e760547b7b",
+      "size": 42559,
+      "lastScanned": "2026-07-15T05:02:09.216Z"
+    },
+    "src/hooks/usePushNotifications.ts": {
+      "hash": "a5cc95ce57ed6e3a0635730120f75435a4ddf23c10aceb2d28b9cbf519bbfa3b",
+      "size": 3798,
+      "lastScanned": "2026-07-15T05:02:09.216Z"
+    },
+    "src/hooks/useQuestions.ts": {
+      "hash": "2580cc3233cd69662249b12d6a11007c3eb8f7e89149416bf58e97ae3a0d4ac8",
+      "size": 22063,
+      "lastScanned": "2026-07-15T05:02:09.216Z"
+    },
+    "src/hooks/useRealtimeUpdate.ts": {
+      "hash": "a482de39ecec0571af08f4b92718762e9b4f2e592c6f3630dd9d79e16915bc08",
+      "size": 5948,
+      "lastScanned": "2026-07-15T05:02:09.217Z"
+    },
+    "src/hooks/useReviews.ts": {
+      "hash": "668a0df8ea40f36d1d270748bb6f694ad63119e83b1884b92a95339381645a38",
+      "size": 19331,
+      "lastScanned": "2026-07-15T05:02:09.217Z"
+    },
+    "src/hooks/useScrollRestoration.ts": {
+      "hash": "3c969d70e1825fe733b049951907b1cd19122dee471da43b66756611feac4a11",
+      "size": 2138,
+      "lastScanned": "2026-07-15T05:02:09.217Z"
+    },
+    "src/hooks/useSearch.ts": {
+      "hash": "e8f20884096a500fd528859fc34b5e641ba8ac0b25425d81a419c9af4e679fdd",
+      "size": 2577,
+      "lastScanned": "2026-07-15T05:02:09.217Z"
+    },
+    "src/hooks/useSwipeBack.ts": {
+      "hash": "19c26f2c85329ec154b49b64e6bb8d41d9d285be4ffa3bf40f7147e34174edd7",
+      "size": 3735,
+      "lastScanned": "2026-07-15T05:02:09.217Z"
+    },
+    "src/hooks/useUpdateCheck.ts": {
+      "hash": "cdfa0e9976f71ff5861a9ff34afb67d2738e6ca9e57b60e62b88316b29308aa8",
+      "size": 8874,
+      "lastScanned": "2026-07-15T05:02:09.217Z"
+    },
+    "src/hooks/useViewTransition.ts": {
+      "hash": "78db7ddd23b1b18d739e44170738433e25e35dad45f1c4f9d5253afed50a637a",
+      "size": 2260,
+      "lastScanned": "2026-07-15T05:02:09.217Z"
+    },
+    "src/hooks/useVOR.ts": {
+      "hash": "546006fe7cf237e94196c688f94f0c9b3f3eef245873e3185bb43b60ba0b5f15",
+      "size": 2370,
+      "lastScanned": "2026-07-15T05:02:09.217Z"
+    },
+    "src/hooks/useWebVitals.ts": {
+      "hash": "01c0869a2e8ce1d4c4d0c98faee6a7aac457e7a47eab72873f1f6519dbdb2ba3",
+      "size": 5031,
+      "lastScanned": "2026-07-15T05:02:09.218Z"
+    },
+    "src/lib/dataVault.ts": {
+      "hash": "b1e7d6e7086eda980e45c02e21928f3f573765e6a726ea66a6d4d1872b4bcd95",
+      "size": 15766,
+      "lastScanned": "2026-07-15T05:02:09.218Z"
+    },
+    "src/lib/forensicsDB.ts": {
+      "hash": "53f7ec1c20411966623f2c12dbf568350650fe9f50d3b038c55b3bca238b6dfd",
+      "size": 3874,
+      "lastScanned": "2026-07-15T05:02:09.218Z"
+    },
+    "src/lib/mappers.ts": {
+      "hash": "89bff5c24f11512d19c4a7fe70bd0426be0106166e62a6d7425804bfee4912be",
+      "size": 7383,
+      "lastScanned": "2026-07-15T05:02:09.218Z"
+    },
+    "src/lib/realtimeSyncEngine.ts": {
+      "hash": "7b2fc9d45f9c333a5e6f42f28b3095119af448396f4d403ed55190ffae63ab8f",
+      "size": 26996,
+      "lastScanned": "2026-07-15T05:02:09.218Z"
+    },
+    "src/lib/supabase.ts": {
+      "hash": "a734bb78accb67522b7a2086d2c8a16f9df405bf143555bb327427ecf3b2ecc5",
+      "size": 1013,
+      "lastScanned": "2026-07-15T05:02:09.218Z"
+    },
+    "src/lib/utils.ts": {
+      "hash": "b9b5647e702c1539e4ef35d60261623b7b83a433156f812aa607b29d6f8ee073",
+      "size": 852,
+      "lastScanned": "2026-07-15T05:02:09.218Z"
+    },
+    "src/sw/sw.ts": {
+      "hash": "0e46db65ff14907e90eedd6668e417798655ea919e9379c6836355077b292849",
+      "size": 11355,
+      "lastScanned": "2026-07-15T05:02:09.218Z"
+    },
+    "src/types/canvas-confetti.d.ts": {
+      "hash": "7c6a83d4bb39bfadfd16c14cfc688290eb6e84984079304d91803e5d3058e93f",
+      "size": 87,
+      "lastScanned": "2026-07-15T05:02:09.219Z"
+    },
+    "src/types/database.types.ts": {
+      "hash": "0c55d2abc3d3c61ade92f9b08c29586f1d701cc233d23b86b76100ee023a7300",
+      "size": 59838,
+      "lastScanned": "2026-07-15T05:02:09.219Z"
+    },
+    "src/types/index.ts": {
+      "hash": "6edfccc35bb4df10d72c872ec751256bdabe36f0a1d0f0160c83f70b935c7460",
+      "size": 6578,
+      "lastScanned": "2026-07-15T05:02:09.219Z"
+    },
+    "src/types/supabase.ts": {
+      "hash": "0c55d2abc3d3c61ade92f9b08c29586f1d701cc233d23b86b76100ee023a7300",
+      "size": 59838,
+      "lastScanned": "2026-07-15T05:02:09.219Z"
+    },
+    "src/views/.agent_metadata.yaml": {
+      "hash": "096320b9c6364d09e6f8bb9d385feb93b457336b16ece78702ec837cd7f8e385",
+      "size": 269,
+      "lastScanned": "2026-07-15T05:02:09.219Z"
+    },
+    "src/utils/admin_cache.ts": {
+      "hash": "b88a36c197c850d49de9f86ecfbf382537a64b0c59341d7d521afaa08d3081d7",
+      "size": 6858,
+      "lastScanned": "2026-07-15T05:02:09.219Z"
+    },
+    "src/utils/avatars.ts": {
+      "hash": "b04e49c776d5ab957bab01753f9fe0360a4f5f22d5df1b2ffffc7392be89e95f",
+      "size": 4324,
+      "lastScanned": "2026-07-15T05:02:09.220Z"
+    },
+    "src/utils/cartAnimation.ts": {
+      "hash": "d6bff5a1e88ae1a6e7a57fbd7afe245715959cab7db9a44f3891bd4a048f6b33",
+      "size": 2832,
+      "lastScanned": "2026-07-15T05:02:09.220Z"
+    },
+    "src/utils/covers.ts": {
+      "hash": "e3e7603f38e32e4b55039dc10cb033f93d70fb4dc8ff38b0b16718d6267feeb8",
+      "size": 5293,
+      "lastScanned": "2026-07-15T05:02:09.220Z"
+    },
+    "src/utils/haptic.ts": {
+      "hash": "0bafa3a24aa55459874f787f809385004aa0fcfe487ee8e80251848505905236",
+      "size": 1049,
+      "lastScanned": "2026-07-15T05:02:09.220Z"
+    },
+    "src/utils/lazyWithPreload.ts": {
+      "hash": "fb39d3099062096da518dd46c40334019f14cc8675673f233d2df26823a9ebb5",
+      "size": 1807,
+      "lastScanned": "2026-07-15T05:02:09.221Z"
+    },
+    "src/utils/truth_gate.ts": {
+      "hash": "759ed0934d48e9465dc45d40f6985b0874e243381c46e53e8edf01e7aff35e77",
+      "size": 3082,
+      "lastScanned": "2026-07-15T05:02:09.221Z"
+    },
+    ".agents_inactive/skills/ai-resource-predictor/SKILL.md": {
+      "hash": "f7ba5ad0d8bb56c80052586ecec0ff9582802da3ae5f3b042241e8584ae474c5",
+      "size": 857,
+      "lastScanned": "2026-07-15T05:02:09.221Z"
+    },
+    ".agents_inactive/skills/pwa-sentinel/SKILL.md": {
+      "hash": "f48516191f7bf34549618620c6efb2d2286b264160c3ed72b7761ff31f754c63",
+      "size": 964,
+      "lastScanned": "2026-07-15T05:02:09.221Z"
+    },
+    ".agents_inactive/skills/antigravity-skill-orchestrator-v9/SKILL.md": {
+      "hash": "67893f4ce03a946f780f1ae5771eed0ab6c69c12213317fad8eada499880dd54",
+      "size": 3869,
+      "lastScanned": "2026-07-15T05:02:09.221Z"
+    },
+    ".agents_inactive/skills/shared-brain/SKILL.md": {
+      "hash": "a7330aa2d815542f5b653b6b1a64206de9d43b698359299fcbbb67fd8d02eb90",
+      "size": 883,
+      "lastScanned": "2026-07-15T05:02:09.222Z"
+    },
+    ".agents_inactive/skills/skill-evaluator-v9/SKILL.md": {
+      "hash": "51d88093d313b7860e1a01d9a6f4cf38a7397bc43e79d306c9c1eb1025908e8c",
+      "size": 3312,
+      "lastScanned": "2026-07-15T05:02:09.222Z"
+    },
+    ".agents_inactive/skills/skill-installer-v9/SKILL.md": {
+      "hash": "d92ead6cfc61047b5166627184be7c52dc8f0916d3df9cb0944645be89530290",
+      "size": 2310,
+      "lastScanned": "2026-07-15T05:02:09.222Z"
+    },
+    ".agents_inactive/skills/state-worker/SKILL.md": {
+      "hash": "b1435b41999358b18b96dfa447fe96753bf0c3dc16362bca68e8e02148d061cb",
+      "size": 829,
+      "lastScanned": "2026-07-15T05:02:09.222Z"
+    },
+    ".agents_inactive/skills/truth-gate-sros/SKILL.md": {
+      "hash": "ab223c1d8300994f37e70e0954d0b36bd563c2a7acf72af05eec06dd024b4244",
+      "size": 849,
+      "lastScanned": "2026-07-15T05:02:09.222Z"
+    },
+    "supabase/functions/calculate-shipping/index.ts": {
+      "hash": "f37ddba0bd2dac223b698c99862ed3620243747504a92b6fe477a7e6486a8efc",
+      "size": 30367,
+      "lastScanned": "2026-07-15T05:02:09.223Z"
+    },
+    "supabase/functions/calculate-shipping/index_test.ts": {
+      "hash": "a5171bd97c7a8d6593d7949e6d6a65222d249dfb7c6ef4ca5adfebcb5b64095b",
+      "size": 2339,
+      "lastScanned": "2026-07-15T05:02:09.223Z"
+    },
+    "supabase/functions/send-otp-email/index.ts": {
+      "hash": "e053098ca0026e5325808cdaab69125293c0be20f32231feff1755321b0df89a",
+      "size": 5531,
+      "lastScanned": "2026-07-15T05:02:09.223Z"
+    },
+    "supabase/functions/send-push/index.ts": {
+      "hash": "3fefaa8f9c54e7ba5cb1e5d68690e5439ccaf8607f7191bc417f0cc0d06e4587",
+      "size": 5398,
+      "lastScanned": "2026-07-15T05:02:09.223Z"
+    },
+    "src/components/debug/DebugPanel.tsx": {
+      "hash": "47164913999ec9c5ca94e991cba7e7d8e0f1ad082cf548f33557f44c10b1cd15",
+      "size": 7628,
+      "lastScanned": "2026-07-15T05:02:09.223Z"
+    },
+    "src/components/admin/AdminErrorState.tsx": {
+      "hash": "7f4bf3c73065a388a3e112e43fe1479d857fe65ea4cb8491e1d7bfbe5da7e7b2",
+      "size": 1806,
+      "lastScanned": "2026-07-15T05:02:09.223Z"
+    },
+    "src/components/admin/AdminHelpModal.tsx": {
+      "hash": "8507ef3f554cf2ce823a5511baeef4d737f895f456f03a589b294e69125923b7",
+      "size": 2507,
+      "lastScanned": "2026-07-15T05:02:09.223Z"
+    },
+    "src/components/admin/AdminKpiCarousel.tsx": {
+      "hash": "afa538e89fb1cd6594cb87d2da2884e3f28f802235709ab8b38405f45cd408b9",
+      "size": 15451,
+      "lastScanned": "2026-07-15T05:02:09.223Z"
+    },
+    "src/components/admin/DebouncedSearchInput.tsx": {
+      "hash": "2484c639529885371b9f9a668a1bc847d6de2b97ccdd1e0b2e6183a5808a9e93",
+      "size": 1649,
+      "lastScanned": "2026-07-15T05:02:09.224Z"
+    },
+    "src/components/admin/LocalBufferedInput.tsx": {
+      "hash": "f4dff80c14486174cae8dbb6e8bfdffff089908d95e812f49c2312107afe9c6f",
+      "size": 8806,
+      "lastScanned": "2026-07-15T05:02:09.224Z"
+    },
+    "src/components/admin/PhoneSimulator.tsx": {
+      "hash": "f22a3aea2c767fdacb1cd78a8c123ee953f4e51c8ec0a34e4109a7bf41e7df69",
+      "size": 40577,
+      "lastScanned": "2026-07-15T05:02:09.224Z"
+    },
+    "src/components/layouts/AdminLayout.tsx": {
+      "hash": "42db8b992c446134ae04bcc40abab4b26d33571c3e4bb734d015d6913e5cc46a",
+      "size": 35008,
+      "lastScanned": "2026-07-15T05:02:09.224Z"
+    },
+    "src/components/pwa/UpdateNotification.tsx": {
+      "hash": "325c6b98dd27c9e3b48d0fae5d4bae7249ad54eff5e2ff5687824711d627bc1f",
+      "size": 5279,
+      "lastScanned": "2026-07-15T05:02:09.224Z"
+    },
+    "src/components/ui/alert-dialog.tsx": {
+      "hash": "fee7f218798af47d0809fbcc828308a150052282c156e8473ba3cd15bfd76e49",
+      "size": 3874,
+      "lastScanned": "2026-07-15T05:02:09.224Z"
+    },
+    "src/components/ui/avatar.tsx": {
+      "hash": "9f871b4812b79c944b5b097b9c48047802e7cee5a8e229ab14dc2223ee6b9c30",
+      "size": 1107,
+      "lastScanned": "2026-07-15T05:02:09.224Z"
+    },
+    "src/components/ui/badge.tsx": {
+      "hash": "34561db0d71b9d98c608a2aa421f51133de7601c54e427f866c21a64d8669921",
+      "size": 1641,
+      "lastScanned": "2026-07-15T05:02:09.224Z"
+    },
+    "src/components/ui/button.tsx": {
+      "hash": "4c2df7b3600408c7f9a8c3e25f8ff3bbf4c0e569bc4a3688b88d2ac8553f5696",
+      "size": 2265,
+      "lastScanned": "2026-07-15T05:02:09.224Z"
+    },
+    "src/components/ui/card.tsx": {
+      "hash": "0458f3d7dbf925b108ca0120eb48088edffbe8cc4485ffe6a0c589ef97d4f1f7",
+      "size": 2005,
+      "lastScanned": "2026-07-15T05:02:09.225Z"
+    },
+    "src/components/ui/checkbox.tsx": {
+      "hash": "de75677c96f581d0ad0ad4d544d183a5364e9e0b528085bc7fdd1782c31bfbaf",
+      "size": 1232,
+      "lastScanned": "2026-07-15T05:02:09.225Z"
+    },
+    "src/components/ui/dialog.tsx": {
+      "hash": "3d60676915bb7d9dbc8a2cfa2176b67d6bd93d10f8f6a8a24ed443005c1090a9",
+      "size": 4005,
+      "lastScanned": "2026-07-15T05:02:09.225Z"
+    },
+    "src/components/ui/dropdown-menu.tsx": {
+      "hash": "320d4e4ff1753741b5c9e4935d10cbf2c96963528ced41cce88a88bb6e0b1b8e",
+      "size": 8447,
+      "lastScanned": "2026-07-15T05:02:09.225Z"
+    },
+    "src/components/ui/form.tsx": {
+      "hash": "9f672e823aeeb04bd8b87b034db064a8e5fb1ceac78ff7583092a1a9e8636199",
+      "size": 3808,
+      "lastScanned": "2026-07-15T05:02:09.225Z"
+    },
+    "src/components/ui/input.tsx": {
+      "hash": "8f3f4ae93ce5945b006f0d9b1da6a2a2dec399e1664eccef305e3d8f66721722",
+      "size": 972,
+      "lastScanned": "2026-07-15T05:02:09.225Z"
+    },
+    "src/components/ui/label.tsx": {
+      "hash": "ddce0710b28a7911c2d5ce01358d6442ddf925b5483f930b45d05c2af8056fab",
+      "size": 623,
+      "lastScanned": "2026-07-15T05:02:09.225Z"
+    },
+    "src/components/ui/select.tsx": {
+      "hash": "98024926d3ed308104af1321ada294a9c7be9ce9411ad5342265af064c13e8da",
+      "size": 6371,
+      "lastScanned": "2026-07-15T05:02:09.225Z"
+    },
+    "src/components/ui/sheet.tsx": {
+      "hash": "5824506e94a7829dfaacbd6678d22e61b05804c9bb26f9a5a2b2b9a248ac60bb",
+      "size": 4099,
+      "lastScanned": "2026-07-15T05:02:09.225Z"
+    },
+    "src/components/ui/skeleton.tsx": {
+      "hash": "ec8b6cd9d8aec0f9f4684416360aab13e4d044f9aa93f95a5d02cac463091003",
+      "size": 263,
+      "lastScanned": "2026-07-15T05:02:09.226Z"
+    },
+    "src/components/ui/sonner.tsx": {
+      "hash": "41c34f52bdb20272109fe28e61f8bb6750593e77d0eebc12686929a3ae5ec77c",
+      "size": 1734,
+      "lastScanned": "2026-07-15T05:02:09.226Z"
+    },
+    "src/components/ui/switch.tsx": {
+      "hash": "511366f74f6e632402b33c5f39cd82a8468b1da8ad3f2dcc6a6e967d5021a36d",
+      "size": 1190,
+      "lastScanned": "2026-07-15T05:02:09.226Z"
+    },
+    "src/components/ui/table.tsx": {
+      "hash": "0f24f65191dc6f95e254d6a1eb479dbd816828b361a1d78adb94157c70e4e846",
+      "size": 2454,
+      "lastScanned": "2026-07-15T05:02:09.226Z"
+    },
+    "src/components/ui/tabs.tsx": {
+      "hash": "f70a126fcc66ba3f4ae26f516c3769d416517630d03116399c5fcf1441c6d88f",
+      "size": 1985,
+      "lastScanned": "2026-07-15T05:02:09.226Z"
+    },
+    "src/components/ui/textarea.tsx": {
+      "hash": "f9dcf6c0b46dea75bb98d6c455eeab2bcc27e5960761dc638373afdf8883de99",
+      "size": 769,
+      "lastScanned": "2026-07-15T05:02:09.226Z"
+    },
+    "supabase/setup/projetos/ikcous.md": {
+      "hash": "ea0203bcdc90d103a26dd530f2f54d346166b4b89edf9b3b9cbd51c070375c1c",
+      "size": 3257,
+      "lastScanned": "2026-07-15T05:02:09.226Z"
+    },
+    "src/views/admin/AdminBannersView.tsx": {
+      "hash": "1fd1ec11a2b91e24fa5ad2e5654892cfbfed102871ec8629589384227e873ffa",
+      "size": 75827,
+      "lastScanned": "2026-07-15T05:02:09.226Z"
+    },
+    "src/views/admin/AdminCouponsView.tsx": {
+      "hash": "8e4e317bef93b68d8ffe8d8b62ad4f5949baca97479f2fbbab72038d4bfeb62d",
+      "size": 48245,
+      "lastScanned": "2026-07-15T05:02:09.227Z"
+    },
+    "src/views/admin/AdminCustomersView.tsx": {
+      "hash": "264a43ec48cf64f9893618561e5bc17c7b079a31ac5156516c537d98f57aeaa4",
+      "size": 45761,
+      "lastScanned": "2026-07-15T05:02:09.227Z"
+    },
+    "src/views/admin/AdminDashboardView.tsx": {
+      "hash": "375208ac7c67504aea6f7c6d3e376467dd0c966c82b51456659a1dcee4b16d96",
+      "size": 16002,
+      "lastScanned": "2026-07-15T05:02:09.227Z"
+    },
+    "src/views/admin/AdminLoginView.tsx": {
+      "hash": "9d3d342c016c2a80bf97c47f80015e369fb151a11b0105d26fb85ea71814d15e",
+      "size": 6364,
+      "lastScanned": "2026-07-15T05:02:09.227Z"
+    },
+    "src/views/admin/AdminOrdersView.tsx": {
+      "hash": "9f625608e8c1e51102aca489a40e760c4966f61e8f69407dd7542b768404c956",
+      "size": 52989,
+      "lastScanned": "2026-07-15T05:02:09.228Z"
+    },
+    "src/views/admin/AdminProductFormView.tsx": {
+      "hash": "d6605ec3796bbcefa9f07b9e16997a29d94eda9fc6b6b0acf2f94f660851f38f",
+      "size": 145162,
+      "lastScanned": "2026-07-15T05:02:09.228Z"
+    },
+    "src/views/admin/AdminProductsView.tsx": {
+      "hash": "bfbb2e1efb1a7ab0c764cb8906497e0e51e9276bb99e330e40456c29a4f9c657",
+      "size": 78653,
+      "lastScanned": "2026-07-15T05:02:09.228Z"
+    },
+    "src/views/admin/AdminPushView.tsx": {
+      "hash": "b8de744e08a31fc434d5139d016af86791cb1cb580b61ad1c6fd79b082648aa1",
+      "size": 38526,
+      "lastScanned": "2026-07-15T05:02:09.229Z"
+    },
+    "src/views/admin/AdminQAView.tsx": {
+      "hash": "5c12a44969d4439f91d76a111cc4695ba646969c9f9e2a7f7f3b852126c91bef",
+      "size": 58564,
+      "lastScanned": "2026-07-15T05:02:09.229Z"
+    },
+    "src/views/admin/AdminReviewsView.tsx": {
+      "hash": "2196df752d0b6e5d646f1153821d8ee1536036aa5bc679bfbcb4b1a467000829",
+      "size": 63070,
+      "lastScanned": "2026-07-15T05:02:09.229Z"
+    },
+    "src/views/admin/AdminSettingsView.tsx": {
+      "hash": "d3d41e521ed57139033c330f1539f42506716f622bba8a6bda2438ecaf67bf85",
+      "size": 126127,
+      "lastScanned": "2026-07-15T05:02:09.229Z"
+    },
+    "src/views/admin/AdminUserDetailView.tsx": {
+      "hash": "a3f8a13cc9ac3a5d959d88c871189cc2b4dfcdba9a38b16afd248933a0780317",
+      "size": 54977,
+      "lastScanned": "2026-07-15T05:02:09.229Z"
+    },
+    "src/views/customer/AccountSettingsView.tsx": {
+      "hash": "e31736f9c4bf97813549742c483ff7da1bcac3d94053dcdbf18edf0acae15967",
+      "size": 51290,
+      "lastScanned": "2026-07-15T05:02:09.230Z"
+    },
+    "src/views/customer/AddressFormView.tsx": {
+      "hash": "19e20c3812a62717b0aa6cc4e48100e6bdf3707f232fbb8434ab53f1a1c665b8",
+      "size": 3140,
+      "lastScanned": "2026-07-15T05:02:09.230Z"
+    },
+    "src/views/customer/CartView.tsx": {
+      "hash": "ef853dfd6037ade06588fa601356be2ee711c362909cae77fd1c9f1d64e7ca76",
+      "size": 32269,
+      "lastScanned": "2026-07-15T05:02:09.230Z"
+    },
+    "src/views/customer/CheckoutView.tsx": {
+      "hash": "759c2d13dd3089c6653d1309acab211f774522dff5da79ccb7f57bd0c7fde7ad",
+      "size": 46504,
+      "lastScanned": "2026-07-15T05:02:09.230Z"
+    },
+    "src/views/customer/CompareView.tsx": {
+      "hash": "fbdc84e748c10f5e9a51c72c211f5d8ad07c39858dadf21e62bb04b2776bdcc3",
+      "size": 9483,
+      "lastScanned": "2026-07-15T05:02:09.230Z"
+    },
+    "src/views/customer/FavoritesView.tsx": {
+      "hash": "463012e8eabc59fbfa72dd3b63256fa2ff16708d33c4bb5207022f9076f1aab8",
+      "size": 11158,
+      "lastScanned": "2026-07-15T05:02:09.230Z"
+    },
+    "src/views/customer/HomeView.tsx": {
+      "hash": "b9bdade966fd3fcbe2ab64885ae006ed44a8cc4b0460b9d2f489686a1ab40efb",
+      "size": 17520,
+      "lastScanned": "2026-07-15T05:02:09.230Z"
+    },
+    "src/views/customer/NotificationsView.tsx": {
+      "hash": "2a4e884afabfe2e9d5f3a84df2b23848c96a3d1ba2b09eec1735797114667e16",
+      "size": 17518,
+      "lastScanned": "2026-07-15T05:02:09.231Z"
+    },
+    "src/views/customer/OrderDetailsView.tsx": {
+      "hash": "cfe18fa17e7313ed1e4c415c415fdf70d706070707adb5908103a697a9993e32",
+      "size": 23249,
+      "lastScanned": "2026-07-15T05:02:09.231Z"
+    },
+    "src/views/customer/OrderSuccessView.tsx": {
+      "hash": "84f6a1cd88923b58c5f0091e688d3ad73a215afd3fa20dc08b6059597394f9d3",
+      "size": 1763,
+      "lastScanned": "2026-07-15T05:02:09.231Z"
+    },
+    "src/views/customer/ProductView.tsx": {
+      "hash": "e1f3f7b78088ed580119ba2bc016d94b8acaa23cb54ac9b9e7ae46ecf11481f5",
+      "size": 53465,
+      "lastScanned": "2026-07-15T05:02:09.231Z"
+    },
+    "src/views/customer/ProfileView.tsx": {
+      "hash": "1ebb9c404a14dde895aceba2a7e8da6f7a477fd5c9c0f052ccc0f2bbf7eafdbb",
+      "size": 49535,
+      "lastScanned": "2026-07-15T05:02:09.231Z"
+    },
+    "src/views/customer/SearchView.tsx": {
+      "hash": "a2c73554835170d30203b9578ce86177e0bfa7c20c0e35a2ef0e57fc25d56985",
+      "size": 15291,
+      "lastScanned": "2026-07-15T05:02:09.231Z"
+    },
+    "src/views/customer/UserProfileView.tsx": {
+      "hash": "c35af28cd5b288fbdbe64cae20b1ba40d143f01aff9310aaff1541b2425558a1",
+      "size": 24767,
+      "lastScanned": "2026-07-15T05:02:09.232Z"
+    },
+    "src/views/shared/AuthView.tsx": {
+      "hash": "e3a1dc6f45069b129467a6f68360aec57317f2b1934d5c15cb5c2720908d47ca",
+      "size": 26161,
+      "lastScanned": "2026-07-15T05:02:09.232Z"
+    },
+    "src/components/admin/dashboard/KpiSummaryCards.tsx": {
+      "hash": "0b67cd928446b026dfa6556c299b2b83f278f52cd833e93a4671f50e46341993",
+      "size": 1864,
+      "lastScanned": "2026-07-15T05:02:09.232Z"
+    },
+    "src/components/admin/dashboard/OperationalPerformanceChart.tsx": {
+      "hash": "8bbae166a14919c99180863b84b56510762dc68b5c1ad49413ff8f18711e6528",
+      "size": 26555,
+      "lastScanned": "2026-07-15T05:02:09.232Z"
+    },
+    "src/components/admin/dashboard/ProductBanners.tsx": {
+      "hash": "859f80d199bbf383843b5607629f1ad3a78ec25d9b951b29760aeb594a460a45",
+      "size": 4199,
+      "lastScanned": "2026-07-15T05:02:09.232Z"
+    },
+    "src/components/admin/dashboard/StrategicIntelligenceBlocks.tsx": {
+      "hash": "6753ad84d28aa2141368c0bc388ac1452d0193ad94503566c783efb58e7ae075",
+      "size": 22783,
+      "lastScanned": "2026-07-15T05:02:09.232Z"
+    },
+    "src/components/admin/dashboard/SupportBanners.tsx": {
+      "hash": "30f90d3ffd69c741650f28bcbe884a9bcf29347d6e5b106df2b0be9fa5558eb6",
+      "size": 4243,
+      "lastScanned": "2026-07-15T05:02:09.232Z"
+    },
+    "src/components/admin/dashboard/TopProductsList.tsx": {
+      "hash": "7b41db0862e6d3eb4860cb721f9ff92d2e42a372a4d7bff4a25669e5c0a6e206",
+      "size": 10465,
+      "lastScanned": "2026-07-15T05:02:09.232Z"
+    },
+    "src/components/admin/orders/OrderDetail.tsx": {
+      "hash": "bb4752020b41696a8e96c4edc5f77144cc3429775e5835f6e277ca40a2dabd47",
+      "size": 39532,
+      "lastScanned": "2026-07-15T05:02:09.233Z"
+    },
+    "src/components/admin/orders/OrderReceipt.tsx": {
+      "hash": "0660bf19e7b53bfd6d1190bebb4bc67a260cf4b524fb6c535c25d2eb0d12209d",
+      "size": 3499,
+      "lastScanned": "2026-07-15T05:02:09.233Z"
+    },
+    "src/components/admin/orders/OrderStatusBadge.tsx": {
+      "hash": "c580ca8bda3410d0a193cbae6d113b9ad0d5d169a5cb13bd6dbb814886d5aea7",
+      "size": 1942,
+      "lastScanned": "2026-07-15T05:02:09.233Z"
+    },
+    "src/components/ui/custom/AddressForm.tsx": {
+      "hash": "fe6b2fc3f53b931a819192b8c78922b59ea76008282cb93c8383a82fbd9cedd7",
+      "size": 18945,
+      "lastScanned": "2026-07-15T05:02:09.233Z"
+    },
+    "src/components/ui/custom/AddressList.tsx": {
+      "hash": "3ac9b6af5335defb6fcb762586bf6bb825d8614967ea278e49179ec3b479e6b4",
+      "size": 8828,
+      "lastScanned": "2026-07-15T05:02:09.233Z"
+    },
+    "src/components/ui/custom/BannerCarousel.tsx": {
+      "hash": "0bd4e8d3e14625df448cce01a117683ef96e39043abcd0911b6fe7088ed2db0e",
+      "size": 4718,
+      "lastScanned": "2026-07-15T05:02:09.233Z"
+    },
+    "src/components/ui/custom/BottomNav.tsx": {
+      "hash": "ba76d8974b358b2581f10a9d8536308a4a84b581f52b0cfd4c9eccebd1e547ab",
+      "size": 4757,
+      "lastScanned": "2026-07-15T05:02:09.233Z"
+    },
+    "src/components/ui/custom/CartFooterSummary.tsx": {
+      "hash": "f7aafe06f7cd0c281e6c741846bdc1229ae0664b2fbbc4bad8efcbab0998d4ab",
+      "size": 4870,
+      "lastScanned": "2026-07-15T05:02:09.234Z"
+    },
+    "src/components/ui/custom/CartItemsList.tsx": {
+      "hash": "44017581f0c2f68147492b624ca17ad24935428395b60415dc4acac318efeaf5",
+      "size": 9070,
+      "lastScanned": "2026-07-15T05:02:09.234Z"
+    },
+    "src/components/ui/custom/CartReminder.tsx": {
+      "hash": "2ee2c9dcdce4700482a738c1f0cf723e3e3743deeb8005e6af7a3d6e81460322",
+      "size": 7554,
+      "lastScanned": "2026-07-15T05:02:09.234Z"
+    },
+    "src/components/ui/custom/CategoryFilter.tsx": {
+      "hash": "f1610b7746e740aacfeeb4a9b1148667c32308c70179fde03b47fcb5e2eacfa7",
+      "size": 2549,
+      "lastScanned": "2026-07-15T05:02:09.234Z"
+    },
+    "src/components/ui/custom/CouponInput.tsx": {
+      "hash": "1753f1962bc649f96bef3bb712d45d23eb6d47ac43cba17b13a299b1c942098d",
+      "size": 2737,
+      "lastScanned": "2026-07-15T05:02:09.234Z"
+    },
+    "src/components/ui/custom/EmptyCart.tsx": {
+      "hash": "393b64ae1366d5b5b4905cfa5a46ca70ca2653e3ae356dacdc2eca4deb89b5c9",
+      "size": 2268,
+      "lastScanned": "2026-07-15T05:02:09.234Z"
+    },
+    "src/components/ui/custom/FreeShippingBlock.tsx": {
+      "hash": "e2bec924ac4b19edb73addceeaa32af17c21281b1ad52806e21262123649ce64",
+      "size": 5611,
+      "lastScanned": "2026-07-15T05:02:09.235Z"
+    },
+    "src/components/ui/custom/GlobalErrorBoundary.tsx": {
+      "hash": "2bb8912af3d2ab0ab612b80e148cedfc169ce29d9733eb474801089fb2ee71bf",
+      "size": 3067,
+      "lastScanned": "2026-07-15T05:02:09.235Z"
+    },
+    "src/components/ui/custom/Header.tsx": {
+      "hash": "23cbb8f4d5c99a85961de86badc372f409c2e04b30e92a03ed6c5d2e9cfce61c",
+      "size": 8390,
+      "lastScanned": "2026-07-15T05:02:09.235Z"
+    },
+    "src/components/ui/custom/ImageAdjuster.tsx": {
+      "hash": "962f6ada4345401fb9b0fb915263bfe4050e273b905ccabd84291200fd92ea21",
+      "size": 24252,
+      "lastScanned": "2026-07-15T05:02:09.235Z"
+    },
+    "src/components/ui/custom/InfoBlockCarousel.tsx": {
+      "hash": "5e87ffd1de8ba530f930f3f323c33a8566b2e60316fbfe51907e515e1eb1dd12",
+      "size": 2253,
+      "lastScanned": "2026-07-15T05:02:09.236Z"
+    },
+    "src/components/ui/custom/LocalErrorBoundary.tsx": {
+      "hash": "409c482ffa7fbefb15433ae84eca119e509794c214ee84735782eb23c89afad2",
+      "size": 2507,
+      "lastScanned": "2026-07-15T05:02:09.236Z"
+    },
+    "src/components/ui/custom/MarkdownRenderer.tsx": {
+      "hash": "8a6dcaaf01f069088fc28651da7dadde1c97d1726a429961c387e032aecc6c90",
+      "size": 1739,
+      "lastScanned": "2026-07-15T05:02:09.236Z"
+    },
+    "src/components/ui/custom/OrderList.tsx": {
+      "hash": "5ac0a41dcd3232895ecb655786152a2c7a52c3399033993ddbfb1a9ab7a02e48",
+      "size": 14469,
+      "lastScanned": "2026-07-15T05:02:09.236Z"
+    },
+    "src/components/ui/custom/OrderSearch.tsx": {
+      "hash": "bbb0dba5bc538af2c7554bb76821d31fcd2db43b185cddbd853da99d1a27dbbb",
+      "size": 12784,
+      "lastScanned": "2026-07-15T05:02:09.236Z"
+    },
+    "src/components/ui/custom/OrderTimeline.tsx": {
+      "hash": "fa9a9092f9bd0db10fee0e1ff83af4c64971a8ab5bddb217a40fe9f771c7c503",
+      "size": 3403,
+      "lastScanned": "2026-07-15T05:02:09.237Z"
+    },
+    "src/components/ui/custom/PremiumOffers.tsx": {
+      "hash": "ee35444a2c8ba42eeb604c67ea87d1c1959a39ffdb8c85292ffee23bc3694d1a",
+      "size": 19405,
+      "lastScanned": "2026-07-15T05:02:09.237Z"
+    },
+    "src/components/ui/custom/ProductCard.tsx": {
+      "hash": "219d315a3013a1fbc1318f61e8902dda0692935786ace31a6368a87ec83ac0cd",
+      "size": 11328,
+      "lastScanned": "2026-07-15T05:02:09.237Z"
+    },
+    "src/components/ui/custom/ProductCardSkeleton.tsx": {
+      "hash": "c1dfcd4321a848acb634ecee4e07b40750c30204c90f5dac3881a2c247c3d081",
+      "size": 892,
+      "lastScanned": "2026-07-15T05:02:09.237Z"
+    },
+    "src/components/ui/custom/ProductCarousel.tsx": {
+      "hash": "8cbad1b26a0791442296228d6983bc94aed32c01281189163365c5323849d460",
+      "size": 5317,
+      "lastScanned": "2026-07-15T05:02:09.237Z"
+    },
+    "src/components/ui/custom/ProductList.tsx": {
+      "hash": "62be0c4d703f71d03d7b79fdb0709584f0e2366d1afbeb7824e0cab8534fb64d",
+      "size": 4569,
+      "lastScanned": "2026-07-15T05:02:09.237Z"
+    },
+    "src/components/ui/custom/ProductQA.tsx": {
+      "hash": "138050f05a313e3648b101611d7b48b8f3622a2843f1dd7fccf5721bef2d1bc7",
+      "size": 16051,
+      "lastScanned": "2026-07-15T05:02:09.237Z"
+    },
+    "src/components/ui/custom/QuantitySelector.tsx": {
+      "hash": "b4eedf12dc994c29140b994ee420cf22afbabd3ab71841f99d6ad321b26dd6bd",
+      "size": 2447,
+      "lastScanned": "2026-07-15T05:02:09.238Z"
+    },
+    "src/components/ui/custom/ReviewCard.tsx": {
+      "hash": "20cccada2a6520646a076b4787c17d2c814b3b5189bd5daa34a27f83525d6730",
+      "size": 6561,
+      "lastScanned": "2026-07-15T05:02:09.238Z"
+    },
+    "src/components/ui/custom/ReviewForm.tsx": {
+      "hash": "b9acee119501d5f931a39ce46f5feb0e59144803429e39eb0d5cc572f23b54e1",
+      "size": 5149,
+      "lastScanned": "2026-07-15T05:02:09.238Z"
+    },
+    "src/components/ui/custom/SearchBar.tsx": {
+      "hash": "7da35f22d6be63a5d6dae003f9fd0d8b4d9f0dd3e3ef1112ba560763c4766c81",
+      "size": 15084,
+      "lastScanned": "2026-07-15T05:02:09.238Z"
+    },
+    "src/components/ui/custom/ShippingCalculator.tsx": {
+      "hash": "3f531dadbd72b6749f390883b98969eb3cc47280caced724ef6ddf50bdd906a1",
+      "size": 9768,
+      "lastScanned": "2026-07-15T05:02:09.238Z"
+    },
+    "src/components/ui/custom/ShippingProgress.tsx": {
+      "hash": "e828c8d87851d7dfc31bf3fad666947763174bdc9e5f5b692643a5775043f595",
+      "size": 10005,
+      "lastScanned": "2026-07-15T05:02:09.238Z"
+    },
+    "src/components/ui/custom/Skeletons.tsx": {
+      "hash": "6e00131fbc91997f66348e7970762c5693277c8038bdc0081048e427f4651cea",
+      "size": 903,
+      "lastScanned": "2026-07-15T05:02:09.238Z"
+    },
+    "src/components/ui/custom/StarRating.tsx": {
+      "hash": "206772cffbafc8d1c51e031958867e7c03c730672a05ecbda5eab00f6ed04acd",
+      "size": 1130,
+      "lastScanned": "2026-07-15T05:02:09.238Z"
+    }
+  },
+  "lastFindings": {
+    ".env": [
+      {
+        "line": 4,
+        "column": 14,
+        "severity": "medium",
+        "category": "secret",
+        "rule": "Database URL with Credentials",
+        "title": "Database URL with Credentials",
+        "description": "Database URLs with embedded passwords expose your database.",
+        "matched": "postgresql://postgres:Y6G9zWLoaSQ8aJdK@db.jvgyjlbjhbfrncwbytls.supabase.co:5432/postgres",
+        "confidence": "medium"
+      }
+    ]
+  },
+  "stats": {
+    "totalFiles": 380,
+    "totalFindings": 1,
+    "lastScore": null,
+    "lastGrade": null
+  }
+}

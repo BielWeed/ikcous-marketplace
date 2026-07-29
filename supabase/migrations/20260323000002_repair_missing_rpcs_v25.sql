@@ -20,8 +20,10 @@ END;
 $$;
 
 -- 2. validate_coupon_secure_v2
-CREATE OR REPLACE FUNCTION public.validate_coupon_secure_v2(p_code TEXT, p_subtotal NUMERIC)
-RETURNS JSONB
+CREATE OR REPLACE FUNCTION public.validate_coupon_secure_v2(
+    p_code text, p_subtotal numeric
+)
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
@@ -65,7 +67,7 @@ $$;
 
 -- 3. get_admin_analytics_v2
 CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2()
-RETURNS JSONB
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
@@ -130,9 +132,9 @@ $$;
 
 -- 4. get_orders_by_whatsapp_v3
 CREATE OR REPLACE FUNCTION public.get_orders_by_whatsapp_v3(
-    p_phone_number TEXT,
-    p_customer_email TEXT,
-    p_order_fragment TEXT
+    p_phone_number text,
+    p_customer_email text,
+    p_order_fragment text
 )
 RETURNS SETOF public.marketplace_orders
 LANGUAGE plpgsql
@@ -163,10 +165,10 @@ $$;
 
 -- 5. update_order_status_atomic
 CREATE OR REPLACE FUNCTION public.update_order_status_atomic(
-    p_order_id uuid, 
-    p_new_status text, 
-    p_notes text DEFAULT NULL, 
-    p_silent boolean DEFAULT false
+    p_order_id uuid,
+    p_new_status text,
+    p_notes text DEFAULT NULL,
+    p_silent boolean DEFAULT FALSE
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -354,7 +356,8 @@ $$;
 GRANT EXECUTE ON FUNCTION public.is_admin TO authenticated;
 GRANT EXECUTE ON FUNCTION public.validate_coupon_secure_v2 TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_admin_analytics_v2 TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_orders_by_whatsapp_v3 TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_orders_by_whatsapp_v3 TO anon,
+authenticated;
 GRANT EXECUTE ON FUNCTION public.update_order_status_atomic TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_marketplace_order_v21 TO authenticated;
 

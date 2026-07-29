@@ -6,24 +6,29 @@
 -- The previous policy allowed users to UPDATE and DELETE their own orders (bypass constraints).
 DROP POLICY IF EXISTS "Admins full access, users see own orders" ON public.marketplace_orders;
 
-CREATE POLICY "Users can SELECT their own orders" 
-ON public.marketplace_orders FOR SELECT 
+CREATE POLICY "Users can SELECT their own orders"
+ON public.marketplace_orders FOR SELECT
 USING (auth.uid() = user_id);
 
 -- Admins retain all control
-CREATE POLICY "Admins have ALL access to orders" 
-ON public.marketplace_orders FOR ALL 
+CREATE POLICY "Admins have ALL access to orders"
+ON public.marketplace_orders FOR ALL
 USING (public.is_admin());
 
 -- 2. Order Items
 DROP POLICY IF EXISTS "Admins full access, users see through orders" ON public.marketplace_order_items;
 
-CREATE POLICY "Users can SELECT their own order items" 
-ON public.marketplace_order_items FOR SELECT 
-USING (exists (select 1 from public.marketplace_orders where id = order_id and user_id = auth.uid()));
+CREATE POLICY "Users can SELECT their own order items"
+ON public.marketplace_order_items FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM public.marketplace_orders
+        WHERE id = order_id AND user_id = auth.uid()
+    )
+);
 
-CREATE POLICY "Admins have ALL access to order items" 
-ON public.marketplace_order_items FOR ALL 
+CREATE POLICY "Admins have ALL access to order items"
+ON public.marketplace_order_items FOR ALL
 USING (public.is_admin());
 
 -- 3. User Addresses Protection
@@ -33,13 +38,13 @@ ALTER TABLE public.user_addresses ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can manage their own addresses" ON public.user_addresses;
 DROP POLICY IF EXISTS "Admins can manage all addresses" ON public.user_addresses;
 
-CREATE POLICY "Users can manage their own addresses" 
-ON public.user_addresses FOR ALL 
-USING (auth.uid() = user_id) 
+CREATE POLICY "Users can manage their own addresses"
+ON public.user_addresses FOR ALL
+USING (auth.uid() = user_id)
 WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Admins can manage all addresses" 
-ON public.user_addresses FOR ALL 
+CREATE POLICY "Admins can manage all addresses"
+ON public.user_addresses FOR ALL
 USING (public.is_admin());
 
 -- 4. Store Config Protection

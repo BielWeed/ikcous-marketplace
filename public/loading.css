@@ -104,24 +104,33 @@ html.splash-shown #silent-guardian-loader {
 .orb-1 {
   width: 60vw;
   height: 60vw;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
-  /* Indigo */
+  background: radial-gradient(
+    circle,
+    var(--orb-1-color, rgba(99, 102, 241, 0.15)) 0%,
+    transparent 70%
+  );
   animation: orb-float-1 20s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 .orb-2 {
   width: 50vw;
   height: 50vw;
-  background: radial-gradient(circle, rgba(14, 165, 233, 0.15) 0%, transparent 70%);
-  /* Sky */
+  background: radial-gradient(
+    circle,
+    var(--orb-2-color, rgba(14, 165, 233, 0.15)) 0%,
+    transparent 70%
+  );
   animation: orb-float-2 25s cubic-bezier(0.4, 0, 0.2, 1) infinite reverse;
 }
 
 .orb-3 {
   width: 70vw;
   height: 70vw;
-  background: radial-gradient(circle, rgba(236, 72, 153, 0.1) 0%, transparent 70%);
-  /* Pink */
+  background: radial-gradient(
+    circle,
+    var(--orb-3-color, rgba(236, 72, 153, 0.1)) 0%,
+    transparent 70%
+  );
   animation: orb-float-3 22s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
@@ -138,8 +147,7 @@ html.splash-shown #silent-guardian-loader {
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.8);
   /* Brighter border to catch light */
-  box-shadow:
-    0 20px 40px rgba(0, 0, 0, 0.06),
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.06),
     /* Softer subtle shadow for light theme */
     inset 0 1px 1px rgba(255, 255, 255, 1);
   display: flex;
@@ -162,7 +170,7 @@ html.splash-shown #silent-guardian-loader {
 .cinematic-text {
   position: absolute;
   bottom: 20%;
-  font-family: 'Inter', -apple-system, sans-serif;
+  font-family: "Inter", -apple-system, sans-serif;
   font-size: 11px;
   font-weight: 600;
   /* slightly thicker for light bg */
@@ -172,7 +180,7 @@ html.splash-shown #silent-guardian-loader {
   /* Dark text instead of white */
   z-index: 10;
   opacity: 0;
-  animation: text-fade-in 2s cubic-bezier(0.19, 1, 0.22, 1) forwards 1s;
+  animation: text-fade-in 1.2s cubic-bezier(0.19, 1, 0.22, 1) forwards 0.1s;
 }
 
 /* Ambient Stardust */
@@ -188,12 +196,12 @@ html.splash-shown #silent-guardian-loader {
 .guardian-logo-icon {
   width: 44px;
   height: 44px;
-  background-color: #18181b;
+  background-color: var(--primary-color, #18181b);
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
 
 .guardian-logo-icon span {
@@ -201,7 +209,7 @@ html.splash-shown #silent-guardian-loader {
   font-weight: 900;
   font-style: italic;
   font-size: 22px;
-  font-family: 'Inter', -apple-system, sans-serif;
+  font-family: "Inter", -apple-system, sans-serif;
 }
 
 .guardian-brand-text {
@@ -209,7 +217,15 @@ html.splash-shown #silent-guardian-loader {
   font-weight: 900;
   letter-spacing: -0.05em;
   color: #18181b;
-  font-family: 'Inter', -apple-system, sans-serif;
+  font-family: "Inter", -apple-system, sans-serif;
+}
+
+.guardian-logo {
+  height: 48px;
+  max-width: 190px;
+  width: auto;
+  object-fit: contain;
+  display: block;
 }
 
 .sd-1 {
@@ -250,16 +266,17 @@ html.splash-shown #silent-guardian-loader {
 }
 
 @keyframes glass-float {
-
   0%,
   100% {
     transform: translateY(0);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.06), inset 0 1px 1px rgba(255, 255, 255, 1);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.06), inset 0 1px 1px
+      rgba(255, 255, 255, 1);
   }
 
   50% {
     transform: translateY(-10px);
-    box-shadow: 0 30px 50px rgba(0, 0, 0, 0.04), inset 0 1px 1px rgba(255, 255, 255, 1);
+    box-shadow: 0 30px 50px rgba(0, 0, 0, 0.04), inset 0 1px 1px
+      rgba(255, 255, 255, 1);
   }
 }
 
@@ -293,19 +310,17 @@ html.splash-shown #silent-guardian-loader {
   bottom: 15%;
   width: 160px;
   height: 2px;
-  background: rgba(0, 0, 0, 0.08);
-  /* Light subtle track */
+  background: var(--progress-track-color, rgba(0, 0, 0, 0.08));
   border-radius: 4px;
   overflow: hidden;
   opacity: 0;
-  animation: text-fade-in 1.5s cubic-bezier(0.19, 1, 0.22, 1) forwards 1.2s;
+  animation: text-fade-in 1s cubic-bezier(0.19, 1, 0.22, 1) forwards 0.2s;
 }
 
 .progress-fill {
   width: 0%;
   height: 100%;
-  background: #18181b;
-  /* Dark fill */
+  background: var(--progress-fill-color, var(--primary-color, #18181b));
   border-radius: 4px;
   transition: width 0.15s ease-out;
 }
@@ -314,17 +329,16 @@ html.splash-shown #silent-guardian-loader {
 .progress-percentage {
   position: absolute;
   bottom: 12%;
-  font-family: 'Inter', -apple-system, sans-serif;
+  font-family: "Inter", -apple-system, sans-serif;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.1em;
   color: rgba(0, 0, 0, 0.6);
   opacity: 0;
-  animation: text-fade-in 1.5s cubic-bezier(0.19, 1, 0.22, 1) forwards 1.2s;
+  animation: text-fade-in 1s cubic-bezier(0.19, 1, 0.22, 1) forwards 0.2s;
 }
 
 @keyframes twinkle {
-
   0%,
   100% {
     opacity: 0.05;
@@ -336,7 +350,6 @@ html.splash-shown #silent-guardian-loader {
 }
 
 @keyframes orb-float-1 {
-
   0%,
   100% {
     transform: translate(0, 0);
@@ -352,7 +365,6 @@ html.splash-shown #silent-guardian-loader {
 }
 
 @keyframes orb-float-2 {
-
   0%,
   100% {
     transform: translate(0, 0);
@@ -368,7 +380,6 @@ html.splash-shown #silent-guardian-loader {
 }
 
 @keyframes orb-float-3 {
-
   0%,
   100% {
     transform: translate(0, 0);

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 
 interface UseSwipeBackProps {
   readonly onBack: () => void;
@@ -14,8 +14,8 @@ export function useSwipeBack({ onBack, active, mainRef }: UseSwipeBackProps) {
   useEffect(() => {
     if (!active) {
       if (mainRef.current) {
-        mainRef.current.style.transform = '';
-        mainRef.current.classList.remove('swipe-back-transition');
+        mainRef.current.style.transform = "";
+        mainRef.current.classList.remove("swipe-back-transition");
       }
       return;
     }
@@ -30,12 +30,17 @@ export function useSwipeBack({ onBack, active, mainRef }: UseSwipeBackProps) {
         startXRef.current = touch.clientX;
         startYRef.current = touch.clientY;
         isSwipingRef.current = true;
-        mainEl.classList.remove('swipe-back-transition');
+        mainEl.classList.remove("swipe-back-transition");
       }
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (!isSwipingRef.current || startXRef.current === null || startYRef.current === null) return;
+      if (
+        !isSwipingRef.current ||
+        startXRef.current === null ||
+        startYRef.current === null
+      )
+        return;
 
       const touch = e.touches[0];
       const deltaX = touch.clientX - startXRef.current;
@@ -61,7 +66,7 @@ export function useSwipeBack({ onBack, active, mainRef }: UseSwipeBackProps) {
       isSwipingRef.current = false;
       const currentTransform = mainEl.style.transform;
       const match = currentTransform.match(/translate3d\(([\d.]+)px/);
-      const deltaX = match ? parseFloat(match[1]) : 0;
+      const deltaX = match ? Number.parseFloat(match[1]) : 0;
 
       startXRef.current = null;
       startYRef.current = null;
@@ -70,40 +75,40 @@ export function useSwipeBack({ onBack, active, mainRef }: UseSwipeBackProps) {
 
       if (deltaX > threshold) {
         // Trigger back action and animate slide-out
-        mainEl.classList.add('swipe-back-transition');
-        mainEl.style.transform = 'translate3d(100%, 0, 0)';
-        
+        mainEl.classList.add("swipe-back-transition");
+        mainEl.style.transform = "translate3d(100%, 0, 0)";
+
         setTimeout(() => {
           onBack();
           setTimeout(() => {
-            mainEl.style.transform = '';
-            mainEl.classList.remove('swipe-back-transition');
+            mainEl.style.transform = "";
+            mainEl.classList.remove("swipe-back-transition");
           }, 300);
         }, 150);
       } else {
         // Cancel gesture and bounce back to normal
-        mainEl.classList.add('swipe-back-transition');
-        mainEl.style.transform = 'translate3d(0, 0, 0)';
-        
+        mainEl.classList.add("swipe-back-transition");
+        mainEl.style.transform = "translate3d(0, 0, 0)";
+
         const resetTransform = () => {
-          mainEl.style.transform = '';
-          mainEl.classList.remove('swipe-back-transition');
-          mainEl.removeEventListener('transitionend', resetTransform);
+          mainEl.style.transform = "";
+          mainEl.classList.remove("swipe-back-transition");
+          mainEl.removeEventListener("transitionend", resetTransform);
         };
-        mainEl.addEventListener('transitionend', resetTransform);
+        mainEl.addEventListener("transitionend", resetTransform);
       }
     };
 
-    mainEl.addEventListener('touchstart', handleTouchStart, { passive: false });
-    mainEl.addEventListener('touchmove', handleTouchMove, { passive: false });
-    mainEl.addEventListener('touchend', handleTouchEnd);
-    mainEl.addEventListener('touchcancel', handleTouchEnd);
+    mainEl.addEventListener("touchstart", handleTouchStart, { passive: false });
+    mainEl.addEventListener("touchmove", handleTouchMove, { passive: false });
+    mainEl.addEventListener("touchend", handleTouchEnd);
+    mainEl.addEventListener("touchcancel", handleTouchEnd);
 
     return () => {
-      mainEl.removeEventListener('touchstart', handleTouchStart);
-      mainEl.removeEventListener('touchmove', handleTouchMove);
-      mainEl.removeEventListener('touchend', handleTouchEnd);
-      mainEl.removeEventListener('touchcancel', handleTouchEnd);
+      mainEl.removeEventListener("touchstart", handleTouchStart);
+      mainEl.removeEventListener("touchmove", handleTouchMove);
+      mainEl.removeEventListener("touchend", handleTouchEnd);
+      mainEl.removeEventListener("touchcancel", handleTouchEnd);
     };
   }, [active, onBack, mainRef]);
 }

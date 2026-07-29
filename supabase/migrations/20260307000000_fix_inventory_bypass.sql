@@ -1,22 +1,28 @@
 -- 1. Reset any existing negative stock to prevent constraint violation errors.
-UPDATE public.produtos SET estoque = 0 WHERE estoque < 0;
-UPDATE public.product_variants SET stock_increment = 0 WHERE stock_increment < 0;
+UPDATE public.produtos SET estoque = 0
+WHERE estoque < 0;
+UPDATE public.product_variants SET stock_increment = 0
+WHERE stock_increment < 0;
 
 -- 2. Add CHECK constraints to DB schema to prevent logical bypasses
 ALTER TABLE public.produtos DROP CONSTRAINT IF EXISTS check_estoque_positivo;
-ALTER TABLE public.produtos ADD CONSTRAINT check_estoque_positivo CHECK (estoque >= 0);
+ALTER TABLE public.produtos ADD CONSTRAINT check_estoque_positivo CHECK (
+    estoque >= 0
+);
 
 ALTER TABLE public.product_variants DROP CONSTRAINT IF EXISTS check_stock_increment_positivo;
-ALTER TABLE public.product_variants ADD CONSTRAINT check_stock_increment_positivo CHECK (stock_increment >= 0);
+ALTER TABLE public.product_variants ADD CONSTRAINT check_stock_increment_positivo CHECK (
+    stock_increment >= 0
+);
 
 -- 3. Replace the v9 function to check stock BEFORE insertion
 CREATE OR REPLACE FUNCTION public.create_marketplace_order_v9(
-    p_items jsonb, 
-    p_payment_method text, 
-    p_address_id uuid, 
-    p_coupon_code text DEFAULT NULL::text, 
-    p_customer_name text DEFAULT NULL::text, 
-    p_customer_phone text DEFAULT NULL::text, 
+    p_items jsonb,
+    p_payment_method text,
+    p_address_id uuid,
+    p_coupon_code text DEFAULT NULL::text,
+    p_customer_name text DEFAULT NULL::text,
+    p_customer_phone text DEFAULT NULL::text,
     p_notes text DEFAULT NULL::text
 ) RETURNS jsonb
 LANGUAGE plpgsql

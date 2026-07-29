@@ -2,19 +2,21 @@
 -- Security Hardening Patch: Fix BOLA in create_marketplace_order
 -- Objective: Ensure user_id cannot be spoofed by overriding the client-provided p_user_id with the definitive auth.uid()
 
-DROP FUNCTION IF EXISTS public.create_marketplace_order_v6(jsonb, text, uuid, text, text, text, text) CASCADE;
+DROP FUNCTION IF EXISTS public.create_marketplace_order_v6(
+    jsonb, text, uuid, text, text, text, text
+) CASCADE;
 DROP FUNCTION IF EXISTS public.create_marketplace_order_v6() CASCADE;
 
 CREATE OR REPLACE FUNCTION public.create_marketplace_order_v6(
-    p_items JSONB,
-    p_payment_method TEXT,
-    p_address_id UUID,
-    p_coupon_code TEXT,
-    p_customer_name TEXT,
-    p_customer_phone TEXT,
-    p_notes TEXT
+    p_items jsonb,
+    p_payment_method text,
+    p_address_id uuid,
+    p_coupon_code text,
+    p_customer_name text,
+    p_customer_phone text,
+    p_notes text
 )
-RETURNS UUID AS $$
+RETURNS uuid AS $$
 DECLARE
     v_order_id UUID;
     v_item RECORD;

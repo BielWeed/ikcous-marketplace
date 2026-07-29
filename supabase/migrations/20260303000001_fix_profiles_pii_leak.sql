@@ -10,19 +10,19 @@ DROP POLICY IF EXISTS "Users can view all profiles" ON public.profiles;
 -- 2. New restrictive policies
 
 -- Policy 1: Users can ALWAYS see their OWN full profile
-CREATE POLICY "Users can view own full profile" 
-ON public.profiles 
-FOR SELECT 
+CREATE POLICY "Users can view own full profile"
+ON public.profiles
+FOR SELECT
 USING (auth.uid() = id);
 
 -- Policy 2: Public/Authenticated users can see ONLY non-sensitive info for Reviews/UI
 -- Since Supabase RLS doesn't natively support column-level selection without Views,
 -- we allow standard SELECT but strongly advise the use of limited projection in frontend.
 -- To harden further, we would move sensitive data to a 'private_profiles' table.
-CREATE POLICY "Public profile limited view" 
-ON public.profiles 
-FOR SELECT 
-USING (true); 
+CREATE POLICY "Public profile limited view"
+ON public.profiles
+FOR SELECT
+USING (true);
 
 -- 3. Fix WhatsApp Order Tracking BOLA (Broken Object Level Authorization)
 -- This replaces the potentially insecure direct query with a validated RPC.
@@ -31,7 +31,7 @@ CREATE OR REPLACE FUNCTION public.get_orders_by_whatsapp_hardened(
     p_phone_number TEXT,
     p_email TEXT
 )
-RETURNS SETOF public.marketplace_orders
+RETURNS SETOF public.MARKETPLACE_ORDERS
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
@@ -58,4 +58,7 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.get_orders_by_whatsapp_hardened(TEXT, TEXT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_orders_by_whatsapp_hardened(
+    TEXT, TEXT
+) TO anon,
+authenticated;

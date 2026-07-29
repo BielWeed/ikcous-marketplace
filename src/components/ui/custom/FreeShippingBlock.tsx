@@ -1,100 +1,184 @@
-import { Truck, ArrowRight } from 'lucide-react';
-import { useStore } from '@/contexts/StoreContext';
-import { useCartContext } from '@/contexts/CartContext';
-import { useAuth } from '@/hooks/useAuth';
-import type { View } from '@/types';
-import { formatCurrency } from '@/lib/utils';
+import { useCartContext } from "@/contexts/CartContext";
+import { useStore } from "@/contexts/StoreContext";
+import { useAuth } from "@/hooks/useAuth";
+import { formatCurrency } from "@/lib/utils";
+import type { View } from "@/types";
+import { ArrowRight, CheckCircle2, Sparkles, Truck } from "lucide-react";
 
 interface FreeShippingBlockProps {
-    onNavigate?: (view: View) => void;
+  readonly onNavigate?: (view: View) => void;
 }
 
 export function FreeShippingBlock({ onNavigate }: FreeShippingBlockProps) {
-    const { config } = useStore();
-    const { cartTotal } = useCartContext();
-    const { user } = useAuth();
+  const { config } = useStore();
+  const { cartTotal } = useCartContext();
+  const { user } = useAuth();
 
-    const totalCartValue = cartTotal;
+  const minShipping = config.freeShippingMin || 100;
+  const totalCartValue = cartTotal || 0;
+  const remaining = Math.max(0, minShipping - totalCartValue);
+  const isGoalReached = totalCartValue >= minShipping && minShipping > 0;
 
-    const progressPercent = config.freeShippingMin > 0 ? Math.min((totalCartValue / config.freeShippingMin) * 100, 100) : 0;
+  const progressPercent =
+    minShipping > 0
+      ? Math.min((totalCartValue / minShipping) * 100, 100)
+      : 0;
 
-    if (!user) {
-        return (
-            <div className="bg-zinc-950 border border-white/5 p-4 rounded-[2rem] shadow-2xl relative overflow-hidden group h-full flex items-center justify-between">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 transition-colors duration-1000 group-hover:bg-emerald-500/10" />
-
-                <div className="flex items-center gap-4 relative z-10">
-                    <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10 flex-shrink-0">
-                        <Truck className="w-5 h-5 text-emerald-500/50" />
-                    </div>
-                    <div>
-                        <h3 className="text-sm font-black text-white tracking-tight leading-none mb-1">
-                            Frete <span className="text-emerald-500 italic">Grátis</span>
-                        </h3>
-                        <p className="text-[10px] font-medium text-zinc-500 leading-tight max-w-[140px]">
-                            Faça login para ganhar frete grátis em suas compras.
-                        </p>
-                    </div>
-                </div>
-
-                <div 
-                    onClick={() => onNavigate?.('auth')}
-                    className="relative z-10 flex items-center gap-1 px-4 py-2 bg-emerald-500/10 rounded-full border border-emerald-500/20 group-hover:bg-emerald-500/20 transition-all cursor-pointer active:scale-95"
-                >
-                    <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Entrar</span>
-                    <ArrowRight className="w-3 h-3 text-emerald-500 group-hover:translate-x-1 transition-transform" />
-                </div>
-            </div>
-        );
+  const renderHeadline = () => {
+    if (isGoalReached) {
+      return (
+        <>
+          Oba, miga! <span className="text-emerald-600">Frete Grátis Liberado!</span> 🎉
+        </>
+      );
     }
-
+    if (totalCartValue > 0) {
+      return (
+        <>
+          Falta pouquinho pro <span className="text-rose-600">Frete Grátis!</span> ✨
+        </>
+      );
+    }
     return (
-        <div className="bg-zinc-950 border border-white/5 p-4 rounded-[2rem] shadow-2xl relative overflow-hidden group h-full">
-            {/* Subtle Glow */}
-            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 transition-colors duration-1000 group-hover:bg-emerald-500/20" />
-
-            <div className="flex items-center gap-4 relative z-10">
-                <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10 flex-shrink-0 group-hover:scale-105 transition-transform duration-500">
-                    <Truck className="w-5 h-5 text-emerald-500" />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 sm:gap-2 mb-1 w-full overflow-hidden">
-                        <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.15em] sm:tracking-[0.2em] text-emerald-500 whitespace-nowrap">Premium Delivery</span>
-                        <div className="w-0.5 h-0.5 bg-zinc-700 rounded-full flex-shrink-0" />
-                        <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-zinc-500 whitespace-nowrap overflow-hidden text-ellipsis">Monte Carmelo</span>
-                    </div>
-
-                    <h3 className="text-base font-black text-white tracking-tight leading-none mb-1">
-                        Frete Grátis <span className="text-emerald-500 italic">Ilimitado</span>
-                    </h3>
-
-                    <p className="text-[10px] font-medium text-zinc-400 leading-tight">
-                        Acumule <span className="text-zinc-100 font-bold">{formatCurrency(config.freeShippingMin)}</span> em itens <span className="text-emerald-500/80 font-semibold italic">no carrinho</span>.
-                    </p>
-                </div>
-
-                <div className="flex flex-col items-end gap-1.5">
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                        <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                        <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Ativo</span>
-                    </div>
-                    <div className="text-right">
-                        <p className="text-[12px] font-black text-white leading-none">
-                            {formatCurrency(totalCartValue)}
-                        </p>
-                        <p className="text-[7px] font-black text-zinc-600 uppercase tracking-widest">No Carrinho</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Ultra Slim Progress Bar */}
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/5">
-                <div
-                    className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] transition-all duration-1000"
-                    style={{ width: `${progressPercent}%` }}
-                />
-            </div>
-        </div>
+      <>
+        Frete grátis nas suas comprinhas! <span className="text-rose-500">💖</span>
+      </>
     );
+  };
+
+  const renderSubtext = () => {
+    if (isGoalReached) {
+      return "Sua sacola já ganhou entrega grátis em Monte Carmelo!";
+    }
+    if (totalCartValue > 0) {
+      return (
+        <>
+          Adicione mais{" "}
+          <span className="font-bold text-rose-950 underline decoration-rose-300">
+            {formatCurrency(remaining)}
+          </span>{" "}
+          em makes e o frete é grátis!
+        </>
+      );
+    }
+    return (
+      <>
+        Em compras a partir de{" "}
+        <span className="font-bold text-rose-950">
+          {formatCurrency(minShipping)}
+        </span>
+        , a entrega é por nossa conta!
+      </>
+    );
+  };
+
+  // Estado: Usuário não logado
+  if (!user) {
+    return (
+      <div className="group relative flex h-full items-center justify-between overflow-hidden rounded-2xl border border-rose-200/60 bg-gradient-to-r from-rose-50/90 via-pink-50/70 to-rose-100/40 p-3 shadow-sm transition-all duration-300 hover:shadow-md sm:p-3.5">
+        {/* Glow de fundo sutil */}
+        <div className="absolute -right-6 -top-6 size-20 rounded-full bg-rose-400/10 blur-xl transition-colors duration-700 group-hover:bg-rose-400/20" />
+
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="flex size-10 flex-shrink-0 items-center justify-center rounded-xl border border-rose-200/50 bg-white/90 shadow-sm transition-transform duration-300 group-hover:scale-105">
+            <Truck className="size-4 text-rose-500" />
+          </div>
+          <div>
+            <div className="mb-0.5 flex items-center gap-1">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-rose-500">
+                🌸 Monte Carmelo
+              </span>
+            </div>
+            <h3 className="text-xs font-bold leading-snug text-rose-950 sm:text-sm">
+              Frete Grátis pra Você! <span className="text-rose-500">💕</span>
+            </h3>
+            <p className="max-w-[200px] text-[10px] font-medium text-rose-800/80 sm:max-w-[240px]">
+              Entra na sua conta pra garantir frete grátis nas suas comprinhas.
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onNavigate?.("auth")}
+          className="relative z-10 flex cursor-pointer items-center gap-1.5 rounded-full border border-rose-400/30 bg-rose-500 px-3 py-1.5 shadow-sm transition-all duration-300 hover:bg-rose-600 active:scale-95"
+        >
+          <span className="text-[10px] font-bold uppercase tracking-wider text-white">
+            Entrar
+          </span>
+          <ArrowRight className="size-3 text-white transition-transform group-hover:translate-x-0.5" />
+        </button>
+      </div>
+    );
+  }
+
+  // Estado: Logado
+  return (
+    <div className="group relative h-full overflow-hidden rounded-2xl border border-rose-200/60 bg-gradient-to-r from-rose-50/90 via-pink-50/80 to-rose-100/50 p-3 shadow-sm transition-all duration-300 hover:shadow-md sm:p-3.5">
+      {/* Subtle Glow */}
+      <div className="absolute -right-6 -top-6 size-24 rounded-full bg-rose-400/15 blur-2xl transition-all duration-700 group-hover:bg-rose-400/25" />
+
+      <div className="relative z-10 flex items-center justify-between gap-3">
+        {/* Esquerda: Ícone + Copy */}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="flex size-10 flex-shrink-0 items-center justify-center rounded-xl border border-rose-200/50 bg-white/95 shadow-sm transition-transform duration-300 group-hover:scale-105">
+            {isGoalReached ? (
+              <CheckCircle2 className="size-5 text-emerald-500" />
+            ) : (
+              <Truck className="size-4 text-rose-500" />
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="mb-0.5 flex items-center gap-1.5 overflow-hidden">
+              <span className="whitespace-nowrap text-[9px] font-bold uppercase tracking-wider text-rose-500">
+                🌸 Monte Carmelo
+              </span>
+              <div className="size-1 flex-shrink-0 rounded-full bg-rose-300" />
+              <span className="truncate text-[9px] font-semibold text-rose-700/80">
+                {isGoalReached ? "Meta Atingida" : "Entrega Grátis"}
+              </span>
+            </div>
+
+            <h3 className="truncate text-xs font-bold leading-tight text-rose-950 sm:text-sm">
+              {renderHeadline()}
+            </h3>
+
+            <p className="truncate text-[10px] font-medium text-rose-800/80">
+              {renderSubtext()}
+            </p>
+          </div>
+        </div>
+
+        {/* Direita: Badge do Valor / Progresso */}
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          {isGoalReached ? (
+            <div className="flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 shadow-2xs">
+              <Sparkles className="size-3 text-emerald-600 animate-pulse" />
+              <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700">
+                Liberado
+              </span>
+            </div>
+          ) : (
+            <div className="flex flex-col items-end">
+              <span className="text-[11px] font-bold leading-tight text-rose-950 sm:text-xs">
+                {formatCurrency(totalCartValue)}
+              </span>
+              <span className="text-[8px] font-semibold uppercase tracking-wider text-rose-500">
+                {totalCartValue > 0 ? `de ${formatCurrency(minShipping)}` : "no carrinho"}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Slim Progress Bar no Rodapé */}
+      <div className="absolute inset-x-0 bottom-0 h-1 bg-rose-200/40">
+        <div
+          className="h-full bg-gradient-to-r from-rose-400 via-rose-500 to-rose-600 transition-all duration-700"
+          style={{ width: `${progressPercent}%` }}
+        />
+      </div>
+    </div>
+  );
 }

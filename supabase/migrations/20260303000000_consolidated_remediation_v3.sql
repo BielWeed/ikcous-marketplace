@@ -16,9 +16,11 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 2. Secure Coupon Validation
 -- Required by useCoupons.ts
-DROP FUNCTION IF EXISTS public.validate_coupon_secure(text, numeric) CASCADE;
+DROP FUNCTION IF EXISTS public.validate_coupon_secure(TEXT, NUMERIC) CASCADE;
 DROP FUNCTION IF EXISTS public.validate_coupon_secure() CASCADE;
-CREATE OR REPLACE FUNCTION public.validate_coupon_secure(p_code TEXT, p_subtotal NUMERIC)
+CREATE OR REPLACE FUNCTION public.validate_coupon_secure(
+    p_code TEXT, p_subtotal NUMERIC
+)
 RETURNS JSONB AS $$
 DECLARE
     v_coupon RECORD;
@@ -124,7 +126,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- 4. Unified Marketplace Order Creation v3
 -- Required by useOrders.ts
 -- Consolidates all security fixes: Price calculation, Shipping from config, Coupon validation, RLS protection.
-DROP FUNCTION IF EXISTS public.create_marketplace_order_v3(jsonb, text, uuid, text, text, text, text, uuid) CASCADE;
+DROP FUNCTION IF EXISTS public.create_marketplace_order_v3(
+    JSONB, TEXT, UUID, TEXT, TEXT, TEXT, TEXT, UUID
+) CASCADE;
 DROP FUNCTION IF EXISTS public.create_marketplace_order_v3() CASCADE;
 CREATE OR REPLACE FUNCTION public.create_marketplace_order_v3(
     p_items JSONB,
@@ -253,5 +257,5 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 DROP TRIGGER IF EXISTS tr_ensure_role_protection ON public.profiles;
 CREATE TRIGGER tr_ensure_role_protection
-    BEFORE UPDATE ON public.profiles
-    FOR EACH ROW EXECUTE FUNCTION public.ensure_role_protection();
+BEFORE UPDATE ON public.profiles
+FOR EACH ROW EXECUTE FUNCTION public.ensure_role_protection();

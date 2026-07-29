@@ -22,19 +22,19 @@ $$;
 -- 2. Attach the trigger to auth.users
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user();
+after insert on auth.users
+for each row execute procedure public.handle_new_user();
 
 -- 3. Manually restore Gabriel's profile as Admin
 -- Using the ID found in auth.users: eaaf85fc-62c0-4356-9a25-e51b64fb4620
 insert into public.profiles (id, full_name, role)
 values (
-  'eaaf85fc-62c0-4356-9a25-e51b64fb4620',
-  'Gabriel (Admin)',
-  'admin'
+    'eaaf85fc-62c0-4356-9a25-e51b64fb4620',
+    'Gabriel (Admin)',
+    'admin'
 )
-on conflict (id) do update 
-set role = 'admin';
+on conflict (id) do update
+    set role = 'admin';
 
 -- 4. Ensure is_admin function is correct and has permissions
 create or replace function public.is_admin()

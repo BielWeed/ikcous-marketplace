@@ -12,12 +12,12 @@ DROP POLICY IF EXISTS "Allow ALL for public" ON public.marketplace_orders;
 ALTER TABLE public.marketplace_orders ENABLE ROW LEVEL SECURITY;
 
 -- Precise Policies (BOLA Protection)
-CREATE POLICY "authenticated_select_own_orders"
+CREATE POLICY authenticated_select_own_orders
 ON public.marketplace_orders FOR SELECT
 TO authenticated
 USING (auth.uid() = user_id OR public.is_admin());
 
-CREATE POLICY "admin_all_orders"
+CREATE POLICY admin_all_orders
 ON public.marketplace_orders FOR ALL
 TO authenticated
 USING (public.is_admin())
@@ -29,7 +29,7 @@ DROP POLICY IF EXISTS "Profiles are viewable by everyone" ON public.profiles;
 DROP POLICY IF EXISTS "Public Read Profiles" ON public.profiles;
 
 -- Strict Access
-CREATE POLICY "profiles_owner_admin_select"
+CREATE POLICY profiles_owner_admin_select
 ON public.profiles FOR SELECT
 TO authenticated
 USING (auth.uid() = id OR public.is_admin());
@@ -38,7 +38,8 @@ USING (auth.uid() = id OR public.is_admin());
 -- We ensure the RPC uses 'total_amount' and performs strict server-side calculation
 CREATE OR REPLACE FUNCTION public.create_marketplace_order_v21(
     p_items jsonb,
-    p_total_amount numeric, -- Sent for parity check, but DB is the source of truth
+    -- Sent for parity check, but DB is the source of truth
+    p_total_amount numeric,
     p_shipping_cost numeric,
     p_payment_method text,
     p_address_id uuid,

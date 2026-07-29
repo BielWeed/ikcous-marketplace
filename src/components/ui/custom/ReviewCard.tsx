@@ -1,15 +1,17 @@
-import { useState } from 'react';
-import { ThumbsUp, Check, User } from 'lucide-react';
-import { StarRating } from './StarRating';
-import type { Review } from '@/types';
-import { LazyImage } from '@/components/LazyImage';
+import { LazyImage } from "@/components/LazyImage";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import type { Review, View } from "@/types";
+import { Check, ThumbsUp } from "lucide-react";
+import { useState } from "react";
+import { StarRating } from "./StarRating";
 
 interface ReviewCardProps {
   review: Review;
   onHelpful?: (reviewId: string) => void;
+  onNavigate?: (view: View, id?: string) => void;
 }
 
-export function ReviewCard({ review, onHelpful }: ReviewCardProps) {
+export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
   const [hasMarkedHelpful, setHasMarkedHelpful] = useState(false);
 
   const handleHelpful = () => {
@@ -19,51 +21,115 @@ export function ReviewCard({ review, onHelpful }: ReviewCardProps) {
     }
   };
 
+  const handleUserClick = () => {
+    if (onNavigate && review.userId) {
+      onNavigate("user-profile", review.userId);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
+    return date.toLocaleDateString("pt-BR", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
     });
   };
 
+  const getInitials = (name: string) => {
+    if (!name) return "U";
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (
+      parts[0].charAt(0) + parts[parts.length - 1].charAt(0)
+    ).toUpperCase();
+  };
+
   return (
-    <div className="bg-zinc-50/50 p-6 rounded-[2rem] border border-zinc-100/50 hover:bg-white transition-all duration-500 group">
+    <div className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm transition-all duration-300 hover:shadow-md">
       {/* Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-zinc-200 group-hover:scale-110 transition-transform duration-500">
-            <User className="w-6 h-6" />
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          <div
+            onClick={handleUserClick}
+            role={onNavigate && review.userId ? "button" : undefined}
+            tabIndex={onNavigate && review.userId ? 0 : undefined}
+            onKeyDown={(e) => {
+              if (
+                onNavigate &&
+                review.userId &&
+                (e.key === "Enter" || e.key === " ")
+              ) {
+                e.preventDefault();
+                handleUserClick();
+              }
+            }}
+            className={`flex-shrink-0 ${onNavigate && review.userId ? "cursor-pointer select-none transition-transform duration-200 active:scale-95" : ""}`}
+          >
+            <Avatar className="size-10 border border-zinc-200/50 shadow-sm transition-transform duration-300 hover:scale-105">
+              <AvatarImage
+                src={review.customerAvatar}
+                className="object-cover"
+              />
+              <AvatarFallback className="flex select-none items-center justify-center bg-gradient-to-br from-zinc-100 to-zinc-200 text-xs font-bold text-zinc-700">
+                {getInitials(review.customerName)}
+              </AvatarFallback>
+            </Avatar>
           </div>
           <div>
-            <p className="font-black text-sm tracking-tight text-zinc-900">{review.customerName}</p>
-            <div className="flex items-center gap-3 mt-1">
-              <StarRating rating={review.rating} size={12} />
+            <div className="flex items-center gap-2">
+              <span
+                onClick={handleUserClick}
+                role={onNavigate && review.userId ? "button" : undefined}
+                tabIndex={onNavigate && review.userId ? 0 : undefined}
+                onKeyDown={(e) => {
+                  if (
+                    onNavigate &&
+                    review.userId &&
+                    (e.key === "Enter" || e.key === " ")
+                  ) {
+                    e.preventDefault();
+                    handleUserClick();
+                  }
+                }}
+                className={`text-sm font-bold tracking-tight text-zinc-900 ${onNavigate && review.userId ? "cursor-pointer hover:underline" : ""}`}
+              >
+                {review.customerName}
+              </span>
               {review.verified && (
-                <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-100">
-                  <Check className="w-3 h-3" />
+                <span className="flex items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-600">
+                  <Check className="size-2.5" />
                   Verificado
                 </span>
               )}
             </div>
+            <div className="mt-0.5">
+              <StarRating rating={review.rating} size={11} readonly />
+            </div>
           </div>
         </div>
-        <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{formatDate(review.createdAt)}</span>
+        <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+          {formatDate(review.createdAt)}
+        </span>
       </div>
 
       {/* Comment */}
-      <p className="text-sm text-zinc-600 mb-4 leading-relaxed font-medium">{review.comment}</p>
+      <p className="mb-4 mt-3 text-xs font-normal leading-relaxed text-zinc-600 md:text-sm">
+        {review.comment}
+      </p>
 
       {/* Images */}
       {review.images && review.images.length > 0 && (
-        <div className="flex gap-3 mb-4 overflow-x-auto pb-2 scrollbar-hide">
+        <div className="scrollbar-hide mb-4 flex gap-2 overflow-x-auto pb-2">
           {review.images.map((image, index) => (
-            <div key={index} className="relative group/img overflow-hidden rounded-2xl">
+            <div
+              key={index}
+              className="group/img relative flex-shrink-0 overflow-hidden rounded-xl border border-zinc-100"
+            >
               <LazyImage
                 src={image}
                 alt={`Review ${index + 1}`}
-                className="w-20 h-20 object-cover flex-shrink-0 group-hover/img:scale-110 transition-transform duration-500"
+                className="size-16 object-cover transition-transform duration-300 group-hover/img:scale-105"
               />
             </div>
           ))}
@@ -71,24 +137,33 @@ export function ReviewCard({ review, onHelpful }: ReviewCardProps) {
       )}
 
       {/* Actions */}
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
         <button
           onClick={handleHelpful}
           disabled={hasMarkedHelpful}
-          className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all px-4 py-2 rounded-full w-fit ${hasMarkedHelpful
-            ? 'bg-zinc-900 text-white shadow-xl shadow-zinc-200'
-            : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900'
-            }`}
+          className={`flex w-fit items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
+            hasMarkedHelpful
+              ? "border-primary bg-primary text-white shadow-sm"
+              : "border-rose-100 bg-rose-50/30 text-rose-500 hover:bg-rose-50 hover:text-[#5C061E] active:scale-95"
+          }`}
         >
-          <ThumbsUp className={`w-3.5 h-3.5 ${hasMarkedHelpful ? 'fill-current' : ''}`} />
-          Útil ({review.helpful + (hasMarkedHelpful ? 1 : 0)})
+          <ThumbsUp
+            className={`size-3 ${hasMarkedHelpful ? "fill-current" : ""}`}
+          />
+          <span>Útil ({review.helpful + (hasMarkedHelpful ? 1 : 0)})</span>
         </button>
 
         {review.merchantReply && (
-          <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm relative animate-in slide-in-from-left-2 duration-500">
-            <div className="absolute left-0 top-4 bottom-4 w-1 bg-zinc-900 rounded-full" />
-            <p className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Resposta da IKCOUS</p>
-            <p className="text-sm text-zinc-800 italic leading-relaxed font-medium">"{review.merchantReply}"</p>
+          <div className="relative mt-1 rounded-2xl border border-zinc-100 bg-zinc-50/80 p-3.5 text-xs duration-300 animate-in slide-in-from-left-1">
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-primary" />
+              <span className="text-[9px] font-black uppercase tracking-wider text-slate-800">
+                Resposta da Loja
+              </span>
+            </div>
+            <p className="font-medium italic leading-relaxed text-zinc-600">
+              "{review.merchantReply}"
+            </p>
           </div>
         )}
       </div>

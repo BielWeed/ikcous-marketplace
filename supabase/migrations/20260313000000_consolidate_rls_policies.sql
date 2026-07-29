@@ -13,7 +13,7 @@ DROP POLICY IF EXISTS "Users can see own orders or admins" ON public.marketplace
 
 -- 2. Create optimized Policies
 -- SELECT: Users view own orders, Admins view all.
-CREATE POLICY "marketplace_orders_select_policy"
+CREATE POLICY marketplace_orders_select_policy
 ON public.marketplace_orders
 FOR SELECT
 TO authenticated
@@ -25,7 +25,7 @@ USING (auth.uid() = user_id OR public.is_admin());
 -- If we want to allow direct insert, we'd need a policy, but we prefer RPC.
 
 -- UPDATE/ALL (Admin only): Only admins can update status or modify orders manually.
-CREATE POLICY "marketplace_orders_admin_all_policy"
+CREATE POLICY marketplace_orders_admin_all_policy
 ON public.marketplace_orders
 FOR ALL
 TO authenticated

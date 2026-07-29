@@ -3,14 +3,18 @@
 
 BEGIN;
 
-DROP FUNCTION IF EXISTS public.get_category_analytics(timestamp with time zone, timestamp with time zone);
+DROP FUNCTION IF EXISTS public.get_category_analytics(
+    timestamp with time zone, timestamp with time zone
+);
 
-CREATE OR REPLACE FUNCTION public.get_category_analytics(start_date timestamp with time zone, end_date timestamp with time zone)
- RETURNS TABLE(name text, value numeric, orders bigint, avg_ticket numeric)
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
- AS $$
+CREATE OR REPLACE FUNCTION public.get_category_analytics(
+    start_date timestamp with time zone, end_date timestamp with time zone
+)
+RETURNS TABLE (name text, value numeric, orders bigint, avg_ticket numeric)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
     RETURN QUERY
     WITH category_sums AS (

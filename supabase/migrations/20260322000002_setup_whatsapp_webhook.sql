@@ -34,7 +34,7 @@ $$;
 -- 3. Create the trigger
 DROP TRIGGER IF EXISTS on_order_created_whatsapp ON public.marketplace_orders;
 CREATE TRIGGER on_order_created_whatsapp
-  AFTER INSERT ON public.marketplace_orders
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_order_whatsapp();
+AFTER INSERT ON public.marketplace_orders
+FOR EACH ROW EXECUTE FUNCTION public.handle_new_order_whatsapp();
 
 COMMENT ON FUNCTION public.handle_new_order_whatsapp() IS 'Trigger function to notify WhatsApp Edge Function on new orders.';

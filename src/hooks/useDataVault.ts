@@ -1,22 +1,23 @@
 /**
  * useDataVault — React hook for DataVault lifecycle management
- * 
+ *
  * Handles:
  * 1. DataVault initialization (IndexedDB open + migrations)
  * 2. First boot detection & full hydration from Supabase
  * 3. localStorage → IndexedDB migration (one-time)
  * 4. RealtimeSyncEngine startup for logged-in users
- * 
+ *
  * Mount this hook ONCE at the app root level (e.g., in App.tsx or a provider).
- * 
+ *
  * @module useDataVault
  */
 
-import { useState, useEffect, useRef } from 'react';
-import { DataVault, type StoreName } from '@/lib/dataVault';
-import { RealtimeSyncEngine, type SyncEvent } from '@/lib/realtimeSyncEngine';
-import { supabase } from '@/lib/supabase';
-import { mapProductFromDB, mapVariantFromDB } from '@/lib/mappers';
+import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { DataVault, type StoreName } from "@/lib/dataVault";
+import { mapProductFromDB, mapVariantFromDB } from "@/lib/mappers";
+import { RealtimeSyncEngine, type SyncEvent } from "@/lib/realtimeSyncEngine";
+import { supabase } from "@/lib/supabase";
+import { useEffect, useRef, useState } from "react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -40,158 +41,155 @@ export interface DataVaultState {
 async function hydrateAllStores(
   vault: DataVault,
   isAdmin: boolean,
-  onProgress: (pct: number) => void
+  onProgress: (pct: number) => void,
 ): Promise<void> {
-  const totalSteps = 5;
-  let completed = 0;
-
-  const advance = () => {
-    completed++;
-    onProgress(Math.round((completed / totalSteps) * 100));
-  };
-
   try {
-    // 1. Products
-    const productSource = isAdmin ? 'produtos' : 'vw_produtos_public';
-    const { data: rawProducts } = await supabase
-      .from(productSource as any)
-      .select('*')
-      .limit(500)
-      .order('data_cadastro', { ascending: false });
+    const productSource = isAdmin ? "produtos" : "vw_produtos_public";
+    const configSource = isAdmin ? "store_config" : "v_store_config";
 
-    if (rawProducts && rawProducts.length > 0) {
-      // Fetch variants for all products
-      const productIds = rawProducts.map((p: any) => p.id).filter(Boolean);
-      const { data: variants } = await supabase
-        .from('product_variants')
-        .select('*')
-        .in('product_id', productIds);
+    // Dispara todas as consultas de forma concorrente na rede
+    const [
+      productsResult,
+      categoriesResult,
+      bannersResult,
+      configResult,
+      couponsResult,
+    ] = await Promise.all([
+      supabase
+        .from(productSource as any)
+        .select("*, product_variants(*)")
+        .limit(500)
+        .order("data_cadastro", { ascending: false }),
+      supabase.from("categorias").select("*").order("nome"),
+      supabase.from("banners").select("*").order("order", { ascending: true }),
+      supabase
+        .from(configSource as any)
+        .select("*")
+        .single(),
+      isAdmin
+        ? supabase
+            .from("coupons")
+            .select("*")
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: null, error: null }),
+    ]);
 
-      const mappedProducts = rawProducts.map((p: any) => mapProductFromDB({
-        ...p,
-        product_variants: variants?.filter(v => v.product_id === p.id) || []
-      }));
+    // Processa e grava os Produtos e suas Variantes juntas
+    if (productsResult.data) {
+      const rawProducts = productsResult.data;
+      const mappedProducts = rawProducts.map((p: any) => mapProductFromDB(p));
+      await vault.replaceAll("products", mappedProducts);
+      await vault.setLastSync("products");
 
-      await vault.replaceAll('products', mappedProducts);
-      await vault.setLastSync('products');
-
-      // Also store variants separately for realtime sync granularity
-      if (variants && variants.length > 0) {
-        const mappedVariants = variants.map(v => mapVariantFromDB(v));
-        await vault.replaceAll('product_variants', mappedVariants);
-        await vault.setLastSync('product_variants');
+      const allVariants = rawProducts.flatMap(
+        (p: any) => p.product_variants || [],
+      );
+      if (allVariants.length > 0) {
+        const mappedVariants = allVariants.map((v) => mapVariantFromDB(v));
+        await vault.replaceAll("product_variants", mappedVariants);
+        await vault.setLastSync("product_variants");
       }
     }
-    advance();
+    onProgress(20);
 
-    // 2. Categories
-    const { data: rawCategories } = await supabase
-      .from('categorias')
-      .select('*')
-      .order('nome');
-
-    if (rawCategories) {
-      const mappedCategories = rawCategories.map((item: any) => ({
+    // Grava Categorias
+    if (categoriesResult.data) {
+      const mappedCategories = categoriesResult.data.map((item: any) => ({
         id: item.id,
         name: item.nome,
-        slug: item.slug || '',
-        description: item.descricao || '',
+        slug: item.slug || "",
+        description: item.descricao || "",
         isActive: item.ativo ?? true,
         createdAt: item.created_at,
       }));
-      await vault.replaceAll('categories', mappedCategories);
-      await vault.setLastSync('categories');
+      await vault.replaceAll("categories", mappedCategories);
+      await vault.setLastSync("categories");
     }
-    advance();
+    onProgress(40);
 
-    // 3. Banners
-    const { data: rawBanners } = await supabase
-      .from('banners')
-      .select('*')
-      .order('order', { ascending: true });
-
-    if (rawBanners) {
-      const mappedBanners = rawBanners
+    // Grava Banners
+    if (bannersResult.data) {
+      const mappedBanners = bannersResult.data
         .filter((b: any) => b.image_url || b.imagem_url)
         .map((b: any) => ({
           id: b.id,
           imageUrl: b.image_url || b.imagem_url,
-          title: b.title || '',
+          title: b.title || "",
           link: b.link || undefined,
           position: b.position,
           active: b.active ?? b.ativo ?? true,
           order: b.order || 0,
         }));
-      await vault.replaceAll('banners', mappedBanners);
-      await vault.setLastSync('banners');
+      await vault.replaceAll("banners", mappedBanners);
+      await vault.setLastSync("banners");
     }
-    advance();
+    onProgress(60);
 
-    // 4. Store Config
-    const configSource = isAdmin ? 'store_config' : 'v_store_config';
-    const { data: rawConfigData } = await supabase
-      .from(configSource as any)
-      .select('*')
-      .single();
-
-    const rawConfig = rawConfigData as any;
-    if (rawConfig) {
-      await vault.replaceAll('store_config', [{
-        id: 'singleton',
-        freeShippingMin: rawConfig.free_shipping_min,
-        shippingFee: rawConfig.shipping_fee,
-        whatsappNumber: rawConfig.whatsapp_number,
-        shareText: rawConfig.share_text,
-        businessHours: rawConfig.business_hours,
-        enableReviews: rawConfig.enable_reviews,
-        enableCoupons: rawConfig.enable_coupons,
-        logoUrl: rawConfig.logo_url,
-        primaryColor: rawConfig.primary_color,
-        themeMode: rawConfig.theme_mode,
-        realTimeSalesAlerts: rawConfig.real_time_sales_alerts,
-        pushMarketingEnabled: rawConfig.push_marketing_enabled,
-        minAppVersion: rawConfig.min_app_version,
-      }]);
-      await vault.setLastSync('store_config');
+    // Grava Configurações da Loja
+    if (configResult.data) {
+      const rawConfig = configResult.data as any;
+      await vault.replaceAll("store_config", [
+        {
+          id: "singleton",
+          freeShippingMin:
+            rawConfig.free_shipping_min !== null &&
+            rawConfig.free_shipping_min !== undefined
+              ? Number(rawConfig.free_shipping_min)
+              : undefined,
+          shippingFee:
+            rawConfig.shipping_fee !== null &&
+            rawConfig.shipping_fee !== undefined
+              ? Number(rawConfig.shipping_fee)
+              : undefined,
+          whatsappNumber: rawConfig.whatsapp_number,
+          shareText: rawConfig.share_text,
+          businessHours: rawConfig.business_hours,
+          enableReviews: rawConfig.enable_reviews,
+          enableCoupons: rawConfig.enable_coupons,
+          logoUrl: rawConfig.logo_url,
+          primaryColor: rawConfig.primary_color,
+          themeMode: rawConfig.theme_mode,
+          realTimeSalesAlerts: rawConfig.real_time_sales_alerts,
+          pushMarketingEnabled: rawConfig.push_marketing_enabled,
+          minAppVersion: rawConfig.min_app_version,
+          originCep: rawConfig.origin_cep,
+          shippingProvider: rawConfig.shipping_provider,
+          enabledShippingMethods: rawConfig.enabled_shipping_methods,
+        },
+      ]);
+      await vault.setLastSync("store_config");
     }
-    advance();
+    onProgress(80);
 
-    // 5. Coupons (admin only — clients use RPC for validation)
-    if (isAdmin) {
-      const { data: rawCoupons } = await supabase
-        .from('coupons')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (rawCoupons) {
-        const mappedCoupons = rawCoupons.map((c: any) => ({
-          id: c.id,
-          code: c.code,
-          type: c.type,
-          value: c.value,
-          minPurchase: c.min_purchase ?? undefined,
-          usageLimit: c.usage_limit ?? undefined,
-          usageCount: c.used_count || c.usage_count || 0,
-          validUntil: c.valid_until ?? undefined,
-          active: c.active ?? true,
-        }));
-        await vault.replaceAll('coupons', mappedCoupons);
-        await vault.setLastSync('coupons');
-      }
+    // Grava Cupons (Admin)
+    if (isAdmin && couponsResult.data) {
+      const mappedCoupons = couponsResult.data.map((c: any) => ({
+        id: c.id,
+        code: c.code,
+        type: c.type,
+        value: c.value,
+        minPurchase: c.min_purchase ?? undefined,
+        usageLimit: c.usage_limit ?? undefined,
+        usageCount: c.used_count || c.usage_count || 0,
+        validUntil: c.valid_until ?? undefined,
+        active: c.active ?? true,
+      }));
+      await vault.replaceAll("coupons", mappedCoupons);
+      await vault.setLastSync("coupons");
     }
-    advance();
+    onProgress(100);
 
-    console.log('[useDataVault] Full hydration complete.');
+    console.log("[useDataVault] Full parallel hydration complete.");
   } catch (err) {
-    console.error('[useDataVault] Hydration error (non-fatal):', err);
-    // Non-fatal: app will fall back to network fetches
+    console.error("[useDataVault] Hydration error (non-fatal):", err);
     onProgress(100);
   }
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
-export function useDataVault(isAdmin: boolean = false, userId?: string): DataVaultState {
+export function useDataVault(isAdmin = false, userId?: string): DataVaultState {
+  const { isLeader } = useLeaderElection();
   const [isHydrated, setIsHydrated] = useState(false);
   const [isFirstBoot, setIsFirstBoot] = useState(false);
   const [hydrationProgress, setHydrationProgress] = useState(0);
@@ -214,23 +212,28 @@ export function useDataVault(isAdmin: boolean = false, userId?: string): DataVau
         setVault(v);
 
         // Step 2: Check if this is first boot
-        const productsSync = await v.getLastSync('products');
-        const productCount = await v.count('products');
+        const productsSync = await v.getLastSync("products");
+        const productCount = await v.count("products");
 
         if (productsSync === 0 && productCount === 0) {
           // First boot — check if localStorage has data to migrate
-          const hasLocalStorage = localStorage.getItem('ikcous_products_cache') !== null
-            || localStorage.getItem('ikcous_store_config_cache') !== null;
+          const hasLocalStorage =
+            localStorage.getItem("ikcous_products_cache") !== null ||
+            localStorage.getItem("ikcous_store_config_cache") !== null;
 
           if (hasLocalStorage) {
             // Migrate localStorage → IndexedDB
-            console.log('[useDataVault] Migrating from localStorage → IndexedDB...');
+            console.log(
+              "[useDataVault] Migrating from localStorage → IndexedDB...",
+            );
             await v.migrateFromLocalStorage();
             setIsHydrated(true);
           } else {
             // True first boot — hydrate from Supabase
             setIsFirstBoot(true);
-            console.log('[useDataVault] First boot detected. Hydrating from Supabase...');
+            console.log(
+              "[useDataVault] First boot detected. Hydrating from Supabase...",
+            );
             await hydrateAllStores(v, isAdmin, (pct) => {
               if (!cancelled) setHydrationProgress(pct);
             });
@@ -241,17 +244,19 @@ export function useDataVault(isAdmin: boolean = false, userId?: string): DataVau
           }
         } else {
           // IDB already has data — instant boot
-          console.log(`[useDataVault] IndexedDB has ${productCount} products (last sync: ${new Date(productsSync).toLocaleString()}). Instant boot.`);
+          console.log(
+            `[useDataVault] IndexedDB has ${productCount} products (last sync: ${new Date(productsSync).toLocaleString()}). Instant boot.`,
+          );
           setIsHydrated(true);
         }
 
         // Step 3: Start RealtimeSyncEngine (only for logged-in users)
         if (userId && !cancelled) {
-          const cleanup = RealtimeSyncEngine.start(v);
+          const cleanup = RealtimeSyncEngine.start(v, isLeader, isAdmin);
           cleanupRef.current = cleanup;
         }
       } catch (err) {
-        console.error('[useDataVault] Init failed:', err);
+        console.error("[useDataVault] Init failed:", err);
         // Graceful degradation: mark as hydrated so the app can still work via network
         if (!cancelled) setIsHydrated(true);
       }
@@ -266,10 +271,10 @@ export function useDataVault(isAdmin: boolean = false, userId?: string): DataVau
         cleanupRef.current = null;
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Restart realtime when user changes (login/logout)
+  // Restart realtime when user changes (login/logout) or leadership changes
   useEffect(() => {
     if (!vault || !isHydrated) return;
 
@@ -281,7 +286,7 @@ export function useDataVault(isAdmin: boolean = false, userId?: string): DataVau
 
     // Restart for new user
     if (userId) {
-      const cleanup = RealtimeSyncEngine.start(vault);
+      const cleanup = RealtimeSyncEngine.start(vault, isLeader, isAdmin);
       cleanupRef.current = cleanup;
     }
 
@@ -291,7 +296,7 @@ export function useDataVault(isAdmin: boolean = false, userId?: string): DataVau
         cleanupRef.current = null;
       }
     };
-  }, [userId, vault, isHydrated]);
+  }, [userId, vault, isHydrated, isLeader, isAdmin]);
 
   return {
     isHydrated,
@@ -306,16 +311,18 @@ export function useDataVault(isAdmin: boolean = false, userId?: string): DataVau
 /**
  * React hook to listen for realtime sync events on specific stores.
  * Re-renders the component when a matching event occurs.
- * 
+ *
  * @param stores - Store names to listen for
  * @param callback - Called with the sync event
  */
 export function useSyncListener(
   stores: StoreName[],
-  callback: (event: SyncEvent) => void
+  callback: (event: SyncEvent) => void,
 ): void {
   const callbackRef = useRef(callback);
-  callbackRef.current = callback;
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
   useEffect(() => {
     const unsubscribe = RealtimeSyncEngine.onSync((event) => {
@@ -325,6 +332,6 @@ export function useSyncListener(
     });
 
     return unsubscribe;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stores.join(',')]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stores.join(",")]);
 }

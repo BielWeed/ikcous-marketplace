@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#000000" />
   <meta name="background-color" content="#000000" />
-  <meta name="description" content="IKCOUS Marketplace - Produtos com estoque imediato em Monte Carmelo, MG" />
+  <meta name="description" content="IKCOUS Marketplace - O seu shopping local completo em Monte Carmelo, MG. Descubra produtos incríveis com entrega super rápida e frete grátis!" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="IKCOUS" />
@@ -14,26 +14,24 @@
   <meta name="application-name" content="IKCOUS" />
   <meta name="robots" content="index, follow" />
 
-
-  <!-- Security Policy to eradicate "Not Secure" mixed-content warnings -->
-  <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests" />
-
-
   <!-- Open Graph -->
-  <meta property="og:title" content="IKCOUS Marketplace" />
-  <meta property="og:description" content="Produtos com estoque imediato em Monte Carmelo, MG" />
+  <meta property="og:title" content="IKCOUS Marketplace - Seu Shopping Local" />
+  <meta property="og:description" content="Descubra produtos exclusivos com frete grátis e entrega super rápida em Monte Carmelo, MG." />
   <meta property="og:type" content="website" />
   <meta property="og:locale" content="pt_BR" />
-  <meta property="og:image" content="/og-image.png" />
-  <meta property="og:url" content="/" />
+  <meta property="og:image" content="https://ickous-marketplace.vercel.app/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:url" content="https://ickous-marketplace.vercel.app/" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
 
 
   <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="IKCOUS Marketplace" />
-  <meta name="twitter:description" content="Produtos com estoque imediato em Monte Carmelo, MG" />
-  <meta name="twitter:image" content="/logo.svg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="IKCOUS Marketplace - Seu Shopping Local" />
+  <meta name="twitter:description" content="Descubra produtos exclusivos com frete grátis e entrega super rápida em Monte Carmelo, MG." />
+  <meta name="twitter:image" content="https://ickous-marketplace.vercel.app/og-image.png" />
 
   <!-- PWA Manifest -->
   <!-- PWA Manifest injected by vite-plugin-pwa -->
@@ -46,14 +44,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://images.unsplash.com" />
-  <link rel="preconnect" href="https://cafkrminfnokvgjqtkle.supabase.co" crossorigin />
+  <link rel="preconnect" href="https://jvgyjlbjhbfrncwbytls.supabase.co" crossorigin />
 
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
     rel="stylesheet" />
 
-  <title>IKCOUS Marketplace</title>
+  <title>IKCOUS Marketplace | Monte Carmelo, MG</title>
 
   <link rel="stylesheet" href="/loading.css" />
+  <!-- Script Silent Guardian: GHOST PURGE V11.5 -->
+  <script src="/silent-guardian.js" defer></script>
   <!-- Speculation Rules API: browser-native prefetch (zero JS overhead, Chrome 109+) -->
   <script type="speculationrules">
   {
@@ -72,6 +72,42 @@
 </head>
 
 <body>
+  <div id="silent-guardian-loader">
+    <!-- Aura Mesh Background -->
+    <div class="aura-mesh">
+      <div class="aura-orb orb-1"></div>
+      <div class="aura-orb orb-2"></div>
+      <div class="aura-orb orb-3"></div>
+    </div>
+
+    <!-- Ambient Stardust (darker for light theme) -->
+    <div class="stardust sd-1"></div>
+    <div class="stardust sd-2"></div>
+    <div class="stardust sd-3"></div>
+    <div class="stardust sd-4"></div>
+
+    <!-- Central Core -->
+    <div class="glass-core">
+      <div class="guardian-logo-container">
+        <!-- LOGO_START -->
+        <div class="guardian-logo-icon">
+          <span>I</span>
+        </div>
+        <span class="guardian-brand-text">IKCOUS</span>
+        <!-- LOGO_END -->
+      </div>
+    </div>
+
+    <!-- Typography -->
+    <div class="cinematic-text">Omniverse Active</div>
+
+    <!-- Progress Bar -->
+    <div class="progress-track" id="guardian-progress-track">
+      <div class="progress-fill" id="guardian-progress-fill"></div>
+    </div>
+    <div class="progress-percentage" id="guardian-progress-pct">0%</div>
+  </div>
+
   <div id="root">
     <div class="loading-spinner"></div>
   </div>

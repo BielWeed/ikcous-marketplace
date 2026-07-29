@@ -7,7 +7,10 @@ BEGIN;
 -- 1. Restore basic DML permissions for the 'authenticated' role.
 -- RLS filters will ensure only Admins (role = 'admin') can actually perform these actions.
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.produtos TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.product_variants TO authenticated;
+GRANT SELECT,
+INSERT,
+UPDATE,
+DELETE ON public.product_variants TO authenticated;
 
 -- 2. Restore basic SELECT for public usage if needed (though they should use the view)
 -- Granting SELECT on current table to authenticated is safe because RLS is ACTIVE.

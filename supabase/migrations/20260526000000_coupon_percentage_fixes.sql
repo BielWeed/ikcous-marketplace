@@ -8,7 +8,9 @@ DROP FUNCTION IF EXISTS public.validate_coupon_secure_v2 CASCADE;
 DROP FUNCTION IF EXISTS public.create_marketplace_order_v22 CASCADE;
 
 -- 1. Redefine validate_coupon_secure_v2 to handle case-insensitivity
-CREATE OR REPLACE FUNCTION public.validate_coupon_secure_v2(p_code TEXT, p_subtotal NUMERIC)
+CREATE OR REPLACE FUNCTION public.validate_coupon_secure_v2(
+    p_code TEXT, p_subtotal NUMERIC
+)
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -54,21 +56,21 @@ $$;
 
 -- 2. Redefine create_marketplace_order_v22 to handle percentage coupons and cap discounts
 CREATE OR REPLACE FUNCTION public.create_marketplace_order_v22(
-    p_items jsonb, 
-    p_total_amount numeric, 
-    p_shipping_cost numeric, 
-    p_payment_method text, 
-    p_address_id uuid, 
-    p_coupon_code text, 
-    p_customer_name text, 
-    p_customer_phone text, 
-    p_observation text,
-    p_address_data jsonb DEFAULT NULL
+    p_items JSONB,
+    p_total_amount NUMERIC,
+    p_shipping_cost NUMERIC,
+    p_payment_method TEXT,
+    p_address_id UUID,
+    p_coupon_code TEXT,
+    p_customer_name TEXT,
+    p_customer_phone TEXT,
+    p_observation TEXT,
+    p_address_data JSONB DEFAULT NULL
 )
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
 AS $function$
 DECLARE
     v_user_id uuid := auth.uid();
@@ -251,7 +253,9 @@ END;
 $function$;
 
 -- 3. Grants
-GRANT EXECUTE ON FUNCTION public.validate_coupon_secure_v2 TO authenticated, anon;
-GRANT EXECUTE ON FUNCTION public.create_marketplace_order_v22 TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.validate_coupon_secure_v2 TO authenticated,
+anon;
+GRANT EXECUTE ON FUNCTION public.create_marketplace_order_v22 TO authenticated,
+anon;
 
 COMMIT;

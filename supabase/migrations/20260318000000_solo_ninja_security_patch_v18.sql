@@ -9,10 +9,18 @@ BEGIN;
 -- Add explicit is_admin() checks to prevent data leaks.
 
 CREATE OR REPLACE FUNCTION public.get_customer_intelligence()
- RETURNS TABLE(customer_id uuid, customer_name text, total_spent numeric, order_count bigint, last_order_at timestamp with time zone, ltv_score numeric, is_push_subscribed boolean)
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+RETURNS TABLE (
+    customer_id uuid,
+    customer_name text,
+    total_spent numeric,
+    order_count bigint,
+    last_order_at timestamp with time zone,
+    ltv_score numeric,
+    is_push_subscribed boolean
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -37,10 +45,16 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.get_inventory_health()
- RETURNS TABLE(product_id uuid, product_name text, current_stock integer, sales_last_30d bigint, days_remaining numeric)
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+RETURNS TABLE (
+    product_id uuid,
+    product_name text,
+    current_stock integer,
+    sales_last_30d bigint,
+    days_remaining numeric
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -69,11 +83,16 @@ END;
 $$;
 
 -- 2. FIX BOLA: update_order_status_atomic
-CREATE OR REPLACE FUNCTION public.update_order_status_atomic(p_order_id uuid, p_new_status text, p_notes text DEFAULT NULL::text, p_silent boolean DEFAULT false)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+CREATE OR REPLACE FUNCTION public.update_order_status_atomic(
+    p_order_id uuid,
+    p_new_status text,
+    p_notes text DEFAULT NULL::text,
+    p_silent boolean DEFAULT FALSE
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
     v_old_status TEXT;
@@ -104,10 +123,10 @@ $$;
 
 -- 3. FIX PRIVILEGE ESCALATION: upsert_store_config
 CREATE OR REPLACE FUNCTION public.upsert_store_config(config_json jsonb)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   result jsonb;
@@ -173,11 +192,13 @@ USING (public.is_admin())
 WITH CHECK (public.is_admin());
 
 -- 5. RPC swap_banner_order protection
-CREATE OR REPLACE FUNCTION public.swap_banner_order(banner_id_1 uuid, banner_id_2 uuid)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+CREATE OR REPLACE FUNCTION public.swap_banner_order(
+    banner_id_1 uuid, banner_id_2 uuid
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
     order_1 INTEGER;
@@ -201,10 +222,15 @@ $$;
 
 -- 6. RPC get_coupon_stats protection
 CREATE OR REPLACE FUNCTION public.get_coupon_stats()
- RETURNS TABLE(total_coupons bigint, active_coupons bigint, total_uses bigint, avg_discount numeric)
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path = public
+RETURNS TABLE (
+    total_coupons bigint,
+    active_coupons bigint,
+    total_uses bigint,
+    avg_discount numeric
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
     IF NOT public.is_admin() THEN

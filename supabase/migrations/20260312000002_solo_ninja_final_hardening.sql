@@ -13,9 +13,9 @@ DROP POLICY IF EXISTS "Profiles are viewable by self or admin" ON public.profile
 -- Allow general view of public info (name, avatar, etc)
 -- Note: Sensitive info filtering must happen at the SELECT level, 
 -- but RLS filters the entire row. We keep it focused on self or admin for maximum safety.
-CREATE POLICY "Profiles visibility: self or admin" 
-ON public.profiles 
-FOR SELECT 
+CREATE POLICY "Profiles visibility: self or admin"
+ON public.profiles
+FOR SELECT
 TO authenticated
 USING (auth.uid() = id OR public.is_admin());
 
@@ -41,7 +41,7 @@ CREATE OR REPLACE FUNCTION public.get_orders_by_whatsapp_v2(
     p_email TEXT,
     p_order_fragment TEXT -- Last 4 chars of an order ID or tracking code
 )
-RETURNS SETOF public.marketplace_orders
+RETURNS SETOF public.MARKETPLACE_ORDERS
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
@@ -77,7 +77,10 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.get_orders_by_whatsapp_v2(TEXT, TEXT, TEXT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_orders_by_whatsapp_v2(
+    TEXT, TEXT, TEXT
+) TO anon,
+authenticated;
 
 -- Old version cleanup
 DROP FUNCTION IF EXISTS public.get_orders_by_whatsapp_hardened(TEXT, TEXT);

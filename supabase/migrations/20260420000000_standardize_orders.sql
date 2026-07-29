@@ -154,7 +154,7 @@ $$;
 -- 2. Grant Restricted Execute (Authenticated Only)
 GRANT EXECUTE ON FUNCTION public.create_marketplace_order TO authenticated;
 -- Ensure no public access
-REVOKE ALL ON FUNCTION public.create_marketplace_order FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.create_marketplace_order FROM public;
 
 -- 3. Cleanup Legacy Overloads (v1 through v22)
 DO $$ 
@@ -182,9 +182,9 @@ DROP POLICY IF EXISTS "Admins can insert orders" ON public.marketplace_orders;
 -- Only SELECT is allowed (by owner)
 DROP POLICY IF EXISTS "Users can see own orders" ON public.marketplace_orders;
 CREATE POLICY "Users can see own orders" ON public.marketplace_orders
-    FOR SELECT
-    TO authenticated
-    USING (user_id = auth.uid() OR is_admin());
+FOR SELECT
+TO authenticated
+USING (user_id = auth.uid() OR is_admin());
 
 -- INSERT is BLOCKED for all - must use RPC (Security Definer)
 -- RLS doesn't block SECURITY DEFINER functions.
@@ -193,13 +193,13 @@ CREATE POLICY "Users can see own orders" ON public.marketplace_orders
 ALTER TABLE public.marketplace_order_items ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can view their own order items" ON public.marketplace_order_items;
 CREATE POLICY "Users can view their own order items" ON public.marketplace_order_items
-    FOR SELECT
-    TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.marketplace_orders mo
-            WHERE mo.id = order_id AND (mo.user_id = auth.uid() OR is_admin())
-        )
-    );
+FOR SELECT
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM public.marketplace_orders AS mo
+        WHERE mo.id = order_id AND (mo.user_id = auth.uid() OR is_admin())
+    )
+);
 
 COMMIT;

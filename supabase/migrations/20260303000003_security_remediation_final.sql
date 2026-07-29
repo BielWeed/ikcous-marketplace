@@ -9,13 +9,13 @@ DROP POLICY IF EXISTS "Admins can view all orders" ON marketplace_orders;
 
 -- 2. NOVAS POLÍTICAS RESTRITAS (MARKETPLACE_ORDERS)
 -- Apenas leitura dos próprios pedidos
-CREATE POLICY "Users can view own orders" 
-ON marketplace_orders FOR SELECT 
+CREATE POLICY "Users can view own orders"
+ON marketplace_orders FOR SELECT
 USING (auth.uid() = user_id);
 
 -- Admins podem fazer tudo
-CREATE POLICY "Admins full access on orders" 
-ON marketplace_orders FOR ALL 
+CREATE POLICY "Admins full access on orders"
+ON marketplace_orders FOR ALL
 USING (is_admin());
 
 -- BLOQUEIO DE INSERÇÃO DIRETA
@@ -29,20 +29,20 @@ DROP POLICY IF EXISTS "Public Read Coupons" ON coupons;
 DROP POLICY IF EXISTS "Admins can manage coupons" ON coupons;
 
 -- Usuários só veem cupons ativos
-CREATE POLICY "Users view active coupons" 
-ON coupons FOR SELECT 
+CREATE POLICY "Users view active coupons"
+ON coupons FOR SELECT
 USING (active = true);
 
 -- Admins veem e gerenciam tudo
-CREATE POLICY "Admins full access on coupons" 
-ON coupons FOR ALL 
+CREATE POLICY "Admins full access on coupons"
+ON coupons FOR ALL
 USING (is_admin());
 
 -- 4. REFORÇO DA RPC (SECURITY DEFINER PROTECTION)
 CREATE OR REPLACE FUNCTION public.create_marketplace_order_v2(
     p_order_data jsonb,
     p_items jsonb,
-    p_coupon_code text DEFAULT NULL
+    p_coupon_code text DEFAULT null
 )
 RETURNS jsonb
 LANGUAGE plpgsql

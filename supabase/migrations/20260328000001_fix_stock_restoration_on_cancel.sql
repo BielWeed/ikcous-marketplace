@@ -4,10 +4,10 @@
 BEGIN;
 
 CREATE OR REPLACE FUNCTION public.update_order_status_atomic(
-    p_order_id uuid, 
-    p_new_status text, 
-    p_notes text DEFAULT NULL, 
-    p_silent boolean DEFAULT false
+    p_order_id uuid,
+    p_new_status text,
+    p_notes text DEFAULT NULL,
+    p_silent boolean DEFAULT FALSE
 )
 RETURNS void
 LANGUAGE plpgsql

@@ -1,301 +1,432 @@
-import {
-    Search,
-    X,
-    ArrowRight
-} from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { useEffect, useState, useRef, useMemo, useDeferredValue } from 'react';
-import { cn } from '@/lib/utils';
-import { haptic } from '@/utils/haptic';
-import { useProducts } from '@/hooks/useProducts';
-import { type Product } from '@/types';
+import { Input } from "@/components/ui/input";
+import { useProducts } from "@/hooks/useProducts";
+import { cn } from "@/lib/utils";
+import type { Product } from "@/types";
+import { haptic } from "@/utils/haptic";
+import { ArrowRight, Search, Sparkles, Tag, X } from "lucide-react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 interface SearchBarProps {
-    value: string;
-    onChange: (value: string) => void;
-    onProductClick?: (id: string) => void;
-    placeholder?: string;
-    className?: string;
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+  readonly onProductClick?: (id: string) => void;
+  readonly placeholder?: string;
+  readonly className?: string;
 }
 
 interface ScoredProduct extends Product {
-    score: number;
+  score: number;
 }
 
-export function SearchBar({ value, onChange, onProductClick, placeholder = "Buscar produtos...", className = "" }: SearchBarProps) {
-    const [localValue, setLocalValue] = useState(value);
-    const deferredLocalValue = useDeferredValue(localValue);
-    const [isFocused, setIsFocused] = useState(false);
-    const containerRef = useRef<HTMLDivElement>(null);
-    const { products } = useProducts();
+export function SearchBar({
+  value,
+  onChange,
+  onProductClick,
+  placeholder = "Buscar produtos...",
+  className = "",
+}: SearchBarProps) {
+  const [localValue, setLocalValue] = useState(value);
+  const deferredLocalValue = useDeferredValue(localValue);
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { products } = useProducts();
 
-    useEffect(() => {
-        setLocalValue(value);
-    }, [value]);
+  // Keep localValue in sync with props
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
 
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            if (localValue !== value) {
-                onChange(localValue);
-            }
-        }, 300); // Faster debounce for better "intelligence" feel
+  // Ensure dropdown is closed whenever input is empty
+  useEffect(() => {
+    if (localValue.trim().length === 0) {
+      setIsOpen(false);
+    }
+  }, [localValue]);
 
-        return () => clearTimeout(timer);
-    }, [localValue, onChange, value]);
+  // Debounced update to parent for catalog filter
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localValue !== value) {
+        onChange(localValue);
+      }
+    }, 150);
 
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-                setIsFocused(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
+    return () => clearTimeout(timer);
+  }, [localValue, onChange, value]);
 
-    const handleClear = () => {
-        haptic.light();
-        setLocalValue('');
-        onChange('');
+  // Handle clicking outside the container to dismiss dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
     };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-    const handleSuggestionClick = (suggestion: string, productId?: string) => {
-        haptic.medium();
-        if (productId && onProductClick) {
-            onProductClick(productId);
-            setIsFocused(false);
-            return;
+  const handleClear = () => {
+    haptic.light();
+    setLocalValue("");
+    onChange("");
+    setIsOpen(false);
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  };
+
+  const handleSuggestionClick = (suggestion: string, productId?: string) => {
+    haptic.medium();
+    if (productId && onProductClick) {
+      onProductClick(productId);
+      setIsOpen(false);
+      return;
+    }
+    setLocalValue(suggestion);
+    onChange(suggestion);
+    setIsOpen(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      setIsOpen(false);
+      if (inputRef.current) inputRef.current.blur();
+    } else if (e.key === "Enter") {
+      haptic.light();
+      onChange(localValue);
+      setIsOpen(false);
+      if (inputRef.current) inputRef.current.blur();
+    }
+  };
+
+  // Predictive term suggestions (autocomplete letter-by-letter)
+  const predictedTerms = useMemo<string[]>(() => {
+    const query = deferredLocalValue.trim().toLowerCase();
+    if (!query) return [];
+
+    const termSet = new Set<string>();
+
+    products.forEach((p) => {
+      if (!p.isActive) return;
+
+      // Extract words from product name
+      const words = p.name.split(/\s+/);
+      words.forEach((w) => {
+        const clean = w.replace(/[^\wÀ-ú]/gi, "").trim();
+        if (clean.toLowerCase().startsWith(query) && clean.length >= query.length) {
+          const formatted = clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
+          termSet.add(formatted);
         }
-        setLocalValue(suggestion);
-        onChange(suggestion);
-        setIsFocused(false);
-    };
+      });
 
-    // Advanced Scoring Algorithm - Elite Precision
-    const searchResults = useMemo<ScoredProduct[]>(() => {
-        if (!deferredLocalValue.trim()) {
-            // Show bestsellers or trending if no search
-            return products
-                .filter(p => p.isActive && (p.isBestseller || p.stock > 0))
-                .slice(0, 4)
-                .map(p => ({ ...p, score: 0 }));
+      // Category match
+      if (p.category.toLowerCase().startsWith(query)) {
+        termSet.add(p.category);
+      }
+
+      // Tags match
+      (p.tags || []).forEach((t) => {
+        if (t.toLowerCase().startsWith(query)) {
+          termSet.add(t);
+        }
+      });
+    });
+
+    return Array.from(termSet).slice(0, 4);
+  }, [products, deferredLocalValue]);
+
+  // Matching categories
+  const matchingCategories = useMemo<string[]>(() => {
+    const query = deferredLocalValue.trim().toLowerCase();
+    if (!query) return [];
+
+    const catSet = new Set<string>();
+    products.forEach((p) => {
+      if (p.isActive && p.category.toLowerCase().includes(query)) {
+        catSet.add(p.category);
+      }
+    });
+
+    return Array.from(catSet).slice(0, 3);
+  }, [products, deferredLocalValue]);
+
+  // Scored Product Search Results
+  const searchResults = useMemo<ScoredProduct[]>(() => {
+    const query = deferredLocalValue.toLowerCase().trim();
+    if (!query) return [];
+
+    const scored = products
+      .filter((product) => product.isActive)
+      .map((product) => {
+        let score = 0;
+        const name = product.name.toLowerCase();
+        const description = product.description.toLowerCase();
+        const category = product.category.toLowerCase();
+        const tags = (product.tags || []).map((t) => t.toLowerCase());
+
+        // Exact match
+        if (name === query) score += 100;
+        // Starts with query
+        else if (name.startsWith(query)) score += 85;
+        // Contains query
+        else if (name.includes(query)) score += 50;
+
+        // Word level score
+        const queryWords = query.split(/\s+/).filter(Boolean);
+        for (const word of queryWords) {
+          if (name.includes(word)) score += 20;
+          if (category.includes(word)) score += 15;
+          if (tags.some((t) => t.includes(word))) score += 10;
         }
 
-        const query = deferredLocalValue.toLowerCase().trim();
-        const scored = products
-            .filter(product => product.isActive)
-            .map(product => {
-                let score = 0;
-                const name = product.name.toLowerCase();
-                const description = product.description.toLowerCase();
-                const category = product.category.toLowerCase();
-                const tags = (product.tags || []).map(t => t.toLowerCase());
+        // Category match
+        if (category === query) score += 40;
+        else if (category.includes(query)) score += 25;
 
-                // Exact match
-                if (name === query) score += 100;
-                // Starts with
-                else if (name.startsWith(query)) score += 80;
-                // Contains
-                else if (name.includes(query)) score += 50;
+        // Description match
+        if (description.includes(query)) score += 5;
 
-                // Word match (for multi-word queries)
-                const queryWords = query.split(' ');
-                queryWords.forEach(word => {
-                    if (name.includes(word)) score += 20;
-                    if (category.includes(word)) score += 15;
-                    if (tags.some(t => t.includes(word))) score += 10;
-                });
+        return { ...product, score } as ScoredProduct;
+      })
+      .filter((p) => p.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6);
 
-                // Category match
-                if (category === query) score += 40;
-                else if (category.includes(query)) score += 20;
+    return scored;
+  }, [products, deferredLocalValue]);
 
-                // Description match (light weight)
-                if (description.includes(query)) score += 5;
+  const showDropdown = isOpen && localValue.trim().length > 0;
 
-                return { ...product, score } as ScoredProduct;
-            })
-            .filter(p => p.score > 0)
-            .sort((a, b) => (b as ScoredProduct).score - (a as ScoredProduct).score)
-            .slice(0, 6);
+  return (
+    <div ref={containerRef} className={cn("relative z-[90] w-full overflow-hidden", className)}>
+      {/* Search Input Container */}
+      <div
+        className={cn(
+          "absolute inset-0 bg-white shadow-xs border border-zinc-200/90 rounded-full transition-all duration-300",
+          showDropdown ? "shadow-md border-zinc-900 scale-[1.01]" : "",
+        )}
+      />
 
-        return scored as ScoredProduct[];
-    }, [products, deferredLocalValue]);
+      <div
+        className={cn(
+          "relative flex items-center h-10 transition-all duration-200",
+          showDropdown ? "z-[60]" : "z-10",
+        )}
+      >
+        <Search
+          className={cn(
+            "absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 transition-all duration-200 z-30",
+            showDropdown ? "text-zinc-900 scale-110" : "text-zinc-400",
+          )}
+        />
 
-    const trendingProducts = useMemo<Product[]>(() => {
-        const bestsellers = products.filter(p => p.isActive && p.isBestseller);
-        if (bestsellers.length > 0) return bestsellers.slice(0, 4);
-        // Fallback to most recent active products if no bestsellers found
-        return products.filter(p => p.isActive).slice(0, 4);
-    }, [products]);
+        {/* Animated Mobile Placeholder */}
+        {!localValue && !showDropdown && (
+          <div className="pointer-events-none absolute inset-y-0 left-12 right-10 z-[25] flex select-none items-center overflow-hidden">
+            <div className="animate-marquee-x flex gap-12 whitespace-nowrap">
+              <span className="text-sm font-medium text-zinc-400">
+                {placeholder}
+              </span>
+              <span className="text-sm font-medium text-zinc-400 sm:hidden">
+                {placeholder}
+              </span>
+            </div>
+          </div>
+        )}
 
-    return (
-        <div ref={containerRef} className={cn(
-            "relative z-50",
-            className
-        )}>
-            {/* Liquid Search Container */}
-            <div className={cn(
-                "absolute inset-0 bg-white shadow-sm border border-zinc-100 rounded-full transition-[box-shadow,border-color,transform] duration-700",
-                isFocused ? "shadow-xl border-zinc-200 scale-[1.01]" : ""
-            )} style={{ transitionTimingFunction: 'cubic-bezier(0.23, 1, 0.32, 1)' }} />
+        <Input
+          ref={inputRef}
+          id="global-search"
+          name="search"
+          value={localValue}
+          onFocus={() => {
+            if (localValue.trim().length > 0) setIsOpen(true);
+          }}
+          onChange={(e) => {
+            const val = e.target.value;
+            setLocalValue(val);
+            setIsOpen(val.trim().length > 0);
+          }}
+          onKeyDown={handleKeyDown}
+          aria-label="Buscar produtos"
+          title="Buscar produtos"
+          className="relative pl-12 pr-10 border-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 h-full text-sm font-bold tracking-tight text-zinc-900 placeholder:text-zinc-400 rounded-full z-20 bg-transparent focus:outline-none focus:ring-0 focus-visible:outline-none"
+          placeholder=""
+          autoComplete="off"
+        />
 
-            <div className={cn(
-                "relative flex items-center h-10 transition-[z-index,opacity] duration-300",
-                isFocused ? "z-[60]" : "z-10"
-            )}>
-                <Search className={cn(
-                    "absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 transition-[color,transform] duration-200 z-30",
-                    isFocused ? "text-zinc-900 scale-110" : "text-zinc-400"
-                )} />
+        {localValue && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-3 z-30 flex size-5 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 transition-all hover:bg-zinc-900 hover:text-white active:scale-90"
+            aria-label="Limpar busca"
+          >
+            <X className="size-3" />
+          </button>
+        )}
+      </div>
 
-                {/* Animação Premium de Placeholder para Mobile */}
-                {!localValue && !isFocused && (
-                    <div className="absolute left-12 right-10 top-0 bottom-0 flex items-center overflow-hidden pointer-events-none z-[25] select-none">
-                        <div className="flex gap-12 whitespace-nowrap animate-marquee-x">
-                            <span className="text-sm font-medium text-zinc-300">
-                                {placeholder}
-                            </span>
-                            <span className="text-sm font-medium text-zinc-300 sm:hidden">
-                                {placeholder}
-                            </span>
-                            <span className="text-sm font-medium text-zinc-300 sm:hidden">
-                                {placeholder}
-                            </span>
-                        </div>
-                    </div>
-                )}
+      {/* Instant Predictive Search Floating Dropdown - ONLY SHOWS WHEN TYPING (localValue > 0) */}
+      {showDropdown && (
+        <>
+          {/* Backdrop Blur Overlay - Starts BELOW Header so top bar stays pure clean white */}
+          <button
+            type="button"
+            aria-label="Fechar busca"
+            onClick={() => setIsOpen(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === "Escape" || e.key === " ") {
+                setIsOpen(false);
+              }
+            }}
+            className="fixed inset-x-0 bottom-0 top-[calc(var(--header-height)+var(--safe-area-top))] z-[80] bg-black/25 backdrop-blur-xs animate-in fade-in duration-200 cursor-default border-none p-0 w-full text-left"
+          />
 
-                <Input
-                    id="global-search"
-                    name="search"
-                    value={localValue}
-                    onFocus={() => setIsFocused(true)}
-                    onChange={(e) => setLocalValue(e.target.value)}
-                    className={cn(
-                        "relative pl-12 pr-10 border-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 h-full text-sm font-bold tracking-tight text-zinc-900 placeholder:text-zinc-300 placeholder:font-medium rounded-full z-20 transition-[background-color,color] duration-200 bg-transparent focus:outline-none focus:ring-0 focus-visible:outline-none",
-                    )}
-                    placeholder=""
-                />
-
-                {localValue && (
+          {/* Floating Solid White Card directly under Search Input */}
+          <div className="fixed inset-x-0 top-[calc(var(--header-height)+6px)] z-[100] mx-auto w-[calc(100vw-24px)] max-w-lg max-h-[72vh] overflow-y-auto rounded-[28px] border border-zinc-200/90 bg-white p-4 sm:p-5 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.35)] animate-in fade-in slide-in-from-top-2 duration-200">
+            
+            {/* 1. PREDICTIVE AUTOCOMPLETE TERMS */}
+            {predictedTerms.length > 0 && (
+              <div className="mb-4 border-b border-zinc-100 pb-3">
+                <div className="mb-2 flex items-center gap-1.5">
+                  <Sparkles className="size-3.5 text-amber-500" />
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                    Sugestões de Busca
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {predictedTerms.map((term) => (
                     <button
-                        onClick={handleClear}
-                        className="absolute right-3 w-5 h-5 flex items-center justify-center rounded-full bg-zinc-900/5 text-zinc-400 hover:bg-zinc-900 hover:text-white transition-[background-color,color,transform] duration-200 z-30 active:scale-90"
+                      key={term}
+                      type="button"
+                      onClick={() => handleSuggestionClick(term)}
+                      className="flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-bold text-zinc-800 transition-all hover:border-zinc-900 hover:bg-zinc-900 hover:text-white active:scale-95 shadow-2xs"
                     >
-                        <X className="w-2.5 h-2.5" />
+                      <Search className="size-3 opacity-60" />
+                      <span>{term}</span>
                     </button>
-                )}
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 2. MATCHING CATEGORIES BADGES */}
+            {matchingCategories.length > 0 && (
+              <div className="mb-4 border-b border-zinc-100 pb-3">
+                <div className="mb-2 flex items-center gap-1.5">
+                  <Tag className="size-3.5 text-primary" />
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                    Categorias Encontradas
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {matchingCategories.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => handleSuggestionClick(cat)}
+                      className="flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary hover:text-white active:scale-95 shadow-2xs"
+                    >
+                      <Tag className="size-3" />
+                      <span>{cat}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 3. PRODUCT RESULTS */}
+            <div>
+              <div className="mb-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Search className="size-3.5 text-zinc-700" />
+                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                    Produtos ({searchResults.length})
+                  </span>
+                </div>
+              </div>
+
+              {searchResults.length > 0 ? (
+                <div className="divide-y divide-zinc-100">
+                  {searchResults.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() =>
+                        handleSuggestionClick(item.name, item.id)
+                      }
+                      className="group flex w-full items-center justify-between py-2.5 px-2 text-left transition-colors hover:bg-zinc-50 rounded-xl"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0 pr-2">
+                        <div className="relative flex-shrink-0 size-12 overflow-hidden rounded-xl border border-zinc-200/80 bg-zinc-100 shadow-2xs">
+                          <img
+                            src={
+                              item.images[0] ||
+                              "https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&q=80&w=100"
+                            }
+                            alt={item.name}
+                            className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            loading="lazy"
+                          />
+                          {item.isBestseller && (
+                            <span className="absolute top-0.5 right-0.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-white" />
+                          )}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-[9px] font-extrabold uppercase tracking-wider text-zinc-400 truncate">
+                            {item.category}
+                          </span>
+                          <span className="text-xs font-bold text-zinc-900 truncate group-hover:text-primary transition-colors">
+                            {item.name}
+                          </span>
+                          <span className="text-xs font-black text-zinc-800">
+                            R$ {item.price.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <ArrowRight className="size-4 text-zinc-400 transition-transform group-hover:translate-x-1 group-hover:text-zinc-900" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 text-center">
+                  <p className="text-xs font-bold text-zinc-700">
+                    Nenhum produto encontrado para "{localValue}"
+                  </p>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Tente pesquisar por categorias ou termos mais genéricos.
+                  </p>
+                </div>
+              )}
             </div>
 
-            {/* Elite Expanded Panel */}
-            {isFocused && (
-                <>
-                    <div className="fixed inset-0 top-[calc(var(--header-height)+var(--safe-area-top))] bg-black/40 backdrop-blur-sm z-40 animate-in fade-in duration-700" />
+            {/* 4. ACTION BANNER FOR FULL SEARCH RESULTS */}
+            <div className="mt-3 pt-2.5 border-t border-zinc-100">
+              <button
+                type="button"
+                onClick={() => {
+                  haptic.medium();
+                  onChange(localValue);
+                  setIsOpen(false);
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 py-3 px-4 text-xs font-bold text-white transition-all hover:bg-zinc-800 active:scale-[0.98] shadow-md"
+              >
+                <Search className="size-3.5" />
+                <span>Ver todos os resultados para "{localValue}"</span>
+              </button>
+            </div>
 
-                    <div className="fixed top-[calc(var(--header-height)+var(--safe-area-top))] left-0 right-0 w-full bg-white shadow-[0_40px_100px_rgba(0,0,0,0.25)] animate-in slide-in-from-top-2 fade-in duration-700 z-[100] overflow-y-auto bottom-[calc(var(--nav-height)+var(--safe-area-bottom))] border-b border-zinc-100">
-                        <div className="py-6">
-
-                            {/* Intelligent Trending/Search Results - Max Fidelity */}
-                            <div>
-                                <div className="flex items-center gap-3 mb-8 px-8">
-                                    <div className="w-1.5 h-4 bg-zinc-900 rounded-full" />
-                                    <span className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-400">
-                                        {localValue ? "Resultados" : "Tendências do Catálogo"}
-                                    </span>
-                                </div>
-                                <div className="space-y-0.5">
-                                    {localValue.trim().length > 0 ? (
-                                        searchResults.length > 0 ? searchResults.map((item) => (
-                                        <button
-                                            key={item.id}
-                                            onClick={() => handleSuggestionClick(item.name, item.id)}
-                                            className="w-full flex items-center justify-between px-6 py-3 hover:bg-zinc-50/80 transition-all group relative border-b border-zinc-50/50 last:border-0"
-                                        >
-                                            <div className="flex items-center gap-6">
-                                                <div className="relative">
-                                                    <div className="w-12 h-12 bg-zinc-100 rounded-[16px] overflow-hidden border border-zinc-200/50 shadow-sm group-hover:scale-105 transition-transform duration-500">
-                                                        <img
-                                                            src={item.images[0] || "https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&q=80&w=100"}
-                                                            alt={item.name}
-                                                            className="w-full h-full object-cover"
-                                                            loading="lazy"
-                                                        />
-                                                    </div>
-                                                    {item.isBestseller && (
-                                                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full border-2 border-white animate-pulse shadow-sm" />
-                                                    )}
-                                                </div>
-                                                <div className="flex flex-col items-start gap-1.5">
-                                                    <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-300 group-hover:text-amber-600 transition-colors">{item.category}</span>
-                                                    <span className="text-xl font-bold text-zinc-900 tracking-tighter group-hover:translate-x-2 transition-transform duration-500">{item.name}</span>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                                <span className="text-[10px] font-bold text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    R$ {item.price.toFixed(2)}
-                                                </span>
-                                                <ArrowRight className="w-6 h-6 text-zinc-900 opacity-0 group-hover:opacity-100 -translate-x-6 group-hover:translate-x-0 transition-all duration-700 ease-out" />
-                                            </div>
-                                        </button>
-                                        )) : (
-                                            <div className="px-8 py-12 text-center text-zinc-400 font-medium">
-                                                Nenhum produto encontrado para "{localValue}"
-                                            </div>
-                                        )
-                                    ) : null}
-                                </div>
-                            </div>
-
-                            {/* Trending Products Section - NEW Integration */}
-                            {(localValue.trim().length === 0 || searchResults.length < 3) && (
-                                <div className="mt-8">
-                                <div className="flex items-center gap-3 mb-8 px-8">
-                                    <div className="w-1.5 h-4 bg-amber-500 rounded-full" />
-                                    <span className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-400">
-                                        Produtos em Alta
-                                    </span>
-                                </div>
-                                <div className="space-y-0.5">
-                                    {trendingProducts.map((item) => (
-                                        <button
-                                            key={`trending-${item.id}`}
-                                            onClick={() => handleSuggestionClick(item.name, item.id)}
-                                            className="w-full flex items-center justify-between px-6 py-3 hover:bg-zinc-50/80 transition-all group relative border-b border-zinc-50/50 last:border-0"
-                                        >
-                                            <div className="flex items-center gap-8">
-                                                <div className="relative">
-                                                    <div className="w-16 h-16 bg-zinc-100 rounded-[20px] overflow-hidden border border-zinc-200/50 shadow-sm group-hover:scale-105 transition-transform duration-500">
-                                                        <img
-                                                            src={item.images[0] || "https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&q=80&w=100"}
-                                                            alt={item.name}
-                                                            className="w-full h-full object-cover"
-                                                            loading="lazy"
-                                                        />
-                                                    </div>
-                                                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full border-2 border-white animate-pulse shadow-sm" />
-                                                </div>
-                                                <div className="flex flex-col items-start gap-1.5">
-                                                    <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-300 group-hover:text-amber-600 transition-colors">{item.category}</span>
-                                                    <span className="text-xl font-bold text-zinc-900 tracking-tighter group-hover:translate-x-2 transition-transform duration-500">{item.name}</span>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                                <span className="text-[10px] font-bold text-zinc-300 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    R$ {item.price.toFixed(2)}
-                                                </span>
-                                                <ArrowRight className="w-6 h-6 text-zinc-900 opacity-0 group-hover:opacity-100 -translate-x-6 group-hover:translate-x-0 transition-all duration-700 ease-out" />
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
-                                </div>
-                            )}
-
-                        </div>
-                    </div>
-                </>
-            )}
-        </div>
-    );
+          </div>
+        </>
+      )}
+    </div>
+  );
 }

@@ -2,9 +2,9 @@
 
 -- 1. upsert_store_config
 CREATE OR REPLACE FUNCTION public.upsert_store_config(config_json jsonb)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
 AS $function$
 DECLARE
   result jsonb;
@@ -67,10 +67,12 @@ END;
 $function$;
 
 -- 2. update_order_status_atomic
-CREATE OR REPLACE FUNCTION public.update_order_status_atomic(p_order_id uuid, p_new_status text, p_notes text DEFAULT NULL::text)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
+CREATE OR REPLACE FUNCTION public.update_order_status_atomic(
+    p_order_id uuid, p_new_status text, p_notes text DEFAULT NULL::text
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
 AS $function$
 DECLARE
     v_old_status TEXT;
@@ -96,9 +98,14 @@ $function$;
 
 -- 3. get_coupon_stats
 CREATE OR REPLACE FUNCTION public.get_coupon_stats()
- RETURNS TABLE(total_coupons bigint, active_coupons bigint, total_uses bigint, avg_discount numeric)
- LANGUAGE plpgsql
- SECURITY DEFINER
+RETURNS TABLE (
+    total_coupons bigint,
+    active_coupons bigint,
+    total_uses bigint,
+    avg_discount numeric
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
 AS $function$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -116,10 +123,12 @@ END;
 $function$;
 
 -- 4. swap_banner_order
-CREATE OR REPLACE FUNCTION public.swap_banner_order(banner_id_1 uuid, banner_id_2 uuid)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
+CREATE OR REPLACE FUNCTION public.swap_banner_order(
+    banner_id_1 uuid, banner_id_2 uuid
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
 AS $function$
 DECLARE
     order_1 INTEGER;
@@ -139,9 +148,15 @@ $function$;
 
 -- 5. get_inventory_health
 CREATE OR REPLACE FUNCTION public.get_inventory_health()
- RETURNS TABLE(product_id uuid, product_name text, current_stock integer, sales_last_30d bigint, days_remaining numeric)
- LANGUAGE plpgsql
- SECURITY DEFINER
+RETURNS TABLE (
+    product_id uuid,
+    product_name text,
+    current_stock integer,
+    sales_last_30d bigint,
+    days_remaining numeric
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
 AS $function$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -171,9 +186,17 @@ $function$;
 
 -- 6. get_customer_intelligence
 CREATE OR REPLACE FUNCTION public.get_customer_intelligence()
- RETURNS TABLE(customer_id uuid, customer_name text, total_spent numeric, order_count bigint, last_order_at timestamp with time zone, ltv_score numeric, is_push_subscribed boolean)
- LANGUAGE plpgsql
- SECURITY DEFINER
+RETURNS TABLE (
+    customer_id uuid,
+    customer_name text,
+    total_spent numeric,
+    order_count bigint,
+    last_order_at timestamp with time zone,
+    ltv_score numeric,
+    is_push_subscribed boolean
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
 AS $function$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -199,9 +222,14 @@ $function$;
 
 -- 7. get_retention_analytics
 CREATE OR REPLACE FUNCTION public.get_retention_analytics()
- RETURNS TABLE(month text, total_customers bigint, returning_customers bigint, retention_rate numeric)
- LANGUAGE plpgsql
- SECURITY DEFINER
+RETURNS TABLE (
+    month text,
+    total_customers bigint,
+    returning_customers bigint,
+    retention_rate numeric
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
 AS $function$
 BEGIN
     IF NOT public.is_admin() THEN
@@ -239,9 +267,9 @@ $function$;
 
 -- 8. get_retention_rate
 CREATE OR REPLACE FUNCTION public.get_retention_rate()
- RETURNS numeric
- LANGUAGE plpgsql
- SECURITY DEFINER
+RETURNS numeric
+LANGUAGE plpgsql
+SECURITY DEFINER
 AS $function$
 DECLARE
     total_customers bigint := 0;

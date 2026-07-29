@@ -1,154 +1,283 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/hooks/useAuth';
-import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { useProducts } from '@/hooks/useProducts';
-import type { Product } from '@/types';
-import { toast } from 'sonner';
+import { useAuth } from "@/hooks/useAuth";
+import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useProducts } from "@/hooks/useProducts";
+import { supabase } from "@/lib/supabase";
+import type { Product } from "@/types";
+import React, { createContext, useState, useEffect, useCallback } from "react";
+import { toast } from "sonner";
 
-const FAVORITES_KEY = 'ikcous_favorites';
+const FAVORITES_KEY = "ikcous_favorites";
 
 interface FavoritesContextType {
-    favorites: Product[];
-    toggleFavorite: (product: Product) => void;
-    isFavorite: (productId: string) => boolean;
-    loading: boolean;
+  favorites: Product[];
+  toggleFavorite: (product: Product) => void;
+  isFavorite: (productId: string) => boolean;
+  loading: boolean;
 }
 
-export const FavoritesContext = createContext<FavoritesContextType | undefined>(undefined);
+export const FavoritesContext = createContext<FavoritesContextType | undefined>(
+  undefined,
+);
 
-export function FavoritesProvider({ children }: Readonly<{ children: React.ReactNode }>) {
-    const { user } = useAuth();
-    const { products: allProducts } = useProducts();
-    const [localFavorites, setLocalFavorites] = useLocalStorage<Product[]>(FAVORITES_KEY, []);
-    const [dbFavoriteIds, setDbFavoriteIds] = useState<string[]>([]);
-    const [loading, setLoading] = useState(false);
+export function FavoritesProvider({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  const { user } = useAuth();
+  const { isLeader } = useLeaderElection();
+  const { products: allProducts } = useProducts();
+  const [localFavorites, setLocalFavorites] = useLocalStorage<Product[]>(
+    FAVORITES_KEY,
+    [],
+  );
+  const [dbFavoriteIds, setDbFavoriteIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
 
-    // 1. Sync Logic: When User logs in, merge Local -> DB
-    useEffect(() => {
-        if (!user) {
-            setDbFavoriteIds([]);
-            return;
+  const fetchDbFavorites = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from("favorites")
+        .select("product_id")
+        .eq("user_id", user.id);
+
+      if (error) {
+        console.error("Error fetching favorites", error);
+      } else if (data) {
+        const newIds = data.map((f) => f.product_id);
+        setDbFavoriteIds(newIds);
+      }
+    } catch (err) {
+      console.error("Fetch favorites failed", err);
+    }
+  }, [user]);
+
+  // 1. Sync Logic: When User logs in, merge Local -> DB
+  useEffect(() => {
+    if (!user) {
+      setDbFavoriteIds([]);
+      setLoading(false);
+      return;
+    }
+
+    const syncFavorites = async () => {
+      setLoading(true);
+
+      try {
+        // A. Push Local to DB (Merge)
+        if (localFavorites.length > 0) {
+          const promises = localFavorites.map((p) =>
+            supabase
+              .from("favorites")
+              .upsert(
+                { user_id: user.id, product_id: p.id },
+                { onConflict: "user_id, product_id", ignoreDuplicates: true },
+              ),
+          );
+          await Promise.all(promises);
+
+          // After sync, replace state with server data and clear local storage
+          setLocalFavorites([]); // Clear local state
+          if (typeof window !== "undefined") {
+            localStorage.removeItem(FAVORITES_KEY); // Explicitly remove from localStorage
+          }
+          toast.success("Seus favoritos locais foram sincronizados!");
         }
 
-        const syncFavorites = async () => {
-            setLoading(true);
+        // B. Fetch from DB
+        await fetchDbFavorites();
+      } catch (err) {
+        console.error("Sync failed", err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-            try {
-                // A. Push Local to DB (Merge)
-                if (localFavorites.length > 0) {
-                    const promises = localFavorites.map(p =>
-                        supabase.from('favorites').upsert(
-                            { user_id: user.id, product_id: p.id },
-                            { onConflict: 'user_id, product_id', ignoreDuplicates: true }
-                        )
-                    );
-                    await Promise.all(promises);
+    syncFavorites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, fetchDbFavorites]);
 
-                    // After sync, replace state with server data and clear local storage
-                    setLocalFavorites([]); // Clear local state
-                    if (typeof window !== 'undefined') {
-                        localStorage.removeItem(FAVORITES_KEY); // Explicitly remove from localStorage
-                    }
-                    toast.success('Seus favoritos locais foram sincronizados!');
-                }
+  // Realtime Sync for Favorites
+  useEffect(() => {
+    const bc =
+      typeof window !== "undefined"
+        ? new BroadcastChannel("ikcous_favorites_sync")
+        : null;
+    let channel: any = null;
+    let bcListener: ((event: MessageEvent) => void) | null = null;
 
-                // B. Fetch from DB
-                const { data, error } = await supabase
-                    .from('favorites')
-                    .select('product_id')
-                    .eq('user_id', user.id);
-
-                if (error) {
-                    console.error('Error fetching favorites', error);
-                } else if (data) {
-                    const newIds = data.map(f => f.product_id);
-                    setDbFavoriteIds(newIds);
-                }
-            } catch (err) {
-                console.error('Sync failed', err);
-            } finally {
-                setLoading(false);
+    if (user) {
+      if (isLeader) {
+        console.log(
+          "[Favorites] Leader tab subscribing to database favorites...",
+        );
+        channel = supabase
+          .channel(`favorites:${user.id}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "favorites",
+              filter: `user_id=eq.${user.id}`,
+            },
+            () => {
+              console.log(
+                "[Favorites-Leader] Favorites change detected in database",
+              );
+              fetchDbFavorites();
+              bc?.postMessage({ type: "favorites_update" });
+            },
+          )
+          .subscribe((status: any, err?: any) => {
+            if (status === "CHANNEL_ERROR") {
+              const errMessage =
+                err?.message || (typeof err === "string" ? err : "");
+              const isNormalClose =
+                errMessage.includes("1000") || errMessage.includes("normal");
+              const isAbnormalClose =
+                errMessage.includes("1006") || errMessage.includes("abnormal");
+              if (isNormalClose) {
+                console.log(
+                  "[Favorites] Channel closed normally (socket closed: 1000)",
+                );
+              } else if (isAbnormalClose) {
+                console.warn(
+                  "[Favorites] Channel closed abnormally (socket closed: 1006). SDK will auto-reconnect.",
+                );
+              } else {
+                console.error(
+                  "[Favorites] Channel error:",
+                  err?.message || err,
+                );
+              }
             }
-        };
-
-        syncFavorites();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user]); // Run ONLY when user changes to prevent race conditions and infinite fetch loops
-
-    // 2. Computed Favorites List
-    const favorites = React.useMemo(() => {
-        return user
-            ? allProducts.filter(p => dbFavoriteIds.includes(p.id))
-            : localFavorites;
-    }, [user, allProducts, dbFavoriteIds, localFavorites]);
-
-    // 3. Actions
-    const addToFavorites = useCallback(async (product: Product) => {
-        if (user) {
-            // Optimistic
-            setDbFavoriteIds(prev => [...prev, product.id]);
-            const { error } = await supabase.from('favorites').insert({ user_id: user.id, product_id: product.id });
-
-            if (error) {
-                console.error(error);
-                toast.error('Erro ao salvar favorito');
-                setDbFavoriteIds(prev => prev.filter(id => id !== product.id));
-            } else {
-                toast.success('Adicionado aos favoritos');
+          });
+      } else {
+        console.log(
+          "[Favorites] Secondary tab listening via BroadcastChannel...",
+        );
+        if (bc) {
+          bcListener = (event: MessageEvent) => {
+            if (event.data?.type === "favorites_update") {
+              console.log(
+                "[Favorites-Secondary] Favorites update received via BroadcastChannel",
+              );
+              fetchDbFavorites();
             }
-        } else {
-            setLocalFavorites(prev => {
-                if (prev.find(p => p.id === product.id)) return prev;
-                return [...prev, product];
-            });
-            toast.success('Adicionado aos favoritos');
+          };
+          bc.addEventListener("message", bcListener);
         }
-    }, [user, setLocalFavorites]);
+      }
+    }
 
-    const removeFromFavorites = useCallback(async (productId: string) => {
-        if (user) {
-            // Optimistic
-            setDbFavoriteIds(prev => prev.filter(id => id !== productId));
-            const { error } = await supabase.from('favorites').delete().eq('user_id', user.id).eq('product_id', productId);
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel).catch(() => {});
+      }
+      if (bcListener && bc) {
+        bc.removeEventListener("message", bcListener);
+      }
+      bc?.close();
+    };
+  }, [user, isLeader, fetchDbFavorites]);
 
-            if (error) {
-                console.error(error);
-                toast.error('Erro ao remover favorito');
-                setDbFavoriteIds(prev => [...prev, productId]);
-            } else {
-                toast.success('Removido dos favoritos');
-            }
+  // 2. Computed Favorites List
+  const favorites = React.useMemo(() => {
+    return user
+      ? allProducts.filter((p) => dbFavoriteIds.includes(p.id))
+      : localFavorites;
+  }, [user, allProducts, dbFavoriteIds, localFavorites]);
+
+  // 3. Actions
+  const addToFavorites = useCallback(
+    async (product: Product) => {
+      if (user) {
+        // Optimistic
+        setDbFavoriteIds((prev) => [...prev, product.id]);
+        const { error } = await supabase
+          .from("favorites")
+          .insert({ user_id: user.id, product_id: product.id });
+
+        if (error) {
+          console.error(error);
+          toast.error("Erro ao salvar favorito");
+          setDbFavoriteIds((prev) => prev.filter((id) => id !== product.id));
         } else {
-            setLocalFavorites(prev => prev.filter(p => p.id !== productId));
-            toast.success('Removido dos favoritos');
+          toast.success("Adicionado aos favoritos");
         }
-    }, [user, setLocalFavorites]);
+      } else {
+        setLocalFavorites((prev) => {
+          if (prev.find((p) => p.id === product.id)) return prev;
+          return [...prev, product];
+        });
+        toast.success("Adicionado aos favoritos");
+      }
+    },
+    [user, setLocalFavorites],
+  );
 
-    const toggleFavorite = useCallback((product: Product) => {
-        const isFav = user ? dbFavoriteIds.includes(product.id) : localFavorites.some(p => p.id === product.id);
-        if (isFav) {
-            removeFromFavorites(product.id);
+  const removeFromFavorites = useCallback(
+    async (productId: string) => {
+      if (user) {
+        // Optimistic
+        setDbFavoriteIds((prev) => prev.filter((id) => id !== productId));
+        const { error } = await supabase
+          .from("favorites")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("product_id", productId);
+
+        if (error) {
+          console.error(error);
+          toast.error("Erro ao remover favorito");
+          setDbFavoriteIds((prev) => [...prev, productId]);
         } else {
-            addToFavorites(product);
+          toast.success("Removido dos favoritos");
         }
-    }, [user, dbFavoriteIds, localFavorites, removeFromFavorites, addToFavorites]);
+      } else {
+        setLocalFavorites((prev) => prev.filter((p) => p.id !== productId));
+        toast.success("Removido dos favoritos");
+      }
+    },
+    [user, setLocalFavorites],
+  );
 
-    const isFavorite = useCallback((productId: string) => {
-        if (user) return dbFavoriteIds.includes(productId);
-        return localFavorites.some(p => p.id === productId);
-    }, [user, dbFavoriteIds, localFavorites]);
+  const toggleFavorite = useCallback(
+    (product: Product) => {
+      const isFav = user
+        ? dbFavoriteIds.includes(product.id)
+        : localFavorites.some((p) => p.id === product.id);
+      if (isFav) {
+        removeFromFavorites(product.id);
+      } else {
+        addToFavorites(product);
+      }
+    },
+    [user, dbFavoriteIds, localFavorites, removeFromFavorites, addToFavorites],
+  );
 
-    const contextValue = React.useMemo(() => ({
-        favorites,
-        toggleFavorite,
-        isFavorite,
-        loading
-    }), [favorites, toggleFavorite, isFavorite, loading]);
+  const isFavorite = useCallback(
+    (productId: string) => {
+      if (user) return dbFavoriteIds.includes(productId);
+      return localFavorites.some((p) => p.id === productId);
+    },
+    [user, dbFavoriteIds, localFavorites],
+  );
 
-    return (
-        <FavoritesContext.Provider value={contextValue}>
-            {children}
-        </FavoritesContext.Provider>
-    );
+  const contextValue = React.useMemo(
+    () => ({
+      favorites,
+      toggleFavorite,
+      isFavorite,
+      loading,
+    }),
+    [favorites, toggleFavorite, isFavorite, loading],
+  );
+
+  return (
+    <FavoritesContext.Provider value={contextValue}>
+      {children}
+    </FavoritesContext.Provider>
+  );
 }

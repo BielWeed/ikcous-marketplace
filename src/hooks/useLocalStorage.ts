@@ -1,14 +1,17 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from "react";
 
-export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T | ((prev: T) => T)) => void] {
+export function useLocalStorage<T>(
+  key: string,
+  initialValue: T,
+): [T, (value: T | ((prev: T) => T)) => void] {
   // Use a lazy initializer for state to avoid useEffect-driven cascading renders on mount
   const [storedValue, setStoredValue] = useState<T>(() => {
-    if (typeof window === 'undefined') return initialValue;
+    if (typeof window === "undefined") return initialValue;
     try {
       const item = window.localStorage.getItem(key);
       return item ? JSON.parse(item) : initialValue;
     } catch (error) {
-      console.error('Error reading from localStorage:', error);
+      console.error("Error reading from localStorage:", error);
       return initialValue;
     }
   });
@@ -31,7 +34,7 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T 
       // Wrap in setTimeout to move out of the render cycle and suppress lint warnings
       // about cascading renders if this update happens synchronously.
       setTimeout(() => {
-        setStoredValue(prev => {
+        setStoredValue((prev) => {
           if (JSON.stringify(prev) !== JSON.stringify(newValue)) {
             return newValue;
           }
@@ -39,23 +42,26 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T 
         });
       }, 0);
     } catch (error) {
-      console.error('Error syncing with localStorage:', error);
+      console.error("Error syncing with localStorage:", error);
     }
   }, [key, initialValue]);
 
-  const setValue = useCallback((value: T | ((prev: T) => T)) => {
-    try {
-      setStoredValue(prev => {
-        const valueToStore = value instanceof Function ? value(prev) : value;
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem(key, JSON.stringify(valueToStore));
-        }
-        return valueToStore;
-      });
-    } catch (error) {
-      console.error('Error saving to localStorage:', error);
-    }
-  }, [key]);
+  const setValue = useCallback(
+    (value: T | ((prev: T) => T)) => {
+      try {
+        setStoredValue((prev) => {
+          const valueToStore = value instanceof Function ? value(prev) : value;
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(key, JSON.stringify(valueToStore));
+          }
+          return valueToStore;
+        });
+      } catch (error) {
+        console.error("Error saving to localStorage:", error);
+      }
+    },
+    [key],
+  );
 
   return [storedValue, setValue];
 }

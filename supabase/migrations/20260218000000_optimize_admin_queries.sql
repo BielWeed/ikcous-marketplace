@@ -2,11 +2,21 @@
 -- Date: 2026-02-18
 
 -- 1. Create Indexes for common query patterns
-create index if not exists idx_marketplace_orders_created_at on public.marketplace_orders(created_at desc);
-create index if not exists idx_marketplace_orders_status on public.marketplace_orders(status);
-create index if not exists idx_marketplace_orders_user_id on public.marketplace_orders(user_id);
-create index if not exists idx_marketplace_order_items_order_id on public.marketplace_order_items(order_id);
-create index if not exists idx_marketplace_order_items_product_id on public.marketplace_order_items(product_id);
+create index if not exists idx_marketplace_orders_created_at on public.marketplace_orders (
+    created_at desc
+);
+create index if not exists idx_marketplace_orders_status on public.marketplace_orders (
+    status
+);
+create index if not exists idx_marketplace_orders_user_id on public.marketplace_orders (
+    user_id
+);
+create index if not exists idx_marketplace_order_items_order_id on public.marketplace_order_items (
+    order_id
+);
+create index if not exists idx_marketplace_order_items_product_id on public.marketplace_order_items (
+    product_id
+);
 
 -- 2. RPC: get_admin_dashboard_summary
 -- Aggregates all necessary KPIs for the dashboard in one single roundtrip.
@@ -153,19 +163,19 @@ $$;
 
 -- Update marketplace_orders policy
 drop policy if exists "Enable all access for authenticated users" on public.marketplace_orders;
-create policy "Admins have full access, users see their own" 
-on public.marketplace_orders 
-for all 
+create policy "Admins have full access, users see their own"
+on public.marketplace_orders
+for all
 using (public.is_admin() or auth.uid() = user_id);
 
 drop policy if exists "Enable all access for authenticated users" on public.marketplace_order_items;
-create policy "Admins have full access, users see through orders" 
-on public.marketplace_order_items 
-for all 
+create policy "Admins have full access, users see through orders"
+on public.marketplace_order_items
+for all
 using (
-    public.is_admin() or 
-    exists (
-        select 1 from public.marketplace_orders 
+    public.is_admin()
+    or exists (
+        select 1 from public.marketplace_orders
         where id = order_id and user_id = auth.uid()
     )
 );

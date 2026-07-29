@@ -4,14 +4,14 @@
 DROP FUNCTION IF EXISTS public.create_marketplace_order_v22;
 
 CREATE OR REPLACE FUNCTION public.create_marketplace_order_v22(
-    p_items jsonb, 
-    p_total_amount numeric, 
-    p_shipping_cost numeric, 
-    p_payment_method text, 
-    p_address_id uuid, 
-    p_coupon_code text DEFAULT NULL::text, 
-    p_customer_name text DEFAULT NULL::text, 
-    p_customer_phone text DEFAULT NULL::text, 
+    p_items jsonb,
+    p_total_amount numeric,
+    p_shipping_cost numeric,
+    p_payment_method text,
+    p_address_id uuid,
+    p_coupon_code text DEFAULT NULL::text,
+    p_customer_name text DEFAULT NULL::text,
+    p_customer_phone text DEFAULT NULL::text,
     p_observation text DEFAULT NULL::text
 )
 RETURNS uuid

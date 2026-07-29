@@ -5,12 +5,24 @@
 BEGIN;
 
 -- 1. DROP Legacy Shadow RPCs (Eliminate attack surface)
-DROP FUNCTION IF EXISTS public.create_marketplace_order_v3(jsonb, text, uuid, text, text, text, text, uuid) CASCADE;
-DROP FUNCTION IF EXISTS public.create_marketplace_order_v7(uuid, jsonb, text, text) CASCADE;
-DROP FUNCTION IF EXISTS public.create_marketplace_order_v8(uuid, jsonb, text, text) CASCADE;
-DROP FUNCTION IF EXISTS public.create_marketplace_order_v9(jsonb, text, uuid, text, text, text, text, uuid) CASCADE;
-DROP FUNCTION IF EXISTS public.create_marketplace_order_v10(jsonb, text, uuid, text, text, text, text, uuid) CASCADE;
-DROP FUNCTION IF EXISTS public.create_marketplace_order_v11(uuid, jsonb, numeric, numeric, text, uuid, text, text) CASCADE;
+DROP FUNCTION IF EXISTS public.create_marketplace_order_v3(
+    jsonb, text, uuid, text, text, text, text, uuid
+) CASCADE;
+DROP FUNCTION IF EXISTS public.create_marketplace_order_v7(
+    uuid, jsonb, text, text
+) CASCADE;
+DROP FUNCTION IF EXISTS public.create_marketplace_order_v8(
+    uuid, jsonb, text, text
+) CASCADE;
+DROP FUNCTION IF EXISTS public.create_marketplace_order_v9(
+    jsonb, text, uuid, text, text, text, text, uuid
+) CASCADE;
+DROP FUNCTION IF EXISTS public.create_marketplace_order_v10(
+    jsonb, text, uuid, text, text, text, text, uuid
+) CASCADE;
+DROP FUNCTION IF EXISTS public.create_marketplace_order_v11(
+    uuid, jsonb, numeric, numeric, text, uuid, text, text
+) CASCADE;
 
 -- 2. Consolidate is_admin() - High Performance & Security Definer
 CREATE OR REPLACE FUNCTION public.is_admin()
@@ -29,8 +41,10 @@ END;
 $$;
 
 -- 3. Robust Coupon Validation RPC (Used for UI feedback, but calculation is duplicated in Order RPC for safety)
-CREATE OR REPLACE FUNCTION public.validate_coupon_secure_v2(p_code TEXT, p_subtotal NUMERIC)
-RETURNS JSONB
+CREATE OR REPLACE FUNCTION public.validate_coupon_secure_v2(
+    p_code text, p_subtotal numeric
+)
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
@@ -75,16 +89,16 @@ $$;
 -- 4. THE ULTIMATE RPC: create_marketplace_order_v12
 -- Aligned with Frontend parameters but calculating everything Server-Side.
 CREATE OR REPLACE FUNCTION public.create_marketplace_order_v12(
-    p_items JSONB,
-    p_payment_method TEXT,
-    p_address_id UUID,
-    p_coupon_code TEXT,
-    p_customer_name TEXT,
-    p_customer_phone TEXT,
-    p_notes TEXT,
-    p_user_id UUID DEFAULT NULL
+    p_items jsonb,
+    p_payment_method text,
+    p_address_id uuid,
+    p_coupon_code text,
+    p_customer_name text,
+    p_customer_phone text,
+    p_notes text,
+    p_user_id uuid DEFAULT NULL
 )
-RETURNS JSONB
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public

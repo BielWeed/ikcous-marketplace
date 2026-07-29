@@ -1,237 +1,253 @@
-import { useState, useCallback, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import type { Address } from '@/types';
-import { useAuth } from '@/hooks/useAuth';
-import { toast } from 'sonner';
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/lib/supabase";
+import type { Address } from "@/types";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 export function useAddresses() {
-    const { user } = useAuth();
-    const [addresses, setAddresses] = useState<Address[]>(() => {
-        if (typeof window === 'undefined' || !user?.id) return [];
-        try {
-            const cacheKey = `ikcous_addresses_cache_${user.id}`;
-            const cached = localStorage.getItem(cacheKey);
-            if (cached) {
-                const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed)) {
-                    return parsed;
-                }
-            }
-        } catch (e) {
-            console.error('Error loading cached addresses:', e);
+  const { user } = useAuth();
+  const [addresses, setAddresses] = useState<Address[]>(() => {
+    if (typeof window === "undefined" || !user?.id) return [];
+    try {
+      const cacheKey = `ikcous_addresses_cache_${user.id}`;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          return parsed;
         }
-        return [];
-    });
-    const [loading, setLoading] = useState(false);
+      }
+    } catch (e) {
+      console.error("Error loading cached addresses:", e);
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(false);
 
-    // Synchronously load cache on mount or when user changes
-    useEffect(() => {
-        if (!user?.id) {
-            setAddresses([]);
-            return;
+  // Synchronously load cache on mount or when user changes
+  useEffect(() => {
+    if (!user?.id) {
+      setAddresses([]);
+      return;
+    }
+    const cacheKey = `ikcous_addresses_cache_${user.id}`;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          setAddresses(parsed);
         }
-        const cacheKey = `ikcous_addresses_cache_${user.id}`;
-        try {
-            const cached = localStorage.getItem(cacheKey);
-            if (cached) {
-                const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed)) {
-                    setAddresses(parsed);
-                }
-            }
-        } catch (e) {
-            console.error('Error loading cached addresses:', e);
+      }
+    } catch (e) {
+      console.error("Error loading cached addresses:", e);
+    }
+  }, [user?.id]);
+
+  const fetchAddresses = useCallback(async () => {
+    if (!user) return;
+    const cacheKey = `ikcous_addresses_cache_${user.id}`;
+    let hasCache = false;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        hasCache = true;
+      }
+    } catch {
+      // ignore localStorage issues
+    }
+
+    if (!hasCache) {
+      setLoading(true);
+    }
+    try {
+      const { data, error } = await supabase
+        .from("user_addresses")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("is_default", { ascending: false })
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      const mapped = (data || []).map((a) => ({
+        id: a.id,
+        user_id: a.user_id,
+        name: a.name,
+        recipient_name: a.recipient_name,
+        cep: a.cep,
+        street: a.street,
+        number: a.number,
+        complement: a.complement,
+        neighborhood: a.neighborhood,
+        city: a.city,
+        state: a.state,
+        reference: a.reference,
+        is_default: a.is_default || false,
+      }));
+      setAddresses(mapped);
+      localStorage.setItem(cacheKey, JSON.stringify(mapped));
+    } catch (error) {
+      console.error("Error fetching addresses:", error);
+      toast.error("Erro ao carregar endereços");
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  const addAddress = async (address: Omit<Address, "id" | "user_id">) => {
+    if (!user) return null;
+    try {
+      // If this is the first address, make it default automatically
+      const isFirst = addresses.length === 0;
+      const newAddress = {
+        ...address,
+        user_id: user.id,
+        is_default: isFirst ? true : address.is_default,
+      };
+
+      const { data, error } = await supabase
+        .from("user_addresses")
+        .insert(newAddress)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const formattedAddress: Address = {
+        id: data.id,
+        user_id: data.user_id,
+        name: data.name,
+        recipient_name: data.recipient_name,
+        cep: data.cep,
+        street: data.street,
+        number: data.number,
+        complement: data.complement,
+        neighborhood: data.neighborhood,
+        city: data.city,
+        state: data.state,
+        reference: data.reference,
+        is_default: data.is_default || false,
+      };
+
+      setAddresses((prev) => {
+        let updated;
+        // If new address is default, update others
+        if (formattedAddress.is_default) {
+          updated = [
+            formattedAddress,
+            ...prev.map((a) => ({ ...a, is_default: false })),
+          ];
+        } else {
+          updated = [...prev, formattedAddress];
         }
-    }, [user?.id]);
+        localStorage.setItem(
+          `ikcous_addresses_cache_${user.id}`,
+          JSON.stringify(updated),
+        );
+        return updated;
+      });
 
-    const fetchAddresses = useCallback(async () => {
-        if (!user) return;
-        const cacheKey = `ikcous_addresses_cache_${user.id}`;
-        let hasCache = false;
-        try {
-            const cached = localStorage.getItem(cacheKey);
-            if (cached) {
-                hasCache = true;
-            }
-        } catch (_e) {
-            // ignore localStorage issues
+      toast.success("Endereço adicionado com sucesso");
+      return formattedAddress;
+    } catch (error) {
+      console.error("Error adding address:", error);
+      toast.error("Erro ao adicionar endereço");
+      return null;
+    }
+  };
+
+  const updateAddress = async (id: string, updates: Partial<Address>) => {
+    if (!user) return false;
+    try {
+      const { data, error } = await supabase
+        .from("user_addresses")
+        .update(updates)
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const formattedAddress: Address = {
+        id: data.id,
+        user_id: data.user_id,
+        name: data.name,
+        recipient_name: data.recipient_name,
+        cep: data.cep,
+        street: data.street,
+        number: data.number,
+        complement: data.complement,
+        neighborhood: data.neighborhood,
+        city: data.city,
+        state: data.state,
+        reference: data.reference,
+        is_default: data.is_default || false,
+      };
+
+      setAddresses((prev) => {
+        let updated;
+        if (updates.is_default) {
+          updated = prev
+            .map((a) =>
+              a.id === id ? formattedAddress : { ...a, is_default: false },
+            )
+            .sort((a, b) =>
+              a.is_default === b.is_default ? 0 : a.is_default ? -1 : 1,
+            );
+        } else {
+          updated = prev.map((a) => (a.id === id ? formattedAddress : a));
         }
+        localStorage.setItem(
+          `ikcous_addresses_cache_${user.id}`,
+          JSON.stringify(updated),
+        );
+        return updated;
+      });
 
-        if (!hasCache) {
-            setLoading(true);
-        }
-        try {
-            const { data, error } = await supabase
-                .from('user_addresses')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('is_default', { ascending: false })
-                .order('created_at', { ascending: false });
+      toast.success("Endereço atualizado");
+      return true;
+    } catch (error) {
+      console.error("Error updating address:", error);
+      toast.error("Erro ao atualizar endereço");
+      return false;
+    }
+  };
 
-            if (error) throw error;
-            const mapped = (data || []).map(a => ({
-                id: a.id,
-                user_id: a.user_id,
-                name: a.name,
-                recipient_name: a.recipient_name,
-                cep: a.cep,
-                street: a.street,
-                number: a.number,
-                complement: a.complement,
-                neighborhood: a.neighborhood,
-                city: a.city,
-                state: a.state,
-                reference: a.reference,
-                is_default: a.is_default || false
-            }));
-            setAddresses(mapped);
-            localStorage.setItem(cacheKey, JSON.stringify(mapped));
-        } catch (error) {
-            console.error('Error fetching addresses:', error);
-            toast.error('Erro ao carregar endereços');
-        } finally {
-            setLoading(false);
-        }
-    }, [user]);
+  const deleteAddress = async (id: string) => {
+    if (!user) return false;
+    try {
+      const { error } = await supabase
+        .from("user_addresses")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", user.id);
 
-    const addAddress = async (address: Omit<Address, 'id' | 'user_id'>) => {
-        if (!user) return null;
-        try {
-            // If this is the first address, make it default automatically
-            const isFirst = addresses.length === 0;
-            const newAddress = {
-                ...address,
-                user_id: user.id,
-                is_default: isFirst ? true : address.is_default
-            };
+      if (error) throw error;
 
-            const { data, error } = await supabase
-                .from('user_addresses')
-                .insert(newAddress)
-                .select()
-                .single();
+      setAddresses((prev) => {
+        const updated = prev.filter((a) => a.id !== id);
+        localStorage.setItem(
+          `ikcous_addresses_cache_${user.id}`,
+          JSON.stringify(updated),
+        );
+        return updated;
+      });
+      toast.success("Endereço removido");
+      return true;
+    } catch (error) {
+      console.error("Error deleting address:", error);
+      toast.error("Erro ao remover endereço");
+      return false;
+    }
+  };
 
-            if (error) throw error;
-
-            const formattedAddress: Address = {
-                id: data.id,
-                user_id: data.user_id,
-                name: data.name,
-                recipient_name: data.recipient_name,
-                cep: data.cep,
-                street: data.street,
-                number: data.number,
-                complement: data.complement,
-                neighborhood: data.neighborhood,
-                city: data.city,
-                state: data.state,
-                reference: data.reference,
-                is_default: data.is_default || false
-            };
-
-            setAddresses(prev => {
-                let updated;
-                // If new address is default, update others
-                if (formattedAddress.is_default) {
-                    updated = [formattedAddress, ...prev.map(a => ({ ...a, is_default: false }))];
-                } else {
-                    updated = [...prev, formattedAddress];
-                }
-                localStorage.setItem(`ikcous_addresses_cache_${user.id}`, JSON.stringify(updated));
-                return updated;
-            });
-
-            toast.success('Endereço adicionado com sucesso');
-            return formattedAddress;
-        } catch (error) {
-            console.error('Error adding address:', error);
-            toast.error('Erro ao adicionar endereço');
-            return null;
-        }
-    };
-
-    const updateAddress = async (id: string, updates: Partial<Address>) => {
-        if (!user) return false;
-        try {
-            const { data, error } = await supabase
-                .from('user_addresses')
-                .update(updates)
-                .eq('id', id)
-                .eq('user_id', user.id)
-                .select()
-                .single();
-
-            if (error) throw error;
-
-            const formattedAddress: Address = {
-                id: data.id,
-                user_id: data.user_id,
-                name: data.name,
-                recipient_name: data.recipient_name,
-                cep: data.cep,
-                street: data.street,
-                number: data.number,
-                complement: data.complement,
-                neighborhood: data.neighborhood,
-                city: data.city,
-                state: data.state,
-                reference: data.reference,
-                is_default: data.is_default || false
-            };
-
-            setAddresses(prev => {
-                let updated;
-                if (updates.is_default) {
-                    updated = prev.map(a =>
-                        a.id === id ? formattedAddress : { ...a, is_default: false }
-                    ).sort((a, b) => (a.is_default === b.is_default ? 0 : a.is_default ? -1 : 1));
-                } else {
-                    updated = prev.map(a => a.id === id ? formattedAddress : a);
-                }
-                localStorage.setItem(`ikcous_addresses_cache_${user.id}`, JSON.stringify(updated));
-                return updated;
-            });
-
-            toast.success('Endereço atualizado');
-            return true;
-        } catch (error) {
-            console.error('Error updating address:', error);
-            toast.error('Erro ao atualizar endereço');
-            return false;
-        }
-    };
-
-    const deleteAddress = async (id: string) => {
-        if (!user) return false;
-        try {
-            const { error } = await supabase
-                .from('user_addresses')
-                .delete()
-                .eq('id', id)
-                .eq('user_id', user.id);
-
-            if (error) throw error;
-
-            setAddresses(prev => {
-                const updated = prev.filter(a => a.id !== id);
-                localStorage.setItem(`ikcous_addresses_cache_${user.id}`, JSON.stringify(updated));
-                return updated;
-            });
-            toast.success('Endereço removido');
-            return true;
-        } catch (error) {
-            console.error('Error deleting address:', error);
-            toast.error('Erro ao remover endereço');
-            return false;
-        }
-    };
-
-    return {
-        addresses,
-        loading,
-        fetchAddresses,
-        addAddress,
-        updateAddress,
-        deleteAddress
-    };
+  return {
+    addresses,
+    loading,
+    fetchAddresses,
+    addAddress,
+    updateAddress,
+    deleteAddress,
+  };
 }

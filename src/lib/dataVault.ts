@@ -1,29 +1,29 @@
 /**
  * DataVault — IKCOUS Offline-First IndexedDB Engine
- * 
+ *
  * Replaces all localStorage-based caching with IndexedDB for:
  * - No 5MB limit (hundreds of thousands of records)
  * - Non-blocking async reads (no JSON.parse on main thread)
  * - Versioned migrations with atomic transactions
  * - Per-store sync timestamps for stale-while-revalidate
- * 
+ *
  * @module dataVault
  */
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const DB_NAME = 'ikcous-datavault';
-const DATA_VAULT_VERSION = 1;
+const DB_NAME = "ikcous-datavault";
+const DATA_VAULT_VERSION = 2;
 
 /** All valid store names in the DataVault */
-export type StoreName = 
-  | 'products' 
-  | 'categories' 
-  | 'banners' 
-  | 'store_config' 
-  | 'coupons' 
-  | 'product_variants'
-  | '_meta';
+export type StoreName =
+  | "products"
+  | "categories"
+  | "banners"
+  | "store_config"
+  | "coupons"
+  | "product_variants"
+  | "_meta";
 
 // ─── Migration System ────────────────────────────────────────────────────────
 
@@ -37,39 +37,41 @@ type MigrationFn = (db: IDBDatabase, tx: IDBTransaction) => void;
 const MIGRATIONS: Record<number, MigrationFn> = {
   1: (db) => {
     // ── Products ──
-    const products = db.createObjectStore('products', { keyPath: 'id' });
-    products.createIndex('by_category', 'category');
-    products.createIndex('by_active', 'isActive');
+    const products = db.createObjectStore("products", { keyPath: "id" });
+    products.createIndex("by_category", "category");
+    products.createIndex("by_active", "isActive");
 
     // ── Categories ──
-    const categories = db.createObjectStore('categories', { keyPath: 'id' });
-    categories.createIndex('by_name', 'name');
+    const categories = db.createObjectStore("categories", { keyPath: "id" });
+    categories.createIndex("by_name", "name");
 
     // ── Banners ──
-    const banners = db.createObjectStore('banners', { keyPath: 'id' });
-    banners.createIndex('by_position', 'position');
-    banners.createIndex('by_active', 'active');
+    const banners = db.createObjectStore("banners", { keyPath: "id" });
+    banners.createIndex("by_position", "position");
+    banners.createIndex("by_active", "active");
 
     // ── Store Config (single-row pattern) ──
-    db.createObjectStore('store_config', { keyPath: 'id' });
+    db.createObjectStore("store_config", { keyPath: "id" });
 
     // ── Coupons ──
-    const coupons = db.createObjectStore('coupons', { keyPath: 'id' });
-    coupons.createIndex('by_code', 'code', { unique: true });
-    coupons.createIndex('by_active', 'active');
+    const coupons = db.createObjectStore("coupons", { keyPath: "id" });
+    coupons.createIndex("by_code", "code", { unique: true });
+    coupons.createIndex("by_active", "active");
 
     // ── Product Variants ──
-    const variants = db.createObjectStore('product_variants', { keyPath: 'id' });
-    variants.createIndex('by_product_id', 'productId');
+    const variants = db.createObjectStore("product_variants", {
+      keyPath: "id",
+    });
+    variants.createIndex("by_product_id", "productId");
 
     // ── Meta (sync timestamps per store) ──
-    db.createObjectStore('_meta', { keyPath: 'store' });
+    db.createObjectStore("_meta", { keyPath: "store" });
   },
-  // Future migrations:
-  // 2: (db, tx) => {
-  //   const store = tx.objectStore('products');
-  //   store.createIndex('by_tags', 'tags', { multiEntry: true });
-  // },
+  2: (_db, tx) => {
+    const store = tx.objectStore("coupons");
+    store.deleteIndex("by_code");
+    store.createIndex("by_code", "code", { unique: false });
+  },
 };
 
 // ─── Singleton ───────────────────────────────────────────────────────────────
@@ -93,57 +95,106 @@ export class DataVault {
    * Opens the IndexedDB database and runs any pending migrations.
    * Safe to call multiple times — returns the same instance.
    */
-  static async init(): Promise<DataVault> {
+  static async init(retries = 3, delay = 250): Promise<DataVault> {
     if (_instance) return _instance;
     if (_initPromise) return _initPromise;
 
-    _initPromise = new Promise<DataVault>((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DATA_VAULT_VERSION);
+    const attemptOpen = (attempt: number): Promise<DataVault> => {
+      return new Promise<DataVault>((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DATA_VAULT_VERSION);
 
-      request.onupgradeneeded = (event) => {
-        const db = request.result;
-        const tx = request.transaction!;
-        const oldVersion = event.oldVersion;
+        request.onupgradeneeded = (event) => {
+          const db = request.result;
+          const tx = request.transaction!;
+          const oldVersion = event.oldVersion;
 
-        console.log(`[DataVault] Upgrading from v${oldVersion} to v${DATA_VAULT_VERSION}`);
+          console.log(
+            `[DataVault] Upgrading from v${oldVersion} to v${DATA_VAULT_VERSION}`,
+          );
 
-        // Run sequential migrations
-        for (let v = oldVersion + 1; v <= DATA_VAULT_VERSION; v++) {
-          const migration = MIGRATIONS[v];
-          if (migration) {
-            console.log(`[DataVault] Running migration v${v}...`);
-            migration(db, tx);
+          // Run sequential migrations
+          for (let v = oldVersion + 1; v <= DATA_VAULT_VERSION; v++) {
+            const migration = MIGRATIONS[v];
+            if (migration) {
+              console.log(`[DataVault] Running migration v${v}...`);
+              migration(db, tx);
+            }
           }
-        }
-      };
-
-      request.onsuccess = () => {
-        const db = request.result;
-        
-        // Handle version change from another tab
-        db.onversionchange = () => {
-          db.close();
-          _instance = null;
-          _initPromise = null;
-          console.warn('[DataVault] Database version changed in another tab. Closing connection.');
         };
 
-        _instance = new DataVault(db);
-        console.log(`[DataVault] Ready (v${DATA_VAULT_VERSION}, stores: ${Array.from(db.objectStoreNames).join(', ')})`);
-        resolve(_instance);
-      };
+        request.onsuccess = () => {
+          const db = request.result;
 
-      request.onerror = () => {
-        console.error('[DataVault] Failed to open database:', request.error);
-        _initPromise = null;
-        reject(request.error);
-      };
+          // Handle version change from another tab
+          db.onversionchange = () => {
+            db.close();
+            _instance = null;
+            _initPromise = null;
+            console.warn(
+              "[DataVault] Database version changed in another tab. Closing connection.",
+            );
+          };
 
-      request.onblocked = () => {
-        console.warn('[DataVault] Database open blocked — close other tabs and retry.');
-        _initPromise = null;
-        reject(new Error('DataVault database open blocked'));
-      };
+          // Register cleanup on tab close to avoid blocking other connections/reloads
+          if (typeof window !== "undefined") {
+            const cleanClose = () => {
+              try {
+                db.close();
+                console.log("[DataVault] Connection closed cleanly on unload.");
+              } catch {
+                // ignore
+              }
+            };
+            window.addEventListener("beforeunload", cleanClose);
+          }
+
+          _instance = new DataVault(db);
+          console.log(
+            "[DataVault] Ready (v%s, stores: %s)",
+            DATA_VAULT_VERSION,
+            Array.from(db.objectStoreNames).join(", "),
+          );
+          resolve(_instance);
+        };
+
+        request.onerror = async () => {
+          console.warn(
+            "[DataVault] Failed to open database (attempt %d/%d):",
+            attempt,
+            retries + 1,
+            request.error,
+          );
+          if (attempt <= retries) {
+            _initPromise = null;
+            await new Promise((r) => setTimeout(r, delay * 2 ** (attempt - 1)));
+            resolve(attemptOpen(attempt + 1));
+          } else {
+            _initPromise = null;
+            reject(request.error ?? new Error("IndexedDB database open failed"));
+          }
+        };
+
+        request.onblocked = async () => {
+          console.warn(
+            "[DataVault] Database open blocked (attempt %d/%d) — close other tabs or retry",
+            attempt,
+            retries + 1,
+          );
+          if (attempt <= retries) {
+            _initPromise = null;
+            await new Promise((r) => setTimeout(r, delay * 2 ** (attempt - 1)));
+            resolve(attemptOpen(attempt + 1));
+          } else {
+            _initPromise = null;
+            reject(new Error("DataVault database open blocked"));
+          }
+        };
+      });
+    };
+
+    _initPromise = attemptOpen(1).catch((err) => {
+      _initPromise = null;
+      throw err;
     });
 
     return _initPromise;
@@ -168,15 +219,15 @@ export class DataVault {
   async getAll<T>(store: StoreName): Promise<T[]> {
     return new Promise((resolve, reject) => {
       try {
-        const tx = this.db.transaction(store, 'readonly');
+        const tx = this.db.transaction(store, "readonly");
         const objectStore = tx.objectStore(store);
         const request = objectStore.getAll();
 
         request.onsuccess = () => resolve(request.result as T[]);
-        request.onerror = () => reject(request.error);
+        request.onerror = () => reject(request.error ?? new Error(`getAll('${store}') failed`));
       } catch (err) {
         // Store may not exist if migration failed
-        console.error(`[DataVault] getAll('${store}') failed:`, err);
+        console.error("[DataVault] getAll('%s') failed:", store, err);
         resolve([]);
       }
     });
@@ -188,14 +239,19 @@ export class DataVault {
   async getById<T>(store: StoreName, id: string): Promise<T | undefined> {
     return new Promise((resolve, reject) => {
       try {
-        const tx = this.db.transaction(store, 'readonly');
+        const tx = this.db.transaction(store, "readonly");
         const objectStore = tx.objectStore(store);
         const request = objectStore.get(id);
 
         request.onsuccess = () => resolve(request.result as T | undefined);
-        request.onerror = () => reject(request.error);
+        request.onerror = () => reject(request.error ?? new Error(`getById('${store}', '${id}') failed`));
       } catch (err) {
-        console.error(`[DataVault] getById('${store}', '${id}') failed:`, err);
+        console.error(
+          "[DataVault] getById('%s', '%s') failed:",
+          store,
+          id,
+          err,
+        );
         resolve(undefined);
       }
     });
@@ -204,18 +260,27 @@ export class DataVault {
   /**
    * Get records by index value.
    */
-  async getByIndex<T>(store: StoreName, indexName: string, value: IDBValidKey): Promise<T[]> {
+  async getByIndex<T>(
+    store: StoreName,
+    indexName: string,
+    value: IDBValidKey,
+  ): Promise<T[]> {
     return new Promise((resolve, reject) => {
       try {
-        const tx = this.db.transaction(store, 'readonly');
+        const tx = this.db.transaction(store, "readonly");
         const objectStore = tx.objectStore(store);
         const index = objectStore.index(indexName);
         const request = index.getAll(value);
 
         request.onsuccess = () => resolve(request.result as T[]);
-        request.onerror = () => reject(request.error);
+        request.onerror = () => reject(request.error ?? new Error(`getByIndex('${store}', '${indexName}') failed`));
       } catch (err) {
-        console.error(`[DataVault] getByIndex('${store}', '${indexName}') failed:`, err);
+        console.error(
+          "[DataVault] getByIndex('%s', '%s') failed:",
+          store,
+          indexName,
+          err,
+        );
         resolve([]);
       }
     });
@@ -230,7 +295,7 @@ export class DataVault {
 
     return new Promise((resolve, reject) => {
       try {
-        const tx = this.db.transaction(store, 'readwrite');
+        const tx = this.db.transaction(store, "readwrite");
         const objectStore = tx.objectStore(store);
 
         for (const item of items) {
@@ -238,10 +303,10 @@ export class DataVault {
         }
 
         tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+        tx.onerror = () => reject(tx.error ?? new Error(`putMany('${store}') failed`));
+        tx.onabort = () => reject(tx.error ?? new Error(`Transaction aborted for putMany('${store}')`));
       } catch (err) {
-        console.error(`[DataVault] putMany('${store}') failed:`, err);
+        console.error("[DataVault] putMany('%s') failed:", store, err);
         reject(err);
       }
     });
@@ -260,14 +325,19 @@ export class DataVault {
   async deleteById(store: StoreName, id: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        const tx = this.db.transaction(store, 'readwrite');
+        const tx = this.db.transaction(store, "readwrite");
         const objectStore = tx.objectStore(store);
         const request = objectStore.delete(id);
 
         request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
+        request.onerror = () => reject(request.error ?? new Error(`deleteById('${store}', '${id}') failed`));
       } catch (err) {
-        console.error(`[DataVault] deleteById('${store}', '${id}') failed:`, err);
+        console.error(
+          "[DataVault] deleteById('%s', '%s') failed:",
+          store,
+          id,
+          err,
+        );
         reject(err);
       }
     });
@@ -279,14 +349,14 @@ export class DataVault {
   async clear(store: StoreName): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        const tx = this.db.transaction(store, 'readwrite');
+        const tx = this.db.transaction(store, "readwrite");
         const objectStore = tx.objectStore(store);
         const request = objectStore.clear();
 
         request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
+        request.onerror = () => reject(request.error ?? new Error(`clear('${store}') failed`));
       } catch (err) {
-        console.error(`[DataVault] clear('${store}') failed:`, err);
+        console.error("[DataVault] clear('%s') failed:", store, err);
         reject(err);
       }
     });
@@ -299,7 +369,7 @@ export class DataVault {
   async replaceAll<T>(store: StoreName, items: T[]): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        const tx = this.db.transaction(store, 'readwrite');
+        const tx = this.db.transaction(store, "readwrite");
         const objectStore = tx.objectStore(store);
 
         // Clear first
@@ -311,10 +381,10 @@ export class DataVault {
         }
 
         tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+        tx.onerror = () => reject(tx.error ?? new Error(`replaceAll('${store}') failed`));
+        tx.onabort = () => reject(tx.error ?? new Error(`Transaction aborted for replaceAll('${store}')`));
       } catch (err) {
-        console.error(`[DataVault] replaceAll('${store}') failed:`, err);
+        console.error("[DataVault] replaceAll('%s') failed:", store, err);
         reject(err);
       }
     });
@@ -326,14 +396,14 @@ export class DataVault {
   async count(store: StoreName): Promise<number> {
     return new Promise((resolve, reject) => {
       try {
-        const tx = this.db.transaction(store, 'readonly');
+        const tx = this.db.transaction(store, "readonly");
         const objectStore = tx.objectStore(store);
         const request = objectStore.count();
 
         request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
+        request.onerror = () => reject(request.error ?? new Error(`count('${store}') failed`));
       } catch (err) {
-        console.error(`[DataVault] count('${store}') failed:`, err);
+        console.error("[DataVault] count('%s') failed:", store, err);
         resolve(0);
       }
     });
@@ -346,7 +416,10 @@ export class DataVault {
    * Returns 0 if never synced.
    */
   async getLastSync(store: StoreName): Promise<number> {
-    const meta = await this.getById<{ store: string; lastSyncedAt: number }>('_meta', store);
+    const meta = await this.getById<{ store: string; lastSyncedAt: number }>(
+      "_meta",
+      store,
+    );
     return meta?.lastSyncedAt ?? 0;
   }
 
@@ -354,7 +427,7 @@ export class DataVault {
    * Set the last sync timestamp for a store.
    */
   async setLastSync(store: StoreName, ts: number = Date.now()): Promise<void> {
-    await this.put('_meta', { store, lastSyncedAt: ts });
+    await this.put("_meta", { store, lastSyncedAt: ts });
   }
 
   // ── localStorage Migration ─────────────────────────────────────────────────
@@ -366,11 +439,11 @@ export class DataVault {
    */
   async migrateFromLocalStorage(): Promise<boolean> {
     const MIGRATION_KEYS: Record<string, StoreName> = {
-      'ikcous_store_config_cache': 'store_config',
-      'ikcous_products_cache': 'products',
-      'ikcous_admin_products_cache': 'products',
-      'ikcous_categories_cache': 'categories',
-      'ikcous_banners_cache': 'banners',
+      ikcous_store_config_cache: "store_config",
+      ikcous_products_cache: "products",
+      ikcous_admin_products_cache: "products",
+      ikcous_categories_cache: "categories",
+      ikcous_banners_cache: "banners",
     };
 
     let migrated = false;
@@ -384,27 +457,35 @@ export class DataVault {
         if (!parsed) continue;
 
         // store_config is a single object, wrap in array
-        const items = storeName === 'store_config'
-          ? [{ id: 'singleton', ...parsed }]
-          : Array.isArray(parsed) ? parsed : [parsed];
+        const items =
+          storeName === "store_config"
+            ? [{ id: "singleton", ...parsed }]
+            : Array.isArray(parsed)
+              ? parsed
+              : [parsed];
 
         if (items.length > 0) {
           await this.putMany(storeName, items);
           await this.setLastSync(storeName);
-          console.log(`[DataVault] Migrated ${items.length} items from localStorage key '${lsKey}' → IDB store '${storeName}'`);
+          console.log(
+            "[DataVault] Migrated %d items from localStorage key '%s' → IDB store '%s'",
+            items.length,
+            lsKey,
+            storeName,
+          );
           migrated = true;
         }
 
         // Clean up localStorage after successful migration
         localStorage.removeItem(lsKey);
       } catch (err) {
-        console.error(`[DataVault] Migration failed for key '${lsKey}':`, err);
+        console.error("[DataVault] Migration failed for key '%s':", lsKey, err);
         // Don't remove from localStorage on failure — keep as fallback
       }
     }
 
     if (migrated) {
-      console.log('[DataVault] localStorage → IndexedDB migration complete.');
+      console.log("[DataVault] localStorage → IndexedDB migration complete.");
     }
 
     return migrated;

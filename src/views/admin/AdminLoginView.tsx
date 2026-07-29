@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
-import type { View } from '@/types';
-import { useAuth } from '@/hooks/useAuth';
+import { branding } from "@/config/branding";
+import { useAuth } from "@/hooks/useAuth";
+import type { View } from "@/types";
+import { ArrowRight, Eye, EyeOff, Loader2, Lock } from "lucide-react";
+import type React from "react";
+import { useState } from "react";
 
 interface AdminLoginViewProps {
   readonly onLogin: () => void;
@@ -12,16 +14,16 @@ interface AdminLoginViewProps {
 // Password legacy removed
 
 export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setIsLoading(true);
 
     try {
@@ -29,10 +31,10 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
       if (success) {
         onLogin();
       } else {
-        setError('Email ou senha administrativos incorretos.');
+        setError("Email ou senha administrativos incorretos.");
       }
     } catch (err) {
-      setError('Ocorreu um erro ao tentar fazer login.');
+      setError("Ocorreu um erro ao tentar fazer login.");
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -40,29 +42,35 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#09090b] flex flex-col text-zinc-100 selection:bg-admin-gold/30">
+    <div className="flex min-h-screen flex-col bg-[#09090b] text-zinc-100 selection:bg-admin-gold/30">
       {/* Header */}
-      <div className="admin-glass px-6 py-4 flex items-center justify-between border-b border-white/5">
+      <div className="admin-glass flex items-center justify-between border-b border-white/5 px-6 py-4">
         <button
-          onClick={() => onNavigate('home')}
-          className="text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-white transition-colors"
+          onClick={() => onNavigate("home")}
+          className="text-[10px] font-black uppercase tracking-widest text-zinc-400 transition-colors hover:text-white"
         >
           Voltar à loja
         </button>
-        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">IKCOUS Admin</span>
+        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">
+          {branding.appName} Admin
+        </span>
         <div className="w-20" />
       </div>
 
       {/* Login Form */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4">
+      <div className="flex flex-1 flex-col items-center justify-center px-4">
         <div className="w-full max-w-sm">
           {/* Logo */}
-          <div className="text-center mb-10">
-            <div className="w-20 h-20 bg-zinc-950 text-white rounded-[20px] flex items-center justify-center mx-auto mb-6 shadow-premium border border-white/10">
-              <span className="text-3xl font-black italic">I</span>
+          <div className="mb-10 text-center">
+            <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-[20px] border border-white/10 bg-zinc-950 text-white shadow-premium">
+              <span className="text-3xl font-black italic">
+                {branding.appName.trim().charAt(0).toUpperCase()}
+              </span>
             </div>
-            <h1 className="text-xl font-black text-white uppercase tracking-tighter">Painel Administrativo</h1>
-            <p className="text-[10px] font-bold text-zinc-500 mt-2 uppercase tracking-[0.2em]">
+            <h1 className="text-xl font-black uppercase tracking-tighter text-white">
+              Painel Administrativo
+            </h1>
+            <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
               Acesso exclusivo à gestão do lojista
             </p>
           </div>
@@ -70,7 +78,10 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
           {/* Form */}
           <form onSubmit={handleSubmit} action="#" className="space-y-4">
             <div>
-              <label htmlFor="admin-email" className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 ml-1">
+              <label
+                htmlFor="admin-email"
+                className="mb-2 ml-1 block text-[10px] font-black uppercase tracking-widest text-zinc-500"
+              >
                 Email
               </label>
               <input
@@ -81,23 +92,27 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="username"
                 placeholder="admin@exemplo.com"
-                className="w-full px-5 py-4 bg-zinc-900/50 border border-white/10 rounded-2xl text-sm font-medium focus:outline-none focus:ring-4 focus:ring-admin-gold/20 focus:border-admin-gold transition-all mb-4 text-white placeholder:text-zinc-700"
+                className="mb-4 w-full rounded-2xl border border-white/10 bg-zinc-900/50 px-5 py-4 text-sm font-medium text-white transition-all placeholder:text-zinc-700 focus:border-admin-gold focus:outline-none focus:ring-4 focus:ring-admin-gold/20"
                 required
               />
-              <label htmlFor="admin-password" title="Senha de Acesso" className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 ml-1">
+              <label
+                htmlFor="admin-password"
+                title="Senha de Acesso"
+                className="mb-2 ml-1 block text-[10px] font-black uppercase tracking-widest text-zinc-500"
+              >
                 Senha de Acesso
               </label>
-              <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 group-focus-within:text-admin-gold transition-colors" />
+              <div className="group relative">
+                <Lock className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-zinc-500 transition-colors group-focus-within:text-admin-gold" />
                 <input
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   id="admin-password"
                   name="password"
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Digite a senha"
-                  className="w-full pl-11 pr-12 py-4 bg-zinc-900/50 border border-white/10 rounded-2xl text-sm font-medium focus:outline-none focus:ring-4 focus:ring-admin-gold/20 focus:border-admin-gold transition-all text-white placeholder:text-zinc-700"
+                  className="w-full rounded-2xl border border-white/10 bg-zinc-900/50 py-4 pl-11 pr-12 text-sm font-medium text-white transition-all placeholder:text-zinc-700 focus:border-admin-gold focus:outline-none focus:ring-4 focus:ring-admin-gold/20"
                   required
                 />
                 <button
@@ -105,13 +120,17 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? (
+                    <EyeOff className="size-4" />
+                  ) : (
+                    <Eye className="size-4" />
+                  )}
                 </button>
               </div>
             </div>
 
             {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-xl">
+              <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
                 {error}
               </div>
             )}
@@ -119,21 +138,20 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
             <button
               type="submit"
               disabled={!email || !password || isLoading}
-              className="w-full py-5 bg-admin-gold text-black font-black uppercase tracking-[0.3em] text-[10px] rounded-2xl hover:bg-admin-gold/90 disabled:bg-zinc-900 disabled:text-zinc-600 disabled:border-white/5 disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(212,175,55,0.2)] hover:shadow-[0_0_40px_rgba(212,175,55,0.3)]"
+              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-admin-gold py-5 text-[10px] font-black uppercase tracking-[0.3em] text-black shadow-[0_0_30px_rgba(212,175,55,0.2)] transition-all hover:bg-admin-gold/90 hover:shadow-[0_0_40px_rgba(212,175,55,0.3)] active:scale-95 disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-zinc-900 disabled:text-zinc-600"
             >
               {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <Loader2 className="size-5 animate-spin" />
               ) : (
                 <>
                   Entrar no Sistema
-                  <ArrowRight className="w-4 h-4" />
+                  <ArrowRight className="size-4" />
                 </>
               )}
             </button>
           </form>
 
           {/* Security: No default password hints in source code */}
-
         </div>
       </div>
     </div>

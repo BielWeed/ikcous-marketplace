@@ -16,15 +16,15 @@ DROP POLICY IF EXISTS "Enable all access for authenticated users" ON public.prod
 ALTER TABLE public.produtos ENABLE ROW LEVEL SECURITY;
 
 -- Public can only view ACTIVE products
-CREATE POLICY "Public view active products" 
-ON public.produtos 
-FOR SELECT 
+CREATE POLICY "Public view active products"
+ON public.produtos
+FOR SELECT
 USING (ativo = true);
 
 -- Admins can do anything
-CREATE POLICY "Admins full access on products" 
-ON public.produtos 
-FOR ALL 
+CREATE POLICY "Admins full access on products"
+ON public.produtos
+FOR ALL
 USING (public.is_admin());
 
 
@@ -37,15 +37,15 @@ DROP POLICY IF EXISTS "Admins full access on addresses" ON public.user_addresses
 
 ALTER TABLE public.user_addresses ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can manage their own addresses" 
-ON public.user_addresses 
-FOR ALL 
-USING (user_id = auth.uid()) 
+CREATE POLICY "Users can manage their own addresses"
+ON public.user_addresses
+FOR ALL
+USING (user_id = auth.uid())
 WITH CHECK (user_id = auth.uid());
 
-CREATE POLICY "Admins full access on addresses" 
-ON public.user_addresses 
-FOR ALL 
+CREATE POLICY "Admins full access on addresses"
+ON public.user_addresses
+FOR ALL
 USING (public.is_admin());
 
 
@@ -61,14 +61,14 @@ ALTER TABLE public.marketplace_orders ENABLE ROW LEVEL SECURITY;
 
 -- Note: We ONLY grant SELECT. INSERT/UPDATE/DELETE are handled by SECURITY DEFINER RPCs (create_marketplace_order_v5)
 -- or restricted to admins to prevent BOLA or skipping payment gateways.
-CREATE POLICY "Users can view own orders" 
-ON public.marketplace_orders 
-FOR SELECT 
+CREATE POLICY "Users can view own orders"
+ON public.marketplace_orders
+FOR SELECT
 USING (user_id = auth.uid());
 
-CREATE POLICY "Admins full access on orders" 
-ON public.marketplace_orders 
-FOR ALL 
+CREATE POLICY "Admins full access on orders"
+ON public.marketplace_orders
+FOR ALL
 USING (public.is_admin());
 
 
@@ -82,20 +82,21 @@ DROP POLICY IF EXISTS "Admins full access on order items" ON public.marketplace_
 
 ALTER TABLE public.marketplace_order_items ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own order items" 
-ON public.marketplace_order_items 
-FOR SELECT 
+CREATE POLICY "Users can view own order items"
+ON public.marketplace_order_items
+FOR SELECT
 USING (
     EXISTS (
-        SELECT 1 FROM public.marketplace_orders o 
-        WHERE o.id = marketplace_order_items.order_id 
-        AND o.user_id = auth.uid()
+        SELECT 1 FROM public.marketplace_orders AS o
+        WHERE
+            o.id = marketplace_order_items.order_id
+            AND o.user_id = auth.uid()
     )
 );
 
-CREATE POLICY "Admins full access on order items" 
-ON public.marketplace_order_items 
-FOR ALL 
+CREATE POLICY "Admins full access on order items"
+ON public.marketplace_order_items
+FOR ALL
 USING (public.is_admin());
 
 
@@ -108,14 +109,14 @@ DROP POLICY IF EXISTS "Admins full access on coupons" ON public.coupons;
 
 ALTER TABLE public.coupons ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Public view active coupons" 
-ON public.coupons 
-FOR SELECT 
+CREATE POLICY "Public view active coupons"
+ON public.coupons
+FOR SELECT
 USING (active = true);
 
-CREATE POLICY "Admins full access on coupons" 
-ON public.coupons 
-FOR ALL 
+CREATE POLICY "Admins full access on coupons"
+ON public.coupons
+FOR ALL
 USING (public.is_admin());
 
 -------------------------------------------------------------------------------
@@ -127,21 +128,22 @@ DROP POLICY IF EXISTS "Admins full access on variants" ON public.product_variant
 
 ALTER TABLE public.product_variants ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Public can view active variants" 
-ON public.product_variants 
-FOR SELECT 
+CREATE POLICY "Public can view active variants"
+ON public.product_variants
+FOR SELECT
 USING (
-    active = true AND 
-    EXISTS (
-        SELECT 1 FROM public.produtos p 
-        WHERE p.id = product_variants.product_id 
-        AND p.ativo = true
+    active = true
+    AND EXISTS (
+        SELECT 1 FROM public.produtos AS p
+        WHERE
+            p.id = product_variants.product_id
+            AND p.ativo = true
     )
 );
 
-CREATE POLICY "Admins full access on variants" 
-ON public.product_variants 
-FOR ALL 
+CREATE POLICY "Admins full access on variants"
+ON public.product_variants
+FOR ALL
 USING (public.is_admin());
 
 COMMIT;

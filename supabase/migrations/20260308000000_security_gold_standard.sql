@@ -85,7 +85,9 @@ $$;
 -- 3. Blindagem da RPC update_order_status_atomic
 DROP FUNCTION IF EXISTS public.update_order_status_atomic(uuid, text);
 DROP FUNCTION IF EXISTS public.update_order_status_atomic(uuid, text, text);
-CREATE OR REPLACE FUNCTION public.update_order_status_atomic(p_order_id uuid, p_new_status text, p_notes text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION public.update_order_status_atomic(
+    p_order_id uuid, p_new_status text, p_notes text DEFAULT NULL::text
+)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -236,8 +238,12 @@ ON public.profiles FOR UPDATE
 TO authenticated
 USING (auth.uid() = id)
 WITH CHECK (
-  auth.uid() = id AND 
-  (CASE WHEN public.is_admin() THEN true ELSE role = (SELECT role FROM profiles WHERE id = auth.uid()) END)
+    auth.uid() = id
+    AND (CASE WHEN public.is_admin() THEN
+        TRUE ELSE role = (
+        SELECT role FROM profiles
+        WHERE id = auth.uid()
+    ) END)
 );
 
 -- Notificacoes: Impedir spam
@@ -248,7 +254,7 @@ CREATE POLICY "Protected notification insertion"
 ON public.notificacoes FOR INSERT
 TO authenticated
 WITH CHECK (
-  auth.uid() = usuario_id OR public.is_admin()
+    auth.uid() = usuario_id OR public.is_admin()
 );
 
 -- Marketplace Orders: BOLA total

@@ -32,13 +32,20 @@ BEGIN
 END $$;
 
 -- 2. Sync data if columns were just added
-UPDATE public.marketplace_orders SET total_amount = total WHERE total_amount IS NULL;
-UPDATE public.marketplace_orders SET shipping_cost = shipping WHERE shipping_cost IS NULL;
-UPDATE public.marketplace_orders SET observation = notes WHERE observation IS NULL;
+UPDATE public.marketplace_orders SET total_amount = total
+WHERE total_amount IS NULL;
+UPDATE public.marketplace_orders SET shipping_cost = shipping
+WHERE shipping_cost IS NULL;
+UPDATE public.marketplace_orders SET observation = notes
+WHERE observation IS NULL;
 
 -- 3. Drop existing function to avoid signature conflicts during upgrade
-DROP FUNCTION IF EXISTS public.create_marketplace_order_v21(jsonb, numeric, numeric, text, uuid, text, text, text, text);
-DROP FUNCTION IF EXISTS public.create_marketplace_order_v21(jsonb, numeric, numeric, text, uuid, text, text, text, text, boolean);
+DROP FUNCTION IF EXISTS public.create_marketplace_order_v21(
+    jsonb, numeric, numeric, text, uuid, text, text, text, text
+);
+DROP FUNCTION IF EXISTS public.create_marketplace_order_v21(
+    jsonb, numeric, numeric, text, uuid, text, text, text, text, boolean
+);
 DROP FUNCTION IF EXISTS public.create_marketplace_order_v21;
 
 -- 4. Update the RPC to be consistent with the most robust version (using the schema we just fixed)

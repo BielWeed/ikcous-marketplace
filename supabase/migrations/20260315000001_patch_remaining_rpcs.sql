@@ -27,8 +27,10 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 2. swap_banner_order (Admin Only)
-CREATE OR REPLACE FUNCTION public.swap_banner_order(banner_id_1 UUID, banner_id_2 UUID)
-RETURNS void AS $$
+CREATE OR REPLACE FUNCTION public.swap_banner_order(
+    banner_id_1 UUID, banner_id_2 UUID
+)
+RETURNS VOID AS $$
 DECLARE
     order_1 INTEGER;
     order_2 INTEGER;
@@ -48,7 +50,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- 3. increment_helpful (Authenticated User Only)
 -- Checks if user is authenticated before incrementing the helpful count.
 CREATE OR REPLACE FUNCTION public.increment_helpful(review_id UUID)
-RETURNS void AS $$
+RETURNS VOID AS $$
 BEGIN
     IF auth.uid() IS NULL THEN
         RAISE EXCEPTION 'Acesso negado: usuário não autenticado.';

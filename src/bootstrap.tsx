@@ -1,10 +1,10 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import App from './App.tsx'
-import { AuthProvider } from '@/contexts/AuthContext'
-import { HelmetProvider } from 'react-helmet-async'
-import { GlobalErrorBoundary } from '@/components/ui/custom/GlobalErrorBoundary'
-import { NotificationProvider } from '@/contexts/NotificationContext'
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { GlobalErrorBoundary } from "@/components/ui/custom/GlobalErrorBoundary";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { NotificationProvider } from "@/contexts/NotificationContext";
+import { HelmetProvider } from "react-helmet-async";
+import App from "./App.tsx";
 
 /**
  * Árvore React da aplicação.
@@ -14,9 +14,9 @@ import { NotificationProvider } from '@/contexts/NotificationContext'
  * pela cadeia dos contextos, e esse módulo lança erro quando faltam as
  * variáveis do Supabase. Como imports estáticos são avaliados antes do corpo do
  * módulo, mantê-los em `main.tsx` faria o erro estourar antes da auditoria
- * rodar — deixando a tela branca com o spinner do index.html girando sem fim.
+ * rodar — deixando a tela branca com o loader do index.html girando sem fim.
  */
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <GlobalErrorBoundary>
       <AuthProvider>
@@ -28,4 +28,4 @@ createRoot(document.getElementById('root')!).render(
       </AuthProvider>
     </GlobalErrorBoundary>
   </StrictMode>,
-)
+);

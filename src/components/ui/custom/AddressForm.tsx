@@ -1,317 +1,493 @@
-import { useState } from 'react';
-import type { Address } from '@/types';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2 } from 'lucide-react';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useStore } from "@/contexts/StoreContext";
+import { cn } from "@/lib/utils";
+import type { Address } from "@/types";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
+import { toast } from "sonner";
+import * as z from "zod";
 
 const addressSchema = z.object({
-    name: z.string().min(1, 'Nome/Apelido é obrigatório'),
-    cep: z.string().min(8, 'CEP inválido'),
-    street: z.string().min(1, 'Logradouro é obrigatório'),
-    number: z.string().min(1, 'Número é obrigatório'),
-    complement: z.string().optional().or(z.literal('')),
-    neighborhood: z.string().min(1, 'Bairro é obrigatório'),
-    city: z.string().min(1, 'Cidade é obrigatória'),
-    state: z.string().min(1, 'Estado é obrigatório'),
-    reference: z.string().optional().or(z.literal('')),
-    recipient_name: z.string().min(1, 'Nome do destinatário é obrigatório'),
-    is_default: z.boolean(),
+  name: z.string().min(1, "Nome/Apelido é obrigatório"),
+  cep: z.string().min(8, "CEP inválido"),
+  street: z.string().min(1, "Logradouro é obrigatório"),
+  number: z.string().min(1, "Número é obrigatório"),
+  complement: z.string().optional().or(z.literal("")),
+  neighborhood: z.string().min(1, "Bairro é obrigatório"),
+  city: z.string().min(1, "Cidade é obrigatória"),
+  state: z.string().min(1, "Estado é obrigatório"),
+  reference: z.string().optional().or(z.literal("")),
+  recipient_name: z.string().min(1, "Nome do destinatário é obrigatório"),
+  is_default: z.boolean(),
 });
 
 type AddressFormValues = z.infer<typeof addressSchema>;
 
 interface AddressFormProps {
-    initialData?: Address;
-    onSubmit: (address: Omit<Address, 'id' | 'user_id'>) => Promise<void>;
-    onCancel: () => void;
+  initialData?: Address;
+  onSubmit: (address: Omit<Address, "id" | "user_id">) => Promise<void>;
+  onCancel: () => void;
 }
 
-export function AddressForm({ initialData, onSubmit, onCancel }: AddressFormProps) {
-    const [loading, setLoading] = useState(false);
+export function AddressForm({
+  initialData,
+  onSubmit,
+  onCancel,
+}: AddressFormProps) {
+  const { config, isLoaded } = useStore();
+  const [loading, setLoading] = useState(false);
+  const [isSearchingCep, setIsSearchingCep] = useState(false);
 
-    const form = useForm<AddressFormValues>({
-        resolver: zodResolver(addressSchema),
-        defaultValues: {
-            name: initialData?.name || '',
-            cep: initialData?.cep || '38500-000',
-            street: initialData?.street || '',
-            number: initialData?.number || '',
-            complement: initialData?.complement || '',
-            neighborhood: initialData?.neighborhood || '',
-            city: initialData?.city || 'Monte Carmelo',
-            state: initialData?.state || 'MG',
-            reference: initialData?.reference || '',
-            recipient_name: initialData?.recipient_name || '',
-            is_default: !!initialData?.is_default,
-        }
-    });
+  const form = useForm<AddressFormValues>({
+    resolver: zodResolver(addressSchema),
+    defaultValues: {
+      name: initialData?.name || "",
+      cep: initialData?.cep || "38500-000",
+      street: initialData?.street || "",
+      number: initialData?.number || "",
+      complement: initialData?.complement || "",
+      neighborhood: initialData?.neighborhood || "",
+      city: initialData?.city || "Monte Carmelo",
+      state: initialData?.state || "MG",
+      reference: initialData?.reference || "",
+      recipient_name: initialData?.recipient_name || "",
+      is_default: !!initialData?.is_default,
+    },
+  });
 
-    const handleSubmit = async (values: AddressFormValues) => {
-        setLoading(true);
-        try {
-            const cleanData: Omit<Address, 'id' | 'user_id'> = {
-                name: values.name,
-                cep: values.cep,
-                street: values.street,
-                number: values.number,
-                complement: values.complement || '',
-                neighborhood: values.neighborhood,
-                city: values.city,
-                state: values.state,
-                is_default: values.is_default,
-                reference: values.reference || '',
-                recipient_name: values.recipient_name,
-            };
-            await onSubmit(cleanData);
-        } catch (error) {
-            console.error('Submit error:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+  const hasInitializedRef = useRef(false);
 
-    return (
-        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-            <div className="space-y-6">
-                {/* Nome/Apelido e CEP */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-3">
-                        <label htmlFor="name" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 ml-1">
-                            Apelido (Ex: Casa, Trabalho)
-                        </label>
-                        <input
-                            id="name"
-                            {...form.register('name')}
-                            placeholder="Apelido do endereço"
-                            disabled={loading}
-                            className="w-full px-5 py-4 bg-zinc-50 rounded-2xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white focus:shadow-3xl focus:shadow-zinc-100 transition-all outline-none"
-                            autoComplete="nickname"
-                        />
-                        {form.formState.errors.name && (
-                            <p className="text-red-500 text-[10px] uppercase font-bold mt-2 ml-1">{form.formState.errors.name.message}</p>
-                        )}
-                    </div>
+  useEffect(() => {
+    if (isLoaded && !hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      if (initialData) {
+        form.reset({
+          name: initialData.name || "",
+          cep: initialData.cep || "",
+          street: initialData.street || "",
+          number: initialData.number || "",
+          complement: initialData.complement || "",
+          neighborhood: initialData.neighborhood || "",
+          city: initialData.city || "",
+          state: initialData.state || "",
+          reference: initialData.reference || "",
+          recipient_name: initialData.recipient_name || "",
+          is_default: !!initialData.is_default,
+        });
+      } else {
+        const isNational = config.shippingCoverage === "national";
+        form.reset({
+          name: "",
+          cep: isNational ? "" : config.originCep || "38500-000",
+          street: "",
+          number: "",
+          complement: "",
+          neighborhood: "",
+          city: isNational ? "" : "Monte Carmelo",
+          state: isNational ? "" : "MG",
+          reference: "",
+          recipient_name: "",
+          is_default: false,
+        });
+      }
+    }
+  }, [isLoaded, initialData, config.shippingCoverage, config.originCep]);
 
-                    <div className="space-y-3">
-                        <label htmlFor="recipient_name" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 ml-1">
-                            Nome do Destinatário
-                        </label>
-                        <input
-                            id="recipient_name"
-                            {...form.register('recipient_name')}
-                            placeholder="Quem irá receber?"
-                            disabled={loading}
-                            className="w-full px-5 py-4 bg-zinc-50 rounded-2xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white focus:shadow-3xl focus:shadow-zinc-100 transition-all outline-none"
-                            autoComplete="name"
-                        />
-                        {form.formState.errors.recipient_name && (
-                            <p className="text-red-500 text-[10px] uppercase font-bold mt-2 ml-1">{form.formState.errors.recipient_name.message}</p>
-                        )}
-                    </div>
-                </div>
+  const handleSubmit = async (values: AddressFormValues) => {
+    setLoading(true);
+    try {
+      const cleanData: Omit<Address, "id" | "user_id"> = {
+        name: values.name,
+        cep: values.cep,
+        street: values.street,
+        number: values.number,
+        complement: values.complement || "",
+        neighborhood: values.neighborhood,
+        city: values.city,
+        state: values.state,
+        is_default: values.is_default,
+        reference: values.reference || "",
+        recipient_name: values.recipient_name,
+      };
+      await onSubmit(cleanData);
+    } catch (error) {
+      console.error("Submit error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-3">
-                        <label htmlFor="cep" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 ml-1">
-                            CEP
-                        </label>
-                        <Controller
-                            control={form.control}
-                            name="cep"
-                            render={({ field }) => (
-                                <input
-                                    id="cep"
-                                    value={field.value}
-                                    readOnly
-                                    placeholder="38500-000"
-                                    maxLength={9}
-                                    disabled={loading}
-                                    className="w-full px-5 py-4 bg-zinc-100 rounded-2xl text-sm font-black border-2 border-transparent text-zinc-500 cursor-not-allowed outline-none"
-                                    autoComplete="postal-code"
-                                />
-                            )}
-                        />
-                        {form.formState.errors.cep && (
-                            <p className="text-red-500 text-[10px] uppercase font-bold mt-2 ml-1">{form.formState.errors.cep.message}</p>
-                        )}
-                    </div>
-                </div>
+  return (
+    <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+      <div className="space-y-4">
+        {/* Nome/Apelido e CEP */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <label
+              htmlFor="name"
+              className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400"
+            >
+              Apelido (Ex: Casa, Trabalho)
+            </label>
+            <input
+              id="name"
+              {...form.register("name")}
+              placeholder="Apelido do endereço"
+              disabled={loading}
+              className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+            />
+            {form.formState.errors.name && (
+              <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                {form.formState.errors.name.message}
+              </p>
+            )}
+          </div>
 
-                {/* Logradouro */}
-                <div className="space-y-3">
-                    <label htmlFor="street" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 ml-1">
-                        Logradouro (Rua / Avenida)
-                    </label>
+          <div className="space-y-1.5">
+            <label
+              htmlFor="recipient_name"
+              className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400"
+            >
+              Nome do Destinatário
+            </label>
+            <input
+              id="recipient_name"
+              {...form.register("recipient_name")}
+              placeholder="Quem irá receber?"
+              disabled={loading}
+              className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+              autoComplete="name"
+            />
+            {form.formState.errors.recipient_name && (
+              <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                {form.formState.errors.recipient_name.message}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <label
+              htmlFor="cep"
+              className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400"
+            >
+              CEP
+            </label>
+            <Controller
+              control={form.control}
+              name="cep"
+              render={({ field }) => {
+                const isNational = config.shippingCoverage === "national";
+                const handleCepChange = async (
+                  e: React.ChangeEvent<HTMLInputElement>,
+                ) => {
+                  const rawVal = e.target.value;
+                  const clean = rawVal.replace(/\D/g, "");
+                  let formatted = clean;
+                  if (clean.length > 5) {
+                    formatted = `${clean.slice(0, 5)}-${clean.slice(5, 8)}`;
+                  }
+
+                  field.onChange(formatted);
+
+                  if (clean.length === 8 && isNational) {
+                    setIsSearchingCep(true);
+                    try {
+                      const res = await fetch(
+                        `https://viacep.com.br/ws/${clean}/json/`,
+                      );
+                      const data = await res.json();
+                      if (data && !data.erro) {
+                        if (data.logradouro)
+                          form.setValue("street", data.logradouro, {
+                            shouldValidate: true,
+                          });
+                        if (data.bairro)
+                          form.setValue("neighborhood", data.bairro, {
+                            shouldValidate: true,
+                          });
+                        if (data.localidade)
+                          form.setValue("city", data.localidade, {
+                            shouldValidate: true,
+                          });
+                        if (data.uf)
+                          form.setValue("state", data.uf, {
+                            shouldValidate: true,
+                          });
+                        toast.success("CEP localizado!");
+                      } else {
+                        toast.error("CEP não encontrado");
+                      }
+                    } catch (err) {
+                      console.error("Error fetching CEP:", err);
+                    } finally {
+                      setIsSearchingCep(false);
+                    }
+                  }
+                };
+
+                return (
+                  <div className="relative">
                     <input
-                        id="street"
-                        {...form.register('street')}
-                        placeholder="Ex: Rua Tiradentes"
-                        disabled={loading}
-                        className="w-full px-6 py-5 bg-zinc-50 rounded-3xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white focus:shadow-3xl focus:shadow-zinc-100 transition-all outline-none"
-                        autoComplete="address-line1"
+                      id="cep"
+                      name="cep"
+                      value={field.value}
+                      onChange={handleCepChange}
+                      readOnly={!isNational}
+                      placeholder={isNational ? "00000-000" : "38500-000"}
+                      maxLength={9}
+                      disabled={loading || isSearchingCep}
+                      className={cn(
+                        "w-full rounded-xl border-2 border-transparent px-4 py-3 text-sm font-medium outline-none transition-all",
+                        isNational
+                          ? "bg-zinc-50 text-zinc-800 focus:border-zinc-900 focus:bg-white"
+                          : "cursor-not-allowed bg-zinc-100 text-zinc-500",
+                      )}
+                      autoComplete="postal-code"
                     />
-                    {form.formState.errors.street && (
-                        <p className="text-red-500 text-[10px] uppercase font-bold mt-2 ml-1">{form.formState.errors.street.message}</p>
+                    {isSearchingCep && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <Loader2 className="size-4 animate-spin text-zinc-400" />
+                      </div>
                     )}
-                </div>
+                  </div>
+                );
+              }}
+            />
+            {form.formState.errors.cep && (
+              <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                {form.formState.errors.cep.message}
+              </p>
+            )}
+          </div>
+        </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                    {/* Número */}
-                    <div className="space-y-3">
-                        <label htmlFor="number" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 ml-1">
-                            Número
-                        </label>
-                        <input
-                            id="number"
-                            {...form.register('number')}
-                            placeholder="123"
-                            disabled={loading}
-                            className="w-full px-6 py-5 bg-zinc-50 rounded-3xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white focus:shadow-3xl focus:shadow-zinc-100 transition-all outline-none"
-                            autoComplete="address-line1"
-                        />
-                        {form.formState.errors.number && (
-                            <p className="text-red-500 text-[10px] uppercase font-bold mt-2 ml-1">{form.formState.errors.number.message}</p>
-                        )}
-                    </div>
+        {/* Logradouro */}
+        <div className="space-y-1.5">
+          <label
+            htmlFor="street"
+            className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400"
+          >
+            Logradouro (Rua / Avenida)
+          </label>
+          <input
+            id="street"
+            {...form.register("street")}
+            placeholder="Ex: Rua Tiradentes"
+            disabled={loading}
+            className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+            autoComplete="address-line1"
+          />
+          {form.formState.errors.street && (
+            <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+              {form.formState.errors.street.message}
+            </p>
+          )}
+        </div>
 
-                    {/* Bairro */}
-                    <div className="space-y-3">
-                        <label htmlFor="neighborhood" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 ml-1">
-                            Bairro
-                        </label>
-                        <input
-                            id="neighborhood"
-                            {...form.register('neighborhood')}
-                            placeholder="Seu bairro"
-                            disabled={loading}
-                            className="w-full px-5 py-4 bg-zinc-50 rounded-2xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white focus:shadow-3xl focus:shadow-zinc-100 transition-all outline-none"
-                            autoComplete="address-level3"
-                        />
-                        {form.formState.errors.neighborhood && (
-                            <p className="text-red-500 text-[10px] uppercase font-bold mt-2 ml-1">{form.formState.errors.neighborhood.message}</p>
-                        )}
-                    </div>
-                </div>
+        <div className="grid grid-cols-2 gap-4">
+          {/* Número */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="number"
+              className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400"
+            >
+              Número
+            </label>
+            <input
+              id="number"
+              {...form.register("number")}
+              placeholder="123"
+              disabled={loading}
+              className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+            />
+            {form.formState.errors.number && (
+              <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                {form.formState.errors.number.message}
+              </p>
+            )}
+          </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                    {/* Cidade */}
-                    <div className="space-y-3">
-                        <label htmlFor="city" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 ml-1">
-                            Cidade
-                        </label>
-                        <input
-                            id="city"
-                            {...form.register('city')}
-                            placeholder="Cidade"
-                            readOnly
-                            disabled={loading}
-                            className="w-full px-5 py-4 bg-zinc-100 rounded-2xl text-sm font-black border-2 border-transparent text-zinc-500 cursor-not-allowed outline-none"
-                            autoComplete="address-level2"
-                        />
-                        {form.formState.errors.city && (
-                            <p className="text-red-500 text-[10px] uppercase font-bold mt-2 ml-1">{form.formState.errors.city.message}</p>
-                        )}
-                    </div>
+          {/* Bairro */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="neighborhood"
+              className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400"
+            >
+              Bairro
+            </label>
+            <input
+              id="neighborhood"
+              {...form.register("neighborhood")}
+              placeholder="Seu bairro"
+              disabled={loading}
+              className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+              autoComplete="address-level3"
+            />
+            {form.formState.errors.neighborhood && (
+              <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                {form.formState.errors.neighborhood.message}
+              </p>
+            )}
+          </div>
+        </div>
 
-                    {/* Estado */}
-                    <div className="space-y-3">
-                        <label htmlFor="state" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 ml-1">
-                            Estado
-                        </label>
-                        <input
-                            id="state"
-                            {...form.register('state')}
-                            placeholder="UF"
-                            readOnly
-                            disabled={loading}
-                            maxLength={2}
-                            className="w-full px-5 py-4 bg-zinc-100 rounded-2xl text-sm font-black border-2 border-transparent text-zinc-500 cursor-not-allowed outline-none"
-                            autoComplete="address-level1"
-                        />
-                        {form.formState.errors.state && (
-                            <p className="text-red-500 text-[10px] uppercase font-bold mt-2 ml-1">{form.formState.errors.state.message}</p>
-                        )}
-                    </div>
-                </div>
+        <div className="grid grid-cols-2 gap-4">
+          {/* Cidade */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="city"
+              className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400"
+            >
+              Cidade
+            </label>
+            <input
+              id="city"
+              {...form.register("city")}
+              placeholder="Cidade"
+              readOnly={
+                !config.shippingCoverage ||
+                config.shippingCoverage !== "national"
+              }
+              disabled={loading}
+              className={cn(
+                "w-full rounded-xl border-2 border-transparent px-4 py-3 text-sm font-medium outline-none transition-all",
+                config.shippingCoverage === "national"
+                  ? "bg-zinc-50 text-zinc-800 focus:border-zinc-900 focus:bg-white"
+                  : "cursor-not-allowed bg-zinc-100 text-zinc-500",
+              )}
+              autoComplete="address-level2"
+            />
+            {form.formState.errors.city && (
+              <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                {form.formState.errors.city.message}
+              </p>
+            )}
+          </div>
 
-                {/* Complemento */}
-                <div className="space-y-3">
-                    <label htmlFor="complement" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 ml-1">
-                        Complemento (Opcional)
-                    </label>
-                    <input
-                        id="complement"
-                        {...form.register('complement')}
-                        placeholder="Apto, Bloco, Fundos, etc."
-                        disabled={loading}
-                        className="w-full px-6 py-5 bg-zinc-50 rounded-3xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white focus:shadow-3xl focus:shadow-zinc-100 transition-all outline-none"
-                        autoComplete="address-line2"
-                    />
-                </div>
+          {/* Estado */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor="state"
+              className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400"
+            >
+              Estado
+            </label>
+            <input
+              id="state"
+              {...form.register("state")}
+              placeholder="UF"
+              readOnly={
+                !config.shippingCoverage ||
+                config.shippingCoverage !== "national"
+              }
+              disabled={loading}
+              maxLength={2}
+              className={cn(
+                "w-full rounded-xl border-2 border-transparent px-4 py-3 text-sm font-medium outline-none transition-all",
+                config.shippingCoverage === "national"
+                  ? "bg-zinc-50 text-zinc-800 focus:border-zinc-900 focus:bg-white"
+                  : "cursor-not-allowed bg-zinc-100 text-zinc-500",
+              )}
+              autoComplete="address-level1"
+            />
+            {form.formState.errors.state && (
+              <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                {form.formState.errors.state.message}
+              </p>
+            )}
+          </div>
+        </div>
 
-                {/* Referência */}
-                <div className="space-y-3">
-                    <label htmlFor="reference" className="block text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 ml-1">
-                        Ponto de Referência (Opcional)
-                    </label>
-                    <input
-                        id="reference"
-                        {...form.register('reference')}
-                        placeholder="Ex: Próximo ao mercado principal"
-                        disabled={loading}
-                        className="w-full px-6 py-5 bg-zinc-50 rounded-3xl text-sm font-black border-2 border-transparent focus:border-zinc-900 focus:bg-white focus:shadow-3xl focus:shadow-zinc-100 transition-all outline-none"
-                        autoComplete="off"
-                    />
-                </div>
+        {/* Complemento */}
+        <div className="space-y-1.5">
+          <label
+            htmlFor="complement"
+            className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400"
+          >
+            Complemento (Opcional)
+          </label>
+          <input
+            id="complement"
+            {...form.register("complement")}
+            placeholder="Apto, Bloco, Fundos, etc."
+            disabled={loading}
+            className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+            autoComplete="address-line2"
+          />
+        </div>
 
-                {/* Endereço Padrão */}
-                <div className="flex items-center gap-4 px-2 pt-2">
-                    <div className="relative inline-flex items-center cursor-pointer">
-                        <Controller
-                            control={form.control}
-                            name="is_default"
-                            render={({ field }) => (
-                                <Checkbox
-                                    id="is_default"
-                                    checked={field.value}
-                                    onCheckedChange={field.onChange}
-                                    disabled={loading}
-                                    className="w-6 h-6 rounded-lg border-2 border-zinc-200 data-[state=checked]:bg-zinc-900 data-[state=checked]:border-zinc-900 transition-all"
-                                />
-                            )}
-                        />
-                    </div>
-                    <label htmlFor="is_default" className="text-[10px] font-black uppercase tracking-[0.1em] text-zinc-500 cursor-pointer">
-                        Definir como endereço padrão
-                    </label>
-                </div>
-            </div>
+        {/* Referência */}
+        <div className="space-y-1.5">
+          <label
+            htmlFor="reference"
+            className="ml-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400"
+          >
+            Ponto de Referência (Opcional)
+          </label>
+          <input
+            id="reference"
+            {...form.register("reference")}
+            placeholder="Ex: Próximo ao mercado principal"
+            disabled={loading}
+            className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+            autoComplete="off"
+          />
+        </div>
 
-            <div className="flex justify-end gap-3 pt-4">
-                <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={onCancel}
-                    disabled={loading}
-                    className="h-14 px-6 text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-zinc-900 hover:bg-zinc-50 rounded-2xl transition-all"
-                >
-                    Cancelar
-                </Button>
-                <Button
-                    type="submit"
-                    className="h-14 px-8 bg-zinc-900 text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-2xl hover:bg-black transition-all shadow-xl active:scale-95 min-w-[160px]"
-                    disabled={loading}
-                >
-                    {loading ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                        'Salvar Endereço'
-                    )}
-                </Button>
-            </div>
-        </form>
-    );
+        {/* Endereço Padrão */}
+        <div className="flex items-center gap-3 px-2 pt-1.5">
+          <div className="relative inline-flex cursor-pointer items-center">
+            <Controller
+              control={form.control}
+              name="is_default"
+              render={({ field }) => (
+                <Checkbox
+                  id="is_default"
+                  name="is_default"
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                  disabled={loading}
+                  className="size-5 rounded-md border-2 border-zinc-200 transition-all data-[state=checked]:border-zinc-900 data-[state=checked]:bg-zinc-900"
+                />
+              )}
+            />
+          </div>
+          <label
+            htmlFor="is_default"
+            className="cursor-pointer text-[10px] font-bold uppercase tracking-widest text-zinc-500"
+          >
+            Definir como endereço padrão
+          </label>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3 pt-3">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={onCancel}
+          disabled={loading}
+          className="h-11 rounded-xl px-5 text-[10px] font-bold uppercase tracking-wider text-zinc-400 transition-all hover:bg-zinc-50 hover:text-zinc-900"
+        >
+          Cancelar
+        </Button>
+        <Button
+          type="submit"
+          className="h-11 min-w-[130px] rounded-xl bg-zinc-900 px-6 text-[10px] font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-black active:scale-95"
+          disabled={loading}
+        >
+          {loading ? (
+            <Loader2 className="size-4.5 animate-spin" />
+          ) : (
+            "Salvar Endereço"
+          )}
+        </Button>
+      </div>
+    </form>
+  );
 }

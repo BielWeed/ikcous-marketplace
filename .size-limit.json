@@ -1,0 +1,11 @@
+[
+  {
+    "path": "dist/assets/*.js",
+    "limit": "800 kB"
+  },
+  {
+    "path": "dist/assets/*.css",
+    "limit": "100 kB",
+    "webpack": false
+  }
+]

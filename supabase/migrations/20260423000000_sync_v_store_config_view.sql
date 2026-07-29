@@ -9,23 +9,23 @@ DROP TABLE IF EXISTS public.v_store_config CASCADE;
 
 -- 2. Create the view with all non-sensitive configuration parameters
 CREATE VIEW public.v_store_config AS
-SELECT 
-  id,
-  free_shipping_min,
-  shipping_fee,
-  whatsapp_number,
-  share_text,
-  business_hours,
-  enable_reviews,
-  enable_coupons,
-  primary_color,
-  theme_mode,
-  logo_url,
-  real_time_sales_alerts,
-  push_marketing_enabled,
-  min_app_version,
-  created_at,
-  updated_at
+SELECT
+    id,
+    free_shipping_min,
+    shipping_fee,
+    whatsapp_number,
+    share_text,
+    business_hours,
+    enable_reviews,
+    enable_coupons,
+    primary_color,
+    theme_mode,
+    logo_url,
+    real_time_sales_alerts,
+    push_marketing_enabled,
+    min_app_version,
+    created_at,
+    updated_at
 FROM public.store_config
 WHERE id = 1;
 

@@ -60,7 +60,9 @@ END;
 $$;
 
 -- Grant execution permissions
-REVOKE EXECUTE ON FUNCTION public.get_products_with_variants() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.get_products_with_variants() TO anon, authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION public.get_products_with_variants() FROM public;
+GRANT EXECUTE ON FUNCTION public.get_products_with_variants() TO anon,
+authenticated,
+service_role;
 
 COMMIT;

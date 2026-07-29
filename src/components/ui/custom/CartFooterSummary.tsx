@@ -1,84 +1,150 @@
-import { createPortal } from 'react-dom';
-import { ArrowRight, Sparkles as SparklesIcon } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { cn, formatCurrency } from '@/lib/utils';
-import type { View } from '@/types';
+import { cn, formatCurrency } from "@/lib/utils";
+import type { View } from "@/types";
+import { motion } from "framer-motion";
+import { ArrowRight, Sparkles as SparklesIcon } from "lucide-react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface CartFooterSummaryProps {
-    cartCount: number;
-    shipping: number;
-    total: number;
-    onNavigate: (view: View) => void;
+  cartCount: number;
+  shipping: number;
+  total: number;
+  onNavigate: (view: View) => void;
 }
 
-export function CartFooterSummary({ cartCount, shipping, total, onNavigate }: CartFooterSummaryProps) {
-    if (typeof document === 'undefined' || !document.body) return null;
+export function CartFooterSummary({
+  cartCount,
+  shipping,
+  total,
+  onNavigate,
+}: CartFooterSummaryProps) {
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
-    return createPortal(
-        <div className="fixed bottom-safe-navigation left-0 right-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-full md:max-w-md lg:hidden">
-            <motion.div
-                initial={{ y: '100%', opacity: 0.5 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: '100%', opacity: 0 }}
-                transition={{ duration: 0.25, ease: 'easeOut' }}
-                className="w-full bg-white border-t border-zinc-100 shadow-[0_-10px_40px_-5px_rgba(0,0,0,0.08)] md:rounded-t-2xl md:rounded-b-none md:border-t md:border-x md:border-b-0 md:border-zinc-200/60"
-            >
-                <div className="px-4 py-4 xs:px-6 md:px-4 flex items-center justify-between gap-2 xs:gap-4 md:gap-3 max-w-screen-xl mx-auto">
-                    {/* Visual context */}
-                    <div className="hidden md:flex flex-col flex-shrink-0">
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-0.5">Seu Carrinho</span>
-                        <span className="text-xs font-black text-zinc-900">{cartCount} it{cartCount > 1 ? 'ens' : 'em'} selecionado{cartCount > 1 ? 's' : ''}</span>
-                    </div>
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const viewport = window.visualViewport;
+    if (!viewport) return;
 
-                    {/* Total & Benefits */}
-                    <div className="flex flex-col min-w-0 md:flex-shrink-0">
-                        <div className="flex items-center gap-1.5 mb-1">
-                            <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">Total</span>
-                            {shipping === 0 && (
-                                <div className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 rounded-md">
-                                    <SparklesIcon className="w-2.5 h-2.5 text-emerald-500 fill-emerald-500/20" />
-                                    <span className="text-[8px] font-black text-emerald-600 uppercase tracking-tighter">Bônus VIP</span>
-                                </div>
-                            )}
-                        </div>
-                        <p className={cn(
-                            "text-lg xs:text-xl md:text-lg font-black tracking-tighter transition-all duration-500",
-                            shipping === 0 ? "bg-gradient-to-r from-emerald-600 to-emerald-400 bg-clip-text text-transparent" : "text-zinc-950"
-                        )}>
-                            {formatCurrency(total)}
-                        </p>
-                    </div>
+    let rafId: number;
+    const handleResize = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const activeEl = document.activeElement;
+        const isInputActive =
+          activeEl &&
+          ((activeEl.tagName === "INPUT" &&
+            ![
+              "button",
+              "submit",
+              "checkbox",
+              "radio",
+              "file",
+              "image",
+              "range",
+              "hidden",
+              "reset",
+            ].includes(activeEl.getAttribute("type") || "")) ||
+            activeEl.tagName === "TEXTAREA" ||
+            activeEl.getAttribute("contenteditable") === "true");
+        const keyboardActive =
+          isInputActive && viewport.height < window.innerHeight * 0.85;
+        setIsKeyboardOpen(!!keyboardActive);
+      });
+    };
 
-                    {/* Main Action */}
-                    <div className="flex items-center gap-2 xs:gap-3 md:gap-2 md:flex-shrink-0">
-                        <div className="flex flex-col items-end pr-2 xs:pr-3 md:pr-2 border-r border-zinc-100 h-8 justify-center flex-shrink-0">
-                            <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">Frete</span>
-                            <span className={cn(
-                                "text-xs font-black leading-none tracking-tight",
-                                shipping === 0 ? "text-emerald-500" : "text-zinc-600"
-                            )}>
-                                {shipping === 0 ? 'GRÁTIS' : formatCurrency(shipping)}
-                            </span>
-                        </div>
+    viewport.addEventListener("resize", handleResize);
+    return () => {
+      cancelAnimationFrame(rafId);
+      viewport.removeEventListener("resize", handleResize);
+    };
+  }, []);
 
-                        <button
-                            onClick={() => onNavigate('checkout')}
-                            className="h-12 px-4 xs:h-14 xs:px-8 md:h-12 md:px-5 bg-zinc-950 hover:bg-zinc-800 text-white rounded-2xl flex items-center gap-2 xs:gap-3 md:gap-2.5 transition-all active:scale-[0.98] shadow-xl shadow-zinc-200 group relative overflow-hidden flex-shrink-0"
-                        >
-                            <div className="relative z-10 flex items-center gap-3">
-                                <span className="text-xs font-bold uppercase tracking-widest">Finalizar</span>
-                                <div className="w-8 h-8 bg-white/10 rounded-xl flex items-center justify-center group-hover:bg-white/20 transition-colors">
-                                    <ArrowRight className="w-4 h-4 text-white group-hover:translate-x-0.5 transition-transform" />
-                                </div>
-                            </div>
+  if (typeof document === "undefined" || !document.body || isKeyboardOpen) return null;
 
-                            {/* Subtle Shimmer */}
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-                        </button>
-                    </div>
+  return createPortal(
+    <div className="bottom-docked-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 lg:hidden">
+      <motion.div
+        initial={{ y: "100%", opacity: 0.5 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: "100%", opacity: 0 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+        className="w-full border-t border-zinc-100 bg-white shadow-[0_-10px_40px_-5px_rgba(0,0,0,0.08)] md:rounded-b-none md:rounded-t-2xl md:border-x md:border-b-0 md:border-t md:border-zinc-200/60"
+      >
+        <div className="mx-auto flex max-w-screen-xl items-center justify-between gap-2 p-4 xs:gap-4 xs:px-6 md:gap-3 md:px-4">
+          {/* Visual context */}
+          <div className="hidden flex-shrink-0 flex-col md:flex">
+            <span className="mb-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+              Seu Carrinho
+            </span>
+            <span className="text-xs font-black text-zinc-900">
+              {cartCount} it{cartCount > 1 ? "ens" : "em"} selecionado
+              {cartCount > 1 ? "s" : ""}
+            </span>
+          </div>
+
+          {/* Total & Benefits */}
+          <div className="flex min-w-0 flex-col md:flex-shrink-0">
+            <div className="mb-1 flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase leading-none tracking-widest text-zinc-400">
+                Total
+              </span>
+              {shipping === 0 && (
+                <div className="flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5">
+                  <SparklesIcon className="size-2.5 fill-emerald-500/20 text-emerald-500" />
+                  <span className="text-[8px] font-black uppercase tracking-tighter text-emerald-600">
+                    Bônus VIP
+                  </span>
                 </div>
-            </motion.div>
-        </div>,
-        document.body
-    );
+              )}
+            </div>
+            <p
+              className={cn(
+                "text-lg xs:text-xl md:text-lg font-black tracking-tighter transition-all duration-500",
+                shipping === 0
+                  ? "bg-gradient-to-r from-emerald-600 to-emerald-400 bg-clip-text text-transparent"
+                  : "text-zinc-950",
+              )}
+            >
+              {formatCurrency(total)}
+            </p>
+          </div>
+
+          {/* Main Action */}
+          <div className="flex items-center gap-2 xs:gap-3 md:flex-shrink-0 md:gap-2">
+            <div className="flex h-8 flex-shrink-0 flex-col items-end justify-center border-r border-zinc-100 pr-2 xs:pr-3 md:pr-2">
+              <span className="mb-1 text-[9px] font-black uppercase leading-none tracking-widest text-zinc-400">
+                Frete
+              </span>
+              <span
+                className={cn(
+                  "text-xs font-black leading-none tracking-tight",
+                  shipping === 0 ? "text-emerald-500" : "text-zinc-600",
+                )}
+              >
+                {shipping === 0 ? "GRÁTIS" : formatCurrency(shipping)}
+              </span>
+            </div>
+
+            <button
+              onClick={() => onNavigate("checkout")}
+              className="group relative flex h-12 flex-shrink-0 items-center gap-2 overflow-hidden rounded-2xl bg-[#5C061E] px-4 text-white shadow-xl shadow-rose-100/30 transition-all hover:bg-[#720E28] active:scale-[0.98] xs:h-14 xs:gap-3 xs:px-8 md:h-12 md:gap-2.5 md:px-5"
+            >
+              <div className="relative z-10 flex items-center gap-3">
+                <span className="text-xs font-bold uppercase tracking-widest">
+                  Finalizar
+                </span>
+                <div className="flex size-8 items-center justify-center rounded-xl bg-white/20 transition-colors group-hover:bg-white/30">
+                  <ArrowRight className="size-4 text-white transition-transform group-hover:translate-x-0.5" />
+                </div>
+              </div>
+
+              {/* Subtle Shimmer */}
+              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-1000 group-hover:translate-x-full" />
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>,
+    document.body,
+  );
 }

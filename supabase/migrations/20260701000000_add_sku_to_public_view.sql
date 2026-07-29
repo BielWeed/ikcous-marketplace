@@ -6,7 +6,7 @@ BEGIN;
 DROP VIEW IF EXISTS public.vw_produtos_public CASCADE;
 
 CREATE OR REPLACE VIEW public.vw_produtos_public AS
-SELECT 
+SELECT
     id,
     nome,
     descricao,
@@ -27,7 +27,7 @@ SELECT
     calculated_points,
     codigo
 FROM public.produtos
-WHERE ativo = true AND deleted_at IS NULL;
+WHERE ativo = true AND deleted_at IS null;
 
 GRANT SELECT ON public.vw_produtos_public TO anon, authenticated;
 

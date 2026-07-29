@@ -5,7 +5,7 @@ BEGIN;
 
 -- 1. Create a secure view for public product consumption (EXCLUDING 'custo')
 CREATE OR REPLACE VIEW public.vw_produtos_public AS
-SELECT 
+SELECT
     id,
     nome,
     descricao,
@@ -38,14 +38,22 @@ CREATE POLICY "Profiles viewable by self or admin"
 ON public.profiles
 FOR SELECT
 USING (
-    auth.uid() = id 
-    OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin'
+    auth.uid() = id
+    OR (
+        SELECT role FROM public.profiles
+        WHERE id = auth.uid()
+    ) = 'admin'
 );
 
 -- 3. Harden 'user_addresses' RLS (BOLA check)
 DROP POLICY IF EXISTS "Users can view own addresses" ON public.user_addresses;
-CREATE POLICY "Users can view own addresses" 
-ON public.user_addresses FOR SELECT 
-USING (auth.uid() = user_id OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+CREATE POLICY "Users can view own addresses"
+ON public.user_addresses FOR SELECT
+USING (
+    auth.uid() = user_id OR (
+        SELECT role FROM public.profiles
+        WHERE id = auth.uid()
+    ) = 'admin'
+);
 
 COMMIT;
