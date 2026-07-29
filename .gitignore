@@ -53,6 +53,10 @@ scratch_*
 # Playwright & test screenshots/configs
 .playwright-mcp/
 *.png
+!public/apple-touch-icon.png
+!public/branding/logo.png
+!public/icons/*.png
+!public/og-image.png
 *.yml
 
 # Unlighthouse & Loki
