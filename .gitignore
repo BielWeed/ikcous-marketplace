@@ -1,11 +1,8 @@
 .vercel
 
 # Environment & secrets
-.env
-.env.local
-.env.*.local
-.env.vercel.test
-.env.production
+.env*
+!.env.example
 vapid_keys.json
 .gh_token
 
