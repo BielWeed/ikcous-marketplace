@@ -213,8 +213,7 @@ function OrderStepperPipeline({
                   "w-9 h-9 rounded-full flex items-center justify-center border transition-all duration-300",
                   isActive &&
                     "bg-zinc-950 border-admin-gold text-admin-gold shadow-[0_0_12px_rgba(234,179,8,0.3)] scale-110",
-                  isCompleted &&
-                    "bg-admin-gold border-admin-gold text-black",
+                  isCompleted && "bg-admin-gold border-admin-gold text-black",
                   isFuture && "bg-zinc-900 border-white/5 text-zinc-500",
                 )}
               >
@@ -303,9 +302,7 @@ function OrderCustomerCard({
           <p className="flex-1 text-xs uppercase leading-relaxed text-zinc-300">
             {order.customer.address}
             {order.customer.number ? `, ${order.customer.number}` : ""}
-            {order.customer.complement
-              ? ` - ${order.customer.complement}`
-              : ""}
+            {order.customer.complement ? ` - ${order.customer.complement}` : ""}
             <br />
             <span className="text-[10px] normal-case text-zinc-400">
               {order.customer.neighborhood}
@@ -417,11 +414,12 @@ function OrderItemsCard({
               <div className="shrink-0 text-right">
                 <p className="text-xs font-black tabular-nums text-white">
                   R${" "}
-                  {(
-                    (item.price || 0) * (item.quantity || 0)
-                  ).toLocaleString("pt-BR", {
-                    minimumFractionDigits: 2,
-                  })}
+                  {((item.price || 0) * (item.quantity || 0)).toLocaleString(
+                    "pt-BR",
+                    {
+                      minimumFractionDigits: 2,
+                    },
+                  )}
                 </p>
               </div>
             </div>

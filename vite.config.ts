@@ -56,31 +56,48 @@ export default defineConfig(({ mode }) => {
         version: appVersion,
         buildDate: buildTime,
         etag: gitSha || Date.now().toString(),
-        swVersion: `v${packageJson.version}`
+        swVersion: `v${packageJson.version}`,
       };
 
       try {
         if (!fs.existsSync(distPath)) {
           fs.mkdirSync(distPath, { recursive: true });
         }
-        fs.writeFileSync(versionJsonPath, JSON.stringify(versionData, null, 2), "utf-8");
-        console.log(`[PWA Version Plugin] Generated version.json with version: ${appVersion}`);
+        fs.writeFileSync(
+          versionJsonPath,
+          JSON.stringify(versionData, null, 2),
+          "utf-8",
+        );
+        console.log(
+          `[PWA Version Plugin] Generated version.json with version: ${appVersion}`,
+        );
       } catch (err) {
-        console.error("[PWA Version Plugin] Failed to generate version.json:", err);
+        console.error(
+          "[PWA Version Plugin] Failed to generate version.json:",
+          err,
+        );
       }
 
       const silentGuardianPath = path.resolve(distPath, "silent-guardian.js");
       try {
         if (fs.existsSync(silentGuardianPath)) {
           let content = fs.readFileSync(silentGuardianPath, "utf-8");
-          content = content.replace(/"1773003981700"/g, JSON.stringify(appVersion));
+          content = content.replace(
+            /"1773003981700"/g,
+            JSON.stringify(appVersion),
+          );
           fs.writeFileSync(silentGuardianPath, content, "utf-8");
-          console.log(`[PWA Version Plugin] Updated silent-guardian.js with version: ${appVersion}`);
+          console.log(
+            `[PWA Version Plugin] Updated silent-guardian.js with version: ${appVersion}`,
+          );
         }
       } catch (err) {
-        console.error("[PWA Version Plugin] Failed to update silent-guardian.js:", err);
+        console.error(
+          "[PWA Version Plugin] Failed to update silent-guardian.js:",
+          err,
+        );
       }
-    }
+    },
   };
 
   // Conversor de hex para rgb

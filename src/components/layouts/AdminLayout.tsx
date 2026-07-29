@@ -360,8 +360,6 @@ export function AdminLayout({
     return () => clearTimeout(timer);
   }, [currentView]);
 
-
-
   const navItems = [
     { icon: Activity, label: "Geral", view: "admin-dashboard" },
     { icon: Package, label: "Pedidos", view: "admin-orders" },
@@ -961,7 +959,8 @@ export function AdminLayout({
                 const parentView = getParentView(currentView);
                 const isActive =
                   currentView === item.view ||
-                  (item.view === "admin-dashboard" && currentView === "admin") ||
+                  (item.view === "admin-dashboard" &&
+                    currentView === "admin") ||
                   parentView === item.view;
 
                 return (

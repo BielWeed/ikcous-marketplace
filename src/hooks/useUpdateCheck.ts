@@ -55,7 +55,9 @@ export function useUpdateCheck() {
       console.log("[PWA] Checking for updates...");
       const ver = await fetchServerVersion();
       if (ver && ver !== SAFE_APP_VERSION) {
-        console.log(`[PWA] Server version (${ver}) differs from local (${SAFE_APP_VERSION}). Updating SW.`);
+        console.log(
+          `[PWA] Server version (${ver}) differs from local (${SAFE_APP_VERSION}). Updating SW.`,
+        );
         setNewVersion(ver);
       }
       registration.update().catch((err) => {
@@ -75,7 +77,9 @@ export function useUpdateCheck() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      console.log("[PWA] Clearing SW update check interval & visibility listener...");
+      console.log(
+        "[PWA] Clearing SW update check interval & visibility listener...",
+      );
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
@@ -317,28 +321,40 @@ export function useUpdateCheck() {
     isMandatory,
     updateAvailable: needRefresh,
     newVersion,
-    checkUpdate: useCallback(async (realtimeVersion?: string) => {
-      let targetVer = realtimeVersion;
-      if (!targetVer) {
-        targetVer = await fetchServerVersion() || undefined;
-      }
-      
-      if (targetVer && targetVer !== SAFE_APP_VERSION) {
-        console.log(`[Update] Server version (${targetVer}) differs from local (${SAFE_APP_VERSION})`);
-        setNewVersion(targetVer);
-      }
-
-      if (registration) {
-        console.log("[Update] Triggering manual service worker update check...");
-        try {
-          await registration.update();
-        } catch (err) {
-          console.error("[PWA] Manual SW update check failed:", err);
+    checkUpdate: useCallback(
+      async (realtimeVersion?: string) => {
+        let targetVer = realtimeVersion;
+        if (!targetVer) {
+          targetVer = (await fetchServerVersion()) || undefined;
         }
-      }
 
-      checkMandatoryUpdate();
-    }, [registration, fetchServerVersion, SAFE_APP_VERSION, checkMandatoryUpdate]),
+        if (targetVer && targetVer !== SAFE_APP_VERSION) {
+          console.log(
+            `[Update] Server version (${targetVer}) differs from local (${SAFE_APP_VERSION})`,
+          );
+          setNewVersion(targetVer);
+        }
+
+        if (registration) {
+          console.log(
+            "[Update] Triggering manual service worker update check...",
+          );
+          try {
+            await registration.update();
+          } catch (err) {
+            console.error("[PWA] Manual SW update check failed:", err);
+          }
+        }
+
+        checkMandatoryUpdate();
+      },
+      [
+        registration,
+        fetchServerVersion,
+        SAFE_APP_VERSION,
+        checkMandatoryUpdate,
+      ],
+    ),
     performNuclearPurge: handleUpdate,
   };
 }

@@ -188,8 +188,9 @@ export const FavoritesView = React.memo(function FavoritesView({
               </span>
             </h2>
             <p className="px-2 text-xs font-medium leading-relaxed text-slate-600 sm:text-sm">
-              Que tal rechear com as makes e acessórios mais fofos de Monte Carmelo?
-              Tudo com aquele preço único incrível de <span className="font-bold text-[#5C061E]">R$ 10,00</span>!
+              Que tal rechear com as makes e acessórios mais fofos de Monte
+              Carmelo? Tudo com aquele preço único incrível de{" "}
+              <span className="font-bold text-[#5C061E]">R$ 10,00</span>!
             </p>
           </motion.div>
 

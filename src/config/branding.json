@@ -1,10 +1,10 @@
 {
-  "appName": "SR Tudo10 - Makes e Acessórios",
-  "companyName": "SR Tudo10 LTDA",
+  "appName": "IKCOUS - imports",
+  "companyName": "IKCOUS LTDA",
   "theme": {
-    "primary": "#C74156",
-    "secondary": "#5C061E",
-    "accent": "#FAF5F5"
+    "primary": "#18181B",
+    "secondary": "#059669",
+    "accent": "#F4F4F5"
   },
   "supportContact": ""
 }

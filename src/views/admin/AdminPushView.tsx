@@ -464,7 +464,9 @@ export const AdminPushView = memo(function AdminPushView({
                 className={`size-2 rounded-full ${config.realTimeSalesAlerts ? "bg-emerald-500 animate-pulse" : "bg-zinc-600"}`}
               />
               <span className="text-zinc-400 uppercase tracking-wider text-[9px]">
-                {config.realTimeSalesAlerts ? "Avisos de Vendas Ativos" : "Avisos Desativados"}
+                {config.realTimeSalesAlerts
+                  ? "Avisos de Vendas Ativos"
+                  : "Avisos Desativados"}
               </span>
             </div>
           </div>
@@ -524,13 +526,15 @@ export const AdminPushView = memo(function AdminPushView({
                     onClick={() => {
                       if (arch.id === "fomo") {
                         setNotification({
-                          title: "Cupom Relâmpago: 10% OFF ativo por 1 hora! ⚡",
+                          title:
+                            "Cupom Relâmpago: 10% OFF ativo por 1 hora! ⚡",
                           body: "Aproveite o desconto exclusivo nos produtos da loja. Garanta o seu antes que acabe!",
                           url: "/search",
                         });
                       } else if (arch.id === "auth") {
                         setNotification({
-                          title: "Seu carrinho de compras está te esperando! 🛒",
+                          title:
+                            "Seu carrinho de compras está te esperando! 🛒",
                           body: "Finalize seu pedido agora e garanta seus produtos com rapidez. Não perca!",
                           url: "/cart",
                         });
@@ -551,7 +555,9 @@ export const AdminPushView = memo(function AdminPushView({
                         },
                       );
 
-                      toast.success(`Mensagem pronta "${arch.title}" preenchida!`);
+                      toast.success(
+                        `Mensagem pronta "${arch.title}" preenchida!`,
+                      );
                     }}
                   >
                     <div className="flex items-center justify-between gap-1 mb-1">
@@ -601,7 +607,8 @@ export const AdminPushView = memo(function AdminPushView({
                     <span className="font-bold uppercase">
                       Você está offline:
                     </span>{" "}
-                    Conecte-se à internet para poder enviar notificações aos clientes.
+                    Conecte-se à internet para poder enviar notificações aos
+                    clientes.
                   </div>
                 </div>
               )}
@@ -782,7 +789,9 @@ export const AdminPushView = memo(function AdminPushView({
                         <SelectItem value="home">
                           Página Inicial da Loja
                         </SelectItem>
-                        <SelectItem value="search">Página de Busca de Produtos</SelectItem>
+                        <SelectItem value="search">
+                          Página de Busca de Produtos
+                        </SelectItem>
                         <SelectItem value="cart">
                           Carrinho de Compras
                         </SelectItem>
@@ -796,7 +805,9 @@ export const AdminPushView = memo(function AdminPushView({
                         <SelectItem value="product">
                           Abrir um Produto Específico
                         </SelectItem>
-                        <SelectItem value="custom">Outra Página (Link manual)</SelectItem>
+                        <SelectItem value="custom">
+                          Outra Página (Link manual)
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -821,7 +832,9 @@ export const AdminPushView = memo(function AdminPushView({
                         >
                           <SelectValue
                             placeholder={
-                              loadingProducts ? "Carregando..." : "Escolha o produto..."
+                              loadingProducts
+                                ? "Carregando..."
+                                : "Escolha o produto..."
                             }
                           />
                         </SelectTrigger>
@@ -862,7 +875,9 @@ export const AdminPushView = memo(function AdminPushView({
                     <div className="flex items-end">
                       <div className="flex h-9 w-full items-center gap-1.5 rounded-lg border border-white/5 bg-black/20 px-3 text-[10px] font-mono text-zinc-400">
                         <ExternalLink className="size-3 text-emerald-400 shrink-0" />
-                        <span className="truncate">Ao clicar abrirá: {notification.url}</span>
+                        <span className="truncate">
+                          Ao clicar abrirá: {notification.url}
+                        </span>
                       </div>
                     </div>
                   )}
@@ -986,7 +1001,9 @@ export const AdminPushView = memo(function AdminPushView({
                     >
                       <div className="mt-2.5 pt-2.5 border-t border-white/5 text-[10px] leading-relaxed text-zinc-400 space-y-1">
                         <p>
-                          Esta opção exibe pequenas notificações discretas na loja quando alguém faz um pedido, passando mais segurança e confiança aos novos clientes.
+                          Esta opção exibe pequenas notificações discretas na
+                          loja quando alguém faz um pedido, passando mais
+                          segurança e confiança aos novos clientes.
                         </p>
                       </div>
                     </motion.div>
@@ -999,7 +1016,8 @@ export const AdminPushView = memo(function AdminPushView({
             <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl">
               <div className="flex items-center justify-between mb-2">
                 <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400">
-                  <Users className="size-3.5 text-emerald-400" /> Clientes Prontos para Receber
+                  <Users className="size-3.5 text-emerald-400" /> Clientes
+                  Prontos para Receber
                 </p>
                 <span className="text-[9px] font-mono text-emerald-400 font-bold uppercase">
                   Ativos
@@ -1109,7 +1127,8 @@ export const AdminPushView = memo(function AdminPushView({
       >
         <div className="space-y-4">
           <p className="text-xs leading-relaxed text-zinc-400">
-            Nesta tela você pode criar e enviar mensagens curtas direto para os celulares dos clientes que aceitaram receber avisos da sua loja.
+            Nesta tela você pode criar e enviar mensagens curtas direto para os
+            celulares dos clientes que aceitaram receber avisos da sua loja.
           </p>
 
           <div className="space-y-3">
@@ -1123,7 +1142,8 @@ export const AdminPushView = memo(function AdminPushView({
                   Enviar Notificação
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Escreva o título, a mensagem e escolha qual tela abre quando o cliente clica.
+                  Escreva o título, a mensagem e escolha qual tela abre quando o
+                  cliente clica.
                 </p>
               </div>
 
@@ -1133,7 +1153,8 @@ export const AdminPushView = memo(function AdminPushView({
                   Mensagens Prontas
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Escolha exemplos prontos para preencher o texto rapidamente com apenas 1 clique.
+                  Escolha exemplos prontos para preencher o texto rapidamente
+                  com apenas 1 clique.
                 </p>
               </div>
 
@@ -1143,7 +1164,8 @@ export const AdminPushView = memo(function AdminPushView({
                   Quem Vai Receber
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Escolha enviar para todos os clientes ou para grupos (ex: clientes novos ou sem comprar há 30 dias).
+                  Escolha enviar para todos os clientes ou para grupos (ex:
+                  clientes novos ou sem comprar há 30 dias).
                 </p>
               </div>
 
@@ -1153,7 +1175,8 @@ export const AdminPushView = memo(function AdminPushView({
                   Histórico de Envios
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Veja a lista das últimas mensagens que você enviou e quantas pessoas receberam.
+                  Veja a lista das últimas mensagens que você enviou e quantas
+                  pessoas receberam.
                 </p>
               </div>
             </div>

@@ -22,25 +22,27 @@ const Toaster = ({ position, ...props }: ToasterProps) => {
         info: <InfoIcon className="size-4.5 text-blue-400" />,
         warning: <TriangleAlertIcon className="size-4.5 text-amber-400" />,
         error: <OctagonXIcon className="size-4.5 text-rose-400" />,
-        loading: <Loader2Icon className="size-4.5 animate-spin text-zinc-400" />,
+        loading: (
+          <Loader2Icon className="size-4.5 animate-spin text-zinc-400" />
+        ),
       }}
       toastOptions={{
         classNames: {
           toast:
-            "group toast group-[.toaster]:bg-gradient-to-r group-[.toaster]:from-[#5C061E] group-[.toaster]:via-[#701A30] group-[.toaster]:to-[#400414] group-[.toaster]:text-white group-[.toaster]:border-[#C74156]/40 group-[.toaster]:shadow-[0_8px_25px_rgba(92,6,30,0.38)] group-[.toaster]:rounded-full group-[.toaster]:backdrop-blur-xl group-[.toaster]:border group-[.toaster]:py-2.5 group-[.toaster]:px-4 group-[.toaster]:gap-3 group-[.toaster]:text-xs group-[.toaster]:font-semibold group-[.toaster]:tracking-tight transition-all duration-200 ease-out",
-          description: "group-[.toast]:text-rose-200/80 text-xs font-normal",
+            "group toast group-[.toaster]:bg-gradient-to-r group-[.toaster]:from-zinc-950 group-[.toaster]:via-zinc-900 group-[.toaster]:to-zinc-950 group-[.toaster]:text-white group-[.toaster]:border-zinc-800 group-[.toaster]:shadow-[0_8px_25px_rgba(0,0,0,0.4)] group-[.toaster]:rounded-full group-[.toaster]:backdrop-blur-xl group-[.toaster]:border group-[.toaster]:py-2.5 group-[.toaster]:px-4 group-[.toaster]:gap-3 group-[.toaster]:text-xs group-[.toaster]:font-semibold group-[.toaster]:tracking-tight transition-all duration-200 ease-out",
+          description: "group-[.toast]:text-zinc-400 text-xs font-normal",
           actionButton:
-            "group-[.toast]:bg-[#C74156] group-[.toast]:text-white font-bold text-xs rounded-full px-3 py-1.5",
+            "group-[.toast]:bg-emerald-500 group-[.toast]:text-zinc-950 font-bold text-xs rounded-full px-3 py-1.5",
           cancelButton:
-            "group-[.toast]:bg-[#5C061E] group-[.toast]:text-rose-200 font-medium text-xs rounded-full px-3 py-1.5",
+            "group-[.toast]:bg-zinc-800 group-[.toast]:text-zinc-300 font-medium text-xs rounded-full px-3 py-1.5",
         },
       }}
       style={
         {
           "--offset": "calc(var(--safe-area-top, 0px) + 64px)",
-          "--normal-bg": "#5C061E",
+          "--normal-bg": "#18181b",
           "--normal-text": "#ffffff",
-          "--normal-border": "rgba(199, 65, 86, 0.4)",
+          "--normal-border": "#27272a",
           "--border-radius": "9999px",
         } as React.CSSProperties
       }

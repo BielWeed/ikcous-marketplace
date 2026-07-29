@@ -529,7 +529,8 @@ export const AdminShippingView = memo(function AdminShippingView({
                     </div>
                   ) : (
                     <p className="text-[11px] text-zinc-500 italic py-2">
-                      Frete grátis desativado. Todos os pedidos terão cobrança de entrega.
+                      Frete grátis desativado. Todos os pedidos terão cobrança
+                      de entrega.
                     </p>
                   )}
                 </div>
@@ -792,7 +793,9 @@ export const AdminShippingView = memo(function AdminShippingView({
                           <Minus className="size-3" />
                         </button>
                         <div className="flex items-center gap-0.5">
-                          <span className="text-xs font-bold text-amber-400">R$</span>
+                          <span className="text-xs font-bold text-amber-400">
+                            R$
+                          </span>
                           <input
                             type="number"
                             min="0"
@@ -952,7 +955,8 @@ export const AdminShippingView = memo(function AdminShippingView({
                           <div>
                             <div>Taxa Única Fixa</div>
                             <div className="text-[10px] text-zinc-500 font-normal">
-                              Usa a taxa padrão configurada acima para todo o Brasil
+                              Usa a taxa padrão configurada acima para todo o
+                              Brasil
                             </div>
                           </div>
                         </button>
@@ -976,7 +980,8 @@ export const AdminShippingView = memo(function AdminShippingView({
                           <div>
                             <div>Melhor Envio (API)</div>
                             <div className="text-[10px] text-zinc-500 font-normal">
-                              Cotações dinâmicas dos Correios, Jadlog, Azul Cargo
+                              Cotações dinâmicas dos Correios, Jadlog, Azul
+                              Cargo
                             </div>
                           </div>
                         </button>

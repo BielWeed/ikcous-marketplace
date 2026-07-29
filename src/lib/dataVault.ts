@@ -170,7 +170,9 @@ export class DataVault {
             resolve(attemptOpen(attempt + 1));
           } else {
             _initPromise = null;
-            reject(request.error ?? new Error("IndexedDB database open failed"));
+            reject(
+              request.error ?? new Error("IndexedDB database open failed"),
+            );
           }
         };
 
@@ -224,7 +226,8 @@ export class DataVault {
         const request = objectStore.getAll();
 
         request.onsuccess = () => resolve(request.result as T[]);
-        request.onerror = () => reject(request.error ?? new Error(`getAll('${store}') failed`));
+        request.onerror = () =>
+          reject(request.error ?? new Error(`getAll('${store}') failed`));
       } catch (err) {
         // Store may not exist if migration failed
         console.error("[DataVault] getAll('%s') failed:", store, err);
@@ -244,7 +247,10 @@ export class DataVault {
         const request = objectStore.get(id);
 
         request.onsuccess = () => resolve(request.result as T | undefined);
-        request.onerror = () => reject(request.error ?? new Error(`getById('${store}', '${id}') failed`));
+        request.onerror = () =>
+          reject(
+            request.error ?? new Error(`getById('${store}', '${id}') failed`),
+          );
       } catch (err) {
         console.error(
           "[DataVault] getById('%s', '%s') failed:",
@@ -273,7 +279,11 @@ export class DataVault {
         const request = index.getAll(value);
 
         request.onsuccess = () => resolve(request.result as T[]);
-        request.onerror = () => reject(request.error ?? new Error(`getByIndex('${store}', '${indexName}') failed`));
+        request.onerror = () =>
+          reject(
+            request.error ??
+              new Error(`getByIndex('${store}', '${indexName}') failed`),
+          );
       } catch (err) {
         console.error(
           "[DataVault] getByIndex('%s', '%s') failed:",
@@ -303,8 +313,13 @@ export class DataVault {
         }
 
         tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error ?? new Error(`putMany('${store}') failed`));
-        tx.onabort = () => reject(tx.error ?? new Error(`Transaction aborted for putMany('${store}')`));
+        tx.onerror = () =>
+          reject(tx.error ?? new Error(`putMany('${store}') failed`));
+        tx.onabort = () =>
+          reject(
+            tx.error ??
+              new Error(`Transaction aborted for putMany('${store}')`),
+          );
       } catch (err) {
         console.error("[DataVault] putMany('%s') failed:", store, err);
         reject(err);
@@ -330,7 +345,11 @@ export class DataVault {
         const request = objectStore.delete(id);
 
         request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error ?? new Error(`deleteById('${store}', '${id}') failed`));
+        request.onerror = () =>
+          reject(
+            request.error ??
+              new Error(`deleteById('${store}', '${id}') failed`),
+          );
       } catch (err) {
         console.error(
           "[DataVault] deleteById('%s', '%s') failed:",
@@ -354,7 +373,8 @@ export class DataVault {
         const request = objectStore.clear();
 
         request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error ?? new Error(`clear('${store}') failed`));
+        request.onerror = () =>
+          reject(request.error ?? new Error(`clear('${store}') failed`));
       } catch (err) {
         console.error("[DataVault] clear('%s') failed:", store, err);
         reject(err);
@@ -381,8 +401,13 @@ export class DataVault {
         }
 
         tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error ?? new Error(`replaceAll('${store}') failed`));
-        tx.onabort = () => reject(tx.error ?? new Error(`Transaction aborted for replaceAll('${store}')`));
+        tx.onerror = () =>
+          reject(tx.error ?? new Error(`replaceAll('${store}') failed`));
+        tx.onabort = () =>
+          reject(
+            tx.error ??
+              new Error(`Transaction aborted for replaceAll('${store}')`),
+          );
       } catch (err) {
         console.error("[DataVault] replaceAll('%s') failed:", store, err);
         reject(err);
@@ -401,7 +426,8 @@ export class DataVault {
         const request = objectStore.count();
 
         request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error ?? new Error(`count('${store}') failed`));
+        request.onerror = () =>
+          reject(request.error ?? new Error(`count('${store}') failed`));
       } catch (err) {
         console.error("[DataVault] count('%s') failed:", store, err);
         resolve(0);

@@ -680,7 +680,6 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
             <ChevronRight className="size-4 text-red-200 transition-transform group-hover:translate-x-1" />
           </button>
         </motion.div>
-
       </motion.div>
 
       {/* Custom Avatar Sheet/Dialog Modal */}

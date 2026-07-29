@@ -40,7 +40,9 @@ sw.addEventListener("install", (event: any) => {
         .catch((err) => console.warn("[SW] Precache failed:", err));
     }),
   );
-  console.log("[SW] Installing new version. Waiting for user/client activation signal...");
+  console.log(
+    "[SW] Installing new version. Waiting for user/client activation signal...",
+  );
 });
 
 sw.addEventListener("activate", (event: any) => {
@@ -230,41 +232,41 @@ sw.addEventListener("message", (event: any) => {
     });
   }
 
-async function warmSingleUrl(url: string, imgCache: Cache, appCache: Cache) {
-  try {
-    const parsedUrl = new URL(url, self.location.origin);
-    const allowedHosts = [
-      self.location.hostname,
-      "images.unsplash.com",
-      "placehold.co",
-    ];
-    const isSupabase =
-      parsedUrl.hostname.endsWith(".supabase.co") ||
-      parsedUrl.hostname === "supabase.co";
+  async function warmSingleUrl(url: string, imgCache: Cache, appCache: Cache) {
+    try {
+      const parsedUrl = new URL(url, self.location.origin);
+      const allowedHosts = [
+        self.location.hostname,
+        "images.unsplash.com",
+        "placehold.co",
+      ];
+      const isSupabase =
+        parsedUrl.hostname.endsWith(".supabase.co") ||
+        parsedUrl.hostname === "supabase.co";
 
-    if (!allowedHosts.includes(parsedUrl.hostname) && !isSupabase) {
-      console.warn(
-        "[SW] Blocked cache warming for untrusted host:",
-        parsedUrl.hostname,
-      );
-      return;
-    }
-
-    const targetCache = isSupabase ? imgCache : appCache;
-    const existing = await targetCache.match(url);
-    if (existing) return;
-
-    const res = await fetch(url); // ship-safe-ignore
-    if (res.ok && res.status === 200) {
-      await targetCache.put(url, res);
-      if (isSupabase) {
-        cleanOldImageCache(imgCache);
+      if (!allowedHosts.includes(parsedUrl.hostname) && !isSupabase) {
+        console.warn(
+          "[SW] Blocked cache warming for untrusted host:",
+          parsedUrl.hostname,
+        );
+        return;
       }
+
+      const targetCache = isSupabase ? imgCache : appCache;
+      const existing = await targetCache.match(url);
+      if (existing) return;
+
+      const res = await fetch(url); // ship-safe-ignore
+      if (res.ok && res.status === 200) {
+        await targetCache.put(url, res);
+        if (isSupabase) {
+          cleanOldImageCache(imgCache);
+        }
+      }
+    } catch (e) {
+      console.warn("[SW] Warm fetch failed for:", url, e);
     }
-  } catch (e) {
-    console.warn("[SW] Warm fetch failed for:", url, e);
   }
-}
 
   if (event.data?.type === "WARM_CACHE") {
     const urls: string[] = event.data.urls || [];

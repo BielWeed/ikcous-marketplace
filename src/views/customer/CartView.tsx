@@ -614,7 +614,6 @@ export function CartView({
                   </div>
                 </div>
               )}
-
             </motion.div>
           ) : (
             <motion.div

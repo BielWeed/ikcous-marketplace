@@ -59,7 +59,8 @@ export function CartFooterSummary({
     };
   }, []);
 
-  if (typeof document === "undefined" || !document.body || isKeyboardOpen) return null;
+  if (typeof document === "undefined" || !document.body || isKeyboardOpen)
+    return null;
 
   return createPortal(
     <div className="bottom-docked-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 lg:hidden">
