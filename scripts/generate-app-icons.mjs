@@ -8,13 +8,7 @@ const LOGO_SVG = path.join(ROOT, "public/logo.svg");
 const MASKABLE_SVG = path.join(ROOT, "scripts/icon-source-maskable.svg");
 
 const PNG_TARGETS = [
-  { file: "public/icons/icon-72x72.png", size: 72, source: LOGO_SVG },
-  { file: "public/icons/icon-96x96.png", size: 96, source: LOGO_SVG },
-  { file: "public/icons/icon-128x128.png", size: 128, source: LOGO_SVG },
-  { file: "public/icons/icon-144x144.png", size: 144, source: LOGO_SVG },
-  { file: "public/icons/icon-152x152.png", size: 152, source: LOGO_SVG },
   { file: "public/icons/icon-192x192.png", size: 192, source: LOGO_SVG },
-  { file: "public/icons/icon-384x384.png", size: 384, source: LOGO_SVG },
   { file: "public/icons/icon-512x512.png", size: 512, source: LOGO_SVG },
   {
     file: "public/icons/icon-maskable-512x512.png",
