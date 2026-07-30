@@ -1716,5 +1716,3 @@ const AdminProductCard = memo(function AdminProductCard({
     </motion.div>
   );
 });
-
-export default AdminProductsView;

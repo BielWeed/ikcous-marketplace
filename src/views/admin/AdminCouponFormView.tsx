@@ -497,4 +497,3 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
     </div>
   );
 });
-export default AdminCouponFormView;

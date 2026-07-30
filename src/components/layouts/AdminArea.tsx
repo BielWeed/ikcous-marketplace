@@ -694,5 +694,3 @@ export function AdminArea({
     </AdminLayout>
   );
 }
-
-export default AdminArea;
