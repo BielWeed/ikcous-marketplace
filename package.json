@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "npx tsc -b && vite build",
     "lint": "eslint .",
+    "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "typecheck": "tsc -b --force",
     "test": "npm run test:edge",
     "test:edge": "deno test --allow-all --no-check supabase/functions/calculate-shipping/index_test.ts",

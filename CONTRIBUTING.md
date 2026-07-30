@@ -223,11 +223,11 @@ git push -u origin feat/<assunto>
 gh pr create --base develop --fill
 ```
 
-**O que precisa estar verde antes de pedir revisão:**
+**O que precisa estar verde antes de pedir revisão:** todos os cinco jobs.
 
-- `Tipos`, `Testes (Deno)`, `Build e tamanho` e `Varredura de segredo` — sim
-- `Lint (informativo)` — não. Está vermelho de propósito, por dívida antiga.
-  Ver [O que o CI checa](#o-que-o-ci-checa)
+Se a `Catraca de lint` reprovar, ela diz qual contagem subiu — é dívida que
+**este PR** introduziu, não a antiga. Ver
+[A catraca de lint](#a-catraca-de-lint).
 
 **Quem revisa:** o outro. Marque na mão — o `CODEOWNERS` não atribui sozinho
 neste plano.
@@ -359,29 +359,45 @@ O checklist condicional do template de PR cobre isso. Marque a label
 
 `.github/workflows/ci.yml`, em PR e push para `develop` e `main`.
 
-| Job | Comando | Bloqueia? | Estado em 30/07/2026 |
-| --- | --- | --- | --- |
-| `Tipos` | `npm run typecheck` | Sim | verde — 911 arquivos, 16s |
-| `Testes (Deno)` | `npm test` | Sim | verde — 12 testes, ~30ms |
-| `Build e tamanho` | `npm run build` + `npm run size` | Sim | verde — 515 kB de 800 kB |
-| `Varredura de segredo` | secretlint no diff | Sim | verde — 0 achados |
-| `Lint (informativo)` | `npm run lint` + `npm run biome:check` | **Não** | vermelho — 7 erros e 1106 warnings no eslint, 337 no biome |
+| Job | Comando | Estado em 30/07/2026 |
+| --- | --- | --- |
+| `Tipos` | `npm run typecheck` | verde — 911 arquivos, 16s |
+| `Testes (Deno)` | `npm test` | verde — 12 testes, ~30ms |
+| `Build e tamanho` | `npm run build` + `npm run size` | verde — 515 kB de 800 kB |
+| `Varredura de segredo` | secretlint no diff | verde — 0 achados |
+| `Catraca de lint` | `npm run lint:ratchet` | verde — dívida no teto |
 
-"Bloqueia" aqui significa "os dois combinaram de não mergear com isso vermelho".
-O GitHub não impede nada — ver [A trava que não existe](#a-trava-que-não-existe).
+Os cinco bloqueiam. "Bloqueia" aqui significa "os dois combinaram de não mergear
+com isso vermelho" — o GitHub não impede nada, ver
+[A trava que não existe](#a-trava-que-não-existe).
 
-**Por que o lint não bloqueia.** A dívida é anterior à dupla: 1106 warnings de
-eslint (704 de ordem de classe do Tailwind) e 337 diagnósticos do Biome, dos
-quais cerca de 293 são só fim de linha CRLF contra LF. Reprovar todo PR por
-causa disso desde o primeiro dia tem um resultado conhecido: a equipe aprende a
-ignorar o CI inteiro, inclusive os jobs que importam.
+### A catraca de lint
 
-O gate contra dívida **nova** é o `pre-commit`, que roda eslint só nos arquivos
-staged e reprova em erro. Warning não reprova.
+`npm run lint` cru sai com erro, e vai continuar saindo enquanto houver dívida
+antiga: **7 erros e 553 warnings** de eslint, **31 erros** de Biome, medidos no
+CI. Nenhum dos dois criou essa dívida.
 
-Para o lint virar bloqueante é preciso INFRA-040 (definir o limite de warning),
-INFRA-220 (Biome cobrir edge functions e resolver o CRLF) e uma task ainda
-inexistente para zerar os warnings.
+Duas saídas fáceis foram descartadas, pelo mesmo motivo:
+
+- rodar `npm run lint` direto deixaria todo PR vermelho desde o dia 1;
+- `continue-on-error: true` deixaria um X vermelho permanente no PR.
+
+As duas treinam o mesmo reflexo — ignorar vermelho — e aí os jobs que importam
+passam despercebidos junto.
+
+A catraca compara com os tetos de `.lint-baseline.json` e **reprova só o que
+subir**. Se o seu PR introduz um warning novo, ele reprova, e diz qual número
+subiu. Se você derrubar um número, ela avisa para abaixar o teto no mesmo PR —
+é isso que impede a dívida de voltar.
+
+Nunca suba um teto sem explicar no PR por quê.
+
+> Os números do teto foram medidos **no CI**, não numa máquina. No Windows o
+> eslint conta 14 erros em vez de 7 se o `eslint.config.js` não estiver
+> ignorando `.claude/worktrees` (uma cópia do próprio repositório), e o Biome
+> conta 100 erros em vez de 31 porque o disco está em CRLF e ele formata em LF.
+> Por isso o Biome só é cobrado dentro do CI. Normalizar fim de linha é a
+> INFRA-220; zerar os warnings de eslint é a INFRA-250, ainda a criar.
 
 ### Reproduzindo o CI local
 
@@ -390,6 +406,7 @@ npm run typecheck
 npm test
 NODE_ENV=production npm run build && npm run size
 npm run secretlint
+npm run lint:ratchet
 ```
 
 Cuidado com `npm run build` **sem** `NODE_ENV=production`: `vite.config.ts:143`

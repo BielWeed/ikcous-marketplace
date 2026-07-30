@@ -6,13 +6,18 @@
 # número medido e a task que resolve. Nada aqui é aspiracional.
 #
 # Estado medido em 30/07/2026, na raiz do repositório:
-#   npm run typecheck  -> exit 0   (911 arquivos, 16s)   BLOQUEIA
-#   npm run build      -> exit 0   (NODE_ENV=production) BLOQUEIA
-#   npm run size       -> exit 0   (515 kB de 800 kB)    BLOQUEIA
-#   npm test           -> exit 0   (12 testes Deno)      BLOQUEIA
-#   npm run secretlint -> exit 0   (0 achados)           BLOQUEIA
-#   npm run lint       -> exit 1   (7 erros, 1106 warns) INFORMATIVO
-#   npm run biome:check-> exit 1   (337 erros)           INFORMATIVO
+#   npm run typecheck    -> exit 0  (911 arquivos, 16s)      BLOQUEIA
+#   npm run build        -> exit 0  (NODE_ENV=production)    BLOQUEIA
+#   npm run size         -> exit 0  (515 kB de 800 kB)       BLOQUEIA
+#   npm test             -> exit 0  (12 testes Deno)         BLOQUEIA
+#   npm run secretlint   -> exit 0  (0 achados)              BLOQUEIA
+#   npm run lint:ratchet -> exit 0  (dívida no teto, não subiu)  BLOQUEIA SE SUBIR
+#
+# `npm run lint` cru sai com 1 e sempre sairá enquanto houver dívida antiga.
+# Quem entra no CI é a catraca, que compara com `.lint-baseline.json`.
+# Os números foram medidos AQUI no CI, não na máquina do Gabriel: no Windows
+# dele o eslint conta 14 erros (varre uma cópia do repo em .claude/worktrees)
+# e o biome conta 100 (CRLF contra LF). Números locais não servem de teto.
 
 name: CI
 
@@ -136,28 +141,28 @@ jobs:
           npx secretlint --secretlintignore .secretlintignore "${ARQUIVOS[@]}"
 
   lint:
-    name: Lint (informativo)
+    name: Catraca de lint
     runs-on: ubuntu-latest
-    # TEMPORÁRIO. Este job não reprova o PR porque o repositório já entra com
-    # dívida medida em 30/07/2026:
-    #   eslint  -> 7 erros + 1106 warnings em 114 arquivos
-    #              (704 tailwindcss/classnames-order, 216 security/detect-object-injection,
-    #               26 react-hooks/exhaustive-deps)
-    #   biome   -> 337 erros, dos quais ~293 são só fim de linha CRLF vs LF
+    # Este job BLOQUEIA, mas só se a dívida SUBIR.
     #
-    # Reprovar hoje significaria bloquear todo PR desde o primeiro dia por
-    # dívida que ninguém desta dupla criou — e o resultado conhecido disso é
-    # a equipe aprender a ignorar o CI inteiro.
+    # O repositório entrou nesta dupla com dívida pré-existente, medida aqui
+    # no CI em 30/07/2026: eslint com 7 erros e 553 warnings, biome com 31
+    # erros. Duas saídas fáceis foram descartadas:
     #
-    # O gate de verdade contra dívida NOVA é o hook de pre-commit do lefthook,
-    # que roda eslint só nos arquivos staged e reprova em erro.
+    #   `npm run lint` puro          -> vermelho em todo PR desde o dia 1, por
+    #                                   dívida que nenhum dos dois criou. O
+    #                                   resultado conhecido é a dupla aprender
+    #                                   a ignorar o CI inteiro.
+    #   `continue-on-error: true`    -> X vermelho permanente no PR, que treina
+    #                                   exatamente o mesmo reflexo. E um job
+    #                                   que nunca pode falhar não vale nada.
     #
-    # Para tirar o `continue-on-error` daqui é preciso:
-    #   INFRA-040  definir e documentar o limite de warning aceito
-    #   INFRA-220  fazer o Biome cobrir as edge functions e resolver o CRLF
-    #   INFRA-250  zerar os 1106 warnings de eslint  <-- task ainda NÃO existe
-    #              no BACKLOG.md; precisa ser criada (ver corpo do PR).
-    continue-on-error: true
+    # A catraca compara com os tetos de `.lint-baseline.json` e reprova só o
+    # que aumentar. Nasce verde e bloqueia dívida nova. Quando um número cair,
+    # ela avisa para abaixar o teto no mesmo PR.
+    #
+    # Alvo é zerar: INFRA-250 (a criar) para os warnings de eslint, INFRA-220
+    # para o alcance do Biome e a normalização de fim de linha.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -165,8 +170,5 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - name: eslint
-        run: npm run lint
-      - name: biome
-        if: always()
-        run: npm run biome:check
+      - name: Compara com o teto de dívida
+        run: npm run lint:ratchet

@@ -16,7 +16,7 @@ Closes #
 
 - [ ] `npm run typecheck` passa localmente
 - [ ] `npm test` passa localmente
-- [ ] O CI está verde (o job `Lint (informativo)` pode estar vermelho — ver `CONTRIBUTING.md`)
+- [ ] O CI está verde nos cinco jobs
 - [ ] Testei no preview deploy da Vercel, não só no localhost
 - [ ] A mensagem de commit segue Conventional Commits e o escopo está em `.commitlintrc.json`
 - [ ] Não sobrou credencial, `console.log` de depuração nem código comentado
