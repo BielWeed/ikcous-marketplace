@@ -314,7 +314,7 @@ export const Header = memo(function Header({
                     stiffness: 400,
                     damping: 20,
                   }}
-                  className="text-[10px] text-rose-300/90 shrink-0 select-none"
+                  className="text-[10px] text-secondary/90 shrink-0 select-none"
                 >
                   ✨
                 </motion.span>
