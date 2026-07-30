@@ -1642,14 +1642,22 @@ Os 7 erros (que não são warning) estão fora do escopo desta task: são 3 de `
 
 **Contexto:** São 10 branches locais e 11 refs remotas, várias já mergeadas em main. O caso perigoso é `origin/master`: último commit em 21/04/2026, divergente de origin/main. Com um segundo desenvolvedor entrando, ter master e main no mesmo remote é convite a push no lugar errado.
 
-**Evidência:** Conferido agora com `git branch -a`: locais backup/pre-limpeza-segredos, chore/claude-code-setup, chore/migra-chaves-api-supabase, chore/rotacao-senha-e-gitignore, claude/relaxed-robinson-cac8ad, docs/estado-e-backlog (atual), docs/onboarding-mapa-projeto, feat/rebrand-ikcous, main, shadow-fix-transitions; remotas incluem origin/master além de origin/main. origin/master: SHA 5b58bb8 contra 072f03e de origin/main.
+**Evidência:** Conferido com `git branch -a`: locais backup/pre-limpeza-segredos, chore/claude-code-setup, chore/migra-chaves-api-supabase, chore/rotacao-senha-e-gitignore, claude/relaxed-robinson-cac8ad, docs/estado-e-backlog (atual), docs/onboarding-mapa-projeto, feat/rebrand-ikcous, main, shadow-fix-transitions; remotas incluem origin/master além de origin/main. origin/master: SHA 5b58bb8 contra 072f03e de origin/main.
+
+**Já resolvido em 30/07/2026, no PR `chore/limpeza-raiz`:** `git log origin/main..origin/master` respondeu a pergunta que estava em aberto — `origin/master` **não tem ancestral comum** com a `main` (`git diff origin/main...origin/master` devolve "no merge base"). Não era branch antiga do projeto, era uma raiz paralela com um commit, `5b58bb8 feat: Ikcous Architecture Initial`. Foi preservada na tag `arquivo/master-inicial` e a branch foi apagada do remoto. As duas branches locais vazias (`claude/relaxed-robinson-cac8ad` e `shadow-fix-transitions`, ambas com 0 commits à frente da main) saíram com `git branch -d`. A `backup/pre-limpeza-segredos` ficou, por ser a rede de segurança do incidente de credencial.
+
+**O que sobra:** as branches remotas de PR já mergeado (`origin/docs/prompts-onboarding-dev`, `origin/feat/rebrand-ikcous`) e as de PR aberto, que só saem quando os PRs entrarem. O auto-delete de branch após merge resolve isso daqui para frente, e faz parte do item 7 do PR do GitFlow.
 
 **Critério de aceite:**
 
-- [ ] `git log origin/main..origin/master` foi rodado e o resultado está registrado por escrito na task
-- [ ] Branches já mergeadas em main foram apagadas local e remotamente, com a lista do que foi apagado registrada
-- [ ] origin/master foi apagado OU está documentado por que ele fica e como evitar push acidental nele
-- [ ] main está protegida no GitHub contra push direto
+- [x] `git log origin/main..origin/master` foi rodado e o resultado está registrado por escrito na task
+- [x] origin/master foi apagado, com o commit preservado na tag `arquivo/master-inicial`
+- [ ] Branches remotas de PR já mergeado foram apagadas, com a lista do que foi apagado registrada
+- [ ] `delete_branch_on_merge` está ligado no repositório, para o problema não voltar
+- [ ] Um push direto em `main` é recusado pelo hook `pre-push` local — **testado**, não presumido
+- [ ] Está escrito na documentação que não existe proteção do lado do servidor, e por quê
+
+> O critério anterior era "main está protegida no GitHub contra push direto". Era **inatingível**: em repositório privado no plano Free, `GET /repos/.../branches/main/protection` e `/rulesets` devolvem 403 com "Upgrade to GitHub Pro or make this repository public". Enquanto esse checkbox existisse, a task nunca poderia ser fechada. A proteção possível hoje é hook local, contornável com `--no-verify` — ver "A trava que não existe" no `CONTRIBUTING.md`. Trocar isso por proteção de verdade é a decisão registrada na [INFRA-240].
 
 **Arquivos envolvidos:** `.git`
 **Depende de:** nada
