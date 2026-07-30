@@ -103,10 +103,34 @@ const medido = { eslint: contarEslint(), biome: contarBiome() };
 // dispara security/detect-object-injection, e este script não pode ser o
 // primeiro a furar a própria catraca que instala.
 const comparacoes = [
-  { ferramenta: "eslint", tipo: "errors", agora: medido.eslint.errors, teto: BASE.eslint.errors, cobra: true },
-  { ferramenta: "eslint", tipo: "warnings", agora: medido.eslint.warnings, teto: BASE.eslint.warnings, cobra: true },
-  { ferramenta: "biome", tipo: "errors", agora: medido.biome.errors, teto: BASE.biome.errors, cobra: NO_CI },
-  { ferramenta: "biome", tipo: "warnings", agora: medido.biome.warnings, teto: BASE.biome.warnings, cobra: NO_CI },
+  {
+    ferramenta: "eslint",
+    tipo: "errors",
+    agora: medido.eslint.errors,
+    teto: BASE.eslint.errors,
+    cobra: true,
+  },
+  {
+    ferramenta: "eslint",
+    tipo: "warnings",
+    agora: medido.eslint.warnings,
+    teto: BASE.eslint.warnings,
+    cobra: true,
+  },
+  {
+    ferramenta: "biome",
+    tipo: "errors",
+    agora: medido.biome.errors,
+    teto: BASE.biome.errors,
+    cobra: NO_CI,
+  },
+  {
+    ferramenta: "biome",
+    tipo: "warnings",
+    agora: medido.biome.warnings,
+    teto: BASE.biome.warnings,
+    cobra: NO_CI,
+  },
 ];
 
 const linhas = [];
@@ -118,7 +142,9 @@ for (const { ferramenta, tipo, agora, teto, cobra } of comparacoes) {
 
   let situacao = "ok";
   if (delta > 0) {
-    situacao = cobra ? `SUBIU +${delta}` : `subiu +${delta} (não cobrado fora do CI)`;
+    situacao = cobra
+      ? `SUBIU +${delta}`
+      : `subiu +${delta} (não cobrado fora do CI)`;
     if (cobra) subiu = true;
   } else if (delta < 0) {
     situacao = `baixou ${delta} — abaixe o teto`;
@@ -134,7 +160,8 @@ console.log(
     `${col("ferramenta")}${col("tipo")}${col("agora")}${col("teto")}situação`,
     "".padEnd(72, "-"),
     ...linhas.map(
-      (l) => `${col(l.ferramenta)}${col(l.tipo)}${col(l.agora)}${col(l.teto)}${l.situacao}`,
+      (l) =>
+        `${col(l.ferramenta)}${col(l.tipo)}${col(l.agora)}${col(l.teto)}${l.situacao}`,
     ),
   ].join("\n"),
 );
@@ -154,7 +181,8 @@ if (resumo) {
     "| ferramenta | tipo | agora | teto | situação |",
     "| --- | --- | --- | --- | --- |",
     ...linhas.map(
-      (l) => `| ${l.ferramenta} | ${l.tipo} | ${l.agora} | ${l.teto} | ${l.situacao} |`,
+      (l) =>
+        `| ${l.ferramenta} | ${l.tipo} | ${l.agora} | ${l.teto} | ${l.situacao} |`,
     ),
     "",
     subiu
