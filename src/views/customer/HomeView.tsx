@@ -396,7 +396,7 @@ export const HomeView = React.memo(function HomeView({
                     haptic.light();
                     setShowSortMenu(!showSortMenu);
                   }}
-                  className="flex size-10 items-center justify-center rounded-full bg-[#5C061E] text-white shadow-lg shadow-rose-100 transition-all hover:bg-[#720E28] active:scale-95"
+                  className="flex size-10 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
                   aria-expanded={showSortMenu}
                   aria-haspopup="listbox"
                   title="Filtrar e Ordenar"
@@ -444,7 +444,7 @@ export const HomeView = React.memo(function HomeView({
                             }}
                             className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
                               sortBy === option.value
-                                ? "translate-x-1 bg-[#5C061E] text-white"
+                                ? "translate-x-1 bg-primary text-white"
                                 : "text-zinc-400 hover:bg-zinc-50 hover:text-zinc-900"
                             }`}
                           >

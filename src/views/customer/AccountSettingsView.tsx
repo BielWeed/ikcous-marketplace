@@ -984,10 +984,10 @@ export function AccountSettingsView() {
 
       {/* Custom Cover Sheet/Dialog Modal */}
       <Dialog open={isCoverModalOpen} onOpenChange={setIsCoverModalOpen}>
-        <DialogContent className="mx-auto w-[90%] max-w-sm overflow-hidden rounded-[2.5rem] border border-rose-100 bg-white p-6 text-slate-800 shadow-2xl">
+        <DialogContent className="mx-auto w-[90%] max-w-sm overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white p-6 text-slate-800 shadow-2xl">
           <DialogHeader className="space-y-1.5">
             <DialogTitle className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-slate-800">
-              <span className="size-1.5 animate-pulse rounded-full bg-rose-500" />
+              <span className="size-1.5 animate-pulse rounded-full bg-secondary" />
               Capa de Fundo
             </DialogTitle>
             <DialogDescription className="text-[10px] leading-relaxed text-slate-500">
@@ -997,7 +997,7 @@ export function AccountSettingsView() {
           </DialogHeader>
 
           {/* Live Preview Banner */}
-          <div className="group relative mb-2 mt-3 h-20 w-full overflow-hidden rounded-2xl border border-rose-100 shadow-inner">
+          <div className="group relative mb-2 mt-3 h-20 w-full overflow-hidden rounded-2xl border border-zinc-100 shadow-inner">
             <img
               src={profile?.cover_url || defaultCover}
               alt="Capa de Perfil"
@@ -1030,7 +1030,7 @@ export function AccountSettingsView() {
           </div>
 
           {/* Tabs navigation */}
-          <div className="my-3.5 flex rounded-2xl border border-rose-100 bg-rose-50/50 p-1">
+          <div className="my-3.5 flex rounded-2xl border border-zinc-100 bg-zinc-50/50 p-1">
             <button
               type="button"
               onClick={() => {
@@ -1085,8 +1085,8 @@ export function AccountSettingsView() {
                         disabled={isUpdatingCover}
                         className={`group relative flex aspect-[16/10] flex-col justify-end overflow-hidden rounded-xl border-2 p-1.5 transition-all active:scale-95 ${
                           isSelected || isDefault
-                            ? "scale-98 border-rose-500 bg-rose-50/30 shadow-[0_0_12px_rgba(244,63,94,0.3)]"
-                            : "border-rose-100 bg-rose-50/30 hover:border-rose-200/50"
+                            ? "scale-98 border-primary bg-zinc-50/30 shadow-[0_0_12px_rgba(24,24,27,0.3)]"
+                            : "border-zinc-100 bg-zinc-50/30 hover:border-zinc-300"
                         }`}
                         title={cover.label}
                       >
@@ -1102,8 +1102,8 @@ export function AccountSettingsView() {
                         </span>
 
                         {(isSelected || isDefault) && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-rose-500/10 backdrop-blur-[0.5px]">
-                            <div className="flex size-5 items-center justify-center rounded-full border border-white/25 bg-rose-500 shadow-lg">
+                          <div className="absolute inset-0 flex items-center justify-center bg-secondary/10 backdrop-blur-[0.5px]">
+                            <div className="flex size-5 items-center justify-center rounded-full border border-white/25 bg-secondary shadow-lg">
                               <Check className="size-3 text-white" />
                             </div>
                           </div>
@@ -1128,14 +1128,12 @@ export function AccountSettingsView() {
                   <motion.div
                     whileHover={{
                       scale: 1.01,
-                      borderColor: "rgba(199, 65, 86, 0.25)",
-                      backgroundColor: "rgba(199, 65, 86, 0.04)",
                     }}
                     whileTap={{ scale: 0.99 }}
-                    className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-2xl border-2 border-dashed border-rose-100 bg-rose-50/10 p-6 text-center transition-colors"
+                    className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-2xl border-2 border-dashed border-zinc-100 bg-zinc-50/10 p-6 text-center transition-colors hover:border-primary/25 hover:bg-primary/[0.04]"
                   >
-                    <div className="flex size-10 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-400">
-                      <UploadCloud className="size-5 text-rose-500" />
+                    <div className="flex size-10 items-center justify-center rounded-xl border border-zinc-100 bg-zinc-50 text-primary">
+                      <UploadCloud className="size-5 text-primary" />
                     </div>
                     <div className="space-y-1">
                       <p className="text-[10px] font-black uppercase tracking-wider text-slate-700">
@@ -1151,7 +1149,7 @@ export function AccountSettingsView() {
               </div>
             )}
 
-            <div className="mt-4 flex gap-2 border-t border-rose-100 pt-3.5">
+            <div className="mt-4 flex gap-2 border-t border-zinc-100 pt-3.5">
               {profile?.cover_url && (
                 <motion.div whileTap={{ scale: 0.97 }} className="flex-1">
                   <Button
@@ -1159,7 +1157,7 @@ export function AccountSettingsView() {
                     variant="outline"
                     onClick={handleRemoveCover}
                     disabled={isUpdatingCover}
-                    className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border-rose-100 bg-transparent text-[9px] font-black uppercase tracking-wider text-red-500 shadow-none transition-all hover:border-red-500/30 hover:bg-red-500/5"
+                    className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border-zinc-100 bg-transparent text-[9px] font-black uppercase tracking-wider text-red-500 shadow-none transition-all hover:border-red-500/30 hover:bg-red-500/5"
                   >
                     <Trash2 className="size-3.5" />
                     Remover
@@ -1174,7 +1172,7 @@ export function AccountSettingsView() {
                     haptic.light();
                   }}
                   disabled={isUpdatingCover}
-                  className="flex h-10 w-full items-center justify-center rounded-xl bg-[#5C061E] text-[9px] font-black font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-[#720E28]"
+                  className="flex h-10 w-full items-center justify-center rounded-xl bg-primary text-[9px] font-black font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-primary/90"
                 >
                   {isUpdatingCover ? (
                     <>

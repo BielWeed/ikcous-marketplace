@@ -1,7 +1,7 @@
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
-import { BellRing, Heart, Sparkles, X } from "lucide-react";
+import { BellRing, Heart, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 interface PushNotificationBannerProps {
@@ -9,7 +9,7 @@ interface PushNotificationBannerProps {
   readonly isKeyboardOpen?: boolean;
 }
 
-const DISMISS_KEY = "sr_tudo10_push_banner_dismissed_until";
+const DISMISS_KEY = "ikcous_push_banner_dismissed_until";
 const DISMISS_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias de cooldown se a cliente fechar
 
 export function PushNotificationBanner({
@@ -94,51 +94,48 @@ export function PushNotificationBanner({
           "bottom-20 md:bottom-6", // Posicionado de forma elegante acima da BottomNav
         )}
       >
-        <div className="relative overflow-hidden rounded-2xl border border-rose-500/25 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-2xl text-white">
-          {/* Linha superior com brilho gradiente rosa cereja e vinho */}
-          <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-rose-500/70 to-transparent" />
+        <div className="relative overflow-hidden rounded-2xl border border-secondary/25 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-2xl text-white">
+          {/* Linha superior com brilho gradiente secondary */}
+          <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-secondary/70 to-transparent" />
 
           {/* Botao de fechar (X) */}
           <button
             onClick={handleDismiss}
-            className="absolute right-3 top-3 rounded-full p-1 text-zinc-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors"
-            title="Agora não, miga"
+            className="absolute right-3 top-3 rounded-full p-1 text-zinc-400 hover:bg-secondary/10 hover:text-secondary transition-colors"
+            title="Fechar"
             aria-label="Fechar"
           >
             <X className="size-4" />
           </button>
 
           <div className="flex items-start gap-3.5 pr-6">
-            {/* Icone de sino animado com tema rosa cereja e glow */}
+            {/* Icone de sino animado com tema secondary e glow */}
             <div className="relative flex-shrink-0">
-              <div className="absolute inset-0 animate-ping rounded-xl bg-rose-500/20 blur-sm" />
-              <div className="relative flex size-11 items-center justify-center rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-400 shadow-inner">
+              <div className="absolute inset-0 animate-ping rounded-xl bg-secondary/20 blur-sm" />
+              <div className="relative flex size-11 items-center justify-center rounded-xl border border-secondary/30 bg-secondary/10 text-secondary shadow-inner">
                 <BellRing className="size-5 animate-bounce" />
               </div>
             </div>
 
-            {/* Conteudo formatado com a identidade de marca da SR Tudo 10 */}
+            {/* Conteudo do banner de notificacoes da IKCOUS */}
             <div className="flex-1 space-y-1">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <h4 className="text-xs font-black uppercase tracking-wider text-white">
-                  SR Tudo 10 VIP 💖
+                  IKCOUS Novidades 🔔
                 </h4>
-                <span className="flex items-center gap-0.5 rounded-full bg-rose-500/20 border border-rose-500/30 px-2 py-0.5 font-mono text-[9px] font-bold uppercase text-rose-300">
-                  <Sparkles className="size-2.5 text-rose-400" /> Makes R$10
-                </span>
               </div>
               <p className="text-[11px] leading-snug text-zinc-300">
-                Fique por dentro das{" "}
-                <strong className="text-rose-400 font-semibold">
-                  reposições de R$10,00
+                Fique por dentro de{" "}
+                <strong className="text-secondary font-semibold">
+                  promoções
                 </strong>
                 ,{" "}
-                <strong className="text-rose-400 font-semibold">
-                  kits de make
+                <strong className="text-secondary font-semibold">
+                  novidades
                 </strong>{" "}
                 e{" "}
-                <strong className="text-rose-400 font-semibold">
-                  mimos exclusivos
+                <strong className="text-secondary font-semibold">
+                  ofertas exclusivas
                 </strong>{" "}
                 direto no seu celular!
               </p>
@@ -148,7 +145,7 @@ export function PushNotificationBanner({
                 <button
                   onClick={handleSubscribe}
                   disabled={isSubscribing}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-500 via-pink-600 to-rose-700 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-white shadow-lg shadow-rose-500/25 hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-white shadow-lg shadow-black/25 hover:bg-primary/90 active:scale-95 transition-all disabled:opacity-50"
                 >
                   {isSubscribing ? (
                     <span className="animate-pulse">Ativando...</span>
@@ -164,7 +161,7 @@ export function PushNotificationBanner({
                   onClick={handleDismiss}
                   className="rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-[10px] font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
                 >
-                  Agora Não, Miga
+                  Agora Não
                 </button>
               </div>
             </div>

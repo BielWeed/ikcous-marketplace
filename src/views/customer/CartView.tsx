@@ -420,27 +420,27 @@ export function CartView({
                     )}
 
                     {!user && cart.length > 0 && (
-                      <div className="group relative overflow-hidden rounded-[2.5rem] border border-rose-200/30 bg-rose-50/60 p-6 shadow-lg shadow-rose-100/10 sm:p-8">
+                      <div className="group relative overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-zinc-50 p-6 shadow-lg shadow-black/10 sm:p-8">
                         <div className="relative z-10">
                           {/* Header */}
                           <div className="mb-6 flex items-center gap-3">
-                            <div className="flex size-11 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-400 to-rose-600 text-white shadow-md">
+                            <div className="flex size-11 items-center justify-center rounded-2xl bg-primary text-white shadow-md">
                               <Sparkles className="size-5" />
                             </div>
                             <div>
                               <h3 className="text-sm font-black uppercase tracking-tight text-slate-800">
                                 Opções de Compra
                               </h3>
-                              <p className="text-[10px] font-black uppercase tracking-widest text-rose-600">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-primary">
                                 Rápido e Seguro
                               </p>
                             </div>
                           </div>
 
                           {/* Options/Benefits List */}
-                          <div className="mb-6 space-y-4 border-t border-rose-100 pt-5">
+                          <div className="mb-6 space-y-4 border-t border-zinc-100 pt-5">
                             <div className="flex gap-3">
-                              <div className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-rose-100 bg-white/80">
+                              <div className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-zinc-100 bg-white/80">
                                 <Truck className="size-3.5 text-emerald-500" />
                               </div>
                               <div className="min-w-0">
@@ -457,7 +457,7 @@ export function CartView({
                             </div>
 
                             <div className="flex gap-3">
-                              <div className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-rose-100 bg-white/80">
+                              <div className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-zinc-100 bg-white/80">
                                 <Sparkles className="size-3.5 text-amber-500" />
                               </div>
                               <div className="min-w-0">
@@ -486,11 +486,11 @@ export function CartView({
                             </button>
 
                             <div className="flex items-center justify-center gap-2 py-1">
-                              <div className="h-px flex-1 bg-rose-100" />
-                              <span className="text-[8px] font-black uppercase tracking-widest text-rose-400">
+                              <div className="h-px flex-1 bg-zinc-100" />
+                              <span className="text-[8px] font-black uppercase tracking-widest text-primary">
                                 ou se preferir
                               </span>
-                              <div className="h-px flex-1 bg-rose-100" />
+                              <div className="h-px flex-1 bg-zinc-100" />
                             </div>
 
                             <button
@@ -498,7 +498,7 @@ export function CartView({
                                 haptic.light();
                                 onNavigate("checkout");
                               }}
-                              className="w-full rounded-2xl border border-rose-200/50 py-3.5 text-[10px] font-black uppercase tracking-widest text-rose-600 transition-colors hover:border-rose-300 hover:text-[#5C061E] active:scale-95"
+                              className="w-full rounded-2xl border border-zinc-100/50 py-3.5 text-[10px] font-black uppercase tracking-widest text-primary transition-colors hover:border-zinc-200 active:scale-95"
                             >
                               Continuar como Convidado
                             </button>
@@ -507,7 +507,7 @@ export function CartView({
 
                         {/* Premium Subtle Glow Background */}
                         <div className="pointer-events-none absolute right-0 top-0 -mr-32 -mt-32 size-64 rounded-full bg-emerald-500/5 blur-3xl" />
-                        <div className="pointer-events-none absolute bottom-0 left-0 -mb-16 -ml-16 size-32 rounded-full bg-rose-400/5 blur-2xl" />
+                        <div className="pointer-events-none absolute bottom-0 left-0 -mb-16 -ml-16 size-32 rounded-full bg-secondary/10 blur-2xl" />
                       </div>
                     )}
                   </div>
@@ -597,7 +597,7 @@ export function CartView({
                         haptic.medium();
                         onNavigate("checkout");
                       }}
-                      className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl bg-[#5C061E] px-6 text-white shadow-xl shadow-rose-100 transition-all hover:bg-[#720E28] active:scale-[0.98]"
+                      className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl bg-primary px-6 text-white shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-[0.98]"
                     >
                       <span className="relative z-10 text-[11px] font-black uppercase tracking-widest">
                         Finalizar Compra

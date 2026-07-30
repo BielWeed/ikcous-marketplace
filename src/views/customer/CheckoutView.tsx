@@ -952,13 +952,13 @@ export function CheckoutView({
         </div>
 
         {/* Location Notice */}
-        <div className="group relative overflow-hidden rounded-2xl border border-rose-200/30 bg-rose-50/60 p-5 text-slate-800 shadow-md">
+        <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-slate-800 shadow-md">
           <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
-            <MapPin className="size-16 text-rose-500" />
+            <MapPin className="size-16 text-zinc-500" />
           </div>
           <div className="relative z-10 flex items-start gap-3">
             <div className="mt-0.5 shrink-0">
-              <AlertCircle className="size-5 text-rose-500" />
+              <AlertCircle className="size-5 text-zinc-500" />
             </div>
             <div>
               <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-900">
@@ -1029,7 +1029,7 @@ export function CheckoutView({
                       "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
                       !isValid || isSubmitting
                         ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
-                        : "bg-[#5C061E] text-white hover:bg-[#720E28] shadow-rose-100/30",
+                        : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
                     )}
                   >
                     {isSubmitting ? (
@@ -1104,14 +1104,14 @@ function SuccessView({
       <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
         <button
           onClick={() => onNavigate("home")}
-          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-[#5C061E] text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-rose-100/20 transition-all hover:bg-[#720E28] active:scale-95"
+          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
         >
           Retornar à Vitrine
           <ArrowLeft className="size-5 rotate-180" />
         </button>
         <button
           onClick={() => onNavigate("profile")}
-          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-rose-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-[#C74156] transition-all hover:border-primary active:scale-95"
+          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
         >
           Ver Meus Pedidos
         </button>
@@ -1145,7 +1145,7 @@ function AddressSelectionView({
               {editingAddressId ? "Editar Endereço" : "Novo Endereço"}
               <Sparkles className="size-4.5 animate-pulse text-amber-400" />
             </h2>
-            <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-rose-100">
+            <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-white/80">
               {editingAddressId
                 ? "Atualize os dados para entrega"
                 : "Onde entregaremos seu produto?"}

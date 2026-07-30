@@ -128,7 +128,7 @@ export function CartFooterSummary({
 
             <button
               onClick={() => onNavigate("checkout")}
-              className="group relative flex h-12 flex-shrink-0 items-center gap-2 overflow-hidden rounded-2xl bg-[#5C061E] px-4 text-white shadow-xl shadow-rose-100/30 transition-all hover:bg-[#720E28] active:scale-[0.98] xs:h-14 xs:gap-3 xs:px-8 md:h-12 md:gap-2.5 md:px-5"
+              className="group relative flex h-12 flex-shrink-0 items-center gap-2 overflow-hidden rounded-2xl bg-primary px-4 text-white shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-[0.98] xs:h-14 xs:gap-3 xs:px-8 md:h-12 md:gap-2.5 md:px-5"
             >
               <div className="relative z-10 flex items-center gap-3">
                 <span className="text-xs font-bold uppercase tracking-widest">

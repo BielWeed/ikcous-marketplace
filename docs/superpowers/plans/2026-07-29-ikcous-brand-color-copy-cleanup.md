@@ -46,7 +46,7 @@
 
 ---
 
-### Task A: Purchase flow — Cart, Checkout, and related components
+### Task 1: Purchase flow — Cart, Checkout, and related components
 
 **Files:**
 - Modify: `src/views/customer/CheckoutView.tsx`
@@ -97,7 +97,7 @@ git commit -m "fix: replace SR Tudo10 wine color with IKCOUS brand color in purc
 
 ---
 
-### Task B: Product browsing — Product detail, cards, Q&A, reviews, offers, home
+### Task 2: Product browsing — Product detail, cards, Q&A, reviews, offers, home
 
 **Files:**
 - Modify: `src/views/customer/ProductView.tsx`
@@ -155,7 +155,7 @@ git commit -m "fix: replace SR Tudo10 wine color with IKCOUS brand color in prod
 
 ---
 
-### Task C: Search, account, orders, and toast severity spot-fix
+### Task 3: Search, account, orders, and toast severity spot-fix
 
 **Files:**
 - Modify: `src/views/customer/SearchView.tsx`
@@ -199,7 +199,7 @@ git commit -m "fix: replace SR Tudo10 wine color with IKCOUS brand color in sear
 
 ---
 
-### Task D: PushNotificationBanner.tsx — copy rewrite and recolor
+### Task 4: PushNotificationBanner.tsx — copy rewrite and recolor
 
 **Files:**
 - Modify: `src/components/pwa/PushNotificationBanner.tsx`
@@ -407,7 +407,7 @@ git commit -m "fix: rewrite push notification banner copy and recolor from SR Tu
 
 ---
 
-### Task E: FavoritesView.tsx — empty-state copy rewrite and recolor
+### Task 5: FavoritesView.tsx — empty-state copy rewrite and recolor
 
 **Files:**
 - Modify: `src/views/customer/FavoritesView.tsx`
