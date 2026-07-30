@@ -67,13 +67,13 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 50, scale: 0.95 }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="group pointer-events-auto relative flex w-full max-w-md items-center gap-3 overflow-hidden rounded-2xl border border-rose-200/40 bg-white/95 px-3.5 py-2.5 shadow-[0_8px_30px_rgba(199,65,86,0.15)] backdrop-blur-md"
+            className="group pointer-events-auto relative flex w-full max-w-md items-center gap-3 overflow-hidden rounded-2xl border border-zinc-100/40 bg-white/95 px-3.5 py-2.5 shadow-lg shadow-black/10 backdrop-blur-md"
           >
             {/* Subtle Glow */}
             <div className="absolute right-0 top-0 size-20 -translate-y-1/2 translate-x-1/2 rounded-full bg-emerald-500/5 blur-2xl" />
 
             {/* Ultra Slim Top Progress Bar */}
-            <div className="absolute inset-x-0 top-0 h-[2px] bg-rose-100">
+            <div className="absolute inset-x-0 top-0 h-[2px] bg-zinc-100">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${user ? progress : 0}%` }}
@@ -83,7 +83,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
 
             {/* Left: Animated Icon with Badge */}
             <div className="relative flex-shrink-0">
-              <div className="relative flex size-9 items-center justify-center rounded-xl border border-rose-100 bg-rose-50/50 transition-all duration-500 group-hover:scale-105">
+              <div className="relative flex size-9 items-center justify-center rounded-xl border border-zinc-100 bg-secondary/10 transition-all duration-500 group-hover:scale-105">
                 <ShoppingCart className="size-4 text-emerald-500" />
                 {itemCount > 0 && (
                   <motion.span
@@ -118,7 +118,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
               ) : (
                 <p className="text-[10px] font-semibold leading-tight text-slate-600">
                   Faltam{" "}
-                  <span className="font-extrabold text-[#5C061E]">
+                  <span className="font-extrabold text-primary">
                     {formatCurrency(amountToFree)}
                   </span>{" "}
                   para o{" "}
@@ -130,14 +130,14 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
             {/* Right: Compact Action */}
             <button
               onClick={onAction}
-              className="group/btn flex h-8 flex-shrink-0 items-center gap-1 rounded-lg bg-[#5C061E] px-3.5 text-[9px] font-black uppercase tracking-wider text-white shadow-md transition-all hover:bg-[#720E28] active:scale-95"
+              className="group/btn flex h-8 flex-shrink-0 items-center gap-1 rounded-lg bg-primary px-3.5 text-[9px] font-black uppercase tracking-wider text-white shadow-md transition-all hover:bg-primary/90 active:scale-95"
             >
               Carrinho
               <ChevronRight className="size-2.5 transition-transform group-hover:translate-x-0.5" />
             </button>
 
             {/* Vertical Separator for Timer */}
-            <div className="mx-0.5 h-5 w-px bg-rose-100" />
+            <div className="mx-0.5 h-5 w-px bg-zinc-100" />
 
             {/* Compact Timer */}
             <div className="relative flex size-5 items-center justify-center opacity-60 transition-opacity">
@@ -146,7 +146,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
                   cx="16"
                   cy="16"
                   r="14"
-                  stroke="#ffe4e6"
+                  stroke="#e4e4e7"
                   strokeWidth="2.5"
                   fill="transparent"
                 />

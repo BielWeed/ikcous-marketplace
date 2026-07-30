@@ -47,7 +47,7 @@ export function EmptyCart({ onNavigate }: EmptyCartProps) {
           haptic.medium();
           onNavigate("home");
         }}
-        className="group relative flex items-center gap-3 overflow-hidden rounded-[2rem] bg-primary px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-rose-100/30 transition-all hover:opacity-90 active:scale-95"
+        className="group relative flex items-center gap-3 overflow-hidden rounded-[2rem] bg-primary px-8 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-black/10 transition-all hover:opacity-90 active:scale-95"
       >
         <div className="absolute inset-0 bg-gradient-to-r from-white/20 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
         <span>Explorar Produtos</span>

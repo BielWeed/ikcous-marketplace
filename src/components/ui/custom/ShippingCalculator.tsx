@@ -174,7 +174,7 @@ export function ShippingCalculator({
         <button
           type="submit"
           disabled={loading || cep.replace(/\D/g, "").length !== 8}
-          className="shrink-0 select-none rounded-2xl bg-[#5C061E] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white transition-colors hover:bg-[#720E28] disabled:pointer-events-none disabled:opacity-40"
+          className="shrink-0 select-none rounded-2xl bg-primary px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40"
         >
           {loading ? "Cotando..." : "Calcular"}
         </button>
@@ -213,7 +213,7 @@ export function ShippingCalculator({
                   }}
                   className={`flex w-full select-none items-center justify-between rounded-2xl border p-3 text-left transition-all duration-200 ${
                     isSelected
-                      ? "border-primary bg-primary text-white shadow-md shadow-rose-100/20"
+                      ? "border-primary bg-primary text-white shadow-md shadow-black/10"
                       : "border-zinc-100 bg-white text-zinc-800 hover:border-zinc-200"
                   }`}
                 >
