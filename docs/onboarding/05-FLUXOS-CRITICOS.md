@@ -164,10 +164,10 @@ sequenceDiagram
 | Variação com `price_override = 0` cobra o preço cheio. | Zero é tratado como ausência: `?.priceOverride \|\| item.product.price`. | `CartContext.tsx:728-731` |
 | Cupom aceito na tela e o pedido é recusado com "Cupom inválido ou expirado". | O desconto do cliente é **state de tela**; a RPC revalida do zero com `FOR UPDATE` e as mesmas condições (`active`, `valid_until`, `usage_count < usage_limit`, `min_purchase`). Se o limite estourou entre a validação e o fechamento, o `SELECT` não acha linha e a RPC levanta exceção — não é o guard de R$ 0,05, é bloqueio direto. | `useCoupons.ts:65-104` (state local) vs `20260729000002...sql:279-292` (`FOR UPDATE` em `:288`, `RAISE` em `:291`) |
 
-> **Contradiz o [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md), item 4,** que diz "cinco lugares" e conta
-> a edge function. Contei **sete** comparações de subtotal contra o mínimo (as cinco COM `user` e as
-> duas SEM, citadas na linha acima), e a edge function não é uma delas: ela só olha `frete_gratis`
-> **por item** (`calculate-shipping/index.ts:374`, `:509`), nunca o mínimo.
+> O [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md), item 4, dizia "cinco lugares" e contava a edge
+> function. São **sete** comparações de subtotal contra o mínimo (as cinco COM `user` e as duas SEM,
+> citadas na linha acima), e a edge function não é uma delas: ela só olha `frete_gratis` **por item**
+> (`calculate-shipping/index.ts:374`, `:509`), nunca o mínimo. **Corrigido no 01 em 30/07/2026.**
 
 ### Se quebrar, olhe aqui primeiro — Fluxo 2
 
@@ -192,13 +192,17 @@ Os dois caminhos divergem no formulário e no parâmetro de endereço, e converg
 > `https://wa.me/<phone>?text=...` já preenchido. É ação humana do lojista compensando o elo
 > automático que falta — não faz parte de cadeia automática nenhuma.
 >
-> **Contradiz parcialmente o [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md):167-170,** que afirma que o
-> trigger "nunca chegou a produção": aqui **não** reproduzo a forma forte. O repo tem
+> O [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md) afirmava que o trigger "nunca chegou a produção".
+> **A forma forte não se sustenta, e foi corrigida lá em 30/07/2026.** O repo tem
 > `20260601000001_remove_whatsapp_infrastructure.sql:4-12`, que dropa `on_order_created_whatsapp` e
-> `handle_new_order_whatsapp()` e remove as colunas `whatsapp_api_*` — mas **todos os DROPs são
-> `IF EXISTS`** e a migration não tem registro de ledger (`grep -rn 20260601000001 supabase/
-> scripts/` → 0 fora do próprio arquivo). Isso é **intenção de remover**, não prova de que existiu.
-> E introspecção prova ausência **hoje**, não ausência histórica: se rodou algum dia é **não
+> `handle_new_order_whatsapp()` e remove as colunas `whatsapp_api_*` — e essa migration **foi
+> aplicada**: a versão `20260601000001` consta em `supabase_migrations.schema_migrations`, conferido
+> por consulta direta ao banco em 30/07/2026.
+>
+> ⚠️ Uma versão anterior deste documento afirmava o contrário ("não tem registro de ledger"), com
+> base em `grep` no repositório. Grep no repo não vê o ledger — só a consulta ao banco vê. Ainda
+> assim, **todos os DROPs são `IF EXISTS`**, então ter rodado não prova que o trigger existia. E
+> introspecção prova ausência **hoje**, não ausência histórica: se rodou algum dia é **não
 > verificado**. A última migration a criá-lo está no repo
 > (`20260327000001_fix_notification_trigger_robust.sql:71-74`) e o comentário `CheckoutView.tsx:449`
 > — "O disparo agora é 100% via Backend" — está órfão desde o commit inicial (`da94d8c`, 05/04/2026).
@@ -373,8 +377,9 @@ Sete mecanismos de autocura sobrepostos, sem fonte da verdade — **seis reagem 
 - **F** — pulso do SW perdido por 5 min → desregistra todos os SWs e recarrega: `pwa-sentinel.ts:64-82`
 - **G** — Ghost Purge: limpeza one-shot por `RESET_KEY` **literal**, no boot, antes do React (`silent-guardian.js:8`, `:13-41`). **Não reage a versão nova**: a string é fixa e independente do `__APP_VERSION__` (`:58`). Só dispara quando alguém edita o fonte — é alavanca manual, não detecção.
 
-> **Contradiz o [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md):142,** que diz "cinco mecanismos" sem
-> enumerá-los. Contei sete, com arquivo e faixa acima; os dois que provavelmente faltavam são **E** e **F**, que não vivem em `useUpdateCheck.ts`.
+> O [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md) dizia "cinco mecanismos" sem enumerá-los. São sete, com
+> arquivo e faixa acima; os dois que provavelmente faltavam são **E** e **F**, que não vivem em
+> `useUpdateCheck.ts`. **Corrigido no 01 em 30/07/2026.**
 
 ```mermaid
 sequenceDiagram
@@ -436,9 +441,9 @@ sequenceDiagram
 | `nuclearPurge` chamado de fora não limpa nada de verdade. | O hook exporta `performNuclearPurge: handleUpdate` — o de troca de SW e reload, não o de limpeza total. Dois comportamentos, um nome. | `useUpdateCheck.ts:426` vs `:136` |
 | Toast "Sistema Atualizado" aparecendo sem update. | **Seis escritas em três arquivos** gravam `pwa_reload_reason`; qualquer reload forçado deixa o bilhete, inclusive os dois de cenário de crash. | `useUpdateCheck.ts:197`, `:218`, `:372`; `GlobalErrorBoundary.tsx:57` ("Failed to fetch dynamically imported module") e `:85` (`Fatal Crash: ...`); `pwa-sentinel.ts:78` (`Sentinel Recovery: Pulse loss`). Leitura em `App.tsx:1173`, remoção em `:1186` |
 
-> **Contradiz o [`04-GLOSSARIO.md`](04-GLOSSARIO.md):96** (verbete `pwa_reload_reason`), que diz
-> "Escrito por 4 lugares diferentes". São **6 escritas em 3 arquivos**, todas listadas na linha
-> acima e conferidas por grep repo-wide em 30/07/2026. O 04 está errado nesse número.
+> O [`04-GLOSSARIO.md`](04-GLOSSARIO.md) dizia "escrito por 4 lugares diferentes" no verbete
+> `pwa_reload_reason`. São **6 escritas em 3 arquivos**, todas listadas na linha acima e conferidas
+> por grep repo-wide em 30/07/2026. **Corrigido no 04 na mesma data.**
 
 ### Se quebrar, olhe aqui primeiro — Fluxo 5
 

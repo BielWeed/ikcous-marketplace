@@ -93,7 +93,7 @@ de rede, não é build pesado. É crash antes do primeiro render.
 | **`networkQuality`** | Variável em memória do SW (`fast`/`medium`/`slow`/`offline`) alimentada por `postMessage`. Em `slow`/`offline` o SW para de revalidar e serve só cache — `sw.ts:71, 157-166`. |
 | **warm cache** | Pré-aquecer no idle as imagens dos banners e dos 15 primeiros produtos — `useCacheWarmer.ts:39`, `sw.ts:235-282`. |
 | **`pwa_forensics`** | Caixa-preta do PWA. **Existe em duas implementações concorrentes**: array de 20 itens no localStorage (`useCacheWarmer.ts:67`) e IndexedDB de 500 itens (`src/lib/forensicsDB.ts`). |
-| **`pwa_reload_reason`** | Bilhete no localStorage antes de um reload forçado, consumido no boot seguinte para virar toast "Sistema Atualizado". **Escrito por 4 lugares diferentes.** |
+| **`pwa_reload_reason`** | Bilhete no localStorage antes de um reload forçado, consumido no boot seguinte para virar toast "Sistema Atualizado". **Seis escritas em três arquivos** — `useUpdateCheck.ts:197`, `:218`, `:372`; `GlobalErrorBoundary.tsx:57`, `:85`; `pwa-sentinel.ts:78`. Leitura em `App.tsx:1173`, remoção em `:1186`. |
 | **deploy-ping** | Broadcast no canal `pwa-system-signals` avisando os clientes que saiu deploy — `useRealtimeUpdate.ts:50-54`. |
 | **Build sync point** | Comentário marcando a linha com o literal numérico que o `pwaVersionPlugin` substitui no build — `silent-guardian.js:58`, `vite.config.ts:86`. **Sem esse literal exato, o replace falha em silêncio.** |
 
@@ -151,9 +151,9 @@ Os ids de frete **parcialmente** funcionam como instrução para o servidor. A d
 
 | Termo | O que é |
 | --- | --- |
-| **TruthGate / VOR / "axioma" / G17** | Validador de produto chamado antes de escrever no banco — `src/utils/truth_gate.ts`, usado em `useProducts.ts:480, 622`. "VOR" = *Verified Observation Runtime*; "axioma" = uma regra `if`. Regras reais: preço ≥ 0, estoque ≤ 10000, nome não vazio, custo ≥ 0. **Só roda no caminho admin de escrita** — não valida nada na leitura do catálogo. O que "G17" significa não está documentado em lugar nenhum. |
+| **TruthGate / VOR / "axioma" / G17** | Validador de produto chamado antes de escrever no banco — `src/utils/truth_gate.ts`, usado em `useProducts.ts:480, 622`. "VOR" = *Verified Observation Runtime*; "axioma" = uma regra `if`. Regras reais: **cinco** axiomas que bloqueiam — preço ≥ 0 (`:29`), estoque ≤ 10000 (`:38`), nome não vazio (`:46`), custo ≥ 0 (`:55`) e `originalPrice > price` (`:78`) — mais **um** warning de margem negativa que não bloqueia (`:65`). **Só roda no caminho admin de escrita** — não valida nada na leitura do catálogo. O que "G17" significa não está documentado em lugar nenhum. |
 | **`EnvGuard`** | Prefixo da mensagem de erro do portão de ambiente. Não existe classe nem função com esse nome — é só o rótulo do `throw` em `src/lib/env.ts:85`. Ver `[EnvGuard]` no console significa build sem chaves do Supabase. |
-| **`vendor-*`** | Nomes de chunk escolhidos à mão no `manualChunks` — `vite.config.ts:398-466`. Funcionam como **contrato** com o `globIgnores` do PWA e com o `.size-limit.json`. Não são nomes gerados pelo Rollup. |
+| **`vendor-*`** | Nomes de chunk escolhidos à mão no `manualChunks` — `vite.config.ts:398-466`. Funcionam como **contrato** com o `globIgnores` do PWA. Não são nomes gerados pelo Rollup. ⚠️ Não são contrato com o `.size-limit.json`: aquele arquivo só tem os globs `dist/assets/*.js` e `dist/assets/*.css`, e não nomeia chunk nenhum. |
 | **`test_credentials`** | Segunda rota da edge function `calculate-shipping`, selecionada por um campo `action` no body em vez de por path. Só admin — `calculate-shipping/index.ts:192-306`. |
 
 ---

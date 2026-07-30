@@ -182,8 +182,8 @@ são `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY` e `VITE_MAINT
 **Sintoma.** O build local sai sem banco. Hoje isso pinta a tela vermelha "🚨 ERRO DE AMBIENTE";
 antes da guarda existir, ficava travado em 85% sem mensagem.
 
-> **Isto contradiz o [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md):116 e :176**, que dizem que falta de
-> chave leva ao 85% ("a tela de 85% volta"). Hoje não leva: `src/lib/env.ts:71-87` chama
+> O [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md) dizia que falta de chave leva ao 85% — **corrigido lá
+> em 30/07/2026 a partir desta leitura.** Hoje não leva: `src/lib/env.ts:71-87` chama
 > `renderBootFailure` (`:29-69`), que **remove** o `#silent-guardian-loader` (`:34`) e pinta um
 > `background:#dc2626` **antes** do `throw` do [`[EnvGuard]`](04-GLOSSARIO.md). O cabeçalho (`:4-11`)
 > registra que o loader eterno "sem nenhuma mensagem" era o comportamento **anterior** a esta guarda.
@@ -225,10 +225,12 @@ do build de produção**, e as libs resolvem para o ramo de dev.
 | precache do PWA | 1852,47 KiB | 2696,71 KiB |
 | erros/warnings | 0 / 0 | 0 / 0 |
 
-> **Isto contradiz o [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md):57 e :142**, que publicam **2,69 MB**
-> de precache como número do sistema — 2696,71 KiB ÷ 1000 = 2,69, ou seja é a medição do build
-> **contaminado**. O correto é **1852,47 KiB**: o corte do `globIgnores` foi maior do que o 01 diz.
-> A identidade dos dois números é inferida da coincidência de dígitos, não de log guardado.
+> O [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md) publicava **2,69 MB** de precache como número do
+> sistema — 2696,71 KiB ÷ 1000 = 2,69, ou seja era a medição do build **contaminado**. O correto é
+> **1852,47 KiB**: o corte do `globIgnores` foi maior do que o 01 dizia. **Corrigido lá em
+> 30/07/2026**, depois de somar as 77 entradas de precache do `dist/` limpo (1853,67 KiB — a
+> diferença de ~1 KiB para o número do plugin não foi investigada). A identidade dos dois números
+> contaminados é inferida da coincidência de dígitos, não de log guardado.
 
 **Correção.** Sempre `$env:NODE_ENV='production'; npx vite build`. Para conferir sem olhar tamanho:
 `Select-String -Path dist/assets/vendor-react-*.js -Pattern 'Invalid hook call'` — se achar, o build

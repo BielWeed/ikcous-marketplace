@@ -54,7 +54,7 @@ flowchart TB
     subgraph nav["Navegador"]
         R["React 19 + Vite<br/>176 arquivos TS"]
         IDB[("DataVault<br/>IndexedDB<br/>7 stores")]
-        SW["Service Worker<br/>precache 2,69 MB"]
+        SW["Service Worker<br/>precache 1,85 MB"]
         R <--> IDB
         R <--> SW
     end
@@ -96,10 +96,13 @@ serializa as escritas — `StoreContext.tsx:424` vs `realtimeSyncEngine.ts:581-5
 `updateConfig({ homeSections })`, o StoreContext mostra "Configurações salvas", e a RPC
 `upsert_store_config` **não trata essa coluna** — salva no vazio.
 
-**4. A regra de frete grátis está escrita em cinco lugares independentes, e o guard é de R$ 0,05.**
-CartContext, CartView, StoreContext (código morto), a RPC e a edge function. A RPC recalcula
-tudo e recusa o pedido se divergir mais de R$ 0,05. O modo de falha não é "preço errado" — é
-**"o cliente não consegue comprar"**.
+**4. A regra de frete grátis está escrita em sete lugares independentes, e o guard é de R$ 0,05.**
+`CartContext`, `StoreContext`, `CartView`, `FreeShippingBlock` e a RPC exigem usuário logado;
+`ShippingCalculator` e `CartReminder` **não exigem** — e são justamente os que escrevem "Grátis" na
+frente do cliente. A edge function **não** entra na conta: ela só olha `frete_gratis` por item,
+nunca o mínimo (`calculate-shipping/index.ts:374`, `:509`). A RPC recalcula tudo e recusa o pedido
+se divergir mais de R$ 0,05. O modo de falha não é "preço errado" — é **"o cliente não consegue
+comprar"**. Enumeração completa em [`05-FLUXOS-CRITICOS.md`](05-FLUXOS-CRITICOS.md).
 
 **5. Nunca rode `supabase db push`.** O ledger tem 121 linhas para 137 arquivos, e existem
 objetos cujo *corpo vivo* não corresponde a nenhum arquivo. Um `CREATE OR REPLACE` apagaria
@@ -113,7 +116,9 @@ introspecção direta do banco.
 
 **7. Travado em 85% significa "o React nunca montou".** A barra do loader tem teto codificado em
 85 (`public/silent-guardian.js:72`) e só chega a 100 quando o React a remove. Não é lentidão de
-rede — é crash antes do primeiro render, quase sempre falta de chave do Supabase.
+rede — é crash antes do primeiro render. ⚠️ Falta de chave do Supabase **não cai mais aqui**: desde
+a guarda de `src/lib/env.ts:71-87` o app remove o loader e pinta uma tela vermelha nomeando a
+variável que faltou. Travado em 85% hoje significa algum outro crash.
 
 **8. `custo` está exposto para qualquer usuário logado.**
 `20260324000000_01_fix_produtos_permissions_v26.sql:9` concede `SELECT` em `produtos` a
@@ -139,13 +144,13 @@ qualquer refatoração e é o principal argumento das duas primeiras ondas do
 | Domínio | Estado | O que sustenta a nota |
 | --- | --- | --- |
 | **Banco de dados** | 🟡 funciona com ressalva | RLS em 29/29 tabelas, `search_path` fixado em 66/66 funções, policies separadas por comando, `auth.uid()` sempre em subquery para evitar reavaliação O(N). É trabalho sério. Ressalvas: `vw_produtos_public` perdeu `security_invoker` e virou caminho de escrita que ignora RLS; `profiles` tem dois triggers BEFORE UPDATE com semânticas incompatíveis onde a ordem alfabética faz um matar o outro; o histórico de migrations não reproduz produção. |
-| **PWA / Service Worker** | 🟡 funciona com ressalva | Os problemas difíceis foram diagnosticados de verdade e corrigidos **com explicação escrita**: comparação de versão por núcleo semver com trava de 2 purges, guarda contra falso positivo de heartbeat por suspensão de aba, recusa deliberada de fabricar 408 para não induzir `ChunkLoadError`, `globIgnores` que cortaram o precache de 6 MB para 2,69 MB. A ressalva: a confiabilidade vem de **redundância, não de desenho** — cinco mecanismos de autocura sobrepostos, quatro removedores do loader, três caminhos de reload forçado, sem fonte da verdade. |
-| **Camada de dados** | 🟡 funciona com ressalva | Boa arquitetura com três camadas de sedimento em cima. Duas das quatro peças anunciadas (`shared-brain`, `state-worker`) **nunca foram ligadas**, e o `knip.json` esconde isso do CI. `getLastSync` tem zero chamadores e 14 escritas inúteis. A mesma tabela é mapeada em dois lugares com resultados diferentes, e **a versão mais pobre é a que ganha no `catchUp`** — daí os banners perderem a arte. |
+| **PWA / Service Worker** | 🟡 funciona com ressalva | Os problemas difíceis foram diagnosticados de verdade e corrigidos **com explicação escrita**: comparação de versão por núcleo semver com trava de 2 purges, guarda contra falso positivo de heartbeat por suspensão de aba, recusa deliberada de fabricar 408 para não induzir `ChunkLoadError`, `globIgnores` que cortaram o precache de 6 MB para 1,85 MB. A ressalva: a confiabilidade vem de **redundância, não de desenho** — sete mecanismos de autocura sobrepostos, quatro removedores do loader, três caminhos de reload forçado, sem fonte da verdade. |
+| **Camada de dados** | 🟡 funciona com ressalva | Boa arquitetura com três camadas de sedimento em cima. Duas das quatro peças anunciadas (`shared-brain`, `state-worker`) **nunca foram ligadas**, e o `knip.json` esconde isso do CI. `getLastSync` tem zero chamadores e 18 escritas inúteis. A mesma tabela é mapeada em dois lugares com resultados diferentes, e **a versão mais pobre é a que ganha no `catchUp`** — daí os banners perderem a arte. |
 | **Autenticação** | 🟡 funciona com ressalva | O caminho e-mail/senha é genuinamente bem defendido: `admin` não depende de nada gravável pelo cliente, perfil só é lido/escrito por RPC `SECURITY DEFINER`, 4 camadas de guard de rota, e a autorização real está no RLS — logo os bypasses possíveis no cliente são cosméticos. Em cima disso há uma camada de otimização de boot com quatro timeouts e dois semáforos de módulo, que troca determinismo por velocidade percebida. |
-| **Admin** | 🟡 funciona com ressalva | Decisões deliberadas e boas: gate de admin em três camadas com o chunk do painel atrás de uma RPC, eleição de aba líder, um canal Realtime alimentando IndexedDB, `LocalErrorBoundary` por tela. Ressalvas de escala: `AdminBannersView` tem **5.385 linhas em um componente**; as 5 abas principais estão duplicadas integralmente no `AdminArea`; adicionar campo em `store_config` exige tocar em **cinco** lugares. |
-| **Build e deploy** | 🟡 funciona com ressalva | **11 arquivos `.env*` na raiz, dos quais o Vite lê 4.** Três caminhos de deploy independentes e não coordenados (frontend automático pela Vercel, edge functions à mão, migrations por script caseiro), sem nada no repo que registre o que está no ar. Não existe `supabase/config.toml`. E `.gitignore` e `.vercelignore` discordam sobre `.env.production`: os dois caminhos de deploy produzem **bundles diferentes do mesmo commit**. |
+| **Admin** | 🟡 funciona com ressalva | Decisões deliberadas e boas: gate de admin em três camadas com o chunk do painel atrás de uma RPC, eleição de aba líder, um canal Realtime alimentando IndexedDB, `LocalErrorBoundary` por tela. Ressalvas de escala: `AdminBannersView` tem **5.385 linhas em um componente**; as 5 abas principais estão duplicadas integralmente no `AdminArea`; adicionar campo em `store_config` exige tocar em **seis** pontos no caminho de dados, mais a tela de admin. |
+| **Build e deploy** | 🟡 funciona com ressalva | **11 arquivos `.env*` na raiz, dos quais o Vite lê 4.** Três caminhos de deploy independentes e não coordenados (frontend automático pela Vercel, edge functions à mão, migrations por script caseiro), sem nada no repo que registre o que está no ar. Não existe `supabase/config.toml`. E `.gitignore` e `.vercelignore` discordam sobre `.env.production`: os dois caminhos de deploy produzem **bundles diferentes do mesmo commit** — mas só em `vercel deploy` por upload local, não pelo fluxo do GitHub (ver risco 5). |
 | **Catálogo e busca** | 🟡 funciona com ressalva | As abstrações centrais são deliberadas. `imageUrl.ts` é o melhor código do domínio — comentário com números medidos (card 116 kB→20 kB, banner 1340 kB→27 kB) e a explicação de por que `resize=contain` é obrigatório. A ressalva é o teto de 200 e o modelo de variação: **três semânticas diferentes** de preço/estoque no mesmo domínio. |
-| **Carrinho e checkout** | 🔴 frágil | O núcleo está bem pensado: a RPC não confia em nenhum número do cliente e as migrations explicam por escrito as divergências que corrigiram. O que torna frágil é o entorno — cinco cópias da regra de frete grátis somadas ao guard de R$ 0,05, "Limpar Tudo" que não limpa (`onRemove("all")`), `variantNames` descartado pelo Zod na reidratação, e o snapshot de produto do convidado que nunca é revalidado. |
+| **Carrinho e checkout** | 🔴 frágil | O núcleo está bem pensado: a RPC não confia em nenhum número do cliente e as migrations explicam por escrito as divergências que corrigiram. O que torna frágil é o entorno — sete cópias da regra de frete grátis somadas ao guard de R$ 0,05, "Limpar Tudo" que não limpa (`onRemove("all")`), `variantNames` descartado pelo Zod na reidratação, e o snapshot de produto do convidado que nunca é revalidado. |
 
 **Nenhum domínio saiu como "sólido".** Nenhum saiu como "gambiarra assumida" também. O padrão é
 consistente: núcleos bem pensados e comentados, cercados de camadas que saíram de sincronia sem
@@ -165,15 +170,22 @@ a v23. Um agente marcou "todo checkout falha por função inexistente" como arma
 alta — derivou do enunciado da tarefa sem consultar o banco. O cético pegou.
 
 **O trigger de WhatsApp não existe no banco.** `marketplace_orders` tem **zero** triggers
-non-internal. O `on_order_created_whatsapp` aparece em 3 arquivos do repo e nunca chegou a
-produção; a edge function `send-order-whatsapp` também não existe. Ou seja: não é um
+non-internal, e a edge function `send-order-whatsapp` também não existe. Ou seja: não é um
 `net.http_post` falhando com `Authorization` vazio — **não há disparo nenhum, nem tentativa**.
+
+⚠️ **Mas não diga que "nunca chegou a produção".** A migration
+`20260601000001_remove_whatsapp_infrastructure.sql` **foi aplicada** — consta no ledger, conferido
+por consulta direta em 30/07 — e ela dropa `on_order_created_whatsapp` e
+`handle_new_order_whatsapp()`. Como todos os `DROP` são `IF EXISTS`, ter rodado **não** prova que o
+trigger existia, e o arquivo de remoção **não** prova que nunca existiu. O que está estabelecido é
+só o estado de hoje.
 
 **As chaves do `.env.production.local` não estão vazias.** Foram comentadas em 29/07 às 15:10,
 com a justificativa escrita no próprio arquivo. Hoje o `.env.production` prevalece e tem as
 chaves reais. ⚠️ Mas a armadilha continua armada: rodar `vercel env pull` de novo regrava o
 arquivo com `VITE_SUPABASE_ANON_KEY=""` (a Vercel devolve string vazia para variáveis marcadas
-como *sensitive*) e a tela de 85% volta.
+como *sensitive*) e o build local volta a sair sem chaves. Hoje isso dá a tela vermelha do
+`[EnvGuard]`, não mais o loader travado em 85%.
 
 ---
 
@@ -201,8 +213,11 @@ Ordenados por impacto × probabilidade.
 3. **O teto de 200 produtos.** Hoje inofensivo porque o catálogo é menor. No dia em que passar,
    produtos desaparecem da loja sem nenhum sinal na UI.
 4. **Zero teste e zero CI.** Não há rede de segurança para nenhuma das mudanças acima.
-5. **`.gitignore` vs `.vercelignore`.** Dois caminhos de deploy produzem bundles diferentes do
-   mesmo commit. Um deploy pela CLI pode subir variáveis que o deploy pelo Git não subiria.
+5. **`.gitignore` vs `.vercelignore`.** `.env.production` está no `.gitignore` e **não** está no
+   `.vercelignore`. Pelo fluxo do GitHub isso não tem efeito — a Vercel builda do checkout do git
+   (`vercel.json:2`), que não contém o arquivo. O risco só se materializa em `vercel deploy` por
+   upload local, que respeita o `.vercelignore` e não o `.gitignore`: aí o mesmo commit gera um
+   bundle diferente. Detalhe em [`03-SETUP-AMBIENTE.md`](03-SETUP-AMBIENTE.md).
 
 ---
 

@@ -119,8 +119,9 @@ e o comentário `:366-369` diz que sem esses ignores o precache passava de 6,5 M
 > `assets/PhoneSimulator-*.js` (`:378-379`), e nenhum dos dois está no `manualChunks`: são nomes que o Rollup derivou sozinho do
 > `lazy import` (o `dist/` de 30/07 tem `ImageAdjuster-DSw5qifV.js`). **Glob estável não exige `manualChunks`.** `assets/Admin*.js`
 > (`:376`) também não é nome de `manualChunks`. Para os outros 12 ramos: **motivo não documentado — perguntar pro Gabriel.**
-> E o [`04-GLOSSARIO.md`](04-GLOSSARIO.md) diz que esses nomes são contrato com o `.size-limit.json`; **não são** — aquele arquivo
-> casa por glob genérico, `dist/assets/*.js` (`.size-limit.json:3-4`), e funcionaria igual com nomes gerados.
+> O [`04-GLOSSARIO.md`](04-GLOSSARIO.md) dizia que esses nomes são contrato com o `.size-limit.json`; **não são** — aquele arquivo
+> casa por glob genérico, `dist/assets/*.js` (`.size-limit.json:3-4`), e funcionaria igual com nomes gerados. Corrigido no 04 em
+> 30/07/2026.
 
 **Dois ramos são código morto; outros dois estão vivos com padrão morto dentro.** Mortos: `vendor-router` (`:405-409`) e
 `vendor-panels` (`:430-432`) — `react-router-dom` e `react-resizable-panels` não estão no `package.json`, e o roteamento é feito
@@ -250,7 +251,7 @@ Uso: `await DataVault.init()` sempre devolve a mesma instância; 11 métodos, de
   alterar schema; a store esperada não existe e todo `getAll` cai no `catch` que devolve `[]` (`:231-235`).
 - `getLastSync` (`:444-450`) tem **zero chamadores** — o `grep` devolve uma linha só, a própria declaração. Já `grep -rn
   setLastSync src/` devolve 19 linhas, das quais 1 é a definição (`:455`): são **18 chamadas** (1 interna em `:495`, 17
-  espalhadas) alimentando um dado que ninguém lê. Refina o [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md), que conta 14 (`:143`).
+  espalhadas) alimentando um dado que ninguém lê. O [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md) contava 14; corrigido lá em 30/07/2026.
 
 ### 4.2 `RealtimeSyncEngine` — `src/lib/realtimeSyncEngine.ts` (877 linhas)
 
@@ -331,7 +332,7 @@ com qualquer mudança. **Por que o split existe: motivo não documentado — per
 | --- | --- | --- |
 | **tombstones de carrinho** | `CartContext.tsx:64-100` | `Map<key, {key, deletedAt}>` no localStorage, TTL de 7 dias (`:79`). Sem eles, o merge com o banco ressuscita o que o cliente apagou; com eles, o item fica **bloqueado** por 7 dias. Rebaixar o TTL não destrava nada retroativamente: o corte é comparado na leitura. |
 | **`assinaturaDoCarrinho`** | `CartContext.tsx:712-719` | Fingerprint `productId:variantId:quantity` ordenado; o efeito de `:721-724` zera cotação e CEP a cada mudança. Incluir qualquer campo instável nessa string faz o cliente perder o frete sem motivo aparente. |
-| **`TruthGate`** | `src/utils/truth_gate.ts:14-115` | O [`04-GLOSSARIO.md`](04-GLOSSARIO.md) lista quatro regras (`:154`); são **cinco** axiomas mais um warning: preço ≥ 0 (`:24-30`), estoque ≤ 10000 (`:33-39`), nome não vazio (`:42-47`), custo ≥ 0 (`:50-56`) e `originalPrice > price` (`:71-81`), mais um *warning* de margem negativa que não bloqueia (`:57-68`). Violação faz `throw` (`:106-112`). Só roda nos dois pontos de escrita admin: `useProducts.ts:480` e `:622`. **Não valida nada na leitura do catálogo.** |
+| **`TruthGate`** | `src/utils/truth_gate.ts:14-115` | O [`04-GLOSSARIO.md`](04-GLOSSARIO.md) listava quatro regras — corrigido lá em 30/07/2026; são **cinco** axiomas mais um warning: preço ≥ 0 (`:24-30`), estoque ≤ 10000 (`:33-39`), nome não vazio (`:42-47`), custo ≥ 0 (`:50-56`) e `originalPrice > price` (`:71-81`), mais um *warning* de margem negativa que não bloqueia (`:57-68`). Violação faz `throw` (`:106-112`). Só roda nos dois pontos de escrita admin: `useProducts.ts:480` e `:622`. **Não valida nada na leitura do catálogo.** |
 | **`LocalBufferedInput` / `onFlush`** | `src/components/admin/LocalBufferedInput.tsx` (333 linhas) | Substitui `onChange` por `onFlush`, que recebe o valor **cru** após debounce de 200 ms ou blur (`:14`, `:62`). O `useEffect` de `:92-107` só aceita valor de fora quando o campo **não** está focado (`isFocusedRef`) — é isso que evita o cursor pular. Usado em 6 telas admin. A máscara `currency` tem a armadilha documentada em `:48-56`: a prop chega em reais, o que o usuário digita é lido em centavos. |
 | **`DeferredTabContent`** | `AdminArea.tsx:90-107` | Monta na primeira ativação e **nunca desmonta** (`hasBeenActive`). As 5 abas principais acumulam estado montado; as 11 secondary views do `switch` de `:514-678` são o oposto — remontam a cada entrada e perdem estado. |
 | **`imagemRedimensionada` / `conjuntoDeImagens`** | `src/lib/imageUrl.ts` (62 linhas) | Troca `/object/public/` por `/render/image/public/` e anexa `width`, `resize=contain`, `quality` (`:15-16`, `:45`); URL não-Supabase volta intacta por design (`:39`). O comentário `:41-45` guarda a medição que justifica o `resize=contain` — só com `width`, um original 1376x768 voltava 200x768 distorcido. No `LazyImage` a transformação é **opt-in pelo prop `sizes`** (`LazyImage.tsx:93`), e de 14 usos de `<LazyImage>` só **2** passam `sizes` (`ProductCard.tsx:154`, `BannerCarousel.tsx:123`). |
@@ -397,22 +398,24 @@ variação), `useProducts.ts` (1.368, dois hooks no mesmo nome separados pelo fl
 cópia 1 = `mappers.ts:85-93`; cópias 2 e 3 = `realtimeSyncEngine.ts:454-458` e `:510-514`; cópia 4 = `AdminProductFormView.tsx:760-763`.
 As outras duas: mínimo entre eixos selecionados em `ProductView.tsx:538-543`, valor absoluto de uma variação em `CartContext.tsx:543-545`. O card mostra a soma, o detalhe mostra o mínimo.
 
-**Frete grátis: 8 lugares.** As três condições (`freeShippingMin > 0 && total >= min && user`) aparecem em `CartContext.tsx:746-751`,
-`CartView.tsx:257`, `StoreContext.tsx:600-605`, na RPC (`20260729000002...sql:224-227`), na edge function, e em três telas de UI
-(`FreeShippingBlock.tsx:18-25`, `CartReminder.tsx:25-27`, `ShippingCalculator.tsx:202`). E `StoreContext.calculateShipping`
+**Frete grátis: 7 lugares.** Cinco exigem usuário logado — `CartContext.tsx:746-751`, `StoreContext.tsx:600-605`,
+`CartView.tsx:257`, `FreeShippingBlock.tsx:18-25` (gate em `:81`) e a RPC (`20260729000002...sql:224-227`). Dois **não** exigem, e
+são os que escrevem "Grátis" na frente do cliente: `CartReminder.tsx:25-27` e `ShippingCalculator.tsx:202`. A edge function **não é
+um deles**: `grep -n free_shipping_min supabase/functions/calculate-shipping/index.ts` não devolve nada — ela só lê `frete_gratis`
+por item (`:374`, `:509`), nunca o mínimo. E `StoreContext.calculateShipping`
 (`:580-614`) está **no `contextValue` (`:637`) e não tem um único consumidor** — o `calculateShipping` de
 `ShippingCalculator.tsx:45` é outra função, local. Código morto carregando uma cópia da regra mais frágil do sistema.
 
-> Isso refina o [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md), que conta "cinco lugares independentes" (`:99-102`). Os cinco dele
-> conferem, `CartView` incluído. **São oito** — as três telas de UI não estavam na conta.
+> O [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md) contava "cinco lugares" e incluía a edge function na lista. **Corrigido lá em
+> 30/07/2026 a partir desta contagem**: são sete, e a edge function não é um deles.
 
 **Adicionar campo em `store_config` custa 6 pontos de edição em 3 arquivos, mais a tela de admin, mais 1 RPC.** Rastreado com
 `localCepRange`: `types/index.ts:216`; `StoreContext.tsx:37` (default), `:276-279` (`mapConfig`), `:319` (insert de
 inicialização), `:485-486` (`updateConfig`); `realtimeSyncEngine.ts:119` (mapa do realtime); e a RPC
 `20260729000001_fix_upsert_store_config_partial.sql:145-147`. Esquecer um dos seis não dá erro: o campo não persiste, ou não
 volta do realtime. **Falta ainda a tela** — `AdminShippingView.tsx:56` (state do form), `:145` (hidratação), `:187`
-(dirty-check), `:301` (submit) e `:869-873` (o input); sem esses o campo existe e o lojista não consegue setar. Isso refina o
-[`01-VISAO-GERAL.md`](01-VISAO-GERAL.md), que diz "cinco lugares" (`:145`): são seis no caminho de dados, mais a tela.
+(dirty-check), `:301` (submit) e `:869-873` (o input); sem esses o campo existe e o lojista não consegue setar. O
+[`01-VISAO-GERAL.md`](01-VISAO-GERAL.md) dizia "cinco lugares"; corrigido lá em 30/07/2026 para seis no caminho de dados, mais a tela.
 
 ### 6.3 As duas metades que discordam sobre o tamanho do catálogo
 
