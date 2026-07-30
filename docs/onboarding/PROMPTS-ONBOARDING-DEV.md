@@ -56,7 +56,7 @@ gh auth refresh -s project,read:project
 
 ### 2. Acessos pro Netim (fazer manualmente, não é coisa de prompt)
 
-- **GitHub**: convidar `@netim` como colaborador em `BielWeed/ikcous-marketplace` com permissão *Write* (não *Admin* — branch protection precisa de alguém de fora pra aprovar).
+- **GitHub**: convidar como colaborador em `BielWeed/ikcous-marketplace`. O repositório virou **privado** em 30/07/2026, então sem convite ele não consegue nem ler o código. Repositório de conta pessoal só tem dois níveis — dono e colaborador (write); não existe `maintain` aqui.
 - **Supabase**: convidar no projeto `cafkrminfnokvgjqtkle` (Settings → Team). Você escolheu dar acesso à produção — o prompt 1 vai gerar as regras de segurança pra isso não virar problema.
 - **Vercel**: convidar no projeto `ickous-marketplace` pra ele ver os preview deploys.
 - **Discord**: canal do projeto, que virou o lugar de organização.
@@ -133,6 +133,16 @@ REGRAS INVIOLÁVEIS (violar qualquer uma destas causa dano real)
    necessária, gere o SQL e peça pro Gabriel rodar (`node scripts/db-apply.cjs` ou SQL Editor).
 
 7. Fluxo de Git: NÃO commitar direto na `main`. Trabalhe em branch e finalize via Pull Request.
+   Atenção: desde 30/07/2026 isso é um ACORDO, não uma trava. O repositório é privado num
+   plano Free, então branch protection e rulesets retornam 403. Não afirme em documentação
+   nenhuma que a `main` está protegida pelo GitHub — não está.
+
+8. O repositório teve credenciais de três projetos Supabase expostas no histórico enquanto era
+   público (`service_role` de `cafkrminfnokvgjqtkle` e `ykzlsunvbeclpxkuzskk`, senha do banco
+   de `cafkrminfnokvgjqtkle` e `jvgyjlbjhbfrncwbytls`), em 295 arquivos de script já removidos
+   do HEAD. O repo virou privado em 30/07/2026 e a rotação das credenciais está PENDENTE.
+   Nunca escreva credencial em arquivo de código — use variável de ambiente, sempre. Se
+   encontrar chave literal em qualquer arquivo, pare e reporte em vez de commitar.
 
 MÉTODO DE TRABALHO ESPERADO
 - Sessão roda em ultracode. Use a ferramenta Workflow com fan-out de subagentes para qualquer
@@ -464,6 +474,30 @@ Você não precisa descobrir isto, mas CONFIRME antes de mexer:
 - A raiz do repo tem ~30 PNGs de screenshot, `ship-safe-report.html` (9 MB),
   `line74_content.txt`, `subagent_content.txt`, `scratch_audit.bat/.ps1` e 3 SQLs soltos.
 
+RESTRIÇÃO CRÍTICA — BRANCH PROTECTION NÃO ESTÁ DISPONÍVEL
+
+Em 30/07/2026 o repositório passou a ser **privado** (havia chave `service_role` do Supabase
+vazada no histórico público). A conta é pessoal e está no plano Free. Consequência testada
+empiricamente:
+
+    GET  /repos/BielWeed/ikcous-marketplace/branches/main/protection  → 403
+    GET  /repos/BielWeed/ikcous-marketplace/rulesets                  → 403
+    POST /repos/BielWeed/ikcous-marketplace/rulesets                  → 403
+    "Upgrade to GitHub Pro or make this repository public to enable this feature."
+
+**Não tente configurar branch protection nem rulesets. Vai falhar com 403.** Confirmado
+também na documentação: protected branches em repositório privado exige GitHub Pro (conta
+pessoal) ou Team (organização); organização no plano Free também não tem.
+
+Consequência para este prompt: a trava do "não commitar na main" é, por enquanto, **hook
+local + CI + acordo entre os dois** — não é garantia técnica do lado do servidor. Escreva
+isso com todas as letras na documentação que você gerar. Documentação que promete uma trava
+que não existe é pior que documentação nenhuma.
+
+Também não existe papel `maintain` aqui: repositório de conta pessoal só tem dois níveis,
+dono e colaborador (colaborador = write). Não escreva processo que dependa de papéis
+granulares do GitHub.
+
 --- ENTREGÁVEIS ---
 
 ### 1. `CONTRIBUTING.md` (raiz)
@@ -534,6 +568,9 @@ Substitua o arquivo comentado por configuração funcional:
 - `commit-msg`: commitlint (o config já existe, só está órfão)
 - `pre-commit`, em paralelo: biome nos arquivos staged, eslint nos `.ts/.tsx` staged,
   secretlint no diff
+- `pre-push`: **guarda de branch** — recusa push cujo destino seja `main` ou `develop`,
+  com mensagem explicando que é pra abrir PR. Esta é a única trava que resta, já que branch
+  protection está indisponível; trate como item obrigatório, não opcional.
 - `pre-push`: `typecheck` (rápido o bastante) — **não** coloque build no pre-push, mata a
   produtividade
 - Adicione `lefthook` como devDependency e um script `prepare` que instala os hooks no
@@ -551,12 +588,19 @@ arquivos `.env*` — as áreas onde um erro derruba a loja. O resto, revisão de
 
 - Criar `develop` a partir de `main` e publicar
 - Definir `develop` como branch padrão do repositório (assim PR novo já aponta pro lugar certo)
-- Branch protection em `main`: PR obrigatório, 1 aprovação, status checks do CI obrigatórios,
-  sem force push, sem deleção, conversas resolvidas antes do merge
-- Branch protection em `develop`: PR obrigatório, status checks obrigatórios, 1 aprovação
 - Habilitar auto-delete de branch após merge
 - Habilitar apenas squash merge para PRs de feature (histórico limpo); merge commit para
   release e hotfix
+
+**NÃO configure branch protection nem rulesets** — retorna 403 neste repositório (ver a
+restrição crítica no topo deste prompt). No lugar disso, o item 5 (lefthook) carrega a trava
+possível: um `pre-push` que recusa push direto em `main` e `develop`.
+
+Deixe registrado no `CONTRIBUTING.md`, numa seção própria e honesta, que:
+- a proteção hoje é local e contornável com `--no-verify`;
+- ela só vale para quem rodou `npm install` no clone;
+- o caminho para trava de verdade é GitHub Pro (US$ 4/mês, mantém privado) ou repositório
+  público com o histórico purgado — decisão adiada pelo Gabriel em 30/07/2026.
 
 Se algum comando falhar por falta de escopo ou permissão, **não invente que deu certo** —
 reporte o comando exato pro Gabriel rodar manualmente.
@@ -586,7 +630,8 @@ pra quem não sabe git bem — e é justamente pra isso que serve o PR separado.
 
 - O CI roda e passa no próprio PR que o introduz. Se não passa, não está pronto.
 - Um commit com mensagem fora do padrão é REJEITADO pelo hook — testado, não presumido.
-- Um push direto na `main` é rejeitado pelo GitHub — testado.
+- Um push direto na `main` é rejeitado pelo hook `pre-push` local — testado, não presumido.
+  (Pelo GitHub, não é: branch protection está indisponível. Não afirme que é.)
 - O `CONTRIBUTING.md` responde "como faço X?" em menos de 30 segundos de leitura.
 - Nenhum comando `gh` reportado como executado sem ter sido executado.
 
@@ -994,7 +1039,24 @@ Pra colar no WhatsApp ou no Discord depois que os PRs dos prompts 1, 2, 3 e 5 es
 
 Coisas que ficam pendentes e não são resolvidas por prompt nenhum:
 
-1. **Aplicar a migration v23** (`20260729000002_shipping_quote_validation_v23.sql`) — validada, não aplicada. Deve virar a primeira task do backlog.
-2. **Decidir o que fazer com o `AGENTS.md`** — 12 KB descrevendo 14 MCPs e um "enxame de agentes". Confunde quem chega. Vale reduzir pra um `CLAUDE.md` enxuto com as regras que valem de verdade. Note que `.cursorrules` é uma cópia idêntica dele.
-3. **Reconciliar as migrations com produção** — enquanto ~50 locais estiverem pendentes e ~25 remotas sem arquivo, o repositório não é fonte de verdade do schema. É trabalho grande e chato, mas é o que destrava mexer em banco com segurança.
-4. **Primeiro teste automatizado.** Escolher framework e escrever o primeiro teste do fluxo de carrinho. Enquanto não existir, o `Em teste (preview)` do Kanban depende de teste manual.
+0. **🔴 Rotacionar as credenciais do Supabase.** Em 30/07/2026 descobrimos que o repositório
+   era público e tinha, no histórico, credenciais de três projetos Supabase: `service_role`
+   de `cafkrminfnokvgjqtkle` (produção) e `ykzlsunvbeclpxkuzskk`, mais a **senha do banco**
+   de `cafkrminfnokvgjqtkle` e `jvgyjlbjhbfrncwbytls`. Estavam em 295 arquivos de script
+   (`apply_*.cjs`, `check_*.cjs`, etc.), todos já removidos do HEAD mas presentes nos 105
+   commits do histórico. O GitHub tinha 2 alertas de secret scanning abertos desde
+   05/04/2026. O repositório foi tornado **privado** no mesmo dia, o que corta a exposição —
+   mas **não invalida as credenciais**. Rotacionar `service_role` E senha do banco continua
+   pendente. Rotacionar a senha quebra a `DATABASE_URL` do `.env` local e o
+   `scripts/db-apply.cjs` até serem atualizados.
+
+1. **Decidir a trava da `main`.** Enquanto o repositório for privado num plano Free, branch
+   protection e rulesets retornam 403. Opções levantadas em 30/07/2026: GitHub Pro
+   (US$ 4/mês, mantém privado), voltar a público após purgar os 295 arquivos do histórico,
+   ou squash do histórico num commit único. O Gabriel adiou a decisão; até lá a proteção é
+   só o hook `pre-push` do lefthook, que se contorna com `--no-verify`.
+
+2. **Aplicar a migration v23** (`20260729000002_shipping_quote_validation_v23.sql`) — validada, não aplicada. Deve virar a primeira task do backlog.
+3. **Decidir o que fazer com o `AGENTS.md`** — 12 KB descrevendo 14 MCPs e um "enxame de agentes". Confunde quem chega. Vale reduzir pra um `CLAUDE.md` enxuto com as regras que valem de verdade. Note que `.cursorrules` é uma cópia idêntica dele.
+4. **Reconciliar as migrations com produção** — enquanto ~50 locais estiverem pendentes e ~25 remotas sem arquivo, o repositório não é fonte de verdade do schema. É trabalho grande e chato, mas é o que destrava mexer em banco com segurança.
+5. **Primeiro teste automatizado.** Escolher framework e escrever o primeiro teste do fluxo de carrinho. Enquanto não existir, o `Em teste (preview)` do Kanban depende de teste manual.
