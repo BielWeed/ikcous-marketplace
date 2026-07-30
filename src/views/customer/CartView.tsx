@@ -498,7 +498,7 @@ export function CartView({
                                 haptic.light();
                                 onNavigate("checkout");
                               }}
-                              className="w-full rounded-2xl border border-zinc-100/50 py-3.5 text-[10px] font-black uppercase tracking-widest text-primary transition-colors hover:border-zinc-200 hover:text-primary active:scale-95"
+                              className="w-full rounded-2xl border border-zinc-100/50 py-3.5 text-[10px] font-black uppercase tracking-widest text-primary transition-colors hover:border-zinc-200 active:scale-95"
                             >
                               Continuar como Convidado
                             </button>

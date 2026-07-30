@@ -347,7 +347,7 @@ function HeroOfferCard({
         <button
           onClick={handleFavoriteClick}
           className={cn(
-            "absolute right-0 p-2 rounded-full transition-all active:scale-75 hover:bg-secondary/10 z-20 border border-transparent hover:border-zinc-100/30",
+            "absolute right-0 p-2 rounded-full transition-all active:scale-75 hover:bg-zinc-50 z-20 border border-transparent hover:border-zinc-100/30",
             isFavorite
               ? "text-red-500 bg-red-50/50 shadow-sm"
               : "text-slate-400 hover:text-red-500 bg-slate-50/40",

@@ -95,7 +95,7 @@ export function PushNotificationBanner({
         )}
       >
         <div className="relative overflow-hidden rounded-2xl border border-secondary/25 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-2xl text-white">
-          {/* Linha superior com brilho gradiente rosa cereja e vinho */}
+          {/* Linha superior com brilho gradiente secondary */}
           <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-secondary/70 to-transparent" />
 
           {/* Botao de fechar (X) */}
@@ -109,7 +109,7 @@ export function PushNotificationBanner({
           </button>
 
           <div className="flex items-start gap-3.5 pr-6">
-            {/* Icone de sino animado com tema rosa cereja e glow */}
+            {/* Icone de sino animado com tema secondary e glow */}
             <div className="relative flex-shrink-0">
               <div className="absolute inset-0 animate-ping rounded-xl bg-secondary/20 blur-sm" />
               <div className="relative flex size-11 items-center justify-center rounded-xl border border-secondary/30 bg-secondary/10 text-secondary shadow-inner">

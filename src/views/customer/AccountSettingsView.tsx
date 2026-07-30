@@ -1085,8 +1085,8 @@ export function AccountSettingsView() {
                         disabled={isUpdatingCover}
                         className={`group relative flex aspect-[16/10] flex-col justify-end overflow-hidden rounded-xl border-2 p-1.5 transition-all active:scale-95 ${
                           isSelected || isDefault
-                            ? "scale-98 border-primary bg-zinc-50/30 shadow-[0_0_12px_rgba(0,0,0,0.3)]"
-                            : "border-zinc-100 bg-zinc-50/30 hover:border-zinc-100/50"
+                            ? "scale-98 border-primary bg-zinc-50/30 shadow-[0_0_12px_rgba(24,24,27,0.3)]"
+                            : "border-zinc-100 bg-zinc-50/30 hover:border-zinc-300"
                         }`}
                         title={cover.label}
                       >
@@ -1128,11 +1128,9 @@ export function AccountSettingsView() {
                   <motion.div
                     whileHover={{
                       scale: 1.01,
-                      borderColor: "hsl(var(--primary) / 25%)",
-                      backgroundColor: "hsl(var(--primary) / 4%)",
                     }}
                     whileTap={{ scale: 0.99 }}
-                    className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-2xl border-2 border-dashed border-zinc-100 bg-zinc-50/10 p-6 text-center transition-colors"
+                    className="flex cursor-pointer flex-col items-center justify-center space-y-3 rounded-2xl border-2 border-dashed border-zinc-100 bg-zinc-50/10 p-6 text-center transition-colors hover:border-primary/25 hover:bg-primary/[0.04]"
                   >
                     <div className="flex size-10 items-center justify-center rounded-xl border border-zinc-100 bg-zinc-50 text-primary">
                       <UploadCloud className="size-5 text-primary" />
