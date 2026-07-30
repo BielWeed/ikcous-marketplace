@@ -10,7 +10,7 @@
     "Meça sempre com `npm run lint:ratchet` — rodar eslint na mão dá números",
     "diferentes se as pastas ignoradas do eslint.config.js não estiverem alinhadas.",
     "",
-    "Alvo: zerar. Task INFRA-250 (a criar) para os warnings, INFRA-220 para o Biome."
+    "Alvo: zerar. Task INFRA-250 para os warnings, INFRA-220 para o Biome."
   ],
   "eslint": {
     "errors": 7,

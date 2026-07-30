@@ -397,7 +397,7 @@ Nunca suba um teto sem explicar no PR por quê.
 > ignorando `.claude/worktrees` (uma cópia do próprio repositório), e o Biome
 > conta 100 erros em vez de 31 porque o disco está em CRLF e ele formata em LF.
 > Por isso o Biome só é cobrado dentro do CI. Normalizar fim de linha é a
-> INFRA-220; zerar os warnings de eslint é a INFRA-250, ainda a criar.
+> INFRA-220; zerar os warnings de eslint é a INFRA-250.
 
 ### Reproduzindo o CI local
 

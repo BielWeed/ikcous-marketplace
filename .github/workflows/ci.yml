@@ -161,7 +161,7 @@ jobs:
     # que aumentar. Nasce verde e bloqueia dívida nova. Quando um número cair,
     # ela avisa para abaixar o teto no mesmo PR.
     #
-    # Alvo é zerar: INFRA-250 (a criar) para os warnings de eslint, INFRA-220
+    # Alvo é zerar: INFRA-250 para os warnings de eslint, INFRA-220
     # para o alcance do Biome e a normalização de fim de linha.
     steps:
       - uses: actions/checkout@v4
