@@ -1,6 +1,6 @@
 # ROADMAP — IKCOUS Marketplace
 
-Sequência de execução das 110 tarefas de [`BACKLOG.md`](BACKLOG.md), em 4 ondas.
+Sequência de execução das 111 tarefas de [`BACKLOG.md`](BACKLOG.md), em 4 ondas.
 Escrito em 30/07/2026, a partir da classificação dos 85 achados de auditoria, do levantamento do
 banco vivo, do relatório de saúde de engenharia e do levantamento de lacuna de produto.
 
@@ -28,7 +28,7 @@ Executar como par, num PR só, senão o segundo vira retrabalho:
 | "Decidir o destino do segundo projeto Supabase que envia o OTP de convidado" + "Por que o envio do OTP depende de um SEGUNDO projeto Supabase e quem tem acesso a ele?" | Mesma conversa com o Gabriel. Uma reunião, um documento. |
 | "Decidir a estratégia de reconciliação do ledger de migrations" + "O que fazer com as 42 migrations pendentes e as 28 versões do ledger sem arquivo?" | Mesma decisão. A primeira é a forma executável da segunda. |
 
-São 110 itens no backlog, **107 unidades de trabalho** na prática.
+São 111 itens no backlog, **108 unidades de trabalho** na prática.
 
 ---
 
@@ -464,13 +464,14 @@ sente faltando até alguém reclamar.
 - `BUSCA-020` Mover a busca do cliente para o servidor com índice
 - `SEO-020` Vale investir em SSR ou prerender para o preview de link de produto?
 
-#### Higiene de repositório (5)
+#### Higiene de repositório (6)
 
 - `INFRA-170` Tirar os screenshots do controle de versão
 - `INFRA-240` Vamos reescrever o histórico do git para tirar os 15,5 MB de screenshots?
 - `INFRA-210` Corrigir a identidade do projeto no `package.json`
 - `INFRA-220` Fazer o Biome cobrir as edge functions e remover o ignore de caminho absoluto
 - `INFRA-230` Limpar as dependências e scripts que ninguém executa
+- `INFRA-250` Zerar os 553 warnings de eslint e baixar o teto da catraca até zero
 
 #### Dívida arquitetural remanescente (4)
 
@@ -525,8 +526,8 @@ acessibilidade e SEO ficam, higiene de repositório espera. Chute grosso.
 | 0 — Parar o sangramento | 23 | 2 a 3 semanas |
 | 1 — Confiança | 34 | 5 a 7 semanas |
 | 2 — Fechar o produto | 32 | 6 a 8 semanas |
-| 3 — Polimento | 21 | 3 a 4 semanas |
-| **Total** | **110** | **16 a 22 semanas** |
+| 3 — Polimento | 22 | 3 a 4 semanas |
+| **Total** | **111** | **16 a 22 semanas** |
 
 Aproximadamente **4 a 5 meses** para uma dupla, sem nenhum histórico de velocity para calibrar.
 Reavaliar ao fim da Onda 0: será a primeira medição real de quanto esta dupla entrega por semana
@@ -634,7 +635,7 @@ flowchart LR
 
 | Documento | O que tem |
 | --- | --- |
-| [`BACKLOG.md`](BACKLOG.md) | As 110 tarefas com evidência, critério de aceite e arquivos |
+| [`BACKLOG.md`](BACKLOG.md) | As 111 tarefas com evidência, critério de aceite e arquivos |
 | [`06-ESTADO-ATUAL.md`](../onboarding/06-ESTADO-ATUAL.md) | O placar dos 85 achados e o semáforo por área |
 | [`01-VISAO-GERAL.md`](../onboarding/01-VISAO-GERAL.md) | Panorama, riscos e estado de maturidade |
 | [`02-ARQUITETURA.md`](../onboarding/02-ARQUITETURA.md) | Diretórios, abstrações e dívida arquitetural |

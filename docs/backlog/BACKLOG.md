@@ -5,7 +5,7 @@ banco de produção e do levantamento de lacuna de produto. O retrato que origin
 está em [`06-ESTADO-ATUAL.md`](../onboarding/06-ESTADO-ATUAL.md); a ordem sugerida de ataque,
 em [`ROADMAP.md`](ROADMAP.md).
 
-**110 tarefas** — 4 P0 · 32 P1 · 57 P2 · 17 P3, em 22 épicos.
+**111 tarefas** — 4 P0 · 32 P1 · 57 P2 · 18 P3, em 22 épicos.
 
 A mesma lista, achatada para importar no Notion ou no Excel, está em
 [`backlog.csv`](backlog.csv). Os dois arquivos são gerados da mesma fonte, então não divergem —
@@ -159,6 +159,7 @@ Candidatas que **não** entraram, e por quê:
 | `INFRA-220` | Fazer o Biome cobrir as edge functions e remover o ignore de caminho absoluto | infra | P3 | P | — |
 | `INFRA-230` | Limpar as dependências e scripts que ninguém executa | infra | P3 | P | — |
 | `INFRA-240` | Vamos reescrever o histórico do git para tirar os 15,5 MB de screenshots? | decisao | P3 | P | — |
+| `INFRA-250` | Zerar os 553 warnings de eslint e baixar o teto da catraca até zero | divida tecnica | P3 | G | — |
 | `PWA-030` | Por que existem 13 ramos de manualChunks no vite.config.ts? | decisao | P3 | P | — |
 | `SEO-020` | Vale investir em SSR ou prerender para o preview de link de produto? | decisao | P3 | P | — |
 
@@ -1541,6 +1542,44 @@ Candidatas que **não** entraram, e por quê:
 **Arquivos envolvidos:** `biome.json`, `supabase/functions/calculate-shipping/index.ts`, `supabase/functions/send-otp-email/index.ts`, `supabase/functions/send-push/index.ts`
 **Depende de:** nada
 **Bom pra quem está chegando:** não — fora das 7 tarefas de entrada escolhidas; ver "Por onde o Netim começa" no topo
+
+---
+
+### [INFRA-250] Zerar os 553 warnings de eslint e baixar o teto da catraca até zero
+
+**Tipo:** divida tecnica
+**Prioridade:** P3
+**Tamanho:** G
+**Épico:** Fundação de engenharia
+**Risco de mexer:** médio — o risco não é funcional na maior parte, é de CONFLITO: são 54 arquivos, e um commit gigante de formatação colide com tudo que o outro dev tiver aberto. Por isso o aceite exige três PRs separados, em ordem, e combinados no Discord antes. A exceção é a fase 3: `react-hooks/exhaustive-deps` pode mudar comportamento de verdade (loop de render, efeito que deixa de disparar) e cada caso precisa ser entendido, nunca silenciado.
+
+**Contexto:** O CI tem uma catraca de lint (`npm run lint:ratchet`) que compara com os tetos de `.lint-baseline.json` e reprova só o que sobe. Ela impede a dívida de crescer, mas não a diminui sozinha. Enquanto o teto for 553, o job fica verde com 553 warnings — o que é honesto, mas não é o objetivo. Esta task é o trabalho de derrubar o número até zero e, aí sim, transformar a catraca num gate de verdade.
+
+**Evidência:** Medido no CI em 30/07/2026 (execução `30583264354`): 553 warnings e 7 erros em 54 arquivos. Distribuição por regra, do maior para o menor:
+
+| Regra | Quantidade | Natureza |
+| --- | --- | --- |
+| `tailwindcss/classnames-order` | 352 | auto-corrigível com `--fix`, zero risco funcional |
+| `security/detect-object-injection` | 108 | quase sempre falso positivo em TS tipado |
+| `security/detect-non-literal-fs-filename` | 36 | scripts de build lendo caminho montado; falso positivo |
+| `tailwindcss/no-custom-classname` | 33 | classe que falta na whitelist do `eslint.config.js` |
+| `react-hooks/exhaustive-deps` | 13 | **o único grupo que pode esconder bug de verdade** |
+| outras 7 regras | 11 | resto |
+
+Os 7 erros (que não são warning) estão fora do escopo desta task: são 3 de `react-hooks` em `AdminCarouselsView.tsx` e 4 de `jsx-a11y/label-has-associated-control` em `AdminProductFormView.tsx` e `AdminShippingView.tsx`.
+
+**Critério de aceite:**
+
+- [ ] **Fase 1, um PR só de formatação:** `npx eslint . --fix` resolve os 352 de `classnames-order`; o diff é revisado para confirmar que só ordem de classe mudou; `.lint-baseline.json` cai para 201 no mesmo PR
+- [ ] **Fase 2, um PR de decisão:** para `security/detect-object-injection` e `security/detect-non-literal-fs-filename` (144 no total), a escolha entre corrigir, desligar a regra no `eslint.config.js` ou suprimir com comentário está tomada e **escrita no PR**; se a decisão for desligar, o motivo está no próprio arquivo de config, não só na mensagem do commit
+- [ ] **Fase 3, um PR por vez:** cada um dos 13 `react-hooks/exhaustive-deps` foi aberto e entendido; nenhum foi silenciado com `eslint-disable` sem uma frase dizendo por que a dependência faltante é intencional
+- [ ] `.lint-baseline.json` está com `eslint.warnings` em **0** e `eslint.errors` no valor da época
+- [ ] `npm run lint:ratchet` sai com 0 e não imprime nenhuma linha "baixou"
+- [ ] O comentário do job `Catraca de lint` no `ci.yml` foi atualizado: não cita mais esta task como pendente
+
+**Arquivos envolvidos:** `.lint-baseline.json`, `eslint.config.js`, `.github/workflows/ci.yml`, e os 54 arquivos que hoje têm warning (a lista sai de `npx eslint . --format json`)
+**Depende de:** [INFRA-040] — a catraca e o baseline só existem depois que o CI entra
+**Bom pra quem está chegando:** não — parece tarefa de entrada por ser mecânica, mas toca 54 arquivos ao mesmo tempo e o custo de errar é conflito com o outro dev, não erro de código. Combine antes.
 
 ---
 
