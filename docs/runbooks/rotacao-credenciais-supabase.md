@@ -1,10 +1,42 @@
 # Como trocar as credenciais do Supabase — passo a passo
 
-**Por que fazer:** de 05/04 a 30/07/2026 o repositório era público e tinha, no histórico,
-a chave `service_role` e a senha do banco escritas em texto puro. Quem copiou tem acesso
-total ao banco da loja. Trocar as credenciais é o que torna essas cópias inúteis.
+> ## ✅ Incidente encerrado em 30/07/2026 — a Parte 2 não é mais necessária
+>
+> Este runbook foi escrito no meio de uma investigação, assumindo que a `service_role`
+> vazada estava viva. **Ela não está.** O teste que fecha o assunto:
+>
+> ```text
+> Chave do histórico: role=service_role  emitida=2024-03-22  expira=2034-03-23
+>   HTTP 401 — RECUSADA
+> Chave viva hoje:    role=service_role  emitida=2026-02-06  expira=2036-02-06
+> ```
+>
+> São chaves diferentes. A que ficou no histórico do git não é aceita pela API.
+>
+> Cuidado com os alertas de secret scanning do GitHub: o campo `secret` da API traz valores
+> **sintéticos** (as assinaturas eram `N-8Z_Y9X-X-X-X-X` e `U4S_qS6U_qS6U_qS6U`). Alerta
+> aberto não é prova de credencial válida — só a requisição autenticada é.
+>
+> | Item | Situação |
+> | --- | --- |
+> | `service_role` de produção no histórico | morta (401) |
+> | Senha do banco de produção | rotacionada em 30/07/2026 |
+> | `service_role` de `ykzlsunvbeclpxkuzskk` | projeto não existe mais |
+> | Senha do banco de `jvgyjlbjhbfrncwbytls` | **única pendência** |
+> | Repositório | privado |
+>
+> **O que ainda vale fazer:** a Parte 1 no projeto `jvgyjlbjhbfrncwbytls` (item 1.3), e fechar
+> os 2 alertas do GitHub como *Revoked*.
+>
+> **A Parte 2 virou higiene opcional, não resposta a incidente.** Mexer na chave que a loja usa
+> pra autenticar, sem credencial viva exposta, é trocar risco zero por risco pequeno mas real.
+> Se um dia decidir migrar, a ordem correta está na Parte 2.
 
-**Quanto tempo:** 20 a 40 minutos, sem pressa.
+**Por que este runbook existe:** de 05/04 a 30/07/2026 o repositório era público e tinha, no
+histórico, credenciais de três projetos Supabase espalhadas por 295 arquivos de script. A senha
+do banco de produção era risco real e foi rotacionada. A `service_role` já estava morta.
+
+**Quanto tempo:** a Parte 1 leva 10 minutos. A Parte 2, se você decidir fazer algum dia, 30.
 
 ---
 
