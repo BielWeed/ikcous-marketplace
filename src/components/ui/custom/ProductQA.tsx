@@ -284,7 +284,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                             <span className="text-[9px] font-black uppercase tracking-wider text-zinc-900">
                               Resposta da Equipe
                             </span>
-                            <span className="flex size-3 select-none items-center justify-center rounded-full bg-[#5C061E] text-[7px] font-bold text-white">
+                            <span className="flex size-3 select-none items-center justify-center rounded-full bg-primary text-[7px] font-bold text-white">
                               ✓
                             </span>
                           </div>
@@ -322,7 +322,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                         <button
                           onClick={() => handleReply(q.id)}
                           disabled={!replyText.trim()}
-                          className="absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-lg bg-[#5C061E] text-white transition-all hover:bg-[#720E28] active:scale-95 disabled:opacity-20"
+                          className="absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-lg bg-primary text-white transition-all hover:bg-primary/90 active:scale-95 disabled:opacity-20"
                         >
                           <Send className="size-3" />
                         </button>

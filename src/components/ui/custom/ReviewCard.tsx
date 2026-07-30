@@ -144,7 +144,7 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
           className={`flex w-fit items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
             hasMarkedHelpful
               ? "border-primary bg-primary text-white shadow-sm"
-              : "border-rose-100 bg-rose-50/30 text-rose-500 hover:bg-rose-50 hover:text-[#5C061E] active:scale-95"
+              : "border-secondary/20 bg-secondary/10 text-primary hover:bg-secondary/20 hover:text-primary active:scale-95"
           }`}
         >
           <ThumbsUp

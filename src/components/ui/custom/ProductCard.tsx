@@ -284,7 +284,7 @@ export const ProductCard = memo(function ProductCard({
             onClick={handleAddToCartClick}
             disabled={product.stock <= 0 || cartStatus !== "idle"}
             className={cn(
-              "w-full py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 shadow-[0_4px_10px_rgba(199,65,86,0.1)] flex items-center justify-center gap-1.5",
+              "w-full py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 shadow-[0_4px_10px_rgba(24,24,27,0.1)] flex items-center justify-center gap-1.5",
               product.stock <= 0
                 ? "bg-zinc-100 text-zinc-400 cursor-not-allowed shadow-none"
                 : cartStatus === "success"
