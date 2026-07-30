@@ -1,0 +1,415 @@
+# Como trabalhar neste repositório
+
+IKCOUS Marketplace. Dois desenvolvedores, assíncronos, loja no ar.
+
+Este documento é para consulta rápida, não para leitura completa. Use o índice.
+Se você está chegando agora, leia antes `docs/onboarding/03-SETUP-AMBIENTE.md`.
+
+- [A trava que não existe](#a-trava-que-não-existe) ← **leia esta primeiro**
+- [Modelo de branches](#modelo-de-branches)
+- [Mensagem de commit](#mensagem-de-commit)
+- [Posso commitar direto?](#posso-commitar-direto)
+- [Abrindo um PR](#abrindo-um-pr)
+- [Release](#release)
+- [Hotfix](#hotfix)
+- [Banco de dados](#banco-de-dados)
+- [O que o CI checa](#o-que-o-ci-checa)
+
+---
+
+## A trava que não existe
+
+Em 30/07/2026 o repositório passou a ser **privado**, porque havia chave
+`service_role` do Supabase no histórico enquanto ele era público. A conta é
+pessoal e está no plano Free. Consequência, testada na API e não deduzida:
+
+```text
+GET  /repos/BielWeed/ikcous-marketplace/branches/main/protection  → 403
+GET  /repos/BielWeed/ikcous-marketplace/rulesets                  → 403
+"Upgrade to GitHub Pro or make this repository public to enable this feature."
+```
+
+**Não existe branch protection neste repositório.** Nada do lado do GitHub
+impede um push direto na `main`. Nenhum check é obrigatório para mergear.
+O `CODEOWNERS` não atribui revisor automaticamente.
+
+O que existe no lugar:
+
+| Camada | O que faz | Como falha |
+| --- | --- | --- |
+| Hook `pre-push` do lefthook | Recusa push em `main` e `develop` | `git push --no-verify` passa por cima |
+| Hook `commit-msg` | Recusa mensagem fora do padrão | `git commit --no-verify` passa por cima |
+| CI no GitHub Actions | Mostra vermelho no PR | Não bloqueia o botão de merge |
+| Acordo entre os dois | — | Só funciona se os dois quiserem |
+
+E mais duas limitações reais dos hooks:
+
+1. **Só valem para quem rodou `npm install` no clone.** Os hooks são instalados
+   pelo script `prepare` do `package.json`. Clone novo sem `npm install` = zero
+   proteção.
+2. **Só valem em branch que contém o `lefthook.yml`.** Se você fizer checkout de
+   um commit anterior a este PR, o lefthook não acha configuração e libera tudo.
+
+O caminho para uma trava de verdade é GitHub Pro (US$ 4/mês, mantém o repositório
+privado) ou tornar o repositório público com o histórico purgado. **O Gabriel
+adiou essa decisão em 30/07/2026.** Está registrada como INFRA-240 no backlog.
+
+Enquanto isso: se você usar `--no-verify`, avise no Discord. Não é proibido —
+tem hora que é a saída certa. É que ninguém mais tem como saber.
+
+---
+
+## Modelo de branches
+
+```mermaid
+gitGraph
+    commit id: "loja no ar"
+    branch develop
+    checkout develop
+    commit id: "integracao"
+    branch feat/cupom-progressivo
+    checkout feat/cupom-progressivo
+    commit id: "feature"
+    commit id: "ajuste da revisao"
+    checkout develop
+    merge feat/cupom-progressivo
+    branch release/1.1.0
+    checkout release/1.1.0
+    commit id: "so correcao de bug"
+    checkout main
+    merge release/1.1.0 tag: "v1.1.0"
+    checkout develop
+    merge release/1.1.0
+    checkout main
+    branch hotfix/frete-zerado
+    checkout hotfix/frete-zerado
+    commit id: "loja parada"
+    checkout main
+    merge hotfix/frete-zerado tag: "v1.1.1"
+    checkout develop
+    merge hotfix/frete-zerado
+```
+
+| Branch | Sai de | Volta para | Regra |
+| --- | --- | --- | --- |
+| `main` | — | — | Só código em produção. Todo commit aqui vira deploy. **Não é protegida pelo GitHub** — ver acima. |
+| `develop` | `main` | — | Integração. Base de toda branch nova. Branch padrão do repositório. |
+| `feat/<escopo>` | `develop` | `develop` | Funcionalidade nova. |
+| `fix/<escopo>` | `develop` | `develop` | Correção que pode esperar o próximo release. |
+| `chore/<escopo>` | `develop` | `develop` | Infra, dependência, configuração. |
+| `docs/<escopo>` | `develop` | `develop` | Só documentação. |
+| `refactor/<escopo>` | `develop` | `develop` | Muda a forma sem mudar o comportamento. |
+| `release/<versão>` | `develop` | `main` **e** `develop` | Só recebe correção de bug. Nada de feature nova. |
+| `hotfix/<escopo>` | **`main`** | `main` **e** `develop` | O único que sai da `main`. |
+
+Existem branches antigas com prefixo `claude/` no remoto. São de sessões de
+agente anteriores ao GitFlow. Não crie mais nenhuma; a limpeza delas está em
+INFRA-180.
+
+**O passo que todo mundo esquece:** `release` e `hotfix` fazem merge em **duas**
+branches. Se você mergear o hotfix só na `main`, o bug volta no próximo release,
+porque a `develop` nunca recebeu a correção. Isso já é a causa mais comum de
+regressão em GitFlow — não confie na memória, siga o passo a passo abaixo.
+
+---
+
+## Mensagem de commit
+
+[Conventional Commits](https://www.conventionalcommits.org/pt-br/). Não é
+preferência: o `commit-msg` recusa o que estiver fora, via `.commitlintrc.json`.
+
+```text
+tipo(escopo): assunto no imperativo, começando em minúscula
+
+corpo opcional, explicando o PORQUÊ (o diff já mostra o quê)
+
+Refs: #123
+```
+
+**Tipos:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`,
+`ci`, `chore`, `revert`.
+
+**Escopos** (o escopo é opcional; se usar, tem que estar nesta lista — ela vive
+em `.commitlintrc.json`):
+
+| Escopo | Onde |
+| --- | --- |
+| `account` | perfil, endereços, favoritos, notificações do cliente |
+| `admin` | `src/views/admin/` e `src/components/admin/` |
+| `auth` | `AuthContext`, login, OTP, RLS do ponto de vista da sessão |
+| `brand` | identidade visual, ícones, textos de marca |
+| `cart` | `CartContext`, `CartView` e componentes de carrinho |
+| `catalog` | vitrine, busca, produto, comparação |
+| `checkout` | fechamento de pedido, cupom no checkout, WhatsApp |
+| `ci` | `.github/workflows/` |
+| `db` | `supabase/migrations/`, RPCs, RLS, triggers |
+| `deps` | dependência subindo ou descendo de versão |
+| `edge` | `supabase/functions/` |
+| `lib` | `src/lib/`, `src/utils/`, `src/hooks/` genéricos |
+| `notifications` | Web Push, `send-push`, notificações |
+| `orders` | pedido do lado do cliente e do admin |
+| `pwa` | `src/sw/`, service worker, manifest, offline |
+| `shipping` | frete, `calculate-shipping`, CEP |
+| `tooling` | lint, hooks, `.gitignore`, scripts, config de build |
+| `ui` | `src/components/ui/`, design system |
+
+Precisa de um escopo que não está aí? Acrescente em `.commitlintrc.json` no
+mesmo PR, e diga no corpo do PR por quê.
+
+**Limite:** 100 caracteres na primeira linha. Assunto em minúscula. Sem ponto
+final.
+
+### Cinco exemplos bons
+
+Todos reais, do histórico deste repositório:
+
+```text
+fix(db): grant execute on is_admin functions to anon and authenticated roles
+fix(pwa): point PWA manifest's maskable icon entry at the square-corner variant
+chore(lib): remove dead useDataVault hook and redundant default exports
+chore(tooling): scope .gitignore's *.png rule to exclude app icon assets
+feat(brand): add app icon generation script
+```
+
+O que eles têm em comum: um assunto só, imperativo, revisável sem abrir o diff,
+e reversível isoladamente.
+
+### Três exemplos ruins
+
+Também reais. É por isso que as regras existem:
+
+```text
+fix(mkt): complete checkout, coupons, guest auth, and performance optimizations
+```
+> `mkt` é o repositório inteiro — escopo que abrange tudo não filtra nada. E são
+> quatro mudanças sem relação num commit só: não dá para reverter uma delas.
+
+```text
+optimize(admin): enhance transitions, scroll restoration, offline support, error boundaries and custom alertdialogs
+```
+> 115 caracteres (o limite é 100), `optimize` não é tipo válido (seria `perf`),
+> e cinco assuntos empacotados. O escopo largo é sintoma de commit grande demais.
+
+```text
+fix(AdminProductFormView): Handle silent failure on duplicate variant SKUs and coerce empty string SKUs to null
+```
+> 111 caracteres, escopo é nome de arquivo (só em `src/views/admin/` há 17 —
+> não escala), e o assunto começa com maiúscula.
+
+---
+
+## Posso commitar direto?
+
+Não. A tabela existe porque a dúvida aparece de qualquer jeito.
+
+| Situação | Pode? | O que fazer |
+| --- | --- | --- |
+| "É só um typo no README" | Não | `docs/<assunto>` → PR |
+| "É uma linha só" | Não | Uma linha quebra loja igual a mil |
+| "A loja está parada, é urgente" | Não | `hotfix/<assunto>` a partir da `main` → PR. Leva 40s a mais |
+| "O outro dev está dormindo" | Não | Abra o PR e escreva no Discord. Merge de PR sem revisão é decisão do autor, mas o PR fica registrado |
+| "Estou só testando" | Não | Branch descartável. Não precisa nem abrir PR |
+| "Sou o dono do repositório" | Não | Especialmente não. É a `main` que está no ar |
+
+---
+
+## Abrindo um PR
+
+```bash
+git switch develop && git pull
+git switch -c feat/<assunto>
+# trabalhe, commite
+git push -u origin feat/<assunto>
+gh pr create --base develop --fill
+```
+
+**O que precisa estar verde antes de pedir revisão:**
+
+- `Tipos`, `Testes (Deno)`, `Build e tamanho` e `Varredura de segredo` — sim
+- `Lint (informativo)` — não. Está vermelho de propósito, por dívida antiga.
+  Ver [O que o CI checa](#o-que-o-ci-checa)
+
+**Quem revisa:** o outro. Marque na mão — o `CODEOWNERS` não atribui sozinho
+neste plano.
+
+**O que o revisor procura**, nesta ordem:
+
+1. Faz o que o PR diz que faz, e nada além disso
+2. Alguém consegue seguir o "Como testar" sem perguntar nada
+3. Se toca carrinho, cupom, frete, pedido ou banco: qual é o plano de reverter
+4. Credencial, `console.log` esquecido, código comentado
+5. Só depois: estilo e nomenclatura
+
+**PR parado é o principal modo de falha de dupla assíncrona.** Se um PR passar
+de 48h sem revisão, cobre no Discord. Não é cobrança pessoal, é o processo.
+
+---
+
+## Release
+
+```bash
+git switch develop && git pull
+git switch -c release/1.2.0
+
+# 1. sobe a versão
+npm version 1.2.0 --no-git-tag-version
+# 2. escreve o CHANGELOG.md à mão: o que muda para quem USA a loja
+# 3. commita
+git commit -am "chore(tooling): prepara release 1.2.0"
+git push -u origin release/1.2.0
+
+# 4. PR release/1.2.0 -> main. MERGE COMMIT, não squash:
+#    a release precisa manter os commits individuais para o hotfix
+#    conseguir ser cherry-picked depois.
+gh pr create --base main --title "release 1.2.0"
+
+# 5. depois do merge na main, marque a tag
+git switch main && git pull
+git tag -a v1.2.0 -m "release 1.2.0"
+git push origin v1.2.0
+
+# 6. E ENTÃO O PASSO QUE TODO MUNDO ESQUECE:
+gh pr create --base develop --head release/1.2.0 --title "chore: volta a release 1.2.0 para develop"
+```
+
+Versionamento semântico, sobre o comportamento da **loja**, não do código:
+
+- **PATCH** (1.2.**1**) — corrigiu bug, ninguém percebe mudança de comportamento
+- **MINOR** (1.**3**.0) — funcionalidade nova, nada quebrou
+- **MAJOR** (**2**.0.0) — fluxo do cliente ou do lojista mudou de forma que exige
+  reaprender
+
+> O `package.json` está em `1.0.0` desde sempre e o campo `name` ainda é
+> `"my-app"` (INFRA-210). Enquanto isso não for corrigido, a primeira release
+> real deste processo é a que arruma os dois.
+
+Só entra na `release/` correção do que a própria release quebrou. Feature nova
+espera a próxima — a branch existe justamente para estabilizar, e feature nova
+zera a estabilização.
+
+---
+
+## Hotfix
+
+Hotfix é para **loja parada ou perdendo dinheiro agora**. Não é para pressa.
+Se dá para esperar o próximo release, é `fix/` saindo de `develop`.
+
+```bash
+git switch main && git pull
+git switch -c hotfix/<assunto>
+# corrija o mínimo possível. Um hotfix grande é dois problemas.
+git commit -am "fix(<escopo>): <o que>"
+git push -u origin hotfix/<assunto>
+
+# 1. PR para main, MERGE COMMIT
+gh pr create --base main --title "hotfix: <assunto>"
+# 2. tag de PATCH
+git switch main && git pull
+git tag -a v1.2.1 -m "hotfix <assunto>" && git push origin v1.2.1
+
+# 3. O PASSO QUE CAUSA REGRESSÃO QUANDO ESQUECIDO:
+gh pr create --base develop --head hotfix/<assunto> --title "fix: leva o hotfix <assunto> para develop"
+```
+
+Se você pular o passo 3, o bug **volta** no próximo release, porque a `develop`
+nunca recebeu a correção — e vai voltar sem ninguém entender por quê.
+
+Antes de fechar: escreva no Discord o que aconteceu, o que causou e o que
+impediria de acontecer de novo. Isso vira task, não culpa.
+
+---
+
+## Banco de dados
+
+As regras operacionais completas estão em
+`docs/onboarding/03-SETUP-AMBIENTE.md`, seção "Regras de segurança para acesso
+ao Supabase de produção" — **essa é a lista oficial, numerada de 1 a 12.** Não
+duplique aqui, referencie de lá. O que segue é só o que muda no fluxo de PR.
+
+**Regra 1, acima de todas: nunca rode `supabase db push`.** O histórico de
+migrations diverge muito do banco: cerca de 50 migrations locais nunca foram
+aplicadas e cerca de 25 existem em produção sem arquivo local. Um `db push`
+tentaria replayar as 50 — incluindo reescrita de RLS e `GRANT`/`REVOKE` — num
+banco divergente, com a loja no ar.
+
+Nenhum PR que altera schema é mergeado sem, no PR:
+
+1. O SQL validado em `BEGIN; ... ROLLBACK;` contra produção, com a saída colada
+2. O arquivo de rollback, dentro do mesmo PR
+3. A confirmação de que o corpo da função ao vivo bate com o arquivo-base:
+   ```sql
+   SELECT pg_get_functiondef(p.oid)
+   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = '<funcao>';
+   ```
+4. Revisão do Gabriel. Ele é quem aplica — o agente e o Netim não escrevem em
+   produção (regras 8, 9 e 11 do documento de setup)
+
+O checklist condicional do template de PR cobre isso. Marque a label
+`toca-banco` na issue.
+
+> Pendência conhecida: a migration
+> `supabase/migrations/20260729000002_shipping_quote_validation_v23.sql` está
+> validada (14/14 em transação com `ROLLBACK`) mas **ainda não aplicada** em
+> produção. Não assuma que a RPC `create_marketplace_order_v23` existe no banco.
+
+---
+
+## O que o CI checa
+
+`.github/workflows/ci.yml`, em PR e push para `develop` e `main`.
+
+| Job | Comando | Bloqueia? | Estado em 30/07/2026 |
+| --- | --- | --- | --- |
+| `Tipos` | `npm run typecheck` | Sim | verde — 911 arquivos, 16s |
+| `Testes (Deno)` | `npm test` | Sim | verde — 12 testes, ~30ms |
+| `Build e tamanho` | `npm run build` + `npm run size` | Sim | verde — 515 kB de 800 kB |
+| `Varredura de segredo` | secretlint no diff | Sim | verde — 0 achados |
+| `Lint (informativo)` | `npm run lint` + `npm run biome:check` | **Não** | vermelho — 7 erros e 1106 warnings no eslint, 337 no biome |
+
+"Bloqueia" aqui significa "os dois combinaram de não mergear com isso vermelho".
+O GitHub não impede nada — ver [A trava que não existe](#a-trava-que-não-existe).
+
+**Por que o lint não bloqueia.** A dívida é anterior à dupla: 1106 warnings de
+eslint (704 de ordem de classe do Tailwind) e 337 diagnósticos do Biome, dos
+quais cerca de 293 são só fim de linha CRLF contra LF. Reprovar todo PR por
+causa disso desde o primeiro dia tem um resultado conhecido: a equipe aprende a
+ignorar o CI inteiro, inclusive os jobs que importam.
+
+O gate contra dívida **nova** é o `pre-commit`, que roda eslint só nos arquivos
+staged e reprova em erro. Warning não reprova.
+
+Para o lint virar bloqueante é preciso INFRA-040 (definir o limite de warning),
+INFRA-220 (Biome cobrir edge functions e resolver o CRLF) e uma task ainda
+inexistente para zerar os warnings.
+
+### Reproduzindo o CI local
+
+```bash
+npm run typecheck
+npm test
+NODE_ENV=production npm run build && npm run size
+npm run secretlint
+```
+
+Cuidado com `npm run build` **sem** `NODE_ENV=production`: `vite.config.ts:143`
+lê `process.env.NODE_ENV` em vez do `mode` do Vite, e nesta máquina
+`NODE_ENV=development` está setado no shell. Sem o override, você mede um bundle
+de desenvolvimento e acha que regrediu.
+
+---
+
+## Instalando os hooks
+
+Automático no `npm install`, via script `prepare`. Para conferir:
+
+```bash
+npx lefthook validate
+ls .git/hooks
+```
+
+Deve listar `pre-commit`, `commit-msg` e `pre-push`. Se não listar:
+
+```bash
+npx lefthook install
+```
