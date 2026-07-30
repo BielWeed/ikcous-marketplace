@@ -464,7 +464,13 @@ Netim propôs e porque a loja está no ar — main precisa ser sagrada.
 Você não precisa descobrir isto, mas CONFIRME antes de mexer:
 - Não existe branch `develop`.
 - `.github/` contém apenas `copilot-instructions.md`. **Não existe nenhum workflow de CI.**
-- `lefthook.yml` está 100% comentado — nenhum hook de git roda hoje.
+- `lefthook.yml` está 100% comentado — nenhum hook de git roda hoje. E, até 30/07/2026, ele
+  também **não estava versionado**: o `.gitignore` tinha um `*.yml` cru que barrava qualquer
+  arquivo `.yml`, inclusive um futuro `.github/workflows/ci.yml`. Isso já foi corrigido com
+  exceções (`!.github/workflows/*.yml`, `!lefthook.yml`), mas **confirme com
+  `git check-ignore -v <arquivo>` antes de assumir que um `.yml` que você criou vai ser
+  commitado.** O modo de falha é traiçoeiro: `git add` e `git push` funcionam sem erro e o
+  CI simplesmente nunca roda.
 - `.commitlintrc.json` existe e `@commitlint/cli` está instalado, mas nada invoca o commitlint.
   Commit message padronizada hoje é combinado verbal.
 - `package.json` não tem script `test`. O `name` ainda é `"my-app"`.

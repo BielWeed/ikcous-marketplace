@@ -9,6 +9,11 @@
 vapid_keys.json
 .gh_token
 
+# Backups de arquivos de ambiente (scripts/rotate-db-password.cjs gera .env.bak).
+# Sem esta regra, `.env.bak` fica visível pro git e um `git add -A` distraído
+# commita a senha antiga do banco.
+*.bak
+
 
 # Build outputs & artifacts
 dist/
@@ -57,7 +62,14 @@ scratch_*
 !public/branding/logo.png
 !public/icons/*.png
 !public/og-image.png
+
+# `*.yml` existe pra barrar os dumps do .playwright-mcp/. Mas ele também barrava
+# configuração que PRECISA ser versionada — o lefthook.yml nunca foi commitado por
+# causa desta regra, e um workflow de CI criado em .github/workflows/ seria
+# ignorado em silêncio: commit e push funcionam, o CI nunca roda.
 *.yml
+!.github/workflows/*.yml
+!lefthook.yml
 
 # Unlighthouse & Loki
 .unlighthouse/
