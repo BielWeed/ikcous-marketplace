@@ -102,7 +102,7 @@ export function PushNotificationBanner({
           <button
             onClick={handleDismiss}
             className="absolute right-3 top-3 rounded-full p-1 text-zinc-400 hover:bg-secondary/10 hover:text-secondary transition-colors"
-            title="Agora não, miga"
+            title="Fechar"
             aria-label="Fechar"
           >
             <X className="size-4" />
