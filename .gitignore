@@ -49,9 +49,18 @@ test-results/
 # Scratch & local scripts
 scratch/
 scratch_*
+# Exceção: os dois scripts de auditoria saíram da raiz para scripts/ em
+# 30/07/2026 e passaram a ser versionados. Sem esta negação a regra
+# `scratch_*` acima os ignoraria mesmo dentro de scripts/, porque padrão
+# sem barra casa em qualquer nível.
+!scripts/scratch_audit.bat
+!scripts/scratch_audit.ps1
 
 # Playwright & test screenshots/configs
 .playwright-mcp/
+# Os 39 screenshots que estavam soltos na raiz foram para docs/screenshots/
+# em 30/07/2026. Continuam ignorados pela regra `*.png` abaixo — o objetivo
+# era desentupir a raiz, não versionar imagem de depuração.
 *.png
 !public/apple-touch-icon.png
 !public/branding/logo.png
