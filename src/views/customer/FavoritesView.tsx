@@ -296,10 +296,10 @@ export const FavoritesView = React.memo(function FavoritesView({
                       haptic.medium();
                       onNavigate("home");
                     }}
-                    className="group pointer-events-auto relative flex h-16 w-full items-center justify-center gap-4 overflow-hidden rounded-[2rem] border border-rose-200/40 bg-white/95 text-slate-800 shadow-[0_20px_50px_-10px_rgba(24,24,27,0.15)] backdrop-blur-2xl transition-all hover:bg-rose-50/50 active:scale-95"
+                    className="group pointer-events-auto relative flex h-16 w-full items-center justify-center gap-4 overflow-hidden rounded-[2rem] border border-zinc-200 bg-white/95 text-slate-800 shadow-[0_20px_50px_-10px_rgba(24,24,27,0.15)] backdrop-blur-2xl transition-all hover:bg-zinc-50 active:scale-95"
                   >
                     <div className="relative z-10 flex items-center gap-3">
-                      <ShoppingBag className="size-5 text-rose-500" />
+                      <ShoppingBag className="size-5 text-primary" />
                       <span className="pt-0.5 text-[11px] font-black uppercase tracking-[0.3em] text-slate-800">
                         Descobrir Mais
                       </span>
@@ -307,10 +307,10 @@ export const FavoritesView = React.memo(function FavoritesView({
 
                     {/* Animated Glow Effect */}
                     <div className="absolute inset-0 opacity-0 transition-opacity duration-700 group-hover:opacity-100">
-                      <div className="animate-shimmer absolute left-1/4 top-0 h-full w-1/2 skew-x-[-20deg] bg-gradient-to-r from-transparent via-rose-500/5 to-transparent" />
+                      <div className="animate-shimmer absolute left-1/4 top-0 h-full w-1/2 skew-x-[-20deg] bg-gradient-to-r from-transparent via-secondary/10 to-transparent" />
                     </div>
 
-                    <ArrowRight className="size-4 text-rose-500 transition-all group-hover:translate-x-1.5" />
+                    <ArrowRight className="size-4 text-primary transition-all group-hover:translate-x-1.5" />
                   </button>
                 </motion.div>
               </div>
