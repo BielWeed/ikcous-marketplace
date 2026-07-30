@@ -26,7 +26,7 @@ export const SUPABASE_ANON_KEY = cleanEnvVar(
  * Substitui o loader inicial por uma tela de erro legível.
  * Usa DOM puro de propósito: é chamada em cenários onde o React não subiu.
  */
-export function renderBootFailure(title: string, detail: string): void {
+function renderBootFailure(title: string, detail: string): void {
   if (typeof document === "undefined") return;
 
   // O loader do silent-guardian fica por cima de tudo e tem fallback próprio de 20s.
