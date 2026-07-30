@@ -1,4 +1,3 @@
-import { DataVault } from "@/lib/dataVault";
 import { supabase } from "@/lib/supabase";
 
 export interface Customer {
@@ -60,23 +59,18 @@ export async function prefetchCustomersData() {
 // Memory caches for admin sub-sections (SWR support)
 export let cachedCouponsData: any[] | null = null;
 export let cachedReviewsData: any[] | null = null;
-export let cachedReviewsStats: any = null;
 export let cachedQuestionsData: any[] | null = null;
-export let cachedQuestionsTotal = 0;
-let bannersPrefetched = false;
 
 export function setCachedCouponsData(data: any[] | null) {
   cachedCouponsData = data;
 }
 
-export function setCachedReviewsData(data: any[] | null, stats?: any) {
+export function setCachedReviewsData(data: any[] | null) {
   cachedReviewsData = data;
-  if (stats) cachedReviewsStats = stats;
 }
 
-export function setCachedQuestionsData(data: any[] | null, total = 0) {
+export function setCachedQuestionsData(data: any[] | null) {
   cachedQuestionsData = data;
-  cachedQuestionsTotal = total;
 }
 
 // Prefetch for coupons
@@ -108,40 +102,6 @@ export async function prefetchCouponsData() {
   }
 }
 
-// Prefetch for banners (integrating with DataVault offline storage)
-export async function prefetchBannersData() {
-  if (bannersPrefetched) {
-    return;
-  }
-  try {
-    const { data, error } = await supabase
-      .from("banners")
-      .select("*")
-      .order("order", { ascending: true });
-
-    if (!error && data) {
-      bannersPrefetched = true;
-      const mappedBanners = data
-        .filter((b: any) => b.image_url || b.imagem_url)
-        .map((b: any) => ({
-          id: b.id,
-          imageUrl: b.image_url || b.imagem_url,
-          title: b.title || "",
-          link: b.link || undefined,
-          position: b.position,
-          active: b.active ?? b.ativo ?? true,
-          order: b.order || 0,
-        }));
-
-      const vault = await DataVault.init();
-      await vault.replaceAll("banners", mappedBanners);
-      await vault.setLastSync("banners");
-    }
-  } catch (e) {
-    console.error("Prefetch banners failed:", e);
-  }
-}
-
 // Prefetch for reviews
 export async function prefetchReviewsData() {
   if (cachedReviewsData && cachedReviewsData.length > 0) {
@@ -161,10 +121,6 @@ export async function prefetchReviewsData() {
 
     if (!error && data) {
       const reviewsList = data.data || [];
-      const totalCount = data.total_count || 0;
-      const averageRating = Number(data.average_rating) || 0;
-      const globalVerifiedCount = Number(data.total_verified) || 0;
-      const globalRepliedCount = Number(data.total_replied) || 0;
 
       const formatted = reviewsList.map((item: any) => ({
         id: item.id,
@@ -181,12 +137,6 @@ export async function prefetchReviewsData() {
       }));
 
       cachedReviewsData = formatted;
-      cachedReviewsStats = {
-        total: totalCount,
-        averageRating,
-        globalVerifiedCount,
-        globalRepliedCount,
-      };
     }
   } catch (e) {
     console.error("Prefetch reviews failed:", e);
@@ -232,13 +182,6 @@ export async function prefetchQAData() {
       }));
 
       cachedQuestionsData = formatted;
-
-      // Get total count
-      const { count } = await supabase
-        .from("questions")
-        .select("*", { count: "exact", head: true });
-
-      cachedQuestionsTotal = count || 0;
     }
   } catch (e) {
     console.error("Prefetch Q&A failed:", e);

@@ -359,7 +359,7 @@ export function useQuestions() {
           }));
 
           if (isAdmin) {
-            setCachedQuestionsData(formatted, totalCount);
+            setCachedQuestionsData(formatted);
           }
           setQuestions(formatted);
           return { questions: formatted, total: totalCount };
