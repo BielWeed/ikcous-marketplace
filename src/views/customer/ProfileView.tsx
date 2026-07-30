@@ -1065,7 +1065,7 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
                         disabled={isUpdatingCover}
                         className={`group relative flex aspect-[16/10] flex-col justify-end overflow-hidden rounded-xl border-2 p-1.5 transition-all active:scale-95 ${
                           isSelected || isDefault
-                            ? "scale-98 border-primary bg-zinc-50/30 shadow-[0_0_12px_rgba(244,63,94,0.3)]"
+                            ? "scale-98 border-primary bg-zinc-50/30 shadow-[0_0_12px_rgba(0,0,0,0.3)]"
                             : "border-zinc-100 bg-zinc-50/30 hover:border-zinc-100/50"
                         }`}
                         title={cover.label}
