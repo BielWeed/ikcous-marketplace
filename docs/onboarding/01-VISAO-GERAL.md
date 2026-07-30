@@ -205,19 +205,27 @@ topo do [`BACKLOG.md`](../backlog/BACKLOG.md).
 
 Ordenados por impacto × probabilidade.
 
-1. **Divergência de centavos derruba o checkout inteiro.** Cinco implementações da regra de frete
-   grátis contra um guard de R$ 0,05. Qualquer desalinhamento vira "o cliente não consegue
-   comprar", não "o preço saiu errado". Já aconteceu duas vezes (achados #27 e #28 da auditoria).
+1. **Divergência de centavos derruba o checkout inteiro.** Sete implementações da regra de frete
+   grátis contra um guard de R$ 0,05 — e duas delas nem checam se o usuário está logado. Qualquer
+   desalinhamento vira "o cliente não consegue comprar", não "o preço saiu errado". Já aconteceu
+   duas vezes (achados #27 e #28 da auditoria).
 2. **`custo` legível por qualquer usuário logado.** Margem de lucro por produto exposta a quem
    criar uma conta. É segurança, não performance.
 3. **O teto de 200 produtos.** Hoje inofensivo porque o catálogo é menor. No dia em que passar,
    produtos desaparecem da loja sem nenhum sinal na UI.
 4. **Zero teste e zero CI.** Não há rede de segurança para nenhuma das mudanças acima.
-5. **`.gitignore` vs `.vercelignore`.** `.env.production` está no `.gitignore` e **não** está no
-   `.vercelignore`. Pelo fluxo do GitHub isso não tem efeito — a Vercel builda do checkout do git
-   (`vercel.json:2`), que não contém o arquivo. O risco só se materializa em `vercel deploy` por
-   upload local, que respeita o `.vercelignore` e não o `.gitignore`: aí o mesmo commit gera um
-   bundle diferente. Detalhe em [`03-SETUP-AMBIENTE.md`](03-SETUP-AMBIENTE.md).
+5. **Mudança de status feita offline nunca vira push, nem depois.** `send-push` é invocado em um
+   único lugar (`AdminOrdersView.tsx:452`), atrás da guarda `order?.userId && !silent && !isOffline`
+   (`:442`). Sem conexão, a alteração entra na fila `orders_offline_updates_queue`
+   (`useOrders.ts:721`) e o replay da reconexão (`:39-102`) reenvia **só a RPC** — o push não é
+   refeito. O pedido muda de status no banco e o cliente não é avisado nunca; nada na UI do admin
+   indica que a notificação não saiu. Fluxo completo em
+   [`05-FLUXOS-CRITICOS.md`](05-FLUXOS-CRITICOS.md).
+
+> Até 30/07/2026 este slot era `.gitignore` × `.vercelignore`. Depois de escopar o risco — ele só
+> se materializa em `vercel deploy` por upload local, não no fluxo pelo GitHub — deixou de caber
+> entre os cinco maiores. Continua registrado no
+> [`03-SETUP-AMBIENTE.md`](03-SETUP-AMBIENTE.md) e na tabela de maturidade acima.
 
 ---
 
