@@ -1,0 +1,67 @@
+name: Dívida técnica
+description: Funciona, mas está errado por dentro e vai cobrar juros
+labels: ["tipo:divida"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Dívida técnica não é bug: o comportamento visível está **certo**.
+        Se o usuário vê algo errado, abra um Bug.
+
+  - type: textarea
+    id: onde
+    attributes:
+      label: Onde está
+      description: Caminhos com linha, no formato `src/arquivo.ts:123`. Sem isso a issue não é acionável.
+      placeholder: |
+        src/contexts/CartContext.tsx:88
+        supabase/functions/calculate-shipping/index.ts:412
+    validations:
+      required: true
+
+  - type: textarea
+    id: problema
+    attributes:
+      label: O que está errado
+    validations:
+      required: true
+
+  - type: textarea
+    id: juros
+    attributes:
+      label: Qual o custo de deixar como está
+      description: |
+        O argumento que justifica priorizar isto acima de uma feature.
+        "Fica feio" não é custo. "Toda alteração de frete precisa ser feita em
+        3 lugares e já divergiram uma vez" é custo.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risco
+    attributes:
+      label: Risco de mexer
+      options:
+        - Baixo — código isolado, sem fluxo de dinheiro
+        - Médio — toca fluxo usado, mas dá para verificar
+        - Alto — carrinho, cupom, frete, pedido ou banco
+    validations:
+      required: true
+
+  - type: textarea
+    id: aceite
+    attributes:
+      label: Como saber que acabou
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: alcance
+    attributes:
+      label: Alcance
+      options:
+        - label: Precisa de alteração de banco (schema, RPC ou RLS)
+        - label: Existe achado correspondente na AUDITORIA_2026-07-29.md (cite o número)

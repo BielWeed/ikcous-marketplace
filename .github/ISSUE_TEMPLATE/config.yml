@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A loja está parada agora
+    url: https://github.com/BielWeed/ikcous-marketplace/blob/develop/CONTRIBUTING.md#hotfix
+    about: Não abra issue primeiro. Avise no Discord e siga o procedimento de hotfix.
+  - name: Não sei se é bug ou se é o meu ambiente
+    url: https://github.com/BielWeed/ikcous-marketplace/blob/develop/docs/onboarding/03-SETUP-AMBIENTE.md
+    about: Confira as armadilhas conhecidas de ambiente antes de abrir issue.
