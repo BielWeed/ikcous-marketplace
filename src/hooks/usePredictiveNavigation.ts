@@ -37,7 +37,12 @@ export function usePredictiveNavigation(currentView: string) {
     } else if (currentView === "admin-orders") {
       predictions = ["admin-dashboard"];
     } else if (currentView === "admin-settings") {
-      predictions = ["admin-coupons", "admin-banners", "admin-dashboard"];
+      predictions = [
+        "admin-coupons",
+        "admin-banners",
+        "admin-carousels",
+        "admin-dashboard",
+      ];
     }
 
     if (predictions.length > 0) {

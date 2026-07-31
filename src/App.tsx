@@ -169,6 +169,7 @@ const VIEW_COMPONENTS = {
   "admin-coupons": AdminArea,
   "admin-coupon-form": AdminArea,
   "admin-banners": AdminArea,
+  "admin-carousels": AdminArea,
   "admin-shipping": AdminArea,
   "admin-settings": AdminArea,
   "admin-reviews": AdminArea,
@@ -377,6 +378,7 @@ const getNavigationDirection = (
     "admin-coupons": 2.5,
     "admin-coupon-form": 2.52,
     "admin-banners": 2.6,
+    "admin-carousels": 2.62,
     "admin-shipping": 2.7,
     "admin-customers": 3,
     "admin-whatsapp-config": 3.4,
@@ -1419,6 +1421,7 @@ const AppContent = () => {
         "admin-coupons",
         "admin-coupon-form",
         "admin-banners",
+        "admin-carousels",
         "admin-shipping",
         "admin-settings",
         "admin-reviews",
@@ -1441,6 +1444,7 @@ const AppContent = () => {
           "admin-user-detail",
           "admin-push",
           "admin-banners",
+          "admin-carousels",
           "admin-coupons",
           "admin-coupon-form",
           "admin-shipping",
@@ -1492,6 +1496,15 @@ const AppContent = () => {
               { view: "admin-dashboard" },
               "",
               "/admin-dashboard",
+            );
+          } else if (currView === "admin-carousels") {
+            // Mesmo pai declarado por getParentView() no AdminLayout, para o
+            // Voltar do navegador e o botão Voltar irem ao mesmo lugar.
+            targetView = "admin-settings";
+            globalThis.history.replaceState(
+              { view: "admin-settings" },
+              "",
+              "/admin-settings",
             );
           } else if (currView === "admin-reviews" || currView === "admin-qa") {
             targetView = "admin-orders";
@@ -2105,6 +2118,7 @@ const AppContent = () => {
       "admin-coupons",
       "admin-coupon-form",
       "admin-banners",
+      "admin-carousels",
       "admin-shipping",
       "admin-settings",
       "admin-reviews",
