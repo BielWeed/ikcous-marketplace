@@ -1,0 +1,83 @@
+# Hooks de git do IKCOUS Marketplace.
+#
+# Por que isto importa mais aqui do que num projeto normal: o repositório é
+# privado num plano Free do GitHub, e nesse plano branch protection e rulesets
+# retornam 403. Não existe trava do lado do servidor. O que existe é este
+# arquivo. Ele é contornável com `--no-verify` e só vale para quem rodou
+# `npm install` no clone — leia a seção "A trava que não existe" do
+# CONTRIBUTING.md antes de confiar nele.
+#
+# Instalação: automática via script `prepare` do package.json.
+# Backlog: INFRA-160.
+
+pre-commit:
+  parallel: true
+  jobs:
+    # Trava mais importante do repositório. O histórico já teve `service_role`
+    # do Supabase e senha de banco commitadas enquanto o repo era público.
+    - name: secretlint
+      glob: "*"
+      # O secretlint mascara o valor do segredo por padrão; não passe
+      # --no-maskSecrets, senão a credencial vaza no log do terminal.
+      run: npx secretlint --secretlintignore .secretlintignore {staged_files}
+      fail_text: |
+        Segredo detectado nos arquivos staged. NÃO use --no-verify aqui.
+        Tire a credencial do arquivo, use variável de ambiente, e só então commite.
+
+    # Bloqueia só ERRO de eslint. Warning não bloqueia: existem 1106 warnings
+    # pré-existentes (medido em 30/07/2026) e um hook que reprova por causa
+    # deles seria desligado no primeiro dia.
+    #
+    # Os 7 erros que existem hoje estão em 3 arquivos:
+    #   src/views/admin/AdminCarouselsView.tsx   (3x react-hooks)
+    #   src/views/admin/AdminProductFormView.tsx (2x jsx-a11y)
+    #   src/views/admin/AdminShippingView.tsx    (2x jsx-a11y)
+    # Se você tocar num deles, vai ter que corrigir o erro para commitar.
+    # Isso é proposital: é a regra do escoteiro aplicada onde dói pouco.
+    - name: eslint
+      glob: "*.{ts,tsx}"
+      run: npx eslint --max-warnings=-1 {staged_files}
+      fail_text: |
+        Erro de eslint nos arquivos staged (warnings foram ignorados de propósito).
+        Corrija o erro — ou, se o erro for pré-existente no arquivo que você tocou,
+        fale no Discord antes de usar --no-verify.
+
+    # Não existe job de `biome check` aqui, e a ausência é deliberada.
+    # O repositório está em CRLF e o Biome formata em LF por padrão, então
+    # `biome check --write` reescreveria o arquivo inteiro a cada commit e
+    # geraria conflito com o outro dev. 293 dos 337 diagnósticos do Biome são
+    # só isso. Resolver a questão de fim de linha é a INFRA-220; enquanto ela
+    # não for feita, o Biome roda no CI em modo informativo e não aqui.
+
+    - name: guarda-de-branch
+      run: node scripts/guarda-de-branch.mjs commit
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: npx commitlint --edit {1}
+      fail_text: |
+        Mensagem de commit fora do padrão Conventional Commits.
+        Formato:  tipo(escopo): assunto no imperativo, minúsculo, até 100 caracteres
+        Exemplo:  fix(shipping): considera CEP de faixa invertida no cálculo local
+        Escopos válidos estão em .commitlintrc.json. Tipos e escopos: CONTRIBUTING.md.
+
+pre-push:
+  parallel: false
+  jobs:
+    # Esta é a única barreira que resta contra push direto em main/develop,
+    # já que branch protection não está disponível neste plano do GitHub.
+    - name: guarda-de-branch
+      run: node scripts/guarda-de-branch.mjs push
+
+    # Checagem real de tipos: ~16s sobre 911 arquivos.
+    # NÃO troque por `tsc --noEmit`: o tsconfig.json da raiz tem "files": [],
+    # então esse comando analisa 0 arquivo e sempre passa. Era assim até
+    # 30/07/2026 (INFRA-020 / INFRA-120).
+    #
+    # Build NÃO entra aqui de propósito: leva ~1 min e mata a produtividade.
+    # Quem pega build quebrado é o CI.
+    - name: typecheck
+      run: npm run typecheck
+      fail_text: |
+        Erro de tipo. Rode `npm run typecheck` para ver a lista completa.

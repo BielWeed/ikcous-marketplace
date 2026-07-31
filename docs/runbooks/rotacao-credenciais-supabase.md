@@ -82,20 +82,29 @@ Pronto. A senha antiga morreu neste instante.
 
 ### 1.2 — Avise que terminou
 
-Me manda mensagem dizendo "trocei a senha de produção". Eu atualizo os arquivos do projeto
-pra você — são 5 arquivos diferentes com essa senha dentro, e errar um deixa script quebrado
-sem motivo aparente.
+Me manda mensagem dizendo "troquei a senha de produção". Eu atualizo os arquivos do projeto
+pra você.
 
-Se preferir fazer sozinho, o que precisa mudar é a linha `DATABASE_URL` em:
+Se preferir fazer sozinho, use o script — ele cuida disso e ainda prova que a senha nova
+funciona antes de sair:
 
-- `.env` ← este é o que os scripts usam de verdade
-- `.env.production.local`
-- `.env.vercel.prod`
+```bash
+node scripts/rotate-db-password.cjs
+```
+
+**São dois arquivos que carregam a connection string de verdade**, e é neles que o script
+mexe:
+
+- `.env` ← este é o que os scripts usam
 - `.env.vercel.pulled`
-- `.env.vercel.pulled.prod`
+
+Os outros três `.env` da raiz (`.env.production.local`, `.env.vercel.prod`,
+`.env.vercel.pulled.prod`) **têm a linha `DATABASE_URL` vazia** — medido em 31/07/2026 — e
+não precisam de nada. Se um dia deixarem de estar vazios, acrescente-os ao `TARGETS` do
+script (`scripts/rotate-db-password.cjs:20`), não edite à mão.
 
 E na Vercel, a variável `DATABASE_URL` existe em **dois** ambientes (Production e
-Development) — os dois precisam da senha nova.
+Development) — os dois precisam da senha nova, e isso o script não faz.
 
 ### 1.3 — Projeto "br"
 

@@ -1,0 +1,78 @@
+name: Bug
+description: Algo que deveria funcionar e não funciona
+labels: ["tipo:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Se a loja está **parada ou perdendo venda agora**, marque prioridade P0 e avise no Discord.
+        Issue não substitui aviso quando é urgente.
+
+  - type: dropdown
+    id: ambiente
+    attributes:
+      label: Onde aconteceu
+      options:
+        - Produção (ickous-marketplace.vercel.app)
+        - Preview deploy da Vercel
+        - Local (npm run dev)
+      description: O domínio é "ickous" com k depois do c mesmo. É o nome real do projeto na Vercel.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducao
+    attributes:
+      label: Passo a passo para reproduzir
+      description: Numerado. Alguém que não estava lá precisa conseguir repetir.
+      placeholder: |
+        1. Abrir a vitrine deslogado
+        2. Adicionar dois produtos ao carrinho
+        3. Aplicar o cupom BEMVINDO10
+        4. Ir para o checkout
+    validations:
+      required: true
+
+  - type: textarea
+    id: esperado
+    attributes:
+      label: O que deveria acontecer
+    validations:
+      required: true
+
+  - type: textarea
+    id: observado
+    attributes:
+      label: O que aconteceu de verdade
+      description: Cole a mensagem de erro do console, o print, ou o ID do pedido afetado.
+    validations:
+      required: true
+
+  - type: input
+    id: quando
+    attributes:
+      label: Quando você viu isso pela primeira vez
+      description: Data e hora aproximadas. Ajuda a cruzar com deploy e com log do Supabase.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: prioridade
+    attributes:
+      label: Prioridade
+      options:
+        - P0 — a loja está parada ou perdendo dinheiro agora
+        - P1 — perde venda, mas tem contorno
+        - P2 — atrapalha, não impede
+        - P3 — melhoria
+      description: P0 exige evidência. Se tudo é P0, nada é P0.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: banco
+    attributes:
+      label: Alcance
+      options:
+        - label: Suspeito que o problema esteja no banco (RPC, RLS, trigger)
+        - label: Já verifiquei que não é o `.env.production.local` vazio (tela branca em 85%)
