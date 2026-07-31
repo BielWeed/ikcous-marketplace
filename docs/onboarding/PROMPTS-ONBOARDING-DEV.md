@@ -505,8 +505,12 @@ granulares do GitHub.
 O documento operacional do dia a dia. Escreva pra ser consultado às pressas, não lido inteiro.
 
 - **Modelo de branches**, com diagrama Mermaid gitGraph:
-  · `main` — só código em produção. Todo commit aqui é um deploy. Protegida.
-  · `develop` — integração. Base de toda branch nova. Protegida.
+  · `main` — só código em produção. Todo commit aqui é um deploy.
+  · `develop` — integração. Base de toda branch nova.
+  NÃO escreva "protegida" para nenhuma das duas: branch protection retorna 403
+  neste repositório (ver a restrição crítica acima). A trava real é hook local
+  de `pre-push`, contornável com `--no-verify` e válida só para quem rodou
+  `npm install` no clone. Descreva exatamente isso.
   · `feat/<escopo>`, `fix/<escopo>`, `chore/<escopo>`, `docs/<escopo>`, `refactor/<escopo>`
     — saem de `develop`, voltam pra `develop` via PR
   · `release/<versão>` — sai de `develop`, recebe só correção de bug, faz merge em `main` E
@@ -1025,7 +1029,7 @@ Pra colar no WhatsApp ou no Discord depois que os PRs dos prompts 1, 2, 3 e 5 es
 >
 > **Kanban** — GitHub Projects no repo, colunas Backlog → Pronto pra pegar → Em progresso → Em revisão → Em teste → Feito. Issue linka com branch e PR sozinha. Limite de 2 cartões em progresso por pessoa. Tem um Notion também, mas só pra roadmap e decisão — task nasce sempre no GitHub, senão a gente duplica trabalho.
 >
-> **Versionamento** — GitFlow como você pediu: `develop` de integração, feature branch sai de develop e volta por PR, main só recebe release testada. `main` e `develop` estão protegidas, então nem eu consigo commitar direto nem se quiser. Coloquei CI no GitHub Actions (não existia nenhum) e hook de commit que rejeita mensagem fora do padrão. Tem um `CONTRIBUTING.md` com tudo e um cheatsheet de uma página.
+> **Versionamento** — GitFlow como você pediu: `develop` de integração, feature branch sai de develop e volta por PR, main só recebe release testada. Coloquei CI no GitHub Actions (não existia nenhum) e hooks de git que rejeitam mensagem de commit fora do padrão e push direto em `main`/`develop`. Um aviso importante: essa trava é **local**, um hook — não é proteção do GitHub. Branch protection só existe no plano Pro e o repo é privado no Free, então dá pra furar com `--no-verify` e não vale pra quem clonar sem rodar `npm install`. Não é firula burocrática: é a única coisa que separa a loja no ar de um push errado, então a gente combina de respeitar. Tem um `CONTRIBUTING.md` com tudo e um cheatsheet de uma página.
 >
 > **Metodologia** — XP adaptado pra dupla, em `docs/processo/`. Escrevi também o que a gente NÃO vai usar e por quê, pra não virar ritual que ninguém cumpre. Tem um plano de primeira semana pra você, dia a dia.
 >
