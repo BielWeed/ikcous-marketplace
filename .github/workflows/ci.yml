@@ -1,0 +1,174 @@
+# CI do IKCOUS Marketplace — o primeiro workflow deste repositório (INFRA-040).
+#
+# Regra que guiou o desenho: um CI que nasce vermelho é um CI que todo mundo
+# aprende a ignorar. Então cada job aqui foi EXECUTADO na máquina antes de
+# entrar, e o que está vermelho hoje está marcado como informativo, com o
+# número medido e a task que resolve. Nada aqui é aspiracional.
+#
+# Estado medido em 30/07/2026, na raiz do repositório:
+#   npm run typecheck    -> exit 0  (911 arquivos, 16s)      BLOQUEIA
+#   npm run build        -> exit 0  (NODE_ENV=production)    BLOQUEIA
+#   npm run size         -> exit 0  (515 kB de 800 kB)       BLOQUEIA
+#   npm test             -> exit 0  (12 testes Deno)         BLOQUEIA
+#   npm run secretlint   -> exit 0  (0 achados)              BLOQUEIA
+#   npm run lint:ratchet -> exit 0  (dívida no teto, não subiu)  BLOQUEIA SE SUBIR
+#
+# `npm run lint` cru sai com 1 e sempre sairá enquanto houver dívida antiga.
+# Quem entra no CI é a catraca, que compara com `.lint-baseline.json`.
+# Os números foram medidos AQUI no CI, não na máquina do Gabriel: no Windows
+# dele o eslint conta 14 erros (varre uma cópia do repo em .claude/worktrees)
+# e o biome conta 100 (CRLF contra LF). Números locais não servem de teto.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+# Não existe branch protection neste repositório (privado + plano Free = 403),
+# então estes checks não conseguem BLOQUEAR um merge no GitHub. Eles informam.
+# A decisão de não mergear com o CI vermelho é acordo entre os dois devs.
+# Ver a seção "A trava que não existe" do CONTRIBUTING.md.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Mesma versão que a Vercel usa para gerar o artefato de produção
+  # (`vercel project inspect ickous-marketplace` -> Node.js Version 24.x).
+  # Se divergir, o CI passa e o deploy quebra.
+  NODE_VERSION: "24"
+
+jobs:
+  typecheck:
+    name: Tipos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # `npm run typecheck` é `tsc -b --force`, e isso importa: até 30/07/2026
+      # era `tsc --noEmit`, que com `"files": []` no tsconfig.json da raiz
+      # analisava 0 arquivo e passava sempre. Se alguém "simplificar" de volta,
+      # este job vira verde falso. (INFRA-020 / INFRA-120)
+      - run: npm run typecheck
+
+  test:
+    name: Testes (Deno)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # 12 casos em supabase/functions/calculate-shipping/index_test.ts.
+      # Eles existiam desde antes e nunca tinham sido executados por ninguém
+      # (INFRA-140). Rodam em ~30ms. Cobrem cálculo de frete de fallback,
+      # hash de carrinho e detecção de CEP local.
+      #
+      # Não existe teste no front ainda — nenhum runner instalado. Quando
+      # a INFRA-150 entrar, o job vira uma matriz ou ganha um passo `npm test`
+      # de verdade no front.
+      - run: npm test
+
+  build:
+    name: Build e tamanho
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # NODE_ENV explícito por causa da vite.config.ts:143, que lê
+      # `process.env.NODE_ENV` em vez do `mode` do Vite. Sem isto, o build
+      # sai em modo desenvolvimento e o `size` mede o artefato errado.
+      # (regra 4 do contexto de onboarding / INFRA-120)
+      - name: Build de produção
+        run: npm run build
+        env:
+          NODE_ENV: production
+      # O build NÃO precisa de VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY:
+      # a falta delas quebra em runtime (tela branca), não em build time.
+      # Verificado rodando o build sem elas. Por isso este job não usa secrets.
+      - name: Limite de tamanho
+        run: npm run size
+
+  secrets:
+    name: Varredura de segredo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # Varre só o diff. O repositório já teve `service_role` do Supabase e
+      # senha de banco no histórico enquanto era público; o objetivo aqui é
+      # impedir que entre credencial NOVA, não reauditar o passado.
+      - name: Varre os arquivos alterados
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "Sem base para comparar (branch nova). Varrendo o repositório inteiro."
+            npm run secretlint
+            exit 0
+          fi
+          mapfile -t ARQUIVOS < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA")
+          if [ "${#ARQUIVOS[@]}" -eq 0 ]; then
+            echo "Nenhum arquivo alterado."
+            exit 0
+          fi
+          printf 'Varrendo %d arquivo(s).\n' "${#ARQUIVOS[@]}"
+          # O secretlint mascara o valor do segredo por padrão. Não acrescente
+          # --no-maskSecrets: isso imprimiria a credencial no log público do job.
+          npx secretlint --secretlintignore .secretlintignore "${ARQUIVOS[@]}"
+
+  lint:
+    name: Catraca de lint
+    runs-on: ubuntu-latest
+    # Este job BLOQUEIA, mas só se a dívida SUBIR.
+    #
+    # O repositório entrou nesta dupla com dívida pré-existente, medida aqui
+    # no CI em 30/07/2026: eslint com 7 erros e 553 warnings, biome com 31
+    # erros. Duas saídas fáceis foram descartadas:
+    #
+    #   `npm run lint` puro          -> vermelho em todo PR desde o dia 1, por
+    #                                   dívida que nenhum dos dois criou. O
+    #                                   resultado conhecido é a dupla aprender
+    #                                   a ignorar o CI inteiro.
+    #   `continue-on-error: true`    -> X vermelho permanente no PR, que treina
+    #                                   exatamente o mesmo reflexo. E um job
+    #                                   que nunca pode falhar não vale nada.
+    #
+    # A catraca compara com os tetos de `.lint-baseline.json` e reprova só o
+    # que aumentar. Nasce verde e bloqueia dívida nova. Quando um número cair,
+    # ela avisa para abaixar o teto no mesmo PR.
+    #
+    # Alvo é zerar: INFRA-250 para os warnings de eslint, INFRA-220
+    # para o alcance do Biome e a normalização de fim de linha.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Compara com o teto de dívida
+        run: npm run lint:ratchet

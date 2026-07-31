@@ -1,0 +1,23 @@
+{
+  "_comentario": [
+    "Catraca de lint. Estes são os números MEDIDOS NO CI em 30/07/2026, não estimativas.",
+    "A regra: o CI reprova se qualquer contagem SUBIR. Dívida nova é bloqueada;",
+    "a dívida antiga não bloqueia ninguém, porque não foi esta dupla que a criou.",
+    "",
+    "Quando você derrubar um número, ABAIXE O TETO AQUI no mesmo PR. É isso que",
+    "impede a dívida de voltar. Nunca aumente um teto sem dizer no PR por quê.",
+    "",
+    "Meça sempre com `npm run lint:ratchet` — rodar eslint na mão dá números",
+    "diferentes se as pastas ignoradas do eslint.config.js não estiverem alinhadas.",
+    "",
+    "Alvo: zerar. Task INFRA-250 para os warnings, INFRA-220 para o Biome."
+  ],
+  "eslint": {
+    "errors": 7,
+    "warnings": 553
+  },
+  "biome": {
+    "errors": 31,
+    "warnings": 3
+  }
+}

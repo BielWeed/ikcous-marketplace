@@ -1,0 +1,34 @@
+# Donos de código do IKCOUS Marketplace.
+#
+# LEIA ISTO ANTES DE CONFIAR NO ARQUIVO:
+# a atribuição automática de revisor por CODEOWNERS, e a exigência de que o
+# dono aprove, dependem de branch protection — que NÃO está disponível aqui
+# (repositório privado em plano Free do GitHub: a API devolve 403).
+# Portanto este arquivo hoje é DOCUMENTAÇÃO de quem responde por cada área,
+# não uma trava. Marque o revisor na mão ao abrir o PR.
+#
+# O que ele passa a valer de verdade: no dia em que o repositório virar
+# público ou o plano virar Pro. Ver "A trava que não existe" no CONTRIBUTING.md.
+#
+# O Netim ainda não é colaborador do repositório, então não aparece aqui.
+# Acrescente o usuário dele nas linhas de revisão compartilhada assim que
+# o convite for aceito.
+
+# Padrão: qualquer um dos dois revisa.
+*                           @BielWeed
+
+# Áreas onde um erro derruba a loja no ar. Só o Gabriel aprova.
+/supabase/                  @BielWeed
+/src/contexts/              @BielWeed
+/scripts/                   @BielWeed
+vite.config.ts              @BielWeed
+vercel.json                 @BielWeed
+middleware.ts               @BielWeed
+.env.example                @BielWeed
+
+# Infraestrutura do próprio processo: mudar isto muda como os dois trabalham.
+/.github/                   @BielWeed
+lefthook.yml                @BielWeed
+.commitlintrc.json          @BielWeed
+.gitignore                  @BielWeed
+CONTRIBUTING.md             @BielWeed

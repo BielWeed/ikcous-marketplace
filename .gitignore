@@ -6,6 +6,9 @@
 .env.*.local
 .env.vercel*
 .env.production
+.env.bak
+.env.*.bak
+*.env.backup
 vapid_keys.json
 .gh_token
 
@@ -57,11 +60,24 @@ scratch_*
 !public/branding/logo.png
 !public/icons/*.png
 !public/og-image.png
-*.yml
+
+# NÃO reintroduza um `*.yml` global aqui. Ele existia até 30/07/2026 e ignorava
+# em silêncio `.github/workflows/*.yml`, `.github/ISSUE_TEMPLATE/*.yml` e o
+# `lefthook.yml` — ou seja, o CI e os hooks de git nunca chegavam ao repositório
+# e o `git add` falhava sem mensagem de erro. Os YAML de lixo que a regra tentava
+# pegar já estão cobertos por `.playwright-mcp/`, `scratch/` e `.serena/`.
 
 # Unlighthouse & Loki
 .unlighthouse/
 .loki/
+
+# Ferramentas de agente (local da máquina, não do projeto).
+# Mesmo critério já aplicado a `.agents/` acima.
+.claude/
+.serena/
+
+# Estado local do Supabase CLI: muda a cada comando e suja o `git status`.
+supabase/.temp/
 
 # Configuração de MCP das IDEs — já guardou Figma PAT e chave da Cloudflare.
 # Credencial de MCP não entra no repositório; use o .mcp.json da raiz, que só
