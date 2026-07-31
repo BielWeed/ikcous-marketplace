@@ -10,6 +10,21 @@
  * Uso:  node scripts/rotate-db-password.cjs
  */
 
+/* eslint-disable security/detect-non-literal-fs-filename, security/detect-unsafe-regex, security/detect-possible-timing-attacks --
+ * As 8 ocorrências do eslint-plugin-security neste arquivo são falso-positivo, e
+ * silenciá-las aqui é melhor que subir o teto da catraca, que valeria pro repo inteiro:
+ *
+ * - detect-non-literal-fs-filename (4x): os caminhos vêm de TARGETS, uma constante deste
+ *   arquivo, resolvida contra ROOT. Não há entrada de usuário no nome do arquivo.
+ * - detect-unsafe-regex (3x): as regex leem UMA linha de um .env local do próprio dev.
+ *   Não há entrada de rede, não há atacante, e o processo é de vida curta.
+ * - detect-possible-timing-attacks (1x): a comparação é entre a senha digitada e a
+ *   confirmação digitada pela MESMA pessoa, no mesmo processo, sem canal remoto.
+ *
+ * Se este script um dia receber caminho por argumento ou rodar em servidor, tire este
+ * bloco e trate cada aviso de verdade.
+ */
+
 const fs = require("node:fs");
 const path = require("node:path");
 
