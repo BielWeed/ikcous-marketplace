@@ -1,0 +1,66 @@
+name: Funcionalidade
+description: Algo que o produto ainda não faz
+labels: ["tipo:feature"]
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Que problema isto resolve
+      description: |
+        Descreva a dor, não a solução. "O lojista não consegue saber quais produtos
+        venderam no mês" é um problema. "Criar um dashboard de vendas" já é solução.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: quem
+    attributes:
+      label: Para quem
+      options:
+        - Cliente da loja
+        - Lojista (admin)
+        - Os dois
+        - Ninguém de fora — é interno de desenvolvimento
+    validations:
+      required: true
+
+  - type: textarea
+    id: aceite
+    attributes:
+      label: Critério de aceite
+      description: Itens que outra pessoa consegue responder com sim ou não.
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: fora
+    attributes:
+      label: O que está fora do escopo
+      description: |
+        Tão importante quanto o que está dentro. É o que impede a task de crescer
+        no meio do caminho.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tamanho
+    attributes:
+      label: Tamanho estimado
+      options:
+        - P — menos de 2h
+        - M — meio dia
+        - G — 2 dias
+        - GG — ainda não é uma task, precisa ser quebrada
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: riscos
+    attributes:
+      label: Alcance
+      options:
+        - label: Precisa de alteração de banco (schema, RPC ou RLS)
+        - label: Precisa de uma decisão do Gabriel antes de começar
