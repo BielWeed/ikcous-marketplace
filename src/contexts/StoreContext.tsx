@@ -61,7 +61,7 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 export function StoreProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const { isAdmin, loading } = useAuth();
+  const { isAdmin, loading, user } = useAuth();
   const { isLeader } = useLeaderElection();
   const vaultRef = useRef<DataVault | null>(null);
   const [config, setConfig] = useState<StoreConfig>(defaultStoreConfig);
@@ -210,7 +210,11 @@ export function StoreProvider({
         "whatsappNumber",
         defaultStoreConfig.whatsappNumber,
       ),
-      shareText: getVal("share_text", "shareText", defaultStoreConfig.shareText),
+      shareText: getVal(
+        "share_text",
+        "shareText",
+        defaultStoreConfig.shareText,
+      ),
       businessHours: getVal(
         "business_hours",
         "businessHours",
@@ -375,23 +379,36 @@ export function StoreProvider({
     // This function always fetches fresh data from Supabase (background revalidation).
 
     try {
-      let query: any;
-      if (isAdmin) {
-        query = supabase
+      let data: any[] | null = null;
+      let error: any = null;
+
+      // Only query admin view if admin is verified and auth is not loading
+      if (isAdmin && !loading) {
+        const res = await supabase
           .from("vw_produtos_admin")
           .select("*, product_variants(*)")
           .is("deleted_at", null)
           .limit(200)
           .order("data_cadastro", { ascending: false });
-      } else {
-        query = supabase
+        data = res.data;
+        error = res.error;
+      }
+
+      // Fallback to public view if not admin or if admin query failed (e.g., PGRST205 or unauthenticated)
+      if (!isAdmin || loading || error) {
+        const publicRes = await supabase
           .from("vw_produtos_public")
           .select("*, product_variants(*)")
           .limit(200)
           .order("data_cadastro", { ascending: false });
+        
+        if (publicRes.error && error) {
+          throw error;
+        } else if (publicRes.data) {
+          data = publicRes.data;
+          error = null;
+        }
       }
-
-      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -419,7 +436,7 @@ export function StoreProvider({
     } finally {
       setLoadingProducts(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, loading]);
 
   const updateConfig = useCallback(
     async (updates: Partial<StoreConfig>) => {
@@ -503,7 +520,7 @@ export function StoreProvider({
     );
     fetchConfig();
     fetchProducts();
-  }, [fetchConfig, fetchProducts, isAdmin]);
+  }, [fetchConfig, fetchProducts]);
 
   // ── Realtime Sync: Start/Stop engine ──
   useEffect(() => {
@@ -577,7 +594,14 @@ export function StoreProvider({
         return sum + price * item.quantity;
       }, 0);
 
-      if (config.freeShippingMin > 0 && totalAmount >= config.freeShippingMin)
+      // Frete grátis exige login — mesma regra do CartContext, da RPC
+      // create_marketplace_order_v22 e do que o FreeShippingBlock promete na Home.
+      // Sem o `user` aqui, esta função divergia das outras duas.
+      if (
+        config.freeShippingMin > 0 &&
+        totalAmount >= config.freeShippingMin &&
+        user
+      )
         return 0;
 
       if (selectedOption) {
@@ -586,7 +610,7 @@ export function StoreProvider({
 
       return config.shippingFee;
     },
-    [config.freeShippingMin, config.shippingFee],
+    [config.freeShippingMin, config.shippingFee, user],
   );
 
   const refresh = useCallback(

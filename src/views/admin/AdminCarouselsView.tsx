@@ -345,7 +345,12 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     const inactiveProducts = list.filter((p) => !activeSet.has(p.id));
 
     return [...activeProducts, ...inactiveProducts];
-  }, [products, searchCurationQuery, activeCurationSection, activeCurationProductIds]);
+  }, [
+    products,
+    searchCurationQuery,
+    activeCurationSection,
+    activeCurationProductIds,
+  ]);
 
   return (
     <div className="relative h-auto w-full max-w-full overflow-x-hidden bg-[#09090b] pb-admin font-sans text-zinc-400 selection:bg-admin-gold/30 selection:text-white">
@@ -832,12 +837,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 pb-2 border-b border-white/5 shrink-0">
               {isManualCurated ? (
                 <span className="text-[#FFBF00]">
-                  {activeCurationSection.productIds?.length} produto(s) selecionado(s) manualmente
+                  {activeCurationSection.productIds?.length} produto(s)
+                  selecionado(s) manualmente
                 </span>
               ) : (
                 <span className="text-amber-400 flex items-center gap-1">
                   <Sparkles className="size-3 shrink-0" />
-                  Modo Automático: {activeCurationProductIds.length} produto(s) pré-selecionados (Em exibição)
+                  Modo Automático: {activeCurationProductIds.length} produto(s)
+                  pré-selecionados (Em exibição)
                 </span>
               )}
 

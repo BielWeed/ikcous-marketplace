@@ -56,31 +56,48 @@ export default defineConfig(({ mode }) => {
         version: appVersion,
         buildDate: buildTime,
         etag: gitSha || Date.now().toString(),
-        swVersion: `v${packageJson.version}`
+        swVersion: `v${packageJson.version}`,
       };
 
       try {
         if (!fs.existsSync(distPath)) {
           fs.mkdirSync(distPath, { recursive: true });
         }
-        fs.writeFileSync(versionJsonPath, JSON.stringify(versionData, null, 2), "utf-8");
-        console.log(`[PWA Version Plugin] Generated version.json with version: ${appVersion}`);
+        fs.writeFileSync(
+          versionJsonPath,
+          JSON.stringify(versionData, null, 2),
+          "utf-8",
+        );
+        console.log(
+          `[PWA Version Plugin] Generated version.json with version: ${appVersion}`,
+        );
       } catch (err) {
-        console.error("[PWA Version Plugin] Failed to generate version.json:", err);
+        console.error(
+          "[PWA Version Plugin] Failed to generate version.json:",
+          err,
+        );
       }
 
       const silentGuardianPath = path.resolve(distPath, "silent-guardian.js");
       try {
         if (fs.existsSync(silentGuardianPath)) {
           let content = fs.readFileSync(silentGuardianPath, "utf-8");
-          content = content.replace(/"1773003981700"/g, JSON.stringify(appVersion));
+          content = content.replace(
+            /"1773003981700"/g,
+            JSON.stringify(appVersion),
+          );
           fs.writeFileSync(silentGuardianPath, content, "utf-8");
-          console.log(`[PWA Version Plugin] Updated silent-guardian.js with version: ${appVersion}`);
+          console.log(
+            `[PWA Version Plugin] Updated silent-guardian.js with version: ${appVersion}`,
+          );
         }
       } catch (err) {
-        console.error("[PWA Version Plugin] Failed to update silent-guardian.js:", err);
+        console.error(
+          "[PWA Version Plugin] Failed to update silent-guardian.js:",
+          err,
+        );
       }
-    }
+    },
   };
 
   // Conversor de hex para rgb
@@ -292,10 +309,10 @@ export default defineConfig(({ mode }) => {
               type: "image/png",
             },
             {
-              src: "icons/icon-512x512.png",
+              src: "icons/icon-maskable-512x512.png",
               sizes: "512x512",
               type: "image/png",
-              purpose: "any maskable",
+              purpose: "maskable",
             },
           ],
           categories: ["shopping", "lifestyle"],
@@ -346,6 +363,21 @@ export default defineConfig(({ mode }) => {
         },
         injectManifest: {
           globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2}"],
+          // O precache é baixado inteiro no primeiro acesso, inclusive em 4G.
+          // Sem estes ignores ele passava de 6,5 MB, dos quais ~5 MB nenhum
+          // cliente comum chega a usar. Os chunks do admin continuam disponíveis:
+          // saem do precache e passam a ser buscados sob demanda pela rede.
+          globIgnores: [
+            // Fotos de um template antigo, sem nenhuma referência no código (~3,2 MB).
+            "images/demo/**",
+            // Só é lida por crawler de link (WhatsApp, Google); o app nunca busca (~670 kB).
+            "og-image.png",
+            // Telas exclusivas da área administrativa (~1,2 MB).
+            "assets/Admin*.js",
+            "assets/vendor-charts-*.js",
+            "assets/ImageAdjuster-*.js",
+            "assets/PhoneSimulator-*.js",
+          ],
           maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         },
         devOptions: {
@@ -397,9 +429,6 @@ export default defineConfig(({ mode }) => {
               }
               if (normalizedId.includes("react-resizable-panels")) {
                 return "vendor-panels";
-              }
-              if (normalizedId.includes("react-helmet-async")) {
-                return "vendor-helmet";
               }
               if (normalizedId.includes("lucide-react")) {
                 return "vendor-lucide";

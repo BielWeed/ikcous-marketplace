@@ -610,19 +610,34 @@ export const RealtimeSyncEngine = {
 
       // Log queries with errors so they don't fail silently
       if (configResult.error) {
-        console.warn("[RealtimeSyncEngine] configResult sync failed:", configResult.error);
+        console.warn(
+          "[RealtimeSyncEngine] configResult sync failed:",
+          configResult.error,
+        );
       }
       if (categoriesResult.error) {
-        console.warn("[RealtimeSyncEngine] categoriesResult sync failed:", categoriesResult.error);
+        console.warn(
+          "[RealtimeSyncEngine] categoriesResult sync failed:",
+          categoriesResult.error,
+        );
       }
       if (bannersResult.error) {
-        console.warn("[RealtimeSyncEngine] bannersResult sync failed:", bannersResult.error);
+        console.warn(
+          "[RealtimeSyncEngine] bannersResult sync failed:",
+          bannersResult.error,
+        );
       }
       if (couponsResult.error) {
-        console.warn("[RealtimeSyncEngine] couponsResult sync failed:", couponsResult.error);
+        console.warn(
+          "[RealtimeSyncEngine] couponsResult sync failed:",
+          couponsResult.error,
+        );
       }
       if (summaryResult.error) {
-        console.warn("[RealtimeSyncEngine] summaryResult sync failed:", summaryResult.error);
+        console.warn(
+          "[RealtimeSyncEngine] summaryResult sync failed:",
+          summaryResult.error,
+        );
       }
 
       // 1. Sync store_config
@@ -838,7 +853,8 @@ export const RealtimeSyncEngine = {
     } catch (err) {
       console.error(
         "[RealtimeSyncEngine] Catch-up error:",
-        err ?? new Error("Unknown error during catch-up (null/undefined rejection)")
+        err ??
+          new Error("Unknown error during catch-up (null/undefined rejection)"),
       );
     } finally {
       _isCatchingUp = false;

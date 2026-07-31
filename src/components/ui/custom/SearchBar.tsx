@@ -117,8 +117,12 @@ export function SearchBar({
       const words = p.name.split(/\s+/);
       words.forEach((w) => {
         const clean = w.replace(/[^\wÀ-ú]/gi, "").trim();
-        if (clean.toLowerCase().startsWith(query) && clean.length >= query.length) {
-          const formatted = clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
+        if (
+          clean.toLowerCase().startsWith(query) &&
+          clean.length >= query.length
+        ) {
+          const formatted =
+            clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
           termSet.add(formatted);
         }
       });
@@ -202,7 +206,10 @@ export function SearchBar({
   const showDropdown = isOpen && localValue.trim().length > 0;
 
   return (
-    <div ref={containerRef} className={cn("relative z-[90] w-full overflow-hidden", className)}>
+    <div
+      ref={containerRef}
+      className={cn("relative z-[90] w-full overflow-hidden", className)}
+    >
       {/* Search Input Container */}
       <div
         className={cn(
@@ -289,7 +296,6 @@ export function SearchBar({
 
           {/* Floating Solid White Card directly under Search Input */}
           <div className="fixed inset-x-0 top-[calc(var(--header-height)+6px)] z-[100] mx-auto w-[calc(100vw-24px)] max-w-lg max-h-[72vh] overflow-y-auto rounded-[28px] border border-zinc-200/90 bg-white p-4 sm:p-5 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.35)] animate-in fade-in slide-in-from-top-2 duration-200">
-            
             {/* 1. PREDICTIVE AUTOCOMPLETE TERMS */}
             {predictedTerms.length > 0 && (
               <div className="mb-4 border-b border-zinc-100 pb-3">
@@ -357,9 +363,7 @@ export function SearchBar({
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() =>
-                        handleSuggestionClick(item.name, item.id)
-                      }
+                      onClick={() => handleSuggestionClick(item.name, item.id)}
                       className="group flex w-full items-center justify-between py-2.5 px-2 text-left transition-colors hover:bg-zinc-50 rounded-xl"
                     >
                       <div className="flex items-center gap-3.5 min-w-0 pr-2">
@@ -423,7 +427,6 @@ export function SearchBar({
                 <span>Ver todos os resultados para "{localValue}"</span>
               </button>
             </div>
-
           </div>
         </>
       )}

@@ -146,21 +146,21 @@ export const PremiumOffers = React.memo(function PremiumOffers({
   const sortedOffers = [...offerItems].sort((a, b) => b.discount - a.discount);
 
   return (
-    <div className="relative overflow-hidden bg-gradient-to-b from-rose-50/20 via-zinc-50/10 to-transparent px-5 py-4 sm:px-6">
+    <div className="relative overflow-hidden bg-gradient-to-b from-zinc-50/20 via-zinc-50/10 to-transparent px-5 py-4 sm:px-6">
       {/* Premium Micro-Dividers */}
-      <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-rose-200/20 to-transparent" />
+      <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-zinc-200/20 to-transparent" />
       <div className="absolute bottom-0 left-0 h-px w-full bg-gradient-to-r from-transparent via-zinc-200/10 to-transparent" />
 
       {/* Decorative Glow Elements */}
-      <div className="pointer-events-none absolute left-1/4 top-0 size-64 -translate-y-1/2 rounded-full bg-rose-200/5 blur-3xl" />
+      <div className="pointer-events-none absolute left-1/4 top-0 size-64 -translate-y-1/2 rounded-full bg-secondary/10 blur-3xl" />
       <div className="pointer-events-none absolute bottom-0 right-1/4 size-80 translate-y-1/2 rounded-full bg-orange-100/5 blur-3xl" />
 
       {/* Compact Header: Single-Row Layout */}
       <div className="relative z-10 mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
           <span className="relative flex size-2 shrink-0">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-rose-400 opacity-75" />
-            <span className="relative inline-flex size-2 rounded-full bg-rose-500" />
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-secondary opacity-75" />
+            <span className="relative inline-flex size-2 rounded-full bg-secondary" />
           </span>
           <h2 className="text-xl font-extrabold leading-none tracking-tight text-zinc-950 sm:text-2xl">
             {title}
@@ -168,12 +168,12 @@ export const PremiumOffers = React.memo(function PremiumOffers({
         </div>
 
         {/* Ultra-Compact Countdown Timer Badge */}
-        <div className="flex shrink-0 select-none items-center gap-1.5 rounded-full border border-rose-100/50 bg-rose-50/60 px-2.5 py-1 font-mono text-[10px] font-extrabold text-rose-700 shadow-sm backdrop-blur-md">
-          <Clock className="size-3 shrink-0 animate-pulse text-rose-500" />
+        <div className="flex shrink-0 select-none items-center gap-1.5 rounded-full border border-secondary/20 bg-secondary/10 px-2.5 py-1 font-mono text-[10px] font-extrabold text-primary shadow-sm backdrop-blur-md">
+          <Clock className="size-3 shrink-0 animate-pulse text-primary" />
           <span>{timeLeft.hours}</span>
-          <span className="animate-pulse font-normal text-rose-300">:</span>
+          <span className="animate-pulse font-normal text-primary/40">:</span>
           <span>{timeLeft.minutes}</span>
-          <span className="animate-pulse font-normal text-rose-300">:</span>
+          <span className="animate-pulse font-normal text-primary/40">:</span>
           <span>{timeLeft.seconds}</span>
         </div>
       </div>
@@ -323,16 +323,16 @@ function HeroOfferCard({
           handleCardClick();
         }
       }}
-      className="gpu-accelerated group relative flex h-full flex-1 cursor-pointer flex-col gap-4 overflow-hidden rounded-[2rem] border border-rose-200/40 bg-gradient-to-br from-rose-50/60 via-orange-50/15 to-white p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_48px_-15px_rgba(244,63,94,0.06)] active:scale-[0.995] sm:p-5"
+      className="gpu-accelerated group relative flex h-full flex-1 cursor-pointer flex-col gap-4 overflow-hidden rounded-[2rem] border border-zinc-100/40 bg-gradient-to-br from-zinc-50/60 via-orange-50/15 to-white p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_48px_-15px_rgba(24,24,27,0.06)] active:scale-[0.995] sm:p-5"
     >
       {/* Floating Sparkle / Highlight elements */}
-      <div className="pointer-events-none absolute right-0 top-0 size-32 rounded-full bg-rose-200/20 blur-3xl" />
+      <div className="pointer-events-none absolute right-0 top-0 size-32 rounded-full bg-secondary/10 blur-3xl" />
       <div className="pointer-events-none absolute bottom-0 left-0 size-24 rounded-full bg-amber-200/10 blur-3xl" />
 
       {/* Clean Premium Tag Header (Does NOT overlap image) */}
-      <div className="relative z-10 flex w-full items-center justify-center border-b border-rose-100/50 pb-3">
+      <div className="relative z-10 flex w-full items-center justify-center border-b border-zinc-100/50 pb-3">
         <div className="flex select-none items-center rounded-full border border-zinc-200/30 bg-zinc-100/80 p-0.5 text-[10px] font-black uppercase tracking-wider shadow-sm transition-transform duration-300 group-hover:scale-[1.02]">
-          <span className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-0.5 text-white shadow-[0_2px_4px_rgba(199,65,86,0.1)]">
+          <span className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-0.5 text-white shadow-[0_2px_4px_rgba(24,24,27,0.1)]">
             <Flame className="size-3 animate-pulse fill-white text-white" />
             Super Oferta
           </span>
@@ -347,7 +347,7 @@ function HeroOfferCard({
         <button
           onClick={handleFavoriteClick}
           className={cn(
-            "absolute right-0 p-2 rounded-full transition-all active:scale-75 hover:bg-rose-50/80 z-20 border border-transparent hover:border-rose-100/30",
+            "absolute right-0 p-2 rounded-full transition-all active:scale-75 hover:bg-zinc-50 z-20 border border-transparent hover:border-zinc-100/30",
             isFavorite
               ? "text-red-500 bg-red-50/50 shadow-sm"
               : "text-slate-400 hover:text-red-500 bg-slate-50/40",
@@ -376,7 +376,7 @@ function HeroOfferCard({
         <div className="flex flex-1 flex-col justify-between py-0.5">
           <div>
             <div className="mb-1.5 flex flex-wrap items-center gap-2">
-              <span className="rounded-md border border-rose-100/50 bg-rose-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-rose-700">
+              <span className="rounded-md border border-secondary/20 bg-secondary/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-primary">
                 {product.category}
               </span>
               {(product.freeShipping || isEligibleForFreeShipping) && (
@@ -387,7 +387,7 @@ function HeroOfferCard({
               )}
             </div>
 
-            <h3 className="mb-1.5 line-clamp-2 text-lg font-extrabold leading-snug tracking-tight text-slate-900 transition-colors duration-300 group-hover:text-rose-600 sm:text-xl">
+            <h3 className="mb-1.5 line-clamp-2 text-lg font-extrabold leading-snug tracking-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-xl">
               {product.name}
             </h3>
 
@@ -427,8 +427,8 @@ function HeroOfferCard({
             {/* Scarcity meter progress bar */}
             <div className="mb-4 max-w-sm space-y-1">
               <div className="flex items-center justify-between text-[9px] font-extrabold uppercase tracking-wide text-slate-500">
-                <span className="flex items-center gap-1 text-rose-600">
-                  <Flame className="size-2.5 animate-pulse fill-rose-500" />
+                <span className="flex items-center gap-1 text-primary">
+                  <Flame className="size-2.5 animate-pulse fill-primary" />
                   {pctSold}% VENDIDO
                 </span>
                 <span>
@@ -439,9 +439,9 @@ function HeroOfferCard({
                       : `Apenas ${product.stock} restantes`}
                 </span>
               </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-rose-100/70">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-100/70">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-rose-500 to-amber-500 transition-all duration-1000 ease-out"
+                  className="h-full rounded-full bg-gradient-to-r from-primary to-amber-500 transition-all duration-1000 ease-out"
                   style={{ width: `${pctSold}%` }}
                 />
               </div>
@@ -459,7 +459,7 @@ function HeroOfferCard({
                   ? "bg-zinc-100 text-zinc-400 border-zinc-200/50 cursor-not-allowed shadow-none"
                   : cartStatus === "success"
                     ? "bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700"
-                    : "bg-primary hover:opacity-90 text-white border-primary shadow-rose-100/10",
+                    : "bg-primary hover:opacity-90 text-white border-primary shadow-black/10",
               )}
             >
               {cartStatus === "loading" && (
@@ -487,7 +487,7 @@ function HeroOfferCard({
                 "flex-grow-1 flex-[1] py-2.5 px-4 rounded-full text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.97] border shadow-sm",
                 product.stock <= 0
                   ? "bg-zinc-50 text-zinc-300 border-zinc-100 cursor-not-allowed shadow-none"
-                  : "bg-rose-50 hover:bg-rose-100/60 text-rose-700 border-rose-200/40",
+                  : "bg-secondary/10 hover:bg-secondary/20 text-primary border-secondary/20",
               )}
             >
               Comprar

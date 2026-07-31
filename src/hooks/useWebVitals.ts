@@ -66,7 +66,11 @@ export function useWebVitals() {
 
     // LCP
     try {
-      if (PerformanceObserver.supportedEntryTypes?.includes("largest-contentful-paint")) {
+      if (
+        PerformanceObserver.supportedEntryTypes?.includes(
+          "largest-contentful-paint",
+        )
+      ) {
         const lcpObs = new PerformanceObserver((list) => {
           const entries = list.getEntries();
           const last = entries[entries.length - 1];

@@ -357,7 +357,8 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                         Banners Promocionais
                       </h3>
                       <p className="mt-1 text-xs text-zinc-500">
-                        Personalize artes, artes simples/completas, links de destino e agendamentos.
+                        Personalize artes, artes simples/completas, links de
+                        destino e agendamentos.
                       </p>
                     </div>
                   </div>
@@ -396,7 +397,8 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                         Vitrines (Carrosséis)
                       </h3>
                       <p className="mt-1 text-xs text-zinc-500">
-                        Customize títulos, reordene posições e ative ou desative carrosséis de produtos.
+                        Customize títulos, reordene posições e ative ou desative
+                        carrosséis de produtos.
                       </p>
                     </div>
                   </div>

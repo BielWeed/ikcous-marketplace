@@ -15,6 +15,15 @@ export default defineConfig([
     ".agents",
     "node_modules",
     "temp_db",
+    // Sem estas quatro linhas o eslint entra em .claude/worktrees/, que é uma
+    // CÓPIA do próprio repositório, e reporta cada problema duas vezes: na
+    // máquina do Gabriel dava 14 erros e 1106 warnings, contra os 7 e 553
+    // reais que o CI mede (onde essas pastas não existem). Contagem local
+    // que não bate com a do CI torna impossível ter catraca de lint.
+    ".claude",
+    ".serena",
+    ".playwright-mcp",
+    "scratch",
   ]),
   ...tailwindcss.configs["flat/recommended"],
   security.configs.recommended,

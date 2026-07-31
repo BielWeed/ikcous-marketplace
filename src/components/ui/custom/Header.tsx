@@ -286,7 +286,7 @@ export const Header = memo(function Header({
                   haptic.light();
                   setActiveToast(null);
                 }}
-                className="flex cursor-pointer shrink-0 items-center gap-2 rounded-full border border-[#C74156]/40 bg-gradient-to-r from-[#5C061E] via-[#701A30] to-[#400414] py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(92,6,30,0.38)] backdrop-blur-md transition-all hover:border-[#C74156]/60 active:scale-95 overflow-hidden whitespace-nowrap"
+                className="flex cursor-pointer shrink-0 items-center gap-2 rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95 overflow-hidden whitespace-nowrap"
               >
                 <motion.div
                   initial={{ scale: 0.4, opacity: 0 }}
@@ -314,7 +314,7 @@ export const Header = memo(function Header({
                     stiffness: 400,
                     damping: 20,
                   }}
-                  className="text-[10px] text-rose-300/90 shrink-0 select-none"
+                  className="text-[10px] text-secondary/90 shrink-0 select-none"
                 >
                   ✨
                 </motion.span>

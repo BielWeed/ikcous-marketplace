@@ -1,4 +1,10 @@
+import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
 import { useEffect, useRef, useState } from "react";
+
+/** Escada de larguras oferecida ao navegador quando `sizes` é informado. */
+const LARGURAS_DISPONIVEIS = [200, 320, 480, 640, 960, 1280] as const;
+/** Usada no `src` puro, para o caso raro de o navegador ignorar o srcSet. */
+const LARGURA_PADRAO = 640;
 
 interface LazyImageProps {
   src: string;
@@ -10,6 +16,14 @@ interface LazyImageProps {
   objectFit?: "cover" | "contain" | "fill" | "none" | "scale-down";
   priority?: boolean;
   style?: React.CSSProperties;
+  /**
+   * Quanto espaço a imagem ocupa no layout (ex.: "100vw", "(min-width: 640px) 260px, 50vw").
+   * Informar isto liga o redimensionamento pelo Supabase Storage: sem ele, a
+   * imagem continua sendo servida no tamanho original, como era antes.
+   */
+  sizes?: string;
+  /** Qualidade da imagem redimensionada, 20–100. Padrão 75. */
+  quality?: number;
 }
 
 export function LazyImage({
@@ -22,11 +36,16 @@ export function LazyImage({
   objectFit = "cover",
   priority = false,
   style: imgStyle,
+  sizes,
+  quality = 75,
 }: LazyImageProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isInView, setIsInView] = useState(priority);
   const [hasError, setHasError] = useState(false);
   const [showSkeleton, setShowSkeleton] = useState(false);
+  // Se o endpoint de transformação falhar (plano alterado, arquivo exótico),
+  // recai para a URL original em vez de mostrar erro ao cliente.
+  const [transformacaoFalhou, setTransformacaoFalhou] = useState(false);
   const imgRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -69,6 +88,10 @@ export function LazyImage({
     }
   }, [isInView, isLoaded, hasError]);
 
+  // Só redimensiona quando o chamador declarou `sizes` — sem isso o navegador
+  // não teria como escolher a variante certa do srcSet.
+  const podeRedimensionar = Boolean(sizes) && !transformacaoFalhou;
+
   const style: React.CSSProperties = {};
   if (width !== undefined) style.width = width;
   if (height !== undefined) style.height = height;
@@ -98,13 +121,29 @@ export function LazyImage({
       {/* Actual image - only load when in viewport */}
       {isInView && (
         <img
-          src={src}
+          src={
+            podeRedimensionar
+              ? imagemRedimensionada(src, { width: LARGURA_PADRAO, quality })
+              : src
+          }
+          srcSet={
+            podeRedimensionar
+              ? conjuntoDeImagens(src, LARGURAS_DISPONIVEIS, quality)
+              : undefined
+          }
+          sizes={podeRedimensionar ? sizes : undefined}
           alt={alt}
           loading={priority ? "eager" : "lazy"}
           decoding={priority ? "sync" : "async"}
           fetchPriority={priority ? "high" : "auto"}
           onLoad={() => setIsLoaded(true)}
           onError={() => {
+            // Primeira falha com transformação ligada: tenta a URL original
+            // antes de desistir e mostrar "Erro ao carregar".
+            if (podeRedimensionar) {
+              setTransformacaoFalhou(true);
+              return;
+            }
             setHasError(true);
             setIsLoaded(true); // Stop skeleton
           }}

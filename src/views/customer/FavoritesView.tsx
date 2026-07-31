@@ -83,27 +83,14 @@ export const FavoritesView = React.memo(function FavoritesView({
     const suggestedProducts = products?.slice(0, 4) || [];
 
     return (
-      <div className="pb-customer relative flex min-h-full flex-col items-center justify-start overflow-x-hidden bg-gradient-to-b from-rose-50/70 via-pink-50/30 to-white px-4 py-8 sm:px-6">
-        {/* Soft Ambient Background Elements & Cherry Blossom Blooms */}
-        <div className="absolute left-[-15%] top-[-5%] -z-10 h-[380px] w-[380px] rounded-full bg-rose-200/40 blur-[110px]" />
-        <div className="absolute right-[-15%] top-[20%] -z-10 h-[300px] w-[300px] rounded-full bg-pink-300/30 blur-[120px]" />
-        <div className="absolute bottom-[5%] left-[20%] -z-10 h-[250px] w-[250px] rounded-full bg-rose-100/60 blur-[90px]" />
+      <div className="pb-customer relative flex min-h-full flex-col items-center justify-start overflow-x-hidden bg-gradient-to-b from-zinc-50 via-white to-white px-4 py-8 sm:px-6">
+        {/* Soft Ambient Background Elements */}
+        <div className="absolute left-[-15%] top-[-5%] -z-10 h-[380px] w-[380px] rounded-full bg-zinc-200/40 blur-[110px]" />
+        <div className="absolute right-[-15%] top-[20%] -z-10 h-[300px] w-[300px] rounded-full bg-secondary/10 blur-[120px]" />
+        <div className="absolute bottom-[5%] left-[20%] -z-10 h-[250px] w-[250px] rounded-full bg-zinc-100/60 blur-[90px]" />
 
         {/* Hero Section Container */}
         <div className="flex w-full max-w-sm flex-col items-center justify-center text-center">
-          {/* Brand Badge - Price Point & Store Persona */}
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="mb-6 inline-flex items-center gap-2 rounded-full border border-rose-200/80 bg-white/90 px-4 py-1.5 shadow-sm backdrop-blur-md"
-          >
-            <Sparkles className="size-3.5 fill-rose-500/20 text-rose-500 animate-pulse" />
-            <span className="text-[11px] font-black uppercase tracking-wider text-[#5C061E]">
-              Preço Único R$ 10,00 • SR Tudo 10
-            </span>
-          </motion.div>
-
           {/* Animated Hero Illustration with Cherry Blossom Petals */}
           <motion.div
             initial={{ opacity: 0, scale: 0.85, y: 15 }}
@@ -111,40 +98,6 @@ export const FavoritesView = React.memo(function FavoritesView({
             transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
             className="relative mb-6"
           >
-            {/* Animated Petals Floating Around */}
-            <motion.div
-              animate={{
-                y: [-6, 6, -6],
-                rotate: [0, 15, -10, 0],
-                opacity: [0.7, 1, 0.7],
-              }}
-              transition={{
-                duration: 5,
-                repeat: Number.POSITIVE_INFINITY,
-                ease: "easeInOut",
-              }}
-              className="pointer-events-none absolute -left-6 top-2 text-rose-300"
-            >
-              🌸
-            </motion.div>
-
-            <motion.div
-              animate={{
-                y: [6, -6, 6],
-                rotate: [0, -15, 10, 0],
-                opacity: [0.6, 0.9, 0.6],
-              }}
-              transition={{
-                duration: 4.2,
-                repeat: Number.POSITIVE_INFINITY,
-                ease: "easeInOut",
-                delay: 0.5,
-              }}
-              className="pointer-events-none absolute -right-5 bottom-4 text-pink-300 text-xl"
-            >
-              🌸
-            </motion.div>
-
             {/* Glowing Heart Icon Container */}
             <div className="relative mx-auto size-28 sm:size-32">
               <motion.div
@@ -157,7 +110,7 @@ export const FavoritesView = React.memo(function FavoritesView({
                   repeat: Number.POSITIVE_INFINITY,
                   ease: "easeInOut",
                 }}
-                className="relative z-10 flex size-full items-center justify-center rounded-[2.8rem] border border-white/40 bg-gradient-to-tr from-[#5C061E] via-rose-600 to-rose-400 p-4 shadow-[0_20px_45px_-10px_rgba(199,65,86,0.38)]"
+                className="relative z-10 flex size-full items-center justify-center rounded-[2.8rem] border border-white/40 bg-gradient-to-tr from-primary via-primary to-secondary p-4 shadow-[0_20px_45px_-10px_rgba(24,24,27,0.38)]"
               >
                 <Heart
                   size={46}
@@ -169,7 +122,7 @@ export const FavoritesView = React.memo(function FavoritesView({
               <motion.div
                 animate={{ scale: [1, 1.25, 1], opacity: [0.35, 0.08, 0.35] }}
                 transition={{ duration: 3, repeat: Number.POSITIVE_INFINITY }}
-                className="absolute inset-0 -z-10 rounded-[2.8rem] border-2 border-rose-300/60 bg-rose-200/20"
+                className="absolute inset-0 -z-10 rounded-[2.8rem] border-2 border-secondary/40 bg-secondary/10"
               />
             </div>
           </motion.div>
@@ -183,13 +136,17 @@ export const FavoritesView = React.memo(function FavoritesView({
           >
             <h2 className="text-2xl font-black uppercase tracking-tight text-slate-900 sm:text-3xl">
               Sua lista de desejos <br />
-              <span className="bg-gradient-to-r from-[#5C061E] via-rose-600 to-pink-500 bg-clip-text text-transparent italic not-italic">
+              <span className="bg-gradient-to-r from-primary via-primary to-secondary bg-clip-text text-transparent italic not-italic">
                 tá tão vazia... 💕
               </span>
             </h2>
             <p className="px-2 text-xs font-medium leading-relaxed text-slate-600 sm:text-sm">
-              Que tal rechear com as makes e acessórios mais fofos de Monte Carmelo?
-              Tudo com aquele preço único incrível de <span className="font-bold text-[#5C061E]">R$ 10,00</span>!
+              Que tal dar uma olhada nos produtos mais desejados da loja?
+              Encontre aqui suas{" "}
+              <span className="font-bold text-primary">
+                próximas compras favoritas
+              </span>
+              !
             </p>
           </motion.div>
 
@@ -205,14 +162,14 @@ export const FavoritesView = React.memo(function FavoritesView({
                 haptic.medium();
                 onNavigate("home");
               }}
-              className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl border border-rose-400/30 bg-gradient-to-r from-[#5C061E] via-rose-700 to-rose-600 px-5 text-white shadow-[0_12px_28px_-6px_rgba(199,65,86,0.4)] transition-all hover:scale-[1.02] active:scale-95"
+              className="group relative flex h-14 w-full items-center justify-between overflow-hidden rounded-2xl border border-primary/20 bg-primary px-5 text-white shadow-[0_12px_28px_-6px_rgba(24,24,27,0.4)] transition-all hover:scale-[1.02] active:scale-95"
             >
               <div className="relative z-10 flex items-center gap-2.5">
-                <div className="flex size-7 items-center justify-center rounded-xl bg-white/15 text-rose-200">
-                  <Sparkles className="size-4 fill-rose-200/30 text-rose-100 animate-pulse" />
+                <div className="flex size-7 items-center justify-center rounded-xl bg-white/15 text-secondary">
+                  <Sparkles className="size-4 fill-secondary/30 text-secondary animate-pulse" />
                 </div>
                 <span className="text-[12px] font-black uppercase tracking-wider text-white">
-                  Explorar por R$ 10,00
+                  Explorar Produtos
                 </span>
               </div>
 
@@ -232,11 +189,11 @@ export const FavoritesView = React.memo(function FavoritesView({
             initial={{ opacity: 0, y: 25 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5, duration: 0.6 }}
-            className="mt-10 w-full max-w-md border-t border-rose-100/80 pt-6"
+            className="mt-10 w-full max-w-md border-t border-zinc-100 pt-6"
           >
             <div className="mb-4 text-center">
-              <span className="inline-block rounded-full bg-rose-100/70 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#5C061E]">
-                ✨ Destaques por R$ 10,00
+              <span className="inline-block rounded-full bg-secondary/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-primary">
+                ✨ Destaques da Loja
               </span>
               <h3 className="mt-1 text-sm font-black uppercase tracking-tight text-slate-800">
                 Mais Amados da Loja
@@ -339,10 +296,10 @@ export const FavoritesView = React.memo(function FavoritesView({
                       haptic.medium();
                       onNavigate("home");
                     }}
-                    className="group pointer-events-auto relative flex h-16 w-full items-center justify-center gap-4 overflow-hidden rounded-[2rem] border border-rose-200/40 bg-white/95 text-slate-800 shadow-[0_20px_50px_-10px_rgba(199,65,86,0.15)] backdrop-blur-2xl transition-all hover:bg-rose-50/50 active:scale-95"
+                    className="group pointer-events-auto relative flex h-16 w-full items-center justify-center gap-4 overflow-hidden rounded-[2rem] border border-zinc-200 bg-white/95 text-slate-800 shadow-[0_20px_50px_-10px_rgba(24,24,27,0.15)] backdrop-blur-2xl transition-all hover:bg-zinc-50 active:scale-95"
                   >
                     <div className="relative z-10 flex items-center gap-3">
-                      <ShoppingBag className="size-5 text-rose-500" />
+                      <ShoppingBag className="size-5 text-primary" />
                       <span className="pt-0.5 text-[11px] font-black uppercase tracking-[0.3em] text-slate-800">
                         Descobrir Mais
                       </span>
@@ -350,10 +307,10 @@ export const FavoritesView = React.memo(function FavoritesView({
 
                     {/* Animated Glow Effect */}
                     <div className="absolute inset-0 opacity-0 transition-opacity duration-700 group-hover:opacity-100">
-                      <div className="animate-shimmer absolute left-1/4 top-0 h-full w-1/2 skew-x-[-20deg] bg-gradient-to-r from-transparent via-rose-500/5 to-transparent" />
+                      <div className="animate-shimmer absolute left-1/4 top-0 h-full w-1/2 skew-x-[-20deg] bg-gradient-to-r from-transparent via-secondary/10 to-transparent" />
                     </div>
 
-                    <ArrowRight className="size-4 text-rose-500 transition-all group-hover:translate-x-1.5" />
+                    <ArrowRight className="size-4 text-primary transition-all group-hover:translate-x-1.5" />
                   </button>
                 </motion.div>
               </div>

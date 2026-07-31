@@ -135,3 +135,68 @@ O agente DEVE utilizar obrigatoriamente e de forma proativa as ferramentas dos 1
 
 14. **`qdrant` MCP (`mcp-server-qdrant`)**:
     - **Gatilho**: Utilize para persistência e consulta semântica em base vetorial de conhecimento local.
+
+15. **Protocolo Obrigatório de Pesquisa Prévia & Investigação Ativa**:
+    - **Gatilho**: Antes de realizar qualquer alteração, refatoração ou implementação de código, a IA DEVE realizar pesquisas prévias na Web (`search_web`), documentação atualizada (`context7`), padrões no GitHub (`grep`) e skills especializadas (`orchestrator`). O objetivo é mapear novidades, boas práticas, casos de borda e pontos de atenção antes de escrever a primeira linha de código.
+
+# Diretrizes de Desenvolvimento e Operação - IKCOUS Marketplace (v12 Local)
+
+Estas diretrizes complementam as regras do projeto e regulam o uso seguro das ferramentas de MCP e frameworks no workspace local do **IKCOUS Marketplace**.
+
+---
+
+## 1. Princípios do Produto (PWA & UX)
+
+- **Mobile First & PWA**: A interface deve ser impecavelmente fluida em smartphones. Toda funcionalidade de checkout, carrinho e busca deve rodar offline ou com conexões instáveis (Offline-first por meio de Service Workers).
+- **Aesthetics & Performance**: Usar fontes limpas (Inter, Outfit), animações de micro-interação suaves, Tailwind CSS e garantir que o carregamento inicial da página (Core Web Vitals) seja extremamente rápido.
+
+---
+
+## 2. Uso Seguro do Supabase MCP
+
+O banco de dados do Supabase é a espinha dorsal de dados do marketplace. Siga estas restrições estritas:
+- **Segurança de RLS (Row Level Security)**: Toda tabela de dados do usuário (como perfis, pedidos e avaliações) deve ter RLS ativado por padrão.
+- **Funções SECURITY DEFINER**: Qualquer função SQL executada com privilégios elevados deve ter a cláusula `search_path = public` explícita para evitar ataques de busca de caminho. Apenas crie funções RPC se forem estritamente necessárias e auditadas.
+- **Ambiente Dev-Only**: O **Supabase MCP** não deve fazer modificações destrutivas ou migrações de dados em produção sem validação de rollback em sandbox/local.
+- **Tipagem Estática**: Sempre que alterar o banco de dados local ou remoto, execute a geração automática de tipos do TypeScript via Supabase MCP para manter a integridade estática no código frontend.
+
+---
+
+## 3. Gestão de Deploy e Logs (Vercel MCP)
+
+- **Auditoria de Builds**: Após cada deploy automatizado ou solicitação de preview, use o **Vercel MCP** para inspecionar os logs de build. Corrija avisos de compilação, pacotes duplicados e erros de geração de páginas estáticas.
+- **Depuração de Erros em Produção**: Se houver relatos de falhas de usuários finais, consulte os logs de servidor e Edge Functions via Vercel MCP para identificar rotas de API quebradas ou problemas de latência.
+
+---
+
+## 4. Testes e Estabilidade (QA & Sandbox)
+
+- **Especulação Paralela**: Mudanças estruturais na lógica de estado global (como Contexts de Autenticação e Carrinho) devem ser testadas em isolamento no diretório `/scratch` antes de serem promovidas ao código do projeto.
+- **Fluxos de Testes Automatizados**: Fluxos críticos (carrinho de compras, aplicação de cupons de desconto, checkout no WhatsApp e sistema de Q&A) devem ser validados usando testes do **Playwright MCP** para múltiplos cenários de rede.
+
+---
+
+## 5. Orquestração e Uso Mandatório de Skills (Habilidades v12)
+
+- **Priorizar Habilidades (Skills)**: Habilidades (Skills) são a principal ferramenta de capacitação e robustez do enxame de agentes. Sempre carregue e siga as diretrizes das skills JIT ativas (`antigravity-skill-orchestrator-v12`, `skill-installer-v12` e `skill-evaluator-v12`). Você deve carregar e usar skills proativamente para guiar praticamente todas as tarefas complexas de refatoração, teste, banco de dados ou integração.
+- **Uso e Abuso de Habilidades**: Considere o uso de skills obrigatório para fortalecer as capacidades do agente. Sempre use e abuse das diretrizes de skills para validar suas execuções sob sandbox, garantir cobertura de testes com Playwright e gerenciar transações atômicas no Git shadow branches. Evite edições ad-hoc sem o amparo de diretrizes e validações formais descritas nas skills.
+
+---
+
+---
+
+## 6. Homologação com Suíte de Qualidade (Compliance & Autonomia)
+
+- **Validação Mandatória:** Qualquer alteração de código ou banco de dados deve ser validada por testes antes da conclusão da tarefa. O agente tem autonomia para escolher o nível de teste apropriado:
+  - **Modo Rápido (Geral):** Execute `C:\Users\Gabriel\Documents\Ferramentas para projetos\Executar_Todas_Suites_Modo_Rapido.bat` para um diagnóstico ágil de linters (Biome, ESLint, etc.) e tipagem antes de pequenas entregas.
+  - **Modo Completo (Geral):** Execute `C:\Users\Gabriel\Documents\Ferramentas para projetos\Executar_Todas_Suites_Modo_Completo.bat` para homologação profunda de builds, testes unitários, testes Deno/pgTAP e DAST antes de deploys, PRs ou refatorações de grande escala.
+  - **Execução Focalizada (Filtro por Componente):** Para otimizar tempo, o agente tem autonomia para executar diretamente scripts individuais específicos dentro das subpastas das 6 categorias de qualidade em `C:\Users\Gabriel\Documents\Ferramentas para projetos\` (ex: rodar apenas `01_ESLint_Backend.bat` para código de funções, `06_Supabase_pgTAP.bat` se alterar RLS/banco de dados, ou `01_Playwright_E2E_UI.bat` para fluxos visuais do frontend).
+- **Tratamento de Resultados:** O agente deve ler as saídas do terminal ou logs consolidados e se auto-corrigir caso alguma validação falhe.
+- **Declaração Obrigatória de Skills da Biblioteca (+6.700 Skills JIT):** No final de cada resposta/execução, o agente DEVE incluir obrigatoriamente uma seção denominada `### Skills Utilizadas nesta Execução` listando especificamente os nomes das **skills especializadas da biblioteca carregadas/instaladas (pastas `jit-*` do diretório `.agents/skills`)**, e NÃO as meta-skills locais de infraestrutura.
+
+---
+
+## 7. Protocolo Obrigatório de Pesquisa Prévia & Investigação Ativa
+
+- **Pesquisa Antes de Codificar**: Antes de iniciar qualquer codificação ou refatoração, a IA DEVE consultar ativamente a web (`search_web`), documentações oficiais de bibliotecas (`context7`), padrões de referência no GitHub (`grep`) e orquestração de skills (`orchestrator`).
+- **Mapeamento de Casos de Borda**: Identificar novidades técnicas, boas práticas, armadilhas comuns e pontos de atenção antes de implementar qualquer solução.

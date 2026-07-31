@@ -119,6 +119,9 @@ export const BannerCarousel = memo(function BannerCarousel({
                 alt={banner.title || ""}
                 className="size-full transition-transform [transition-duration:2000ms] [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] group-hover:scale-105"
                 priority={index === 0}
+                // Banner ocupa a largura toda; era o pior caso (PNG de 1340 kB).
+                sizes="100vw"
+                quality={70}
               />
               {/* Dynamic Custom Overlay & Content */}
               {(() => {
@@ -167,8 +170,10 @@ export const BannerCarousel = memo(function BannerCarousel({
                           <span
                             className={cn(
                               "inline-block rounded-full bg-[#FFBF00] text-black px-3.5 py-1 text-[10px] sm:text-xs font-black uppercase tracking-widest mb-1 w-fit",
-                              banner.templateType === "split_right" && "self-end",
-                              banner.templateType === "split_center" && "mx-auto",
+                              banner.templateType === "split_right" &&
+                                "self-end",
+                              banner.templateType === "split_center" &&
+                                "mx-auto",
                             )}
                           >
                             {banner.badgeText}
@@ -179,7 +184,8 @@ export const BannerCarousel = memo(function BannerCarousel({
                           <h2
                             className={cn(
                               "text-2xl font-black leading-none tracking-tighter drop-shadow-2xl sm:text-4xl",
-                              banner.fontFamily === "font-serif" && "font-serif",
+                              banner.fontFamily === "font-serif" &&
+                                "font-serif",
                               banner.fontFamily === "font-mono" && "font-mono",
                               banner.fontFamily === "font-display" &&
                                 "font-display font-black uppercase",
@@ -207,27 +213,32 @@ export const BannerCarousel = memo(function BannerCarousel({
                           </p>
                         )}
 
-                        {banner.buttonText && banner.buttonText.trim() !== "" && (
-                          <button
-                            type="button"
-                            className={cn(
-                              "mt-2 rounded-xl px-4 py-2 text-xs font-extrabold uppercase tracking-widest transition-transform duration-300 active:scale-95 w-fit shadow-md",
-                              banner.templateType === "split_right" && "self-end",
-                              banner.templateType === "split_center" && "mx-auto",
-                              banner.templateType === "neon_glow" && "animate-pulse",
-                            )}
-                            style={{
-                              backgroundColor: banner.buttonBgColor || "#FFBF00",
-                              color: banner.buttonTextColor || "#000000",
-                              boxShadow:
-                                banner.templateType === "neon_glow"
-                                  ? `0 0 12px ${banner.buttonBgColor || "#FFBF00"}`
-                                  : undefined,
-                            }}
-                          >
-                            {banner.buttonText}
-                          </button>
-                        )}
+                        {banner.buttonText &&
+                          banner.buttonText.trim() !== "" && (
+                            <button
+                              type="button"
+                              className={cn(
+                                "mt-2 rounded-xl px-4 py-2 text-xs font-extrabold uppercase tracking-widest transition-transform duration-300 active:scale-95 w-fit shadow-md",
+                                banner.templateType === "split_right" &&
+                                  "self-end",
+                                banner.templateType === "split_center" &&
+                                  "mx-auto",
+                                banner.templateType === "neon_glow" &&
+                                  "animate-pulse",
+                              )}
+                              style={{
+                                backgroundColor:
+                                  banner.buttonBgColor || "#FFBF00",
+                                color: banner.buttonTextColor || "#000000",
+                                boxShadow:
+                                  banner.templateType === "neon_glow"
+                                    ? `0 0 12px ${banner.buttonBgColor || "#FFBF00"}`
+                                    : undefined,
+                              }}
+                            >
+                              {banner.buttonText}
+                            </button>
+                          )}
                       </div>
                     </div>
                   </>

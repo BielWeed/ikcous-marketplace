@@ -7,7 +7,7 @@ export interface HeaderToastData {
   duration?: number;
 }
 
-export function triggerHeaderToast(
+function triggerHeaderToast(
   message: string,
   type: "success" | "error" | "warning" | "info" = "success",
   duration = 2600,

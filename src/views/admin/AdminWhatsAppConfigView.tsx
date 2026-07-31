@@ -1021,7 +1021,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                 >
                   {/* Top decorative handle */}
                   <div className="mb-4 h-1.5 w-12 rounded-full bg-zinc-800" />
-                  
+
                   {/* Header content inside the drag area to make it easy to drag */}
                   <div className="flex items-center justify-between border-b border-white/5 pb-4 w-full text-left pointer-events-none">
                     <div>
@@ -1030,8 +1030,8 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                         Modelos de Mensagem (Presets)
                       </h3>
                       <p className="text-[10px] text-zinc-500 mt-0.5">
-                        Selecione um dos 30 modelos prontos de compartilhamento de
-                        produto.
+                        Selecione um dos 30 modelos prontos de compartilhamento
+                        de produto.
                       </p>
                     </div>
                   </div>

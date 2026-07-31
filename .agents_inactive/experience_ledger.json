@@ -8,10 +8,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npx biome check --write"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npx biome check --write"],
       "errors_encountered": "None.",
       "lessons_learned": "To prevent excessive blank spaces at the end of scrolling views that sit under fixed bottom nav bars, define a single dynamic CSS variable representing the nav bar height + offsets + safe-area + a unified margin (e.g. 16px). Use this variable across all outer page containers to ensure consistency and precise scroll anchoring on both mobile and desktop viewports.",
       "graph_edges": []
@@ -24,10 +21,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npx biome check --write"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npx biome check --write"],
       "errors_encountered": "None.",
       "lessons_learned": "When implementing keyboard hiding utilities for sticky/fixed elements using window.visualViewport, avoid comparing viewport.height directly to innerHeight with a small static threshold, as standard mobile browser Chrome (URL bars/tabs/navbars) can easily reduce the height by more than 15%. Instead, check if the active element is a text-focused input or textarea to verify intent to open the keyboard.",
       "graph_edges": []
@@ -41,10 +35,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "ESLint warning for unused 'idx' variable in map callback, resolved by removing unused parameter.",
       "lessons_learned": "When implementing custom carousels inside scrollable wrappers using Embla or similar libraries, ensure that the viewport wrapper accounts for hover scaling and absolute shadow overlays of slides by applying matching vertical padding and negative margin offsets. This prevents container clipping issues during interactions.",
       "graph_edges": []
@@ -57,10 +48,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run build"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run build"],
       "errors_encountered": "None.",
       "lessons_learned": "Centralizing beforeunload listeners in layout wrappers or main application controllers driven by a single state variable (like isAdminDirty) reduces hook duplication and cleanly protects all sub-views. Also, replacing JSON.stringify comparison arrays with field-specific shallowCompare checks completely eliminates garbage collection pressure and CPU lag on large form updates.",
       "graph_edges": []
@@ -73,10 +61,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "None.",
       "lessons_learned": "Setting matching fixed/min-height properties on card containers relative to their skeleton components completely prevents layout shifting (CLS) on lazy list loads. Integrating micro-transitions (like pulsing glow connection pills and NProgress style loaders) greatly elevates the application's perceived speed and visual polish.",
       "graph_edges": []
@@ -89,10 +74,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run build"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run build"],
       "errors_encountered": "None.",
       "lessons_learned": "To maintain seamless page transitions with the View Transitions API, skeletal load placeholders should render the text elements of titles using matching styles and transition names instead of blank grey block shimmers. Additionally, grouping React hooks strictly by category (states, refs, callbacks, effects) at the component root prevents HMR hook order mismatch warnings.",
       "graph_edges": []
@@ -105,10 +87,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npx vercel --prod"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npx vercel --prod"],
       "errors_encountered": "None.",
       "lessons_learned": "When handling redirects that automatically sign in users (like Supabase recovery links), ensure the state that prevents redirection away from the AuthView (e.g. isPasswordRecovery) is initialized synchronously from the URL on mount. In addition, providing clean visual assets like custom HTML email templates completes the design lifecycle for the user.",
       "graph_edges": []
@@ -121,10 +100,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "None.",
       "lessons_learned": "When using lazy-loaded routes and a persistent visual layout, always wrap the lazy inner view slot in a nested React.Suspense boundary to avoid unmounting and recreating the layout (header/footer/navs) when views suspend. Additionally, defer CPU-heavy SVG charting (like Recharts) during route transitions using useDeferredRender to maintain 60 FPS transitions.",
       "graph_edges": []
@@ -137,9 +113,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck"],
       "errors_encountered": "None.",
       "lessons_learned": "Keeping tab panels mounted in the DOM using class-based toggle (block/hidden) maintains React local states, search inputs, and page indices intact across tab changes. Capturing scrollTop in real-time scroll listeners avoids offset clamps when nodes are hidden. Stale-while-revalidate loading checks are critical to prevent flashing UI loaders on dynamic updates.",
       "graph_edges": []
@@ -152,10 +126,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "None.",
       "lessons_learned": "Batching database operations using Supabase upsert avoids inconsistent states and variant duplication issues during client-side network interruptions. Additionally, combining global layout state (online/offline banners) with form button disabled states provides clear visual feedback and prevents broken API requests.",
       "graph_edges": []
@@ -168,10 +139,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "None.",
       "lessons_learned": "Consolidating hooks' auto-subscriptions with views callbacks reduces WebSocket connections and solves duplicate alerts. When View Transitions API is supported, setting Framer Motion durations to 0 prevents visual lag. Finally, scroll restoration locks are best synchronized with browser requestAnimationFrame cycles rather than fixed timeouts.",
       "graph_edges": []
@@ -184,10 +152,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "None.",
       "lessons_learned": "When implementing offline caching (IndexedDB/DataVault), error bounds must actively recover from corrupted caches by clearing stores to prevent application hangs. When routing with URL sync and browser history, intercepting back navigation on sub-modules ensures users don't exit administrative portals unexpectedly. Applying CSS content-visibility: auto on large lists significantly improves DOM performance.",
       "graph_edges": []
@@ -200,10 +165,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "None.",
       "lessons_learned": "When using parallel rendered screens hidden via CSS, ensure no parent container changes its key dynamically, as key shifts trigger complete component unmounts and clear react state/scroll position. Additionally, disabling pointer-events and setting visibility to hidden on hidden tabs prevents keyboard focus jumps and accidental interactions.",
       "graph_edges": []
@@ -216,10 +178,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run build"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run build"],
       "errors_encountered": "None.",
       "lessons_learned": "Contextual navigation headers improve mobile UX considerably. Standardizing sub-route parent maps in layout structures makes back actions predictable without adding state complexity to individual views.",
       "graph_edges": []
@@ -232,10 +191,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "None.",
       "lessons_learned": "When keeping tab views mounted in the background (Keep-Alive), any effects that synchronize with shared global state variables (like selection IDs) must check whether their view is currently active. Otherwise, they will intercept IDs meant for other views and trigger failed API/database calls.",
       "graph_edges": []
@@ -248,10 +204,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "React Hook useCallback was missing isAdmin dependency in useBanners.ts; resolved by adding isAdmin to the dependency list.",
       "lessons_learned": "Background tabs in keep-alive structures continue running autoplay loops and CSS triggers unless explicitly paused using an active state prop. Passive order normalization in the client prior to DB swaps prevents lockups when users delete/restore items out of order.",
       "graph_edges": []
@@ -264,9 +217,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck"],
       "errors_encountered": "None.",
       "lessons_learned": "When loading lists asynchronously, adding list.length to the loading useEffect dependencies can trigger a duplicate immediate load request once the first request resolves and updates the list length. Using a synced useRef of the list length avoids this dependency and prevents redundant network calls.",
       "graph_edges": []
@@ -279,10 +230,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "None.",
       "lessons_learned": "When implementing buffered or deferred inputs, always use a proper debounce mechanism to avoid updating large parent component states on every single keystroke. Sychronizing sychronously on blur is a crucial safety net to ensure that form submissions always have the latest user input.",
       "graph_edges": []
@@ -295,10 +243,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "None.",
       "lessons_learned": "Avoid invoking hooks with active data loading or subscriptions (like WebSockets/real-time) in high-level layout wrappers when the wrapper only needs utility functions (e.g., loadOrders for hover prefetch). Setting enabled: false avoids layout-level updates and avoids massive tree-wide re-renders.",
       "graph_edges": []
@@ -311,10 +256,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "None.",
       "lessons_learned": "Enabling offline queues for status changes prevents client-side operation locks and matches the resilience of offline-first product editing. Additionally, adding physical haptic responses to critical administrative actions (toggles, deletions, duplications) completes the PWA design loop for touch interfaces.",
       "graph_edges": []
@@ -328,9 +270,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run build"
-      ],
+      "diagnostic_tests_run": ["npm run build"],
       "errors_encountered": "TypeScript compilation issue: verbatimModuleSyntax required type-only import for ComponentType in lazyWithPreload.ts; resolved by splitting component imports. JSX file extension error: JSX syntax inside lazyWithPreload.ts was disallowed; resolved by converting TSX tags to raw React.createElement calls to keep it as a pure TS file.",
       "lessons_learned": "To get perfectly smooth page transitions using View Transitions API without layout snaps or fallback flashes, lazy-loaded components should be preloaded and rendered synchronously during the state update. Additionally, styling the ::view-transition root background color to match the dark theme prevents white bleed-through during canvas animation calculations, and using React.createElement inside utility files avoids TSX file extension validation conflicts.",
       "graph_edges": []
@@ -344,10 +284,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run build"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run build"],
       "errors_encountered": "None.",
       "lessons_learned": "To scale Supabase Realtime in multi-tab PWA applications without hitches or database connection drops, delegate WebSocket connections to a single Leader Tab via coordinate-locks (BroadcastChannel + localStorage) and propagate PostgreSQL change payloads locally to secondary tabs. This guarantees real-time responsiveness while protecting connection limits.",
       "graph_edges": []
@@ -361,10 +298,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run build"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run build"],
       "errors_encountered": "TypeScript compilation issue: parameter 'status' and 'err' implicitly had any types inside channel.subscribe callbacks; resolved by adding explicit type annotations.",
       "lessons_learned": "For interactive sessional sections like Q&A and Reviews, scoping real-time subscriptions by productId on the Leader Tab and broadcasting reload signals to secondary tabs reduces Supabase WebSocket load while maintaining instant visual updates during customer-admin dialogs. Keep TypeScript strict rules in mind and always explicitly type parameters in websocket callback events.",
       "graph_edges": []
@@ -378,10 +312,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run build"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run build"],
       "errors_encountered": "None.",
       "lessons_learned": "When implementing real-time syncing for database tables containing user-specific mutable state (such as cart_items), filter the Supabase subscription channel to the logged-in user ID (user_id=eq.${userId}) and structure update flows such that local state changes are skipped if the incoming DB payload is structurally equivalent to local state. This prevents update loop feedback.",
       "graph_edges": []
@@ -395,10 +326,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run build"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run build"],
       "errors_encountered": "None.",
       "lessons_learned": "Coordinating general real-time metrics (like layout pending counts) and customer-specific state (like favorites) with Leader Election + BroadcastChannels prevents redundant network requests and socket drops. Ensure explicit types are used inside channel.subscribe callbacks to maintain strict mode compatibility.",
       "graph_edges": []
@@ -412,9 +340,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck"],
       "errors_encountered": "None.",
       "lessons_learned": "When implementing shipping calculation APIs, save the last validated CEP in localStorage and pre-fill the Checkout CEP field to minimize keystrokes and reduce bounce rates. For legacy database schemas without explicit shipping carrier columns, embedding the selected shipping method and delivery days inside the order's observations notes ensures the merchant sees the selection without needing structural schema updates.",
       "graph_edges": []
@@ -427,10 +353,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "None.",
       "lessons_learned": "Restricting promotional limits (such as value threshold free shipping) to logged-in states encourages login and signup conversion. Providing visually premium login CTA cards in key transaction hotspots (like the cart view) rather than simply hiding elements creates a better user experience and increases user engagement.",
       "graph_edges": []
@@ -443,10 +366,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npm run lint"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npm run lint"],
       "errors_encountered": "None.",
       "lessons_learned": "Avoid rendering multiple high-priority dark theme call-to-action blocks that compete for the same user decision (e.g. logging in) on the same screen. Consolidating login incentives and alternative checkout options (like guest checkout) into a single, structured benefits card simplifies the layout, saves vertical screen space, and guides users with a clear hierarchy.",
       "graph_edges": []
@@ -460,10 +380,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run typecheck",
-        "npx biome check"
-      ],
+      "diagnostic_tests_run": ["npm run typecheck", "npx biome check"],
       "errors_encountered": "Biome organizing imports lint error; resolved automatically via biome check --write --unsafe.",
       "lessons_learned": "When replacing text inputs with structured selection dropdowns (Select), synchronize changes bidirecionally with parent values (e.g. templates or URLs) using side-effects (useEffect) with state-guarded conditionals to prevent infinite updates. Querying relational databases (like public.produtos) directly on mount allows quick selections of products without hardcoded strings.",
       "graph_edges": []
@@ -476,9 +393,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "Executar_Todas_Suites_Modo_Rapido.bat"
-      ],
+      "diagnostic_tests_run": ["Executar_Todas_Suites_Modo_Rapido.bat"],
       "errors_encountered": "None.",
       "lessons_learned": "To prevent layout shifts and maintain 60 FPS scrolling on mobile, heavy spring physics in paginated layouts (like ProductList) should be replaced with cubic-bezier eased GPU-accelerated transforms. Also, wrapping list containers and nested SVGs (like StarRating and CartItemsList) in React.memo reduces CPU overhead dramatically during high-level state updates.",
       "graph_edges": []
@@ -508,10 +423,7 @@
       ],
       "efficacy_rating": 5,
       "conflicts_detected": "None.",
-      "diagnostic_tests_run": [
-        "npm run build",
-        "npx vercel env ls"
-      ],
+      "diagnostic_tests_run": ["npm run build", "npx vercel env ls"],
       "errors_encountered": "None.",
       "lessons_learned": "Vercel remote builds inject Environment Variables defined on the Vercel Dashboard which override local `.env` files. When changing target databases, ensure variables are synchronized on the Vercel Dashboard project settings and verify that base64 keys are not corrupted by regex or replacement operations.",
       "graph_edges": []

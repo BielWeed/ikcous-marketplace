@@ -44,7 +44,6 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { initSentinel } from "@/pwa-sentinel";
 import { initHeaderToastInterceptor } from "@/utils/headerToast";
-import { HelmetProvider } from "react-helmet-async";
 import App from "./App.tsx";
 
 // Apply client visual branding
@@ -58,39 +57,9 @@ initHeaderToastInterceptor();
 
 // PWA health monitor initialized above
 
-// Environment Audit (Alpha Zero)
-const rootElement = document.getElementById("root");
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-
-if (!SUPABASE_URL || SUPABASE_URL.includes("undefined")) {
-  if (rootElement) {
-    const root = createRoot(rootElement);
-    root.render(
-      <div className="flex h-svh flex-col items-center justify-center bg-red-600 p-10 text-center font-sans text-white">
-        <h1 className="mb-5 text-4xl font-black">🚨 ERRO DE AMBIENTE</h1>
-        <p className="max-w-sm text-lg leading-relaxed">
-          As chaves do banco de dados (Supabase) não foram detectadas no seu
-          dispositivo.
-          <br />
-          <br />
-          Isso acontece quando o PWA está servindo uma versão zumbi ou o build
-          falhou silenciosamente.
-        </p>
-        <button
-          onClick={() => {
-            localStorage.clear();
-            sessionStorage.clear();
-            globalThis.location.reload();
-          }}
-          className="mt-8 cursor-pointer rounded-xl border-none bg-white px-8 py-4 font-bold text-red-600 transition-transform active:scale-95"
-        >
-          LIMPAR E TENTAR DE NOVO
-        </button>
-      </div>,
-    );
-  }
-  throw new Error("[AlphaZero] Missing Supabase Configuration");
-}
+// A auditoria de ambiente vive em `@/lib/env`, que roda antes daqui por ser dependência
+// de `@/lib/supabase`. Escrever a validação neste ponto não funcionava: imports ES são
+// hoisted, então o módulo do Supabase já tinha explodido antes desta linha ser alcançada.
 
 // Initial removal attempt, App.tsx will call this again once data is ready
 // No longer needed here as App.tsx handles synchronization
@@ -125,9 +94,7 @@ createRoot(document.getElementById("root")!).render(
     <GlobalErrorBoundary>
       <AuthProvider>
         <NotificationProvider>
-          <HelmetProvider>
-            <App />
-          </HelmetProvider>
+          <App />
         </NotificationProvider>
       </AuthProvider>
     </GlobalErrorBoundary>

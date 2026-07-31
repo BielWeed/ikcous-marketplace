@@ -7,6 +7,51 @@ declare const __APP_VERSION__: string;
 const SAFE_APP_VERSION =
   typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "0.0.0-dev";
 
+// A versão do build sempre carrega sufixo ("1.0.0-sha.ef7b099", "1.0.0-build.36692"),
+// então comparar com !== contra um min_app_version limpo ("1.0.0") nunca converge
+// e gera loop infinito de purge + reload. Comparar só o núcleo semver.
+const parseSemverCore = (version: string): [number, number, number] | null => {
+  const core = version.trim().split(/[-+]/)[0];
+  const parts = core.split(".").map((p) => Number.parseInt(p, 10));
+  if (parts.length === 0 || parts.length > 3) return null;
+  if (parts.some((n) => Number.isNaN(n))) return null;
+  const [major = 0, minor = 0, patch = 0] = parts;
+  return [major, minor, patch];
+};
+
+// true apenas quando `local` é comprovadamente MAIS ANTIGA que `required`.
+// Formato desconhecido ou núcleo igual => false (nunca forçar purge por dúvida).
+const isOlderThan = (local: string, required: string): boolean => {
+  const a = parseSemverCore(local);
+  const b = parseSemverCore(required);
+  if (!a || !b) return false;
+  const [aMajor, aMinor, aPatch] = a;
+  const [bMajor, bMinor, bPatch] = b;
+  if (aMajor !== bMajor) return aMajor < bMajor;
+  if (aMinor !== bMinor) return aMinor < bMinor;
+  return aPatch < bPatch;
+};
+
+// Trava anti-loop: se o purge já rodou para a mesma versão exigida e o app
+// continua "desatualizado", purgar de novo não resolve — só trava o cliente.
+// A chave começa com "pwa_" de propósito: está na whitelist do purge e sobrevive a ele.
+const MANDATORY_PURGE_GUARD_KEY = "pwa_mandatory_purge_guard";
+const MAX_MANDATORY_PURGES = 2;
+
+const readPurgeGuard = (): { required: string; count: number } => {
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(MANDATORY_PURGE_GUARD_KEY) || "null",
+    );
+    if (parsed && typeof parsed.required === "string") {
+      return { required: parsed.required, count: Number(parsed.count) || 0 };
+    }
+  } catch {
+    // Valor corrompido: tratar como primeira tentativa.
+  }
+  return { required: "", count: 0 };
+};
+
 export function useUpdateCheck() {
   const { config } = useStore();
   const [isMandatory, setIsMandatory] = useState(false);
@@ -55,7 +100,9 @@ export function useUpdateCheck() {
       console.log("[PWA] Checking for updates...");
       const ver = await fetchServerVersion();
       if (ver && ver !== SAFE_APP_VERSION) {
-        console.log(`[PWA] Server version (${ver}) differs from local (${SAFE_APP_VERSION}). Updating SW.`);
+        console.log(
+          `[PWA] Server version (${ver}) differs from local (${SAFE_APP_VERSION}). Updating SW.`,
+        );
         setNewVersion(ver);
       }
       registration.update().catch((err) => {
@@ -75,7 +122,9 @@ export function useUpdateCheck() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      console.log("[PWA] Clearing SW update check interval & visibility listener...");
+      console.log(
+        "[PWA] Clearing SW update check interval & visibility listener...",
+      );
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
@@ -213,12 +262,23 @@ export function useUpdateCheck() {
     const isTimestampVersion =
       SAFE_APP_VERSION.length > 10 && !Number.isNaN(Number(SAFE_APP_VERSION));
 
-    // Versão local não coincide com a mínima exigida (e não é timestamp de dev)
+    // Versão local é anterior à mínima exigida (e não é timestamp de dev)
     if (
       config.minAppVersion &&
-      config.minAppVersion !== SAFE_APP_VERSION &&
-      !isTimestampVersion
+      !isTimestampVersion &&
+      isOlderThan(SAFE_APP_VERSION, config.minAppVersion)
     ) {
+      const guard = readPurgeGuard();
+      const attempts =
+        guard.required === config.minAppVersion ? guard.count : 0;
+
+      if (attempts >= MAX_MANDATORY_PURGES) {
+        console.error(
+          `[Update] Purge obrigatório já tentado ${attempts}x para a versão ${config.minAppVersion} e o app continua em ${SAFE_APP_VERSION}. Abortando para não travar o cliente em loop.`,
+        );
+        return false;
+      }
+
       console.log("[Update] 🚨 Mandatory version mismatch detected!");
       console.log(
         `[Update] Local: ${SAFE_APP_VERSION} | Required: ${config.minAppVersion}`,
@@ -230,9 +290,21 @@ export function useUpdateCheck() {
         "pwa_update_log",
         `Version Mismatch: ${SAFE_APP_VERSION} -> ${config.minAppVersion}`,
       );
+      localStorage.setItem(
+        MANDATORY_PURGE_GUARD_KEY,
+        JSON.stringify({
+          required: config.minAppVersion,
+          count: attempts + 1,
+        }),
+      );
 
       performNuclearPurge(true);
       return true;
+    }
+
+    // Versão local em dia: zerar a trava para não bloquear um update futuro legítimo.
+    if (config.minAppVersion && readPurgeGuard().count > 0) {
+      localStorage.removeItem(MANDATORY_PURGE_GUARD_KEY);
     }
     return false;
   }, [config.minAppVersion, performNuclearPurge]);
@@ -317,28 +389,40 @@ export function useUpdateCheck() {
     isMandatory,
     updateAvailable: needRefresh,
     newVersion,
-    checkUpdate: useCallback(async (realtimeVersion?: string) => {
-      let targetVer = realtimeVersion;
-      if (!targetVer) {
-        targetVer = await fetchServerVersion() || undefined;
-      }
-      
-      if (targetVer && targetVer !== SAFE_APP_VERSION) {
-        console.log(`[Update] Server version (${targetVer}) differs from local (${SAFE_APP_VERSION})`);
-        setNewVersion(targetVer);
-      }
-
-      if (registration) {
-        console.log("[Update] Triggering manual service worker update check...");
-        try {
-          await registration.update();
-        } catch (err) {
-          console.error("[PWA] Manual SW update check failed:", err);
+    checkUpdate: useCallback(
+      async (realtimeVersion?: string) => {
+        let targetVer = realtimeVersion;
+        if (!targetVer) {
+          targetVer = (await fetchServerVersion()) || undefined;
         }
-      }
 
-      checkMandatoryUpdate();
-    }, [registration, fetchServerVersion, SAFE_APP_VERSION, checkMandatoryUpdate]),
+        if (targetVer && targetVer !== SAFE_APP_VERSION) {
+          console.log(
+            `[Update] Server version (${targetVer}) differs from local (${SAFE_APP_VERSION})`,
+          );
+          setNewVersion(targetVer);
+        }
+
+        if (registration) {
+          console.log(
+            "[Update] Triggering manual service worker update check...",
+          );
+          try {
+            await registration.update();
+          } catch (err) {
+            console.error("[PWA] Manual SW update check failed:", err);
+          }
+        }
+
+        checkMandatoryUpdate();
+      },
+      [
+        registration,
+        fetchServerVersion,
+        SAFE_APP_VERSION,
+        checkMandatoryUpdate,
+      ],
+    ),
     performNuclearPurge: handleUpdate,
   };
 }

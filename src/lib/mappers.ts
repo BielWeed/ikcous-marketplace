@@ -69,7 +69,8 @@ export function mapProductFromDB(
     const freeShipping = !!(row.frete_gratis ?? row.free_shipping);
     const isBestseller = !!(row.is_bestseller ?? row.is_bestseller); // Same name usually
 
-    const { weightKg, widthCm, heightCm, lengthCm } = extractProductDimensions(row);
+    const { weightKg, widthCm, heightCm, lengthCm } =
+      extractProductDimensions(row);
 
     const createdAt =
       row.data_cadastro || row.created_at || "1970-01-01T00:00:00.000Z";
@@ -192,7 +193,9 @@ export function mapOrderFromDB(
       address:
         addressSource.street ||
         customerData.address_text ||
-        (typeof customerData.address === "string" ? customerData.address : "") ||
+        (typeof customerData.address === "string"
+          ? customerData.address
+          : "") ||
         "",
       number: addressSource.number || customerData.number || "",
       complement: addressSource.complement || customerData.complement || "",

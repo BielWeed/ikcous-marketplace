@@ -274,12 +274,7 @@ export function useReviews() {
           }));
 
           if (isAdmin) {
-            setCachedReviewsData(formatted, {
-              total: totalCount,
-              averageRating,
-              globalVerifiedCount,
-              globalRepliedCount,
-            });
+            setCachedReviewsData(formatted);
           }
           setAdminReviews(formatted);
           return {

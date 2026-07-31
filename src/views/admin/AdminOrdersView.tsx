@@ -1296,5 +1296,3 @@ const AdminOrderCard = memo(function AdminOrderCard({
     </motion.div>
   );
 });
-
-export default AdminOrdersView;

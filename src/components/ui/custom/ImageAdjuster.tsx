@@ -59,7 +59,7 @@ export interface ColorPreset {
   sepia: number;
 }
 
-export const COLOR_PRESETS: ColorPreset[] = [
+const COLOR_PRESETS: ColorPreset[] = [
   {
     id: "original",
     name: "Original",
