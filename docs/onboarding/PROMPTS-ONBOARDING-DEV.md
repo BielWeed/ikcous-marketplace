@@ -1019,23 +1019,39 @@ Isso é o feedback do onboarding — o Gabriel vai usar pra melhorar a documenta
 
 ## Anexo: mensagem pro Netim
 
-Pra colar no WhatsApp ou no Discord depois que os PRs dos prompts 1, 2, 3 e 5 estiverem mergeados.
+**Antes de mandar, confira que estes PRs estão mergeados**, senão a mensagem promete arquivo
+que não está lá: #8 e #9 (onboarding e backlog), #10 (limpeza), #11 (GitFlow e CI),
+**#12 (metodologia)** e **#124 (Kanban e Notion)**. Os quatro primeiros entraram em
+30/07/2026; os dois últimos ainda não.
 
-> Fala Netim, fiz o que você falou. Tá tudo pronto:
+> Fala Netim, tá tudo no ar.
 >
-> **Entender o projeto** — tem uma pasta `docs/onboarding/` com cinco documentos: visão geral, arquitetura, setup do ambiente, glossário (o projeto tem uns nomes inventados que só eu entendia) e os cinco fluxos críticos com diagrama. Escrito pra quem nunca viu o projeto.
+> **Entender o projeto** — `docs/onboarding/`, na branch `develop`: visão geral, arquitetura, setup do ambiente, glossário (o projeto tem uns nomes inventados que só eu entendia) e os cinco fluxos críticos com diagrama de sequência. Escrito pra quem nunca viu o projeto.
 >
-> **O que falta** — tem um `06-ESTADO-ATUAL.md` com semáforo por área (verde/amarelo/vermelho, com evidência) e um `BACKLOG.md` com tudo priorizado. Rodei uma auditoria pesada semana passada que achou 76 problemas confirmados; o backlog já separa o que eu corrigi do que continua aberto. Tem umas tasks marcadas como boas pra começar, escolhi pensando em você atravessar o sistema inteiro sem risco de quebrar nada.
+> **O que falta** — o `06-ESTADO-ATUAL.md` tem semáforo por área com evidência, e um aviso: **nenhuma área saiu verde**. O `docs/backlog/BACKLOG.md` tem as 111 tarefas priorizadas. Rodei uma auditoria pesada em 29/07 e reauditei tudo em 30/07 abrindo o código de novo: **85 achados, 18 já corrigidos, 66 ainda abertos e 1 que não se aplicava**. O backlog já separa isso, achado por achado.
 >
-> **Kanban** — GitHub Projects no repo, colunas Backlog → Pronto pra pegar → Em progresso → Em revisão → Em teste → Feito. Issue linka com branch e PR sozinha. Limite de 2 cartões em progresso por pessoa. Tem um Notion também, mas só pra roadmap e decisão — task nasce sempre no GitHub, senão a gente duplica trabalho.
+> **Kanban** — montado e populado: https://github.com/users/BielWeed/projects/1 — **111 issues**, uma por tarefa, cada uma com contexto, evidência em `arquivo:linha` e critério de aceite em checkbox. Colunas: Backlog → Pronto pra pegar → Em progresso → Em revisão → Em teste (preview) → Feito. Limite de 2 cartões em progresso por pessoa. Duas ressalvas honestas: **o board é da minha conta, não do repositório** — colaborador de repo não herda acesso, então eu te dei acesso à parte, confirma se você enxerga; e **as automações do quadro ainda estão desligadas**, então por enquanto mover cartão é na mão, e issue nova não entra no board sozinha.
 >
-> **Versionamento** — GitFlow como você pediu: `develop` de integração, feature branch sai de develop e volta por PR, main só recebe release testada. Coloquei CI no GitHub Actions (não existia nenhum) e hooks de git que rejeitam mensagem de commit fora do padrão e push direto em `main`/`develop`. Um aviso importante: essa trava é **local**, um hook — não é proteção do GitHub. Branch protection só existe no plano Pro e o repo é privado no Free, então dá pra furar com `--no-verify` e não vale pra quem clonar sem rodar `npm install`. Não é firula burocrática: é a única coisa que separa a loja no ar de um push errado, então a gente combina de respeitar. Tem um `CONTRIBUTING.md` com tudo e um cheatsheet de uma página.
+> **Notion** — ainda **não existe**. O que existe é um roteiro de 10 minutos pra montar, em `docs/processo/NOTION-SETUP.md`. Quando montar, ele vai ser só roadmap, ideias e decisões: task nasce sempre no GitHub, senão a gente duplica trabalho.
 >
-> **Metodologia** — XP adaptado pra dupla, em `docs/processo/`. Escrevi também o que a gente NÃO vai usar e por quê, pra não virar ritual que ninguém cumpre. Tem um plano de primeira semana pra você, dia a dia.
+> **Versionamento** — GitFlow como você pediu: `develop` é a branch padrão e é dela que sai toda branch nova; `main` só recebe release testada. Coloquei CI no GitHub Actions com 5 jobs (não existia nenhum) e hooks de git que rejeitam mensagem de commit fora do padrão e push direto em `main`/`develop`. Um aviso importante: essa trava é **local**, um hook — não é proteção do GitHub. Branch protection só existe no plano Pro e o repo é privado no Free, então dá pra furar com `--no-verify` e não vale pra quem clonar sem rodar `npm install`. Não é firula burocrática: é a única coisa que separa a loja no ar de um push errado, então a gente combina de respeitar. Tem um `CONTRIBUTING.md` com tudo e um cheatsheet de uma página.
 >
-> Duas coisas: te convidei no GitHub, no Supabase e na Vercel — confirma aí. E tem um prompt pronto pro seu primeiro dia, é só colar no Claude Code dentro do repo que ele te dá um tour guiado e responde suas dúvidas mostrando o código. Tá em `docs/onboarding/PROMPTS-ONBOARDING-DEV.md`, prompt 6.
+> **Metodologia** — XP adaptado pra dupla, em `docs/processo/`. Escrevi também o que a gente NÃO vai usar e por quê, pra não virar ritual que ninguém cumpre. Tem um plano de primeira semana pra você, dia a dia, com o meu tempo já reservado.
+>
+> **Acessos** — o do GitHub já está de pé, você é colaborador. **Supabase, Vercel e o canal do Discord eu ainda não te mandei** — faço hoje e te aviso.
+>
+> **Por onde começar** — na visão "Bom pra começar" do board tem as tarefas de entrada, escolhidas pra você atravessar uma camada inteira do sistema sem risco de quebrar nada. Uma delas, a `INFRA-020`, eu acabei resolvendo junto com o CI — ignora essa. Sugestão de primeiro cartão: `PEDIDO-060`, mostrar o código de rastreio pro cliente.
+>
+> Duas coisas práticas: instala com `npm install --legacy-peer-deps`, não com `npm install` puro (o README tá desatualizado nesse ponto). E tem um prompt pronto pro seu primeiro dia — é só colar no Claude Code dentro do repo que ele te dá um tour guiado e responde suas dúvidas mostrando o código de verdade. Tá em `docs/onboarding/PROMPTS-ONBOARDING-DEV.md`, prompt 6.
 >
 > Qualquer coisa que a documentação não responder, anota que a gente arruma — o próprio prompt 6 já gera essa lista no fim.
+
+### Se você já mandou a versão antiga
+
+A mensagem anterior tinha cinco pontos errados. Esta correção curta resolve sem precisar
+mandar tudo de novo:
+
+> Netim, correção do que te mandei: (1) a auditoria foi de **85 achados**, não 76 — **18 já corrigidos, 66 abertos**; (2) o **Notion ainda não existe**, só o roteiro pra montar — por enquanto é só GitHub; (3) o Kanban **está pronto, com as 111 issues**, mas é um board da minha conta, não do repositório, então te dei acesso à parte — confirma se você enxerga: https://github.com/users/BielWeed/projects/1 ; (4) as automações do board ainda estão desligadas, então **mover cartão é na mão** por enquanto; (5) dos acessos, só o **GitHub** está feito — Supabase, Vercel e Discord eu mando hoje.
 
 ---
 

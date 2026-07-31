@@ -44,13 +44,17 @@ TypeScript, e por `~` (só patch flutua).
 *Deu certo se:* `git remote -v` termina em `BielWeed/ikcous-marketplace` — em `https://` ou em
 `git@github.com:`, os dois valem (depende do seu `gh config get git_protocol`).
 
-**Passo 2 — escolher a branch.** O default é `main` (`gh repo view` → `defaultBranchRef.name`).
-**A branch `develop` ainda não existe no `origin`**: `git branch -r` lista 11 linhas, mas uma é
-`origin/HEAD -> origin/main`, que é ref simbólico e não branch — sobram `main`, `master` e **8** de
-feature/docs, nenhuma `develop`. Ramifique de `main` (`git switch -c <prefixo>/<assunto>`; prefixos em
-uso: `feat/`, `fix/`, `chore/`, `docs/`, `claude/`). Merge é **por PR no GitHub**, não na `main` local.
+**Passo 2 — escolher a branch.** O default do repositório é **`develop`** (`gh repo view` →
+`defaultBranchRef.name`), e é dela que sai toda branch nova. A `main` só recebe release testada.
+Ramifique com `git switch -c <prefixo>/<assunto>`; prefixos válidos: `feat/`, `fix/`, `chore/`,
+`docs/`, `refactor/`. Merge é **por PR no GitHub**, nunca na `develop` ou na `main` local — e um
+hook de `pre-push` recusa o push direto nas duas. O fluxo completo está no `CONTRIBUTING.md`.
 
-*Deu certo se:* `git branch --show-current` **não** devolve `main`.
+*Deu certo se:* `git branch --show-current` **não** devolve `develop` nem `main`.
+
+> Corrigido em 30/07/2026. Uma versão anterior deste passo dizia que a branch `develop` não
+> existia e mandava ramificar de `main`. Ela passou a existir com o GitFlow do prompt 3, e
+> virou o default do repositório no mesmo dia.
 
 **Passo 3 — instalar dependências:** `npm install --legacy-peer-deps`.
 
