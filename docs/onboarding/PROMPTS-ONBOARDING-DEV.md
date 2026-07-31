@@ -459,12 +459,24 @@ sozinho, sem depender de disciplina.
 Decisão já tomada, não reabra: **GitFlow com branch `develop`**, escolhido porque foi o que o
 Netim propôs e porque a loja está no ar — main precisa ser sagrada.
 
---- ESTADO ATUAL VERIFICADO (30/07/2026) ---
+--- ESTADO ATUAL VERIFICADO (30/07/2026, ANTES do prompt 3 rodar) ---
+
+> **Este bloco é histórico.** O prompt 3 rodou em 30/07/2026 e resolveu todos os itens
+> abaixo. Ele fica registrado porque explica *por que* o prompt foi escrito assim — não
+> descreve o repositório de hoje. Para o estado atual, veja `CONTRIBUTING.md`.
 
 Você não precisa descobrir isto, mas CONFIRME antes de mexer:
-- Não existe branch `develop`.
+- Não existe branch `develop`. *(Existe desde 30/07/2026, e é a branch padrão.)*
 - `.github/` contém apenas `copilot-instructions.md`. **Não existe nenhum workflow de CI.**
-- `lefthook.yml` está 100% comentado — nenhum hook de git roda hoje.
+  *(Existe `ci.yml` com 5 jobs desde 30/07/2026.)*
+- `lefthook.yml` está 100% comentado — nenhum hook de git roda hoje. E ele também
+  **não estava versionado**: o `.gitignore` tinha um `*.yml` cru que barrava qualquer arquivo
+  `.yml`, inclusive um futuro `.github/workflows/ci.yml`. O conserto foi **apagar a regra**,
+  não criar exceções — exceção do tipo `!.github/workflows/*.yml` não cobriria
+  `.github/ISSUE_TEMPLATE/`, e qualquer template de issue novo sumiria em silêncio.
+  De qualquer forma, **confirme com `git check-ignore -v <arquivo>` antes de assumir que um
+  `.yml` que você criou vai ser commitado**: o modo de falha é traiçoeiro, porque `git add` e
+  `git push` funcionam sem erro e o CI simplesmente nunca roda.
 - `.commitlintrc.json` existe e `@commitlint/cli` está instalado, mas nada invoca o commitlint.
   Commit message padronizada hoje é combinado verbal.
 - `package.json` não tem script `test`. O `name` ainda é `"my-app"`.

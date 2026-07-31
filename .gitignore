@@ -12,6 +12,11 @@
 vapid_keys.json
 .gh_token
 
+# Backups de arquivos de ambiente (scripts/rotate-db-password.cjs gera .env.bak).
+# Sem esta regra, `.env.bak` fica visível pro git e um `git add -A` distraído
+# commita a senha antiga do banco.
+*.bak
+
 
 # Build outputs & artifacts
 dist/
@@ -75,6 +80,11 @@ scratch_*
 # `lefthook.yml` — ou seja, o CI e os hooks de git nunca chegavam ao repositório
 # e o `git add` falhava sem mensagem de erro. Os YAML de lixo que a regra tentava
 # pegar já estão cobertos por `.playwright-mcp/`, `scratch/` e `.serena/`.
+#
+# Uma versão anterior desta branch tentava consertar isso com exceções
+# (`!.github/workflows/*.yml`, `!lefthook.yml`) mantendo o `*.yml` cru. Não
+# resolve: as exceções não cobrem `.github/ISSUE_TEMPLATE/`, então qualquer
+# template de issue NOVO sumiria em silêncio. Apagar a regra é o conserto.
 
 # Unlighthouse & Loki
 .unlighthouse/
