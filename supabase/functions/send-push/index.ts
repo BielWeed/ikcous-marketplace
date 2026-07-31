@@ -8,6 +8,24 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+/**
+ * O projeto está migrando das chaves legadas (anon/service_role, formato JWT) para
+ * as novas (publishable/secret). Durante a migração as duas coexistem: lê a nova e
+ * cai pra legada. Assim esta função funciona antes E depois de as legadas serem
+ * desligadas no painel — o que evita janela de indisponibilidade.
+ *
+ * Quando as legadas forem removidas de vez, o fallback pode sair.
+ */
+function readKey(newVar: string, legacyVar: string): string {
+    try {
+        const parsed = JSON.parse(Deno.env.get(newVar) ?? '{}')
+        if (parsed?.default) return parsed.default
+    } catch {
+        // variável ausente ou JSON inválido — segue pro fallback
+    }
+    return Deno.env.get(legacyVar) ?? ''
+}
+
 serve(async (req: Request) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
@@ -16,7 +34,7 @@ serve(async (req: Request) => {
     try {
         const supabaseClient = createClient(
             Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+            readKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY')
         )
 
         // Security check: Verify user is admin

@@ -25,10 +25,27 @@ serve(async (req: Request) => {
             throw new Error('RESEND_API_KEY is not configured in Supabase environment')
         }
 
-        // Verify Authorization token (SUPABASE_SERVICE_ROLE_KEY) to secure the endpoint
+        // Esta função é chamada por um trigger no banco, que manda a chave secreta do
+        // projeto no Authorization como segredo compartilhado.
+        //
+        // O projeto está migrando das chaves legadas (service_role, formato JWT) para as
+        // novas (secret). Aceita as DUAS durante a migração: se aceitasse só uma, ou o
+        // trigger atual pararia de passar, ou a função quebraria no dia em que as legadas
+        // fossem desligadas no painel.
         const authHeader = req.headers.get('Authorization')
-        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-        if (!authHeader || !serviceRoleKey || authHeader !== `Bearer ${serviceRoleKey}`) {
+        const acceptedKeys: string[] = []
+        try {
+            const parsed = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') ?? '{}')
+            if (parsed?.default) acceptedKeys.push(parsed.default)
+        } catch {
+            // variável ausente ou JSON inválido — segue só com a legada
+        }
+        const legacyKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+        if (legacyKey) acceptedKeys.push(legacyKey)
+
+        const authorized =
+            !!authHeader && acceptedKeys.some((key) => authHeader === `Bearer ${key}`)
+        if (!authorized) {
             console.error('Unauthorized request to send-otp Edge Function')
             return new Response(
                 JSON.stringify({ error: 'Unauthorized' }),
