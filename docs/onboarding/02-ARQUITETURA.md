@@ -290,6 +290,13 @@ secundária só escuta o broadcast (`:293-300`). React consome via `useSyncListe
 - O mutex `_isCatchingUp` (`:149`, `:572-573`) protege `catchUp` contra si mesmo, **não** contra o `fetchProducts`.
 - Update ou delete de variação recalcula `product.stock` como **soma** das ativas (`:454-458`, `:510-514`) e emite evento
   sintético de `products` — são as cópias 2 e 3 da regra de soma, enumerada inteira em [§6.2](#62-duplicação-de-regra-de-negócio).
+- **E a direção contrária desfaz esse cálculo: editar um produto com variantes apaga as variantes do cache.** O handler de
+  `INSERT`/`UPDATE` faz `vault.put(config.store, mapped)` (`:432-435`) — substitui o registro **inteiro**, sem merge com o que já
+  estava no IndexedDB. O payload de `postgres_changes` é a linha crua do WAL, **sem embed**: não vem `product_variants`. Logo
+  `mappers.ts:120-122` devolve `variants: []` e o `variantStock` de `:85-93` cai no ramo `: stock`, a coluna `estoque` crua, em vez
+  da soma dos `stock_increment` ativos. O produto fica no cache sem variantes e com o estoque errado até o `catchUp`, que é o
+  único que refaz a query **com** embed (`:805-807`, `.select("*, product_variants(*)")`, gravando por `putMany` em `:819`).
+  Enquanto isso não roda, a tela de detalhe do produto não tem o que renderizar nos seletores de variação.
 
 ### 4.3 `shared-brain` e `state-worker` — nunca foram ligados
 
@@ -393,6 +400,18 @@ em `:2132`.
 > **O caso que prova a regra:** `admin-carousels` ficou navegável em memória mas fora do roteador, e F5 caía na home. O fix
 > (`cd7eeb0`, 30/07/2026) precisou de **7 edições em 2 arquivos**, seis delas só no `App.tsx` — e a rota já estava correta em
 > outros 5 lugares. Hoje está registrado em 14 pontos e **não é mais um bug**: é o número empírico de quanto custa uma tela.
+
+**`handleNavigate` tem throttle, e ele descarta a navegação em silêncio.** `App.tsx:704-722`: se uma transição está em curso
+(`isTransitioningRef`), o destino é diferente do atual e não é troca de aba principal, o guard decide por tempo. Passados mais de
+400 ms desde `lastTransitionStartTimeRef` (`:709`), ele destrava e segue. Dentro dos 400 ms, e para toda view **fora** da lista de
+escape `["auth", "login", "home", "profile", "admin"]` (`:715-717`), a chamada faz `console.warn(...throttled to prevent animation
+race conditions)` e **`return`** (`:718-721`) — sem exceção, sem toast, sem valor de retorno que denuncie. Há ainda um safety
+timeout de 800 ms em `:908-918`.
+
+O efeito prático é traiçoeiro por causa de **quem** está na lista de escape: `home`, `profile` e `auth` sempre passam, então
+navegação manual pelo menu nunca esbarra nisso. Quem esbarra é a navegação **programática logo depois de outra** — tipicamente
+dentro de um `onSuccess`, indo para `order-success`, `order-details` ou uma tela `admin-*`. O usuário aperta o botão, a operação
+dá certo, e a tela simplesmente não muda. Só o console registra.
 
 **Nomenclatura bilíngue com fronteira única.** Banco em português (`produtos`, `preco_venda`, `data_cadastro`), tipo do app em
 inglês (`Product.price`, `.createdAt`); `mappers.ts:56-70` é o único lugar que atravessa. **O idioma dos identificadores data o
