@@ -283,43 +283,54 @@ E o front está codificado contra o **banco vivo**, não contra os arquivos:
 
 ## Saúde da engenharia
 
-Sem adjetivo. Cada número foi medido em 30/07/2026.
+Sem adjetivo. Os números foram medidos em 30/07/2026 e **oito linhas foram remedidas em 04/08/2026**,
+marcadas com `↻`. As oito mudaram porque o repositório mudou entre as duas datas — CI, hooks e scripts
+entraram nos PRs #10 e #11 —, não porque a medição anterior estivesse errada. As linhas sem `↻`
+continuam sendo a medição de 30/07 e **não** foram reconferidas.
 
 | Medição | Número |
 | --- | --- |
-| Script `test` no `package.json` | **0** (15 scripts, nenhum é teste). Nenhum runner instalado |
+| ↻ Script `test` no `package.json` | **existe**: `test` → `test:edge` → `deno test ... calculate-shipping/index_test.ts` (`package.json:12-13`). Em 30/07 eram 15 scripts e nenhum de teste |
 | Arquivos `*.test.*` / `*.spec.*` / `__tests__` versionados | **0** |
 | Casos de teste que **existem** no repo | **12**, todos em `supabase/functions/calculate-shipping/index_test.ts` (`grep -c '^Deno.test'`) |
-| Casos de teste que **alguém executa** | **0** — não há script `deno test`, não há CI, e `npx knip` classifica o arquivo como "Unused files (1)" |
+| ↻ Casos de teste que **alguém executa** | **12** — `npm test` devolve `ok \| 12 passed \| 0 failed`, e o job `Testes (Deno)` do CI roda em todo PR (11 s na run `30950836440`). O `npx knip` **continua** classificando o arquivo como "Unused files (1)": o `knip.json` não foi atualizado |
 | Testes SQL | 1 arquivo, `supabase/tests/database_verification_test.sql` (897 bytes), sem nenhum script ou hook que o chame |
-| Workflows de CI | **0**. O diretório `.github/workflows/` **não existe**; `.github/` só tem `copilot-instructions.md` |
+| ↻ Workflows de CI | **1**, com **5 jobs**: `.github/workflows/ci.yml` (175 linhas, versionado) — Tipos, Testes (Deno), Build e tamanho, Varredura de segredo e Catraca de lint. `.github/` tem 8 arquivos: mais `CODEOWNERS`, o template de PR, 4 de issue e o `copilot-instructions.md` |
 | Cobertura de teste | Não computável — não há ferramenta de cobertura instalada |
-| `npm run typecheck` | exit 0, **0 erros, 0,785 s, 0 arquivo analisado**. `tsconfig.json:2` é `"files": []` com `references` solution-style e o script não passa `-b` |
+| ↻ `npm run typecheck` | exit 0, **0 erros, 14 a 18 s**, e **checa de verdade**: o script virou `tsc -b --force` (`package.json:11`), então entra nos projetos referenciados. Erro de tipo injetado num clone descartável produziu `error TS2322` e **exit 2**. Roda também no `pre-push` e no job `Tipos` |
 | Typecheck **real** (`npx tsc -p tsconfig.app.json --noEmit`) | exit 0, **0 erros**, 14,16 s, 911 arquivos carregados (177 sob `src/`), com `strict`, `noUnusedLocals`, `noUnusedParameters` e `noFallthroughCasesInSwitch` ligados |
-| `npm run lint` (eslint) | exit 1 — **1120 problemas: 14 erros + 1106 warnings** em 114 arquivos. Top: 704 `tailwindcss/classnames-order`, 216 `security/detect-object-injection`, 26 `react-hooks/exhaustive-deps` |
-| `npm run biome:check` | exit 1 — **337 erros + 6 warnings** em 327 arquivos. 293 (87%) são só formatação, com `␍` (CRLF) como diferença |
+| ↻ `npm run lint` (eslint) | exit 1 — **560 problemas: 7 erros + 553 warnings**, idêntico ao teto de `.lint-baseline.json`. O `1120 / 14 / 1106` de 30/07 estava **dobrado**: a varredura pegou `.claude/worktrees/`, uma cópia do repo. Top continua `tailwindcss/classnames-order`, `security/detect-object-injection` e `react-hooks/exhaustive-deps` |
+| ↻ `npm run biome:check` | **31 erros + 3 warnings no CI**, lidos do log da Catraca em duas runs (`30944348274`, `30950836440`) e iguais ao teto gravado. No Windows o mesmo comando devolve **103 erros**, porque cada `␍` de CRLF vira erro de formatação que o Linux não vê — foi daí que saiu o `337 + 6` de 30/07. **O número que a Catraca cobra é o do CI** |
 | `npm run lint:css` | exit 2 — **13 erros**, todos em `src/index.css:1227-1295`, todos auto-corrigíveis com `--fix` |
 | `npx knip` | 1 unused file, 3 unused devDeps (`@commitlint/cli`, `pg`, `puppeteer`), 1 unlisted dep (`jsr`), 1 unlisted binary (`sqlfluff`), 38 unused exports, 29 unused types |
-| Linhas ativas em `lefthook.yml` | **0 de 42** — o arquivo é 100% comentário, o boilerplate intocado do `lefthook install` |
-| Hooks git realmente instalados | **1** (`prepare-commit-msg`), duplamente morto: chama um job que o `lefthook.yml` não define, e o path de fallback aponta para o cache npx da máquina do Gabriel |
+| ↻ Linhas ativas em `lefthook.yml` | **36 de 83** — deixou de ser boilerplate. Define `pre-commit` (guarda-de-branch, secretlint, eslint), `commit-msg` (commitlint) e `pre-push` (guarda-de-branch, typecheck) |
+| ↻ Hooks git realmente instalados | **3**: `pre-commit`, `commit-msg` e `pre-push`, todos disparando de verdade — verificado em cada commit desta sessão. O `prepare-commit-msg` duplamente morto saiu |
 | `console.*` em `src/` | **506** (270 `error`, 168 `log`, 66 `warn`, 2 `debug`) |
 | `console.*` no bundle de produção | **523** em 80 arquivos JS, medidos no `dist/` presente no disco. Zero opção de `drop`/`pure_funcs`/`terser` no `vite.config.ts` |
 
 > **Contradição com o contexto base e com o [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md).** Os dois
-> dizem "0 testes automatizados". O correto é: **12 casos escritos e bons — testam
-> `calculateSmartFallback`, `getCartHash` e `isLocalCep`, incluindo o bug do hífen na faixa de CEP —
-> e 0 executados**. O que é zero é a execução, não a autoria. Onde o 01 diz "Testes automatizados:
-> 0", leia "12 escritos, 0 executados".
+> dizem "0 testes automatizados". São **12 casos escritos e bons** — testam `calculateSmartFallback`,
+> `getCartHash` e `isLocalCep`, incluindo o bug do hífen na faixa de CEP. Em 30/07 nenhum era
+> executado; **em 04/08 os 12 rodam**, por `npm test` e pelo job `Testes (Deno)` do CI. Onde o 01 diz
+> "Testes automatizados: 0", leia "12, e passam".
 >
-> **O typecheck verde é o pior sinal do repositório**, porque não é falso apenas em forma: quando
-> ele realmente checa, o resultado é **0 erros**. Corrigir o wiring do script não abre cratera
-> nenhuma. É correção barata que devolve uma rede de segurança inteira.
+> **A frase mais importante desta seção era uma previsão, e ela se cumpriu.** A versão de 30/07 dizia:
+> *"o typecheck verde é o pior sinal do repositório... corrigir o wiring do script não abre cratera
+> nenhuma, é correção barata que devolve uma rede de segurança inteira"*. Foi feito. O script virou
+> `tsc -b --force`, passou a reprovar de verdade, e o resultado continua **0 erros** — a cratera não
+> existia mesmo. Fica registrado porque é o único caso deste documento em que a estimativa de custo
+> foi conferida contra a execução.
 
-### Armadilha que impede consertar o CI
+### ~~Armadilha que impede consertar o CI~~ — resolvida em 30/07/2026
 
-`git check-ignore -v .github/workflows/ci.yml` devolve `.gitignore:60:*.yml`, exit 0. A regra
-`*.yml` está no bloco de screenshots do Playwright (`.gitignore:53-60`) — foi colateral de uma
-limpeza. **Criar `ci.yml` e dar `git add` falha em silêncio.**
+Era: `git check-ignore -v .github/workflows/ci.yml` devolvia `.gitignore:60:*.yml`, exit 0 — a regra
+`*.yml` tinha entrado como colateral de uma limpeza de screenshots do Playwright, e **criar `ci.yml`
+e dar `git add` falhava em silêncio**.
+
+Hoje o mesmo comando sai **vazio, exit 1**, e o `ci.yml` está versionado. A lição sobrevive ao
+sintoma e está detalhada na armadilha 6 do
+[`03-SETUP-AMBIENTE.md`](03-SETUP-AMBIENTE.md): padrão global sem escopo no `.gitignore` faz
+`git add` falhar sem erro, e o `*.txt` da `:19` continua nessa forma.
 
 ### Higiene do repositório
 
