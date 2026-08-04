@@ -12,9 +12,10 @@ Isto não é cerimônia importada de time grande. É a resposta ao problema medi
 **o Gabriel escreveu 100% do código e 20 tarefas do backlog não podem avançar sem uma resposta
 que só ele tem.** Enquanto essas respostas viverem no Discord, o gargalo continua onde está.
 
-> **⧗ `docs/backlog/` ainda vive no PR #9, aberto em 30/07/2026.** Até ele mergear (e passar
-> pelo backmerge `main → develop`), os links para o backlog nesta página não resolvem. Leia
-> com `git show 'docs/estado-e-backlog:docs/backlog/BACKLOG.md'`.
+> O aviso que ficava aqui dizia que `docs/backlog/` ainda vivia no PR #9 e que os links desta
+> página não resolviam. **O #9 mergeou em 31/07/2026** e os arquivos estão na `develop` — os links
+> abaixo funcionam. Os marcadores `⧗` que sobraram no resto do documento têm a mesma origem e podem
+> ser removidos junto de uma revisão dele.
 
 ---
 
@@ -22,7 +23,7 @@ que só ele tem.** Enquanto essas respostas viverem no Discord, o gargalo contin
 
 | ADR | Título | Estado | Data |
 | --- | --- | --- | --- |
-| [0001](0001-preview-da-vercel-aponta-para-producao.md) | Apontar o ambiente Preview da Vercel para o banco de produção | Proposta | 04/08/2026 |
+| [0001](0001-preview-da-vercel-aponta-para-producao.md) | Apontar o ambiente Preview da Vercel para o banco de produção | Aceito | 04/08/2026 |
 
 Ao mergear um ADR, acrescente a linha aqui.
 

@@ -1,7 +1,7 @@
 # ADR 0001 — Apontar o ambiente Preview da Vercel para o banco de produção
 
 - **Data:** 04/08/2026
-- **Estado:** Proposta
+- **Estado:** Aceito
 - **Decide:** Gabriel
 - **Cartão relacionado:** `INFRA-060`
 
