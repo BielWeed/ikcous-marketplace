@@ -336,6 +336,28 @@ use `npm run size` para detectar o vazamento de `NODE_ENV` — use a busca da ar
 `buildCommand: npm run build`), então o `public/` dela não tem o arquivo. **Correção.**
 `git add -f public/robots.txt`, ou consertar a `:19`.
 
+### 11. Origem nova funciona local e é bloqueada em produção, sem erro na tela
+
+**Sintoma.** Você adiciona um CDN, uma fonte do Google, um endpoint de terceiro ou uma imagem de
+outro domínio. Funciona em `npm run dev`, passa no build, passa no CI — e no site publicado o recurso
+simplesmente não carrega. Nenhum erro de UI, nenhum toast: só uma linha de violação no console.
+
+**Causa.** A CSP é uma allowlist fechada e mora **só** no `vercel.json:36`. Hoje ela permite:
+
+| Diretiva | Origens liberadas |
+| --- | --- |
+| `img-src` | `'self'`, `blob:`, `data:`, `https://*.supabase.co`, `https://images.unsplash.com`, `https://placehold.co` |
+| `font-src` | `'self'`, `data:`, `https://fonts.gstatic.com` |
+| `connect-src` | `'self'`, `https://*.supabase.co`, `wss://*.supabase.co`, `https://*.sentry.io`, `https://fonts.googleapis.com`, `https://fonts.gstatic.com`, `https://images.unsplash.com`, `https://placehold.co` |
+
+**Por que o local não avisa:** não existe CSP nenhuma no dev server. `grep -i "Content-Security\|http-equiv" index.html` e
+`grep -i "headers\|Content-Security" vite.config.ts` devolvem **zero** — o header nasce no edge da Vercel, depois de todo o gate
+local. Logo, todo o seu ciclo de desenvolvimento é verde e a falha só existe em produção.
+
+**Correção.** Acrescentar a origem na diretiva certa do `vercel.json:36` **no mesmo PR** que introduz o recurso. E lembre que
+`vercel.json` é excluído do clone e do sync Core→cliente: correção de CSP feita aqui **não** chega em loja nenhuma derivada.
+Replique à mão.
+
 ---
 
 ## 6. Regras para o Supabase de produção
@@ -365,6 +387,29 @@ Você vai ter credencial do banco de uma loja no ar. São 12 regras, divididas e
 - **10.** `DROP` de qualquer objeto, e `TRUNCATE` de qualquer tabela.
 - **11.** Alterar policy de RLS, `GRANT` / `REVOKE`, ou `ALTER ... OWNER` sem revisão em PR.
 - **12.** Colar valor de credencial em arquivo que não seja o seu `.env` local — nem em documento, nem em issue, nem em mensagem.
+
+### Duas "correções" de segurança que derrubam a loja
+
+As duas parecem melhoria óbvia numa auditoria, e as duas quebram a vitrine anônima. Estão aqui porque
+o custo de descobrir isso em produção é a loja fora do ar.
+
+**Não ligue `security_invoker` em `vw_produtos_public`.** A ausência é **deliberada**, e está escrita
+na própria migration: `20260713000000_fix_public_products_view.sql:4` diz *"Remove security_invoker to
+allow anonymous SELECT without exposing 'custo' column"*. Com `security_invoker = on` a view passa a
+rodar com o privilégio de quem chama; e o `anon` **não tem SELECT em `produtos`** (`SET LOCAL ROLE
+anon` → `permission denied for table produtos`). Resultado: catálogo vazio para todo visitante
+deslogado. A proteção do `custo` hoje vem da lista de colunas da view, que não o inclui — é proteção
+por omissão, e trocar por proteção por regra exige **antes** dar SELECT ao `anon` na tabela base, ou
+manter a view como está. `v_store_config`, ao contrário, **mantém** `security_invoker`
+(`20260712230000_add_local_shipping_config.sql:20`) — as duas views não seguem a mesma regra, de propósito.
+
+**Não faça `REVOKE` de `is_admin()` para `anon`.** A função é chamada dentro de policies que o `anon`
+atravessa; revogar o EXECUTE quebra as queries anônimas. Se o objetivo é reduzir superfície, o caminho
+é revisar as policies que a usam, não o `GRANT`.
+
+> Isso **não** significa que a modelagem está boa. Significa que os dois defeitos são reais e o
+> conserto ingênuo é pior que o defeito. Qualquer mudança aqui é migration com PR, revisão do Gabriel
+> e teste do caminho anônimo — não `ALTER` avulso.
 
 ### Ritual obrigatório antes de qualquer escrita
 

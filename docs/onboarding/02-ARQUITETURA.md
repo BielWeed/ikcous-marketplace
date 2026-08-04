@@ -334,6 +334,15 @@ Depois de **5 minutos** sem ACK, desregistra todos os SWs, escreve o motivo em `
 raciocínio: aba escondida não conta (`:41-44`) e, se o próprio timer atrasou mais de 45 s, a aba foi suspensa e o pulso é
 resetado em vez de acusado (`:46-55`). Remover qualquer uma transforma "celular no bolso" em reload automático.
 
+**E o que quebra se mexer no _outro_ lado, que é pior.** O contrato do heartbeat depende de o bloco
+`if (event.data === "HEARTBEAT_PING")` continuar sendo a **primeira coisa** do listener de `message` do
+`sw.ts` (`:208-216`) — hoje é, e nada roda antes dele. Qualquer código novo inserido acima, que lance,
+mata o ACK **em silêncio**: não há `try/catch` em volta, o sentinel não distingue "SW morto" de
+"listener quebrado", e cinco minutos depois ele desregistra o Service Worker de **toda a base
+instalada**, não só da aba do dev. O raio é esse, e é a razão de o bloco estar onde está. Quem editar
+o listener do SW mexe num watchdog que mora em outro arquivo — e a seção acima, sobre editar
+`pwa-sentinel.ts`, não protege contra isso.
+
 ### 4.6 O padrão de contextos — 5 providers, 2 pontos de montagem
 
 O [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md) conta 6 contextos (`:36`) e não está errado: são **5 providers vivos** mais o
@@ -461,6 +470,19 @@ via `useDebounce` no `useSearch` (`:15-17`), 200 ms no `LocalBufferedInput` (`:6
 componentes `lazy`), `AdminProductsView.tsx` (1.718), `ProductView.tsx` (1.415, onde vivem duas das três semânticas de
 variação), `useProducts.ts` (1.368, dois hooks no mesmo nome separados pelo flag `autoFetch` em `:162-163`) e `AdminLayout.tsx`
 (1.045). `src/views/admin/` soma **23.562 linhas** em 17 arquivos — média de 1.386 por tela.
+
+**A árvore das abas existe duas vezes, e a bifurcação é por navegador.** `useViewTransition.ts:13-18` faz feature detect com
+`("startViewTransition" in document)`: Chrome e Edge caem num ramo, Safari e Firefox no outro — e cada ramo repete a árvore
+inteira. No admin, `AdminArea.tsx:278` abre o ramo View Transitions e `:390` o de framer-motion, cada um com os mesmos cinco
+`TabWrapper` + `LocalErrorBoundary` + `DeferredTabContent` (`admin-dashboard`, `admin-products`, `admin-orders`,
+`admin-customers`, `admin-settings`), fechando em `:388` e `:511`. **O lado do cliente tem a mesma divisão** e não estava em
+documento nenhum: `App.tsx:2173` (`{isTransitionSupported ? (`) contra `:2293` (`<motion.div`), fechando em `:2421`, dentro de
+`renderCustomerContent` (`:2106`).
+
+> A consequência é o que faz disso armadilha, e não só inchaço: **alterar uma prop em um ramo só produz bug que não reproduz no
+> navegador do dev.** Quem desenvolve no Chrome edita o ramo de View Transitions, testa, e o defeito nasce no Safari — ou o
+> contrário. O [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md) menciona a duplicação, mas na coluna "Ressalvas de escala", ao lado de
+> "`AdminBannersView` tem 5.385 linhas": tratada como peso, não como risco de correção parcial.
 
 ### 6.2 Duplicação de regra de negócio
 
