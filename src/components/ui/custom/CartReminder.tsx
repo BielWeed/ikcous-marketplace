@@ -22,9 +22,18 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
 
   const totalAmount = cartTotal;
 
-  const isFree = totalAmount >= config.freeShippingMin;
-  const amountToFree = Math.max(0, config.freeShippingMin - totalAmount);
-  const progress = Math.min(100, (totalAmount / config.freeShippingMin) * 100);
+  // freeShippingMin = 0 significa que o lojista DESLIGOU a regra no admin — mesmo caso
+  // já tratado em FreeShippingBlock.tsx:17-20. Sem esta guarda `isFree` era sempre
+  // verdadeiro (todo total é >= 0) e o progresso dividia por zero: o cliente logado via
+  // "Frete VIP Liberado" com a barra cheia enquanto o checkout cobrava frete.
+  const hasFreeShippingGoal = config.freeShippingMin > 0;
+  const isFree = hasFreeShippingGoal && totalAmount >= config.freeShippingMin;
+  const amountToFree = hasFreeShippingGoal
+    ? Math.max(0, config.freeShippingMin - totalAmount)
+    : 0;
+  const progress = hasFreeShippingGoal
+    ? Math.min(100, (totalAmount / config.freeShippingMin) * 100)
+    : 0;
 
   // Reset dismiss state and visibility when undocked
   useEffect(() => {
@@ -105,7 +114,13 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
                 </span>
                 <div className="size-1 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
               </div>
-              {!user ? (
+              {!hasFreeShippingGoal ? (
+                <p className="text-[10px] font-semibold leading-tight text-slate-600">
+                  {itemCount === 1
+                    ? "1 item no seu carrinho"
+                    : `${itemCount} itens no seu carrinho`}
+                </p>
+              ) : !user ? (
                 <p className="text-[10px] font-semibold leading-tight text-slate-600">
                   Faça login para liberar o{" "}
                   <span className="italic text-emerald-500">Frete VIP</span>
