@@ -75,10 +75,12 @@ retorna só ele) e **acrescente as 4 chaves que faltam nele**. Detalhe na seçã
 nenhum o script para antes disso**, em `:110-114`, sem olhar a `DATABASE_URL` — ela só é lida na 125.
 Se a `DATABASE_URL` estiver certa, essa verificação **deixa um `rollback-*.sql` na raiz** — regra 4.
 
-**Passo 5 — provar que o TypeScript compila:** `npx tsc -p tsconfig.app.json --noEmit`.
+**Passo 5 — provar que o TypeScript compila:** `npm run typecheck`.
 
-*Deu certo se:* **zero linha de saída** e exit 0, em ~17 s. Silêncio é aprovação aqui.
-**Não use `npm run typecheck`** — armadilha 4.
+*Deu certo se:* **zero linha de saída** e exit 0, em 14 a 18 s conforme o cache. Silêncio é aprovação aqui.
+O script é `tsc -b --force` e cobre os projetos referenciados — inclusive o `tsconfig.node.json`, que
+checa o `vite.config.ts`. É o mesmo comando que o hook de `pre-push` roda e que o job `Tipos` do CI
+executa, então o que passa aqui passa lá. Ver armadilha 4 para o histórico.
 
 **Passo 6 — subir o dev server:** `npm run dev`.
 
@@ -266,14 +268,23 @@ versões do ledger sem arquivo local foram aplicadas por fora, provavelmente pel
 **O caminho certo** é `scripts/db-apply.cjs`, que escolhe explicitamente o que aplicar — seção 6. O
 comentário do script (`:6-7`) ainda cita os números velhos de 29/07 ("~50 locais / ~25 no banco"); os medidos hoje são 42 pendentes (41 versões) e 28.
 
-### 4. `npm run typecheck` não checa nada
+### 4. ~~`npm run typecheck` não checa nada~~ — RESOLVIDO em 30/07/2026
 
-**Sintoma.** Volta em 0,74 s com exit 0 e você acredita que o TypeScript está limpo. **Causa.**
-`tsconfig.json:2` é `"files": []` e o resto é só `references` (solution-style); o script é
-`tsc --noEmit` **sem `-b`** (`package.json:10`), e nessa forma o tsc obedece o `files: []` e não entra
-nos projetos referenciados. Provado: `npx tsc --noEmit --listFiles` imprime **0 linhas**.
-**Correção.** `npx tsc -p tsconfig.app.json --noEmit` (17,30 s) ou `npx tsc -b` (19,10 s). Os dois
-passam com 0 erro hoje, sob `strict` + `noUnusedLocals` + `noUnusedParameters` (`tsconfig.app.json:23-25`).
+**Esta armadilha não existe mais.** O número fica para não quebrar as referências do documento.
+
+**O que era.** `tsconfig.json:2` é `"files": []` e o resto é só `references` (solution-style); o
+script era `tsc --noEmit` **sem `-b`**, e nessa forma o tsc obedece o `files: []` e não entra nos
+projetos referenciados. `npx tsc --noEmit --listFiles` imprimia **0 linhas** — exit 0 em 0,74 s
+analisando arquivo nenhum.
+
+**O que é hoje.** `package.json:11` é `"typecheck": "tsc -b --force"`. Medido em 04/08/2026: exit 0
+em 14 a 18 s conforme o cache, e um erro de tipo injetado num clone descartável produziu
+`src/lib/utils.ts(32,14): error TS2322` com **exit 2**. Cobre também o `tsconfig.node.json` — erro
+plantado no `vite.config.ts` reprova. O mesmo comando roda no hook de `pre-push` e no job `Tipos` do
+CI, que tem 5 jobs e histórico de execuções verdes.
+
+> Continua valendo o hábito: `strict`, `noUnusedLocals` e `noUnusedParameters` estão ligados
+> (`tsconfig.app.json:23-25`), então variável não usada reprova o build. Não é ruído — é o gate.
 
 ### 5. `git add .` comita credencial real
 
@@ -285,22 +296,31 @@ ignorado**: `git check-ignore .env.bak` retorna exit 1. O `.gitignore` cobre `.e
 **Correção.** Neste repo, **nunca** `git add .` nem `git add -A`; adicione arquivo por arquivo. Este
 repo já teve credencial em histórico público antes.
 
-### 6. Seu arquivo de CI não entra no commit
+### 6. ~~Seu arquivo de CI não entra no commit~~ — RESOLVIDO em 30/07/2026
 
-**Sintoma.** Você cria `.github/workflows/ci.yml`, faz `git add`, e ele não aparece no commit.
-**Causa.** `.gitignore:60` é um `*.yml` cru, sem escopo. Verificado:
-`git check-ignore -v .github/workflows/ci.yml` → `.gitignore:60:*.yml`. A pasta `.github/` existe e
-contém só `copilot-instructions.md`. Os 107 `.yml` versionados são dumps
-`.playwright-mcp/page-*.yml` que entraram entre 02 e 04/07 (38 + 55 + 14), antes da regra.
+**Esta armadilha não existe mais.** O número fica para não quebrar as referências do documento.
 
-> **Esta regra não é a causa dos 0 workflows de CI**, e uma versão anterior deste documento dizia que
-> era. Refutado por git: `git blame -L 60,60 .gitignore` datou a linha em **28/07/2026** (`90d88cb8`),
-> o primeiro commit do repo é de **05/04/2026** (`da94d8c`), e
-> `git log --all --diff-filter=A -- ".github/workflows/*"` sai **vazio** — a pasta nunca existiu em
-> branch nenhuma. **Por que o projeto nunca teve CI não está documentado — perguntar pro Gabriel.**
+**O que era.** Um `*.yml` cru, sem escopo, no `.gitignore`. `git check-ignore -v
+.github/workflows/ci.yml` casava com ele, então criar o arquivo e dar `git add` falhava **em
+silêncio**.
 
-**Correção.** `git add -f`, ou (melhor, num PR à parte) restringir a linha 60 ao diretório que ela
-pretendia pegar. O mesmo vale para `:19` (`*.txt`) e `:55` (`*.png`).
+**O que é hoje.** A regra foi removida no PR #11. Medido em 04/08/2026: não há nenhuma linha `*.yml`
+ativa — no lugar ficou o bloco de comentário de `.gitignore:78-87`, que documenta por que a tentativa
+anterior com exceções (`!.github/workflows/*.yml`) não resolvia. `git check-ignore -v
+.github/workflows/ci.yml` sai **vazio, exit 1**. O `.github/` tem 8 arquivos versionados: `ci.yml`
+(175 linhas, 5 jobs), `CODEOWNERS`, o template de PR, 4 templates de issue e o
+`copilot-instructions.md`.
+
+> A parte do documento que sobrevive é a lição, não o sintoma: **`.gitignore` com padrão global sem
+> escopo faz `git add` falhar sem erro.** Continuam nessa forma o `:19` (`*.txt`, que é a causa da
+> armadilha 10) e o `*.png`. Antes de concluir que "o git não quer adicionar meu arquivo", rode
+> `git check-ignore -v <caminho>` — ele nomeia a linha exata que está bloqueando.
+>
+> **Histórico, porque este documento já se corrigiu uma vez aqui:** uma versão anterior dizia que
+> essa regra era a causa de o projeto não ter CI. Refutado por git — `git blame` datou a linha em
+> 28/07/2026, o primeiro commit do repo é de 05/04/2026, e `git log --all --diff-filter=A --
+> ".github/workflows/*"` saía vazio: a pasta nunca tinha existido em branch nenhuma. **Por que o
+> projeto passou de abril a julho sem CI continua sem resposta escrita.**
 
 ### 7. `npm run dev` aborta em vez de trocar de porta
 
@@ -480,16 +500,15 @@ real em `main` — se vier vermelho no seu primeiro dia, não foi você.
 | Comando | Quando | Duração | Exit hoje | O que a saída significa |
 | --- | --- | --- | --- | --- |
 | `npm run dev` (`package.json:7`) | sempre | não medido em partida limpa; falha em ~2 s se a 5173 estiver ocupada | 0 / **1** se porta ocupada | `[PWA Build] Version determined: 1.0.0-dev` + banner do Vite |
-| `npx tsc -p tsconfig.app.json --noEmit` | antes de abrir PR | **17,30 s** | 0 | 0 linha de saída = `src/` limpo |
-| `npx tsc -b` | idem, checa os 2 projetos | **19,10 s** | 0 | é o que o `npm run build` roda antes do Vite |
-| `npm run typecheck` (`:10`) | **nunca** | 0,74 s | 0 (falso) | não-op: 0 arquivo analisado |
-| `npm run lint` (`:9`) | antes de PR | **58,08 s** | **1** | 1120 problemas: 14 erros, 1106 warnings. **Esta é a linha de base** |
+| `npm run typecheck` (`:11`) | antes de abrir PR | **14 a 18 s** | 0 | `tsc -b --force`: 0 linha de saída = os projetos referenciados estão limpos. É o mesmo comando do `pre-push` e do job `Tipos` do CI |
+| `npx tsc -p tsconfig.app.json --noEmit` | só para isolar `src/` do resto | **17,30 s** | 0 | subconjunto do anterior; não cobre o `tsconfig.node.json` |
+| `npm run lint` (`:9`) | antes de PR | **58,08 s** | **1** | **560 problemas: 7 erros, 553 warnings** — remedido em 04/08/2026, e é o que a Catraca cobra. O `1120 / 14 / 1106` que este documento trazia contava duas vezes: a varredura pegou `.claude/worktrees/`, que é uma cópia do repo |
 | `npm run biome:check` (`:13`) | antes de PR | **2,41 s** | **1** | 435 arquivos, 337 erros, 6 warnings. ~24× mais rápido que o eslint, regras sobrepostas |
 | `$env:NODE_ENV='production'; npx vite build` | build local correto | **20,93 s** | 0 | 3934 módulos, 2645,2 kB de `.js`, precache de 85 entradas |
 | `npm run build` (`:8`) sem tocar `NODE_ENV` | **nunca localmente** | 39,56 s | 0 | passa e entrega bundle de dev — armadilha 2 |
 | `npm run size` (`:20`) | **depois** de buildar | **33,09 s** | 0 | JS 515,14 kB / 800 kB; CSS 26,7 kB / 100 kB. Sobe um Chrome headless |
 | `node scripts/db-apply.cjs --dry-run x.sql` | antes de aplicar migration | não medido; conexão + `SELECT` no ledger levou ~3 s | não medido | imprime o host, grava `rollback-*.sql`, não aplica |
-| `npm run knip` (`:11`) | investigar código morto | **não medido** | não medido | ver a ressalva no [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md):143 — mas lá está escrito que o `knip.json` "esconde isso do CI" e **não existe CI** (armadilha 6, e `01:43` conta 0). Quem ele esconde é do dev que roda o comando à mão |
+| `npm run knip` (`:16`) | investigar código morto | **não medido** | não medido | ver a ressalva no [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md):143. A ressalva de lá diz que o `knip.json` "esconde isso do CI"; **o CI existe desde 30/07** (5 jobs), mas nenhum deles roda `knip` — então quem ele esconde continua sendo o dev que roda o comando à mão |
 | `npm run spellcheck` (`:17`), `lint:css` (`:16`), `lint:html` (`:19`), `sqlfluff:lint` (`:15`) | raramente | **não medido** | não medido | `sqlfluff` não é dependência npm — precisa do binário Python |
 
 **Não rode `--fix` nem `biome format --write` em massa.** São 712 warnings auto-corrigíveis no eslint
