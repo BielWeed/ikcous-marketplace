@@ -22,7 +22,7 @@ que só ele tem.** Enquanto essas respostas viverem no Discord, o gargalo contin
 
 | ADR | Título | Estado | Data |
 | --- | --- | --- | --- |
-| — | *nenhum ADR escrito ainda* | — | — |
+| [0001](0001-preview-da-vercel-aponta-para-producao.md) | Apontar o ambiente Preview da Vercel para o banco de produção | Proposta | 04/08/2026 |
 
 Ao mergear um ADR, acrescente a linha aqui.
 
