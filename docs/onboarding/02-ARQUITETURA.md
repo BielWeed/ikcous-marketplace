@@ -253,6 +253,27 @@ Uso: `await DataVault.init()` sempre devolve a mesma instância; 11 métodos, de
   setLastSync src/` devolve 19 linhas, das quais 1 é a definição (`:455`): são **18 chamadas** (1 interna em `:495`, 17
   espalhadas) alimentando um dado que ninguém lê. O [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md) contava 14; corrigido lá em 30/07/2026.
 
+**Store nova no vault = 5 lugares**, e o quinto quase nunca é lembrado. Linhas de `src/lib/dataVault.ts` salvo indicação:
+(1) union `StoreName` (`:19-26`, hoje 7 nomes — 6 stores de dados mais `_meta`, que só guarda timestamp de sync);
+(2) `MIGRATIONS[3]` nova (`:37-75`) — é `Record<number, MigrationFn>`, **não array**: a chave *é* a versão de destino, por isso
+começa em 1; (3) incrementar `DATA_VAULT_VERSION` (`:16`, hoje `2`), que precisa casar com a chave nova; (4) incluir o nome no
+array de 7 stores em `StoreContext.tsx:122-130`, que limpa o vault a qualquer exceção na hidratação — store fora dali nunca é
+limpa, e vira cache podre permanente; (5) se a store espelha tabela do Supabase, uma entrada em `TABLE_CONFIGS`
+(`realtimeSyncEngine.ts:56-143`, hoje 6 tabelas → 6 stores), que alimenta os filtros `postgres_changes` do canal (`:184-218`).
+Sem o passo 5 a store nunca recebe realtime, e o `catchUp` — hardcoded tabela a tabela (`:589-609` e `:643-745`, sem nenhum laço
+sobre `TABLE_CONFIGS`) — também não a reconcilia: registro apagado no servidor fica no IndexedDB do cliente até um purge.
+
+> **Nenhuma migration já executada pode ser editada — nem a `[1]` nem a `[2]`.** O navegador guarda a versão do IndexedDB por
+> origem: o laço de `:116-122` vai de `event.oldVersion` (`:109`) até `DATA_VAULT_VERSION`, e em quem já está na v2 o
+> `onupgradeneeded` sequer dispara. Editar a `[2]` só muda instalação nova, criando duas populações com schemas diferentes. A
+> única exceção é o `performNuclearPurge` (`useUpdateCheck.ts:165`), que apaga o banco e faz o próximo boot rodar `[1]` e `[2]`
+> de novo. **A versão antiga desta regra nomeava só a `[1]`** — a `[2]` subiu no commit `2e16cdf`, de 29/07/2026, e já rodou em
+> todo mundo que abriu o app desde então.
+>
+> E o sintoma de bump sem migration é maior do que o bullet acima descreve: `:117-118` pula em silêncio, a leitura cai no catch
+> e devolve `[]` (`:231-235`), mas a **escrita rejeita** (`:323-326`, `:411-414`). Como todo hook termina em `replaceAll` +
+> `setLastSync`, o primeiro erro real vem do write, não do read.
+
 ### 4.2 `RealtimeSyncEngine` — `src/lib/realtimeSyncEngine.ts` (877 linhas)
 
 Objeto singleton (não classe) que liga o Realtime do Supabase ao `DataVault`, para manter o cache fresco sem polling e sem cada
@@ -343,6 +364,36 @@ com qualquer mudança. **Por que o split existe: motivo não documentado — per
 
 ## 5. Convenções observadas na prática
 
+**Criar uma tela = escrever o nome dela no roteador manual: 7 lugares no cliente, 12 no admin.** Não há react-router — a tela só
+existe onde o nome está escrito, e o TypeScript não acusa nenhuma ausência. **Cliente:** (1) union `View` em
+`types/index.ts:245`; (2) a const `lazyWithPreload()` — `App.tsx:12-47` **e** `:107-139`, o bloco é partido em dois; (3) o `case`
+em `renderCustomerSecondaryView` (`App.tsx:1950`), senão a tela abre em branco (`default: return null` em `:2101`);
+(4) `validViews` dentro de `syncWithUrl` (`App.tsx:1399`) — sem ele o F5 deixa a URL errada na barra e renderiza `home`
+(`App.tsx:506`); (5) `VIEW_COMPONENTS` (`App.tsx:147`) e (6) `VIEW_PREFETCH_MAP` (`usePrefetchOnHover.ts:15`), que só fazem
+preload e prefetch — `user-profile` roda em produção sem o (6), e faltar ali dá *flash*, não rota quebrada; (7) uma linha de
+"back" em `getNavigationDirection` (`App.tsx:405-424`), senão o voltar anima para frente.
+
+**Admin:** o nome **tem** de começar com `admin` — `App.tsx:2606` é `currentView.startsWith("admin") && currentView !== "admin-login"`,
+roteamento por prefixo e não por lista, com `admin-login` como única exceção escrita à mão. Batizar errado joga a tela na árvore
+do cliente, com `BottomNav` e sem o gate `isAdmin`. Troque (2) e (3) por `AdminArea.tsx:11` e `:529`, e some seis:
+título do fallback (`AdminArea.tsx:154-169`), `adminViewIndices` (`App.tsx:369`), `adminViews` (`App.tsx:2112` — `privateViews`
+herda por spread em `:2139`, é **uma** edição e não duas), `subAdminViews` (`App.tsx:1442`), o ramo de reroute do popstate
+(`App.tsx:1462-1516`) e `getParentView()` (`AdminLayout.tsx:486`) — estes dois precisam apontar para o **mesmo** pai, e hoje
+`admin-banners`, `admin-push` e `admin-whatsapp-config` divergem. Nada disso cria o ponto de entrada: alguém ainda precisa chamar
+`onNavigate` (ex.: `AdminSettingsView.tsx:371`). Se a tela recebe `?id=`, some **4 listas idênticas** (`App.tsx:869`, `:1562`,
+`:1702`, `:1740`) e mais `knownViews` (`NotificationsView.tsx:95`), cujos membros **diferem** das outras quatro — tela aberta por
+push que não esteja ali cai em `home`. Tela de cliente que exige login são 3 edições: `App.tsx:726`, `:1520` e `privateViews`
+em `:2132`.
+
+> **`VIEW_COMPONENTS` não é mapa de renderização** — é a pegadinha que mais engana. Ele mapeia toda view admin para `AdminArea`,
+> `orders` → `CartView` e `recently-viewed` → `HomeView`; o grep devolve só a definição (`:147`) e um uso (`:924`), dentro de um
+> `.preload()`. Nenhum JSX lê esse mapa. E o union `View` tem entradas **mortas**: `product` (a real é `product-detail`),
+> `referral` e `admin-sros` (`types/index.ts:248`, `:277`, `:276`) têm zero ocorrências no roteador. Não reuse esses nomes.
+>
+> **O caso que prova a regra:** `admin-carousels` ficou navegável em memória mas fora do roteador, e F5 caía na home. O fix
+> (`cd7eeb0`, 30/07/2026) precisou de **7 edições em 2 arquivos**, seis delas só no `App.tsx` — e a rota já estava correta em
+> outros 5 lugares. Hoje está registrado em 14 pontos e **não é mais um bug**: é o número empírico de quanto custa uma tela.
+
 **Nomenclatura bilíngue com fronteira única.** Banco em português (`produtos`, `preco_venda`, `data_cadastro`), tipo do app em
 inglês (`Product.price`, `.createdAt`); `mappers.ts:56-70` é o único lugar que atravessa. **O idioma dos identificadores data o
 código, e o `git log -S` confirma:** `transformacaoFalhou` e `podeRedimensionar` (`LazyImage.tsx:48`, `:93`) e `assinaturaDoCarrinho`
@@ -398,16 +449,61 @@ variação), `useProducts.ts` (1.368, dois hooks no mesmo nome separados pelo fl
 cópia 1 = `mappers.ts:85-93`; cópias 2 e 3 = `realtimeSyncEngine.ts:454-458` e `:510-514`; cópia 4 = `AdminProductFormView.tsx:760-763`.
 As outras duas: mínimo entre eixos selecionados em `ProductView.tsx:538-543`, valor absoluto de uma variação em `CartContext.tsx:543-545`. O card mostra a soma, o detalhe mostra o mínimo.
 
-**Frete grátis: 7 lugares.** Cinco exigem usuário logado — `CartContext.tsx:746-751`, `StoreContext.tsx:600-605`,
-`CartView.tsx:257`, `FreeShippingBlock.tsx:18-25` (gate em `:81`) e a RPC (`20260729000002...sql:224-227`). Dois **não** exigem, e
-são os que escrevem "Grátis" na frente do cliente: `CartReminder.tsx:25-27` e `ShippingCalculator.tsx:202`. A edge function **não é
-um deles**: `grep -n free_shipping_min supabase/functions/calculate-shipping/index.ts` não devolve nada — ela só lê `frete_gratis`
-por item (`:374`, `:509`), nunca o mínimo. E `StoreContext.calculateShipping`
+**Frete grátis: 7 lugares no caminho do carrinho, mais 3 selos de catálogo.** Os sete exigem usuário logado —
+`CartContext.tsx:746-751` (é o `shippingFee` que carrinho e checkout consomem, `CartView.tsx:59` e `CheckoutView.tsx:78`),
+`StoreContext.tsx:600-605`, `CartView.tsx:257`, `FreeShippingBlock.tsx:18-20` e `:28` (gate de sessão em `:81`),
+`CartReminder.tsx` (a checagem de `user` **nunca esteve** em `isFree`: está na barra de progresso, `:88`, e no render, `:123`
+e `:128`), `ShippingCalculator.tsx:157-160` (o `Boolean(user)` de `:159`) e a RPC `create_marketplace_order_v23`
+(`20260729000002...sql:224-229`, `v_user_id IS NOT NULL` em `:227`, `auth.uid()` em `:151`) — a única que o front chama
+(`useOrders.ts:839`; a `v22` virou fachada que delega, `:393`).
+
+**Os 3 selos de catálogo não exigem login e não olham o carrinho:** `ProductCard.tsx:199` (prop opcional em `:29`, default
+`false` em `:46`), `ProductView.tsx:557-558` (render em `:908`) e `PremiumOffers.tsx:382` — este é do `HeroOfferCard`, prop em
+`:249`, **não** é `ProductCard`. Eles prometem elegibilidade da **loja**, não do pedido: não avaliam `subtotal` nem `user`. Não
+há furo de cobrança — o valor sai do `CartContext` e da RPC — mas há furo de promessa: com a regra ligada e o cliente deslogado,
+todo card do catálogo diz "Frete Grátis" e o carrinho cobra frete. Dos **7 call sites** de `<ProductCard`, 6 passam
+`config.freeShippingMin > 0`; `ProductView.tsx:1298` (grade de recomendações) não passa nada e cai no default — o mesmo produto
+exibe selo na busca e não exibe na recomendação.
+
+Não contam como cópia da regra quem só exibe resultado já decidido: `ShippingProgress.tsx:89` (deriva de `shipping === 0` e só
+monta com sessão, `CartView.tsx:408`), `CartView.tsx:551`/`:555` e `OrderDetailsView.tsx:467`. A edge function **não é um
+deles**: `grep -n free_shipping_min supabase/functions/calculate-shipping/index.ts` não devolve nada e o `.select` de `:346`
+sequer pede a coluna — ela só lê `frete_gratis` por item (`:376`, `:392`, `:527`). E `StoreContext.calculateShipping`
 (`:580-614`) está **no `contextValue` (`:637`) e não tem um único consumidor** — o `calculateShipping` de
 `ShippingCalculator.tsx:45` é outra função, local. Código morto carregando uma cópia da regra mais frágil do sistema.
 
 > O [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md) contava "cinco lugares" e incluía a edge function na lista. **Corrigido lá em
-> 30/07/2026 a partir desta contagem**: são sete, e a edge function não é um deles.
+> 30/07/2026 a partir desta contagem**: a edge function não é um deles.
+>
+> **Correção de 04/08/2026, e é erro de fato, não de linha.** A versão anterior deste parágrafo afirmava que
+> `CartReminder.tsx:25-27` **não** exigia login. Exigia — e já exigia quando o texto foi escrito: a checagem de `user` nunca
+> esteve na variável `isFree`, sempre esteve na barra e no render, e `git log` do arquivo para em `1b3306f` (29/07), anterior ao
+> commit deste documento (`f64280f`, 30/07). Na `develop` **um só** dos sete não exigia login, o `ShippingCalculator`, e é
+> exatamente o que o [#128](https://github.com/BielWeed/ikcous-marketplace/pull/128) fecha. Esse PR mexe nos dois arquivos por
+> motivos **diferentes**: no `ShippingCalculator` acrescenta a checagem de sessão (convidado via toda opção como "GRÁTIS" e era
+> cobrado no fechamento); no `CartReminder` acrescenta a guarda `hasFreeShippingGoal`, sem a qual `isFree` era verdadeiro com a
+> regra desligada — todo total é `>= 0` — e `progress` dividia por zero. Os 3 selos de catálogo nunca tinham sido contados.
+
+**Mapper duplicado: a tradução DB→domínio mora em 2 a 3 lugares por entidade.** Só `produtos`, `product_variants` e pedidos
+usam `src/lib/mappers.ts`. As outras tabelas do realtime repetem o mapper à mão: banners em `realtimeSyncEngine.ts:77-85` +
+`useBanners.ts:176-205` + `:331-357`; categorias em `realtimeSyncEngine.ts:65-72` + `useCategories.ts:81-88` + `:166-172`;
+cupons (`realtimeSyncEngine.ts:126-136` + `useCoupons.ts:35-44`) e `store_config` (`realtimeSyncEngine.ts:90-121` +
+`StoreContext.tsx:205-260`) com 2 cópias. **Entidade nova = atualizar todas as cópias.** A terceira cópia, quando existe, é o
+re-mapper pós-insert dentro do próprio hook — duas das três moram no mesmo arquivo, o que engana quem procura em três lugares
+diferentes.
+
+Banners é a que já divergiu, e a causa é externa ao repositório: o commit `77f32d6` (28/07/2026, sync do fork
+`app_mkt_cliente_novo`) trouxe **15 colunas** do fork para `useBanners.ts` e `database.types.ts:146-170` **sem a migration**
+— `git log -S template_type -- supabase/` devolve zero commits. No Core a tabela `banners` tem **8 colunas**: `select=subtitle`
+responde `42703`, e escrita com coluna inexistente responde `PGRST204`. Consequência: `addBanner` (`useBanners.ts:302-324`,
+21 colunas sem guard) e o save do diálogo falham **nos dois modos** — `AdminBannersView.tsx` define as 21 chaves em `:396-418`,
+`:1110-1132` e `:1138-1159`. Só passam o toggle `updateBanner({active})` e a RPC de reordenar.
+
+> **Não apague os 15 campos do hook.** Eles existem no fork; o que falta é a migration no Core. O conserto intuitivo — "completar
+> o mapper do sync engine para bater com o hook" — é o errado: copiaria 15 campos fantasmas para dentro do IndexedDB. O
+> `mapRecord` de `realtimeSyncEngine.ts:77-85` já está certo, cobre 7 das 8 colunas reais. E o UPDATE de realtime **não** mutila
+> a tela, ao contrário do que a versão antiga desta regra dizia: todo consumidor trata `undefined` como default
+> (`BannerCarousel.tsx:129` usa `!== false`, `:142` usa `|| "#000000"`). O que ele descarta de fato é `startDate`/`endDate`.
 
 **Adicionar campo em `store_config` custa 6 pontos de edição em 3 arquivos, mais a tela de admin, mais 1 RPC.** Rastreado com
 `localCepRange`: `types/index.ts:216`; `StoreContext.tsx:37` (default), `:276-279` (`mapConfig`), `:319` (insert de
