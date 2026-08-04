@@ -136,12 +136,30 @@ export function getCartHash(cart: any[]): string {
     }).join(',')
 }
 
+/**
+ * O projeto está migrando das chaves legadas (anon/service_role, formato JWT) para
+ * as novas (publishable/secret). Durante a migração as duas coexistem: lê a nova e
+ * cai pra legada. Assim esta função funciona antes E depois de as legadas serem
+ * desligadas no painel — o que evita janela de indisponibilidade.
+ *
+ * Quando as legadas forem removidas de vez, o fallback pode sair.
+ */
+function readKey(newVar: string, legacyVar: string): string {
+    try {
+        const parsed = JSON.parse(Deno.env.get(newVar) ?? '{}')
+        if (parsed?.default) return parsed.default
+    } catch {
+        // variável ausente ou JSON inválido — segue pro fallback
+    }
+    return Deno.env.get(legacyVar) ?? ''
+}
+
 // Helper to verify if the caller has admin permissions
 async function verifyIsAdmin(authHeader: string | null, supabaseUrl: string, serviceRoleKey: string): Promise<boolean> {
     if (!authHeader) return false;
-    
+
     try {
-        const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+        const anonKey = readKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
         const userClient = createClient(supabaseUrl, anonKey, {
             global: { headers: { Authorization: authHeader } }
         });
@@ -185,7 +203,7 @@ serve(async (req: Request) => {
 
         // Initialize Supabase clients
         const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-        const supabaseServiceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+        const supabaseServiceRole = readKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY')
         const supabaseClient = createClient(supabaseUrl, supabaseServiceRole)
 
         // ROUTE: test_credentials

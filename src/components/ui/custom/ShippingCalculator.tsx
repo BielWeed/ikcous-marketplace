@@ -1,3 +1,4 @@
+import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
@@ -25,6 +26,7 @@ export function ShippingCalculator({
   onCepValidated,
 }: ShippingCalculatorProps) {
   const isOffline = useOnlineStatus();
+  const { user } = useAuth();
   const [cep, setCep] = useState(() => {
     return localStorage.getItem("ikcous_last_shipping_cep") || "";
   });
@@ -148,6 +150,15 @@ export function ShippingCalculator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart.length]);
 
+  // Regra de frete grátis. Espelha `shippingFee` em CartContext.tsx:740-757 e a RPC
+  // `create_marketplace_order_v23`, que só zera o frete quando `v_user_id IS NOT NULL`.
+  // Sem a checagem de `user`, o convidado via todas as opções a R$ 0,00 aqui e era
+  // cobrado o valor cheio no fechamento do pedido. Unificar as cópias desta regra é a FRETE-020.
+  const hasFreeShippingItem = cart.some((item) => item.product?.freeShipping);
+  const reachedFreeShippingGoal =
+    freeShippingMin > 0 && subtotal >= freeShippingMin && Boolean(user);
+  const isFree = hasFreeShippingItem || reachedFreeShippingGoal;
+
   return (
     <div className="w-full space-y-4 rounded-3xl border border-zinc-100 bg-zinc-50/50 p-4">
       <div className="flex items-center gap-2">
@@ -198,9 +209,6 @@ export function ShippingCalculator({
           >
             {options.map((option) => {
               const isSelected = selectedOption?.id === option.id;
-              const isFree =
-                (freeShippingMin > 0 && subtotal >= freeShippingMin) ||
-                cart.some((item) => item.product?.freeShipping);
               const priceToDisplay = isFree ? 0 : option.price;
 
               return (

@@ -6,8 +6,16 @@
 .env.*.local
 .env.vercel*
 .env.production
+.env.bak
+.env.*.bak
+*.env.backup
 vapid_keys.json
 .gh_token
+
+# Backups de arquivos de ambiente (scripts/rotate-db-password.cjs gera .env.bak).
+# Sem esta regra, `.env.bak` fica visível pro git e um `git add -A` distraído
+# commita a senha antiga do banco.
+*.bak
 
 
 # Build outputs & artifacts
@@ -49,19 +57,46 @@ test-results/
 # Scratch & local scripts
 scratch/
 scratch_*
+# Exceção: os dois scripts de auditoria saíram da raiz para scripts/ em
+# 30/07/2026 e passaram a ser versionados. Sem esta negação a regra
+# `scratch_*` acima os ignoraria mesmo dentro de scripts/, porque padrão
+# sem barra casa em qualquer nível.
+!scripts/scratch_audit.bat
+!scripts/scratch_audit.ps1
 
 # Playwright & test screenshots/configs
 .playwright-mcp/
+# Os 39 screenshots que estavam soltos na raiz foram para docs/screenshots/
+# em 30/07/2026. Continuam ignorados pela regra `*.png` abaixo — o objetivo
+# era desentupir a raiz, não versionar imagem de depuração.
 *.png
 !public/apple-touch-icon.png
 !public/branding/logo.png
 !public/icons/*.png
 !public/og-image.png
-*.yml
+
+# NÃO reintroduza um `*.yml` global aqui. Ele existia até 30/07/2026 e ignorava
+# em silêncio `.github/workflows/*.yml`, `.github/ISSUE_TEMPLATE/*.yml` e o
+# `lefthook.yml` — ou seja, o CI e os hooks de git nunca chegavam ao repositório
+# e o `git add` falhava sem mensagem de erro. Os YAML de lixo que a regra tentava
+# pegar já estão cobertos por `.playwright-mcp/`, `scratch/` e `.serena/`.
+#
+# Uma versão anterior desta branch tentava consertar isso com exceções
+# (`!.github/workflows/*.yml`, `!lefthook.yml`) mantendo o `*.yml` cru. Não
+# resolve: as exceções não cobrem `.github/ISSUE_TEMPLATE/`, então qualquer
+# template de issue NOVO sumiria em silêncio. Apagar a regra é o conserto.
 
 # Unlighthouse & Loki
 .unlighthouse/
 .loki/
+
+# Ferramentas de agente (local da máquina, não do projeto).
+# Mesmo critério já aplicado a `.agents/` acima.
+.claude/
+.serena/
+
+# Estado local do Supabase CLI: muda a cada comando e suja o `git status`.
+supabase/.temp/
 
 # Configuração de MCP das IDEs — já guardou Figma PAT e chave da Cloudflare.
 # Credencial de MCP não entra no repositório; use o .mcp.json da raiz, que só
