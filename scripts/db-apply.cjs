@@ -65,6 +65,17 @@ const VERIFICACOES = {
       "ELSE store_config.primary_color END",
     ],
   },
+  "20260804000000_add_is_admin_guard_to_category_analytics.sql": {
+    funcao: "get_category_analytics",
+    esperado: [
+      // A guarda em si (BANCO-020).
+      "IF NOT public.is_admin() THEN",
+      "Acesso negado: privilégios de administrador necessários.",
+      // O corpo da consulta tem de sobreviver ao REPLACE: se a linha de Frete
+      // sumir, o dashboard perde o bloco de faturamento por frete em silêncio.
+      "'Frete'::text as name",
+    ],
+  },
 };
 
 function lerDatabaseUrl() {
@@ -145,7 +156,10 @@ async function main() {
     for (const fn of funcoesAlteradas(sql)) {
       const defs = await definicaoAtual(client, fn);
       if (defs.length === 0) {
-        partesRollback.push(`-- ${fn}: não existe hoje no banco (será criada).`, "");
+        partesRollback.push(
+          `-- ${fn}: não existe hoje no banco (será criada).`,
+          "",
+        );
         continue;
       }
       partesRollback.push(`-- ${fn}`, ...defs.map((d) => `${d};`), "");
@@ -156,7 +170,9 @@ async function main() {
     `rollback-${arquivos[0].replace(/\.sql$/, "")}.sql`,
   );
   fs.writeFileSync(arquivoRollback, partesRollback.join("\n"));
-  console.log(`Rollback salvo em: ${path.relative(PROJECT_ROOT, arquivoRollback)}\n`);
+  console.log(
+    `Rollback salvo em: ${path.relative(PROJECT_ROOT, arquivoRollback)}\n`,
+  );
 
   if (dryRun) {
     console.log("--dry-run: nada foi aplicado.");
