@@ -25,13 +25,27 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    supabase functions deploy send-push
    ```
 
-   **O comando pergunta em qual projeto, e vem com o cursor no errado.** A org
-   tem três, e o único que hospeda a loja é o `cafkrminfnokvgjqtkle` — é o
-   mesmo que está em `VITE_SUPABASE_URL`. Os outros dois
-   (`jvgyjlbjhbfrncwbytls`, `lofznuxcvezrhxsgjqyg`) aparecem antes dele na
-   lista, e dar Enter direto publica no lugar errado sem erro nenhum. Foi assim
-   que o OTP de convidado ficou respondendo 404 por quase um mês (AUTH-020,
-   #154). Para pular a escolha: `--project-ref cafkrminfnokvgjqtkle`.
+   **O comando pergunta em qual projeto, e vem com o cursor no errado.** Desde
+   05/08/2026 a org tem **dois** projetos — o `jvgyjlbjhbfrncwbytls` foi
+   excluído (#85). O que hospeda a loja é o `cafkrminfnokvgjqtkle`, o mesmo que
+   está em `VITE_SUPABASE_URL`; o outro é o `lofznuxcvezrhxsgjqyg`
+   (`ikcous-mkt-priemira-cliente`), que aparece **antes** dele na lista. Dar
+   Enter direto publica no lugar errado sem erro nenhum. Para pular a escolha:
+   `--project-ref cafkrminfnokvgjqtkle`.
+
+   Correção do que este parágrafo dizia antes: o 404 do OTP de convidado
+   (AUTH-020, #154) **não** veio de um deploy no projeto errado. A
+   `send-otp-email` sempre esteve publicada no projeto certo; quem apontava para
+   o lugar errado era o `net.http_post` dentro de
+   `handle_new_otp_verification`, editado à mão pelo SQL Editor. Publicar no
+   projeto errado teria feito a função funcionar lá — o sintoma foi o oposto.
+   O risco de errar o projeto neste prompt é real e continua valendo o aviso;
+   só não foi essa a causa daquele defeito.
+
+   **Sempre deploye a `send-otp-email` com `--no-verify-jwt`.** Sem a flag, o
+   gateway passa a exigir JWT e o trigger — que se autentica com um segredo
+   opaco, não com JWT — leva 401. O valor não está versionado em lugar nenhum;
+   é o INFRA-310 (#162).
 
    **O que está publicado hoje** — medido em 05/08/2026 com
    `supabase functions list --project-ref cafkrminfnokvgjqtkle`. Esta tabela

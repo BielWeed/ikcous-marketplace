@@ -481,8 +481,12 @@ Aberto de propósito. Preferi deixar em branco a preencher por dedução.
 - **Se `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` estão no ambiente da edge function.** Sem elas o
   Fluxo 4 inteiro é teórico.
 
-- **Se o projeto `jvgyjlbjhbfrncwbytls` tem a `send-otp-email` publicada e respondendo.** Só li a
-  URL no corpo do trigger; não fiz requisição e não tenho acesso ao projeto.
+- ~~**Se o projeto `jvgyjlbjhbfrncwbytls` tem a `send-otp-email` publicada e respondendo.**~~
+  **RESPONDIDO em 05/08/2026: não tinha.** `supabase functions list` naquele ref devolvia um único
+  function, `calculate-shipping` v1. Todo POST do trigger era 404, por três semanas, invisível
+  porque `otp_verifications` nunca teve uma linha. Corrigido pelo #154; o projeto foi excluído
+  (#85). Foi a pergunta mais barata desta lista e a que escondia o defeito mais grave — vale como
+  argumento para medir em vez de deixar em aberto.
 
 - **O 401 do OTP em runtime** (achado 32). Disparar um OTP escreveria no banco, o que a regra 2
   proíbe. A conclusão vem de `app_settings` vazia + o `if` de `send-otp-email/index.ts:29-37`.

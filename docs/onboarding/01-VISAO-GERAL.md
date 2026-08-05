@@ -66,13 +66,11 @@ flowchart TB
         EF["Edge Functions Deno<br/>calculate-shipping<br/>send-otp-email<br/>send-push"]
     end
 
-    BR[("Projeto br<br/>jvgyjlbjhbfrncwbytls")]
-
     R -->|"REST + RPC"| PG
     R <-->|"só a aba líder"| RT
     SW -->|"imagens"| ST
     R -->|"cotação de frete"| EF
-    PG -.->|"trigger de OTP<br/>aponta pra CÁ"| BR
+    PG -.->|"trigger de OTP"| EF
     V["Vercel<br/>ickous-marketplace.vercel.app"] -->|"serve o bundle"| nav
 ```
 
@@ -108,11 +106,19 @@ comprar"**. Enumeração completa em [`05-FLUXOS-CRITICOS.md`](05-FLUXOS-CRITICO
 objetos cujo *corpo vivo* não corresponde a nenhum arquivo. Um `CREATE OR REPLACE` apagaria
 silenciosamente o que foi aplicado por fora. Detalhes em [`03-SETUP-AMBIENTE.md`](03-SETUP-AMBIENTE.md).
 
-**6. O OTP do convidado depende de um SEGUNDO projeto Supabase.** A função viva
-`handle_new_otp_verification` faz `net.http_post` para
-`https://jvgyjlbjhbfrncwbytls.functions.supabase.co/send-otp-email` — outro projeto. Essa string
-não existe em nenhuma migration do repo; foi aplicada pelo SQL Editor. Verificado por
-introspecção direta do banco.
+**6. O OTP do convidado passou três semanas apontando para um projeto que não hospedava a função.**
+Até 05/08/2026 a função viva `handle_new_otp_verification` fazia `net.http_post` para
+`https://jvgyjlbjhbfrncwbytls.functions.supabase.co/send-otp-email` — um segundo projeto, onde a
+`send-otp-email` **nunca foi publicada**. Todo POST era 404, e ninguém percebeu porque
+`otp_verifications` nunca teve uma linha. A string não existia em nenhuma migration; foi aplicada
+pelo SQL Editor.
+
+Corrigido pelo #154, com a migration `20260805120000`. Hoje o trigger aponta para o projeto
+principal e se autentica com um segredo próprio, guardado no Vault (`otp_trigger_secret`) — não com
+a `service_role`. O segundo projeto foi **excluído** em 05/08/2026 (#85).
+
+A lição que sobrevive: **corpo de função ao vivo pode divergir do arquivo, e o repo não é fonte de
+verdade do schema.** Antes de mexer em qualquer função, ler o corpo com `pg_get_functiondef`.
 
 **7. Travado em 85% significa "o React nunca montou".** A barra do loader tem teto codificado em
 85 (`public/silent-guardian.js:72`) e só chega a 100 quando o React a remove. Não é lentidão de
