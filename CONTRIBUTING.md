@@ -253,6 +253,9 @@ Se cair no `-D`, confirme antes que o conteúdo entrou de verdade:
 `git diff develop <branch>` tem que sair vazio. `-D` não pergunta nada, e
 branch que nunca foi mergeada some igual.
 
+Branch local que virou `[gone]` porque o remoto sumiu primeiro é outro caso, e
+tem receita própria em [Branch órfã](#branch-órfã-quando-o-remoto-some-primeiro).
+
 **O que precisa estar verde antes de pedir revisão:** todos os cinco jobs.
 
 Se a `Catraca de lint` reprovar, ela diz qual contagem subiu — é dívida que
@@ -272,6 +275,50 @@ neste plano.
 
 **PR parado é o principal modo de falha de dupla assíncrona.** Se um PR passar
 de 48h sem revisão, cobre no Discord. Não é cobrança pessoal, é o processo.
+
+### Branch órfã: quando o remoto some primeiro
+
+A receita acima apaga o local antes do remoto e não deixa branch órfã. Mas o
+inverso acontece: alguém aperta o botão "Delete branch" na página do PR, ou o
+outro dev apaga a branch dele e você tinha uma cópia local para revisar. Aí
+sobra branch local marcada `[gone]`.
+
+**Não use o `/clean_gone`** do plugin `commit-commands` para isso. Ele não faz
+`--prune` antes de olhar — então não enxerga justamente essas branches — e
+quando enxerga, apaga direto com `-D`, sem conferir nada. Medido em `INFRA-290`
+(#150). Faça assim:
+
+```bash
+# 1. sem o --prune a marca [gone] nem aparece
+git fetch --prune
+
+# 2. liste. Use -v: o -vv imprime "[origin/x: gone]" e quebra qualquer filtro
+git branch -v
+
+# 3. branch com prefixo "+" tem worktree; ela sai primeiro
+git worktree list
+git worktree remove <caminho>
+
+# 4. tente o -d antes do -D. Se apagar, acabou
+git branch -d <branch>
+```
+
+**Se o `-d` recusar com `not fully merged`, pare.** Sem o ref de upstream, ele
+recusa até branch que foi mergeada por squash — a recusa **não** distingue
+trabalho salvo de trabalho perdido, e o `-D` apaga os dois calados. Quem
+distingue é o diff:
+
+```bash
+git diff origin/develop <branch>
+```
+
+- **Vazio** → o conteúdo entrou. `git branch -D <branch>`.
+- **Com conteúdo** → há trabalho fora da `develop`. Não apague; fale com o dono
+  da branch. Se for sua, abra o PR que faltou.
+
+O `origin/` não é detalhe: você acabou de dar `fetch`, não `pull`, então a
+`develop` local costuma estar atrás. Comparar contra ela acusa conteúdo em
+branch já mergeada. Para `hotfix/` e `release/`, compare contra `origin/main`.
 
 ---
 
