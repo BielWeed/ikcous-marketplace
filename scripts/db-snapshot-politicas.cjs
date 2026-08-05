@@ -88,9 +88,7 @@ async function main() {
     `);
     partes.push("-- ===== RLS por tabela =====");
     for (const r of rls.rows) {
-      partes.push(
-        `-- ${r.tabela}: rls=${r.rls_ligado} force=${r.rls_forcado}`,
-      );
+      partes.push(`-- ${r.tabela}: rls=${r.rls_ligado} force=${r.rls_forcado}`);
     }
     partes.push("");
 
