@@ -9,9 +9,11 @@
     "lint": "eslint .",
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "typecheck": "tsc -b --force",
-    "test": "npm run test:edge && npm run test:unit",
+    "test": "npm run test:edge && npm run test:unit && npm run test:front",
     "test:edge": "deno test --allow-all --no-check supabase/functions/",
-    "test:unit": "deno test --allow-all --no-check tests/",
+    "test:unit": "deno test --allow-all --no-check --ignore=tests/front tests/",
+    "test:front": "vitest run",
+    "test:front:watch": "vitest",
     "secretlint": "secretlint --secretlintignore .secretlintignore \"**/*\"",
     "prepare": "lefthook install || exit 0",
     "knip": "knip",
@@ -97,7 +99,8 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.3.6",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "eslint": {
