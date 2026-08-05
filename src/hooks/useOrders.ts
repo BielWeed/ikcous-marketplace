@@ -882,59 +882,62 @@ export function useOrders(
     }
   }, []);
 
-  const createOrder = useCallback(async (orderData: any) => {
-    // 🛡️ Checkout de Convidados: O login não é mais obrigatório no frontend.
-    // O RPC v22 cuidará da atribuição do user_id (NULL para convidados).
+  const createOrder = useCallback(
+    async (orderData: any) => {
+      // 🛡️ Checkout de Convidados: O login não é mais obrigatório no frontend.
+      // O RPC v22 cuidará da atribuição do user_id (NULL para convidados).
 
-    try {
-      // 🛡️ SECURITY: Usando a RPC v22 Blindada (Zero-Trust)
-      // O backend recalcula o total consultando os preços diretamente do banco (produtos/variants)
-      // e usa o 'p_total_amount' como um Checksum para garantir integridade.
-      const { data, error } = await (supabase as any).rpc(
-        "create_marketplace_order_v23",
-        {
-          p_items: orderData.items.map((item: any) => ({
-            product_id: item.product_id || item.productId,
-            variant_id: item.variant_id || item.variantId || null,
-            quantity: item.quantity,
-          })),
-          p_total_amount: orderData.totalAmount,
-          p_shipping_cost: orderData.shippingCost,
-          p_payment_method: orderData.paymentMethod,
-          p_address_id: orderData.addressId || null,
-          p_coupon_code: orderData.couponCode || null,
-          p_customer_name: orderData.customer.name,
-          p_customer_phone: orderData.customer.whatsapp,
-          p_observation: orderData.notes || null,
-          p_address_data: orderData.addressData || null,
-          // O banco usa estes dois para localizar a cotação que ELE gravou e
-          // confirmar o valor do frete. O preço enviado pelo cliente é ignorado.
-          p_destination_cep: orderData.destinationCep || null,
-          p_shipping_option_id: orderData.shippingOptionId || null,
-        },
-      );
+      try {
+        // 🛡️ SECURITY: Usando a RPC v22 Blindada (Zero-Trust)
+        // O backend recalcula o total consultando os preços diretamente do banco (produtos/variants)
+        // e usa o 'p_total_amount' como um Checksum para garantir integridade.
+        const { data, error } = await (supabase as any).rpc(
+          "create_marketplace_order_v23",
+          {
+            p_items: orderData.items.map((item: any) => ({
+              product_id: item.product_id || item.productId,
+              variant_id: item.variant_id || item.variantId || null,
+              quantity: item.quantity,
+            })),
+            p_total_amount: orderData.totalAmount,
+            p_shipping_cost: orderData.shippingCost,
+            p_payment_method: orderData.paymentMethod,
+            p_address_id: orderData.addressId || null,
+            p_coupon_code: orderData.couponCode || null,
+            p_customer_name: orderData.customer.name,
+            p_customer_phone: orderData.customer.whatsapp,
+            p_observation: orderData.notes || null,
+            p_address_data: orderData.addressData || null,
+            // O banco usa estes dois para localizar a cotação que ELE gravou e
+            // confirmar o valor do frete. O preço enviado pelo cliente é ignorado.
+            p_destination_cep: orderData.destinationCep || null,
+            p_shipping_option_id: orderData.shippingOptionId || null,
+          },
+        );
 
-      if (error) throw error;
-      if (!data) throw new Error("Falha ao obter ID do pedido");
+        if (error) throw error;
+        if (!data) throw new Error("Falha ao obter ID do pedido");
 
-      // PEDIDO-020 (#89). Depois do `throw`, para não avisar de pedido que não
-      // existe; e antes do return, para o disparo sair mesmo que a tela navegue
-      // em seguida.
-      avisarLojista(data);
+        // PEDIDO-020 (#89). Depois do `throw`, para não avisar de pedido que não
+        // existe; e antes do return, para o disparo sair mesmo que a tela navegue
+        // em seguida.
+        avisarLojista(data);
 
-      return {
-        ...orderData,
-        id: data,
-        status: "pending" as const,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-    } catch (err: any) {
-      console.error("Error creating order:", err);
-      toast.error(err.message || "Erro ao processar pedido");
-      throw err;
-    }
-  }, [avisarLojista]);
+        return {
+          ...orderData,
+          id: data,
+          status: "pending" as const,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      } catch (err: any) {
+        console.error("Error creating order:", err);
+        toast.error(err.message || "Erro ao processar pedido");
+        throw err;
+      }
+    },
+    [avisarLojista],
+  );
 
   const generateOrderOtp = useCallback(
     async (
