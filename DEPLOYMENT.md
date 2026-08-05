@@ -80,19 +80,27 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    | `send-otp-email` | 8 | 2026-08-05 12:31 |
    | `calculate-shipping` | 11 | 2026-07-30 08:22 |
    | `send-order-whatsapp` | 8 | 2026-04-20 20:14 |
-   | `notify-new-order` | — | **ainda não publicada** |
+   | `notify-new-order` | 2 | 2026-08-05 23:41 |
 
-   Duas ressalvas desta tabela, medidas em 05/08/2026:
+   Ressalvas desta tabela, medidas em 05/08/2026:
 
-   - **`notify-new-order` está no repositório e não no ar.** Enquanto não for
-     publicada com o comando acima, o aviso de pedido novo não existe: o front
-     chama, o gateway responde 404 e o `.catch()` engole — de propósito, para
-     não derrubar o checkout. O critério 1 da #89 só passa depois do deploy.
+   - **`notify-new-order` foi publicada em 05/08/2026**, com `--no-verify-jwt`,
+     e respondeu ao smoke test: corpo vazio devolve
+     `400 {"erro":"orderId ausente ou fora do formato UUID"}` e UUID inexistente
+     devolve `200 {"ignorado":"pedido não encontrado"}`. Ou seja, o gateway
+     aceita sem JWT e as guardas funcionam. **O critério 1 da #89 — pedido real
+     com o painel fechado — continua não exercitado**, porque testá-lo cria
+     pedido em produção.
    - **`send-order-whatsapp` está no ar e não no repositório.** É a única das
-     cinco sem fonte versionada aqui, e ela avisa o CLIENTE, não o lojista.
-     `supabase functions deploy` sem nome de função publica **todas** as do
-     diretório — o que não a apaga, mas também não a mantém. Detalhe e risco
-     na issue própria.
+     cinco sem fonte versionada aqui, ela avisa o CLIENTE (não o lojista) e
+     consulta três colunas de `store_config` que não existem — devolve 500 em
+     toda invocação. `supabase functions deploy` **sem nome de função publica
+     todas** as do diretório: isso não a apaga, mas também não a mantém.
+     Detalhe e risco na INFRA-330 (#167). **Sempre passe o nome da função.**
+   - **Há um Cloudflare na frente do `functions.supabase.co`.** Um payload de
+     teste com cara de SQL injection leva `403` do WAF antes de chegar na
+     função — o corpo é uma página HTML da Cloudflare, não JSON. Se um teste
+     devolver HTML, é isso, não a função.
 
    A v12 da `send-push` é a primeira que **entrega de verdade**: até a v11 ela
    chamava `webpush.sendNotification`, que não existe na biblioteca, e
