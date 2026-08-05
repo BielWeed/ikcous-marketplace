@@ -449,10 +449,31 @@ Nenhum PR que altera schema é mergeado sem, no PR:
 O checklist condicional do template de PR cobre isso. Marque a label
 `toca-banco` na issue.
 
-> Pendência conhecida: a migration
-> `supabase/migrations/20260729000002_shipping_quote_validation_v23.sql` está
-> validada (14/14 em transação com `ROLLBACK`) mas **ainda não aplicada** em
-> produção. Não assuma que a RPC `create_marketplace_order_v23` existe no banco.
+> **Não existe migration pendente hoje.** Medido no banco em 05/08/2026, depois
+> da AUTH-020 (#154): o ledger está em 126 linhas e as duas últimas que este
+> documento acompanhava entraram — `20260729000002` (validação de cotação de
+> frete) e `20260805120000` (OTP apontando para o projeto certo).
+>
+> Ledger não prova nada sozinho, então confirmei os objetos:
+> `create_marketplace_order_v23` existe com uma definição, e os quatro
+> marcadores da v23 (`0.05`, `shipping_quotes`, `v_calculated_total`,
+> `p_total_amount`) estão no corpo vivo **e** no arquivo.
+>
+> Este bloco dizia o contrário até hoje — "não assuma que a RPC
+> `create_marketplace_order_v23` existe no banco" — e estava errado para o lado
+> perigoso: mandava o dev programar defesa para um problema que não existe. Foi
+> escrito quando era verdade e ninguém voltou para conferir. **Antes de
+> acrescentar uma pendência aqui, meça; antes de confiar numa que já está,
+> meça também.** A consulta:
+>
+> ```sql
+> SELECT version FROM supabase_migrations.schema_migrations
+>  WHERE version IN ('<as que te interessam>');
+>
+> SELECT pg_get_functiondef(p.oid)
+>   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+>  WHERE n.nspname = 'public' AND p.proname = '<funcao>';
+> ```
 
 ---
 

@@ -25,6 +25,29 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    supabase functions deploy send-push
    ```
 
+   **O comando pergunta em qual projeto, e vem com o cursor no errado.** A org
+   tem três, e o único que hospeda a loja é o `cafkrminfnokvgjqtkle` — é o
+   mesmo que está em `VITE_SUPABASE_URL`. Os outros dois
+   (`jvgyjlbjhbfrncwbytls`, `lofznuxcvezrhxsgjqyg`) aparecem antes dele na
+   lista, e dar Enter direto publica no lugar errado sem erro nenhum. Foi assim
+   que o OTP de convidado ficou respondendo 404 por quase um mês (AUTH-020,
+   #154). Para pular a escolha: `--project-ref cafkrminfnokvgjqtkle`.
+
+   **O que está publicado hoje** — medido em 05/08/2026 com
+   `supabase functions list --project-ref cafkrminfnokvgjqtkle`. Esta tabela
+   envelhece; rode o comando em vez de confiar nela:
+
+   | Função | Versão | Atualizada em (UTC) |
+   | --- | --- | --- |
+   | `send-push` | 12 | 2026-08-05 20:03 |
+   | `send-otp-email` | 8 | 2026-08-05 12:31 |
+   | `calculate-shipping` | 11 | 2026-07-30 08:22 |
+   | `send-order-whatsapp` | 8 | 2026-04-20 20:14 |
+
+   A v12 da `send-push` é a primeira que **entrega de verdade**: até a v11 ela
+   chamava `webpush.sendNotification`, que não existe na biblioteca, e
+   respondia `{ success: true }` para 100% de falha (PUSH-010, #80).
+
 2. Configurar os segredos (Secrets) no Supabase Dashboard para a função:
    - `VAPID_PUBLIC_KEY`: Gerada no `vapid_keys.json`. **Tem de ser a mesma chave
      que o front usa em `VITE_VAPID_PUBLIC_KEY`** — se as duas divergirem, o
