@@ -65,7 +65,11 @@ export const AdminPushView = memo(function AdminPushView({
     }
     setIsUpdatingConfig(true);
     try {
-      await updateConfig({ realTimeSalesAlerts: checked });
+      // O toast de erro sai de dentro do `updateConfig`; aqui só não se segue
+      // em frente. Antes o retorno era `void` e o sucesso era anunciado mesmo
+      // quando a gravação falhava (ADMIN-010, #94).
+      const salvou = await updateConfig({ realTimeSalesAlerts: checked });
+      if (!salvou) return;
       toast.success(
         checked
           ? "Notificações de prova social ativadas"

@@ -110,19 +110,31 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [curationSectionId, showAddVitrineModal, showHelpModal]);
 
+  /**
+   * Devolve `true` só quando a gravação foi confirmada.
+   *
+   * Antes o `updateConfig` engolia a falha e devolvia normalmente, então esta
+   * função chamava `onSetDirty(false)` e anunciava "Vitrines salvas com
+   * sucesso!" em cima de uma gravação que não aconteceu — e a vitrine sumia da
+   * lista no próximo carregamento (ADMIN-010, #94).
+   */
   const handleUpdateHomeSections = async (
     updated: typeof homeSections,
     showToast = false,
-  ) => {
+  ): Promise<boolean> => {
     try {
-      await updateConfig({ homeSections: updated });
+      // O toast de erro sai de dentro do `updateConfig`; não duplicar aqui.
+      const salvou = await updateConfig({ homeSections: updated });
+      if (!salvou) return false;
       onSetDirty?.(false);
       if (showToast) {
         toast.success("Vitrines salvas com sucesso!");
       }
+      return true;
     } catch (error) {
       console.error("Erro ao atualizar as vitrines:", error);
       toast.error("Erro ao salvar ordem das vitrines.");
+      return false;
     }
   };
 
@@ -202,7 +214,10 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     };
 
     const updated = [...homeSections, newSection];
-    await handleUpdateHomeSections(updated, true);
+    // Só limpa o título e fecha o modal se a vitrine foi mesmo gravada. Antes
+    // isso acontecia incondicionalmente: o admin via o modal fechar, o campo
+    // esvaziar, e a vitrine não existia (ADMIN-010, #94).
+    if (!(await handleUpdateHomeSections(updated, true))) return;
     setNewVitrineTitle("");
     setShowAddVitrineModal(false);
   };
@@ -224,31 +239,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     await handleUpdateHomeSections(defaultHomeSections, true);
   };
 
-  const handleToggleProductInCuration = async (
-    sectionId: string,
-    productId: string,
-  ) => {
-    if (isOffline) {
-      toast.error("Sem conexão com a internet");
-      return;
-    }
-    const updated = homeSections.map((sec) => {
-      if (sec.id !== sectionId) return sec;
-      const initialIds =
-        sec.productIds && sec.productIds.length > 0
-          ? sec.productIds
-          : (previewProducts[sec.id] || []).map((p) => p.id);
-
-      const exists = initialIds.includes(productId);
-      const newIds = exists
-        ? initialIds.filter((id) => id !== productId)
-        : [...initialIds, productId];
-      return { ...sec, productIds: newIds };
-    });
-    await handleUpdateHomeSections(updated, false);
-  };
-
   // Preview products for each vitrine section (respeitando a ordem exata de seleção de curadoria)
+  //
+  // Este bloco estava DEPOIS de `handleToggleProductInCuration`, que o usa. Em
+  // tempo de execução funcionava (a função só roda depois do render), mas o
+  // React Compiler não consegue provar isso e desistia de compilar o arquivo —
+  // três erros `react-hooks/preserve-manual-memoization`, que travavam o hook
+  // de pre-commit para qualquer um que tocasse nesta tela. Mover é reordenação
+  // pura: nenhuma dependência mudou.
   const previewProducts = useMemo(() => {
     const map: Record<string, typeof products> = {};
     const productMap = new Map(products.map((p) => [p.id, p]));
@@ -277,6 +275,30 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
 
     return map;
   }, [homeSections, products]);
+
+  const handleToggleProductInCuration = async (
+    sectionId: string,
+    productId: string,
+  ) => {
+    if (isOffline) {
+      toast.error("Sem conexão com a internet");
+      return;
+    }
+    const updated = homeSections.map((sec) => {
+      if (sec.id !== sectionId) return sec;
+      const initialIds =
+        sec.productIds && sec.productIds.length > 0
+          ? sec.productIds
+          : (previewProducts[sec.id] || []).map((p) => p.id);
+
+      const exists = initialIds.includes(productId);
+      const newIds = exists
+        ? initialIds.filter((id) => id !== productId)
+        : [...initialIds, productId];
+      return { ...sec, productIds: newIds };
+    });
+    await handleUpdateHomeSections(updated, false);
+  };
 
   const activeVitrinesCount = useMemo(
     () => homeSections.filter((sec) => sec.active).length,
@@ -721,10 +743,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
 
             <div className="space-y-3">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                <label
+                  htmlFor="titulo-da-nova-vitrine"
+                  className="text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                >
                   Título da Vitrine
                 </label>
                 <input
+                  id="titulo-da-nova-vitrine"
                   type="text"
                   value={newVitrineTitle}
                   onChange={(e) => setNewVitrineTitle(e.target.value)}

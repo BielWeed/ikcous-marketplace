@@ -96,7 +96,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     haptic.light();
     setIsUpdatingConfig(true);
     try {
-      await updateConfig({ enableReviews: checked });
+      // O toast de erro sai de dentro do `updateConfig`; aqui só não se segue
+      // em frente (ADMIN-010, #94).
+      const salvou = await updateConfig({ enableReviews: checked });
+      if (!salvou) return;
       toast.success(
         checked
           ? "Sistema de avaliações habilitado"

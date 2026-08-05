@@ -579,11 +579,16 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
 
     setIsSaving(true);
     try {
-      await updateConfig({
+      // O toast de erro sai de dentro do `updateConfig`; aqui só não se segue
+      // em frente. Sem isto, o formulário era marcado como limpo e o admin via
+      // "atualizados com sucesso" sobre uma gravação que falhou — e o número de
+      // WhatsApp é o único canal de fechamento de pedido da loja (ADMIN-010, #94).
+      const salvou = await updateConfig({
         whatsappNumber: cleanWhatsApp,
         businessHours: formData.businessHours,
         shareText: formData.shareText,
       });
+      if (!salvou) return;
       onSetDirty?.(false);
       toast.success("Canais de atendimento atualizados com sucesso!");
     } catch (err) {

@@ -80,7 +80,10 @@ export const AdminCouponsView = memo(function AdminCouponsView({
     }
     setIsUpdatingConfig(true);
     try {
-      await updateConfig({ enableCoupons: checked });
+      // O toast de erro sai de dentro do `updateConfig`; aqui só não se segue
+      // em frente (ADMIN-010, #94).
+      const salvou = await updateConfig({ enableCoupons: checked });
+      if (!salvou) return;
       toast.success(
         checked
           ? "Cupons de desconto ativados no aplicativo"
