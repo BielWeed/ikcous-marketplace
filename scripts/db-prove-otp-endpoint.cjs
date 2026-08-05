@@ -8,16 +8,20 @@
  *      jvgyjlbjhbfrncwbytls, credencial vindo de app_settings/header.
  *   2. Confirma que `app_settings` está vazia — é o que faz o corpo atual cair
  *      no fallback e mandar a chave ANON como Bearer.
- *   3. Tenta aplicar a migration SEM o segredo no Vault. Tem de ser RECUSADA.
- *   4. Guarda um segredo de teste no Vault e aplica a migration.
- *   5. Confere o corpo novo: projeto certo, sem o projeto errado, sem header,
- *      sem app_settings.
- *   6. Confere que ACL e SECURITY DEFINER sobreviveram ao REPLACE.
- *   7. Ponta a ponta: insere uma linha em otp_verifications e confirma que o
- *      pg_net enfileirou UM POST, para a URL certa, com o Bearer do Vault.
- *   8. Apaga o segredo e repete o INSERT: tem de FALHAR, em vez de prometer
+ *   3. Confere que o segredo `otp_trigger_secret` existe no Vault. Só formato:
+ *      tamanho e prefixo. O valor não é lido para fora do banco.
+ *   4. Apaga o segredo num savepoint e tenta aplicar: tem de ser RECUSADA pelo
+ *      bloco DO. Desfaz o savepoint e confere que o segredo voltou.
+ *   5. Aplica a migration.
+ *   6. Confere o corpo novo: projeto certo, sem o projeto errado, sem header,
+ *      sem app_settings, lendo o Vault.
+ *   7. Confere que ACL e SECURITY DEFINER sobreviveram ao REPLACE.
+ *   8. Ponta a ponta: insere uma linha em otp_verifications e confirma que o
+ *      pg_net enfileirou UM POST, para a URL certa, com o Bearer igual ao
+ *      segredo do Vault — a comparação acontece DENTRO do SQL e volta boolean.
+ *   9. Apaga o segredo e repete o INSERT: tem de FALHAR, em vez de prometer
  *      entrega que não acontece.
- *   9. ROLLBACK. O banco fica exatamente como estava.
+ *  10. ROLLBACK. O banco fica exatamente como estava.
  *
  * POR QUE O PASSO 7 NÃO MANDA E-MAIL DE VERDADE:
  *   `net.http_post` não faz a requisição na hora — ele enfileira em
@@ -46,9 +50,7 @@ const MIGRATION = path.join(
 
 const PROJETO_CERTO = "cafkrminfnokvgjqtkle";
 const PROJETO_ERRADO = "jvgyjlbjhbfrncwbytls";
-const NOME_SEGREDO = "edge_functions_service_key";
-// Valor de teste, não é chave de ninguém. Só precisa ser reconhecível no header.
-const SEGREDO_DE_TESTE = "chave-de-teste-db-prove-otp-endpoint";
+const NOME_SEGREDO = "otp_trigger_secret";
 
 function lerDatabaseUrl() {
   if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
@@ -171,11 +173,34 @@ async function main() {
         : "  => existe valor configurado; conferir se é a chave que a edge function aceita",
     );
 
-    // ---- 3. A trava de apply funciona? -------------------------------------
-    const semSegredo = await tentar(client, "gate", () =>
-      client.query(sqlMigration),
+    // ---- 3. O segredo real existe? -----------------------------------------
+    // O valor nunca é lido para cá: só formato. A comparação com o que o trigger
+    // manda é feita DENTRO do SQL, no passo 7, e volta como boolean.
+    const { rows: seg } = await client.query(
+      `SELECT length(decrypted_secret) AS tamanho,
+              left(decrypted_secret, 9) AS prefixo
+         FROM vault.decrypted_secrets WHERE name = $1`,
+      [NOME_SEGREDO],
     );
-    console.log("\n=== 3. Aplicar SEM o segredo no Vault ===");
+    console.log(`\n=== 3. Segredo "${NOME_SEGREDO}" no Vault ===`);
+    if (seg.length === 0) {
+      console.log("  AUSENTE");
+      throw new Error(
+        `Sem o segredo "${NOME_SEGREDO}" no Vault não há o que provar. Instale os dois lados primeiro — ver o cabeçalho da migration.`,
+      );
+    }
+    console.log(`  presente — ${seg[0].tamanho} chars, prefixo "${seg[0].prefixo}"`);
+
+    // ---- 4. A trava de apply funciona? -------------------------------------
+    // Apaga o segredo dentro de um savepoint, tenta aplicar, desfaz. O segredo
+    // volta intacto: o DELETE nunca sai desta transação.
+    const semSegredo = await tentar(client, "gate", async () => {
+      await client.query("DELETE FROM vault.secrets WHERE name = $1", [
+        NOME_SEGREDO,
+      ]);
+      return client.query(sqlMigration);
+    });
+    console.log("\n=== 4. Aplicar SEM o segredo no Vault ===");
     console.log(
       semSegredo.falhou
         ? `  RECUSADA  ${semSegredo.mensagem}`
@@ -186,23 +211,22 @@ async function main() {
         "A trava do bloco DO não barrou o apply sem segredo — aplicar assim troca 404 por 401.",
       );
     }
-
-    // ---- 4. Guarda o segredo de teste e aplica ------------------------------
-    const criou = await tentar(client, "vault", () =>
-      client.query("SELECT vault.create_secret($1, $2, $3) AS id", [
-        SEGREDO_DE_TESTE,
-        NOME_SEGREDO,
-        "Segredo de teste do db-prove-otp-endpoint. Se esta descrição aparecer em produção, algo comitou o que não devia.",
-      ]),
+    const { rows: voltou } = await client.query(
+      "SELECT count(*)::int AS n FROM vault.decrypted_secrets WHERE name = $1",
+      [NOME_SEGREDO],
     );
-    if (criou.falhou) {
-      throw new Error(`vault.create_secret falhou: ${criou.mensagem}`);
-    }
-    await client.query(sqlMigration);
-    console.log("\n=== 4. Segredo de teste no Vault + migration aplicada ===");
-    console.log("  ok (dentro da transação)");
+    console.log(
+      `  ${voltou[0].n === 1 ? "OK     " : "FALHOU "} o segredo voltou depois do savepoint (${voltou[0].n})`,
+    );
+    if (voltou[0].n !== 1)
+      falhas.push("O segredo não voltou depois do ROLLBACK TO SAVEPOINT.");
 
-    // ---- 5. O corpo novo ----------------------------------------------------
+    // ---- 5. Aplica a migration ----------------------------------------------
+    await client.query(sqlMigration);
+    console.log("\n=== 5. Migration aplicada (dentro da transação) ===");
+    console.log("  ok");
+
+    // ---- 6. O corpo novo ----------------------------------------------------
     const depois = await fotografar(client);
     const checagens = [
       [`aponta para ${PROJETO_CERTO}`, depois.def.includes(PROJETO_CERTO), true],
@@ -211,14 +235,14 @@ async function main() {
       ["não lê app_settings", !depois.def.includes("app_settings"), true],
       ["lê o Vault", depois.def.includes("vault.decrypted_secrets"), true],
     ];
-    console.log("\n=== 5. Corpo depois da migration ===");
+    console.log("\n=== 6. Corpo depois da migration ===");
     for (const [rotulo, valor] of checagens) {
       console.log(`  ${valor ? "OK     " : "FALHOU "} ${rotulo}`);
       if (!valor) falhas.push(`Corpo novo: ${rotulo} — não confere.`);
     }
 
-    // ---- 6. ACL e SECURITY DEFINER preservados ------------------------------
-    console.log("\n=== 6. ACL e SECURITY DEFINER preservados? ===");
+    // ---- 7. ACL e SECURITY DEFINER preservados ------------------------------
+    console.log("\n=== 7. ACL e SECURITY DEFINER preservados? ===");
     console.log(`  acl    antes/depois : ${antes.acl} / ${depois.acl}`);
     console.log(
       `  secdef antes/depois : ${antes.prosecdef} / ${depois.prosecdef}`,
@@ -227,7 +251,7 @@ async function main() {
     if (antes.prosecdef !== depois.prosecdef)
       falhas.push("O prosecdef mudou depois do REPLACE.");
 
-    // ---- 7. Ponta a ponta: o trigger enfileira o POST certo? ----------------
+    // ---- 8. Ponta a ponta: o trigger enfileira o POST certo? ----------------
     const { rows: pedidos } = await client.query(
       "SELECT id FROM public.marketplace_orders ORDER BY created_at DESC LIMIT 1",
     );
@@ -246,25 +270,33 @@ async function main() {
       ["prova@exemplo.invalid", "34999990000", "123456", pedidos[0].id],
     );
     // `body` é bytea no pg_net 0.19 — precisa voltar para texto antes do ->>.
+    // O Authorization é comparado com o Vault DENTRO do SQL: volta boolean, e o
+    // valor do segredo nunca sai do banco.
     const { rows: fila } = await client.query(
-      `SELECT url,
-              headers->>'Authorization' AS auth,
-              convert_from(body, 'utf8')::jsonb->>'table' AS tabela,
-              convert_from(body, 'utf8')::jsonb#>>'{record,otp_code}' AS codigo
-         FROM net.http_request_queue
-        ORDER BY id DESC LIMIT 1`,
+      `SELECT q.url,
+              q.headers->>'Authorization' = 'Bearer ' ||
+                  (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = $1)
+                                                                    AS auth_bate,
+              left(q.headers->>'Authorization', 16)                  AS auth_prefixo,
+              convert_from(q.body, 'utf8')::jsonb->>'table'          AS tabela,
+              convert_from(q.body, 'utf8')::jsonb#>>'{record,otp_code}' AS codigo
+         FROM net.http_request_queue q
+        ORDER BY q.id DESC LIMIT 1`,
+      [NOME_SEGREDO],
     );
     const { rows: filaDepois } = await client.query(
       "SELECT count(*)::int AS n FROM net.http_request_queue",
     );
     const enfileirou = filaDepois[0].n === filaAntes[0].n + 1;
     const urlCerta = fila[0]?.url?.includes(PROJETO_CERTO) === true;
-    const bearerDoVault = fila[0]?.auth === `Bearer ${SEGREDO_DE_TESTE}`;
-    console.log("\n=== 7. INSERT em otp_verifications → o que foi enfileirado ===");
+    const bearerDoVault = fila[0]?.auth_bate === true;
+    console.log("\n=== 8. INSERT em otp_verifications → o que foi enfileirado ===");
     console.log(`  ${enfileirou ? "OK     " : "FALHOU "} exatamente 1 requisição nova na fila`);
     console.log(`  url    : ${fila[0]?.url ?? "(nada na fila)"}`);
     console.log(`  ${urlCerta ? "OK     " : "FALHOU "} url é do projeto ${PROJETO_CERTO}`);
-    console.log(`  ${bearerDoVault ? "OK     " : "FALHOU "} Authorization traz o segredo do Vault`);
+    console.log(
+      `  ${bearerDoVault ? "OK     " : "FALHOU "} Authorization bate com o segredo do Vault (prefixo "${fila[0]?.auth_prefixo ?? "-"}...")`,
+    );
     const levaOCodigo = fila[0]?.codigo === "123456";
     console.log(`  body.table : ${fila[0]?.tabela ?? "-"}`);
     console.log(
@@ -279,19 +311,19 @@ async function main() {
     if (!bearerDoVault)
       falhas.push("O Authorization não trouxe o segredo do Vault.");
 
-    // ---- 8. Sem segredo, falha alto em vez de prometer ----------------------
-    await client.query("DELETE FROM vault.secrets WHERE name = $1", [
-      NOME_SEGREDO,
-    ]);
-    const semChave = await tentar(client, "sem_chave", () =>
-      client.query(
+    // ---- 9. Sem segredo, falha alto em vez de prometer ----------------------
+    const semChave = await tentar(client, "sem_chave", async () => {
+      await client.query("DELETE FROM vault.secrets WHERE name = $1", [
+        NOME_SEGREDO,
+      ]);
+      return client.query(
         `INSERT INTO public.otp_verifications
            (email, whatsapp, otp_code, expires_at, order_id)
          VALUES ($1, $2, $3, NOW() + INTERVAL '15 minutes', $4)`,
         ["prova2@exemplo.invalid", "34999990001", "654321", pedidos[0].id],
-      ),
-    );
-    console.log("\n=== 8. Com o Vault vazio, o INSERT falha em vez de prometer? ===");
+      );
+    });
+    console.log("\n=== 9. Com o Vault vazio, o INSERT falha em vez de prometer? ===");
     console.log(
       semChave.falhou
         ? `  OK      ${semChave.mensagem.split("\n")[0]}`

@@ -45,7 +45,7 @@
 --      manual.
 --
 --   2. A credencial passa a sair do **Vault** (`supabase_vault` 0.3.1, instalado
---      e vazio — medido), no segredo `edge_functions_service_key`. O caminho por
+--      e vazio — medido), no segredo `otp_trigger_secret`. O caminho por
 --      `app_settings` e o fallback pelo header **saem**:
 --        - `app_settings` está vazia e é lida por policy de admin; guardar
 --          segredo de servidor numa tabela de configuração de aplicação foi o
@@ -53,8 +53,18 @@
 --        - mandar a chave **anon** de quem chamou como `Bearer` nunca autenticou
 --          nada. Era um fallback que só servia para transformar "sem credencial"
 --          em "credencial errada", que é mais difícil de diagnosticar.
---      O nome do segredo é genérico de propósito: o PEDIDO-020 (#89) vai precisar
---      da mesma chave para chamar send-order-whatsapp.
+--
+--      **O segredo é criado só para este uso — não é a `service_role`.** 256 bits
+--      aleatórios, prefixo `otp_trig_`, instalado como `OTP_TRIGGER_SECRET` no
+--      ambiente da edge function e guardado com o mesmo valor no Vault. Quem o
+--      obtiver consegue disparar e-mail de OTP e nada mais; a `service_role`
+--      abriria o banco inteiro, ignorando RLS. `send-otp-email/index.ts` aceita
+--      os três durante a transição (este, o `default` de SUPABASE_SECRET_KEYS e a
+--      SUPABASE_SERVICE_ROLE_KEY), mas a intenção é ficar só com este — ver #126.
+--
+--      O PEDIDO-020 (#89) vai precisar do mesmo mecanismo para chamar
+--      send-order-whatsapp: outro segredo, com outro nome, não a reutilização
+--      deste. Um segredo por função é o que mantém o raio de estrago pequeno.
 --
 --   3. Sem segredo, a função **falha alto** em vez de postar com `Bearer ` vazio.
 --
@@ -70,21 +80,27 @@
 --   Na prática esse RAISE não deve rodar nunca: o bloco DO abaixo recusa o apply
 --   se o segredo não existir.
 --
--- PRÉ-REQUISITO — guardar o segredo ANTES de aplicar
+-- PRÉ-REQUISITO — os dois lados do segredo, ANTES de aplicar
 --
---   No SQL Editor do projeto cafkrminfnokvgjqtkle, com a chave que a edge
---   function aceita (o `default` de SUPABASE_SECRET_KEYS, ou a
---   SUPABASE_SERVICE_ROLE_KEY do ambiente dela — as duas servem):
+--   O mesmo valor precisa existir em DOIS lugares, senão a edge function devolve
+--   401 e o cliente não recebe o código:
 --
---     SELECT vault.create_secret(
---       '<a chave>',
---       'edge_functions_service_key',
---       'Bearer compartilhado entre triggers do banco e edge functions. Ver 20260805120000.'
---     );
+--     a) ambiente da edge function, como `OTP_TRIGGER_SECRET`
+--            supabase secrets set --env-file <arquivo> --project-ref cafkrminfnokvgjqtkle
+--     b) Vault deste banco, no segredo `otp_trigger_secret`
+--            SELECT vault.create_secret('<valor>', 'otp_trigger_secret', '<descrição>');
 --
---   Atenção: a chave do `.env` local NÃO é a mesma que está no ambiente da edge
---   function (digests diferentes, medido em 05/08). Pegue a do painel:
---   Project Settings → API, ou Edge Functions → Secrets.
+--   Feito em 05/08/2026 para o projeto de produção. Para recriar em outro projeto
+--   — o staging do INFRA-270 (#131), por exemplo — gere um valor NOVO em vez de
+--   copiar este: segredo compartilhado entre ambientes anula o isolamento que o
+--   staging existe para dar.
+--
+--   O valor nunca passa por linha de comando nem por arquivo do repositório: o
+--   `--env-file` lê de um arquivo temporário fora do projeto, que é apagado em
+--   seguida.
+--
+--   A `send-otp-email` precisa estar deployada com o código que lê
+--   `OTP_TRIGGER_SECRET` (`index.ts:35-44`). Deployada em 05/08/2026.
 --
 -- ROLLBACK
 --
@@ -115,12 +131,12 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1
           FROM vault.decrypted_secrets
-         WHERE name = 'edge_functions_service_key'
+         WHERE name = 'otp_trigger_secret'
            AND coalesce(decrypted_secret, '') <> ''
     ) THEN
         RAISE EXCEPTION USING
-            MESSAGE = 'Vault sem o segredo "edge_functions_service_key" — migration recusada.',
-            HINT    = 'Rode antes: SELECT vault.create_secret(''<chave aceita pela send-otp-email>'', ''edge_functions_service_key'', ''Bearer compartilhado entre triggers e edge functions.'');';
+            MESSAGE = 'Vault sem o segredo "otp_trigger_secret" — migration recusada.',
+            HINT    = 'Gere um valor novo, instale como OTP_TRIGGER_SECRET no ambiente da send-otp-email e guarde o MESMO valor aqui: SELECT vault.create_secret(''<valor>'', ''otp_trigger_secret'', ''Bearer do trigger de OTP. Ver 20260805120000.'');';
     END IF;
 END;
 $$;
@@ -142,13 +158,13 @@ BEGIN
     SELECT decrypted_secret
       INTO v_chave
       FROM vault.decrypted_secrets
-     WHERE name = 'edge_functions_service_key';
+     WHERE name = 'otp_trigger_secret';
 
     -- Não postar com Bearer vazio: a edge function devolveria 401 e o convidado
     -- veria "enviamos o código" sem receber nada. Ver o cabeçalho.
     IF coalesce(v_chave, '') = '' THEN
         RAISE EXCEPTION USING
-            MESSAGE = 'Código de verificação não enviado: segredo "edge_functions_service_key" ausente no Vault.',
+            MESSAGE = 'Código de verificação não enviado: segredo "otp_trigger_secret" ausente no Vault.',
             HINT    = 'Restaure o segredo. Enquanto ele faltar, o código não chega ao cliente e por isso a solicitação falha aqui, em vez de prometer entrega.';
     END IF;
 
@@ -172,8 +188,9 @@ $$;
 COMMENT ON FUNCTION public.handle_new_otp_verification() IS
     'Dispara send-otp-email no projeto cafkrminfnokvgjqtkle. Entre 08/07 e 05/08/2026 '
     'o corpo vivo apontava para jvgyjlbjhbfrncwbytls, onde a função não existe — '
-    'todo POST era 404. A credencial sai do Vault (edge_functions_service_key); '
-    'app_settings e o header apikey não são mais consultados. Ver #41, #85, #86.';
+    'todo POST era 404. A credencial sai do Vault (otp_trigger_secret), um segredo '
+    'criado só para este uso — não a service_role; app_settings e o header apikey '
+    'não são mais consultados. Ver #41, #85, #86.';
 
 -- -----------------------------------------------------------------------------
 -- 2. Reafirma o endurecimento de 20260709000000

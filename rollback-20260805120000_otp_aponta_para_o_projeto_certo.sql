@@ -16,14 +16,20 @@
 -- problema for a credencial, o caminho barato é corrigir o segredo do Vault:
 --
 --   SELECT vault.update_secret(
---       (SELECT id FROM vault.secrets WHERE name = 'edge_functions_service_key'),
---       '<a chave certa>'
+--       (SELECT id FROM vault.secrets WHERE name = 'otp_trigger_secret'),
+--       '<o mesmo valor que está em OTP_TRIGGER_SECRET na edge function>'
 --   );
 --
 -- O trigger `on_otp_created_send_email` não é tocado nem lá nem aqui.
 --
 -- Sem `BEGIN`/`COMMIT`, pelo mesmo motivo explicado no cabeçalho da migration:
 -- quem abre a transação é o `db-apply.cjs`.
+--
+-- ATENÇÃO AO REGERAR: `node scripts/db-apply.cjs` SOBRESCREVE este arquivo com
+-- uma versão automática, sem nenhum destes comentários — é o INFRA-280 (#140).
+-- Confirmado na prática em 05/08/2026: um `--dry-run` apagou esta documentação.
+-- Se você rodar o db-apply e este cabeçalho sumir, recupere-o do git antes de
+-- commitar. O corpo SQL gerado automaticamente é equivalente ao daqui.
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_otp_verification()
@@ -31,7 +37,7 @@ RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $fn$
 DECLARE
   v_apikey text;
 BEGIN
@@ -63,13 +69,16 @@ BEGIN
     );
   RETURN NEW;
 END;
-$$;
+$fn$;
 
 COMMENT ON FUNCTION public.handle_new_otp_verification() IS NULL;
 
 REVOKE EXECUTE ON FUNCTION public.handle_new_otp_verification()
     FROM PUBLIC, anon, authenticated;
 
--- O segredo do Vault NÃO é apagado aqui de propósito: ele não faz mal parado, e
--- apagá-lo obrigaria a colar a chave de novo se a migration for reaplicada.
--- Para remover: DELETE FROM vault.secrets WHERE name = 'edge_functions_service_key';
+-- O segredo do Vault NÃO é apagado aqui de propósito: ele não faz mal parado, não
+-- abre nada além do envio de OTP, e apagá-lo obrigaria a regerar o par nos dois
+-- lados se a migration for reaplicada.
+-- Para remover: DELETE FROM vault.secrets WHERE name = 'otp_trigger_secret';
+-- Nesse caso, remova também o OTP_TRIGGER_SECRET do ambiente da edge function —
+-- segredo órfão de um lado só é ruído que confunde o próximo diagnóstico.

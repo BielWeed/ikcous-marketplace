@@ -34,6 +34,15 @@ serve(async (req: Request) => {
         // fossem desligadas no painel.
         const authHeader = req.headers.get('Authorization')
         const acceptedKeys: string[] = []
+
+        // Segredo criado só para este uso, guardado no Vault do banco e lido pelo
+        // trigger on_otp_created_send_email. É o caminho preferido: quem o obtém
+        // consegue disparar e-mail de OTP e nada além disso. As duas chaves abaixo
+        // abrem o projeto inteiro — continuam aceitas durante a transição, mas a
+        // intenção é parar de usá-las aqui. Ver migration 20260805120000 e #126.
+        const otpTriggerSecret = Deno.env.get('OTP_TRIGGER_SECRET')
+        if (otpTriggerSecret) acceptedKeys.push(otpTriggerSecret)
+
         try {
             const parsed = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') ?? '{}')
             if (parsed?.default) acceptedKeys.push(parsed.default)
