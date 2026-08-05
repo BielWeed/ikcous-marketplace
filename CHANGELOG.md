@@ -7,6 +7,68 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.0.3] — 2026-08-05
+
+Release de integridade de dados do catálogo. O Truth Gate — a camada que valida os axiomas de
+produto antes de gravar — tinha seis buracos de axioma, três caminhos de escrita que não passavam
+por ele, e um recibo de verificação que não provava nada. Nada disso é visível para quem compra.
+
+O que o **lojista** vai notar são três mudanças de comportamento, todas no sentido de recusar o
+que antes passava: alteração feita offline que viole um axioma agora é descartada na
+sincronização com aviso, em vez de entrar calada no banco; cadastro de produto sem nome, preço ou
+estoque falha na hora com mensagem; e variante com preço ou estoque negativo é rejeitada.
+
+### Corrigido
+
+- **Toda alteração feita offline entrava no banco sem validação nenhuma** (#145). O
+  `syncOfflineUpdates` escrevia direto em `produtos` sem chamar o Truth Gate, e o enfileiramento
+  gravava no `localStorage` antes de validar — e `localStorage` é editável pelo usuário. Era o
+  furo mais largo: bastava editar offline para contornar a camada inteira. Agora cada item da fila
+  é validado no sync. Violação de axioma é permanente, então o item é descartado em vez de voltar
+  para a fila e ser retentado a cada reconexão; falha de rede continua indo para retry.
+- **Variantes nunca passaram pelo Truth Gate** (#145). `priceOverride` e `stockIncrement` não eram
+  validados em nenhum dos quatro caminhos de escrita — e é o `price_override` que a RPC de pedido
+  usa como preço final da venda. Uma variante podia carregar preço negativo. Ganharam axiomas
+  próprios, e não os do produto: um recibo dizendo `price_non_negative` para um override de
+  variante mentiria sobre o que foi validado.
+- **O recibo de verificação colidia entre produtos diferentes** (#145). O hash era
+  `btoa(id-timestamp-status).slice(0, 16)`, e o corte em 16 caracteres base64 pega exatamente 12
+  bytes — que decodificam para o id do produto mais três dígitos do ano. Medido: dois produtos, um
+  a R$ 10,00 e outro a R$ 999.999,00, geravam o recibo idêntico `TUVTTU8tSUQtMjAy`. Um recibo que
+  não cobre o que foi validado não serve para auditoria. Agora é um digest de 64 bits sobre a
+  serialização canônica do payload, do veredito e do instante.
+- **Seis axiomas que aceitavam o que deveriam recusar** (#145). Estoque negativo passava (só havia
+  teto, sem piso); criação com objeto vazio passava, porque a mesma função servia patch e criação e
+  "ausente" era tratado como "válido" nos dois casos; `null`, `NaN` e texto escapavam das
+  comparações e chegavam ao banco como `null`; preço zero com custo positivo não avisava prejuízo; e
+  — o mais comum na prática — baixar o preço abaixo do custo já gravado não gerava nem aviso, porque
+  a validação enxergava só o patch e nunca a entidade mesclada.
+
+### Infraestrutura
+
+- **Os axiomas do Truth Gate passaram a ser cobrados pelo CI** (#146). 11 testes e 44 steps em
+  `tests/`, rodando em ~40ms sem tocar rede. A suíte foi verificada por mutação: removendo o piso de
+  estoque, tirando o payload do digest, desligando a exigência de campos na criação e devolvendo a
+  guarda antiga da margem, cada uma delas deixa a suíte vermelha. Suíte verde que passa também com o
+  código quebrado não protege nada.
+- O manifesto SROS passou a declarar `stock_non_negative`, para não prometer menos do que o gate
+  cobra (#145).
+- As skills aposentadas em `.agents_inactive/` foram versionadas com as ressalvas de reativação
+  (#147). Uma delas estava no repositório como arquivo vazio.
+
+### Sabido e não corrigido
+
+- O `sros_manifest.json` declara `delivery_restriction: "Monte Carmelo, MG"` como axioma, e o Truth
+  Gate não valida nada de entrega. É regra de frete e não de produto — onde ela deve morar continua
+  em aberto.
+- Nenhuma das mudanças desta release foi exercitada no navegador. O repositório não tem runner de
+  teste para `src/`, e o fluxo do admin exige sessão autenticada. O que as cobre é a suíte Deno, o
+  typecheck e o lint.
+- O `.gitignore` ignora `.agents/` (as skills ativas) e não ignora `.agents_inactive/`: o cemitério
+  é versionado e a pasta viva não. Provavelmente não foi intencional.
+- A regra de frete grátis continua escrita em 10 lugares (`FRETE-020`, #53), dependendo da decisão
+  `FRETE-030`.
+
 ## [1.0.2] — 2026-08-05
 
 Release de segurança de dados do cliente. Quatro vazamentos fechados, todos medidos contra o banco
