@@ -76,6 +76,19 @@ const VERIFICACOES = {
       "'Frete'::text as name",
     ],
   },
+  "20260804010000_fix_order_owner_check_null_safety.sql": {
+    funcao: "update_order_status_atomic",
+    esperado: [
+      // Defesa em profundidade: hoje `anon` nao tem EXECUTE nesta funcao, entao
+      // o unico caso que esta linha pega e token expirado (PEDIDO-010).
+      "IF v_caller_id IS NULL THEN",
+      // A comparação à prova de NULL na checagem de dono — é ela que fecha o furo.
+      "v_user_id IS DISTINCT FROM v_caller_id AND NOT v_is_admin",
+      // A restauração de estoque tem de sobreviver ao REPLACE: sem ela o
+      // cancelamento deixaria de devolver o produto para a prateleira.
+      "SET estoque = estoque + v_item.quantity",
+    ],
+  },
 };
 
 function lerDatabaseUrl() {
