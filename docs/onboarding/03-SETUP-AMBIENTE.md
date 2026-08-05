@@ -502,7 +502,7 @@ real em `main` — se vier vermelho no seu primeiro dia, não foi você.
 | `npm run dev` (`package.json:7`) | sempre | não medido em partida limpa; falha em ~2 s se a 5173 estiver ocupada | 0 / **1** se porta ocupada | `[PWA Build] Version determined: 1.0.0-dev` + banner do Vite |
 | `npm run typecheck` (`:11`) | antes de abrir PR | **14 a 18 s** | 0 | `tsc -b --force`: 0 linha de saída = os projetos referenciados estão limpos. É o mesmo comando do `pre-push` e do job `Tipos` do CI |
 | `npx tsc -p tsconfig.app.json --noEmit` | só para isolar `src/` do resto | **17,30 s** | 0 | subconjunto do anterior; não cobre o `tsconfig.node.json` |
-| `npm test` (`:12`) | antes de abrir PR | **6,53 s** medido em 05/08/2026 | 0 | roda os três conjuntos em sequência — 12 Deno de frete, 11 Deno do Truth Gate, 23 vitest dos mappers. Ver a [seção 8](#8-testes-onde-ficam-e-como-rodar) |
+| `npm test` (`:12`) | antes de abrir PR | **5,77 s** medido em 05/08/2026 | 0 | roda os três conjuntos em sequência — **66 casos**: 32 Deno de edge function, 11 Deno do Truth Gate, 23 vitest dos mappers. Ver a [seção 8](#8-testes-onde-ficam-e-como-rodar) |
 | `npm run lint` (`:9`) | antes de PR | **58,08 s** | **1** | **560 problemas: 7 erros, 553 warnings** — remedido em 04/08/2026, e é o que a Catraca cobra. O `1120 / 14 / 1106` que este documento trazia contava duas vezes: a varredura pegou `.claude/worktrees/`, que é uma cópia do repo |
 | `npm run biome:check` (`:18`) | diagnóstico local, **não** é o número que vale | **2,41 s** | **1** | ~24× mais rápido que o eslint, regras sobrepostas. **No Windows a contagem infla**: cada `␍` de CRLF vira erro de formatação que o Linux do CI não vê. Medido aqui em 04/08: 103 erros. **O número que a Catraca cobra é o do CI: 30 erros, 3 warnings** — lido do log do job `Catraca de lint` (run `31009603766`), e é o que está gravado em `.lint-baseline.json`. Eram 31 até 05/08/2026: o número caiu na develop sem ninguém abaixar o teto, porque a catraca só avisa quando cai. Para saber se você subiu dívida, rode `npm run lint:ratchet`, não o biome cru |
 | `$env:NODE_ENV='production'; npx vite build` | build local correto | **20,93 s** | 0 | 3934 módulos, 2645,2 kB de `.js`, precache de 85 entradas |
@@ -526,11 +526,16 @@ o dev não consiga repetir na máquina.
 
 | Conjunto | Runner | Onde mora | Script |
 | --- | --- | --- | --- |
-| Frete da edge function | Deno | `supabase/functions/calculate-shipping/index_test.ts` | `npm run test:edge` |
+| Edge functions (frete e push) | Deno | `supabase/functions/**/index_test.ts` | `npm run test:edge` |
 | Axiomas do Truth Gate | Deno | `tests/truth_gate_test.ts` | `npm run test:unit` |
 | Mappers do front | vitest | `tests/front/*.test.ts` | `npm run test:front` |
 
 Para escrever teste enquanto mexe no código: `npm run test:front:watch`.
+
+**O `test:edge` aponta para a pasta, não para um arquivo.** Até a PUSH-010 (#156)
+ele citava `calculate-shipping/index_test.ts` diretamente, e o efeito foi que o
+teste novo da `send-push` nasceria fora do CI sem ninguém perceber. Teste que o
+CI não roda não é teste.
 
 **Por que os dois runners convivem, em vez de um só.** As edge functions rodam
 em Deno na Supabase; testá-las em Node exigiria simular o runtime, e o teste

@@ -325,15 +325,22 @@ export const AdminPushView = memo(function AdminPushView({
         return;
       }
 
-      const { error: logError } = await supabase
+      // O log nasce com 0 entregas e só sobe quando a edge function CONFIRMAR
+      // quantas saíram (PUSH-010). Antes ele nascia com o número de alvos, e
+      // era esse número que o histórico mostrava — mesmo quando ninguém
+      // recebeu. Se o passo de correção abaixo falhar, o registro fica em 0,
+      // que é o padrão honesto: entrega não confirmada.
+      const { data: logRow, error: logError } = await supabase
         .from("push_notifications_log")
         .insert({
           title: notification.title,
           body: notification.body,
           url: notification.url,
-          recipient_count: finalRecipientCount,
+          recipient_count: 0,
           created_by: user?.id,
-        });
+        })
+        .select("id")
+        .single();
 
       if (logError) throw logError;
 
@@ -377,7 +384,7 @@ export const AdminPushView = memo(function AdminPushView({
         console.error("Error saving in-app notification:", inAppErr);
       }
 
-      const { error: pushError } = await supabase.functions.invoke(
+      const { data: envio, error: pushError } = await supabase.functions.invoke(
         "send-push",
         {
           body: {
@@ -392,26 +399,72 @@ export const AdminPushView = memo(function AdminPushView({
         },
       );
 
-      if (pushError) {
-        console.warn(
-          "Real push delivery failed, but log was created:",
-          pushError,
-        );
-        toast.warning("Log criado, mas houve erro no disparo real");
-      } else {
-        toast.success(
-          `Notificação enviada para ${finalRecipientCount} dispositivos!`,
-        );
-        recordAction(
-          "PUSH_DISPATCH",
-          {
-            title: notification.title,
-            recipient_count: finalRecipientCount,
-            segment,
-          },
-          { status: "success", timestamp: new Date().toISOString() },
-        );
+      // A resposta agora traz contagem de verdade. Até 05/08/2026 a função
+      // devolvia `{ success: true }` mesmo com todos os envios falhando, e esta
+      // tela nem lia o `data` — só o erro do invoke. Resultado: toast verde em
+      // cima de zero entrega. Ver PUSH-010 (#80).
+      const entregues = Number(envio?.enviados ?? 0);
+      const falharam = Number(envio?.falharam ?? 0);
+      const primeiraFalha = envio?.falhas?.[0];
+      const detalheDaFalha = primeiraFalha
+        ? `${primeiraFalha.quantidade}x ${primeiraFalha.motivo}`
+        : undefined;
+
+      if (entregues > 0) {
+        const { error: ajusteError } = await supabase
+          .from("push_notifications_log")
+          .update({ recipient_count: entregues })
+          .eq("id", logRow.id);
+        if (ajusteError) {
+          console.error(
+            "Falha ao corrigir o recipient_count do log:",
+            ajusteError,
+          );
+        }
       }
+
+      if (pushError) {
+        // A função recusou a requisição inteira: chave VAPID ausente, sessão
+        // sem permissão de admin, corpo inválido. Nada saiu.
+        console.error("send-push recusou a requisição:", pushError);
+        toast.error("Nenhum push saiu", {
+          description:
+            "A função de envio recusou a requisição. O registro ficou salvo com 0 entregas.",
+        });
+      } else if (entregues === 0) {
+        toast.error(`Nenhum dos ${finalRecipientCount} dispositivos recebeu`, {
+          description:
+            detalheDaFalha ?? "A função não informou o motivo da falha.",
+        });
+      } else if (falharam > 0) {
+        toast.warning(`Entregue em ${entregues} de ${entregues + falharam}`, {
+          description: detalheDaFalha,
+        });
+      } else {
+        toast.success(`Notificação entregue em ${entregues} dispositivo(s)`);
+      }
+
+      recordAction(
+        "PUSH_DISPATCH",
+        {
+          title: notification.title,
+          alvos: finalRecipientCount,
+          segment,
+        },
+        {
+          status: pushError
+            ? "error"
+            : entregues === 0
+              ? "error"
+              : falharam > 0
+                ? "partial"
+                : "success",
+          entregues,
+          falharam,
+          falhas: envio?.falhas ?? null,
+          timestamp: new Date().toISOString(),
+        },
+      );
 
       setNotification({ title: "", body: "", url: "/" });
       fetchHistory();

@@ -323,12 +323,12 @@ sequenceDiagram
 
 | # | Onde | O que acontece |
 | --- | --- | --- |
-| 1 | `AdminOrdersView.tsx:435-489` | `handleStatusChange`. É o único lugar **deste fluxo** que dispara push; o `OrderDetail` só delega para ele (`OrderDetail.tsx:815-828`, ligado em `AdminOrdersView.tsx:535-543`). A outra origem de push no app é a tela de envio manual (`AdminPushView.tsx:377`), que não passa por aqui. |
+| 1 | `AdminOrdersView.tsx:435-489` | `handleStatusChange`. É o único lugar **deste fluxo** que dispara push; o `OrderDetail` só delega para ele (`OrderDetail.tsx:815-828`, ligado em `AdminOrdersView.tsx:535-543`). A outra origem de push no app é a tela de envio manual (`AdminPushView.tsx:383`), que não passa por aqui — e é a única das duas que **lê** a resposta da função. |
 | 2 | `AdminOrdersView.tsx:442` | Guarda de **três** conjunções: `order?.userId && !silent && !isOffline`. Convidado nunca gera push; `silent` e admin offline também não — e nenhum dos três é recuperado depois. |
 | 3 | `AdminOrdersView.tsx:447-464` | Pega o `access_token` da sessão do admin e invoca `send-push` com `targetUserId`, título, corpo e `data.type = "order_status"`. Erro é engolido em `console.error` (`:465-467`). |
-| 4 | `send-push/index.ts:23-45` | Verifica o header, resolve o usuário pelo token e exige `profiles.role === 'admin'`. |
-| 5 | `send-push/index.ts:61-68` | Busca `push_subscriptions` filtrando por `user_id`. Sem `targetUserId`, **manda para todo mundo**. |
-| 6 | `send-push/index.ts:71-125` | Exige `VAPID_PUBLIC_KEY` e `VAPID_PRIVATE_KEY` no ambiente da função; envia em lotes de 100 e apaga a inscrição em 410/404 (`:116-118`). |
+| 4 | `send-push/index.ts:339-362` | Verifica o header, resolve o usuário pelo token e exige `profiles.role === 'admin'`. |
+| 5 | `send-push/index.ts:377-381` | Busca `push_subscriptions` filtrando por `user_id`. Sem `targetUserId`, **manda para todo mundo**. |
+| 6 | `send-push/index.ts:404-436` | Carrega as chaves VAPID (`carregarChavesVapid`, `:133`), monta o `ApplicationServer` e envia em lotes de 100 (`enviarParaInscritos`, `:251`), apagando a inscrição em 410/404. A resposta traz `enviados`, `falharam` e os motivos agrupados (`:447`). |
 | 7 | `sw.ts:295-318` | O SW do cliente monta a notificação a partir do JSON. `notificationclick` foca a aba existente ou abre uma nova (`:320-339`). |
 | 8 | `AdminOrdersView.tsx:471` → `useOrders.ts:662-764` | `updateOrderStatus`: update otimista no state e no cache (`:678-703`), fila offline no `localStorage` se `!navigator.onLine` (`:706-732`), e por fim a RPC `update_order_status_atomic` (`:734-742`). |
 | 9 | `20260707000000_fix_update_order_status_atomic.sql:38-86` | Tranca a linha, checa posse/admin (`:48-59`), **restaura estoque** quando vai para `cancelled` (`:63-76`), grava o status e insere em `marketplace_order_history`. |
@@ -341,11 +341,12 @@ sequenceDiagram
 | --- | --- | --- |
 | Cliente **nunca** recebe push, mesmo tendo aceitado o convite. | `subscribe()` chama `pushManager.subscribe` **antes** de checar sessão e faz `return` sem gravar nada se `user` for nulo. A permissão do navegador fica concedida, e o banner nunca reaparece porque `permission === "granted"` o esconde. Resultado: convidado que aceita fica permanentemente inscrito no navegador e ausente do banco. | `usePushNotifications.ts:64-73`; banner escondido em `PushNotificationBanner.tsx:35-38` |
 | Push chega mas o status não mudou. | O `invoke("send-push")` acontece em `:452`, a RPC em `:471`. Falha na RPC não desfaz a notificação. | `AdminOrdersView.tsx:452` vs `:471` |
-| Nenhum push em nenhum pedido, sem erro visível na UI. | `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` ausentes no ambiente da edge function fazem a função lançar; o cliente engole o erro em `console.error`. | `send-push/index.ts:76-78`; `AdminOrdersView.tsx:465-467` |
+| **Nenhum push em nenhum pedido, nunca, sem erro visível em lugar nenhum.** | **Causa medida em 05/08/2026 e corrigida na PUSH-010 (#80): a função chamava `webpush.sendNotification(...)`, que NÃO EXISTE em `jsr:@negrel/webpush@0.3.0`.** Toda inscrição estourava `TypeError`, o `Promise.allSettled` engolia e a resposta era `{ success: true }` com HTTP 200. O canal de push nunca entregou nada desde que este código entrou. Hoje a função responde com `enviados` e `falharam`, e a tela mostra o número real. | `supabase/functions/send-push/index_test.ts`, teste "a biblioteca não tem sendNotification" |
+| Nenhum push em nenhum pedido, e a resposta diz o motivo. | `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` ausentes ou em formato inesperado no ambiente da edge function fazem a requisição inteira virar 400 com a variável nomeada. Isto é o que a PUSH-030 precisa confirmar. No fluxo de pedido o erro continua sendo engolido em `console.error`. | `send-push/index.ts:133-160`; `AdminOrdersView.tsx:465-467` |
 | Admin legítimo recebe "Unauthorized: Admin access required". | A edge function autoriza por `profiles.role`, **não** pela RPC `is_admin()` que o resto do app usa. Um admin cuja role viva não esteja em `profiles` passa por todos os guards do frontend e falha só aqui. | `send-push/index.ts:37-45` |
 | Cliente logado com o app aberto não vê o status mudar. | Só a aba **líder** abre o socket (`if (isLeader)`); a aba secundária cai no `else` e só escuta o `BroadcastChannel` `ikcous_orders_realtime`. Aba escondida renuncia à liderança depois de 3 s. Sem `user.id`, nem canal existe. | `useOrders.ts:546` e `:558-578`; renúncia em `useLeaderElection.ts:153-165`; guard e filtro em `useOrders.ts:388-389` e `:451-457` |
 | **Status mudado com o admin offline: o cliente nunca recebe push — nem depois que a conexão volta.** Nada na UI do admin indica isso. | O guard de push exige `!isOffline`, então nenhum push sai na hora. A alteração entra na fila `orders_offline_updates_queue` e o `return` acontece **antes** da RPC. Quando a conexão volta, `syncOfflineOrderUpdates` percorre a fila chamando só `update_order_status_atomic` — não há nenhuma referência a `send-push` nessa função. O push não é adiado: ele é perdido. | `AdminOrdersView.tsx:442` (guard); `useOrders.ts:706-731` (enfileira e `return` em `:731`); `useOrders.ts:39-102` (`syncOfflineOrderUpdates`, RPC em `:56-64`, zero push) |
-| Cliente não recebe nada in-app. | Nada insere em `notificacoes` nesse fluxo. Push é o único canal automático. | `20260707000000...sql` não menciona `notificacoes`; no repo os INSERTs em `notificacoes` só existem em `AdminPushView.tsx:338`, `:346`, `:368` e em duas migrations de 03/03 |
+| Cliente não recebe nada in-app. | Nada insere em `notificacoes` nesse fluxo. Push é o único canal automático. | `20260707000000...sql` não menciona `notificacoes`; no repo os INSERTs em `notificacoes` só existem em `AdminPushView.tsx:345`, `:353`, `:375` e em duas migrations de 03/03 |
 
 > **Ressalva de segurança, do arquivo de migration.** Em
 > `20260707000000_fix_update_order_status_atomic.sql:48` a checagem é
@@ -357,7 +358,7 @@ sequenceDiagram
 ### Se quebrar, olhe aqui primeiro — Fluxo 4
 
 1. `src/views/admin/AdminOrdersView.tsx:435-489` — a ordem das operações e o guard de `userId`; é a origem de tudo neste fluxo.
-2. `supabase/functions/send-push/index.ts` — os dois modos de falha da edge function estão neste arquivo: autorização por `profiles.role` (`:37-45`) e ausência das chaves VAPID (`:76-78`).
+2. `supabase/functions/send-push/index.ts` — os dois modos de falha que derrubam a requisição inteira: autorização por `profiles.role` (`:355-362`) e chave VAPID ausente ou em formato inesperado (`:133-160`). Falha de dispositivo individual **não** derruba a requisição: sai contada em `falharam` com o motivo. Rodar `npm run test:edge` cobre os dois caminhos sem tocar produção.
 3. Tabela `push_subscriptions` — se não há linha para o `user_id` do pedido, o resto da cadeia é irrelevante. Só leitura.
 4. `src/hooks/usePushNotifications.ts:64-88` — o motivo mais comum de não haver linha.
 5. `src/sw/sw.ts:295-318` — se a notificação chega vazia ou com título "Novidade!", o payload não trouxe `title`.
