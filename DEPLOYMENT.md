@@ -54,6 +54,22 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    opaco, não com JWT — leva 401. O valor não está versionado em lugar nenhum;
    é o INFRA-310 (#162).
 
+   **A `notify-new-order` também exige `--no-verify-jwt`** (PEDIDO-020, #89):
+
+   ```bash
+   supabase functions deploy notify-new-order --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
+   ```
+
+   Ela é chamada pelo navegador do CLIENTE logo depois do pedido — muitas vezes
+   um convidado sem sessão nenhuma. Com `verify_jwt` ligado, o gateway recusa
+   antes de a função rodar e o lojista simplesmente não é avisado, **sem erro
+   visível no checkout**, porque o disparo é fire-and-forget de propósito.
+
+   Sem `verify_jwt`, quem protege é a própria função: o corpo só aceita
+   `orderId`, todo o texto da notificação é lido do banco, e o pedido precisa
+   ter sido criado nos últimos 15 minutos. O pior caso de um id vazado é
+   duplicar o aviso de um pedido que acabou de entrar.
+
    **O que está publicado hoje** — medido em 05/08/2026 com
    `supabase functions list --project-ref cafkrminfnokvgjqtkle`. Esta tabela
    envelhece; rode o comando em vez de confiar nela:
@@ -64,6 +80,19 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    | `send-otp-email` | 8 | 2026-08-05 12:31 |
    | `calculate-shipping` | 11 | 2026-07-30 08:22 |
    | `send-order-whatsapp` | 8 | 2026-04-20 20:14 |
+   | `notify-new-order` | — | **ainda não publicada** |
+
+   Duas ressalvas desta tabela, medidas em 05/08/2026:
+
+   - **`notify-new-order` está no repositório e não no ar.** Enquanto não for
+     publicada com o comando acima, o aviso de pedido novo não existe: o front
+     chama, o gateway responde 404 e o `.catch()` engole — de propósito, para
+     não derrubar o checkout. O critério 1 da #89 só passa depois do deploy.
+   - **`send-order-whatsapp` está no ar e não no repositório.** É a única das
+     cinco sem fonte versionada aqui, e ela avisa o CLIENTE, não o lojista.
+     `supabase functions deploy` sem nome de função publica **todas** as do
+     diretório — o que não a apaga, mas também não a mantém. Detalhe e risco
+     na issue própria.
 
    A v12 da `send-push` é a primeira que **entrega de verdade**: até a v11 ela
    chamava `webpush.sendNotification`, que não existe na biblioteca, e
