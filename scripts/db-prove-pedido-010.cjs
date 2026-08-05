@@ -15,13 +15,21 @@
  *
  * OS CINCO CENÁRIOS:
  *   Com a definicao ANTIGA reinstalada
- *     1. Usuário logado B cancela pedido de CONVIDADO -> tem de PASSAR (o furo)
+ *     1. Cliente comum cancela pedido de CONVIDADO -> tem de PASSAR (o furo)
  *   Com a migration reaplicada
  *     2. Mesmo caso 1 -> tem de ser barrado
  *     3. Chamador sem sessao contra pedido de convidado -> tem de ser barrado
- *     4. Dono cancela o PRÓPRIO pedido pendente -> tem de passar
+ *     4. O mesmo cliente cancela o PRÓPRIO pedido pendente -> tem de passar
  *     5. Admin muda o status de pedido de convidado -> tem de passar
  *   E o pg_proc.proacl tem de sair idêntico ao que entrou.
+ *
+ * O CLIENTE COMUM PRECISA MESMO SER COMUM, e isso e conferido contra o banco
+ *   antes de qualquer cenario. A primeira versao deste script elegeu como
+ *   atacante um usuario que era admin: is_admin() cai no fallback de auth.users
+ *   quando a claim nao diz admin, entao ele passava em tudo. O cenario 1 ficou
+ *   verde sem provar o furo e o 2 ficou vermelho sem haver defeito. Por isso
+ *   `conferirNaoAdmin` pergunta `SELECT public.is_admin()` com o papel e as
+ *   claims reais, e aborta se vier true.
  *
  * SOBRE O CENÁRIO 3: o ACL vivo NAO concede EXECUTE para `anon`
  *   (`{postgres,authenticated,service_role}`), ao contrario do que o GRANT em
@@ -35,8 +43,10 @@
  *   `postgres`. Sem `SET LOCAL ROLE`, todo chamador seria admin e os cenários
  *   passariam sem medir nada.
  *
- * OS USUÁRIOS SÃO REAIS: marketplace_orders.user_id tem FK para auth.users,
- * entao UUID inventado nao serve. O script descobre dois usuarios existentes.
+ * OS USUÁRIOS SÃO REAIS: marketplace_orders.user_id tem FK para auth.users e
+ * marketplace_order_history.created_by tambem, entao UUID inventado nao serve —
+ * a primeira versao deste script morria na constraint antes de medir qualquer
+ * coisa. O script descobre um cliente comum e um admin no proprio banco.
  *
  * USO:  node scripts/db-prove-pedido-010.cjs
  * Sai com código 0 só se os cinco cenários e a comparação de ACL passarem.
@@ -104,17 +114,61 @@ async function fotografarFuncao(client) {
 async function descobrirUsuarios(client) {
   const { rows } = await client.query(
     `SELECT id, email, COALESCE(raw_app_meta_data ->> 'role', '') AS papel
-       FROM auth.users ORDER BY created_at LIMIT 10`,
+       FROM auth.users ORDER BY created_at LIMIT 50`,
   );
-  if (rows.length < 2) {
+  const comuns = rows.filter((u) => u.papel !== "admin");
+  const admins = rows.filter((u) => u.papel === "admin");
+  if (comuns.length === 0) {
     throw new Error(
-      `Preciso de 2 usuarios reais em auth.users para o teste, achei ${rows.length}.`,
+      "Nenhum usuario NAO admin em auth.users. O teste inteiro precisa de um: com admin, tudo passa e a prova vira teatro.",
     );
   }
-  const dono = rows.find((u) => u.papel !== "admin") ?? rows[0];
-  const atacante = rows.find((u) => u.id !== dono.id);
-  const admin = rows.find((u) => u.papel === "admin") ?? atacante;
-  return { dono, atacante, admin };
+  if (admins.length === 0) {
+    throw new Error("Nenhum usuario admin em auth.users para o cenario 5.");
+  }
+  return { cliente: comuns[0], admin: admins[0] };
+}
+
+/**
+ * Guarda contra o erro que já aconteceu neste script: a primeira versao elegeu
+ * como "atacante" um usuario que era admin, e `is_admin()` cai no fallback de
+ * auth.users quando a claim nao diz admin. Resultado: o furo "reproduzia" e a
+ * correcao "falhava", os dois pelo mesmo motivo errado. Aqui a gente pergunta
+ * ao banco, com o papel e as claims reais do cenario.
+ */
+async function conferirNaoAdmin(client, sub, email) {
+  await client.query("SAVEPOINT chk_admin");
+  await client.query("SET LOCAL ROLE authenticated");
+  await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
+    claims(sub, false),
+  ]);
+  const { rows } = await client.query("SELECT public.is_admin() AS eh");
+  await client.query("ROLLBACK TO SAVEPOINT chk_admin");
+  await client.query("RESET ROLE");
+  if (rows[0].eh) {
+    throw new Error(
+      `${email} resolve is_admin() = true. Ele nao serve como cliente comum — os cenarios passariam sem medir nada.`,
+    );
+  }
+}
+
+/** Le do banco um status valido diferente de pending/cancelled, para o cenario do admin. */
+async function statusValidoParaAdmin(client) {
+  const { rows } = await client.query(
+    `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+      WHERE conname = 'marketplace_orders_status_check'`,
+  );
+  if (rows.length === 0) {
+    throw new Error(
+      "Constraint marketplace_orders_status_check nao encontrada.",
+    );
+  }
+  const valores = [...rows[0].def.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  const escolhido = valores.find((v) => v !== "pending" && v !== "cancelled");
+  if (!escolhido) {
+    throw new Error(`Nenhum status utilizavel na constraint: ${rows[0].def}`);
+  }
+  return escolhido;
 }
 
 /** Cria um pedido real dentro da transação. sub = null cria pedido de convidado. */
@@ -225,17 +279,30 @@ async function main() {
       `Produto de teste: ${produto.nome} (R$ ${produto.preco_venda})\n`,
     );
 
-    const { dono, atacante, admin } = await descobrirUsuarios(client);
+    const { cliente, admin } = await descobrirUsuarios(client);
+    await conferirNaoAdmin(client, cliente.id, cliente.email);
+    const statusDoAdmin = await statusValidoParaAdmin(client);
     console.log("Usuarios reais usados (FK para auth.users):");
-    console.log(`  dono do pedido : ${dono.email}`);
-    console.log(`  atacante       : ${atacante.email}`);
-    console.log(`  admin          : ${admin.email}\n`);
+    console.log(
+      `  cliente comum : ${cliente.email} (is_admin() = false, conferido)`,
+    );
+    console.log(`  admin         : ${admin.email}`);
+    console.log(
+      `  status do cenario 5: '${statusDoAdmin}' (lido da constraint)\n`,
+    );
 
+    // O cliente comum é dono de um pedido e ESTRANHO ao pedido de convidado.
+    // É exatamente o cenário da issue: logado de posse do id de um pedido alheio.
     const pedidoConvidado = await criarPedido(client, null, produto, frete);
-    const pedidoDoDono = await criarPedido(client, dono.id, produto, frete);
+    const pedidoDoCliente = await criarPedido(
+      client,
+      cliente.id,
+      produto,
+      frete,
+    );
     console.log("Pedidos de teste criados (somem no ROLLBACK):");
     console.log(`  convidado (user_id NULL): ${pedidoConvidado}`);
-    console.log(`  do dono                 : ${pedidoDoDono}\n`);
+    console.log(`  do cliente comum        : ${pedidoDoCliente}\n`);
 
     // A funcao viva ja esta corrigida. Para demonstrar o furo é preciso
     // reinstalar a definicao antiga — a que o db-apply salvou antes de aplicar.
@@ -252,12 +319,12 @@ async function main() {
 
     const c1 = await tentar(client, {
       papel: "authenticated",
-      sub: atacante.id,
+      sub: cliente.id,
       orderId: pedidoConvidado,
       novoStatus: "cancelled",
     });
     registrar(
-      "1. logado sem relacao cancela pedido de convidado (esperado: PASSA, é o furo)",
+      "1. cliente comum cancela pedido de convidado (esperado: PASSA, é o furo)",
       c1.passou,
       c1.passou ? "cancelou o pedido alheio" : c1.mensagem,
     );
@@ -268,12 +335,12 @@ async function main() {
 
     const c2 = await tentar(client, {
       papel: "authenticated",
-      sub: atacante.id,
+      sub: cliente.id,
       orderId: pedidoConvidado,
       novoStatus: "cancelled",
     });
     registrar(
-      "2. mesmo chamador, mesmo pedido: BARRADO",
+      "2. mesmo cliente, mesmo pedido de convidado: BARRADO",
       !c2.passou,
       c2.mensagem,
     );
@@ -290,8 +357,8 @@ async function main() {
 
     const c4 = await tentar(client, {
       papel: "authenticated",
-      sub: dono.id,
-      orderId: pedidoDoDono,
+      sub: cliente.id,
+      orderId: pedidoDoCliente,
       novoStatus: "cancelled",
     });
     registrar(
@@ -305,7 +372,7 @@ async function main() {
       sub: admin.id,
       admin: true,
       orderId: pedidoConvidado,
-      novoStatus: "shipped",
+      novoStatus: statusDoAdmin,
     });
     registrar(
       "5. admin muda status de pedido de convidado: PASSA",
