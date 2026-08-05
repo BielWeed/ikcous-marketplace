@@ -13,7 +13,7 @@
     "Alvo: zerar. Task INFRA-250 para os warnings, INFRA-220 para o Biome."
   ],
   "eslint": {
-    "errors": 7,
+    "errors": 6,
     "warnings": 553
   },
   "biome": {
