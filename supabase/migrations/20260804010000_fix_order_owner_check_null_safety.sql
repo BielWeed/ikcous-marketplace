@@ -8,28 +8,33 @@
 --   checagem de dono usava `!=`, e em SQL `NULL != <uuid>` avalia para NULL, não
 --   para true. O IF nunca disparava e a exceção de autorização nunca acontecia.
 --
---   O alcance é maior do que "usuário logado cancela pedido de convidado". A
---   função tem GRANT EXECUTE para `anon` (20260707000000:94), e `<uuid> != NULL`
---   também dá NULL — então um visitante ANÔNIMO, de posse do id de um pedido de
---   cliente CADASTRADO, passava pela checagem do mesmo jeito. Em ambos os casos
---   o unico limite era o bloco seguinte, que restringe não-admin a cancelar
+--   O único limite era o bloco seguinte, que restringe não-admin a cancelar
 --   pedido pendente. Cancelar devolve o estoque, então a venda era desfeita de
---   verdade.
+--   verdade. E o id do pedido não é segredo: aparece na tela de sucesso, no
+--   rastreio e em qualquer print que o cliente compartilhe.
 --
---   O id do pedido não é segredo: aparece na tela de sucesso, no rastreio e em
---   qualquer print que o cliente compartilhe.
+--   SOBRE O CHAMADOR ANÔNIMO, para não repetir um erro já cometido: a leitura
+--   deste arquivo sugere que `anon` também alcançava a função, porque
+--   20260707000000:94 tem `GRANT EXECUTE ... TO anon`. O ACL VIVO não concede —
+--   é `{postgres,authenticated,service_role}`, lido do banco em 04/08/2026. O
+--   arquivo diverge do banco, como boa parte deste ledger (BANCO-030, #112).
+--   Então o ataque anônimo NÃO era alcançável em produção; o do usuário logado
+--   contra pedido de convidado era. Não confie no GRANT escrito no repositório
+--   sem conferir o proacl.
 --
 -- SOLUÇÃO, em duas partes
---   1. Nenhuma alteração de status sem sessão. A checagem de `v_caller_id IS
---      NULL` vem ANTES do SELECT do pedido, de propósito: assim o anônimo recebe
---      'não autorizado' em vez de 'pedido não encontrado', e não consegue usar a
---      RPC para descobrir quais ids existem.
---   2. `IS DISTINCT FROM` no lugar de `!=`, que é a comparação que trata NULL
---      como valor em vez de propagar NULL.
+--   1. `IS DISTINCT FROM` no lugar de `!=`, que é a comparação que trata NULL
+--      como valor em vez de propagar NULL. É esta parte que fecha o furo real.
+--   2. Nenhuma alteração de status sem sessão. Hoje isso é defesa em
+--      profundidade — sem EXECUTE para `anon`, ninguém chega aqui sem sessão,
+--      fora o caso de token expirado. Passa a valer de verdade no dia em que
+--      alguém conceder o GRANT que o repositório já acha que existe. A checagem
+--      vem ANTES do SELECT do pedido de propósito: quem não tem sessão recebe
+--      'não autorizado' em vez de 'pedido não encontrado', e não consegue usar
+--      a RPC para descobrir quais ids existem.
 --
---   Só a parte 1 já barraria o anônimo, e só a parte 2 já barraria o logado
---   contra pedido de convidado. As duas juntas fecham os quatro cruzamentos de
---   (chamador com/sem sessão) x (pedido com/sem dono).
+--   Precisa das duas: `IS DISTINCT FROM` sozinho não barra chamador sem sessão
+--   contra pedido de convidado, porque `NULL IS DISTINCT FROM NULL` é falso.
 --
 -- ALÉM DO CRITÉRIO DE ACEITE, e de propósito
 --   As outras comparações do corpo também eram `!=` sobre valores que podem ser

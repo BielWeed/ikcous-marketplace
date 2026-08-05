@@ -6,26 +6,40 @@
  * termina em ROLLBACK. Nenhum pedido fica criado, nenhum estoque muda, nenhuma
  * configuração da loja sobra alterada.
  *
- * OS SEIS CENÁRIOS, nesta ordem:
- *   ANTES da migration
- *     1. Usuário logado B cancela pedido de CONVIDADO  -> hoje passa (o bug)
- *     2. Visitante ANÔNIMO cancela pedido do usuário A -> hoje passa (o bug,
- *        mais amplo do que a issue descreve: `<uuid> != NULL` também dá NULL)
- *   DEPOIS da migration
- *     3. Mesmo caso 1 -> tem de ser barrado
- *     4. Mesmo caso 2 -> tem de ser barrado
- *     5. Dono (usuário A) cancela o PRÓPRIO pedido pendente -> tem de passar
- *     6. Admin muda o status de pedido de convidado -> tem de passar
+ * ESTE SCRIPT RODA DEPOIS DA MIGRATION JÁ APLICADA.
+ *   A funcao viva no banco ja esta corrigida, entao nao da para reproduzir o
+ *   furo com ela. O script reinstala a definicao ANTIGA — a do arquivo de
+ *   rollback que o db-apply.cjs gerou — dentro da transacao, demonstra o furo
+ *   com ela, reaplica a migration e mede de novo. Mesmo padrao do
+ *   db-prove-regression.cjs. Um teste que passa antes e depois nao prova nada.
+ *
+ * OS CINCO CENÁRIOS:
+ *   Com a definicao ANTIGA reinstalada
+ *     1. Usuário logado B cancela pedido de CONVIDADO -> tem de PASSAR (o furo)
+ *   Com a migration reaplicada
+ *     2. Mesmo caso 1 -> tem de ser barrado
+ *     3. Chamador sem sessao contra pedido de convidado -> tem de ser barrado
+ *     4. Dono cancela o PRÓPRIO pedido pendente -> tem de passar
+ *     5. Admin muda o status de pedido de convidado -> tem de passar
  *   E o pg_proc.proacl tem de sair idêntico ao que entrou.
+ *
+ * SOBRE O CENÁRIO 3: o ACL vivo NAO concede EXECUTE para `anon`
+ *   (`{postgres,authenticated,service_role}`), ao contrario do que o GRANT em
+ *   20260707000000:94 sugere — o arquivo diverge do banco, como boa parte do
+ *   ledger. Entao o cenario usa o papel `authenticated` SEM claims, que e o
+ *   caso real de sessao expirada, e nao `anon`, que sequer consegue chamar.
  *
  * POR QUE CADA CENÁRIO TROCA O PAPEL DA SESSÃO:
  *   is_admin() começa com `IF current_setting('role') IN ('postgres',
  *   'service_role') THEN RETURN true`, e a DATABASE_URL conecta como
- *   `postgres`. Sem `SET LOCAL ROLE`, todo chamador seria admin e os seis
- *   cenários passariam sem medir nada.
+ *   `postgres`. Sem `SET LOCAL ROLE`, todo chamador seria admin e os cenários
+ *   passariam sem medir nada.
+ *
+ * OS USUÁRIOS SÃO REAIS: marketplace_orders.user_id tem FK para auth.users,
+ * entao UUID inventado nao serve. O script descobre dois usuarios existentes.
  *
  * USO:  node scripts/db-prove-pedido-010.cjs
- * Sai com código 0 só se os seis cenários e a comparação de ACL passarem.
+ * Sai com código 0 só se os cinco cenários e a comparação de ACL passarem.
  */
 
 const fs = require("node:fs");
@@ -40,9 +54,10 @@ const MIGRATION = path.join(
   "20260804010000_fix_order_owner_check_null_safety.sql",
 );
 
-const USUARIO_A = "00000000-0000-4000-8000-00000000000a"; // dono do pedido
-const USUARIO_B = "00000000-0000-4000-8000-00000000000b"; // logado, sem relação
-const ADMIN = "00000000-0000-4000-8000-00000000000d";
+const ROLLBACK = path.join(
+  PROJECT_ROOT,
+  "rollback-20260804010000_fix_order_owner_check_null_safety.sql",
+);
 
 const claims = (sub, admin) =>
   sub === null
@@ -79,6 +94,27 @@ async function fotografarFuncao(client) {
      WHERE n.nspname = 'public' AND p.proname = 'update_order_status_atomic'
      ORDER BY p.oid`);
   return rows;
+}
+
+/**
+ * marketplace_orders.user_id tem FK para auth.users, e marketplace_order_history
+ * .created_by tambem aponta para la — entao tanto o dono quanto o chamador
+ * precisam existir de verdade. Pega dois usuarios distintos do banco.
+ */
+async function descobrirUsuarios(client) {
+  const { rows } = await client.query(
+    `SELECT id, email, COALESCE(raw_app_meta_data ->> 'role', '') AS papel
+       FROM auth.users ORDER BY created_at LIMIT 10`,
+  );
+  if (rows.length < 2) {
+    throw new Error(
+      `Preciso de 2 usuarios reais em auth.users para o teste, achei ${rows.length}.`,
+    );
+  }
+  const dono = rows.find((u) => u.papel !== "admin") ?? rows[0];
+  const atacante = rows.find((u) => u.id !== dono.id);
+  const admin = rows.find((u) => u.papel === "admin") ?? atacante;
+  return { dono, atacante, admin };
 }
 
 /** Cria um pedido real dentro da transação. sub = null cria pedido de convidado. */
@@ -189,89 +225,92 @@ async function main() {
       `Produto de teste: ${produto.nome} (R$ ${produto.preco_venda})\n`,
     );
 
-    const pedidoConvidado = await criarPedido(client, null, produto, frete);
-    const pedidoUsuarioA = await criarPedido(client, USUARIO_A, produto, frete);
-    console.log("Pedidos de teste criados (some no ROLLBACK):");
-    console.log(`  convidado (user_id NULL): ${pedidoConvidado}`);
-    console.log(`  usuario A               : ${pedidoUsuarioA}\n`);
+    const { dono, atacante, admin } = await descobrirUsuarios(client);
+    console.log("Usuarios reais usados (FK para auth.users):");
+    console.log(`  dono do pedido : ${dono.email}`);
+    console.log(`  atacante       : ${atacante.email}`);
+    console.log(`  admin          : ${admin.email}\n`);
 
-    console.log("=== ANTES da migration: o furo existe? ===");
+    const pedidoConvidado = await criarPedido(client, null, produto, frete);
+    const pedidoDoDono = await criarPedido(client, dono.id, produto, frete);
+    console.log("Pedidos de teste criados (somem no ROLLBACK):");
+    console.log(`  convidado (user_id NULL): ${pedidoConvidado}`);
+    console.log(`  do dono                 : ${pedidoDoDono}\n`);
+
+    // A funcao viva ja esta corrigida. Para demonstrar o furo é preciso
+    // reinstalar a definicao antiga — a que o db-apply salvou antes de aplicar.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
+    await client.query(fs.readFileSync(ROLLBACK, "utf8"));
+    console.log("=== Definicao ANTIGA reinstalada na transacao ===");
+    const conferindoAntiga = await fotografarFuncao(client);
+    if (conferindoAntiga[0].tem_correcao) {
+      throw new Error(
+        "O rollback nao devolveu a definicao antiga — ele ainda tem IS DISTINCT FROM.",
+      );
+    }
+    console.log("  confirmado: sem IS DISTINCT FROM no corpo\n");
+
     const c1 = await tentar(client, {
       papel: "authenticated",
-      sub: USUARIO_B,
+      sub: atacante.id,
       orderId: pedidoConvidado,
       novoStatus: "cancelled",
     });
     registrar(
-      "1. logado B cancela pedido de convidado (esperado: PASSA, é o bug)",
+      "1. logado sem relacao cancela pedido de convidado (esperado: PASSA, é o furo)",
       c1.passou,
-      c1.passou ? "cancelou" : c1.mensagem,
-    );
-
-    const c2 = await tentar(client, {
-      papel: "anon",
-      sub: null,
-      orderId: pedidoUsuarioA,
-      novoStatus: "cancelled",
-    });
-    registrar(
-      "2. anonimo cancela pedido de cliente cadastrado (esperado: PASSA, é o bug)",
-      c2.passou,
-      c2.passou ? "cancelou" : c2.mensagem,
+      c1.passou ? "cancelou o pedido alheio" : c1.mensagem,
     );
 
     // eslint-disable-next-line security/detect-non-literal-fs-filename
     await client.query(fs.readFileSync(MIGRATION, "utf8"));
-    console.log("\n=== Migration aplicada (dentro da transação) ===\n");
+    console.log("\n=== Migration reaplicada na transacao ===\n");
 
-    console.log("=== DEPOIS da migration ===");
-    const c3 = await tentar(client, {
+    const c2 = await tentar(client, {
       papel: "authenticated",
-      sub: USUARIO_B,
+      sub: atacante.id,
       orderId: pedidoConvidado,
       novoStatus: "cancelled",
     });
     registrar(
-      "3. logado B contra pedido de convidado: BARRADO",
-      !c3.passou,
-      c3.mensagem,
+      "2. mesmo chamador, mesmo pedido: BARRADO",
+      !c2.passou,
+      c2.mensagem,
     );
 
-    const c4 = await tentar(client, {
-      papel: "anon",
+    // Sem claims: e o caso real de sessao expirada. `anon` nao entra aqui
+    // porque o ACL vivo nao concede EXECUTE a ele.
+    const c3 = await tentar(client, {
+      papel: "authenticated",
       sub: null,
-      orderId: pedidoUsuarioA,
+      orderId: pedidoConvidado,
+      novoStatus: "cancelled",
+    });
+    registrar("3. chamador sem sessao: BARRADO", !c3.passou, c3.mensagem);
+
+    const c4 = await tentar(client, {
+      papel: "authenticated",
+      sub: dono.id,
+      orderId: pedidoDoDono,
       novoStatus: "cancelled",
     });
     registrar(
-      "4. anonimo contra pedido alheio: BARRADO",
-      !c4.passou,
-      c4.mensagem,
+      "4. dono cancela o proprio pedido pendente: PASSA",
+      c4.passou,
+      c4.passou ? "cancelou" : c4.mensagem,
     );
 
     const c5 = await tentar(client, {
       papel: "authenticated",
-      sub: USUARIO_A,
-      orderId: pedidoUsuarioA,
-      novoStatus: "cancelled",
-    });
-    registrar(
-      "5. dono cancela o proprio pedido pendente: PASSA",
-      c5.passou,
-      c5.passou ? "cancelou" : c5.mensagem,
-    );
-
-    const c6 = await tentar(client, {
-      papel: "authenticated",
-      sub: ADMIN,
+      sub: admin.id,
       admin: true,
       orderId: pedidoConvidado,
       novoStatus: "shipped",
     });
     registrar(
-      "6. admin muda status de pedido de convidado: PASSA",
-      c6.passou,
-      c6.passou ? "atualizou" : c6.mensagem,
+      "5. admin muda status de pedido de convidado: PASSA",
+      c5.passou,
+      c5.passou ? "atualizou" : c5.mensagem,
     );
 
     const depois = await fotografarFuncao(client);
@@ -289,7 +328,7 @@ async function main() {
   console.log(`\n${"=".repeat(64)}`);
   if (falhas.length === 0) {
     console.log(
-      "TUDO PROVADO. Nada foi comitado — rode o db-apply.cjs para valer.",
+      "TUDO PROVADO. Nada foi comitado — a correcao ja estava aplicada, isto so mede.",
     );
     process.exit(0);
   }
