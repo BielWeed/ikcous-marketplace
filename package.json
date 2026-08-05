@@ -10,7 +10,7 @@
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "typecheck": "tsc -b --force",
     "test": "npm run test:edge && npm run test:unit && npm run test:front",
-    "test:edge": "deno test --allow-all --no-check supabase/functions/calculate-shipping/index_test.ts",
+    "test:edge": "deno test --allow-all --no-check supabase/functions/",
     "test:unit": "deno test --allow-all --no-check --ignore=tests/front tests/",
     "test:front": "vitest run",
     "test:front:watch": "vitest",
