@@ -848,6 +848,40 @@ export function useOrders(
       }
     }, [isUserAdmin]);
 
+  /**
+   * Avisa o lojista que entrou pedido novo (PEDIDO-020, #89).
+   *
+   * Deliberadamente SEM await e com catch que só registra. Neste ponto o pedido
+   * JÁ está criado no banco: o critério 3 da issue exige que falha do aviso não
+   * derrube o checkout, e a forma de garantir isso é o fluxo do cliente nunca
+   * esperar por esta chamada nem enxergar o resultado dela.
+   *
+   * O que pode dar errado aqui e é aceito de propósito: função fora do ar, rede
+   * do cliente caindo, ou o cliente fechando a aba antes de a requisição sair.
+   * Nos três casos o pedido está salvo e o lojista vê pelo painel. É o preço da
+   * arquitetura sem trigger, registrado na issue — quando a BANCO-040 (#40) for
+   * respondida e o trigger virar possível, este disparo passa a ser redundante,
+   * não errado.
+   */
+  const avisarLojista = useCallback((orderId: string) => {
+    try {
+      void (supabase as any).functions
+        .invoke("notify-new-order", { body: { orderId } })
+        .then((r: any) => {
+          if (r?.error) {
+            console.warn("notify-new-order: aviso não saiu", r.error);
+          }
+        })
+        .catch((err: unknown) => {
+          console.warn("notify-new-order: aviso não saiu", err);
+        });
+    } catch (err) {
+      // invoke() lançar de forma síncrona não deveria acontecer, mas se
+      // acontecer não pode chegar ao checkout.
+      console.warn("notify-new-order: aviso não saiu", err);
+    }
+  }, []);
+
   const createOrder = useCallback(async (orderData: any) => {
     // 🛡️ Checkout de Convidados: O login não é mais obrigatório no frontend.
     // O RPC v22 cuidará da atribuição do user_id (NULL para convidados).
@@ -883,6 +917,11 @@ export function useOrders(
       if (error) throw error;
       if (!data) throw new Error("Falha ao obter ID do pedido");
 
+      // PEDIDO-020 (#89). Depois do `throw`, para não avisar de pedido que não
+      // existe; e antes do return, para o disparo sair mesmo que a tela navegue
+      // em seguida.
+      avisarLojista(data);
+
       return {
         ...orderData,
         id: data,
@@ -895,7 +934,7 @@ export function useOrders(
       toast.error(err.message || "Erro ao processar pedido");
       throw err;
     }
-  }, []);
+  }, [avisarLojista]);
 
   const generateOrderOtp = useCallback(
     async (
