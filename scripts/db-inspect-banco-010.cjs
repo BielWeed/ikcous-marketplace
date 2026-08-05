@@ -58,6 +58,39 @@ async function main() {
   console.log(`Conectado em ${new URL(lerDatabaseUrl()).hostname}`);
   console.log("Somente leitura. Nada sera alterado.");
 
+  // A primeira rodada nao achou vw_produtos_admin no schema public, mas
+  // database.types.ts:1445 tem a view tipada com custo — e esses tipos sao
+  // gerados a partir do banco. Antes de concluir que ela sumiu, procurar em
+  // TODOS os schemas, e nao so no public.
+  titulo("0. Onde estao as relacoes de produtos, em qualquer schema");
+  const relacoes = await client.query(`
+    SELECT n.nspname AS schema, c.relname AS nome,
+           CASE c.relkind WHEN 'r' THEN 'tabela' WHEN 'v' THEN 'view'
+                          WHEN 'm' THEN 'view materializada' WHEN 'f' THEN 'foreign table'
+                          ELSE c.relkind::text END AS tipo
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE c.relname ILIKE '%produto%'
+       AND n.nspname NOT IN ('pg_catalog','information_schema')
+     ORDER BY n.nspname, c.relname`);
+  if (relacoes.rows.length === 0) console.log("  (nada com 'produto' no nome)");
+  for (const r of relacoes.rows) {
+    console.log(`  ${r.schema}.${r.nome} — ${r.tipo}`);
+  }
+
+  titulo("0b. Definicao da view publica, para servir de molde");
+  const defs = await client.query(`
+    SELECT schemaname, viewname, definition FROM pg_views
+     WHERE viewname ILIKE '%produto%' ORDER BY schemaname, viewname`);
+  for (const d of defs.rows) {
+    console.log(`  --- ${d.schemaname}.${d.viewname} ---`);
+    console.log(
+      d.definition
+        .split("\n")
+        .map((l) => `    ${l}`)
+        .join("\n"),
+    );
+  }
+
   titulo("1. Privilegios de coluna em produtos.custo");
   const priv = await client.query(`
     SELECT grantee, privilege_type
