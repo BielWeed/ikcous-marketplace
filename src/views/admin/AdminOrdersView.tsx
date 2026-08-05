@@ -437,36 +437,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     newStatus: OrderStatus,
     silent = false,
   ) => {
-    const order = orders?.find((o) => o.id === orderId);
-
-    if (order?.userId && !silent && !isOffline) {
-      try {
-        const title = "Status do Pedido Atualizado";
-        const body = `Seu pedido #${orderId.slice(-6)} agora está: ${statusConfig[newStatus].label}`;
-
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const token = session?.access_token;
-
-        await supabase.functions.invoke("send-push", {
-          body: {
-            targetUserId: order.userId,
-            title,
-            body,
-            data: { orderId, type: "order_status" },
-          },
-          headers: token
-            ? {
-                Authorization: `Bearer ${token}`,
-              }
-            : {},
-        });
-      } catch (err) {
-        console.error("Error sending status push:", err);
-      }
-    }
-
+    // A RPC VEM PRIMEIRO (PEDIDO-090, #87).
+    //
+    // Até aqui o push saía ANTES da gravação. Se a RPC falhasse — 401, sessão
+    // expirada, pedido já cancelado — o cliente já tinha recebido "seu pedido
+    // agora está: Em Trânsito" de uma mudança que não aconteceu, e a tela do
+    // admin fazia rollback. Notificação não tem desfazer.
     try {
       await updateOrderStatus(orderId, newStatus, undefined, silent);
       haptic.success();
@@ -485,6 +461,72 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           "Verifique sua conexão ou se possui permissões de administrador.",
       });
       throw err;
+    }
+
+    if (silent || isOffline) return;
+
+    // O pedido pode não estar na página carregada: quando o admin chega por
+    // deep link, `orders` traz só a página atual e o `find` devolve undefined.
+    // Antes disso significava "nenhum push, sem aviso nenhum" — o lojista
+    // achava que o cliente tinha sido avisado.
+    const alvo =
+      orders?.find((o) => o.id === orderId) ??
+      (selectedOrder?.id === orderId ? selectedOrder : undefined);
+
+    if (!alvo) {
+      toast.warning("Status atualizado, mas o cliente não foi avisado", {
+        description:
+          "Não foi possível identificar o dono deste pedido nesta tela. Abra o pedido pela lista e avise pelo WhatsApp.",
+      });
+      return;
+    }
+
+    // Pedido de convidado não tem para quem mandar push, e isso é esperado —
+    // o canal dele é o WhatsApp. Não é caso de aviso.
+    if (!alvo.userId) return;
+
+    try {
+      const title = "Status do Pedido Atualizado";
+      const body = `Seu pedido #${orderId.slice(-6)} agora está: ${statusConfig[newStatus].label}`;
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const { data: envio, error: erroDoInvoke } =
+        await supabase.functions.invoke("send-push", {
+          body: {
+            targetUserId: alvo.userId,
+            title,
+            body,
+            data: { orderId, type: "order_status" },
+          },
+          headers: token
+            ? {
+                Authorization: `Bearer ${token}`,
+              }
+            : {},
+        });
+
+      if (erroDoInvoke) throw erroDoInvoke;
+
+      // `enviados` só existe na send-push depois da PUSH-010 (#80). O teste de
+      // tipo é de propósito: contra a versão antiga da função, que respondia
+      // `{ success: true }` sem contagem, isto não faz nada — em vez de acusar
+      // falha em todo envio.
+      if (typeof envio?.enviados === "number" && envio.enviados === 0) {
+        toast.warning("Status atualizado, mas o push não chegou", {
+          description:
+            envio?.falhas?.[0]?.motivo ??
+            "Nenhum dispositivo deste cliente recebeu a notificação.",
+        });
+      }
+    } catch (err) {
+      console.error("Error sending status push:", err);
+      toast.warning("Status atualizado, mas o push falhou", {
+        description: "O cliente não foi notificado da mudança.",
+      });
     }
   };
 
