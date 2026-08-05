@@ -593,7 +593,8 @@ justifica, e não antes.
 - **Versão do PowerShell na máquina do Netim.** Esta sessão reportou `7.6.3`, onde `&&` funciona; a
   memória do projeto registra 5.1, onde não funciona. Vale nos dois: separe com `;` e atribua com
   `$env:VAR='valor'` — **não existe** prefixo inline `VAR=valor comando` em PowerShell nenhum.
-- **`02-ARQUITETURA.md`, `05-FLUXOS-CRITICOS.md`:** irmãos deste documento, escritos no mesmo lote —
-  podem ainda não existir no seu clone. **`06-ESTADO-ATUAL.md`, `../backlog/BACKLOG.md` e
-  `../backlog/ROADMAP.md` não existem ainda**, apesar de já serem linkados pelo
-  [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md).
+- ~~**`06-ESTADO-ATUAL.md`, `../backlog/BACKLOG.md` e `../backlog/ROADMAP.md` não existem ainda.**~~
+  **Venceu em 05/08/2026** (`DOC-050`): os três existem e todos os links relativos de `docs/`
+  resolvem — 151 verificados, 0 quebrados, medido por `npm run lint:links`. Rode o comando antes de
+  confiar nesta linha; ela é o exemplo vivo de aviso que envelhece e passa a mentir na direção
+  oposta.
