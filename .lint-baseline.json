@@ -10,14 +10,20 @@
     "Meça sempre com `npm run lint:ratchet` — rodar eslint na mão dá números",
     "diferentes se as pastas ignoradas do eslint.config.js não estiverem alinhadas.",
     "",
-    "Alvo: zerar. Task INFRA-250 para os warnings, INFRA-220 para o Biome."
+    "Alvo: zerar. Task INFRA-250 para os warnings, INFRA-220 para o Biome.",
+    "",
+    "05/08/2026 — biome de 31 para 30. O número caiu na develop e ninguém",
+    "abaixou o teto na hora; a catraca só avisa, não reprova, quando cai. Lido",
+    "do log do job 92318063816 (run 31009603766): 'biome errors 30 / teto 31 /",
+    "baixou -1'. Se um teto ficar acima do medido, a catraca para de proteger",
+    "essa margem inteira."
   ],
   "eslint": {
     "errors": 6,
     "warnings": 553
   },
   "biome": {
-    "errors": 31,
+    "errors": 30,
     "warnings": 3
   }
 }
