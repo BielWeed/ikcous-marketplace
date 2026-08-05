@@ -26,9 +26,26 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    ```
 
 2. Configurar os segredos (Secrets) no Supabase Dashboard para a função:
-   - `VAPID_PUBLIC_KEY`: Gerada no `vapid_keys.json`.
+   - `VAPID_PUBLIC_KEY`: Gerada no `vapid_keys.json`. **Tem de ser a mesma chave
+     que o front usa em `VITE_VAPID_PUBLIC_KEY`** — se as duas divergirem, o
+     navegador aceita a inscrição e o push service devolve 403 na entrega.
    - `VAPID_PRIVATE_KEY`: Gerada no `vapid_keys.json`.
+   - `VAPID_SUBJECT` (opcional): contato que o push service usa para avisar de
+     problema com a aplicação, no formato `mailto:...` ou `https://...`. Sem
+     ela, a função usa `mailto:admin@example.org`, que é o valor que estava
+     fixo no código.
    - `SUPABASE_SERVICE_ROLE_KEY`: Sua Service Role Key para bypass de RLS em envios administrativos.
+
+   **Formato das chaves VAPID.** A função aceita os dois que podem estar no
+   ambiente hoje: base64url cru (saída do `web-push generate-vapid-keys`, 65
+   bytes na pública e 32 na privada) ou JWK serializado. As duas variáveis
+   precisam estar no mesmo formato — misturar é recusado com mensagem
+   explícita, em vez de falhar depois com erro de curva.
+
+   **Como saber se está certo sem mandar notificação para cliente:** dispare uma
+   campanha para o seu próprio usuário pela tela de push do admin. Desde a
+   PUSH-010 (#80) a resposta traz `enviados` e `falharam`, e a tela mostra o
+   número real — antes disso o toast era verde mesmo com zero entrega.
 
 ### Banco de Dados (RLS)
 

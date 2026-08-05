@@ -290,7 +290,13 @@ export const AdminShippingView = memo(function AdminShippingView({
 
     try {
       // 1. Save standard settings properties in store_config
-      await updateConfig({
+      //
+      // Se esta gravação falhar, PARA AQUI. Antes o `updateConfig` engolia a
+      // falha e o fluxo seguia: gravava as credenciais do provedor, limpava o
+      // "dirty" do formulário e comemorava — com o frete e o CEP de origem
+      // ainda com o valor antigo no banco (ADMIN-010, #94). O toast de erro sai
+      // de dentro do `updateConfig`.
+      const salvou = await updateConfig({
         freeShippingMin: Math.max(0, formData.freeShippingMin),
         shippingFee: Math.max(0, formData.shippingFee),
         originCep: formData.originCep,
@@ -300,6 +306,10 @@ export const AdminShippingView = memo(function AdminShippingView({
         localDeliveryFee: Math.max(0, formData.localDeliveryFee),
         localCepRange: formData.localCepRange,
       });
+      if (!salvou) {
+        haptic.error();
+        return;
+      }
 
       // 2. Save credentials in database if not flat_fee
       const provider = formData.shippingProvider;
@@ -696,9 +706,13 @@ export const AdminShippingView = memo(function AdminShippingView({
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {/* Segmented Control - Abrangência */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300">
+                  {/* `span`, não `label`: o controle abaixo é um par de botões,
+                      não um campo de formulário — um `label` sem `htmlFor` não
+                      rotula nada para o leitor de tela e ainda quebrava o hook
+                      de pre-commit de quem tocasse neste arquivo. */}
+                  <span className="block text-xs font-semibold text-zinc-300">
                     Abrangência de Envio
-                  </label>
+                  </span>
                   <div className="grid grid-cols-2 gap-1 rounded-xl border border-white/10 bg-black/60 p-1">
                     <button
                       type="button"
@@ -898,9 +912,11 @@ export const AdminShippingView = memo(function AdminShippingView({
 
                 {/* Dropdown Provedor */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-300">
+                  {/* Mesmo caso do "Abrangência de Envio": o controle é um
+                      botão que abre um menu, não um campo. */}
+                  <span className="block text-xs font-semibold text-zinc-300">
                     Método de Cálculo Nacional
-                  </label>
+                  </span>
                   <div className="relative" ref={dropdownRef}>
                     <button
                       type="button"

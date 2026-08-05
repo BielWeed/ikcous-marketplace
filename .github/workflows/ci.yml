@@ -10,6 +10,8 @@
 #   npm run build        -> exit 0  (NODE_ENV=production)    BLOQUEIA
 #   npm run size         -> exit 0  (515 kB de 800 kB)       BLOQUEIA
 #   npm test             -> exit 0  (12 testes Deno)         BLOQUEIA
+# Medido em 05/08/2026, depois da INFRA-150 (#155) e da PUSH-010 (#156):
+#   npm test             -> exit 0  (32 Deno + 11 Deno + 23 vitest = 66, 5,8 s)
 #   npm run secretlint   -> exit 0  (0 achados)              BLOQUEIA
 #   npm run lint:ratchet -> exit 0  (dívida no teto, não subiu)  BLOQUEIA SE SUBIR
 #
@@ -63,28 +65,42 @@ jobs:
       - run: npm run typecheck
 
   test:
-    name: Testes (Deno)
+    name: Testes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      # `npm test` roda dois conjuntos, os dois em Deno:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # O `npm ci` entrou aqui com o vitest (INFRA-150): ate 05/08/2026 este job
+      # so precisava do Deno, porque os dois conjuntos de teste rodavam sem
+      # node_modules. Nao vale a pena partir em dois jobs: um `npm test` unico
+      # e a mesma linha que o dev roda na maquina dele, e job separado abre
+      # espaco para o CI e a maquina divergirem sem ninguem notar.
+      - run: npm ci
+      # `npm test` roda tres conjuntos, 66 casos somados:
       #
-      # test:edge — 12 casos em supabase/functions/calculate-shipping/
-      # index_test.ts. Existiam desde antes e nunca tinham sido executados por
-      # ninguém (INFRA-140). Cobrem frete de fallback, hash de carrinho e
-      # deteccao de CEP local.
+      # test:edge — 32 casos em Deno, varrendo supabase/functions/ inteiro.
+      # 12 sao de calculate-shipping: existiam desde antes e nunca tinham sido
+      # executados por ninguem (INFRA-140). Os outros 20 sao da send-push
+      # (PUSH-010), e sobem um push service local para provar o envio sem tocar
+      # a rede. O script aponta para a PASTA de proposito: citar arquivo faz
+      # teste novo de edge function nascer fora do CI, que foi o que aconteceu
+      # com a send-push.
       #
-      # test:unit — 11 testes / 44 steps em tests/, sobre os axiomas do Truth
-      # Gate (PR #145). Moram fora de src/ de proposito: tsconfig.app.json tem
-      # include ["src"], entao um _test.ts la dentro entraria no `tsc -b` e
-      # quebraria o job de tipos com os globais do Deno.
+      # test:unit — 11 testes / 44 steps em tests/, em Deno, sobre os axiomas
+      # do Truth Gate (PR #145). Moram fora de src/ de proposito: um _test.ts
+      # la dentro entraria no `tsc -b` e quebraria o job de tipos com os
+      # globais do Deno.
       #
-      # Os dois rodam em ~100ms somados e nao tocam rede. O front continua sem
-      # runner proprio: qualquer teste que precise de DOM ou React ainda
-      # depende da INFRA-150.
+      # test:front — 23 casos de vitest sobre src/lib/mappers.ts (INFRA-150).
+      # Moram em tests/front/, que o script do Deno ignora explicitamente.
+      #
+      # Os tres somados rodam em ~6s e nao tocam rede externa.
       - run: npm test
 
   build:

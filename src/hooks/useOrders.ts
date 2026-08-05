@@ -140,8 +140,12 @@ export function useOrders(
   useEffect(() => {
     if (isAdmin) return;
 
+    // Mesma regra do fetch: só troca a referência se o conteúdo mudou. Aqui o
+    // efeito roda pouco (só quando o usuário muda), mas manter as duas
+    // escritas com a mesma disciplina evita que a próxima pessoa reintroduza o
+    // loop da PEDIDO-040 por este caminho.
     if (!user?.id) {
-      setOrders([]);
+      setOrders((atual) => (atual.length === 0 ? atual : []));
       return;
     }
     const cacheKey = `ikcous_orders_cache_${user.id}`;
@@ -150,7 +154,9 @@ export function useOrders(
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          setOrders(parsed);
+          setOrders((atual) =>
+            JSON.stringify(atual) === JSON.stringify(parsed) ? atual : parsed,
+          );
         }
       }
     } catch (e) {
@@ -201,8 +207,23 @@ export function useOrders(
 
       if (data) {
         const mappedOrders = data.map((item) => mapOrderFromDB(item as any));
-        setOrders(mappedOrders);
-        localStorage.setItem(cacheKey, JSON.stringify(mappedOrders));
+        const serializado = JSON.stringify(mappedOrders);
+
+        // Devolver a MESMA referência quando o resultado não mudou faz o React
+        // desistir do re-render. Sem isto, `setOrders` trocava a referência a
+        // cada volta — inclusive para lista vazia, porque `if (data)` é
+        // verdadeiro para `[]` — e quem tivesse `orders` nas dependências de um
+        // useCallback ficava em loop de requisição. Era o caso do
+        // OrderDetailsView para usuário logado sem nenhum pedido (PEDIDO-040,
+        // #84).
+        //
+        // A comparação é contra o state ATUAL, não contra o último fetch: se um
+        // update otimista mexeu na lista e o servidor devolver o valor antigo,
+        // a tela precisa voltar para o que o servidor diz.
+        setOrders((atual) =>
+          JSON.stringify(atual) === serializado ? atual : mappedOrders,
+        );
+        localStorage.setItem(cacheKey, serializado);
         return mappedOrders;
       }
       return [];
