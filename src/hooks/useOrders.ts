@@ -893,7 +893,19 @@ export function useOrders(
         );
 
         if (error) throw error;
-        return !!data;
+
+        // Desde a AUTH-010 (#118) a RPC devolve FALSE em vez de levantar
+        // exceção quando os dados não fecham. A mensagem é deliberadamente a
+        // mesma para "pedido não existe", "e-mail não bate com o pedido" e
+        // "fragmento curto demais": distinguir os três diria a quem está
+        // tentando adivinhar qual metade ele já acertou.
+        if (!data) {
+          toast.error(
+            "Não encontramos um pedido com esse e-mail, WhatsApp e ID juntos.",
+          );
+          return false;
+        }
+        return true;
       } catch (err: any) {
         console.error("Error generating OTP:", err);
         toast.error(err.message || "Erro ao gerar código de verificação");
@@ -916,6 +928,29 @@ export function useOrders(
         );
 
         if (error) throw error;
+
+        // Contrato novo desde a AUTH-010 (#118): a RPC devolve
+        // { ok, orders } ou { ok: false, error, restantes } em vez de um array
+        // cru. O caminho de falha RETORNA em vez de levantar exceção de
+        // propósito — no PostgREST cada RPC é uma transação, e um RAISE
+        // reverteria o incremento do contador de tentativas.
+        if (data && typeof data === "object" && "ok" in data) {
+          if (!data.ok) {
+            const restantes = (data as any).restantes;
+            toast.error(
+              typeof restantes === "number" && restantes > 0
+                ? `${(data as any).error} Restam ${restantes} tentativa(s).`
+                : (data as any).error || "Código inválido ou expirado",
+            );
+            return [];
+          }
+          return (((data as any).orders as any[]) || []).map((item) =>
+            mapOrderFromDB(item),
+          );
+        }
+
+        // Resposta no formato antigo (array cru): acontece se o front subir
+        // antes da migration. Continua funcionando em vez de quebrar a tela.
         return ((data as any[]) || []).map((item) => mapOrderFromDB(item));
       } catch (err: any) {
         console.error("Error fetching orders by OTP:", err);

@@ -71,12 +71,25 @@ export function OrderSearch({
       return;
     }
 
+    // O ID do pedido deixou de ser opcional na AUTH-010 (#118). Enquanto ele
+    // podia vir vazio, o `ILIKE '%' || fragmento` da RPC casava qualquer
+    // pedido, e o código saía amarrado a nada. O mesmo mínimo de 6 e o mesmo
+    // alfabeto de UUID são exigidos no banco — esta checagem é conveniência,
+    // não a defesa.
+    const fragmento = orderFragment.trim();
+    if (!/^[0-9a-fA-F-]{6,}$/.test(fragmento)) {
+      toast.error(
+        "Informe ao menos os 6 últimos caracteres do ID do pedido, que estão no seu comprovante.",
+      );
+      return;
+    }
+
     setIsLoading(true);
     try {
       const success = await generateOrderOtp(
         email.trim().toLowerCase(),
         cleanWhatsapp,
-        orderFragment.trim(),
+        fragmento,
       );
       if (success) {
         toast.success("Código de verificação enviado para seu e-mail!");
@@ -230,7 +243,9 @@ export function OrderSearch({
                       <Hash className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-primary" />
                       <input
                         type="text"
-                        placeholder="ID DO PEDIDO (OPCIONAL)"
+                        required
+                        minLength={6}
+                        placeholder="ÚLTIMOS 6 DÍGITOS DO ID DO PEDIDO"
                         value={orderFragment}
                         onChange={(e) => setOrderFragment(e.target.value)}
                         className="w-full rounded-2xl border border-zinc-100 bg-white py-3 pl-11 pr-4 text-[11px] font-bold uppercase tracking-wider text-slate-800 placeholder-zinc-400 transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
