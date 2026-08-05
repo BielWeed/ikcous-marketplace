@@ -89,6 +89,21 @@ const VERIFICACOES = {
       "SET estoque = estoque + v_item.quantity",
     ],
   },
+  "20260805120000_otp_aponta_para_o_projeto_certo.sql": {
+    funcao: "handle_new_otp_verification",
+    esperado: [
+      // O destino certo. Entre 08/07 e 05/08/2026 o corpo vivo apontava para
+      // jvgyjlbjhbfrncwbytls, onde send-otp-email nao existe — 404 silencioso.
+      "https://cafkrminfnokvgjqtkle.functions.supabase.co/send-otp-email",
+      // A credencial vem do Vault. Se esta linha sumir, voltou o caminho por
+      // app_settings/header, que manda a chave anon e leva 401.
+      "FROM vault.decrypted_secrets",
+      "WHERE name = 'otp_trigger_secret'",
+      // Sem segredo a funcao falha em vez de gravar um OTP que nao seria
+      // entregue. E o PEDIDO-080 visto pelo lado do banco.
+      "RAISE EXCEPTION USING",
+    ],
+  },
 };
 
 function lerDatabaseUrl() {
