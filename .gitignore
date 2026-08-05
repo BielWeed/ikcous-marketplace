@@ -111,3 +111,10 @@ supabase/.temp/
 # Ninguém pensa em auditar estado de ferramenta atrás de segredo; foi por isso
 # que passou meses despercebido.
 .ship-safe/
+
+# Snapshots e dumps do banco de producao (BANCO-040, #40).
+# Nao sao segredo, mas sao o schema inteiro da loja — grants, policies e a
+# lista de funcoes SECURITY DEFINER. Isso e mapa para quem quiser atacar, e
+# nao ha motivo para versionar: quem precisa gera o proprio com
+# `node scripts/db-snapshot-politicas.cjs`. O que fica versionado e o SCRIPT.
+backups/
