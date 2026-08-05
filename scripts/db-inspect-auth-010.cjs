@@ -165,10 +165,21 @@ async function main() {
       console.log(`  assinatura: ${f.assinatura}`);
       console.log(`  secdef    : ${f.prosecdef}`);
       console.log(`  acl       : ${f.acl}`);
-      console.log(`  usa OR entre canais? ${/\bOR\b/.test(f.def)}`);
+      // Marcadores do que a AUTH-010 (#118) mudou. A primeira versao deste
+      // script procurava `\bOR\b` e `ILIKE '%' ||` cruas, e as duas davam
+      // POSITIVO na funcao ja corrigida: o OR sobrevive na comparacao entre as
+      // duas FONTES de e-mail (customer_data e auth.users), e o ILIKE de sufixo
+      // continua sendo o jeito de casar o fragmento — o que mudou e que agora
+      // ele so roda depois da validacao. Marcador que acusa defeito onde nao ha
+      // e pior que marcador nenhum.
       console.log(
-        `  tem ILIKE '%' concatenado? ${/ILIKE\s*'%'\s*\|\|/.test(f.def)}`,
+        `  exige os dois canais? ${/coalesce\(trim\(p_email\)[^)]*\)\s*=\s*''\s*OR/i.test(f.def)}`,
       );
+      console.log(
+        `  valida o fragmento (6+, alfabeto de UUID)? ${/\[0-9a-fA-F-\]\{6,\}/.test(f.def)}`,
+      );
+      console.log(`  amarra a um order_id? ${/order_id/.test(f.def)}`);
+      console.log(`  conta tentativas? ${/attempts/.test(f.def)}`);
       console.log("  --- corpo ---");
       console.log(
         f.def
