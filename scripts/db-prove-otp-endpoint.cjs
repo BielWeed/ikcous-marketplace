@@ -123,11 +123,13 @@ async function main() {
     /(?:^|;)\s*(BEGIN|COMMIT|ROLLBACK|START\s+TRANSACTION)\s*;/gi,
   );
   if (controleDeTransacao) {
+    const encontrados = controleDeTransacao.map((s) => s.trim()).join(" ");
     throw new Error(
-      `A migration controla transação por conta própria (${controleDeTransacao
-        .map((s) => s.trim())
-        .join(" ")}). Rodar isso aqui comitaria em produção o que devia ser ensaio. ` +
-        "Tire o BEGIN/COMMIT do arquivo: quem abre a transação é o db-apply.cjs.",
+      [
+        `A migration controla transação por conta própria (${encontrados}).`,
+        "Rodar isso aqui comitaria em produção o que devia ser ensaio.",
+        "Tire o BEGIN/COMMIT: quem abre a transação é o db-apply.cjs.",
+      ].join(" "),
     );
   }
 
@@ -154,7 +156,9 @@ async function main() {
     console.log(`  aponta para ${PROJETO_ERRADO} : ${apontaErrado}`);
     console.log(`  cai no header apikey         : ${usaHeader}`);
     console.log(`  lê app_settings              : ${usaAppSettings}`);
-    console.log(`  secdef / acl                 : ${antes.prosecdef} / ${antes.acl}`);
+    console.log(
+      `  secdef / acl                 : ${antes.prosecdef} / ${antes.acl}`,
+    );
     if (!apontaErrado) {
       falhas.push(
         `O corpo vivo NÃO aponta mais para ${PROJETO_ERRADO}. Alguém já mexeu por fora — releia o corpo antes de aplicar.`,
@@ -166,7 +170,9 @@ async function main() {
       "SELECT count(*)::int AS n FROM public.app_settings WHERE key = 'supabase_service_role_key'",
     );
     console.log("\n=== 2. De onde sai a credencial hoje ===");
-    console.log(`  linhas em app_settings['supabase_service_role_key'] : ${cfg[0].n}`);
+    console.log(
+      `  linhas em app_settings['supabase_service_role_key'] : ${cfg[0].n}`,
+    );
     console.log(
       cfg[0].n === 0
         ? "  => cai no fallback e manda a chave ANON de quem chamou como Bearer => 401"
@@ -189,7 +195,9 @@ async function main() {
         `Sem o segredo "${NOME_SEGREDO}" no Vault não há o que provar. Instale os dois lados primeiro — ver o cabeçalho da migration.`,
       );
     }
-    console.log(`  presente — ${seg[0].tamanho} chars, prefixo "${seg[0].prefixo}"`);
+    console.log(
+      `  presente — ${seg[0].tamanho} chars, prefixo "${seg[0].prefixo}"`,
+    );
 
     // ---- 4. A trava de apply funciona? -------------------------------------
     // Apaga o segredo dentro de um savepoint, tenta aplicar, desfaz. O segredo
@@ -229,9 +237,21 @@ async function main() {
     // ---- 6. O corpo novo ----------------------------------------------------
     const depois = await fotografar(client);
     const checagens = [
-      [`aponta para ${PROJETO_CERTO}`, depois.def.includes(PROJETO_CERTO), true],
-      [`não cita ${PROJETO_ERRADO}`, !depois.def.includes(PROJETO_ERRADO), true],
-      ["não usa request.headers", !depois.def.includes("request.headers"), true],
+      [
+        `aponta para ${PROJETO_CERTO}`,
+        depois.def.includes(PROJETO_CERTO),
+        true,
+      ],
+      [
+        `não cita ${PROJETO_ERRADO}`,
+        !depois.def.includes(PROJETO_ERRADO),
+        true,
+      ],
+      [
+        "não usa request.headers",
+        !depois.def.includes("request.headers"),
+        true,
+      ],
       ["não lê app_settings", !depois.def.includes("app_settings"), true],
       ["lê o Vault", depois.def.includes("vault.decrypted_secrets"), true],
     ];
@@ -247,7 +267,8 @@ async function main() {
     console.log(
       `  secdef antes/depois : ${antes.prosecdef} / ${depois.prosecdef}`,
     );
-    if (antes.acl !== depois.acl) falhas.push("O proacl mudou depois do REPLACE.");
+    if (antes.acl !== depois.acl)
+      falhas.push("O proacl mudou depois do REPLACE.");
     if (antes.prosecdef !== depois.prosecdef)
       falhas.push("O prosecdef mudou depois do REPLACE.");
 
@@ -290,10 +311,16 @@ async function main() {
     const enfileirou = filaDepois[0].n === filaAntes[0].n + 1;
     const urlCerta = fila[0]?.url?.includes(PROJETO_CERTO) === true;
     const bearerDoVault = fila[0]?.auth_bate === true;
-    console.log("\n=== 8. INSERT em otp_verifications → o que foi enfileirado ===");
-    console.log(`  ${enfileirou ? "OK     " : "FALHOU "} exatamente 1 requisição nova na fila`);
+    console.log(
+      "\n=== 8. INSERT em otp_verifications → o que foi enfileirado ===",
+    );
+    console.log(
+      `  ${enfileirou ? "OK     " : "FALHOU "} exatamente 1 requisição nova na fila`,
+    );
     console.log(`  url    : ${fila[0]?.url ?? "(nada na fila)"}`);
-    console.log(`  ${urlCerta ? "OK     " : "FALHOU "} url é do projeto ${PROJETO_CERTO}`);
+    console.log(
+      `  ${urlCerta ? "OK     " : "FALHOU "} url é do projeto ${PROJETO_CERTO}`,
+    );
     console.log(
       `  ${bearerDoVault ? "OK     " : "FALHOU "} Authorization bate com o segredo do Vault (prefixo "${fila[0]?.auth_prefixo ?? "-"}...")`,
     );
@@ -302,12 +329,14 @@ async function main() {
     console.log(
       `  ${levaOCodigo ? "OK     " : "FALHOU "} body.record.otp_code é o código inserido`,
     );
-    if (!enfileirou) falhas.push("O trigger não enfileirou requisição no pg_net.");
+    if (!enfileirou)
+      falhas.push("O trigger não enfileirou requisição no pg_net.");
     if (!levaOCodigo)
       falhas.push(
         "O corpo enfileirado não leva o otp_code — a edge function exige record.otp_code (send-otp-email/index.ts:69).",
       );
-    if (!urlCerta) falhas.push("A requisição enfileirada não vai para o projeto certo.");
+    if (!urlCerta)
+      falhas.push("A requisição enfileirada não vai para o projeto certo.");
     if (!bearerDoVault)
       falhas.push("O Authorization não trouxe o segredo do Vault.");
 
@@ -323,7 +352,9 @@ async function main() {
         ["prova2@exemplo.invalid", "34999990001", "654321", pedidos[0].id],
       );
     });
-    console.log("\n=== 9. Com o Vault vazio, o INSERT falha em vez de prometer? ===");
+    console.log(
+      "\n=== 9. Com o Vault vazio, o INSERT falha em vez de prometer? ===",
+    );
     console.log(
       semChave.falhou
         ? `  OK      ${semChave.mensagem.split("\n")[0]}`
