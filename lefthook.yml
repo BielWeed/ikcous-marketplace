@@ -28,12 +28,14 @@ pre-commit:
     # pré-existentes (medido em 30/07/2026) e um hook que reprova por causa
     # deles seria desligado no primeiro dia.
     #
-    # Os 7 erros que existem hoje estão em 3 arquivos:
-    #   src/views/admin/AdminCarouselsView.tsx   (3x react-hooks)
-    #   src/views/admin/AdminProductFormView.tsx (2x jsx-a11y)
-    #   src/views/admin/AdminShippingView.tsx    (2x jsx-a11y)
-    # Se você tocar num deles, vai ter que corrigir o erro para commitar.
-    # Isso é proposital: é a regra do escoteiro aplicada onde dói pouco.
+    # Em 05/08/2026 os erros de eslint chegaram a ZERO. Eram 7 quando este hook
+    # entrou, e a regra do escoteiro fez o trabalho: os 6 que sobravam foram
+    # limpos no PR da ADMIN-010 (#94), que precisava tocar exatamente naqueles
+    # arquivos e não conseguia commitar sem resolvê-los.
+    #
+    # Com o teto do `.lint-baseline.json` em 0, erro novo reprova o CI direto.
+    # Se você tocar num arquivo que ganhou erro, vai ter que corrigir para
+    # commitar — que é o ponto.
     - name: eslint
       glob: "*.{ts,tsx}"
       run: npx eslint --max-warnings=-1 {staged_files}

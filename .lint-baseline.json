@@ -16,10 +16,18 @@
     "abaixou o teto na hora; a catraca só avisa, não reprova, quando cai. Lido",
     "do log do job 92318063816 (run 31009603766): 'biome errors 30 / teto 31 /",
     "baixou -1'. Se um teto ficar acima do medido, a catraca para de proteger",
-    "essa margem inteira."
+    "essa margem inteira.",
+    "",
+    "05/08/2026 — os erros de eslint chegaram a ZERO (eram 6). Não foi uma",
+    "força-tarefa: o hook de pre-commit reprova erro nos arquivos staged, então",
+    "o PR da ADMIN-010 (#94) teve de limpar os 6 para conseguir commitar as",
+    "telas que ele já ia tocar. Regra do escoteiro funcionando como projetada.",
+    "",
+    "Teto zero é diferente dos outros: ele não protege margem, ele proíbe. Erro",
+    "novo de eslint agora reprova o CI direto."
   ],
   "eslint": {
-    "errors": 6,
+    "errors": 0,
     "warnings": 553
   },
   "biome": {
