@@ -14,6 +14,7 @@
 #   npm test             -> exit 0  (32 Deno + 11 Deno + 23 vitest = 66, 5,8 s)
 #   npm run secretlint   -> exit 0  (0 achados)              BLOQUEIA
 #   npm run lint:ratchet -> exit 0  (dívida no teto, não subiu)  BLOQUEIA SE SUBIR
+#   npm run lint:links   -> exit 0  (164 links, 0 quebrados) BLOQUEIA
 #
 # `npm run lint` cru sai com 1 e sempre sairá enquanto houver dívida antiga.
 # Quem entra no CI é a catraca, que compara com `.lint-baseline.json`.
@@ -195,3 +196,31 @@ jobs:
       - run: npm ci
       - name: Compara com o teto de dívida
         run: npm run lint:ratchet
+
+  docs:
+    name: Links da documentação
+    runs-on: ubuntu-latest
+    # Este job BLOQUEIA, e nasce verde: 164 links relativos em 33 arquivos, 0
+    # quebrados, medido em 05/08/2026 (DOC-050).
+    #
+    # Por que virou job e não continuou sendo conferência manual: a DOC-050
+    # (#64) nasceu porque três arquivos eram linkados sem existir, e em CINCO
+    # DIAS o defeito inverteu — os arquivos passaram a existir e o texto
+    # continuou anunciando que não existiam. Nos dois sentidos quem chega segue
+    # o link, bate em nada e para de confiar no material. A documentação deste
+    # repositório envelhece rápido demais para depender de alguém lembrar.
+    #
+    # É o único job do arquivo SEM `npm ci`: o verificador só usa builtins do
+    # Node, então instalar dependência aqui seria ~40s para não mudar nada.
+    # Por isso ele roda em segundos e pode ser o primeiro a dar retorno no PR.
+    #
+    # O que ele não cobre está escrito em scripts/verifica-links-md.mjs:
+    # URL externa (rede alheia deixaria o job vermelho sem culpa do PR) e
+    # âncora `#secao` (falso positivo garantido com heading acentuado).
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Verifica os links relativos dos .md
+        run: npm run lint:links
