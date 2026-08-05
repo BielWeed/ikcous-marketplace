@@ -609,6 +609,68 @@ justifica, e não antes.
 
 ---
 
+## 9. Backup e ponto de restauração
+
+Medido em 05/08/2026 com `supabase backups list --project-ref cafkrminfnokvgjqtkle`
+(`BANCO-040`, #40). Rode o comando em vez de confiar nesta seção — ela envelhece
+como qualquer outra.
+
+| pergunta | resposta medida |
+| --- | --- |
+| Existe backup automático? | **Sim.** `walg_enabled: true` |
+| Frequência | **Diária**, por volta de 11:37 UTC (≈08:37 em Brasília) |
+| Retenção | **7 dias.** Havia 8 backups, de 29/07 a 05/08, todos `COMPLETED` |
+| PITR | **NÃO.** `pitr_enabled: false` |
+
+### A consequência que importa
+
+**Sem PITR, a granularidade de recuperação é de 24 horas.** Não existe "voltar
+para as 14:32". Existe voltar para o backup diário — e uma migration ruim
+executada às 10:00 UTC só pode ser desfeita restaurando o backup de 11:37 UTC do
+**dia anterior**, porque o do próprio dia ainda não rodou. Isso descarta até um
+dia inteiro de pedidos reais.
+
+É por isso que "tem backup" **não** é a mesma resposta que "pode mexer no banco".
+Restaurar por causa de uma policy apagada custaria os pedidos do dia.
+
+### O que fazer antes de mexer em migration
+
+Existe backup diário, mas o modo de falha mais provável aqui não é "o banco
+sumiu" — é "as policies sumiram e ninguém sabe como elas eram". As migrations
+pendentes executam **190 `DROP POLICY` contra 127 `CREATE POLICY`** sobre um
+banco que tem **71 policies vivas**. Restaurar por isso custa o dia; diferenciar
+não custa nada. Então, antes:
+
+```bash
+node scripts/db-snapshot-politicas.cjs
+```
+
+Ele grava em `backups/` (pasta ignorada pelo git, de propósito — é o schema
+inteiro da loja) um arquivo com as 71 policies como `CREATE POLICY` executável,
+o estado de RLS das 29 tabelas, os 132 grants e as 66 funções, marcando as 64
+com `SECURITY DEFINER`. Dá para diffar contra uma execução posterior e, no
+limite, recriar policy apagada por engano — sem restaurar nada.
+
+**Isso não é um backup.** Não tem dados, índices, constraints, triggers nem
+sequences. Backup de verdade é `pg_dump`:
+
+```bash
+supabase db dump --db-url "$env:DATABASE_URL" -f backups/schema.sql
+```
+
+**Esse comando exige Docker rodando** — ele levanta um container `postgres` para
+executar o `pg_dump`. Sem Docker Desktop no ar, ele falha com
+`LegacyDockerRunError` e escreve um arquivo **vazio**, sem sair com erro visível
+na primeira linha. Conferir o tamanho do arquivo depois, sempre.
+
+### Restauração
+
+`supabase backups restore` existe no CLI, mas **restaurar exige o plano com PITR
+ou o painel**, e nada disso foi exercitado. Quanto tempo leva e quem tem
+permissão continuam **não medidos** — ver "Não verificado".
+
+---
+
 ## Não verificado
 
 - **Se `npm run dev` sobe do zero nesta máquina.** A 5173 já estava ocupada por um dev server de
@@ -627,7 +689,8 @@ justifica, e não antes.
 - **Se as 42 migrations pendentes (41 versões) são seguras de aplicar, e o que fazem as 28 versões do
   ledger sem arquivo.** Dos 42 medi só quantos contêm `CREATE OR REPLACE FUNCTION` (**19**); nenhum
   SQL foi lido linha a linha nem comparado ao schema vivo. As 28 sem arquivo não têm como ser lidas.
-- **Qual política de backup/PITR está ativa no plano Supabase.** O painel não foi aberto.
+- ~~**Qual política de backup/PITR está ativa no plano Supabase.** O painel não foi aberto.~~
+  **Respondido em 05/08/2026 — ver [§ Backup e ponto de restauração](#backup-e-ponto-de-restauração).**
 - **Se o build da Vercel produz o mesmo resultado.** Nenhum log de build da Vercel foi inspecionado.
 - **As Edge Functions.** Nenhuma foi invocada nem deployada. Existem 3 (`calculate-shipping`,
   `send-otp-email`, `send-push`) mais um `tsconfig.json` em `supabase/functions/`.
