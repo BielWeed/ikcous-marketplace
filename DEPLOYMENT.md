@@ -33,6 +33,13 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    Enter direto publica no lugar errado sem erro nenhum. Para pular a escolha:
    `--project-ref cafkrminfnokvgjqtkle`.
 
+   O `lofznuxcvezrhxsgjqyg` é o **sandbox do MCP** — apesar do nome, não é loja
+   de cliente. É para onde os `mcp.json` das IDEs apontam, para o servidor MCP
+   do Supabase não tocar na loja. Ele já tem os três functions em v1, de 15/07,
+   e é justamente por isso que publicar nele por engano não dá erro nenhum.
+   Detalhe em [`docs/onboarding/03-SETUP-AMBIENTE.md`](docs/onboarding/03-SETUP-AMBIENTE.md),
+   seção 6.
+
    Correção do que este parágrafo dizia antes: o 404 do OTP de convidado
    (AUTH-020, #154) **não** veio de um deploy no projeto errado. A
    `send-otp-email` sempre esteve publicada no projeto certo; quem apontava para
