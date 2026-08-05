@@ -70,14 +70,21 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      # 12 casos em supabase/functions/calculate-shipping/index_test.ts.
-      # Eles existiam desde antes e nunca tinham sido executados por ninguém
-      # (INFRA-140). Rodam em ~30ms. Cobrem cálculo de frete de fallback,
-      # hash de carrinho e detecção de CEP local.
+      # `npm test` roda dois conjuntos, os dois em Deno:
       #
-      # Não existe teste no front ainda — nenhum runner instalado. Quando
-      # a INFRA-150 entrar, o job vira uma matriz ou ganha um passo `npm test`
-      # de verdade no front.
+      # test:edge — 12 casos em supabase/functions/calculate-shipping/
+      # index_test.ts. Existiam desde antes e nunca tinham sido executados por
+      # ninguém (INFRA-140). Cobrem frete de fallback, hash de carrinho e
+      # deteccao de CEP local.
+      #
+      # test:unit — 11 testes / 44 steps em tests/, sobre os axiomas do Truth
+      # Gate (PR #145). Moram fora de src/ de proposito: tsconfig.app.json tem
+      # include ["src"], entao um _test.ts la dentro entraria no `tsc -b` e
+      # quebraria o job de tipos com os globais do Deno.
+      #
+      # Os dois rodam em ~100ms somados e nao tocam rede. O front continua sem
+      # runner proprio: qualquer teste que precise de DOM ou React ainda
+      # depende da INFRA-150.
       - run: npm test
 
   build:

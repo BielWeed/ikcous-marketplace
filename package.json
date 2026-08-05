@@ -1,7 +1,7 @@
 {
   "name": "ikcous-marketplace",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,8 +9,9 @@
     "lint": "eslint .",
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "typecheck": "tsc -b --force",
-    "test": "npm run test:edge",
+    "test": "npm run test:edge && npm run test:unit",
     "test:edge": "deno test --allow-all --no-check supabase/functions/calculate-shipping/index_test.ts",
+    "test:unit": "deno test --allow-all --no-check tests/",
     "secretlint": "secretlint --secretlintignore .secretlintignore \"**/*\"",
     "prepare": "lefthook install || exit 0",
     "knip": "knip",
