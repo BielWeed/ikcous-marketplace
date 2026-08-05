@@ -22,7 +22,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
@@ -119,20 +119,50 @@ export function OrderDetailsView({
     }
   };
 
-  const loadOrder = useCallback(async () => {
-    let currentOrders = orders;
-    if (orders.length === 0) {
-      currentOrders = await fetchUserOrders();
-    }
-    let found = currentOrders.find((o) => o.id === orderId);
+  // `orders` fica num ref, e NÃO nas dependências do useCallback abaixo.
+  //
+  // O que acontecia antes (PEDIDO-040, #84): `loadOrder` dependia de `orders`,
+  // o efeito dependia de `loadOrder`, e `fetchUserOrders` trocava a referência
+  // de `orders` a cada volta — inclusive devolvendo `[]` para quem nunca
+  // comprou. Cada volta recriava o callback, que redisparava o efeito, que
+  // fazia outra requisição: loop infinito no Supabase com o spinner girando
+  // para sempre. A outra metade da correção está no `setOrders` do
+  // `useOrders.ts`, que agora devolve a mesma referência quando nada mudou.
+  //
+  // O ref é atualizado num efeito, e não durante o render: escrever em ref no
+  // meio do render é o que o React desaconselha em modo concorrente. O valor
+  // inicial já vem do cache do localStorage (`useOrders.ts:117-133`), que é o
+  // que o passo 1 abaixo precisa.
+  const ordersRef = useRef(orders);
+  useEffect(() => {
+    ordersRef.current = orders;
+  }, [orders]);
 
-    if (!found) {
+  const loadOrder = useCallback(async () => {
+    // 1. Pinta com o que já está em memória (vem do cache do localStorage),
+    //    para a tela não ficar branca enquanto a rede responde.
+    const emMemoria = ordersRef.current.find((o) => o.id === orderId);
+    if (emMemoria) {
+      setOrder(emMemoria);
+      setLoading(false);
+    }
+
+    // 2. Revalida no servidor SEMPRE, uma vez por abertura. Antes, ter cache
+    //    fazia a tela pular esta busca e nunca mais conferir o status do
+    //    pedido com o banco.
+    const doServidor = await fetchUserOrders();
+    let encontrado = doServidor.find((o) => o.id === orderId);
+
+    // 3. Convidado que rastreou pedido por OTP não tem linha em
+    //    marketplace_orders para o user_id dele; o pedido fica no
+    //    sessionStorage.
+    if (!encontrado) {
       try {
         const guestCached = sessionStorage.getItem("guest_tracked_orders");
         if (guestCached) {
           const parsed = JSON.parse(guestCached);
           if (Array.isArray(parsed)) {
-            found = parsed.find((o) => o.id === orderId);
+            encontrado = parsed.find((o) => o.id === orderId);
           }
         }
       } catch (e) {
@@ -140,9 +170,12 @@ export function OrderDetailsView({
       }
     }
 
-    setOrder(found || null);
+    // Se a revalidação não achou nada mas havia algo em memória, mantém o que
+    // está na tela: melhor um dado de um segundo atrás do que piscar para
+    // "pedido não encontrado" por causa de uma resposta abortada.
+    if (encontrado || !emMemoria) setOrder(encontrado || null);
     setLoading(false);
-  }, [orderId, fetchUserOrders, orders]);
+  }, [orderId, fetchUserOrders]);
 
   useEffect(() => {
     loadOrder();
