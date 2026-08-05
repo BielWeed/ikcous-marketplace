@@ -69,12 +69,32 @@ async function syncOfflineUpdates(): Promise<boolean> {
     if (!Array.isArray(queue) || queue.length === 0) return false;
 
     const remainingQueue: any[] = [];
+    const discarded: string[] = [];
+    let syncedCount = 0;
     const toastId = toast.loading(
       `Sincronizando ${queue.length} atualizações pendentes offline...`,
     );
 
     for (const item of queue) {
       const { id, updates } = item;
+
+      // TruthGate: a fila vive no localStorage e pode ter sido adulterada entre
+      // o enfileiramento e o sync. Sem isto a alteração entra direto em
+      // `produtos` sem passar por nenhum axioma.
+      try {
+        TruthGate.verifyProductAxiom(updates);
+      } catch (err: any) {
+        // Violação de axioma é permanente: retentar não conserta, só refaz o
+        // loop para sempre. Descarta o item em vez de devolver para a fila.
+        console.error(
+          "[Offline Sync] Item rejeitado pelo TruthGate %s:",
+          id,
+          err,
+        );
+        discarded.push(id);
+        continue;
+      }
+
       try {
         const dbUpdates: any = {};
         if (updates.name !== undefined) dbUpdates.nome = updates.name;
@@ -111,13 +131,12 @@ async function syncOfflineUpdates(): Promise<boolean> {
           .eq("id", id);
 
         if (error) throw error;
+        syncedCount += 1;
       } catch (err) {
         console.error("[Offline Sync] Failed to sync product %s:", id, err);
         remainingQueue.push(item);
       }
     }
-
-    const syncedAny = remainingQueue.length < queue.length;
 
     if (remainingQueue.length > 0) {
       localStorage.setItem(
@@ -130,14 +149,26 @@ async function syncOfflineUpdates(): Promise<boolean> {
       );
     } else {
       localStorage.removeItem("products_offline_updates_queue");
-      clearAnalyticsCache();
-      toast.success(
-        "Todas as atualizações pendentes foram sincronizadas com sucesso!",
-        { id: toastId },
+      if (syncedCount > 0) clearAnalyticsCache();
+      if (discarded.length > 0) {
+        toast.dismiss(toastId);
+      } else {
+        toast.success(
+          "Todas as atualizações pendentes foram sincronizadas com sucesso!",
+          { id: toastId },
+        );
+      }
+    }
+
+    // Descartados por violação de axioma nunca voltam para a fila — avisa o
+    // admin de que a alteração feita offline foi perdida de propósito.
+    if (discarded.length > 0) {
+      toast.warning(
+        `${discarded.length} alteração(ões) offline foram descartadas por violarem os axiomas do produto.`,
       );
     }
 
-    return syncedAny;
+    return syncedCount > 0;
   } catch (e) {
     console.error("[Offline Sync] Error parsing offline updates queue:", e);
     return false;
@@ -476,8 +507,19 @@ export function useProducts({ autoFetch = true } = {}) {
         return;
       }
       try {
-        // TruthGate: Security & Logic Validation
-        TruthGate.verifyProductAxiom(productData);
+        // TruthGate: modo `create` exige nome, preço e estoque presentes —
+        // num patch a ausência significa "não mexe", na criação significa
+        // produto incompleto entrando no catálogo.
+        TruthGate.verifyProductAxiom(productData, { mode: "create" });
+
+        // As variantes são validadas ANTES do insert do produto: se uma delas
+        // violar um axioma depois que o produto já entrou, sobra um produto
+        // órfão sem variante nenhuma no banco.
+        for (const variant of productData.variants || []) {
+          TruthGate.verifyVariantAxiom(variant, {
+            costPrice: productData.costPrice,
+          });
+        }
 
         const { data, error } = await supabase
           .from("vw_produtos_admin")
@@ -571,13 +613,33 @@ export function useProducts({ autoFetch = true } = {}) {
 
       // Check if offline
       if (typeof navigator !== "undefined" && !navigator.onLine) {
-        try {
-          const oldProduct =
-            products.find((p) => p.id === id) || (await fetchProduct(id));
-          const optimisticProduct = oldProduct
-            ? { ...oldProduct, ...updates }
-            : null;
+        let oldProduct: Product | null | undefined = products.find(
+          (p) => p.id === id,
+        );
+        if (!oldProduct) {
+          try {
+            oldProduct = await fetchProduct(id);
+          } catch {
+            oldProduct = null;
+          }
+        }
+        const optimisticProduct = oldProduct
+          ? { ...oldProduct, ...updates }
+          : null;
 
+        // TruthGate: valida antes de enfileirar — o item da fila é escrito
+        // direto em `produtos` no sync. Valida a entidade mesclada, e não o
+        // patch, para que margem e estoque sejam checados contra os valores
+        // reais do produto e não contra os campos ausentes do update.
+        try {
+          TruthGate.verifyProductAxiom(optimisticProduct ?? updates);
+        } catch (err: any) {
+          console.error("[useProducts] Offline validation failed:", err);
+          toast.error(err.message || "Erro ao atualizar produto");
+          throw err;
+        }
+
+        try {
           if (optimisticProduct) {
             cachedAdminProducts = (cachedAdminProducts || []).map((p) =>
               p.id === id ? optimisticProduct : p,
@@ -618,13 +680,17 @@ export function useProducts({ autoFetch = true } = {}) {
       }
 
       try {
-        // TruthGate: Security & Logic Validation
-        TruthGate.verifyProductAxiom(updates);
+        // TruthGate: valida a entidade MESCLADA, não o patch. Validando só o
+        // patch, baixar o preço abaixo do custo já gravado não gerava nem
+        // aviso, porque `costPrice` não vem no update.
+        const currentProduct = products.find((p) => p.id === id);
+        TruthGate.verifyProductAxiom(
+          currentProduct ? { ...currentProduct, ...updates } : updates,
+        );
 
         let oldImages: string[] = [];
         if (updates.images !== undefined) {
-          const oldProduct =
-            products.find((p) => p.id === id) || (await fetchProduct(id));
+          const oldProduct = currentProduct || (await fetchProduct(id));
           oldImages = oldProduct?.images || [];
         }
 
@@ -1117,6 +1183,13 @@ export function useProducts({ autoFetch = true } = {}) {
         return;
       }
       try {
+        // TruthGate: custo do pai vem do cache local, sem ida extra à rede;
+        // sem ele o axioma de margem é omitido, as violações não.
+        TruthGate.verifyVariantAxiom(variantData, {
+          costPrice: products.find((p) => p.id === variantData.productId)
+            ?.costPrice,
+        });
+
         const { data, error } = await supabase
           .from("product_variants")
           .insert({
@@ -1159,7 +1232,7 @@ export function useProducts({ autoFetch = true } = {}) {
         throw err;
       }
     },
-    [isAdmin, refreshContext],
+    [isAdmin, products, refreshContext],
   );
 
   const updateVariant = useCallback(
@@ -1169,6 +1242,17 @@ export function useProducts({ autoFetch = true } = {}) {
         return;
       }
       try {
+        // TruthGate: valida a variante MESCLADA (atual + patch), não só o
+        // patch — senão estoque e override são checados contra os campos
+        // ausentes do update. Pai e variante atual saem do cache local.
+        const parent = products.find((p) =>
+          p.variants?.some((v) => v.id === id),
+        );
+        TruthGate.verifyVariantAxiom(
+          { ...(parent?.variants?.find((v) => v.id === id) ?? {}), ...updates },
+          { costPrice: parent?.costPrice },
+        );
+
         let oldImageUrl: string | null = null;
         if (updates.imageUrl !== undefined) {
           const { data: variant } = (await supabase
@@ -1219,7 +1303,7 @@ export function useProducts({ autoFetch = true } = {}) {
         throw err;
       }
     },
-    [isAdmin, refreshContext, backupStorageFile],
+    [isAdmin, products, refreshContext, backupStorageFile],
   );
 
   const deleteVariant = useCallback(
@@ -1303,6 +1387,13 @@ export function useProducts({ autoFetch = true } = {}) {
         return false;
       }
       try {
+        // TruthGate: valida o lote inteiro antes de qualquer upsert, para não
+        // gravar metade das variantes e abortar na outra metade.
+        const parentCost = products.find((p) => p.id === productId)?.costPrice;
+        for (const variant of variants) {
+          TruthGate.verifyVariantAxiom(variant, { costPrice: parentCost });
+        }
+
         const dbVariants = variants.map((v) => {
           const item: any = {
             product_id: productId,
@@ -1335,7 +1426,7 @@ export function useProducts({ autoFetch = true } = {}) {
         throw err;
       }
     },
-    [isAdmin, refreshContext],
+    [isAdmin, products, refreshContext],
   );
 
   return {
