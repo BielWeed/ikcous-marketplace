@@ -463,7 +463,7 @@ O checklist condicional do template de PR cobre isso. Marque a label
 | Job | Comando | Estado em 30/07/2026 |
 | --- | --- | --- |
 | `Tipos` | `npm run typecheck` | verde — 911 arquivos, 16s |
-| `Testes (Deno)` | `npm test` | verde — 12 testes, ~30ms |
+| `Testes` | `npm test` | verde — 46 testes em ~6,5 s (medido em 05/08/2026; o job chamava `Testes (Deno)` e rodava 12 até a INFRA-150 entrar) |
 | `Build e tamanho` | `npm run build` + `npm run size` | verde — 515 kB de 800 kB |
 | `Varredura de segredo` | secretlint no diff | verde — 0 achados |
 | `Catraca de lint` | `npm run lint:ratchet` | verde — dívida no teto |
