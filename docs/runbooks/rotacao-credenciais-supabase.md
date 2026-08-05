@@ -22,11 +22,24 @@
 > | `service_role` de produção no histórico | morta (401) |
 > | Senha do banco de produção | rotacionada em 30/07/2026 |
 > | `service_role` de `ykzlsunvbeclpxkuzskk` | projeto não existe mais |
-> | Senha do banco de `jvgyjlbjhbfrncwbytls` | **única pendência** |
+> | Senha do banco de `jvgyjlbjhbfrncwbytls` | ~~**única pendência**~~ — encerrada em 05/08/2026, ver abaixo |
 > | Repositório | privado |
 >
-> **O que ainda vale fazer:** a Parte 1 no projeto `jvgyjlbjhbfrncwbytls` (item 1.3), e fechar
-> os 2 alertas do GitHub como *Revoked*.
+> **Atualização de 05/08/2026 — a pendência do "br" fechou, e não por rotação.**
+> A senha daquele banco estava **versionada em texto puro** no repositório
+> (`.ship-safe/context.json`, commit `90d88cb`), e testada naquele dia ela **conectava** como
+> `postgres` — não estava morta, ao contrário da `service_role` do histórico. O projeto
+> `jvgyjlbjhbfrncwbytls` foi **excluído** no mesmo dia (#85), depois que o #154 tirou o último
+> ponteiro da loja para ele. Conferido em seguida: o host não resolve mais (`ENOTFOUND`) e o
+> pooler responde `tenant not found`. A credencial perdeu o alvo.
+>
+> Fica o resíduo: a string de conexão continua no arquivo e no histórico do git. Inofensiva, mas o
+> hábito de comitar isso é o que vale corrigir.
+>
+> **Lição para a próxima varredura:** `.ship-safe/` é estado de ferramenta que ninguém pensa em
+> auditar, e foi exatamente lá que a credencial viva estava.
+>
+> **O que ainda vale fazer:** fechar os 2 alertas do GitHub como *Revoked*.
 >
 > **A Parte 2 virou higiene opcional, não resposta a incidente.** Mexer na chave que a loja usa
 > pra autenticar, sem credencial viva exposta, é trocar risco zero por risco pequeno mas real.
@@ -106,14 +119,23 @@ script (`scripts/rotate-db-password.cjs:20`), não edite à mão.
 E na Vercel, a variável `DATABASE_URL` existe em **dois** ambientes (Production e
 Development) — os dois precisam da senha nova, e isso o script não faz.
 
-### 1.3 — Projeto "br"
+### 1.3 — Projeto "br" — ~~pendente~~ RESOLVIDO por exclusão em 05/08/2026
 
-Mesma coisa, no outro projeto:
+Este passo **não existe mais**. O `ikcous-marketplace-br` (`jvgyjlbjhbfrncwbytls`) foi excluído em
+05/08/2026, então não há senha para rotacionar.
 
-<https://supabase.com/dashboard/project/jvgyjlbjhbfrncwbytls/settings/database>
+Vale saber por quê, porque o motivo contradiz o que este runbook dizia. A afirmação original —
+"não está sendo usado pela loja no ar" — estava **certa**, mas por pouco: o trigger de OTP do
+banco de produção fazia `net.http_post` para uma edge function daquele projeto que **nunca foi
+publicada lá**. Era um ponteiro para o vazio, não uma dependência. Uma auditoria de 04/08 chegou a
+concluir o contrário e avisou que desligar o projeto derrubaria o rastreio de convidado; a medição
+de 05/08 (`supabase functions list` no ref) mostrou que não havia o que derrubar.
 
-Este é o `ikcous-marketplace-br`, que não está sendo usado pela loja no ar. Então aqui não
-tem risco nenhum e nem precisa atualizar arquivo — é só fechar a porta.
+O #154 corrigiu o ponteiro e o projeto foi excluído em seguida (#85).
+
+**O que aprender daqui:** "o projeto X não é usado" é afirmação que se verifica listando o que está
+publicado nele e procurando o ref no corpo das funções do banco — não pela ausência de menção na
+documentação.
 
 ---
 

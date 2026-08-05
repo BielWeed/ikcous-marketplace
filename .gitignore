@@ -104,3 +104,10 @@ supabase/.temp/
 .vscode/mcp.json
 .cursor/mcp.json
 .agents/mcp_config.json
+
+# Snapshot de ferramenta, não código. O context.json guardava um DATABASE_URL
+# completo, com senha em texto puro, do projeto `br` — e a senha estava VIVA
+# quando foi testada em 05/08/2026 (o projeto foi excluído no mesmo dia, #85).
+# Ninguém pensa em auditar estado de ferramenta atrás de segredo; foi por isso
+# que passou meses despercebido.
+.ship-safe/

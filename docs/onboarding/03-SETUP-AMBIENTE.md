@@ -382,6 +382,47 @@ Replique à mão.
 
 ## 6. Regras para o Supabase de produção
 
+### Antes das regras: quais projetos existem, e qual é qual
+
+A org `vtwznprwuptaquiysenb` tem **dois** projetos. Confirme com
+`supabase projects list` antes de confiar nesta tabela — ela envelhece.
+
+| Ref | Nome | Região | O que é |
+| --- | --- | --- | --- |
+| `cafkrminfnokvgjqtkle` | BielWeed's Project | West US (Oregon) | **A loja no ar.** É o que está em `VITE_SUPABASE_URL` e na `DATABASE_URL` do `.env`. |
+| `lofznuxcvezrhxsgjqyg` | ikcous-mkt-priemira-cliente | South America (São Paulo) | **Sandbox do MCP.** Apesar do nome, não é loja de cliente nenhum. |
+
+Existiu um terceiro, `jvgyjlbjhbfrncwbytls` (`ikcous-marketplace-br`), **excluído em 05/08/2026**.
+Se você encontrar esse ref em documento, script ou comentário, é resíduo — ver #85.
+
+### O sandbox, e por que ele existe
+
+O `lofznuxcvezrhxsgjqyg` foi criado em 15/07/2026 para o **servidor MCP do Supabase** ter onde
+trabalhar sem tocar na loja no ar. Os três edge functions foram publicados nele em v1 no mesmo
+minuto (02:14 UTC), espelhando o ambiente de produção.
+
+É para lá que apontam os arquivos de MCP das IDEs:
+
+```
+.agents/mcp_config.json    → project_ref=lofznuxcvezrhxsgjqyg
+.cursor/mcp.json           → project_ref=lofznuxcvezrhxsgjqyg
+.vscode/mcp.json           → project_ref=lofznuxcvezrhxsgjqyg
+```
+
+Esses três arquivos estão no `.gitignore` — cada um já guardou credencial. Se o seu não existir,
+peça o modelo; não copie de produção.
+
+> **Armadilha:** `.agents_inactive/mcp_config.json` aponta para **produção**
+> (`cafkrminfnokvgjqtkle`). Se alguém reativar aquelas skills copiando o config de volta, o MCP
+> passa a falar com a loja no ar — e ferramenta de IA escrevendo em produção não avisa antes.
+> Ao reativar qualquer coisa de `.agents_inactive/`, **conferir o `project_ref` primeiro.**
+
+O que o sandbox **não** é: não é o staging do INFRA-270 (#131). Aquele cartão precisa de um projeto
+cujo schema seja reprodutível a partir do repositório, e o schema deste nunca foi conferido contra
+o de produção. Pode vir a servir; hoje é candidato, não solução.
+
+### As 12 regras
+
 Você vai ter credencial do banco de uma loja no ar. São 12 regras, divididas em três listas.
 
 **Faz sozinho, sem avisar ninguém:**
