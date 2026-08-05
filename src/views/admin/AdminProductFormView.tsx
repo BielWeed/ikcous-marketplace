@@ -1849,6 +1849,13 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
 
           <div className="w-full">
             {formData.images.length === 0 ? (
+              // Falso positivo: o label TEM texto visível ("Adicionar Fotos do
+              // Produto" e a instrução de arrastar), e o input com o id casado
+              // está dentro dele. A regra só olha `depth: 2` por padrão e o
+              // texto está em label > div > div > p. Pôr `aria-label` aqui
+              // resolveria o lint e pioraria a acessibilidade: substituiria
+              // esse texto rico pelo rótulo curto no nome acessível.
+              // eslint-disable-next-line jsx-a11y/label-has-associated-control
               <label
                 htmlFor="product-image-upload"
                 onDragOver={(e) => {
@@ -2990,7 +2997,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       {/* Floating Action Button */}
       {typeof document !== "undefined" &&
         createPortal(
-          <div className="fixed bottom-6 right-6 z-50">
+          // Sobe acima do nav inferior do admin no mobile. O nav é
+          // `fixed left-4 right-4 z-[60]` com bottom calculado
+          // (AdminLayout.tsx:944) — ele ganha no empilhamento e ocupa a mesma
+          // faixa, então `bottom-6` deixava este botão escondido atrás dele.
+          // A partir de `lg` o nav some (`lg:hidden`) e o botão volta ao pé.
+          <div className="fixed bottom-[calc(6.5rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] right-6 z-50 lg:bottom-6">
             <button
               type="button"
               onClick={() => setIsPreviewOpen(true)}

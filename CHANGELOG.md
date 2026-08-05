@@ -7,6 +7,70 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.0.2] — 2026-08-05
+
+Release de segurança de dados do cliente. Quatro vazamentos fechados, todos medidos contra o banco
+de produção antes e depois — e nenhum deles era visível para quem compra, o que é justamente o
+problema de vazamento: ninguém percebe.
+
+O que o **lojista** vai notar são as duas outras coisas: cadastrar produto voltou a funcionar, e o
+botão de pré-visualizar saiu de trás do menu.
+
+### Corrigido
+
+- **Faturamento consolidado da loja legível por qualquer cliente cadastrado** (#103). A RPC
+  `get_category_analytics` é `SECURITY DEFINER` — ignora o RLS de pedidos, itens e produtos — e não
+  tinha checagem de quem chamou, com `EXECUTE` para `authenticated`. Qualquer pessoa que criasse
+  conta extraía faturamento por categoria, número de pedidos, ticket médio e frete arrecadado com
+  uma chamada. Medido: um cliente comum lia 4 linhas de faturamento antes da guarda.
+- **Cliente logado cancelava pedido de convidado, e a venda era desfeita** (#115). A checagem de
+  dono usava `!=`, e em SQL `NULL != <uuid>` avalia para NULL, não para true. Pedido de convidado
+  tem `user_id` NULL, então a exceção de autorização nunca acontecia. Cancelar devolve o estoque, e
+  o id do pedido aparece na tela de sucesso, no rastreio e em qualquer print. O autocancelamento de
+  convidado, que só funcionava por causa deste bug, deixou de existir — o botão passou a exigir
+  sessão.
+- **Margem de todo produto ativo legível por qualquer cliente cadastrado** (#119). Não era
+  privilégio de coluna mal posto: `authenticated` tinha `SELECT` de tabela inteira em `produtos`, e
+  a policy libera a linha pela vitrine. Medido: 18 de 18 produtos ativos, com `custo`.
+- **O código de rastreio de convidado abria o pedido de outra pessoa** (#118). Era o único achado
+  crítico ainda aberto da auditoria de 29/07. A tela pedia e-mail, WhatsApp e um ID de pedido
+  marcado como opcional; a RPC casava os dois canais com `OR`, e o ID vazio virava um curinga que
+  casava qualquer pedido. Quem soubesse o WhatsApp de um cliente recebia **na própria caixa** o
+  código que abria nome, e-mail, telefone, itens, totais e endereço da vítima. E não havia limite de
+  tentativas no código de 6 dígitos. Agora os dois canais são obrigatórios, o ID do pedido também,
+  o código fica amarrado a um pedido só, e morre em 5 tentativas erradas.
+- **Cadastro de produto novo estava quebrado** (#119, achado no caminho). O painel devolvia "Erro ao
+  processar as modificações do produto". A causa: `vw_produtos_admin`, chamada em sete pontos do
+  front, tinha sumido do banco sem deixar migration. A listagem sobrevivia porque cai numa view
+  pública quando a de admin falha, e foi esse silêncio que segurou o defeito em produção por tempo
+  indeterminado.
+- **Botão "Visualizar App" escondido atrás do menu inferior** (#138). Empilhamento: o botão era
+  `z-50`, o menu do admin é `z-60`, e os dois ocupavam a mesma faixa da tela no celular.
+
+### Infraestrutura
+
+- Cada correção de banco tem um script de prova versionado, que reproduz o defeito e mede a
+  correção numa transação terminada em `ROLLBACK`. Eles moram em `scripts/db-prove-*.cjs` e rodam
+  contra o banco real, não contra fixture.
+- Rollback versionado para as quatro migrations. Duas delas precisaram ser escritas à mão: o
+  `db-apply.cjs` só sabe fotografar função, e migration de view, grant ou `ALTER TABLE` sai com
+  rollback vazio — o que é pior que rollback nenhum, porque parece uma rede de segurança. Virou a
+  #140.
+- A catraca de lint caiu de 7 para 6 erros de eslint, com o teto baixado no mesmo PR.
+
+### Sabido e não corrigido
+
+- A regra de frete grátis continua escrita em 10 lugares (`FRETE-020`, #53), dependendo da decisão
+  `FRETE-030`.
+- Nada avisa quando o código passa a depender de um objeto que o banco não tem. Foi assim que o
+  cadastro de produto quebrou sem ninguém saber; é a `BANCO-080` (#139), aberta com a evidência.
+- `anon` tem `INSERT`, `UPDATE`, `DELETE` e `TRUNCATE` em `produtos` (`BANCO-090`, #141). Hoje é
+  inerte — o RLS nega por ausência de policy e o PostgREST não expõe `TRUNCATE` — mas é privilégio
+  que ninguém quis dar.
+- Duas telas desta release não foram exercitadas no navegador: o botão na posição nova e o fluxo
+  "Rastrear sem Conta" ponta a ponta. Nenhuma das duas tem cobertura automatizada; o que as cobre é
+  typecheck e lint.
+
 ## [1.0.1] — 2026-08-04
 
 Primeira release com processo: 13 commits que estavam parados na `develop`. Três correções chegam
