@@ -111,6 +111,12 @@ branches. Se você mergear o hotfix só na `main`, o bug volta no próximo relea
 porque a `develop` nunca recebeu a correção. Isso já é a causa mais comum de
 regressão em GitFlow — não confie na memória, siga o passo a passo abaixo.
 
+**Toda branch acima é apagada à mão depois de mergeada**, no remoto e no local.
+O `delete_branch_on_merge` do repositório está desligado (`INFRA-290`, #150), e
+é por isso que as receitas abaixo terminam sempre com um passo de limpeza. Nas
+que mergeiam em duas branches, esse passo vem **por último**: apagar antes do
+segundo PR deixa ele sem head ref.
+
 ---
 
 ## Mensagem de commit
@@ -221,7 +227,31 @@ git switch -c feat/<assunto>
 # trabalhe, commite
 git push -u origin feat/<assunto>
 gh pr create --base develop --fill
+
+# depois do merge, apague a branch. O GitHub NÃO faz isso sozinho.
+# Local primeiro, remoto depois — a ordem importa, ver abaixo:
+git switch develop && git pull
+git branch -d feat/<assunto>
+git push origin --delete feat/<assunto>
+git fetch --prune
 ```
+
+**A limpeza é manual de propósito.** O `delete_branch_on_merge` do repositório
+foi desligado em 05/08/2026 (`INFRA-290`, #150) porque o auto-delete apagava a
+branch de release no instante do merge e inviabilizava o passo 6 do
+[Release](#release) — que precisa dela viva. O preço é este: branch mergeada
+fica no remoto até alguém apagar.
+
+**Por que local antes de remoto.** Squash é o padrão aqui, e squash cria um
+commit novo: o original da sua branch nunca vira ancestral da `develop`. O
+`git branch -d` ainda aceita apagar, porque a branch bate com o ref de upstream
+(`origin/feat/...`) — ele avisa "não mergeada em HEAD" e apaga assim mesmo. Mas
+se você apagar o remoto primeiro, esse ref some no `--prune` e aí o `-d` passa a
+recusar, exigindo `-D`.
+
+Se cair no `-D`, confirme antes que o conteúdo entrou de verdade:
+`git diff develop <branch>` tem que sair vazio. `-D` não pergunta nada, e
+branch que nunca foi mergeada some igual.
 
 **O que precisa estar verde antes de pedir revisão:** todos os cinco jobs.
 
@@ -270,7 +300,22 @@ git push origin v1.2.0
 
 # 6. E ENTÃO O PASSO QUE TODO MUNDO ESQUECE:
 gh pr create --base develop --head release/1.2.0 --title "chore: volta a release 1.2.0 para develop"
+
+# 7. só DEPOIS do passo 6 mergeado, apague a branch:
+git switch develop && git pull
+git branch -d release/1.2.0
+git push origin --delete release/1.2.0
+git fetch --prune
 ```
+
+**O passo 7 vem por último por um motivo.** O passo 6 precisa da
+`release/1.2.0` viva no remoto: sem ela o `gh pr create` falha com
+`No commits between develop and release/1.2.0 / Head ref must be a branch`.
+Foi o que aconteceu na 1.0.3, quando o repositório ainda tinha
+`delete_branch_on_merge: true` e o GitHub apagou a branch no merge do passo 4 —
+ela precisou ser republicada a partir da cópia local para o passo 6 sair. O
+auto-delete foi desligado por causa disso (`INFRA-290`, #150). Se um dia for
+religado, o passo 6 volta a exigir `git push origin release/X.Y.Z` antes.
 
 Versionamento semântico, sobre o comportamento da **loja**, não do código:
 
@@ -309,10 +354,19 @@ git tag -a v1.2.1 -m "hotfix <assunto>" && git push origin v1.2.1
 
 # 3. O PASSO QUE CAUSA REGRESSÃO QUANDO ESQUECIDO:
 gh pr create --base develop --head hotfix/<assunto> --title "fix: leva o hotfix <assunto> para develop"
+
+# 4. só depois do passo 3 mergeado, apague a branch:
+git switch develop && git pull
+git branch -d hotfix/<assunto>
+git push origin --delete hotfix/<assunto>
+git fetch --prune
 ```
 
 Se você pular o passo 3, o bug **volta** no próximo release, porque a `develop`
 nunca recebeu a correção — e vai voltar sem ninguém entender por quê.
+
+O passo 4 vem depois do 3 pela mesma razão do release: o PR para a `develop`
+precisa da branch viva. Apagar antes obriga a republicá-la.
 
 Antes de fechar: escreva no Discord o que aconteceu, o que causou e o que
 impediria de acontecer de novo. Isso vira task, não culpa.
