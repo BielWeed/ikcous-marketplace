@@ -349,7 +349,11 @@ export function OrderDetailsView({
             </div>
           )}
 
-          {order.status === "pending" && (
+          {/* Exige sessão: o convidado chega nesta tela pelo fallback de
+              sessionStorage do loadOrder, e update_order_status_atomic passou a
+              recusar chamador sem auth.uid() (PEDIDO-010, #115). Sem esta
+              condição o botão continuaria visível e falharia sempre. */}
+          {order.status === "pending" && user && (
             <div className="mt-4 border-t border-zinc-100 pt-4">
               <button
                 onClick={handleCancelOrder}
