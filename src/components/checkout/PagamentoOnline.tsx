@@ -182,7 +182,6 @@ export function PagamentoOnline({
   onErro: (msg: string) => void;
 }) {
   const { criarPagamento } = useOrders(false, true);
-  const container = useRef<HTMLDivElement>(null);
   // `expiraEm` vem junto do PIX, da resposta da edge function — é o prazo que
   // está gravado na linha do pedido, o mesmo que o pg_cron vai ler.
   const [pix, setPix] = useState<{
@@ -191,15 +190,37 @@ export function PagamentoOnline({
     expiraEm: string;
   } | null>(null);
 
+  // Padrão de ref para callback em recurso imperativo. `onErro` é tipicamente
+  // um closure inline de quem consome o componente (`onErro={(m) =>
+  // setErro(m)}`), e MUDA de identidade a cada re-render do pai — um toast,
+  // um evento realtime do useOrders, o contador regressivo do prazo. Se
+  // `onErro` estivesse nas deps do efeito abaixo, cada re-render do pai
+  // desmontaria o Brick vivo (perdendo o formulário e o que o cliente já
+  // digitou) e recriaria do zero, silenciosamente — sem estourar
+  // ALREADY_INITIALIZED, porque o unmount roda antes do create seguinte.
+  //
+  // A atualização do `.current` vai num `useEffect` sem deps (roda depois de
+  // TODO render), não direto no corpo do componente: mutar ref durante o
+  // render é erro do `eslint-plugin-react-hooks` ("Cannot access refs during
+  // render") — o valor só precisa estar atualizado antes da PRÓXIMA vez que
+  // um callback assíncrono do Brick o ler, nunca durante a renderização.
+  const onErroRef = useRef(onErro);
+  useEffect(() => {
+    onErroRef.current = onErro;
+  });
+
   useEffect(() => {
     return montarBrick({
       orderId,
       valor,
       criarPagamento,
-      onErro,
+      onErro: (msg) => onErroRef.current(msg),
       onPix: setPix,
     });
-  }, [orderId, valor, criarPagamento, onErro]);
+    // `onErro` de propósito fora das deps — ver o comentário do onErroRef
+    // acima. O Brick fica vivo enquanto `orderId`/`valor` (primitivos) e
+    // `criarPagamento` (useCallback(..., []) em useOrders.ts) não mudarem.
+  }, [orderId, valor, criarPagamento]);
 
   if (pix) {
     return (
@@ -229,5 +250,5 @@ export function PagamentoOnline({
     );
   }
 
-  return <div id="mp-container" ref={container} />;
+  return <div id="mp-container" />;
 }

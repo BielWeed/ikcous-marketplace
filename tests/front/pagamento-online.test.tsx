@@ -3,7 +3,10 @@
 // Só este arquivo precisa de DOM (`document`) para o carregamento do SDK do
 // Brick. O resto da suíte roda em `environment: "node"` (vitest.config.ts) —
 // não subimos jsdom globalmente por um único arquivo.
+import { PagamentoOnline } from "@/components/checkout/PagamentoOnline";
 import { lerFlagPagamentoOnline } from "@/lib/flags";
+import { act } from "react";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // `PagamentoOnline` importa `useOrders`, que importa `@/lib/supabase` — e esse
@@ -18,6 +21,27 @@ vi.mock("@/lib/supabase", () => ({
     functions: { invoke: vi.fn() },
   },
 }));
+
+// Mocado também para o describe de renderização real: precisamos que
+// `criarPagamento` seja uma referência ESTÁVEL entre re-renders — exatamente
+// o contrato real (`useCallback(..., [])` em useOrders.ts:958-1003) — sem
+// carregar useAuth/useLeaderElection/os efeitos de sincronização do
+// `useOrders` de verdade, que não são o que este arquivo testa. A função é
+// criada DENTRO da factory (não numa `const` de fora) para não esbarrar no
+// hoisting do `vi.mock` — referenciar uma `const` externa aqui daria "cannot
+// access before initialization".
+vi.mock("@/hooks/useOrders", () => {
+  const criarPagamento = vi.fn();
+  return { useOrders: () => ({ criarPagamento }) };
+});
+
+// Este arquivo não usa @testing-library — só `act` puro (ver o describe
+// "PagamentoOnline (render de verdade)") — e sem este flag o React avisa
+// "not configured to support act(...)" em todo render, mesmo dentro de
+// act(). @testing-library seta isto por trás das cortinas; aqui setamos à
+// mão.
+// @ts-expect-error flag interna do React, sem tipo público
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("flag de pagamento online", () => {
   it("liga apenas com a string exata 'true'", () => {
@@ -345,5 +369,86 @@ describe("montarBrick", () => {
       qrCode: "000201...",
       expiraEm: "2026-08-06T15:30:00.000Z",
     });
+  });
+});
+
+// Revisão da rodada de correção 1: remover o `jaMontou` (para o StrictMode
+// funcionar, B1) amarrou a vida do Brick à identidade de `onErro` — um prop
+// que, na forma natural de escrever a Task 5 (`onErro={(m) => setErro(m)}`),
+// é um closure NOVO a cada render do pai. Com `onErro` nas deps do efeito,
+// qualquer re-render (um toast, um evento realtime do useOrders, o contador
+// regressivo do prazo) desmontava o Brick vivo — perdendo o que o cliente já
+// tinha digitado — e recriava do zero. SILENCIOSAMENTE: o unmount roda antes
+// do create seguinte, então não estoura ALREADY_INITIALIZED.
+//
+// Só um teste que renderiza `PagamentoOnline` de verdade (não só
+// `montarBrick`) prova isto — a identidade do prop só existe no ciclo de
+// render do React, não em uma chamada direta de função.
+describe("PagamentoOnline (render de verdade)", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    document.head.innerHTML = "";
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+    vi.stubEnv("VITE_MP_PUBLIC_KEY", "TEST-000000-0000-0000-0000-000000000000");
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    document.querySelectorAll("script[data-mp-sdk]").forEach((s) => s.remove());
+    // @ts-expect-error limpando o global entre testes
+    globalThis.MercadoPago = undefined;
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Cada chamada de `Pai()` cria um `onErro` NOVO — closure inline, o mesmo
+   * padrão que `onErro={(m) => setErro(m)}` produziria na Task 5. É essa
+   * identidade nova a cada render que expõe o bug: `<PagamentoOnline />`
+   * continua na mesma posição da árvore (mesmo tipo, mesmo pai), então o
+   * React RE-renderiza — não remonta — a cada `raiz.render(<Pai />)`.
+   */
+  function Pai() {
+    return <PagamentoOnline orderId="ped-1" valor={100} onErro={() => {}} />;
+  }
+
+  it("re-render do pai com onErro inline NÃO recria o Brick", async () => {
+    const unmount = vi.fn();
+    const create = vi.fn().mockResolvedValue({ unmount });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    await act(async () => {
+      raiz.render(<Pai />);
+    });
+
+    document
+      .querySelector("script[data-mp-sdk]")
+      ?.dispatchEvent(new Event("load"));
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(create).toHaveBeenCalledTimes(1);
+
+    // Três re-renders do pai — cada um com `onErro` NOVO. Reproduz a rede: um
+    // toast do sonner, um evento realtime, o contador regressivo do prazo.
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        raiz.render(<Pai />);
+      });
+    }
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(unmount).not.toHaveBeenCalled();
   });
 });
