@@ -158,6 +158,80 @@ async function main() {
       paiDepois.rows[0].estoque === 7,
       `veio ${paiDepois.rows[0].estoque}, esperava 7 — creditar os dois infla o catalogo`,
     );
+
+    console.log("\n=== expirar_pedidos_vencidos ===");
+
+    // Pedido VENCIDO: deve ser expirado e devolver estoque.
+    const prod2 = await client.query(`
+      INSERT INTO public.produtos (nome, custo, preco_venda, estoque, categoria)
+      VALUES ('PROVA EXPIRACAO', 5.00, 10.00, 3, 'teste')
+      RETURNING id
+    `);
+    const produto2 = prod2.rows[0].id;
+
+    const vencido = await client.query(`
+      INSERT INTO public.marketplace_orders
+        (total, subtotal, status, payment_status, expires_at, customer_name, customer_data)
+      VALUES (10.00, 10.00, 'pending', 'aguardando', now() - interval '1 minute', 'VENCIDO', '{}'::jsonb)
+      RETURNING id
+    `);
+    await client.query(
+      `INSERT INTO public.marketplace_order_items
+         (order_id, product_id, product_name, quantity, price)
+       VALUES ($1, $2, 'PROVA EXPIRACAO', 1, 10.00)`,
+      [vencido.rows[0].id, produto2],
+    );
+
+    // Pedido AINDA NO PRAZO: nao pode ser tocado.
+    const noPrazo = await client.query(`
+      INSERT INTO public.marketplace_orders
+        (total, subtotal, status, payment_status, expires_at, customer_name, customer_data)
+      VALUES (10.00, 10.00, 'pending', 'aguardando', now() + interval '20 minutes', 'NO PRAZO', '{}'::jsonb)
+      RETURNING id
+    `);
+
+    // Pedido HISTORICO (payment_status NULL): nao pode ser tocado.
+    const historico = await client.query(`
+      INSERT INTO public.marketplace_orders
+        (total, subtotal, status, customer_name, customer_data)
+      VALUES (10.00, 10.00, 'pending', 'HISTORICO', '{}'::jsonb)
+      RETURNING id
+    `);
+
+    await client.query("SELECT public.expirar_pedidos_vencidos()");
+
+    const est2 = await client.query(
+      "SELECT estoque FROM public.produtos WHERE id = $1",
+      [produto2],
+    );
+    conferir(
+      "expiracao devolve o estoque do pedido vencido",
+      est2.rows[0].estoque === 4,
+      `veio ${est2.rows[0].estoque}, esperava 4 (3 + 1 devolvida)`,
+    );
+
+    const estados = await client.query(
+      `SELECT id, status, payment_status FROM public.marketplace_orders
+        WHERE id = ANY($1::uuid[])`,
+      [[vencido.rows[0].id, noPrazo.rows[0].id, historico.rows[0].id]],
+    );
+    const por = (id) => estados.rows.find((r) => r.id === id);
+
+    conferir(
+      "vencido vira expirado e cancelado",
+      por(vencido.rows[0].id).payment_status === "expirado" &&
+        por(vencido.rows[0].id).status === "cancelled",
+    );
+    conferir(
+      "pedido no prazo NAO e tocado",
+      por(noPrazo.rows[0].id).payment_status === "aguardando" &&
+        por(noPrazo.rows[0].id).status === "pending",
+    );
+    conferir(
+      "pedido historico (payment_status NULL) NAO e tocado",
+      por(historico.rows[0].id).payment_status === null &&
+        por(historico.rows[0].id).status === "pending",
+    );
   } finally {
     await client.query("ROLLBACK");
     await client.end();

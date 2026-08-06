@@ -72,3 +72,42 @@ COMMENT ON FUNCTION public.devolver_estoque(uuid) IS
   'Nao e idempotente: duas chamadas para o mesmo pedido creditam estoque duas '
   'vezes. O chamador e responsavel por garantir chamada unica (ex.: transicao '
   'de payment_status que so ocorre uma vez).';
+
+-- 3. Varredura de expiracao ---------------------------------------------
+CREATE OR REPLACE FUNCTION public.expirar_pedidos_vencidos()
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $expirar$
+DECLARE
+    v_pedido   RECORD;
+    v_expirados integer := 0;
+BEGIN
+    -- FOR UPDATE SKIP LOCKED: se o webhook da Fase 3 estiver confirmando este
+    -- mesmo pedido agora, ele detem a trava e a varredura pula em vez de
+    -- disputar. Quem chegou primeiro ganha; nao ha sobrescrita.
+    FOR v_pedido IN
+        SELECT id
+        FROM public.marketplace_orders
+        WHERE payment_status = 'aguardando'
+          AND expires_at IS NOT NULL
+          AND expires_at < now()
+        FOR UPDATE SKIP LOCKED
+    LOOP
+        PERFORM public.devolver_estoque(v_pedido.id);
+
+        UPDATE public.marketplace_orders
+           SET payment_status = 'expirado',
+               status         = 'cancelled',
+               updated_at     = now()
+         WHERE id = v_pedido.id;
+
+        v_expirados := v_expirados + 1;
+    END LOOP;
+
+    RETURN v_expirados;
+END;
+$expirar$;
+
+REVOKE ALL ON FUNCTION public.expirar_pedidos_vencidos() FROM PUBLIC, anon, authenticated;

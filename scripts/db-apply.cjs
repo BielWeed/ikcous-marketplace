@@ -104,17 +104,31 @@ const VERIFICACOES = {
       "RAISE EXCEPTION USING",
     ],
   },
-  "20260807000000_reserva_com_expiracao.sql": {
-    funcao: "devolver_estoque",
-    esperado: [
-      // Guarda do IF/ELSE (variante XOR produto), nao dois IF independentes.
-      // Se alguem trocar por dois IF, este ELSE colado no UPDATE de produtos
-      // deixa de existir no corpo, e a verificacao reprova. E essa a regra
-      // que evita creditar variante E produto pai a cada expiracao.
-      "ELSE\n            UPDATE public.produtos",
-      "SET stock_increment = stock_increment + v_item.quantity",
-    ],
-  },
+  "20260807000000_reserva_com_expiracao.sql": [
+    {
+      funcao: "devolver_estoque",
+      esperado: [
+        // Guarda do IF/ELSE (variante XOR produto), nao dois IF independentes.
+        // Se alguem trocar por dois IF, este ELSE colado no UPDATE de produtos
+        // deixa de existir no corpo, e a verificacao reprova. E essa a regra
+        // que evita creditar variante E produto pai a cada expiracao.
+        "ELSE\n            UPDATE public.produtos",
+        "SET stock_increment = stock_increment + v_item.quantity",
+      ],
+    },
+    {
+      funcao: "expirar_pedidos_vencidos",
+      esperado: [
+        // So varre pedido 'aguardando': sem este filtro, a funcao passaria a
+        // cancelar pedido ja pago ou historico (payment_status NULL).
+        "WHERE payment_status = 'aguardando'",
+        // FOR UPDATE SKIP LOCKED: sem ele, a varredura disputa a linha com o
+        // webhook da Fase 3 em vez de pular o pedido que ja esta sendo
+        // confirmado — e pode expirar um pedido que acabou de ser pago.
+        "FOR UPDATE SKIP LOCKED",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
@@ -250,24 +264,29 @@ async function main() {
   let tudoOk = true;
   for (const nome of arquivos) {
     const base = path.basename(nome);
-    const checagem = VERIFICACOES[base];
-    if (!checagem) {
+    const registro = VERIFICACOES[base];
+    if (!registro) {
       console.log(`  ${base}: sem verificação registrada, pulando.`);
       continue;
     }
-    const [def] = await definicaoAtual(client, checagem.funcao);
-    // Normaliza \r\n -> \n dos dois lados antes de comparar. O repo nao tem
-    // .gitattributes e core.autocrlf converte as migrations para CRLF no
-    // working tree a cada checkout/clone/stash; sem isso, um marcador que
-    // cruza uma quebra de linha (ex.: "ELSE\n            UPDATE ...") deixa
-    // de casar contra um corpo em CRLF e a verificacao grita AUSENTE para
-    // uma migration que esta correta — DEPOIS do COMMIT ja ter acontecido.
-    const defNormalizado = def?.replace(/\r\n/g, "\n");
-    for (const marcador of checagem.esperado) {
-      const marcadorNormalizado = marcador.replace(/\r\n/g, "\n");
-      const ok = Boolean(defNormalizado?.includes(marcadorNormalizado));
-      if (!ok) tudoOk = false;
-      console.log(`  ${ok ? "ok     " : "AUSENTE"}  ${marcador.slice(0, 64)}`);
+    // Um arquivo pode redefinir mais de uma função (ex.: a mesma migration
+    // reaplicada task a task) — registro vira lista nesse caso.
+    const checagens = Array.isArray(registro) ? registro : [registro];
+    for (const checagem of checagens) {
+      const [def] = await definicaoAtual(client, checagem.funcao);
+      // Normaliza \r\n -> \n dos dois lados antes de comparar. O repo nao tem
+      // .gitattributes e core.autocrlf converte as migrations para CRLF no
+      // working tree a cada checkout/clone/stash; sem isso, um marcador que
+      // cruza uma quebra de linha (ex.: "ELSE\n            UPDATE ...") deixa
+      // de casar contra um corpo em CRLF e a verificacao grita AUSENTE para
+      // uma migration que esta correta — DEPOIS do COMMIT ja ter acontecido.
+      const defNormalizado = def?.replace(/\r\n/g, "\n");
+      for (const marcador of checagem.esperado) {
+        const marcadorNormalizado = marcador.replace(/\r\n/g, "\n");
+        const ok = Boolean(defNormalizado?.includes(marcadorNormalizado));
+        if (!ok) tudoOk = false;
+        console.log(`  ${ok ? "ok     " : "AUSENTE"}  ${checagem.funcao}: ${marcador.slice(0, 64)}`);
+      }
     }
   }
 
