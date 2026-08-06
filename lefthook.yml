@@ -56,8 +56,14 @@ pre-commit:
 
 commit-msg:
   jobs:
+    # Era `npx commitlint --edit {1}`. Num clone normal funciona, porque o git
+    # passa o relativo `.git/COMMIT_EDITMSG`; dentro de um `git worktree` ele
+    # passa o caminho ABSOLUTO, e o caminho deste projeto tem espaços — o shell
+    # do lefthook quebrava o argumento e o hook reprovava commit válido. As três
+    # tentativas de resolver na própria linha estão registradas no cabeçalho do
+    # script. Não volte para `{1}` sem reproduzir dentro de um worktree.
     - name: commitlint
-      run: npx commitlint --edit {1}
+      run: node scripts/commitlint-mensagem.mjs
       fail_text: |
         Mensagem de commit fora do padrão Conventional Commits.
         Formato:  tipo(escopo): assunto no imperativo, minúsculo, até 100 caracteres
