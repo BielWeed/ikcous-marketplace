@@ -1036,6 +1036,18 @@ git commit -m "feat(edge): criar-pagamento gera a cobranca do pedido no Mercado 
   - `createOrder(orderData, opts?: { comPagamentoOnline?: boolean })` — escolhe v23 ou v24
   - `criarPagamento(args: { orderId: string; metodo: "pix" | "cartao"; … }): Promise<RespostaPagamento>`
 
+> **Dois avisos de contrato que só apareceram depois da Task 2 pronta:**
+>
+> 1. **`200` não significa mais "cobrança recém-criada".** Desde a decisão de
+>    reconsultar, um `200` pode trazer a MESMA cobrança de antes — inclusive uma já
+>    `rejected`, se o cartão foi recusado. Quem consome tem de olhar o `status`, não
+>    presumir que chegou aqui por ter criado algo agora.
+> 2. **O `status` volta CRU do Mercado Pago** (`pending`, `approved`, `rejected`,
+>    `in_process`…), não traduzido para o vocabulário do banco
+>    (`aguardando`/`pago`/`recusado`). Foi decisão deliberada da Task 2: quem traduz é
+>    quem grava, e nesta fase ninguém grava status de pagamento — isso é o webhook, na
+>    Fase 3. A tela da Task 5 compara contra os valores do MP.
+
 - [ ] **Step 1: escrever o teste da flag, que é o que falha fechado**
 
 Crie `tests/front/pagamento-online.test.tsx`:
@@ -1183,7 +1195,25 @@ Logo depois de `createOrder`, ainda em `src/hooks/useOrders.ts`:
         "criar-pagamento",
         { body: args },
       );
-      if (error) throw new Error("Não foi possível gerar a cobrança.");
+
+      // ATENÇÃO ao contrato do supabase-js v2, que não é o intuitivo: quando a
+      // resposta NÃO é 2xx, `data` chega NULL e o corpo fica em `error.context`,
+      // que é um Response. Ler só `data?.error` — como a primeira versão deste
+      // plano mandava — jogaria fora as quatro mensagens distintas que a edge
+      // function escreve com cuidado ("Este pedido já tem uma cobrança gerada.",
+      // "O prazo para pagar este pedido acabou.", "Pedido inválido.",
+      // "Pagamento indisponível.") e mostraria a mesma frase genérica em todas.
+      if (error) {
+        let mensagem = "Não foi possível gerar a cobrança.";
+        try {
+          const corpo = await (error as any).context?.json?.();
+          if (corpo?.error) mensagem = corpo.error;
+        } catch {
+          // Corpo ilegível: fica a mensagem genérica, que é melhor que vazar
+          // o texto cru de um erro de infraestrutura para o cliente.
+        }
+        throw new Error(mensagem);
+      }
       if (data?.error) throw new Error(data.error);
       return data as {
         paymentId: string;
