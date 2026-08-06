@@ -147,6 +147,14 @@ const VERIFICACOES = {
         // Checagem de estoque contra o valor do banco (nao o do cliente).
         // Mesma logica: sem esta linha o pedido pode vender o que nao tem.
         "IF v_db_stock < v_quantity THEN",
+        // Paridade de frete gratis para usuario logado (a correcao da
+        // 20260729000000_fix_free_shipping_rule_parity.sql, hoje guardada
+        // pela entrada da v22 acima). Quando a Task 6 apontar o front para a
+        // v24, e esta linha que passa a ser a guarda que importa — sem
+        // marcador aqui, um REPLACE mal copiado da v24 poderia perder o
+        // predicado e ninguem notaria, porque a entrada da v22 continuaria
+        // passando para uma funcao que ninguem mais chama.
+        "OR (v_user_id IS NOT NULL AND v_calculated_subtotal >= v_free_shipping_min)",
       ],
     },
   ],

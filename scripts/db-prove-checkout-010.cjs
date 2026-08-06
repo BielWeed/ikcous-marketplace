@@ -290,13 +290,15 @@ async function main() {
       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'public' AND p.proname = 'create_marketplace_order_v24'
     `);
+    // `?.` importa: sem ele, v24 ausente estoura TypeError e derruba o script
+    // inteiro — some a contagem final e os asserts anteriores viram silêncio.
     conferir(
       "v24 carimba payment_status aguardando",
-      corpo.rows[0].def.includes("'aguardando'"),
+      corpo.rows[0]?.def?.includes("'aguardando'") ?? false,
     );
     conferir(
       "v24 carimba expiracao de 30 minutos",
-      corpo.rows[0].def.includes("interval '30 minutes'"),
+      corpo.rows[0]?.def?.includes("interval '30 minutes'") ?? false,
     );
   } finally {
     await client.query("ROLLBACK");

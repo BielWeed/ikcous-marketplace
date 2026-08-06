@@ -131,7 +131,7 @@ REVOKE ALL ON FUNCTION public.expirar_pedidos_vencidos() FROM PUBLIC, anon, auth
 -- INSERT do header que grava payment_status/expires_at. Todo o resto —
 -- validacao de preco, estoque, frete, cupom — e caminho de dinheiro ja
 -- testado em producao e fica identico.
-CREATE FUNCTION public.create_marketplace_order_v24("p_items" "jsonb", "p_total_amount" numeric, "p_shipping_cost" numeric, "p_payment_method" "text", "p_address_id" "uuid", "p_coupon_code" "text", "p_customer_name" "text", "p_customer_phone" "text", "p_observation" "text", "p_address_data" "jsonb", "p_destination_cep" "text", "p_shipping_option_id" "text") RETURNS "uuid"
+CREATE OR REPLACE FUNCTION public.create_marketplace_order_v24("p_items" "jsonb", "p_total_amount" numeric, "p_shipping_cost" numeric, "p_payment_method" "text", "p_address_id" "uuid", "p_coupon_code" "text", "p_customer_name" "text", "p_customer_phone" "text", "p_observation" "text", "p_address_data" "jsonb", "p_destination_cep" "text", "p_shipping_option_id" "text") RETURNS "uuid"
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
     AS $$
