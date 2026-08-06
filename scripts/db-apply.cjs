@@ -133,6 +133,22 @@ const VERIFICACOES = {
         "FOR UPDATE SKIP LOCKED",
       ],
     },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        // O carimbo desta task: sem ele o pedido nasce sem prazo e a
+        // varredura nunca o alcanca.
+        "'aguardando', now() + interval '30 minutes'",
+        // Recalculo do total pelos precos do banco (Price Tampering
+        // Protection da v23). Se um REPLACE mal copiado apagar esta linha, o
+        // cliente volta a poder mandar o proprio total — e a verificacao tem
+        // de gritar em vez de deixar passar em silencio.
+        "IF ABS(v_calculated_total - p_total_amount) > 0.05 THEN",
+        // Checagem de estoque contra o valor do banco (nao o do cliente).
+        // Mesma logica: sem esta linha o pedido pode vender o que nao tem.
+        "IF v_db_stock < v_quantity THEN",
+      ],
+    },
   ],
 };
 

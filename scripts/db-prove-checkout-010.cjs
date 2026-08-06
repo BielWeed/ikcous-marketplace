@@ -270,6 +270,34 @@ async function main() {
       por(historico.rows[0].id).payment_status === null &&
         por(historico.rows[0].id).status === "pending",
     );
+
+    console.log("\n=== create_marketplace_order_v24 ===");
+
+    const assinatura = await client.query(`
+      SELECT pg_get_function_identity_arguments(p.oid) AS args
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = 'create_marketplace_order_v24'
+    `);
+    conferir(
+      "v24 existe com os 12 argumentos da v23",
+      assinatura.rowCount === 1 &&
+        assinatura.rows[0].args.split(",").length === 12,
+      `veio ${assinatura.rows[0]?.args ?? "(nao existe)"}`,
+    );
+
+    const corpo = await client.query(`
+      SELECT pg_get_functiondef(p.oid) AS def
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = 'create_marketplace_order_v24'
+    `);
+    conferir(
+      "v24 carimba payment_status aguardando",
+      corpo.rows[0].def.includes("'aguardando'"),
+    );
+    conferir(
+      "v24 carimba expiracao de 30 minutos",
+      corpo.rows[0].def.includes("interval '30 minutes'"),
+    );
   } finally {
     await client.query("ROLLBACK");
     await client.end();
