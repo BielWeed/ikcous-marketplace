@@ -867,14 +867,32 @@ Em 06/08/2026 isso dava **13 pedidos / 33 unidades** — reconferido às 05:20, 
 
 - [ ] **Step 2: Escrever a migration**
 
+**O corte é uma data absoluta, e não `now() - interval '30 days'.** Medido em 06/08/2026: a
+`Isadora Bernardes` — a única cliente de verdade entre os pendentes — foi criada em
+`2026-07-08T02:30:41Z` e **entra num corte relativo às 23:30 do dia 06/08**. Três outros
+pedidos entraram no conjunto nas 27 horas anteriores à medição. Com `now()`, o que este
+arquivo cancela depende da hora em que alguém o roda, e o arquivo se chama `20260807`.
+Migration sobrevive à sessão que a escreveu: o corte tem de valer igual ao meio-dia, à
+meia-noite e num replay daqui a seis meses.
+
+**E a contagem vira guarda, não recado.** O `RAISE NOTICE` do fim não aparece: o `pg` emite
+notice como evento e o `db-apply.cjs` não registra listener nenhum — então o "Esperado no log"
+do Step 4 era impossível de acontecer, e qualquer desvio comitaria em silêncio. Um
+`RAISE EXCEPTION` antes do `END` transforma a classe inteira de erro num `ROLLBACK`.
+
 ```sql
 -- Backfill dos pedidos abandonados (CHECKOUT-010 #109). SEM BEGIN/COMMIT.
 --
--- Cancela os pedidos pendentes com 30+ dias que nunca tiveram pagamento e
--- devolve o estoque que eles seguravam. Medido em 06/08/2026: 13 pedidos,
--- 33 unidades — contra um catalogo vivo de 28 unidades.
+-- Cancela os pedidos abandonados que nunca tiveram pagamento e devolve o
+-- estoque que eles seguravam. Medido em 06/08/2026: 13 pedidos, 33 unidades.
 --
--- NAO toca os pendentes com menos de 30 dias: ficam para revisao manual.
+-- CORTE ABSOLUTO, nao `now() - interval '30 dias'`: com corte relativo, o
+-- conjunto muda conforme a hora do apply. A Isadora Bernardes (08/07, a unica
+-- cliente de verdade entre os pendentes) entraria num corte relativo as 23:30
+-- de 06/08/2026. Data fixa faz este arquivo valer igual em qualquer hora e em
+-- qualquer replay.
+--
+-- NAO toca os pendentes de 08/07 e 30/07: ficam para revisao manual.
 -- NAO estorna dinheiro: nenhum desses pedidos foi pago.
 
 DO $backfill$
@@ -888,7 +906,7 @@ BEGIN
         FROM public.marketplace_orders
         WHERE status = 'pending'
           AND payment_status IS NULL
-          AND created_at < now() - interval '30 days'
+          AND created_at < timestamptz '2026-07-08 00:00:00+00'
         FOR UPDATE
     LOOP
         v_unidades := v_unidades + public.devolver_estoque(v_pedido.id);
@@ -901,6 +919,15 @@ BEGIN
 
         v_pedidos := v_pedidos + 1;
     END LOOP;
+
+    -- EXCEPTION, nao NOTICE: o notice do pg nao chega ao terminal (o
+    -- db-apply.cjs nao registra listener), entao um desvio comitaria calado.
+    -- Aqui, qualquer numero fora do medido derruba a transacao inteira.
+    IF v_pedidos <> 13 OR v_unidades <> 33 THEN
+        RAISE EXCEPTION
+          'Backfill abortado: esperava 13 pedidos e 33 unidades, veio % e %.',
+          v_pedidos, v_unidades;
+    END IF;
 
     RAISE NOTICE 'Backfill: % pedidos cancelados, % unidades devolvidas',
                  v_pedidos, v_unidades;
@@ -926,15 +953,38 @@ node scripts/db-snapshot-politicas.cjs
 node scripts/db-apply.cjs 20260807000002_backfill_pedidos_abandonados.sql
 ```
 
-Esperado no log: `Backfill: 13 pedidos cancelados, 33 unidades devolvidas`.
+**Não espere ver o `RAISE NOTICE` no log.** O `pg` emite notice como evento e o `db-apply.cjs`
+não registra listener — a mensagem é engolida. O que prova que deu certo é o apply **não ter
+falhado**: com o `RAISE EXCEPTION` do Step 2, qualquer contagem fora de 13/33 derruba a
+transação inteira e o script sai 1. Silêncio aqui é a evidência boa.
 
 - [ ] **Step 5: Conferir o resultado**
 
-```bash
-node -e "const{Client}=require('pg');const fs=require('fs');const l=fs.readFileSync('.env','utf8').split(/\r?\n/).find(x=>x.startsWith('DATABASE_URL='));const c=new Client({connectionString:l.slice(13).replace(/^\"|\"$/g,''),ssl:{rejectUnauthorized:false}});c.connect().then(()=>c.query(\"SELECT (SELECT count(*)::int FROM public.marketplace_orders WHERE status='pending') pendentes, (SELECT sum(estoque)::int FROM public.produtos WHERE deleted_at IS NULL) estoque\")).then(r=>{console.table(r.rows);return c.end()})"
+Rode por um script descartável em `.superpowers/`, no formato dos `db-*.cjs`:
+
+```sql
+SELECT (SELECT count(*)::int FROM public.marketplace_orders WHERE status = 'pending')     AS pendentes,
+       (SELECT sum(estoque)::int FROM public.produtos WHERE deleted_at IS NULL)           AS estoque_ativo,
+       (SELECT sum(estoque)::int FROM public.produtos WHERE deleted_at IS NOT NULL)       AS estoque_deletado,
+       (SELECT sum(stock_increment)::int FROM public.product_variants)                    AS variantes;
 ```
 
-Esperado: `pendentes = 2` (os dois recentes) e `estoque = 61` (28 + 33).
+Esperado: `pendentes = 2`, `estoque_ativo = 58`, `variantes = 8`.
+
+**Por que 58 e não 61.** As 33 unidades não vão todas para o catálogo visível — medido em
+06/08/2026, por destino:
+
+| destino | linhas | unidades |
+| --- | ---: | ---: |
+| produto ativo | 17 | 30 |
+| variante (`product_variants.stock_increment`) | 2 | 2 |
+| produto **soft-deletado** ("Camiseta Basica Preta", apagada em 07/07) | 1 | 1 |
+
+Então `estoque_ativo` vai de 28 para **58**, `variantes` de 6 para **8**, e **1 unidade volta
+para um produto que a loja já apagou** — ela nunca reaparece no catálogo. O número 61 que
+estava aqui somava 28 + 33 como se as três colunas fossem uma só; ele leria como "faltaram 3
+unidades" logo depois de uma escrita sem volta, e a reação natural seria ir mexer em estoque na
+mão em produção.
 
 - [ ] **Step 6: Commit**
 
@@ -1067,7 +1117,8 @@ Estado esperado, verificável:
 | | esperado |
 | --- | ---: |
 | pedidos em `pending` | 2 (os recentes, para revisão manual) |
-| estoque no catálogo | 61 unidades |
+| estoque no catálogo (`produtos`, não deletados) | 58 unidades |
+| `product_variants.stock_increment` | 8 |
 | `cron.job` ativo | 1 |
 | provas em `db-prove-checkout-010.cjs` | 12 passando |
 
