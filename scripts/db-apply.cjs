@@ -256,8 +256,16 @@ async function main() {
       continue;
     }
     const [def] = await definicaoAtual(client, checagem.funcao);
+    // Normaliza \r\n -> \n dos dois lados antes de comparar. O repo nao tem
+    // .gitattributes e core.autocrlf converte as migrations para CRLF no
+    // working tree a cada checkout/clone/stash; sem isso, um marcador que
+    // cruza uma quebra de linha (ex.: "ELSE\n            UPDATE ...") deixa
+    // de casar contra um corpo em CRLF e a verificacao grita AUSENTE para
+    // uma migration que esta correta — DEPOIS do COMMIT ja ter acontecido.
+    const defNormalizado = def?.replace(/\r\n/g, "\n");
     for (const marcador of checagem.esperado) {
-      const ok = Boolean(def?.includes(marcador));
+      const marcadorNormalizado = marcador.replace(/\r\n/g, "\n");
+      const ok = Boolean(defNormalizado?.includes(marcadorNormalizado));
       if (!ok) tudoOk = false;
       console.log(`  ${ok ? "ok     " : "AUSENTE"}  ${marcador.slice(0, 64)}`);
     }
