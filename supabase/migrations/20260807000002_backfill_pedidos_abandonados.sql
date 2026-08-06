@@ -4,10 +4,13 @@
 -- estoque que eles seguravam. Medido em 06/08/2026: 13 pedidos, 33 unidades.
 --
 -- CORTE ABSOLUTO, nao `now() - interval '30 dias'`: com corte relativo, o
--- conjunto muda conforme a hora do apply. A Isadora Bernardes (08/07, a unica
--- cliente de verdade entre os pendentes) entraria num corte relativo as 23:30
--- de 06/08/2026. Data fixa faz este arquivo valer igual em qualquer hora e em
--- qualquer replay.
+-- conjunto muda conforme a hora do apply. A Isadora Bernardes (created_at
+-- 2026-07-08T02:30Z, que o painel mostra como 07/07 23:30 no fuso de Brasilia
+-- — a unica cliente de verdade entre os pendentes) entraria num corte relativo
+-- as 23:30 de 06/08/2026. Data fixa faz este arquivo valer igual em qualquer
+-- hora e em qualquer replay.
+--
+-- O corte deixa 17,1 h de folga do ultimo pedido incluido e 2,5 h da Isadora.
 --
 -- NAO toca os pendentes de 08/07 e 30/07: ficam para revisao manual.
 -- NAO estorna dinheiro: nenhum desses pedidos foi pago.
