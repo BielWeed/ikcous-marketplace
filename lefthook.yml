@@ -56,8 +56,25 @@ pre-commit:
 
 commit-msg:
   jobs:
+    # Era `npx commitlint --edit {1}`. Num clone normal funciona, porque o git
+    # passa o relativo `.git/COMMIT_EDITMSG`; dentro de um `git worktree` ele
+    # passa o caminho ABSOLUTO, e o caminho deste projeto tem espaços — o shell
+    # do lefthook quebrava o argumento e o hook reprovava commit válido.
+    #
+    # A correção original (06/08/2026) resolveu isso jogando o argumento fora
+    # e resolvendo sempre COMMIT_EDITMSG sozinha — mas o hook `commit-msg`
+    # também roda em `git merge -m "..."`, e aí o git passa MERGE_MSG, não
+    # COMMIT_EDITMSG. Ignorar `{1}` fazia o script validar a mensagem do
+    # commit ANTERIOR (já aprovada) em vez do merge em curso: um merge com
+    # mensagem fora do Conventional Commits passava. Reproduzido e consertado
+    # no mesmo dia — o script volta a receber `{1}` e extrai só o basename do
+    # último fragmento (nunca tem espaço: é sempre COMMIT_EDITMSG, MERGE_MSG
+    # ou SQUASH_MSG), depois pede pro git reconstruir o caminho certo com
+    # `--git-path`. Ver o cabeçalho de scripts/commitlint-mensagem.mjs para a
+    # medição completa. Não volte a omitir `{1}` sem reproduzir o cenário de
+    # merge dentro de um worktree.
     - name: commitlint
-      run: npx commitlint --edit {1}
+      run: node scripts/commitlint-mensagem.mjs {1}
       fail_text: |
         Mensagem de commit fora do padrão Conventional Commits.
         Formato:  tipo(escopo): assunto no imperativo, minúsculo, até 100 caracteres
