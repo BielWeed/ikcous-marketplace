@@ -61,13 +61,20 @@ export function montarCorpoPix(args: {
   email: string;
   expiraEm: string;
   orderId: string;
+  documento?: { type: string; number: string };
 }): Record<string, unknown> {
+  const payer: Record<string, unknown> = { email: args.email };
+  // A-2 da revisão final: sem isso o documento entrava pelo front e sumia
+  // aqui — montarCorpoCartao já aceitava o mesmo parâmetro; a documentação
+  // de PIX do MP monta o payer com identification igual à de cartão.
+  if (args.documento) payer.identification = args.documento;
+
   return {
     transaction_amount: args.valor,
     description: args.descricao,
     payment_method_id: "pix",
     date_of_expiration: args.expiraEm,
-    payer: { email: args.email },
+    payer,
     // Sem isso o MP não guarda ponteiro de volta para o pedido, e a
     // reconciliação da Fase 3 teria que casar valor + e-mail + horário na
     // mão. Com isso vira GET /v1/payments/search?external_reference=<id>.

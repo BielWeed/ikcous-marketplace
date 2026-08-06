@@ -125,7 +125,37 @@ export function montarBrick({
                 email: formData.payer?.email,
                 documento: formData.payer?.identification,
               });
+
+              // A-1 da revisão final: recusa é resultado normal de um
+              // pagamento CRIADO (o MP responde 201), não erro HTTP —
+              // criarPagamento devolve `ok`. Sem olhar `r.status`, um
+              // cartão recusado não avisava nada, e a troca para PIX
+              // reconsultava a MESMA cobrança recusada sem QR. O `status`
+              // volta CRU do Mercado Pago — comparado contra os valores
+              // dele, nunca traduzido para o vocabulário do banco.
+              if (r.status === "rejected" || r.status === "cancelled") {
+                throw new Error(
+                  "Pagamento recusado. Tente outro cartão ou pague com PIX.",
+                );
+              }
+              const statusConhecido = [
+                "pending",
+                "in_process",
+                "approved",
+                "authorized",
+              ].includes(r.status);
+              if (!statusConhecido) {
+                // Status novo do MP não pode virar sucesso silencioso.
+                throw new Error("Não foi possível confirmar o pagamento.");
+              }
+
               if (ehPix) {
+                if (!r.qrCode && !r.qrCodeBase64) {
+                  // Nunca desmonta o Brick sem QR de verdade — sem QR o
+                  // cliente ficaria preso numa tela vazia, sem volta, com
+                  // o pedido morrendo em 30 min de reserva.
+                  throw new Error("Não foi possível gerar o QR code do PIX.");
+                }
                 // O Brick some do DOM quando o JSX troca para o QR — desmonta
                 // ANTES de trocar, senão a próxima montagem (voltar ao
                 // checkout sem recarregar a página) esbarra em "Brick

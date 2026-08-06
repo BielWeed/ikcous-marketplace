@@ -307,6 +307,31 @@ Deno.test("handler: o corpo enviado ao Mercado Pago leva external_reference", as
   assertEquals(capturado.corpo?.external_reference, UUID);
 });
 
+Deno.test("handler: PIX leva o documento do pagador quando o front manda — A-2 da revisão final", async () => {
+  // O documento atravessava front → criar-pagamento e sumia na chamada a
+  // montarCorpoPix (a que faltava o parâmetro). Este teste prova a fiação
+  // INTEIRA, não só montarCorpoPix isolado (coberto em mercadopago_test.ts).
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase();
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const capturado: { corpo?: Record<string, unknown> } = {};
+  const fetchImpl = fetchFalsoMP(capturado);
+
+  await handler(
+    requisicao({
+      orderId: UUID,
+      metodo: "pix",
+      documento: { type: "CPF", number: "12345678909" },
+    }),
+    { supabase, fetchImpl },
+  );
+
+  assertEquals(
+    (capturado.corpo?.payer as Record<string, unknown>)?.identification,
+    { type: "CPF", number: "12345678909" },
+  );
+});
+
 Deno.test("handler: pedido expirado pelo pg_cron no meio da corrida NÃO devolve 200, e a mensagem é a de prazo", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   const pedido = pedidoBase();

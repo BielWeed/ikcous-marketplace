@@ -929,7 +929,13 @@ export function useOrders(
         // PEDIDO-020 (#89). Depois do `throw`, para não avisar de pedido que não
         // existe; e antes do return, para o disparo sair mesmo que a tela navegue
         // em seguida.
-        avisarLojista(data);
+        //
+        // A-3 da revisão final: no caminho online o pedido é uma RESERVA que o
+        // pg_cron cancela em 30 min, não um pedido definitivo — avisar aqui faria
+        // o lojista separar mercadoria de um pedido que pode morrer. Quem avisa
+        // nesse caminho é o webhook da Fase 3, quando o pagamento é confirmado
+        // ("aprovado → payment_status='pago', dispara notify-new-order").
+        if (!opts?.comPagamentoOnline) avisarLojista(data);
 
         return {
           ...orderData,

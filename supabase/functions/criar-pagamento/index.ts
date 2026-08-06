@@ -229,6 +229,7 @@ async function handler(
           descricao: descricaoDoPedido(pedido.id),
           email: String(email),
           expiraEm: formatarExpiracao(pedido.expires_at),
+          documento: body.documento as { type: string; number: string } | undefined,
         })
       : montarCorpoCartao({
           orderId: pedido.id,

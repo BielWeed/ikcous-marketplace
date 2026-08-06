@@ -370,6 +370,139 @@ describe("montarBrick", () => {
       expiraEm: "2026-08-06T15:30:00.000Z",
     });
   });
+
+  // A-1 da revisão final: cartão recusado (201 com status "rejected") não é
+  // erro HTTP — criarPagamento devolve normalmente. Sem olhar `r.status`, o
+  // onSubmit não fazia nada (ehPix é falso), o cliente não via aviso nenhum,
+  // e ao trocar para PIX a reconsulta trazia o MESMO status "rejected" sem
+  // QR — cadeia que terminava desmontando o Brick para um QR vazio.
+  it("status 'rejected' chama onErro e MANTÉM o Brick vivo — não desmonta", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const unmount = vi.fn();
+    const create = vi.fn().mockResolvedValue({ unmount });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    const onErro = vi.fn();
+    const onPix = vi.fn();
+    const criarPagamento = vi.fn().mockResolvedValue({
+      paymentId: "pay-1",
+      status: "rejected",
+      expiraEm: "2026-08-06T15:30:00.000Z",
+    });
+
+    montarBrick(opcoesPadrao({ criarPagamento, onErro, onPix }));
+    await carregarSdk();
+
+    const { onSubmit } = create.mock.calls[0][2].callbacks;
+    // token presente => cartão. Mesmo assim tem que rejeitar a promise, para
+    // o Brick sair de "processando" (mesmo contrato do catch de erro).
+    await expect(
+      onSubmit({ formData: { token: "tok-123" } }),
+    ).rejects.toThrow();
+
+    expect(onErro).toHaveBeenCalledTimes(1);
+    expect(onPix).not.toHaveBeenCalled();
+    expect(unmount).not.toHaveBeenCalled();
+  });
+
+  it("status 'cancelled' chama onErro e MANTÉM o Brick vivo — não desmonta", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const unmount = vi.fn();
+    const create = vi.fn().mockResolvedValue({ unmount });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    const onErro = vi.fn();
+    const onPix = vi.fn();
+    const criarPagamento = vi.fn().mockResolvedValue({
+      paymentId: "pay-1",
+      status: "cancelled",
+      expiraEm: "2026-08-06T15:30:00.000Z",
+    });
+
+    montarBrick(opcoesPadrao({ criarPagamento, onErro, onPix }));
+    await carregarSdk();
+
+    const { onSubmit } = create.mock.calls[0][2].callbacks;
+    await expect(onSubmit({ formData: {} })).rejects.toThrow();
+
+    expect(onErro).toHaveBeenCalledTimes(1);
+    expect(onPix).not.toHaveBeenCalled();
+    expect(unmount).not.toHaveBeenCalled();
+  });
+
+  // A cadeia medida pelo revisor: reconsulta de uma cobrança de CARTÃO
+  // recusada, pelo caminho PIX (mesmo pedido, mesmo gateway_payment_id).
+  // ehPix é true mas não há QR nenhum — nunca pode desmontar o Brick sem QR
+  // de verdade, senão o cliente fica preso numa tela vazia sem volta.
+  it("PIX sem QR (qrCode e qrCodeBase64 ausentes) NÃO chama onPix nem desmonta o Brick", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const unmount = vi.fn();
+    const create = vi.fn().mockResolvedValue({ unmount });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    const onErro = vi.fn();
+    const onPix = vi.fn();
+    // status "conhecido" (pending) mas SEM qrCode/qrCodeBase64 — é
+    // exatamente o que a reconsulta de um pagamento de cartão devolve.
+    const criarPagamento = vi.fn().mockResolvedValue({
+      paymentId: "pay-1",
+      status: "pending",
+      expiraEm: "2026-08-06T15:30:00.000Z",
+    });
+
+    montarBrick(opcoesPadrao({ criarPagamento, onErro, onPix }));
+    await carregarSdk();
+
+    const { onSubmit } = create.mock.calls[0][2].callbacks;
+    await expect(onSubmit({ formData: {} })).rejects.toThrow();
+
+    expect(onErro).toHaveBeenCalledTimes(1);
+    expect(onPix).not.toHaveBeenCalled();
+    expect(unmount).not.toHaveBeenCalled();
+  });
+
+  it("status desconhecido não vira sucesso silencioso — chama onErro e mantém o Brick vivo", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const unmount = vi.fn();
+    const create = vi.fn().mockResolvedValue({ unmount });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    const onErro = vi.fn();
+    const onPix = vi.fn();
+    const criarPagamento = vi.fn().mockResolvedValue({
+      paymentId: "pay-1",
+      status: "in_mediation",
+      expiraEm: "2026-08-06T15:30:00.000Z",
+      qrCode: "000201...",
+      qrCodeBase64: "abc123",
+    });
+
+    montarBrick(opcoesPadrao({ criarPagamento, onErro, onPix }));
+    await carregarSdk();
+
+    const { onSubmit } = create.mock.calls[0][2].callbacks;
+    await expect(onSubmit({ formData: {} })).rejects.toThrow();
+
+    expect(onErro).toHaveBeenCalledTimes(1);
+    expect(onPix).not.toHaveBeenCalled();
+    expect(unmount).not.toHaveBeenCalled();
+  });
 });
 
 // Revisão da rodada de correção 1: remover o `jaMontou` (para o StrictMode

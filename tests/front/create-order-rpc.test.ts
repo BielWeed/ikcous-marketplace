@@ -63,6 +63,7 @@ const DADOS_MINIMOS = {
 describe("createOrder escolhe a RPC — falha fechada para o lado 'na entrega'", () => {
   beforeEach(() => {
     vi.mocked(supabase.rpc).mockClear();
+    vi.mocked(supabase.functions.invoke).mockClear();
   });
 
   it("sem opts chama v23", async () => {
@@ -97,6 +98,45 @@ describe("createOrder escolhe a RPC — falha fechada para o lado 'na entrega'",
     await createOrder(DADOS_MINIMOS, { comPagamentoOnline: true });
     expect(supabase.rpc).toHaveBeenCalledWith(
       "create_marketplace_order_v24",
+      expect.anything(),
+    );
+  });
+});
+
+/**
+ * A-3 da revisão final (PEDIDO-020 x Fase 2): com a flag ligada o pedido é
+ * uma RESERVA que o pg_cron cancela em 30 minutos, não um pedido definitivo.
+ * Avisar o lojista no mesmo instante do clique em Finalizar faz ele separar
+ * mercadoria de um pedido que pode nunca ser pago. Quem avisa no caminho
+ * online passa a ser o webhook da Fase 3, quando o pagamento é confirmado.
+ */
+describe("createOrder avisa o lojista só quando o pedido é definitivo", () => {
+  beforeEach(() => {
+    vi.mocked(supabase.rpc).mockClear();
+    vi.mocked(supabase.functions.invoke).mockClear();
+  });
+
+  it("sem opts avisa o lojista — pedido 'na entrega' é definitivo", async () => {
+    const { createOrder } = useOrders(false, false);
+    await createOrder(DADOS_MINIMOS);
+    expect(supabase.functions.invoke).toHaveBeenCalledWith("notify-new-order", {
+      body: { orderId: "ped-1" },
+    });
+  });
+
+  it("comPagamentoOnline: false avisa o lojista", async () => {
+    const { createOrder } = useOrders(false, false);
+    await createOrder(DADOS_MINIMOS, { comPagamentoOnline: false });
+    expect(supabase.functions.invoke).toHaveBeenCalledWith("notify-new-order", {
+      body: { orderId: "ped-1" },
+    });
+  });
+
+  it("comPagamentoOnline: true NÃO avisa o lojista — quem avisa é o webhook da Fase 3", async () => {
+    const { createOrder } = useOrders(false, false);
+    await createOrder(DADOS_MINIMOS, { comPagamentoOnline: true });
+    expect(supabase.functions.invoke).not.toHaveBeenCalledWith(
+      "notify-new-order",
       expect.anything(),
     );
   });

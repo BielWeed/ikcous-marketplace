@@ -57,6 +57,43 @@ Deno.test("montarCorpoPix leva valor, e-mail, validade e a referência do pedido
   assertEquals(corpo.external_reference, "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b");
 });
 
+Deno.test("montarCorpoPix leva o documento do pagador quando informado", () => {
+  // A-2 da revisão final: o documento atravessava front → criar-pagamento e
+  // sumia aqui, porque montarCorpoPix nem tinha o parâmetro na assinatura.
+  // O corpo saía com `payer: { email }` e mais nada — e a documentação de
+  // PIX do MP monta o payer com identification.
+  const corpo = montarCorpoPix({
+    valor: 149.9,
+    descricao: "Pedido 3f2a1b8c",
+    email: "cliente@exemplo.com",
+    expiraEm: "2026-08-06T15:30:00.000-03:00",
+    orderId: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+    documento: { type: "CPF", number: "12345678909" },
+  });
+
+  assertEquals((corpo.payer as Record<string, unknown>).identification, {
+    type: "CPF",
+    number: "12345678909",
+  });
+  // E o e-mail continua no payer — o documento não pode substituí-lo.
+  assertEquals((corpo.payer as Record<string, unknown>).email, "cliente@exemplo.com");
+});
+
+Deno.test("montarCorpoPix não quebra quando o documento não vem", () => {
+  const corpo = montarCorpoPix({
+    valor: 149.9,
+    descricao: "Pedido 3f2a1b8c",
+    email: "cliente@exemplo.com",
+    expiraEm: "2026-08-06T15:30:00.000-03:00",
+    orderId: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+  });
+
+  assertEquals(
+    (corpo.payer as Record<string, unknown>).identification,
+    undefined,
+  );
+});
+
 Deno.test("montarCorpoCartao leva o token, a referência do pedido, e NUNCA dados do cartão", () => {
   const corpo = montarCorpoCartao({
     valor: 149.9,
