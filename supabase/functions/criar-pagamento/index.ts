@@ -83,20 +83,38 @@ export function podeCobrar(
   return { ok: true };
 }
 
-function subDoToken(authorization: string | null): string | null {
+export function subDoToken(authorization: string | null): string | null {
   // Lê o `sub` sem validar assinatura DE PROPÓSITO: o gateway do Supabase já
   // validou (verify_jwt = true). Aqui só se extrai a identidade. Com a chave
   // anon não há `sub`, e o resultado é null — que é o caso do convidado.
   try {
     const token = (authorization ?? "").replace(/^Bearer\s+/i, "");
-    const payload = JSON.parse(atob(token.split(".")[1]));
+    // JWT usa base64URL (RFC 4648 §5), não base64 puro: `-` no lugar de `+` e
+    // `_` no lugar de `/`. `atob` só entende o alfabeto puro e estoura
+    // DOMException nos dois — achado da revisão: nome brasileiro acentuado
+    // empurra bytes >= 0x80 para esses índices em ~0,18% dos payloads do
+    // GoTrue. Sem normalizar, cliente LOGADO cai no catch, vira `sub: null`,
+    // e leva 404 "Pedido não encontrado." no próprio pedido.
+    const base64 = (token.split(".")[1] ?? "").replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(base64));
     return typeof payload.sub === "string" ? payload.sub : null;
   } catch {
     return null;
   }
 }
 
-async function handler(req: Request): Promise<Response> {
+/**
+ * `deps` é a mesma costura que a Task 1 já provou com `fetchImpl` em
+ * `criarPagamento`: sem ela, o handler só é alcançável fazendo requisição HTTP
+ * de verdade contra Postgres e Mercado Pago reais, e a fiação onde a
+ * autorização e o dinheiro de fato acontecem (não só os decisores puros)
+ * fica sem teste algum. Com o default vazio, o comportamento em produção não
+ * muda: continua criando o client real a partir do ambiente.
+ */
+async function handler(
+  req: Request,
+  deps: { supabase?: ReturnType<typeof createClient>; fetchImpl?: typeof fetch } = {},
+): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const json = (corpo: unknown, status: number) =>
@@ -123,10 +141,12 @@ async function handler(req: Request): Promise<Response> {
     return json({ error: "Pagamento indisponível." }, 503);
   }
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
+  const supabase =
+    deps.supabase ??
+    createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
 
   const { data: pedido, error } = await supabase
     .from("marketplace_orders")
@@ -176,6 +196,7 @@ async function handler(req: Request): Promise<Response> {
     // O id do pedido como chave: um retry do front sobre o MESMO pedido não
     // cria uma segunda cobrança no MP.
     chaveIdempotencia: String(pedido.id),
+    fetchImpl: deps.fetchImpl,
   });
 
   if (!r.ok) return json({ error: r.erro }, 502);
@@ -195,7 +216,26 @@ async function handler(req: Request): Promise<Response> {
 
   if (erroUpdate || !gravado) {
     console.error("criar-pagamento: cobrança criada mas não gravada", r.id, erroUpdate);
-    return json({ error: "O prazo para pagar este pedido acabou." }, 409);
+    // A mensagem de prazo só é verdade na corrida com o pg_cron. Duas abas
+    // (ou duplo submit) na MESMA janela também caem aqui: as duas leituras
+    // veem gateway_payment_id null, as duas chamam o MP com a mesma chave de
+    // idempotência, a primeira grava — e a segunda não pode dizer "acabou o
+    // prazo" com o prazo intacto. Reler o estado real distingue os dois.
+    const { data: atual } = await supabase
+      .from("marketplace_orders")
+      .select("payment_status, gateway_payment_id")
+      .eq("id", pedido.id)
+      .maybeSingle();
+
+    if (atual?.payment_status === "expirado") {
+      return json({ error: "O prazo para pagar este pedido acabou." }, 409);
+    }
+    if (atual?.gateway_payment_id !== null && atual?.gateway_payment_id !== undefined) {
+      return json({ error: "Este pedido já tem uma cobrança gerada." }, 409);
+    }
+    // Estado que a releitura não explicou (ex.: ela também falhou) — sem
+    // inventar causa.
+    return json({ error: "Não foi possível confirmar a cobrança." }, 409);
   }
 
   return json(
