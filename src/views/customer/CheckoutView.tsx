@@ -221,6 +221,11 @@ export function CheckoutView({
   // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
   // function, dentro do PagamentoOnline (ver comentário lá).
   const [aguardandoPagamento, setAguardandoPagamento] = useState(false);
+  // Congelado no momento do submit, como orderId — sem isso, o onClearCart()
+  // duas linhas abaixo zera o carrinho, cartTotal/shippingFee caem para 0
+  // (ou ficam negativos com cupom aplicado) e o Brick nasce cobrando um
+  // valor que não bate com o total já gravado no pedido.
+  const [valorDoPedido, setValorDoPedido] = useState(0);
   const [appliedCoupon, setAppliedCoupon] = useState<{
     code: string;
     discount: number;
@@ -266,15 +271,24 @@ export function CheckoutView({
         setIsAddressModalOpen(false);
         setEditingAddressId(null);
       });
-    } else if (showSuccess) {
-      // On success, back button should go to home
+    } else if (showSuccess || aguardandoPagamento) {
+      // Sucesso ou aguardando pagamento: o pedido já foi criado e o carrinho
+      // já foi limpo — não existe formulário para o botão voltar recuperar.
+      // Sem este ramo, o voltar do Android saía direto para o carrinho vazio,
+      // sem aviso, com o pedido reservado e o prazo de 30 minutos correndo.
       onSetBackOverride(() => () => onNavigate("home"));
     } else {
       onSetBackOverride(null);
     }
 
     return () => onSetBackOverride(null);
-  }, [isAddressModalOpen, showSuccess, onSetBackOverride, onNavigate]);
+  }, [
+    isAddressModalOpen,
+    showSuccess,
+    aguardandoPagamento,
+    onSetBackOverride,
+    onNavigate,
+  ]);
 
   // Guest checkout enabled - no redirect
   useEffect(() => {
@@ -453,6 +467,7 @@ export function CheckoutView({
         comPagamentoOnline: ehOnline,
       });
       setOrderId(order.id);
+      setValorDoPedido(finalTotal);
 
       // 🤖 Automação Solo-Ninja: O disparo agora é 100% via Backend (Edge Function + Webhook)
       onClearCart();
@@ -501,7 +516,7 @@ export function CheckoutView({
         </p>
         <PagamentoOnline
           orderId={orderId}
-          valor={finalTotal}
+          valor={valorDoPedido}
           onErro={(msg) => toast.error(msg)}
         />
       </div>
