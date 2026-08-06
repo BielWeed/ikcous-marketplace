@@ -622,37 +622,92 @@ como qualquer outra.
 | Retenção | **7 dias.** Havia 8 backups, de 29/07 a 05/08, todos `COMPLETED` |
 | PITR | **NÃO.** `pitr_enabled: false` |
 
-### A consequência que importa
+### PITR foi avaliado e RECUSADO — decisão de 05/08/2026
 
-**Sem PITR, a granularidade de recuperação é de 24 horas.** Não existe "voltar
-para as 14:32". Existe voltar para o backup diário — e uma migration ruim
-executada às 10:00 UTC só pode ser desfeita restaurando o backup de 11:37 UTC do
-**dia anterior**, porque o do próprio dia ainda não rodou. Isso descarta até um
-dia inteiro de pedidos reais.
+Ligar PITR custaria, medido no painel de Add-ons:
 
-É por isso que "tem backup" **não** é a mesma resposta que "pode mexer no banco".
-Restaurar por causa de uma policy apagada custaria os pedidos do dia.
+| janela | preço |
+| --- | --- |
+| 7 dias | **US$ 100,00/mês** |
+| 14 dias | US$ 200,00/mês |
+| 28 dias | US$ 400,00/mês |
 
-### O que fazer antes de mexer em migration
+E não é só isso: o painel exige **subir o compute para pelo menos `Small`** antes
+de o add-on ficar habilitável ("Project needs to be at least on a Small compute
+size to enable PITR"). Ou seja, o custo real é US$ 100/mês **mais** o upgrade de
+compute, recorrente, para uma loja com 64 pedidos no total.
 
-Existe backup diário, mas o modo de falha mais provável aqui não é "o banco
-sumiu" — é "as policies sumiram e ninguém sabe como elas eram". As migrations
-pendentes executam **190 `DROP POLICY` contra 127 `CREATE POLICY`** sobre um
-banco que tem **71 policies vivas**. Restaurar por isso custa o dia; diferenciar
-não custa nada. Então, antes:
+**Decisão do Gabriel: não vale.** O que substitui está na seção seguinte, custa
+zero e cobre quase o mesmo risco.
+
+### A consequência real — e por que ela é menor do que parece
+
+A frase "sem PITR você perde até 24 h de pedidos" está certa no pior caso e
+**errada na prática**, porque a janela de perda não é fixa em 24 h: ela é *o
+tempo decorrido desde o último backup*. E esse tempo você escolhe.
+
+Os 8 backups medidos saíram entre **11:33 e 11:41 UTC** — ~08:35 em Brasília,
+com uns 8 minutos de variação. Então:
+
+| quando você roda a migration | pior caso de perda |
+| --- | --- |
+| 09:00 BRT (logo após o backup) | **~25 minutos** |
+| 08:00 BRT (logo antes) | **~23,5 horas** |
+
+A mesma migration, 50× mais risco, só pela hora do relógio. É isso que o PITR
+compraria por US$ 1.200 ao ano.
+
+### O procedimento — obrigatório antes de qualquer migration
+
+Quatro passos. Nenhum custa dinheiro.
+
+**1. Confirme que o backup de HOJE já saiu.** Não confie no horário: os backups
+variam ~8 minutos e um dia pode atrasar.
+
+```bash
+npx supabase backups list --project-ref cafkrminfnokvgjqtkle
+```
+
+Olhe o `inserted_at` mais recente. **Se não for de hoje, pare e espere.** Rodar
+migration antes do backup do dia é o que transforma 25 minutos de exposição em
+23 horas.
+
+**2. Fotografe as policies.**
 
 ```bash
 node scripts/db-snapshot-politicas.cjs
 ```
 
-Ele grava em `backups/` (pasta ignorada pelo git, de propósito — é o schema
-inteiro da loja) um arquivo com as 71 policies como `CREATE POLICY` executável,
-o estado de RLS das 29 tabelas, os 132 grants e as 66 funções, marcando as 64
-com `SECURITY DEFINER`. Dá para diffar contra uma execução posterior e, no
-limite, recriar policy apagada por engano — sem restaurar nada.
+O modo de falha mais provável aqui não é "o banco sumiu" — é "as policies
+sumiram e ninguém sabe como elas eram". As migrations pendentes executam
+**190 `DROP POLICY` contra 127 `CREATE POLICY`** sobre um banco com **71
+policies vivas**. O snapshot grava as 71 como `CREATE POLICY` executável, então
+policy apagada por engano se recria por diff — **sem restaurar nada**, sem
+perder pedido nenhum.
 
-**Isso não é um backup.** Não tem dados, índices, constraints, triggers nem
-sequences. Backup de verdade é `pg_dump`:
+**3. Ensaie numa cópia antes de tocar produção.** O projeto
+`lofznuxcvezrhxsgjqyg` já existe e já tem as três edge functions publicadas.
+Usá-lo como banco de ensaio não cria custo novo. É a `INFRA-270` (#131).
+
+**4. `pg_dump` completo antes da PRIMEIRA migration da série.** Com Docker no ar
+— ver a armadilha abaixo.
+
+Os quatro somados cobrem o risco real. O que o PITR daria a mais é reverter erro
+percebido **tarde** — e para isso o backup de 7 dias já serve, com granularidade
+pior.
+
+### Onde o snapshot vai parar
+
+`node scripts/db-snapshot-politicas.cjs` grava em `backups/` — **pasta ignorada
+pelo git, de propósito**. O conteúdo não é segredo, mas é o schema inteiro da
+loja: policies, grants e a lista das 64 funções `SECURITY DEFINER`. Isso é mapa
+para quem quiser atacar, e não há motivo para versionar. **Versionado fica o
+script**; quem precisar gera o próprio.
+
+### `pg_dump` e a armadilha do Docker
+
+O snapshot de policies **não é um backup**. Não tem dados, índices, constraints,
+triggers nem sequences. Backup de verdade é `pg_dump`:
 
 ```bash
 supabase db dump --db-url "$env:DATABASE_URL" -f backups/schema.sql
@@ -660,14 +715,22 @@ supabase db dump --db-url "$env:DATABASE_URL" -f backups/schema.sql
 
 **Esse comando exige Docker rodando** — ele levanta um container `postgres` para
 executar o `pg_dump`. Sem Docker Desktop no ar, ele falha com
-`LegacyDockerRunError` e escreve um arquivo **vazio**, sem sair com erro visível
-na primeira linha. Conferir o tamanho do arquivo depois, sempre.
+`LegacyDockerRunError` e **escreve um arquivo vazio**, sem sair com erro visível
+na primeira linha. Já aconteceu aqui: dois arquivos de 0 KB. **Confira o tamanho
+do arquivo depois, sempre** — senão você registra um arquivo vazio como se fosse
+backup, que é pior do que não ter backup nenhum.
 
 ### Restauração
 
-`supabase backups restore` existe no CLI, mas **restaurar exige o plano com PITR
-ou o painel**, e nada disso foi exercitado. Quanto tempo leva e quem tem
-permissão continuam **não medidos** — ver "Não verificado".
+Restaurar é pelo **painel do Supabase**, e só o dono da org (o Gabriel) tem
+acesso. O `supabase backups restore` existe no CLI mas serve ao PITR, que está
+desligado — com backup diário, o caminho é a interface.
+
+**Quanto tempo leva uma restauração continua não medido, e vai continuar.**
+Medir exigiria restaurar produção de verdade. É um desconhecido **aceito**: a
+mitigação foi desenhada justamente para não depender de restauração — o
+snapshot de policies resolve o caso provável sem restaurar nada, e o passo 1 do
+procedimento limita o caso improvável a minutos.
 
 ---
 
