@@ -1817,6 +1817,48 @@ diferente de `true`.
 
 ---
 
+## O que a Fase 3 herda — medido na revisão final, não suposto
+
+**Armado e correto, esperando o webhook:** `gateway_payment_id` com índice UNIQUE parcial
+(a idempotência do webhook); `external_reference = orderId` em todos os corpos, provado
+por mutação; `mapearStatus` no `_shared`, com as quatro saídas dentro da CHECK, exportado
+e ainda sem consumidor; `pago_apos_expirar` reservado na CHECK; e o comentário da
+`expirar_pedidos_vencidos` descrevendo a corrida exata que o webhook vai enfrentar.
+
+**O que vai morder quem chegar:**
+
+1. **A `notify-new-order` recusa pedido com mais de 15 minutos** (`JANELA_MINUTOS = 15`),
+   e a reserva vale **30**. O cliente que gera o QR, vai ao app do banco e paga no minuto
+   18 fez tudo certo — mas o webhook chamaria a `notify-new-order`, que compara com
+   `created_at` e **descarta em silêncio**. Pedido pago, lojista não avisado. A janela foi
+   dimensionada para "o front chama em segundos", premissa que o caminho online quebra.
+   A Fase 3 precisa parametrizar a janela ou ancorá-la em `paid_at`, não em `created_at`.
+   Sem isso, o sintoma aparece como "às vezes o push não chega" e custa caro diagnosticar.
+2. **Depois da primeira recusa de cartão, o pedido fica impagável até expirar.** O MP
+   responde `201` com `status: "rejected"`, o `gateway_payment_id` é gravado, e a partir
+   daí `podeCobrar` devolve `reconsultar` — que traz de volta o mesmo pagamento recusado.
+   Mesmo sem esse ramo, a chave de idempotência fixa (`orderId`) faria o MP devolver o
+   mesmo pagamento. **A mensagem que o cliente lê hoje pede para "tentar outro cartão",
+   e isso é impossível.** Resolver exige status terminal (webhook) e chave versionada
+   (`orderId:1`, `orderId:2`) — as duas coisas são Fase 3. Enquanto não for, o texto
+   deveria dizer o estado real: o pedido não pode mais ser cobrado.
+3. **Cartão aprovado não tem tela de sucesso.** `approved` + não-PIX faz o `onSubmit`
+   resolver sem nada acontecer na UI. É buraco a fechar antes de habilitar cartão.
+4. **`notification_url` não vai em nenhum corpo** — o webhook vai depender de
+   configuração no painel do MP, não de código, e nenhum teste pega isso.
+5. **`in_mediation`** (contestação em análise) cai no `default` e vira `null`: silêncio,
+   não erro. A Fase 3 tem de decidir explicitamente.
+6. **Não existe `supabase/config.toml`** (#162). As três checagens de identidade da
+   `criar-pagamento` assumem que o gateway corta com 401 sem JWT, e **isso nunca foi
+   provado**. Um deploy com `--no-verify-jwt` — que já derrubou o OTP neste projeto —
+   torna o `sub` forjável.
+7. **Cupom de uso limitado é queimado por pedido abandonado.** A v24 incrementa
+   `usage_count`; a `expirar_pedidos_vencidos` devolve estoque e **não decrementa**. O
+   mecanismo é anterior a esta fase — o que ela muda é a frequência, porque é ela que
+   faz pedidos nascerem com prazo. É a **#116 (CUPOM-030)**, já no board.
+
+---
+
 ## O que esta fase NÃO entrega
 
 Dito aqui para ninguém confundir "Fase 2 pronta" com "loja cobrando".
