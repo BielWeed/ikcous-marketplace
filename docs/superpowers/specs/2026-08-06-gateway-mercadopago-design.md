@@ -209,13 +209,25 @@ uma vez produz um plano que ninguém consegue revisar — e a Fase 1 já tem val
 sozinha, então não há motivo para amarrá-las.
 
 **Fase 1 — o estoque, sem gateway nenhum.** Migration completa + backfill
-(cancelar os 13 antigos, devolver 33 unidades).
-**Entrega valor sozinha:** conserta o vazamento que existe hoje e não depende de
-uma linha de Mercado Pago. Se o resto parar, isso já valeu.
+(cancelar os 13 antigos, devolver 33 unidades). A máquina de expiração fica
+montada e agendada, **ociosa**: nada carimba prazo ainda.
+**Entrega valor sozinha:** conserta o vazamento que **já existe** — as 33 unidades
+presas — e não depende de uma linha de Mercado Pago. Se o resto parar, isso já
+valeu.
 
-**Fase 2 — criar o pagamento e mostrar o Brick.** `criar-pagamento` + mudança no
-`CheckoutView`, com credenciais de teste. No fim dela dá para gerar PIX e
-preencher cartão de teste; nada confirma ainda.
+> **Correção de 06/08/2026, decidida pelo Gabriel depois da revisão final da Fase 1.**
+> A troca do front para a `create_marketplace_order_v24` **saiu da Fase 1 e entrou na
+> Fase 2**. Motivo: os três meios de pagamento do checkout são *na entrega*
+> (`CheckoutView.tsx:874-891`), então carimbar 30 minutos de prazo hoje cancelaria
+> sozinho todo pedido legítimo — o cliente não teria como cumprir o prazo. Prazo de
+> pagamento só faz sentido junto do meio de pagar. Consequência a dizer com todas as
+> letras: **a Fase 1 fecha o vazamento antigo, não o contínuo.** Fechar o contínuo
+> passou a ser entrega da Fase 2.
+
+**Fase 2 — criar o pagamento, mostrar o Brick e ligar a expiração.** `criar-pagamento`
++ mudança no `CheckoutView`, com credenciais de teste, **e a troca da RPC para a v24**,
+que é o que arma a reserva com prazo. No fim dela dá para gerar PIX e preencher cartão
+de teste; nada confirma ainda.
 
 **Fase 3 — o webhook e a reconciliação.** O laço fecha: pagou → pedido pago →
 lojista avisado pela `notify-new-order`, que já existe e está publicada.

@@ -923,10 +923,11 @@ git commit -m "fix(orders): devolve o estoque de 13 pedidos abandonados (CHECKOU
 
 ### Task 6: O front passa a chamar a v24
 
-> # 🛑 NÃO EXECUTE ESTA TASK NA FASE 1
+> # 🛑 ESTA TASK SAIU DA FASE 1 — ela é da Fase 2
 >
-> **Achado da revisão final da branch, em 06/08/2026, confirmado no código.** Esta task,
-> como está escrita abaixo, **cancela sozinho todo pedido legítimo da loja em 30 minutos**.
+> **Decisão do Gabriel em 06/08/2026**, depois do achado da revisão final da branch, que eu
+> confirmei no código. Esta task, como está escrita abaixo, **cancelaria sozinho todo pedido
+> legítimo da loja em 30 minutos**.
 >
 > O checkout de hoje oferece três meios de pagamento, e os três são **na entrega** —
 > `CheckoutView.tsx:874-891`: "Pix na Entrega", "Cartão na Entrega", "Dinheiro na Entrega".
@@ -944,9 +945,14 @@ git commit -m "fix(orders): devolve o estoque de 13 pedidos abandonados (CHECKOU
 > antigo sem gateway nenhum, e a Task 5 só grava `'expirado'`, nunca `'aguardando'`, então a
 > varredura fica ociosa até alguém carimbar prazo. É só a Task 6 que arma o pavio.
 >
-> **Esta task pertence à Fase 2**, junto do meio de pagamento que dá ao cliente como cumprir
-> o prazo — ou precisa ser reescrita para carimbar `expires_at` apenas quando o pagamento for
-> online. Decisão do Gabriel, não de quem executa.
+> **Ela vai inteira para a Fase 2**, junto do meio de pagamento que dá ao cliente como cumprir
+> o prazo. Foi essa a decisão — e não a alternativa de reescrever a v24 para carimbar
+> `expires_at` só quando o pagamento fosse online, que resolveria o mesmo problema com mais
+> peça móvel e sem entregar nada antes da Fase 2 de qualquer jeito.
+>
+> O texto abaixo fica **para a Fase 2 executar**, não para ninguém rodar agora. Quem for
+> executá-la lá vai precisar revisitar o Step 4 (que manda fazer um pedido de teste pela
+> loja, criando pedido **real em produção**) à luz do Brick já instalado.
 
 **Files:**
 - Modify: `src/hooks/useOrders.ts` (dentro de `createOrder`, a chamada `.rpc(...)`)
