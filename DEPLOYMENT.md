@@ -91,12 +91,26 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
      aceita sem JWT e as guardas funcionam. **O critério 1 da #89 — pedido real
      com o painel fechado — continua não exercitado**, porque testá-lo cria
      pedido em produção.
-   - **`send-order-whatsapp` está no ar e não no repositório.** É a única das
-     cinco sem fonte versionada aqui, ela avisa o CLIENTE (não o lojista) e
-     consulta três colunas de `store_config` que não existem — devolve 500 em
-     toda invocação. `supabase functions deploy` **sem nome de função publica
-     todas** as do diretório: isso não a apaga, mas também não a mantém.
-     Detalhe e risco na INFRA-330 (#167). **Sempre passe o nome da função.**
+   - **`send-order-whatsapp` foi versionada em 06/08/2026** (`INFRA-330`, #167).
+     Baixada com `supabase functions download` e conferida: o fonte publicado é
+     **byte a byte idêntico** à cópia que existia fora do repositório. As cinco
+     functions publicadas agora têm fonte aqui.
+
+     Ela **avisa o CLIENTE, não o lojista** — quem avisa o lojista é a
+     `notify-new-order`. E está **morta**: consulta três colunas de
+     `store_config` que a migration `20260601000001_remove_whatsapp_infrastructure.sql`
+     (aplicada) removeu de propósito em 01/06/2026, junto do trigger e da função
+     de trigger. Devolve 500 em toda invocação. Ver
+     [`supabase/functions/send-order-whatsapp/README.md`](supabase/functions/send-order-whatsapp/README.md).
+
+     **Não edite o `index.ts` dela.** Ele é cópia exata do publicado, e é isso
+     que permite provar por `download` + diff se algo mudou no ar sem passar
+     pelo repositório.
+
+   - **`supabase functions deploy` sem nome de função publica TODAS as do
+     diretório.** Com as cinco versionadas isso deixou de poder apagar uma
+     função sem origem — mas continua podendo publicar em massa o que você não
+     revisou. **Sempre passe o nome da função.**
    - **Há um Cloudflare na frente do `functions.supabase.co`.** Um payload de
      teste com cara de SQL injection leva `403` do WAF antes de chegar na
      função — o corpo é uma página HTML da Cloudflare, não JSON. Se um teste
