@@ -104,13 +104,7 @@ export function montarCorpoCartao(args: {
   return corpo;
 }
 
-export async function criarPagamento(args: {
-  token: string;
-  corpo: Record<string, unknown>;
-  chaveIdempotencia: string;
-  fetchImpl?: typeof fetch;
-  baseUrl?: string;
-}): Promise<
+type ResultadoPagamento =
   | {
       ok: true;
       id: string;
@@ -119,8 +113,15 @@ export async function criarPagamento(args: {
       qrCodeBase64?: string;
       ticketUrl?: string;
     }
-  | { ok: false; erro: string; status: number }
-> {
+  | { ok: false; erro: string; status: number };
+
+export async function criarPagamento(args: {
+  token: string;
+  corpo: Record<string, unknown>;
+  chaveIdempotencia: string;
+  fetchImpl?: typeof fetch;
+  baseUrl?: string;
+}): Promise<ResultadoPagamento> {
   const f = args.fetchImpl ?? fetch;
   const base = args.baseUrl ?? BASE_URL_PADRAO;
 
@@ -141,43 +142,82 @@ export async function criarPagamento(args: {
     return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
   }
 
+  return interpretarRespostaDePagamento(resposta, "Não foi possível gerar a cobrança.");
+}
+
+/**
+ * `consultarPagamento` — reconsulta uma cobrança JÁ criada (CHECKOUT-050).
+ *
+ * O QR do PIX só existe na resposta da CRIAÇÃO. O navegador mobile descarta a
+ * aba enquanto o cliente vai ao app do banco pagar; ao voltar, a tela remonta
+ * e precisa do MESMO QR — sem criar uma segunda cobrança. Por isso é GET,
+ * sem corpo e SEM `X-Idempotency-Key`: não é escrita, então não tem o que
+ * proteger de duplicar.
+ *
+ * Devolve a MESMA união de `criarPagamento`, e obedece às mesmas regras:
+ * nunca rejeita, a leitura do corpo fica dentro do try, e o corpo do erro do
+ * MP vai só para o log.
+ */
+export async function consultarPagamento(args: {
+  token: string;
+  paymentId: string;
+  fetchImpl?: typeof fetch;
+  baseUrl?: string;
+}): Promise<ResultadoPagamento> {
+  const f = args.fetchImpl ?? fetch;
+  const base = args.baseUrl ?? BASE_URL_PADRAO;
+
+  let resposta: Response;
+  try {
+    resposta = await f(`${base}/v1/payments/${args.paymentId}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${args.token}` },
+    });
+  } catch (_err) {
+    return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
+  }
+
+  return interpretarRespostaDePagamento(resposta, "Não foi possível consultar a cobrança.");
+}
+
+/**
+ * Miolo comum entre `criarPagamento` e `consultarPagamento`: as duas mandam
+ * a requisição de um jeito diferente (POST com corpo e idempotência vs. GET
+ * puro), mas leem a resposta do MESMO jeito. Duplicar essa leitura é como
+ * este repositório chegou a ter a regra de frete grátis em sete lugares
+ * (#53) — aqui a divergência marcaria uma reconsulta como bem-sucedida
+ * quando a criação teria recusado o mesmo corpo, ou vice-versa.
+ */
+async function interpretarRespostaDePagamento(
+  resposta: Response,
+  mensagemDeFalha: string,
+): Promise<ResultadoPagamento> {
   if (!resposta.ok) {
     // O corpo do erro do MP vai para o log da função, NUNCA para o cliente:
     // ele carrega detalhe de credencial e de conta.
     const detalhe = await resposta.text().catch(() => "");
     console.error("mercadopago: recusou", resposta.status, detalhe);
-    return {
-      ok: false,
-      erro: "Não foi possível gerar a cobrança.",
-      status: resposta.status,
-    };
+    return { ok: false, erro: mensagemDeFalha, status: resposta.status };
   }
 
   // A leitura do corpo mora no MESMO try que trata resposta ilegível: um
   // 2xx com corpo HTML, vazio ou "null" faria json() rejeitar, e a rejeição
   // escaparia esta função inteira. A Task 2 não tem try/catch externo em
-  // volta de criarPagamento — nenhum caminho aqui pode rejeitar.
+  // volta de criarPagamento/consultarPagamento — nenhum caminho aqui pode
+  // rejeitar.
   let json: Record<string, unknown> | null;
   try {
     json = await resposta.json();
   } catch (_err) {
     console.error("mercadopago: resposta 2xx com corpo ilegível", resposta.status);
-    return {
-      ok: false,
-      erro: "Resposta inválida do gateway.",
-      status: resposta.status,
-    };
+    return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
   }
 
   if (json?.id === undefined || json?.id === null) {
     // "undefined" nunca pode virar gateway_payment_id: a coluna tem índice
     // UNIQUE parcial, e a segunda ocorrência estoura 23505.
     console.error("mercadopago: resposta 2xx sem id", resposta.status, JSON.stringify(json));
-    return {
-      ok: false,
-      erro: "Resposta inválida do gateway.",
-      status: resposta.status,
-    };
+    return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
   }
 
   const dados =

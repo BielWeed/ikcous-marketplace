@@ -56,6 +56,9 @@ function clienteFalso(opts: {
   pedido: Record<string, unknown> | null;
   gravado: Record<string, unknown> | null;
   releitura?: Record<string, unknown> | null;
+  // Conta chamadas a .update(), para o teste do ramo "reconsultar" provar
+  // que NENHUM update foi feito — pelo cliente falso, não por leitura.
+  registro?: { chamadasUpdate: number };
 }) {
   let chamadasSelect = 0;
   return {
@@ -71,6 +74,7 @@ function clienteFalso(opts: {
           };
         },
         update(_valores: Record<string, unknown>) {
+          if (opts.registro) opts.registro.chamadasUpdate++;
           return {
             eq(_c1: string, _v1: unknown) {
               return {
@@ -137,7 +141,7 @@ Deno.test("aceita UUID e recusa o que não é", () => {
   }
 });
 
-Deno.test("podeCobrar aceita pedido aguardando e dentro do prazo", () => {
+Deno.test("podeCobrar cria quando o pedido está aguardando, no prazo, e sem cobrança", () => {
   const r = podeCobrar(
     {
       payment_status: "aguardando",
@@ -146,12 +150,15 @@ Deno.test("podeCobrar aceita pedido aguardando e dentro do prazo", () => {
     },
     AGORA,
   );
-  assertEquals(r.ok, true);
+  assertEquals(r.acao, "criar");
 });
 
-Deno.test("podeCobrar recusa pedido que já tem cobrança", () => {
-  // Sem isto, um duplo clique gera dois PIX para o mesmo pedido e o cliente
-  // pode pagar os dois.
+Deno.test("podeCobrar reconsulta quando o pedido já tem cobrança, em vez de recusar", () => {
+  // Rodada 2: o QR do PIX só existe na resposta da CRIAÇÃO. O navegador
+  // mobile descarta a aba enquanto o cliente paga pelo app do banco; ao
+  // voltar, a tela remonta e chamava esta function de novo — recusar aqui
+  // (como a rodada 1 fazia) matava um pedido que ainda dava para pagar. Com
+  // 63 dos 64 pedidos da loja em PIX, esse é o caminho principal.
   const r = podeCobrar(
     {
       payment_status: "aguardando",
@@ -160,7 +167,21 @@ Deno.test("podeCobrar recusa pedido que já tem cobrança", () => {
     },
     AGORA,
   );
-  assertEquals(r.ok, false);
+  assertEquals(r.acao, "reconsultar");
+});
+
+Deno.test("podeCobrar recusa pedido expirado mesmo que já tenha cobrança — a ordem importa", () => {
+  // Se a checagem de gateway_payment_id viesse ANTES da de prazo, um pedido
+  // expirado com cobrança reconsultaria em vez de recusar.
+  const r = podeCobrar(
+    {
+      payment_status: "aguardando",
+      expires_at: "2026-08-06T11:59:00.000Z",
+      gateway_payment_id: "1234567890",
+    },
+    AGORA,
+  );
+  assertEquals(r.acao, "recusar");
 });
 
 Deno.test("podeCobrar recusa pedido fora do prazo", () => {
@@ -172,7 +193,7 @@ Deno.test("podeCobrar recusa pedido fora do prazo", () => {
     },
     AGORA,
   );
-  assertEquals(r.ok, false);
+  assertEquals(r.acao, "recusar");
 });
 
 Deno.test("podeCobrar recusa qualquer payment_status que não seja aguardando", () => {
@@ -181,7 +202,7 @@ Deno.test("podeCobrar recusa qualquer payment_status que não seja aguardando", 
       { payment_status: st, expires_at: "2026-08-06T12:20:00.000Z", gateway_payment_id: null },
       AGORA,
     );
-    assertEquals(r.ok, false, `deveria recusar payment_status=${String(st)}`);
+    assertEquals(r.acao, "recusar", `deveria recusar payment_status=${String(st)}`);
   }
 });
 
@@ -192,7 +213,7 @@ Deno.test("podeCobrar recusa pedido sem prazo carimbado", () => {
     { payment_status: "aguardando", expires_at: null, gateway_payment_id: null },
     AGORA,
   );
-  assertEquals(r.ok, false);
+  assertEquals(r.acao, "recusar");
 });
 
 Deno.test("donoConfere: pedido de usuário logado exige o mesmo usuário", () => {
@@ -308,4 +329,100 @@ Deno.test("handler: duas chamadas concorrentes — a que perde o UPDATE NÃO dev
 
   assertEquals(resposta.status !== 200, true);
   assertEquals(corpo.error, "Este pedido já tem uma cobrança gerada.");
+});
+
+// --- handler: rodada 2 — reconsultar em vez de recusar quando já tem cobrança
+
+/** `fetch` falso da reconsulta: devolve exatamente o corpo que o teste passar,
+ * sem olhar a URL nem o método — o que a URL/método realmente foi é provado
+ * pelos testes de `_shared/mercadopago_test.ts`, não aqui. */
+function fetchFalsoConsulta(corpoDaResposta: Record<string, unknown>) {
+  return async (_url: string, _init?: RequestInit) =>
+    new Response(JSON.stringify(corpoDaResposta), { status: 200 });
+}
+
+Deno.test("handler: pedido com cobrança existente reconsulta no MP, devolve o MESMO QR, e NÃO faz UPDATE", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ gateway_payment_id: "789" });
+  const registro = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const fetchImpl = fetchFalsoConsulta({
+    id: 789,
+    status: "pending",
+    point_of_interaction: { transaction_data: { qr_code: "QRCODE-DA-RECONSULTA" } },
+  });
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.paymentId, "789");
+  assertEquals(corpo.qrCode, "QRCODE-DA-RECONSULTA");
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("handler: pedido sem cobrança existente cria uma nova e grava gateway_payment_id", async () => {
+  // Contraste com o teste acima: prova que o ramo "criar" continua fazendo
+  // UPDATE — se um bug fizesse TODO pedido cair no ramo "reconsultar", este
+  // teste (chamadasUpdate === 1) cairia, mesmo que o teste de status 200
+  // sozinho não pegasse isso.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase();
+  const registro = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const fetchImpl = fetchFalsoMP({});
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasUpdate, 1);
+});
+
+Deno.test("handler: pedido expirado com cobrança existente recusa, não reconsulta", async () => {
+  // A ordem de podeCobrar importa: prazo vencido é checado ANTES de
+  // gateway_payment_id, então isto tem que recusar, não chamar o MP.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({
+    gateway_payment_id: "789",
+    expires_at: "2000-01-01T00:00:00.000Z",
+  });
+  const registro = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({ pedido, gravado: null, registro });
+  let chamouFetch = false;
+  const fetchImpl = async (_url: string, _init?: RequestInit) => {
+    chamouFetch = true;
+    return new Response(JSON.stringify({ id: 789, status: "pending" }), { status: 200 });
+  };
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.error, "O prazo para pagar este pedido acabou.");
+  assertEquals(chamouFetch, false);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("handler: consulta ao Mercado Pago falhando devolve 502, sem confirmar nada com 200", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ gateway_payment_id: "789" });
+  const supabase = clienteFalso({ pedido, gravado: null });
+  const fetchImpl = async (_url: string, _init?: RequestInit) =>
+    new Response(JSON.stringify({ message: "Payment not found" }), { status: 404 });
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+
+  assertEquals(resposta.status, 502);
 });

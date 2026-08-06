@@ -12,6 +12,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  consultarPagamento,
   criarPagamento,
   formatarExpiracao,
   mapearStatus,
@@ -228,4 +229,89 @@ Deno.test("criarPagamento trata rede caída sem estourar", async () => {
 
   assertEquals(r.ok, false);
   if (!r.ok) assertEquals(r.status, 0);
+});
+
+// --- consultarPagamento: reconsulta a cobrança já criada (CHECKOUT-050) ---
+//
+// O QR do PIX só existe na resposta da criação. O navegador mobile descarta a
+// aba enquanto o cliente vai ao app do banco; ao voltar, a tela remonta e
+// precisa do MESMO QR — sem criar uma segunda cobrança. `consultarPagamento`
+// é a leitura que sustenta isso: GET, sem corpo, sem chave de idempotência
+// (não é escrita).
+
+Deno.test("consultarPagamento consulta por GET, sem corpo e sem chave de idempotência", async () => {
+  let capturada: { url: string; init: RequestInit } | null = null;
+
+  const fetchStub = ((url: string, init: RequestInit) => {
+    capturada = { url, init };
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          id: 1234567890,
+          status: "pending",
+          point_of_interaction: {
+            transaction_data: {
+              qr_code: "00020126…",
+              qr_code_base64: "iVBORw0KGgo=",
+            },
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+  }) as unknown as typeof fetch;
+
+  const r = await consultarPagamento({
+    token: "TEST-token",
+    paymentId: "1234567890",
+    fetchImpl: fetchStub,
+  });
+
+  assertEquals(r.ok, true);
+  if (r.ok) {
+    assertEquals(r.id, "1234567890");
+    assertEquals(r.status, "pending");
+    assertEquals(r.qrCode, "00020126…");
+  }
+
+  assertEquals(capturada!.init.method, "GET");
+  assertEquals(capturada!.init.body, undefined);
+  const headers = capturada!.init.headers as Record<string, string>;
+  assertEquals(headers.Authorization, "Bearer TEST-token");
+  assertEquals(headers["X-Idempotency-Key"], undefined);
+  assertStringIncludes(capturada!.url, "/v1/payments/1234567890");
+});
+
+Deno.test("consultarPagamento não vaza o corpo do erro quando o MP devolve 404", async () => {
+  const fetchStub = (() =>
+    Promise.resolve(
+      new Response(JSON.stringify({ message: "Payment not found" }), { status: 404 }),
+    )) as unknown as typeof fetch;
+
+  const r = await consultarPagamento({
+    token: "TEST-token",
+    paymentId: "id-inexistente",
+    fetchImpl: fetchStub,
+  });
+
+  assertEquals(r.ok, false);
+  if (!r.ok) {
+    assertEquals(r.status, 404);
+    assertEquals(r.erro.includes("not found"), false);
+  }
+});
+
+Deno.test("consultarPagamento não rejeita quando o MP devolve 2xx com corpo ilegível", async () => {
+  const fetchStub = (() =>
+    Promise.resolve(new Response("<html>502</html>", { status: 200 }))) as unknown as typeof fetch;
+
+  const r = await consultarPagamento({
+    token: "TEST-token",
+    paymentId: "id-5",
+    fetchImpl: fetchStub,
+  });
+
+  // Mesma regra da Task 1 para criarPagamento: nenhum caminho pode rejeitar.
+  assertEquals(r.ok, false);
+  if (!r.ok) assertEquals(r.status, 200);
 });

@@ -15,9 +15,13 @@
  * 1. `pareceUuid` — corta varredura antes de tocar o banco.
  * 2. `donoConfere` — pedido com `user_id` só é cobrado pelo próprio dono, lido
  *    do JWT. Pedido de convidado (`user_id` NULL) não tem dono a conferir.
- * 3. `podeCobrar` — o pedido precisa estar 'aguardando', dentro do prazo e SEM
- *    cobrança anterior. É o que impede duplo clique virar dois PIX, e o que
- *    limita a exposição de um pedido de convidado à janela de 30 minutos.
+ * 3. `podeCobrar` — decide CRIAR (pedido 'aguardando', no prazo, sem cobrança
+ *    anterior), RECONSULTAR (mesmo estado, mas já tem `gateway_payment_id` —
+ *    devolve a MESMA cobrança em vez de criar outra, porque o QR do PIX só
+ *    existe na resposta da criação e o navegador mobile some com a aba
+ *    enquanto o cliente paga) ou RECUSAR (não está 'aguardando', sem prazo,
+ *    ou prazo vencido — checado ANTES da checagem de cobrança existente, de
+ *    propósito: pedido expirado com cobrança recusa, não reconsulta).
  *
  * O QUE ELA NÃO FAZ
  *
@@ -28,6 +32,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  consultarPagamento,
   criarPagamento,
   formatarExpiracao,
   montarCorpoCartao,
@@ -60,6 +65,19 @@ export function donoConfere(
   return pedido.user_id === sub;
 }
 
+/**
+ * Decide o que FAZER com o pedido, não só se pode ou não. Rodada 2
+ * (CHECKOUT-050): o QR do PIX só existe na resposta da criação, e o
+ * navegador mobile descarta a aba enquanto o cliente paga pelo app do banco.
+ * Recusar todo pedido que já tem `gateway_payment_id` (como a rodada 1
+ * fazia) matava um pedido que ainda dava para pagar assim que a tela
+ * remontasse — com 63 dos 64 pedidos da loja em PIX, esse é o caminho
+ * principal, não a exceção.
+ *
+ * A ORDEM IMPORTA: prazo vencido é checado ANTES de `gateway_payment_id`, de
+ * propósito — um pedido expirado com cobrança tem que RECUSAR, nunca
+ * reconsultar uma cobrança de um pedido que a expiração já matou.
+ */
 export function podeCobrar(
   pedido: {
     payment_status: string | null;
@@ -67,20 +85,20 @@ export function podeCobrar(
     gateway_payment_id: string | null;
   },
   agora: Date,
-): { ok: true } | { ok: false; motivo: string } {
+): { acao: "criar" } | { acao: "reconsultar" } | { acao: "recusar"; motivo: string } {
   if (pedido.payment_status !== "aguardando") {
-    return { ok: false, motivo: "Este pedido não está aguardando pagamento." };
-  }
-  if (pedido.gateway_payment_id !== null) {
-    return { ok: false, motivo: "Este pedido já tem uma cobrança gerada." };
+    return { acao: "recusar", motivo: "Este pedido não está aguardando pagamento." };
   }
   if (pedido.expires_at === null) {
-    return { ok: false, motivo: "Este pedido não tem prazo de pagamento." };
+    return { acao: "recusar", motivo: "Este pedido não tem prazo de pagamento." };
   }
   if (new Date(pedido.expires_at) <= agora) {
-    return { ok: false, motivo: "O prazo para pagar este pedido acabou." };
+    return { acao: "recusar", motivo: "O prazo para pagar este pedido acabou." };
   }
-  return { ok: true };
+  if (pedido.gateway_payment_id !== null) {
+    return { acao: "reconsultar" };
+  }
+  return { acao: "criar" };
 }
 
 export function subDoToken(authorization: string | null): string | null {
@@ -161,9 +179,39 @@ async function handler(
   const sub = subDoToken(req.headers.get("Authorization"));
   if (!donoConfere(pedido, sub)) return json({ error: "Pedido não encontrado." }, 404);
 
-  const permitido = podeCobrar(pedido, new Date());
-  if (!permitido.ok) return json({ error: permitido.motivo }, 409);
+  const decisao = podeCobrar(pedido, new Date());
+  if (decisao.acao === "recusar") return json({ error: decisao.motivo }, 409);
 
+  if (decisao.acao === "reconsultar") {
+    // O QR só existe na resposta da CRIAÇÃO. Aqui é onde a tela recupera o
+    // MESMO QR sem criar uma segunda cobrança — nenhum UPDATE, porque nada
+    // mudou no pedido, só a consulta.
+    const r = await consultarPagamento({
+      token: mpToken,
+      paymentId: String(pedido.gateway_payment_id),
+      fetchImpl: deps.fetchImpl,
+    });
+    if (!r.ok) return json({ error: r.erro }, 502);
+    return json(
+      {
+        paymentId: r.id,
+        // Cru, não traduzido — igual ao ramo de criação. Se a cobrança
+        // existente é de cartão recusado, o cliente vê 'rejected' e a
+        // Task 5 decide o que mostrar. Reagir a isso (nova tentativa com
+        // idempotência versionada) é trabalho da Fase 3, de propósito não
+        // implementado aqui.
+        status: r.status,
+        // O prazo sai da LINHA DO BANCO, igual ao ramo de criação.
+        expiraEm: pedido.expires_at,
+        qrCode: r.qrCode,
+        qrCodeBase64: r.qrCodeBase64,
+        ticketUrl: r.ticketUrl,
+      },
+      200,
+    );
+  }
+
+  // decisao.acao === "criar" a partir daqui.
   const email =
     (body.email as string) ??
     (pedido.customer_data as Record<string, unknown>)?.email ??
