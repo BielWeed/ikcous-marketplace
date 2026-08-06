@@ -89,21 +89,54 @@ cima de um estado conhecido.
 - `scripts/db-reconcilia-ledger.cjs` ficou versionado. Ele **regenera** todos os
   números acima, e é o que responde ao critério 5 da #112.
 
-### O que falta, e por que não foi feito hoje
+### O baseline — executado em 06/08/2026
 
-**A migration de baseline em si.** Ela sai de `supabase db dump`, que exige
-Docker rodando — e o Docker não estava no ar. Sem ela, o repositório ainda não
-descreve o schema; ele apenas parou de mentir sobre o que está pendente.
+`supabase/migrations/20260806000000_baseline_do_schema_vivo.sql`, 200 KB,
+registrado no ledger com
+`supabase migration repair --status applied 20260806000000`.
 
-Procedimento, quando o Docker estiver disponível — e seguindo o § 9 do
-[`03-SETUP-AMBIENTE.md`](../onboarding/03-SETUP-AMBIENTE.md):
+**Ledger: 126 → 127 linhas. Reconciliador: 99 arquivos, 99 versões, 99 casadas,
+0 pendentes.** O `supabase db push` voltou a ser no-op — agora com o repositório
+descrevendo o schema, e não apenas calado sobre ele.
 
-1. Confirmar que o backup de **hoje** já saiu.
-2. `supabase db dump --db-url "$env:DATABASE_URL" -f backups/schema.sql` —
-   **conferir o tamanho do arquivo**, porque sem Docker ele sai vazio sem erro.
-3. Transformar o dump em `supabase/migrations/<timestamp>_baseline.sql`.
-4. Registrar a versão do baseline no ledger **sem executá-la** (o schema já
-   existe; executar seria recriar o que está lá).
+#### Não saiu de `supabase db dump`, e o motivo importa
+
+Aquele comando **omite triggers em silêncio**. Rodado neste banco, no mesmo dia,
+terminando com sucesso: 29 tabelas, 5 views, 71 policies e 66 funções corretas —
+e **0 dos 9 triggers**. Entre os que sumiriam: `tr_prevent_role_change`,
+`tr_ensure_role_protection` e `tr_sync_profile_role_to_auth`, que são proteção de
+privilégio.
+
+Um baseline vindo dali teria parecido completo e derrubado as três proteções em
+qualquer restauração. O baseline real saiu de `pg_dump` direto no container, e os
+seis números foram **conferidos contra introspecção independente** antes de o
+arquivo ser aceito. Detalhe no § 9 do
+[`03-SETUP-AMBIENTE.md`](../onboarding/03-SETUP-AMBIENTE.md).
+
+#### Sobre a trava do § 9 não ter sido cumprida ao pé da letra
+
+O passo 1 do procedimento manda confirmar que o backup do dia já saiu. Em
+06/08/2026 ele ainda não tinha rodado (o diário sai ~11:37 UTC). O registro do
+baseline foi feito assim mesmo, e de propósito: a trava existe para mudança
+**destrutiva** de schema, e registrar versão no ledger é um `INSERT` numa tabela
+de controle — não toca dado, não toca policy, e desfaz com um `DELETE`. O
+`pg_dump` que o antecedeu é somente leitura.
+
+Está escrito aqui para não virar precedente de "pular o passo 1 quando dá
+trabalho". Migration que muda schema continua esperando o backup do dia.
+
+### O que ainda falta
+
+**A replicação em banco novo não está resolvida.** O diretório tem o baseline
+**mais** as 98 migrations históricas, todas no ledger. Para a produção isso é
+inofensivo — nada re-executa. Mas um banco zerado rodaria as 98 e depois o
+baseline, e colidiria.
+
+Isso só passa a importar quando a `INFRA-270` (#131) montar o ambiente de ensaio.
+A decisão que faltará ali é se as 98 também vão para `_arquivadas/`, deixando o
+baseline como fonte única. **Não foi tomada agora** porque não era necessária
+para fechar esta ADR, e arquivar mais 98 arquivos sem necessidade seria mexer
+onde não dói.
 
 ---
 
