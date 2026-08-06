@@ -1,10 +1,15 @@
 -- Backfill dos pedidos abandonados (CHECKOUT-010 #109). SEM BEGIN/COMMIT.
 --
--- Cancela os pedidos pendentes com 30+ dias que nunca tiveram pagamento e
--- devolve o estoque que eles seguravam. Medido em 06/08/2026: 13 pedidos,
--- 33 unidades — contra um catalogo vivo de 28 unidades.
+-- Cancela os pedidos abandonados que nunca tiveram pagamento e devolve o
+-- estoque que eles seguravam. Medido em 06/08/2026: 13 pedidos, 33 unidades.
 --
--- NAO toca os pendentes com menos de 30 dias: ficam para revisao manual.
+-- CORTE ABSOLUTO, nao `now() - interval '30 dias'`: com corte relativo, o
+-- conjunto muda conforme a hora do apply. A Isadora Bernardes (08/07, a unica
+-- cliente de verdade entre os pendentes) entraria num corte relativo as 23:30
+-- de 06/08/2026. Data fixa faz este arquivo valer igual em qualquer hora e em
+-- qualquer replay.
+--
+-- NAO toca os pendentes de 08/07 e 30/07: ficam para revisao manual.
 -- NAO estorna dinheiro: nenhum desses pedidos foi pago.
 
 DO $backfill$
@@ -18,7 +23,7 @@ BEGIN
         FROM public.marketplace_orders
         WHERE status = 'pending'
           AND payment_status IS NULL
-          AND created_at < now() - interval '30 days'
+          AND created_at < timestamptz '2026-07-08 00:00:00+00'
         FOR UPDATE
     LOOP
         v_unidades := v_unidades + public.devolver_estoque(v_pedido.id);
@@ -31,6 +36,15 @@ BEGIN
 
         v_pedidos := v_pedidos + 1;
     END LOOP;
+
+    -- EXCEPTION, nao NOTICE: o notice do pg nao chega ao terminal (o
+    -- db-apply.cjs nao registra listener), entao um desvio comitaria calado.
+    -- Aqui, qualquer numero fora do medido derruba a transacao inteira.
+    IF v_pedidos <> 13 OR v_unidades <> 33 THEN
+        RAISE EXCEPTION
+          'Backfill abortado: esperava 13 pedidos e 33 unidades, veio % e %.',
+          v_pedidos, v_unidades;
+    END IF;
 
     RAISE NOTICE 'Backfill: % pedidos cancelados, % unidades devolvidas',
                  v_pedidos, v_unidades;
