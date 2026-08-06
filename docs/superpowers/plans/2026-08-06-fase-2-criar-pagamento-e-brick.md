@@ -1695,7 +1695,7 @@ Logo antes do `if (showSuccess)` em `:475`:
         </p>
         <PagamentoOnline
           orderId={orderId}
-          valor={finalTotal}
+          valor={valorDoPedido}
           onErro={(msg) => toast.error(msg)}
         />
       </div>
@@ -1703,12 +1703,34 @@ Logo antes do `if (showSuccess)` em `:475`:
   }
 ```
 
-Com o estado novo junto dos outros `useState` do componente (o prazo NÃO é estado
+Com os estados novos junto dos outros `useState` do componente (o prazo NÃO é estado
 daqui — ele chega do banco pela resposta da edge function, dentro do `PagamentoOnline`):
 
 ```tsx
   const [aguardandoPagamento, setAguardandoPagamento] = useState(false);
+  const [valorDoPedido, setValorDoPedido] = useState(0);
 ```
+
+E `valorDoPedido` é carimbado junto do `orderId`, no submit, **antes** do `onClearCart()`:
+
+```tsx
+      setOrderId(order.id);
+      setValorDoPedido(finalTotal);
+```
+
+> **Por que congelar o valor, e não ler `finalTotal` direto no JSX.** `onClearCart()` roda
+> logo antes de a tela trocar, e o React 18 agrupa as duas atualizações: no render
+> seguinte o carrinho já está vazio. `cartTotal` reduz sobre `[]` e vira 0; `shippingFee`
+> tem `if (cart.length === 0) return 0`; então `finalTotal` vira **0** — ou **negativo**,
+> se houver cupom, porque `appliedCoupon` não é limpo. O Brick nasceria com `amount: 0`
+> enquanto o pedido no banco tem o total certo: ou a tela mostra R$ 0,00 e a cobrança é
+> outra, ou o Brick recusa e o cliente não consegue pagar, com o prazo de 30 min já
+> correndo.
+>
+> O `orderId` já resolve esse mesmo problema do mesmo jeito, duas linhas acima — o valor
+> só precisa do mesmo tratamento. **Não conserte adiando o `onClearCart()`**: isso abre a
+> porta para o cliente voltar e mandar um segundo pedido com o mesmo carrinho, que é
+> troca pior.
 
 E os dois imports, no topo do arquivo:
 
