@@ -295,7 +295,16 @@ function montarRollback(arquivos, restauracoes) {
   }
   cabecalho.push("");
 
-  return { conteudo: [...cabecalho, ...corpo].join("\n"), instrucoes };
+  return {
+    conteudo: [...cabecalho, ...corpo].join("\n"),
+    instrucoes,
+    // Devolvido para o `main()` reaproveitar em vez de derivar de novo. A
+    // mensagem do terminal e o cabeçalho do arquivo TÊM de concordar sobre o
+    // que é "função criada" — duas derivações independentes divergiriam em
+    // silêncio no dia em que a definição mudar, e o assunto deste script é
+    // justamente arquivo e terminal contarem a mesma história.
+    nomesCriadas,
+  };
 }
 
 async function definicaoAtual(client, nomeFuncao) {
@@ -349,7 +358,10 @@ async function main() {
       restauracoes.push({ funcao: fn, defs: await definicaoAtual(client, fn) });
     }
   }
-  const { conteudo, instrucoes } = montarRollback(arquivos, restauracoes);
+  const { conteudo, instrucoes, nomesCriadas } = montarRollback(
+    arquivos,
+    restauracoes,
+  );
   const arquivoRollback = path.join(
     PROJECT_ROOT,
     `rollback-${arquivos[0].replace(/\.sql$/, "")}.sql`,
@@ -357,10 +369,10 @@ async function main() {
   fs.writeFileSync(arquivoRollback, conteudo);
   const caminhoRollback = path.relative(PROJECT_ROOT, arquivoRollback);
   // Mesma distinção do cabeçalho do arquivo, aqui no terminal: quem aplica a
-  // migration costuma ler só esta linha e nunca abrir o arquivo.
-  const criadas = restauracoes.filter((r) => r.defs.length === 0);
-  const nomesCriadas = criadas.map((r) => r.funcao).join(", ");
-  if (instrucoes === 0 && criadas.length === 0) {
+  // migration costuma ler só esta linha e nunca abrir o arquivo. O
+  // `nomesCriadas` vem de `montarRollback` de propósito — ver o comentário lá.
+  const temCriadas = nomesCriadas !== "";
+  if (instrucoes === 0 && !temCriadas) {
     console.warn(
       `ATENÇÃO: o rollback gerado NÃO CONTÉM NENHUM COMANDO — rodá-lo não desfaz nada.
    Arquivo:  ${caminhoRollback}
@@ -381,7 +393,7 @@ async function main() {
              restaurar. Desfazê-la(s) é DROP FUNCTION manual (este script não
              gera esse comando). Escreva o desfazer À MÃO ANTES de seguir.\n`,
     );
-  } else if (criadas.length === 0) {
+  } else if (!temCriadas) {
     console.log(
       `Rollback salvo em: ${caminhoRollback} (${instrucoes} definição(ões) de função; o resto da migration é manual)\n`,
     );

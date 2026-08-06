@@ -210,8 +210,15 @@ Deno.test("rollback de função nova nomeia a criação e não mente sobre redef
     );
   });
 
-  await t.step("nomeia a função criada", () => {
-    assertStringIncludes(conteudo, "expirar_pedidos_vencidos");
+  await t.step("nomeia a função criada NO CABEÇALHO", () => {
+    // Ancorado na frase do cabeçalho, não no nome solto: o corpo já trazia
+    // `-- expirar_pedidos_vencidos: não existe hoje no banco (será criada).`
+    // desde antes deste PR, então procurar só o nome passava mesmo contra o
+    // código com o bug. Achado da segunda revisão, provado por mutação.
+    assertStringIncludes(
+      conteudo,
+      "não há definição anterior para restaurar: expirar_pedidos_vencidos",
+    );
   });
 
   await t.step(
@@ -242,8 +249,13 @@ Deno.test("rollback misto avisa que restaurar não remove a função nova", asyn
     assertStringIncludes(conteudo, `${DEF_EXEMPLO};`);
   });
 
-  await t.step("nomeia a função nova", () => {
-    assertStringIncludes(conteudo, "create_marketplace_order_v24");
+  await t.step("nomeia a função nova NO CABEÇALHO", () => {
+    // Mesmo motivo do teste acima: o nome solto já aparece no corpo desde
+    // antes do PR. O que este passo protege é o aviso do cabeçalho.
+    assertStringIncludes(
+      conteudo,
+      "-- create_marketplace_order_v24. Restaurar as funções acima",
+    );
   });
 
   await t.step(
