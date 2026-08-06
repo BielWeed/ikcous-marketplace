@@ -408,7 +408,42 @@ Acrescentar ao `db-prove-checkout-010.cjs`, dentro do `try`, depois do bloco ant
       RETURNING id
     `);
 
+    // Pedido JA CANCELADO pelo cliente, e vencido depois. A
+    // update_order_status_atomic ja devolveu o estoque no cancelamento e NAO
+    // escreve payment_status, entao a linha continua 'aguardando'. Se a
+    // varredura agir sobre ela, credita o estoque uma SEGUNDA vez — catalogo
+    // com mais unidade do que existe. Este assert e' a trava disso.
+    const prod3 = await client.query(`
+      INSERT INTO public.produtos (nome, custo, preco_venda, estoque, categoria)
+      VALUES ('PROVA JA CANCELADO', 5.00, 10.00, 9, 'teste')
+      RETURNING id
+    `);
+    const produto3 = prod3.rows[0].id;
+
+    const jaCancelado = await client.query(`
+      INSERT INTO public.marketplace_orders
+        (total, subtotal, status, payment_status, expires_at, customer_name, customer_data)
+      VALUES (10.00, 10.00, 'cancelled', 'aguardando', now() - interval '1 minute', 'JA CANCELADO', '{}'::jsonb)
+      RETURNING id
+    `);
+    await client.query(
+      `INSERT INTO public.marketplace_order_items
+         (order_id, product_id, product_name, quantity, price)
+       VALUES ($1, $2, 'PROVA JA CANCELADO', 2, 10.00)`,
+      [jaCancelado.rows[0].id, produto3],
+    );
+
     await client.query("SELECT public.expirar_pedidos_vencidos()");
+
+    const est3 = await client.query(
+      "SELECT estoque FROM public.produtos WHERE id = $1",
+      [produto3],
+    );
+    conferir(
+      "pedido ja cancelado NAO e creditado de novo",
+      est3.rows[0].estoque === 9,
+      `veio ${est3.rows[0].estoque}, esperava 9 — a varredura creditou em dobro`,
+    );
 
     const est2 = await client.query(
       "SELECT estoque FROM public.produtos WHERE id = $1",
@@ -468,13 +503,27 @@ DECLARE
     v_pedido   RECORD;
     v_expirados integer := 0;
 BEGIN
-    -- FOR UPDATE SKIP LOCKED: se o webhook da Fase 3 estiver confirmando este
-    -- mesmo pedido agora, ele detem a trava e a varredura pula em vez de
-    -- disputar. Quem chegou primeiro ganha; nao ha sobrescrita.
+    -- FOR UPDATE SKIP LOCKED protege contra OUTRA varredura: se dois ciclos do
+    -- pg_cron se sobrepuserem, o segundo pula a linha travada em vez de creditar
+    -- estoque duas vezes. NAO resolve a corrida com o webhook da Fase 3: se a
+    -- varredura pegar a trava primeiro, o UPDATE do webhook espera, reavalia o
+    -- WHERE por id (que continua valendo) e sobrescreve — sai pedido 'pago' com
+    -- status 'cancelled' e estoque ja devolvido. Tratar esse estado e' obrigacao
+    -- de quem escrever o webhook; a CHECK ja reserva 'pago_apos_expirar' para
+    -- ele. Este comentario e' o que a Fase 3 vai ler: nao prometa aqui garantia
+    -- que o codigo nao da.
+    --
+    -- status = 'pending' e' o filtro que impede credito em dobro: quando o
+    -- cliente cancela pelo app, a update_order_status_atomic JA devolve o
+    -- estoque e NAO escreve payment_status. Sem este AND, o pedido cancelado as
+    -- 10:05 seria varrido as 10:30 e creditado uma segunda vez. Vale tambem para
+    -- o pedido que o admin adiantou para 'processing' dentro dos 30 minutos:
+    -- venda fechada por fora nao pode ser cancelada por varredura.
     FOR v_pedido IN
         SELECT id
         FROM public.marketplace_orders
         WHERE payment_status = 'aguardando'
+          AND status = 'pending'
           AND expires_at IS NOT NULL
           AND expires_at < now()
         FOR UPDATE SKIP LOCKED
@@ -507,7 +556,7 @@ node scripts/db-apply.cjs 20260807000000_reserva_com_expiracao.sql
 node scripts/db-prove-checkout-010.cjs
 ```
 
-Esperado: `8 passaram, 0 falharam.`
+Esperado: `9 passaram, 0 falharam.`
 
 - [ ] **Step 5: Commit**
 
@@ -635,7 +684,7 @@ node scripts/db-apply.cjs 20260807000000_reserva_com_expiracao.sql
 node scripts/db-prove-checkout-010.cjs
 ```
 
-Esperado: `11 passaram, 0 falharam.`
+Esperado: `12 passaram, 0 falharam.`
 
 - [ ] **Step 5: Commit**
 
@@ -907,6 +956,6 @@ Estado esperado, verificável:
 | pedidos em `pending` | 2 (os recentes, para revisão manual) |
 | estoque no catálogo | 61 unidades |
 | `cron.job` ativo | 1 |
-| provas em `db-prove-checkout-010.cjs` | 11 passando |
+| provas em `db-prove-checkout-010.cjs` | 12 passando |
 
 O vazamento de estoque está fechado, **sem uma linha de Mercado Pago**. A Fase 2 pode começar — ou não começar — sem que este trabalho perca valor.
