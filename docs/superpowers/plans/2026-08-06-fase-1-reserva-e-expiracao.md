@@ -35,7 +35,8 @@
 | `supabase/migrations/20260807000001_agenda_expiracao.sql` | **criar** — extensão `pg_cron` e o agendamento |
 | `supabase/migrations/20260807000002_backfill_pedidos_abandonados.sql` | **criar** — cancela os 13 antigos, devolve 33 unidades |
 | `scripts/db-prove-checkout-010.cjs` | **criar** — prova as três funções em transação com `ROLLBACK` |
-| `src/hooks/useOrders.ts:~860` | **modificar** — `createOrder` passa a chamar a `v24` |
+| `scripts/db-check-cron-expiracao.cjs` | **criar** — confirma o agendamento; é a verificação pós-apply do arquivo de cron, que não define função e por isso não entra em `VERIFICACOES` |
+| ~~`src/hooks/useOrders.ts:~860`~~ | ~~modificar — `createOrder` passa a chamar a `v24`~~ — **fora da Fase 1**, ver o bloqueio no topo da Task 6 |
 
 Três migrations em vez de uma porque cada uma pode ser aprovada ou rejeitada sozinha: a primeira é estrutura, a segunda é agendamento (e depende de extensão que pode não subir), a terceira mexe em **dado real de cliente** e merece revisão separada.
 
@@ -744,17 +745,59 @@ node scripts/db-apply.cjs 20260807000001_agenda_expiracao.sql
 - [ ] **Step 3: Confirmar que o agendamento existe**
 
 ```bash
-node -e "const{Client}=require('pg');const fs=require('fs');const l=fs.readFileSync('.env','utf8').split(/\r?\n/).find(x=>x.startsWith('DATABASE_URL='));const c=new Client({connectionString:l.slice(13).replace(/^\"|\"$/g,''),ssl:{rejectUnauthorized:false}});c.connect().then(()=>c.query(\"SELECT jobname, schedule, active FROM cron.job WHERE jobname='expirar-pedidos-vencidos'\")).then(r=>{console.table(r.rows);return c.end()})"
+node scripts/db-check-cron-expiracao.cjs
 ```
 
-Esperado: uma linha, `schedule = */5 * * * *`, `active = true`.
+Esperado: uma linha, `schedule = */5 * * * *`, `active = true`, e — **confira esta coluna** — `command = SELECT public.expirar_pedidos_vencidos();`. O `pg_cron` não valida o comando no `cron.schedule`: ele guarda a string. Um nome de função com erro de digitação sai com a tabela verde e falha calado a cada 5 minutos.
+
+O `node -e` de uma linha que estava aqui foi substituído por este script: aquele quebra no PowerShell do Windows por causa das aspas aninhadas, e foi bloqueado pelo classificador de automação em quatro subagentes desta fase.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20260807000001_agenda_expiracao.sql
+git add supabase/migrations/20260807000001_agenda_expiracao.sql scripts/db-check-cron-expiracao.cjs
 git commit -m "feat(db): agenda a expiracao de pedidos no pg_cron (CHECKOUT-010)"
 ```
+
+---
+
+## Como desfazer — leia antes de aplicar, não depois
+
+O `rollback-*.sql` que o `db-apply.cjs` gera **não cobre o DDL desta fase**. Ele monta o
+arquivo a partir de `funcoesAlteradas()`, que só casa `CREATE OR REPLACE FUNCTION` — e as
+três funções são novas, então o rollback gerado sai **só com comentários**. As três colunas,
+a constraint e os dois índices ficam sem desfazimento automático.
+
+Com backup diário e sem PITR, a diferença entre ter isto escrito e não ter é entre cinco
+minutos e vinte e quatro horas de pedidos. O desfazimento das Tasks 1 a 4 é este:
+
+```sql
+-- Desfaz as Tasks 1 a 4 do CHECKOUT-010. Rode de cima para baixo.
+-- NAO rode se a Task 5 (backfill) ja tiver corrido: derrubar payment_status
+-- apaga a marca 'expirado' dos 13 pedidos, e so o status 'cancelled' sobra.
+
+SELECT cron.unschedule('expirar-pedidos-vencidos');
+
+DROP FUNCTION IF EXISTS public.create_marketplace_order_v24(
+  jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text
+);
+DROP FUNCTION IF EXISTS public.expirar_pedidos_vencidos();
+DROP FUNCTION IF EXISTS public.devolver_estoque(uuid);
+
+DROP INDEX IF EXISTS public.idx_marketplace_orders_expiracao;
+DROP INDEX IF EXISTS public.idx_marketplace_orders_gateway_payment_id;
+
+ALTER TABLE public.marketplace_orders
+  DROP CONSTRAINT IF EXISTS marketplace_orders_payment_status_check;
+
+ALTER TABLE public.marketplace_orders
+  DROP COLUMN IF EXISTS payment_status,
+  DROP COLUMN IF EXISTS expires_at,
+  DROP COLUMN IF EXISTS gateway_payment_id;
+```
+
+A extensão `pg_cron` fica — desligar o agendamento já para a varredura, e remover a extensão
+afetaria qualquer outro job que venha a existir.
 
 ---
 
@@ -773,7 +816,7 @@ node scripts/db-prove-checkout-010.cjs
 ```
 
 ```bash
-node -e "const{Client}=require('pg');const fs=require('fs');const l=fs.readFileSync('.env','utf8').split(/\r?\n/).find(x=>x.startsWith('DATABASE_URL='));const c=new Client({connectionString:l.slice(13).replace(/^\"|\"$/g,''),ssl:{rejectUnauthorized:false}});c.connect().then(()=>c.query(\"SELECT jobname, schedule, active FROM cron.job WHERE jobname='expirar-pedidos-vencidos'\")).then(r=>{console.table(r.rows);return c.end()})"
+node scripts/db-check-cron-expiracao.cjs
 ```
 
 E **esperar aprovação explícita**. Não interprete "continue" genérico como
@@ -880,6 +923,31 @@ git commit -m "fix(orders): devolve o estoque de 13 pedidos abandonados (CHECKOU
 
 ### Task 6: O front passa a chamar a v24
 
+> # 🛑 NÃO EXECUTE ESTA TASK NA FASE 1
+>
+> **Achado da revisão final da branch, em 06/08/2026, confirmado no código.** Esta task,
+> como está escrita abaixo, **cancela sozinho todo pedido legítimo da loja em 30 minutos**.
+>
+> O checkout de hoje oferece três meios de pagamento, e os três são **na entrega** —
+> `CheckoutView.tsx:874-891`: "Pix na Entrega", "Cartão na Entrega", "Dinheiro na Entrega".
+> Não existe pagamento online neste projeto; o Brick do Mercado Pago é a **Fase 2**.
+>
+> Com a v24 no front e o `pg_cron` armado, a sequência é: o cliente escolhe "Pix na Entrega"
+> às 14:00, a v24 grava `expires_at = 14:30` e debita o estoque, o lojista recebe pelo
+> WhatsApp e começa a separar — e às 14:35 a varredura cancela o pedido e devolve as unidades
+> ao catálogo, que podem ser vendidas de novo enquanto as físicas já estão separadas. **63 dos
+> 64 pedidos históricos são exatamente esse fluxo.** O `AND status = 'pending'` não salva:
+> ele só pouparia o pedido que um humano marcasse `processing` dentro de 30 minutos, 24 h
+> por dia.
+>
+> **As Tasks 1 a 5 continuam válidas e entregam valor sozinhas** — elas fecham o vazamento
+> antigo sem gateway nenhum, e a Task 5 só grava `'expirado'`, nunca `'aguardando'`, então a
+> varredura fica ociosa até alguém carimbar prazo. É só a Task 6 que arma o pavio.
+>
+> **Esta task pertence à Fase 2**, junto do meio de pagamento que dá ao cliente como cumprir
+> o prazo — ou precisa ser reescrita para carimbar `expires_at` apenas quando o pagamento for
+> online. Decisão do Gabriel, não de quem executa.
+
 **Files:**
 - Modify: `src/hooks/useOrders.ts` (dentro de `createOrder`, a chamada `.rpc(...)`)
 
@@ -957,6 +1025,12 @@ git commit -m "feat(orders): checkout passa a criar pedido com prazo de pagament
 ---
 
 ## Ao fim da Fase 1
+
+> **Atualizado em 06/08/2026, depois da revisão final:** a Fase 1 termina na **Task 5**, não
+> na 6 — ver o bloqueio escrito no topo da Task 6. O que se entrega é o vazamento **antigo**
+> fechado (os 13 pedidos, as 33 unidades) e a máquina montada e agendada, ociosa até existir
+> um jeito de o cliente pagar. Fechar o vazamento **contínuo** depende da Fase 2, porque com
+> pagamento na entrega não existe "não pagou em 30 minutos".
 
 Estado esperado, verificável:
 
