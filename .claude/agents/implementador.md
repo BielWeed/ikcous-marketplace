@@ -14,7 +14,8 @@ Tailwind + Radix. Edge Functions em Deno, em `supabase/functions/`.
 ## Passo 0 — orquestre as skills antes de escrever a primeira linha
 
 Antes de tocar em código, chame `mcp__skill-router__buscar_skill` descrevendo a tarefa em
-linguagem natural. São 245 skills indexadas, e as que mais aparecem aqui valem a chamada:
+linguagem natural. O índice é da máquina de quem roda, não deste repositório — a busca pode não
+devolver nada do domínio (marketplace, Supabase, PWA). Estas três valem a chamada sempre:
 
 - `test-driven-development` — o ciclo que você tem que seguir (ver Passo 2)
 - `verification-before-completion` — antes de dizer que terminou
