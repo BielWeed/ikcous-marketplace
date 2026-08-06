@@ -1,3 +1,4 @@
+import { PagamentoOnline } from "@/components/checkout/PagamentoOnline";
 import { Button } from "@/components/ui/button";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
@@ -9,6 +10,7 @@ import { useCart } from "@/hooks/useCart";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useOrders } from "@/hooks/useOrders";
+import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
 import { cn } from "@/lib/utils";
 import type { Address, CartItem, Customer, PaymentMethod, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -216,6 +218,9 @@ export function CheckoutView({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [orderId, setOrderId] = useState("");
+  // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
+  // function, dentro do PagamentoOnline (ver comentário lá).
+  const [aguardandoPagamento, setAguardandoPagamento] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<{
     code: string;
     discount: number;
@@ -443,11 +448,23 @@ export function CheckoutView({
     };
 
     try {
-      const order = await createOrder(orderData);
+      const ehOnline = paymentMethod === "online";
+      const order = await createOrder(orderData, {
+        comPagamentoOnline: ehOnline,
+      });
       setOrderId(order.id);
 
       // 🤖 Automação Solo-Ninja: O disparo agora é 100% via Backend (Edge Function + Webhook)
       onClearCart();
+
+      if (ehOnline) {
+        // NÃO mostra sucesso e NÃO solta confete: o pedido só está reservado,
+        // e quem confirma pagamento é o webhook (Fase 3). Chamar isso de
+        // sucesso aqui é a mentira que a tela de hoje conta.
+        setAguardandoPagamento(true);
+        return;
+      }
+
       setShowSuccess(true);
 
       // Trigger confetti celebration
@@ -471,6 +488,25 @@ export function CheckoutView({
       setIsSubmitting(false);
     }
   };
+
+  if (aguardandoPagamento && orderId) {
+    return (
+      <div className="min-h-dvh space-y-4 bg-gray-50/10 px-3.5 pt-4">
+        <h1 className="text-lg font-bold text-zinc-900">
+          Finalize o pagamento
+        </h1>
+        <p className="text-xs text-zinc-500">
+          Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os
+          itens voltam para o estoque e o pedido é cancelado.
+        </p>
+        <PagamentoOnline
+          orderId={orderId}
+          valor={finalTotal}
+          onErro={(msg) => toast.error(msg)}
+        />
+      </div>
+    );
+  }
 
   if (showSuccess) {
     return (
@@ -872,6 +908,16 @@ export function CheckoutView({
           </div>
           <div className="grid grid-cols-1 gap-2.5 p-4">
             {[
+              ...(PAGAMENTO_ONLINE_LIGADO
+                ? [
+                    {
+                      value: "online" as PaymentMethod,
+                      label: "Pagar agora (PIX ou cartão)",
+                      icon: CreditCard,
+                      color: "text-violet-500 bg-violet-50",
+                    },
+                  ]
+                : []),
               {
                 value: "pix" as PaymentMethod,
                 label: "Pix na Entrega",
