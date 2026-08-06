@@ -56,9 +56,13 @@ function clienteFalso(opts: {
   pedido: Record<string, unknown> | null;
   gravado: Record<string, unknown> | null;
   releitura?: Record<string, unknown> | null;
-  // Conta chamadas a .update(), para o teste do ramo "reconsultar" provar
-  // que NENHUM update foi feito — pelo cliente falso, não por leitura.
-  registro?: { chamadasUpdate: number };
+  // Conta chamadas a .update() e registra os filtros (par coluna/valor) na
+  // ORDEM em que o encadeamento real os aplica: .eq("id",...),
+  // .eq("payment_status",...), .is("gateway_payment_id",...). Sem registrar
+  // o CONTEÚDO — só manter a forma do encadeamento — arrancar uma condição
+  // (ex.: trocar "aguardando" por "pago") deixa a suíte verde, porque nada
+  // além do nome do método (.eq/.is) estava sendo provado.
+  registro?: { chamadasUpdate: number; filtrosUpdate?: Array<[string, unknown]> };
 }) {
   let chamadasSelect = 0;
   return {
@@ -74,13 +78,22 @@ function clienteFalso(opts: {
           };
         },
         update(_valores: Record<string, unknown>) {
-          if (opts.registro) opts.registro.chamadasUpdate++;
+          if (opts.registro) {
+            opts.registro.chamadasUpdate++;
+            opts.registro.filtrosUpdate = [];
+          }
+          const registrarFiltro = (coluna: string, valor: unknown) => {
+            opts.registro?.filtrosUpdate?.push([coluna, valor]);
+          };
           return {
-            eq(_c1: string, _v1: unknown) {
+            eq(c1: string, v1: unknown) {
+              registrarFiltro(c1, v1);
               return {
-                eq(_c2: string, _v2: unknown) {
+                eq(c2: string, v2: unknown) {
+                  registrarFiltro(c2, v2);
                   return {
-                    is(_c3: string, _v3: unknown) {
+                    is(c3: string, v3: unknown) {
+                      registrarFiltro(c3, v3);
                       return {
                         select(_cols: string) {
                           return {
@@ -333,12 +346,24 @@ Deno.test("handler: duas chamadas concorrentes — a que perde o UPDATE NÃO dev
 
 // --- handler: rodada 2 — reconsultar em vez de recusar quando já tem cobrança
 
-/** `fetch` falso da reconsulta: devolve exatamente o corpo que o teste passar,
- * sem olhar a URL nem o método — o que a URL/método realmente foi é provado
- * pelos testes de `_shared/mercadopago_test.ts`, não aqui. */
-function fetchFalsoConsulta(corpoDaResposta: Record<string, unknown>) {
-  return async (_url: string, _init?: RequestInit) =>
-    new Response(JSON.stringify(corpoDaResposta), { status: 200 });
+/** `fetch` falso da reconsulta: devolve exatamente o corpo que o teste
+ * passar, e GUARDA método e corpo da requisição que recebeu — mesmo padrão
+ * de `mercadopago_test.ts:277-281` uma camada abaixo. Sem isso, trocar
+ * `consultarPagamento` por `criarPagamento` dentro do ramo `reconsultar`
+ * (um POST de verdade, com corpo, no Mercado Pago) passava batido: o
+ * cliente falso aqui não olhava método nem body, só o que a resposta
+ * continha. */
+function fetchFalsoConsulta(
+  corpoDaResposta: Record<string, unknown>,
+  capturado?: { method?: string; body?: BodyInit | null | undefined },
+) {
+  return async (_url: string, init?: RequestInit) => {
+    if (capturado) {
+      capturado.method = init?.method;
+      capturado.body = init?.body;
+    }
+    return new Response(JSON.stringify(corpoDaResposta), { status: 200 });
+  };
 }
 
 Deno.test("handler: pedido com cobrança existente reconsulta no MP, devolve o MESMO QR, e NÃO faz UPDATE", async () => {
@@ -346,11 +371,15 @@ Deno.test("handler: pedido com cobrança existente reconsulta no MP, devolve o M
   const pedido = pedidoBase({ gateway_payment_id: "789" });
   const registro = { chamadasUpdate: 0 };
   const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
-  const fetchImpl = fetchFalsoConsulta({
-    id: 789,
-    status: "pending",
-    point_of_interaction: { transaction_data: { qr_code: "QRCODE-DA-RECONSULTA" } },
-  });
+  const capturado: { method?: string; body?: BodyInit | null | undefined } = {};
+  const fetchImpl = fetchFalsoConsulta(
+    {
+      id: 789,
+      status: "pending",
+      point_of_interaction: { transaction_data: { qr_code: "QRCODE-DA-RECONSULTA" } },
+    },
+    capturado,
+  );
 
   const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
     supabase,
@@ -362,6 +391,11 @@ Deno.test("handler: pedido com cobrança existente reconsulta no MP, devolve o M
   assertEquals(corpo.paymentId, "789");
   assertEquals(corpo.qrCode, "QRCODE-DA-RECONSULTA");
   assertEquals(registro.chamadasUpdate, 0);
+  // A metade que faltava provar: reconsulta é GET, sem body. Trocar
+  // consultarPagamento por criarPagamento aqui viraria um POST com corpo —
+  // e cada F5 do cliente geraria uma tentativa de cobrança nova no MP.
+  assertEquals(capturado.method, "GET");
+  assertEquals(capturado.body, undefined);
 });
 
 Deno.test("handler: pedido sem cobrança existente cria uma nova e grava gateway_payment_id", async () => {
@@ -371,7 +405,9 @@ Deno.test("handler: pedido sem cobrança existente cria uma nova e grava gateway
   // sozinho não pegasse isso.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   const pedido = pedidoBase();
-  const registro = { chamadasUpdate: 0 };
+  const registro: { chamadasUpdate: number; filtrosUpdate?: Array<[string, unknown]> } = {
+    chamadasUpdate: 0,
+  };
   const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
   const fetchImpl = fetchFalsoMP({});
 
@@ -382,6 +418,16 @@ Deno.test("handler: pedido sem cobrança existente cria uma nova e grava gateway
 
   assertEquals(resposta.status, 200);
   assertEquals(registro.chamadasUpdate, 1);
+  // Não basta encadear .eq().eq().is() — o CONTEÚDO é o que impede o UPDATE
+  // de casar a linha errada (ou nenhuma). Sem esta asserção, trocar
+  // "aguardando" por "pago", ou "gateway_payment_id" por outra coluna,
+  // deixava a suíte verde: a mutação só quebra o encadeamento se o nome do
+  // MÉTODO sumir (.is deixa de existir), não se o valor mudar.
+  assertEquals(registro.filtrosUpdate, [
+    ["id", UUID],
+    ["payment_status", "aguardando"],
+    ["gateway_payment_id", null],
+  ]);
 });
 
 Deno.test("handler: pedido expirado com cobrança existente recusa, não reconsulta", async () => {

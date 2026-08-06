@@ -126,8 +126,12 @@ export function subDoToken(authorization: string | null): string | null {
  * `criarPagamento`: sem ela, o handler só é alcançável fazendo requisição HTTP
  * de verdade contra Postgres e Mercado Pago reais, e a fiação onde a
  * autorização e o dinheiro de fato acontecem (não só os decisores puros)
- * fica sem teste algum. Com o default vazio, o comportamento em produção não
- * muda: continua criando o client real a partir do ambiente.
+ * fica sem teste algum. Em produção o `serve()` lá embaixo chama
+ * `handler(req)` com um único argumento — de propósito, e não
+ * `serve(handler)` direto: o `serve` do std passa um segundo argumento
+ * (`ConnInfo`, com `localAddr`/`remoteAddr`) que NÃO é `deps`, e cairia no
+ * parâmetro por acidente. Com um único argumento, `deps` sempre usa o
+ * default `{}` em produção: client real a partir do ambiente.
  */
 async function handler(
   req: Request,
@@ -310,6 +314,8 @@ const emTeste =
   Deno.mainModule.endsWith("_test.js") ||
   Deno.mainModule.includes("index_test");
 
-if (!emTeste) serve(handler);
+// (req) => handler(req), não serve(handler) direto: ver o comentário em
+// :124-135 sobre o segundo argumento (ConnInfo) que o serve() passaria.
+if (!emTeste) serve((req) => handler(req));
 
 export { handler };
