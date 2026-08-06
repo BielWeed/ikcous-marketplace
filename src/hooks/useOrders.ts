@@ -883,37 +883,45 @@ export function useOrders(
   }, []);
 
   const createOrder = useCallback(
-    async (orderData: any) => {
+    async (orderData: any, opts?: { comPagamentoOnline?: boolean }) => {
       // 🛡️ Checkout de Convidados: O login não é mais obrigatório no frontend.
       // O RPC v22 cuidará da atribuição do user_id (NULL para convidados).
+
+      // A v24 é idêntica à v23 no caminho do dinheiro — validação de preço,
+      // estoque, frete e cupom são o mesmo corpo. A ÚNICA diferença é que ela
+      // carimba payment_status='aguardando' e expires_at = now() + 30min.
+      //
+      // Por isso a escolha é do chamador e não uma troca global: pedido "na
+      // entrega" não pode ganhar prazo, senão o pg_cron cancela venda legítima
+      // — foi essa a correção que tirou a troca da Fase 1.
+      const rpc = opts?.comPagamentoOnline
+        ? "create_marketplace_order_v24"
+        : "create_marketplace_order_v23";
 
       try {
         // 🛡️ SECURITY: Usando a RPC v22 Blindada (Zero-Trust)
         // O backend recalcula o total consultando os preços diretamente do banco (produtos/variants)
         // e usa o 'p_total_amount' como um Checksum para garantir integridade.
-        const { data, error } = await (supabase as any).rpc(
-          "create_marketplace_order_v23",
-          {
-            p_items: orderData.items.map((item: any) => ({
-              product_id: item.product_id || item.productId,
-              variant_id: item.variant_id || item.variantId || null,
-              quantity: item.quantity,
-            })),
-            p_total_amount: orderData.totalAmount,
-            p_shipping_cost: orderData.shippingCost,
-            p_payment_method: orderData.paymentMethod,
-            p_address_id: orderData.addressId || null,
-            p_coupon_code: orderData.couponCode || null,
-            p_customer_name: orderData.customer.name,
-            p_customer_phone: orderData.customer.whatsapp,
-            p_observation: orderData.notes || null,
-            p_address_data: orderData.addressData || null,
-            // O banco usa estes dois para localizar a cotação que ELE gravou e
-            // confirmar o valor do frete. O preço enviado pelo cliente é ignorado.
-            p_destination_cep: orderData.destinationCep || null,
-            p_shipping_option_id: orderData.shippingOptionId || null,
-          },
-        );
+        const { data, error } = await (supabase as any).rpc(rpc, {
+          p_items: orderData.items.map((item: any) => ({
+            product_id: item.product_id || item.productId,
+            variant_id: item.variant_id || item.variantId || null,
+            quantity: item.quantity,
+          })),
+          p_total_amount: orderData.totalAmount,
+          p_shipping_cost: orderData.shippingCost,
+          p_payment_method: orderData.paymentMethod,
+          p_address_id: orderData.addressId || null,
+          p_coupon_code: orderData.couponCode || null,
+          p_customer_name: orderData.customer.name,
+          p_customer_phone: orderData.customer.whatsapp,
+          p_observation: orderData.notes || null,
+          p_address_data: orderData.addressData || null,
+          // O banco usa estes dois para localizar a cotação que ELE gravou e
+          // confirmar o valor do frete. O preço enviado pelo cliente é ignorado.
+          p_destination_cep: orderData.destinationCep || null,
+          p_shipping_option_id: orderData.shippingOptionId || null,
+        });
 
         if (error) throw error;
         if (!data) throw new Error("Falha ao obter ID do pedido");
@@ -937,6 +945,61 @@ export function useOrders(
       }
     },
     [avisarLojista],
+  );
+
+  /**
+   * Pede à edge function que crie a cobrança no Mercado Pago.
+   *
+   * Diferente do avisarLojista (PEDIDO-020), aqui o cliente ESPERA: sem a
+   * resposta não há QR code para mostrar. Erro aqui não perde o pedido — ele
+   * já está criado e expira sozinho em 30 minutos, que é a rede descrita na
+   * spec.
+   */
+  const criarPagamento = useCallback(
+    async (args: {
+      orderId: string;
+      metodo: "pix" | "cartao";
+      token?: string;
+      parcelas?: number;
+      paymentMethodId?: string;
+      issuerId?: string;
+      email?: string;
+      documento?: { type: string; number: string };
+    }) => {
+      const { data, error } = await (supabase as any).functions.invoke(
+        "criar-pagamento",
+        { body: args },
+      );
+
+      // ATENÇÃO ao contrato do supabase-js v2, que não é o intuitivo: quando a
+      // resposta NÃO é 2xx, `data` chega NULL e o corpo fica em `error.context`,
+      // que é um Response. Ler só `data?.error` — como a primeira versão deste
+      // plano mandava — jogaria fora as quatro mensagens distintas que a edge
+      // function escreve com cuidado ("Este pedido já tem uma cobrança gerada.",
+      // "O prazo para pagar este pedido acabou.", "Pedido inválido.",
+      // "Pagamento indisponível.") e mostraria a mesma frase genérica em todas.
+      if (error) {
+        let mensagem = "Não foi possível gerar a cobrança.";
+        try {
+          const corpo = await (error as any).context?.json?.();
+          if (corpo?.error) mensagem = corpo.error;
+        } catch {
+          // Corpo ilegível: fica a mensagem genérica, que é melhor que vazar
+          // o texto cru de um erro de infraestrutura para o cliente.
+        }
+        throw new Error(mensagem);
+      }
+      if (data?.error) throw new Error(data.error);
+      return data as {
+        paymentId: string;
+        status: string;
+        expiraEm: string;
+        qrCode?: string;
+        qrCodeBase64?: string;
+        ticketUrl?: string;
+      };
+    },
+    [],
   );
 
   const generateOrderOtp = useCallback(
@@ -1141,6 +1204,7 @@ export function useOrders(
     generateOrderOtp,
     fetchOrdersByOtp,
     createOrder,
+    criarPagamento,
     fetchDashboardSummary,
     fetchOrderHistory,
     subscribeToOrders,

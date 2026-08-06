@@ -113,7 +113,20 @@ export type OrderStatus =
   | "shipping"
   | "delivered"
   | "cancelled";
-export type PaymentMethod = "pix" | "card" | "cash";
+export type PaymentMethod = "pix" | "card" | "cash" | "online";
+
+/**
+ * Espelha a CHECK constraint marketplace_orders_payment_status_check, criada
+ * na migration 20260807000000. Mudar aqui sem mudar lá (ou o contrário) é como
+ * o pedido fica com estado que o banco recusa.
+ */
+export type PaymentStatus =
+  | "aguardando"
+  | "pago"
+  | "recusado"
+  | "expirado"
+  | "estornado"
+  | "pago_apos_expirar";
 
 export interface OrderItem {
   productId: string;
