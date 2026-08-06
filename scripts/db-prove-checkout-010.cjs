@@ -19,7 +19,8 @@ function lerDatabaseUrl() {
     // eslint-disable-next-line security/detect-non-literal-fs-filename
     if (!fs.existsSync(caminho)) continue;
     // eslint-disable-next-line security/detect-non-literal-fs-filename
-    const linha = fs.readFileSync(caminho, "utf8")
+    const linha = fs
+      .readFileSync(caminho, "utf8")
       .split(/\r?\n/)
       .find((l) => l.startsWith("DATABASE_URL="));
     if (linha) return linha.slice("DATABASE_URL=".length).replace(/^"|"$/g, "");
@@ -137,7 +138,9 @@ async function main() {
       [varianteId],
     );
 
-    await client.query("SELECT public.devolver_estoque($1)", [pedVar.rows[0].id]);
+    await client.query("SELECT public.devolver_estoque($1)", [
+      pedVar.rows[0].id,
+    ]);
 
     const varDepois = await client.query(
       "SELECT stock_increment FROM public.product_variants WHERE id = $1",
