@@ -30,9 +30,13 @@ export function carregarSdkMercadoPago(): Promise<void> {
 
     tag.addEventListener("load", () => resolve());
     tag.addEventListener("error", () => {
-      // Zera para uma tentativa futura poder recomeçar — senão a página inteira
-      // fica presa num erro de rede momentâneo.
+      // Zera para uma tentativa futura poder recomeçar — e REMOVE a tag morta.
+      // Sem o remove(), a próxima chamada acha esta tag via querySelector, cai
+      // no ramo `if (!existente)` e nunca reanexa `src`/listeners a um script
+      // que já falhou: nem resolve, nem rejeita, a Promise nova fica pendurada
+      // para sempre.
       promessaSdk = null;
+      tag.remove();
       reject(new Error("Não foi possível carregar o pagamento."));
     });
 
@@ -42,59 +46,72 @@ export function carregarSdkMercadoPago(): Promise<void> {
   return promessaSdk;
 }
 
-export function PagamentoOnline({
+/**
+ * Monta o Payment Brick e devolve a função de desmontagem do efeito.
+ *
+ * Extraída do `useEffect` do componente por dois motivos:
+ *
+ * 1. A guarda contra o StrictMode e o cancelamento do efeito precisam falar a
+ *    MESMA língua. `cancelado` é checado nos dois únicos pontos em que dá
+ *    para abortar sem deixar rastro: antes do `create()` (a IIFE cancelada
+ *    nunca chega a criar nada — é o que faz o StrictMode montar/desmontar/
+ *    remontar sem duplicar o Brick, sem precisar de um `jaMontou` que bloqueia
+ *    a segunda montagem de verdade também) e depois dele (a criação já
+ *    aconteceu; só dá para desfazer desmontando — sem isso, uma criação em
+ *    voo cujo efeito já foi cancelado ficava abandonada, e o bundle do Brick
+ *    reclama "Brick already initialized" na próxima tentativa, porque só o
+ *    `unmount()` dele limpa o estado interno).
+ * 2. Isola a corrida do StrictMode e o ciclo de vida do Brick de qualquer
+ *    aparato de teste de React — o teste chama esta função diretamente,
+ *    simula mount → cleanup → mount e confere o que o SDK real (mockado)
+ *    fez, sem precisar renderizar componente nenhum.
+ *
+ * Exportada para teste — não é API pública do componente.
+ */
+export function montarBrick({
   orderId,
   valor,
+  criarPagamento,
   onErro,
+  onPix,
 }: {
   orderId: string;
   valor: number;
+  criarPagamento: ReturnType<typeof useOrders>["criarPagamento"];
   onErro: (msg: string) => void;
-}) {
-  const { criarPagamento } = useOrders(false, true);
-  const container = useRef<HTMLDivElement>(null);
-  const jaMontou = useRef(false);
-  // `expiraEm` vem junto do PIX, da resposta da edge function — é o prazo que
-  // está gravado na linha do pedido, o mesmo que o pg_cron vai ler.
-  const [pix, setPix] = useState<{
+  onPix: (pix: {
     qrCodeBase64?: string;
     qrCode?: string;
     expiraEm: string;
-  } | null>(null);
+  }) => void;
+}): () => void {
+  let cancelado = false;
+  let controlador: { unmount: () => void } | null = null;
 
-  useEffect(() => {
-    // Guarda contra o duplo mount do StrictMode: sem ela o Brick renderiza
-    // duas vezes e a segunda sobrescreve o container vazio.
-    if (jaMontou.current) return;
-    jaMontou.current = true;
+  (async () => {
+    try {
+      await carregarSdkMercadoPago();
+      if (cancelado) return;
 
-    let cancelado = false;
+      const publicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
+      if (!publicKey) throw new Error("Pagamento indisponível.");
 
-    (async () => {
-      try {
-        await carregarSdkMercadoPago();
-        if (cancelado) return;
+      // @ts-expect-error o SDK entra pelo global
+      const mp = new globalThis.MercadoPago(publicKey, { locale: "pt-BR" });
 
-        const publicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
-        if (!publicKey) throw new Error("Pagamento indisponível.");
-
-        // @ts-expect-error o SDK entra pelo global
-        const mp = new globalThis.MercadoPago(publicKey, { locale: "pt-BR" });
-
-        await mp.bricks().create("payment", "mp-container", {
-          initialization: { amount: valor },
-          customization: {
-            paymentMethods: { bankTransfer: "all", creditCard: "all" },
+      const criado = await mp.bricks().create("payment", "mp-container", {
+        initialization: { amount: valor },
+        customization: {
+          paymentMethods: { bankTransfer: "all", creditCard: "all" },
+        },
+        callbacks: {
+          onReady: () => {},
+          onError: (erro: unknown) => {
+            console.error("brick:", erro);
+            onErro("Não foi possível carregar o pagamento.");
           },
-          callbacks: {
-            onReady: () => {},
-            onError: (erro: unknown) => {
-              console.error("brick:", erro);
-              onErro("Não foi possível carregar o pagamento.");
-            },
-            onSubmit: async ({
-              formData,
-            }: { formData: Record<string, any> }) => {
+          onSubmit: async ({ formData }: { formData: Record<string, any> }) => {
+            try {
               // PIX volta sem token; cartão volta tokenizado NO NAVEGADOR — o
               // número do cartão não passa pelo nosso servidor.
               const ehPix = !formData.token;
@@ -109,24 +126,79 @@ export function PagamentoOnline({
                 documento: formData.payer?.identification,
               });
               if (ehPix) {
-                setPix({
+                // O Brick some do DOM quando o JSX troca para o QR — desmonta
+                // ANTES de trocar, senão a próxima montagem (voltar ao
+                // checkout sem recarregar a página) esbarra em "Brick
+                // already initialized".
+                controlador?.unmount();
+                controlador = null;
+                onPix({
                   qrCodeBase64: r.qrCodeBase64,
                   qrCode: r.qrCode,
                   expiraEm: r.expiraEm,
                 });
               }
-            },
+            } catch (err: any) {
+              // As quatro mensagens de criarPagamento (useOrders.ts:974-980)
+              // só chegam ao cliente se saírem por aqui — sem este catch, a
+              // rejeição desaparece dentro do próprio SDK e a tela fica muda.
+              onErro(err?.message ?? "Não foi possível gerar a cobrança.");
+              // Relança para o Brick saber que o envio falhou e sair do
+              // estado "processando" — engolir aqui prende o botão.
+              throw err;
+            }
           },
-        });
-      } catch (err: any) {
-        if (!cancelado)
-          onErro(err?.message ?? "Não foi possível carregar o pagamento.");
-      }
-    })();
+        },
+      });
 
-    return () => {
-      cancelado = true;
-    };
+      if (cancelado) {
+        // O efeito já foi cancelado (StrictMode remontando, ou desmontagem de
+        // verdade) enquanto o create() estava em voo: desmonta em vez de
+        // abandonar.
+        criado.unmount();
+        return;
+      }
+      controlador = criado;
+    } catch (err: any) {
+      if (!cancelado)
+        onErro(err?.message ?? "Não foi possível carregar o pagamento.");
+    }
+  })();
+
+  return () => {
+    cancelado = true;
+    controlador?.unmount();
+    controlador = null;
+  };
+}
+
+export function PagamentoOnline({
+  orderId,
+  valor,
+  onErro,
+}: {
+  orderId: string;
+  valor: number;
+  onErro: (msg: string) => void;
+}) {
+  const { criarPagamento } = useOrders(false, true);
+  const container = useRef<HTMLDivElement>(null);
+  // `expiraEm` vem junto do PIX, da resposta da edge function — é o prazo que
+  // está gravado na linha do pedido, o mesmo que o pg_cron vai ler.
+  const [pix, setPix] = useState<{
+    qrCodeBase64?: string;
+    qrCode?: string;
+    expiraEm: string;
+  } | null>(null);
+
+  useEffect(() => {
+    return montarBrick({
+      orderId,
+      valor,
+      criarPagamento,
+      onErro,
+      onPix: setPix,
+    });
   }, [orderId, valor, criarPagamento, onErro]);
 
   if (pix) {
