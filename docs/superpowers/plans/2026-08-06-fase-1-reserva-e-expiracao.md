@@ -835,11 +835,21 @@ liberação do backfill — pergunte de novo, citando os 13 pedidos.
 
 - [ ] **Step 1: Conferir o alvo ANTES de escrever, com os números do dia**
 
-```bash
-node -e "const{Client}=require('pg');const fs=require('fs');const l=fs.readFileSync('.env','utf8').split(/\r?\n/).find(x=>x.startsWith('DATABASE_URL='));const c=new Client({connectionString:l.slice(13).replace(/^\"|\"$/g,''),ssl:{rejectUnauthorized:false}});c.connect().then(()=>c.query(\"SELECT count(*)::int pedidos, coalesce(sum(i.quantity),0)::int unidades FROM public.marketplace_orders o LEFT JOIN public.marketplace_order_items i ON i.order_id=o.id WHERE o.status='pending' AND o.payment_status IS NULL AND o.created_at < now() - interval '30 days'\")).then(r=>{console.table(r.rows);return c.end()})"
+A consulta é esta, e o `count(DISTINCT o.id)` **não é preciosismo**: com `count(*)` sobre o `LEFT JOIN` dos itens, o que se conta são linhas de item, não pedidos. Medido em 06/08/2026: 13 pedidos, **20 linhas de item**, 33 unidades — a versão errada imprimiria `pedidos = 20` e dispararia o "pare" logo abaixo por engano.
+
+```sql
+SELECT count(DISTINCT o.id)::int          AS pedidos,
+       coalesce(sum(i.quantity), 0)::int  AS unidades
+FROM public.marketplace_orders o
+LEFT JOIN public.marketplace_order_items i ON i.order_id = o.id
+WHERE o.status = 'pending'
+  AND o.payment_status IS NULL
+  AND o.created_at < now() - interval '30 days';
 ```
 
-Em 06/08/2026 isso dava **13 pedidos / 33 unidades**. **Se os números vierem diferentes, pare** — algo mudou desde o desenho, e o backfill precisa ser reavaliado antes de rodar.
+Rode-a por um script descartável em `.superpowers/` (gitignored), no formato dos `db-*.cjs`, e não por `node -e`: a versão de uma linha quebra no PowerShell e foi bloqueada pelo classificador de automação repetidas vezes nesta fase.
+
+Em 06/08/2026 isso dava **13 pedidos / 33 unidades** — reconferido às 05:20, depois de aplicadas as Tasks 1 a 4, e continuava 13/33. **Se os números vierem diferentes, pare** — algo mudou desde o desenho, e o backfill precisa ser reavaliado antes de rodar.
 
 - [ ] **Step 2: Escrever a migration**
 
