@@ -167,10 +167,23 @@ decisão 2 da spec (PIX + cartão) precisa ser revista antes de qualquer código
 - Consumes: nada de tarefas anteriores; só o `MP_ACCESS_TOKEN` do ambiente, e mesmo esse
   é recebido por parâmetro, não lido aqui dentro.
 - Produces:
-  - `type MpStatus = "approved" | "rejected" | "cancelled" | "pending" | "in_process" | "authorized" | "refunded" | "charged_back"`
-  - `mapearStatus(status: string): "pago" | "recusado" | "aguardando" | "estornado" | null`
-  - `montarCorpoPix(args: { valor: number; descricao: string; email: string; expiraEm: string }): Record<string, unknown>`
-  - `montarCorpoCartao(args: { valor: number; descricao: string; email: string; token: string; parcelas: number; metodo: string; emissor?: string; documento?: { type: string; number: string } }): Record<string, unknown>`
+  - `mapearStatus(status: string): string | null` — as saídas possíveis são
+    `"pago" | "recusado" | "aguardando" | "estornado" | null`, mas o parâmetro é
+    `string` solto de propósito: o valor da função é aceitar o que o MP inventar
+    amanhã e devolver `null`. Não existe `MpStatus` — tipar a entrada como união de
+    literais tornaria impossível escrever o teste do status desconhecido, e nada
+    neste repositório tipa edge function (`@ts-nocheck` + `--no-check` + o
+    `tsconfig.app.json` que só inclui `src` e `tests/front`). O guarda real é o
+    `CHECK` `marketplace_orders_payment_status_check`.
+  - `montarCorpoPix(args: { orderId: string; valor: number; descricao: string; email: string; expiraEm: string }): Record<string, unknown>`
+  - `montarCorpoCartao(args: { orderId: string; valor: number; descricao: string; email: string; token: string; parcelas: number; metodo: string; emissor?: string; documento?: { type: string; number: string } }): Record<string, unknown>`
+
+> **`orderId` vira `external_reference` no corpo enviado ao MP.** Não estava no
+> desenho original e entrou na revisão da Task 1: sem ele o Mercado Pago não guarda
+> ponteiro de volta para o pedido, e a reconciliação da Fase 3 — que este plano
+> promete como rede para cobrança órfã — seria casamento manual por valor + e-mail +
+> horário. **Quem chama tem de passar**, e nada no repositório avisa se esquecer:
+> `JSON.stringify` simplesmente descarta a chave `undefined`.
   - `formatarExpiracao(iso: string): string` — ISO com offset, que é o que o MP exige
   - `criarPagamento(args: { token: string; corpo: Record<string, unknown>; chaveIdempotencia: string; fetchImpl?: typeof fetch; baseUrl?: string }): Promise<{ ok: true; id: string; status: string; qrCode?: string; qrCodeBase64?: string; ticketUrl?: string } | { ok: false; erro: string; status: number }>`
 
@@ -856,12 +869,14 @@ async function handler(req: Request): Promise<Response> {
   const corpo =
     body.metodo === "pix"
       ? montarCorpoPix({
+          orderId: pedido.id,
           valor: Number(pedido.total),
           descricao: descricaoDoPedido(pedido.id),
           email: String(email),
           expiraEm: formatarExpiracao(pedido.expires_at),
         })
       : montarCorpoCartao({
+          orderId: pedido.id,
           valor: Number(pedido.total),
           descricao: descricaoDoPedido(pedido.id),
           email: String(email),
