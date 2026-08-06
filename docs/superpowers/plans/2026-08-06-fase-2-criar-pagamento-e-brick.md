@@ -1319,13 +1319,46 @@ git commit -m "feat(checkout): flag de pagamento online e escolha entre v23 e v2
 
 Em `vercel.json:36`, a política precisa ganhar, **nesta ordem de diretiva**:
 
+> **Esta tabela foi MEDIDA, não estimada.** A primeira versão dela era chute meu, e a
+> revisão da Task 4 a corrigiu baixando os dois bundles servidos em runtime —
+> `https://sdk.mercadopago.com/js/v2` (268 KB) e o Payment Brick que ele carrega,
+> `http2.mlstatic.com/frontend-assets/op-cho-bricks/build/3.16.0/components/payment.js`
+> (210 KB) — e varrendo os hosts que aparecem neles. **Não existe página oficial de CSP
+> do Mercado Pago**; a evidência é o código servido.
+
 | diretiva | acrescentar | por quê |
 | --- | --- | --- |
-| `script-src` | `https://sdk.mercadopago.com https://*.mlstatic.com` | o SDK v2 e os bundles que ele puxa |
-| `connect-src` | `https://api.mercadopago.com https://api.mercadolibre.com https://events.mercadopago.com` | tokenização e telemetria do Brick |
-| `frame-src` | **criar a diretiva** com `https://sdk.mercadopago.com https://*.mercadopago.com https://*.mercadolibre.com` | hoje ela não existe e cai no `default-src 'self'`, que recusa o iframe do cartão |
-| `img-src` | `https://*.mlstatic.com` | bandeiras de cartão |
-| `style-src` | `https://*.mlstatic.com` | folha do Brick |
+| `script-src` | `https://sdk.mercadopago.com https://http2.mlstatic.com` | o SDK v2 e o bundle do Brick. **Host exato, não `*.mlstatic.com`**: os dois bundles apontam para esse host único (`assetsBaseUrl` e o `publicPath` do webpack), e `mlstatic.com` é CDN do Mercado Livre com muitos subdomínios — curinga ali autoriza execução de script no site inteiro, incluindo as rotas onde a sessão do Supabase está no `localStorage` |
+| `connect-src` | `https://api.mercadopago.com https://api.mercadolibre.com https://secure-fields.mercadopago.com https://api-static.mercadopago.com` | os dois primeiros são API e telemetria. **Os dois últimos são o que faz o cartão funcionar**: o SDK faz `fetchPage` (requisição, não navegação) contra `secure-fields.mercadopago.com`, com `api-static.mercadopago.com/secure-fields` de fallback, ANTES de atribuir o `src` do iframe do campo de cartão. Sem eles o Brick emite `Unable to load cardNumber: Failed to fetch` |
+| `frame-src` | **criar a diretiva** com `https://*.mercadopago.com https://*.mercadolibre.com` | hoje ela não existe e cai no `default-src 'self'`, que recusa o iframe do cartão. O curinga de `mercadopago.com` é o que cobre `secure-fields` |
+| `img-src` | `https://http2.mlstatic.com` | bandeiras de cartão, servidas de `/storage/logos-api-admin/` |
+
+**O que NÃO entra, e por que — cada um foi procurado e não achado nos bundles:**
+
+- `https://events.mercadopago.com` em `connect-src`: **zero ocorrências** nos dois bundles.
+  A telemetria real vai para `api.mercadopago.com/op-frontend-metrics/v1` e
+  `api.mercadolibre.com/tracks`, já cobertos.
+- `https://*.mlstatic.com` em `style-src`: o Brick estiliza por `style.cssText` inline,
+  que o `'unsafe-inline'` já existente cobre. Nenhum `<link rel=stylesheet>`.
+- `https://sdk.mercadopago.com` em `frame-src`: nenhum iframe é servido desse host.
+
+**Duas coisas que a varredura estática não resolve, e que só o teste no navegador fecha:**
+
+1. **Passkey.** O SDK monta `https://www.${dominio}/passkey/stand-alone`, e para o site
+   MLB o domínio é **`www.mercadolivre.com.br`** — "livre", `.com.br` — que não casa com
+   nenhum curinga da lista. Não ficou confirmado se esse fluxo é alcançável com
+   `paymentMethods: { bankTransfer, creditCard }` e sem wallet. **Não acrescente o
+   domínio por precaução**: lista larga demais é pior que lista curta corrigida com
+   evidência. Confira no console.
+2. **Desafio 3-D Secure**, que abre iframe em domínio do banco emissor e é impossível de
+   enumerar estaticamente. Se o cartão de teste cair em challenge, `frame-src` vai
+   precisar de mais.
+
+> **Efeito colateral de criar a `frame-src`:** ela **remove** a permissão de iframe
+> same-origin que hoje vem do `default-src 'self'`. Verificado na revisão: não existe
+> `<iframe`, `createElement("iframe")` nem embed em `src/`, no `index.html` ou no `dist/`
+> construído. É invariante nova, não regressão — mas quem for acrescentar um iframe
+> próprio depois precisa lembrar de `'self'`.
 
 - [ ] **Step 2: escrever o teste do carregamento do SDK**
 
