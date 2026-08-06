@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { lerFlagPagamentoOnline } from "@/lib/flags";
+import { describe, expect, it } from "vitest";
 
 describe("flag de pagamento online", () => {
   it("liga apenas com a string exata 'true'", () => {
