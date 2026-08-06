@@ -186,6 +186,7 @@ decisão 2 da spec (PIX + cartão) precisa ser revista antes de qualquer código
 > `JSON.stringify` simplesmente descarta a chave `undefined`.
   - `formatarExpiracao(iso: string): string` — ISO com offset, que é o que o MP exige
   - `criarPagamento(args: { token: string; corpo: Record<string, unknown>; chaveIdempotencia: string; fetchImpl?: typeof fetch; baseUrl?: string }): Promise<{ ok: true; id: string; status: string; qrCode?: string; qrCodeBase64?: string; ticketUrl?: string } | { ok: false; erro: string; status: number }>`
+  - `consultarPagamento(args: { token: string; paymentId: string; fetchImpl?: typeof fetch; baseUrl?: string }): Promise<mesma união de criarPagamento>` — `GET /v1/payments/{id}`. Acrescentada depois da revisão da Task 2, para a function poder devolver o QR de uma cobrança que já existe em vez de recusar com 409. Mesma forma de retorno de propósito: quem chama trata os dois iguais
 
 - [ ] **Step 1: escrever os testes que falham**
 
@@ -582,6 +583,27 @@ git commit -m "feat(edge): cliente da API do Mercado Pago, com fetch injetavel"
     ou `{ orderId: string, metodo: "cartao", token: string, parcelas: number, paymentMethodId: string, issuerId?: string, email: string, documento?: {type,number} }`
   - `200` → `{ paymentId: string, status: string, expiraEm: string, qrCode?: string, qrCodeBase64?: string, ticketUrl?: string }`
   - `4xx` → `{ error: string }`
+
+> **Correção de 06/08/2026, decidida pelo Gabriel depois da revisão da Task 2.**
+> `podeCobrar` recusa qualquer pedido que já tenha `gateway_payment_id`, e essa guarda
+> fica — ela é o que fecha o duplo-PIX. Mas do jeito que estava, ela também matava o
+> caso mais comum do PIX: o QR só existe na resposta da criação, o navegador mobile
+> descarta a aba enquanto o cliente vai ao app do banco, e ao voltar ele levava **409
+> num pedido que ainda dá para pagar**. Com 63 dos 64 pedidos da loja em PIX, esse é o
+> caminho principal, não a borda.
+>
+> **O que muda:** quando o pedido ainda está `aguardando`, dentro do prazo, e **já tem**
+> `gateway_payment_id`, a function **não** recusa — ela consulta o Mercado Pago
+> (`GET /v1/payments/{id}`) e devolve **a mesma cobrança**, com o mesmo QR. Nenhuma
+> migration: o QR não é persistido, é reconsultado na fonte. Isso também segue a
+> invariante da spec de perguntar ao MP em vez de confiar em estado local.
+>
+> **O que NÃO muda nesta fase:** cartão recusado continua sem retentativa. O MP responde
+> `201` com `status: "rejected"`, o id é gravado, e o cliente não consegue tentar outro
+> cartão — o pedido expira em 30 min e ele refaz. Resolver isso exige saber que o
+> pagamento está terminalmente recusado e versionar a chave de idempotência
+> (`orderId:1`, `orderId:2`), e quem vai saber status terminal é o webhook: **é trabalho
+> da Fase 3.** Registrado aqui para não virar surpresa lá.
 
 > **`expiraEm` vem daqui e de mais lugar nenhum.** A RPC de criação devolve só o
 > `uuid` do pedido — o front **não** sabe o prazo depois de criar. Deixar a tela
