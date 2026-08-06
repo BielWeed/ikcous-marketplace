@@ -226,31 +226,72 @@ function montarRollback(arquivos, restauracoes) {
     instrucoes += defs.length;
   }
 
+  // `restauracoes` mistura dois casos que o cabeçalho não pode tratar como
+  // iguais: função que já existia (dá para restaurar a definição anterior) e
+  // função que a migration está CRIANDO (não existe definição anterior — o
+  // único jeito de desfazer é DROP FUNCTION, que este script não gera).
+  const restauradas = restauracoes.filter((r) => r.defs.length > 0);
+  const criadas = restauracoes.filter((r) => r.defs.length === 0);
+  const nomesCriadas = criadas.map((r) => r.funcao).join(", ");
+
   const cabecalho = [
     `-- Rollback gerado automaticamente antes de aplicar: ${arquivos.join(", ")}`,
     "--",
   ];
-  if (instrucoes === 0) {
+
+  if (restauracoes.length === 0) {
+    // Nenhum CREATE OR REPLACE FUNCTION em nenhuma migration: só aqui "não
+    // redefine função" é verdade.
     cabecalho.push(
       "-- ATENÇÃO: ESTE ROLLBACK NÃO CONTÉM NENHUM COMANDO EXECUTÁVEL.",
       "-- Rodar este arquivo NÃO DESFAZ NADA.",
       "--",
       "-- Esta migration não redefine função, e o db-apply só sabe restaurar",
       "-- definição de função (CREATE OR REPLACE FUNCTION public.<nome>).",
-      "-- Desfazer o DDL/DML dela — ADD COLUMN, CREATE INDEX, constraint,",
-      "-- UPDATE/INSERT/DELETE — é MANUAL, e o ponto de partida é ler a",
-      "-- própria migration em supabase/migrations/.",
+      "-- Desfazer o resto dela — coisas como ADD COLUMN, CREATE INDEX,",
+      "-- constraint, UPDATE/INSERT/DELETE — é MANUAL, e o ponto de partida",
+      "-- é ler a própria migration em supabase/migrations/.",
+    );
+  } else if (restauradas.length === 0) {
+    // Toca função, mas todas novas: nada a restaurar, arquivo continua
+    // inerte — mas por um motivo diferente do caso acima, e o cabeçalho tem
+    // de nomear a criação em vez de negá-la.
+    cabecalho.push(
+      "-- ATENÇÃO: ESTE ROLLBACK NÃO CONTÉM NENHUM COMANDO EXECUTÁVEL.",
+      "-- Rodar este arquivo NÃO DESFAZ NADA.",
+      "--",
+      "-- Esta migration CRIA função nova — a função ainda não existia no",
+      `-- banco, então não há definição anterior para restaurar: ${nomesCriadas}.`,
+      "-- Desfazê-la(s) é DROP FUNCTION public.<nome>, manual (este script não",
+      "-- gera esse comando). O resto da migration — coisas como ADD COLUMN,",
+      "-- CREATE INDEX, constraint, UPDATE/INSERT/DELETE — também é MANUAL;",
+      "-- o ponto de partida é ler a própria migration em",
+      "-- supabase/migrations/.",
     );
   } else {
+    // Restaura ao menos uma função que já existia.
     cabecalho.push(
       "-- ESCOPO: este arquivo restaura APENAS a definição anterior das funções",
       "-- listadas abaixo. É o único tipo de rollback que o db-apply sabe gerar.",
-      "-- O resto da migration NÃO está aqui: ADD COLUMN, CREATE INDEX,",
-      "-- constraint e UPDATE/INSERT/DELETE continuam aplicados e são manuais.",
+      "-- O resto da migration NÃO está aqui: coisas como ADD COLUMN, CREATE",
+      "-- INDEX, constraint e UPDATE/INSERT/DELETE continuam aplicados e são",
+      "-- manuais.",
       "--",
       "-- Para restaurar as funções, rode este arquivo no SQL Editor. Isso não",
       "-- desfaz a migration inteira.",
     );
+    if (criadas.length > 0) {
+      // Caso misto: a mesma migration restaura uma função e cria outra.
+      // Rodar o arquivo some com a impressão de "desfiz tudo", mas a função
+      // nova continua viva no banco.
+      cabecalho.push(
+        "--",
+        "-- Esta migration também CRIA função nova, que não existia no banco:",
+        `-- ${nomesCriadas}. Restaurar as funções acima NÃO remove as novas.`,
+        "-- Desfazê-la(s) é DROP FUNCTION public.<nome>, manual (este script",
+        "-- não gera esse comando).",
+      );
+    }
   }
   cabecalho.push("");
 
@@ -315,21 +356,41 @@ async function main() {
   );
   fs.writeFileSync(arquivoRollback, conteudo);
   const caminhoRollback = path.relative(PROJECT_ROOT, arquivoRollback);
-  if (instrucoes === 0) {
-    // O mesmo aviso do cabeçalho do arquivo, aqui no terminal: quem aplica a
-    // migration costuma ler só esta linha e nunca abrir o arquivo. Um
-    // "Rollback salvo em: ..." sozinho passa a impressão de rede de proteção.
+  // Mesma distinção do cabeçalho do arquivo, aqui no terminal: quem aplica a
+  // migration costuma ler só esta linha e nunca abrir o arquivo.
+  const criadas = restauracoes.filter((r) => r.defs.length === 0);
+  const nomesCriadas = criadas.map((r) => r.funcao).join(", ");
+  if (instrucoes === 0 && criadas.length === 0) {
     console.warn(
       `ATENÇÃO: o rollback gerado NÃO CONTÉM NENHUM COMANDO — rodá-lo não desfaz nada.
    Arquivo:  ${caminhoRollback}
    Motivo:   nenhuma destas migrations redefine função existente, e o db-apply
-             só sabe restaurar definição de função. Desfazer o DDL/DML delas
-             (ADD COLUMN, CREATE INDEX, constraint, UPDATE/INSERT/DELETE) é
-             MANUAL. Escreva o desfazer À MÃO ANTES de seguir.\n`,
+             só sabe restaurar definição de função. Desfazer o resto delas
+             (ADD COLUMN, CREATE INDEX, constraint, UPDATE/INSERT/DELETE, entre
+             outras coisas) é MANUAL. Escreva o desfazer À MÃO ANTES de seguir.\n`,
     );
-  } else {
+  } else if (instrucoes === 0) {
+    // Toca função, mas todas novas: nada a restaurar, e "não redefine
+    // função" seria falso — foi exatamente essa frase que o achado da
+    // revisão pegou.
+    console.warn(
+      `ATENÇÃO: o rollback gerado NÃO CONTÉM NENHUM COMANDO — rodá-lo não desfaz nada.
+   Arquivo:  ${caminhoRollback}
+   Motivo:   esta(s) migration(ões) CRIA(M) função nova, que ainda não existia
+             no banco: ${nomesCriadas}. Não há definição anterior para
+             restaurar. Desfazê-la(s) é DROP FUNCTION manual (este script não
+             gera esse comando). Escreva o desfazer À MÃO ANTES de seguir.\n`,
+    );
+  } else if (criadas.length === 0) {
     console.log(
       `Rollback salvo em: ${caminhoRollback} (${instrucoes} definição(ões) de função; o resto da migration é manual)\n`,
+    );
+  } else {
+    // Caso misto: restaura uma função e cria outra na mesma migration.
+    console.log(
+      `Rollback salvo em: ${caminhoRollback} (${instrucoes} definição(ões) de função; o resto da migration é manual)
+   ATENÇÃO: esta(s) migration(ões) também CRIA(M) função nova (${nomesCriadas}) —
+   restaurar as funções acima NÃO remove as novas. DROP FUNCTION é manual.\n`,
     );
   }
 

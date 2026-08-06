@@ -93,10 +93,11 @@ jobs:
       # teste novo de edge function nascer fora do CI, que foi o que aconteceu
       # com a send-push.
       #
-      # test:unit — 11 testes / 44 steps em tests/, em Deno, sobre os axiomas
-      # do Truth Gate (PR #145). Moram fora de src/ de proposito: um _test.ts
-      # la dentro entraria no `tsc -b` e quebraria o job de tipos com os
-      # globais do Deno.
+      # test:unit — 17 testes / 64 steps em tests/, em Deno, sobre os axiomas
+      # do Truth Gate (PR #145) e sobre o cabeçalho condicional do rollback do
+      # db-apply (PR do buraco "restaurada vs criada"). Moram fora de src/ de
+      # proposito: um _test.ts la dentro entraria no `tsc -b` e quebraria o
+      # job de tipos com os globais do Deno.
       #
       # test:front — 23 casos de vitest sobre src/lib/mappers.ts (INFRA-150).
       # Moram em tests/front/, que o script do Deno ignora explicitamente.

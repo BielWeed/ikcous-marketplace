@@ -158,6 +158,104 @@ Deno.test("rollback com definição restaura e delimita o escopo", async (t) => 
     );
     assertEquals(instrucoes, 2);
   });
+
+  // Achado da revisão de contexto limpo: `assertStringIncludes(conteudo,
+  // `${DEF_EXEMPLO};`)` acima casa mesmo se a linha estiver comentada com
+  // `-- `, porque `String.includes` não olha início de linha. Este passo
+  // fecha esse buraco: exige uma linha de fato executável (não vazia, não
+  // começando com `--`) sempre que `instrucoes > 0`.
+  await t.step(
+    "existe ao menos uma linha executável quando há instrução",
+    () => {
+      const { conteudo, instrucoes } = comDef();
+      assert(instrucoes > 0);
+      const executaveis = conteudo
+        .split("\n")
+        .filter((l) => l.trim() !== "" && !l.trimStart().startsWith("--"));
+      assert(
+        executaveis.length > 0,
+        "nenhuma linha executável encontrada, mas instrucoes > 0",
+      );
+    },
+  );
+});
+
+// --------------------------------------------------------------------------
+// Buraco achado na revisão: `instrucoes === 0` também acontece quando a
+// migration CRIA função nova (não existe hoje no banco), e isso não é o
+// mesmo caso de "não redefine função". A prova real está em
+// 20260807000000_reserva_com_expiracao.sql: `expirar_pedidos_vencidos` e
+// `create_marketplace_order_v24` são funções novas — quem lê "esta migration
+// não redefine função" nesse cabeçalho desfaz o DDL à mão e deixa a função
+// nova (a varredura que cancela pedido em massa) viva no banco.
+// --------------------------------------------------------------------------
+
+Deno.test("rollback de função nova nomeia a criação e não mente sobre redefinição", async (t) => {
+  const { conteudo, instrucoes } = montarRollback(
+    ["20260807000000_reserva_com_expiracao.sql"],
+    [{ funcao: "expirar_pedidos_vencidos", defs: [] }],
+  );
+
+  await t.step("continua inerte — nada a restaurar", () => {
+    assertEquals(instrucoes, 0);
+    assertStringIncludes(conteudo, "NÃO CONTÉM NENHUM COMANDO EXECUTÁVEL");
+  });
+
+  await t.step("não afirma que a migration não redefine função", () => {
+    // A mentira que o achado provou: a migration REDEFINE função (é assim
+    // que funcoesAlteradas() a viu), só que a função ainda não existia.
+    assert(
+      !/não redefine função/i.test(conteudo),
+      "o cabeçalho ainda nega que a migration mexe em função",
+    );
+  });
+
+  await t.step("nomeia a função criada", () => {
+    assertStringIncludes(conteudo, "expirar_pedidos_vencidos");
+  });
+
+  await t.step(
+    "aponta DROP FUNCTION como o jeito de desfazer, sem gerar o comando",
+    () => {
+      // Informar é permitido; gerar o DROP executável não — o PR recusou isso
+      // de propósito, então a linha tem de ficar como comentário.
+      assertStringIncludes(conteudo, "DROP FUNCTION");
+      assert(
+        !/^\s*DROP FUNCTION/m.test(conteudo),
+        "gerou um DROP FUNCTION executável, e isso não é o contrato deste arquivo",
+      );
+    },
+  );
+});
+
+Deno.test("rollback misto avisa que restaurar não remove a função nova", async (t) => {
+  const { conteudo, instrucoes } = montarRollback(
+    ["20260807000000_reserva_com_expiracao.sql"],
+    [
+      { funcao: "devolver_estoque", defs: [DEF_EXEMPLO] },
+      { funcao: "create_marketplace_order_v24", defs: [] },
+    ],
+  );
+
+  await t.step("restaura a que existia", () => {
+    assertEquals(instrucoes, 1);
+    assertStringIncludes(conteudo, `${DEF_EXEMPLO};`);
+  });
+
+  await t.step("nomeia a função nova", () => {
+    assertStringIncludes(conteudo, "create_marketplace_order_v24");
+  });
+
+  await t.step(
+    "diz explicitamente que restaurar não remove a função nova",
+    () => {
+      assert(
+        /restaurar.{0,80}não remove/is.test(conteudo),
+        "o cabeçalho não avisa que restaurar não é o bastante para remover a função nova",
+      );
+      assertStringIncludes(conteudo, "DROP FUNCTION");
+    },
+  );
 });
 
 Deno.test("o cabeçalho nomeia as migrations cobertas", () => {
