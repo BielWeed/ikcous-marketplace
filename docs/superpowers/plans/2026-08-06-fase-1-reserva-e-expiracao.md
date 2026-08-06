@@ -829,9 +829,23 @@ liberação do backfill — pergunte de novo, citando os 13 pedidos.
 **Files:**
 - Create: `supabase/migrations/20260807000002_backfill_pedidos_abandonados.sql`
 
-> **Esta task mexe em dado real de cliente.** Ela cancela 13 pedidos e devolve 33 unidades ao catálogo — mais do que o catálogo inteiro tem hoje (28). Revise com atenção maior que as anteriores.
+> **Esta task escreve em linha de pedido em produção.** Ela cancela 13 pedidos e devolve 33 unidades ao catálogo — mais do que o catálogo inteiro tem hoje (28). Revise com atenção maior que as anteriores.
 >
-> Os 2 pedidos pendentes com menos de 30 dias (de 30/07 e 08/07) **não são tocados**: ficam para o Gabriel revisar na mão, como decidido.
+> **Correção de 06/08/2026, medida antes de executar:** este bloco dizia "mexe em dado real de
+> cliente". **Não mexe.** Os 13 foram listados um a um e são **teste de desenvolvimento**: 8 do
+> próprio Gabriel (em duas grafias), mais `Test Guest User`, `QA Tester`, `GabrielGabriel
+> Tes...` e `Gabriel Tester`. O maior — R$ 656,60, 14 unidades, incluindo as 10 unidades da
+> Escova Elétrica — é do teste de checkout de convidado, que tem script versionado em
+> `scripts/db-test-guest-checkout.cjs`. O único nome ambíguo é `Gabriel Silva` (30/06,
+> R$ 27,90), e o Gabriel aprovou incluí-lo.
+>
+> Isso muda o que esta fase conserta: **o estoque não vazou por cliente que desistiu, vazou por
+> teste nosso que nunca foi limpo.** Quem for escrever a Fase 2 deve saber disso antes de
+> dimensionar a urgência da expiração automática.
+>
+> Os 2 pedidos pendentes com menos de 30 dias **não são tocados**: `Isadora Bernardes` (08/07)
+> — a única que parece cliente de verdade em toda a lista — e um do Gabriel (30/07). O corte de
+> 30 dias acertou sozinho.
 
 - [ ] **Step 1: Conferir o alvo ANTES de escrever, com os números do dia**
 
