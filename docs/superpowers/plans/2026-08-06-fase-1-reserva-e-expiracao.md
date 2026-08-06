@@ -1,6 +1,10 @@
 # Fase 1 — Reserva de estoque com expiração
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **⚠️ PARE DEPOIS DA TASK 4.** Decisão do Gabriel: as Tasks 1–4 podem correr
+> seguidas; a Task 5 cancela 13 pedidos de clientes reais e exige aprovação
+> explícita antes de começar. O portão está marcado no meio do documento.
 
 **Goal:** Fazer o estoque reservado por um pedido voltar sozinho ao catálogo se o pedido não for pago em 30 minutos, e devolver as 33 unidades presas em 13 pedidos abandonados desde março.
 
@@ -630,6 +634,29 @@ Esperado: uma linha, `schedule = */5 * * * *`, `active = true`.
 git add supabase/migrations/20260807000001_agenda_expiracao.sql
 git commit -m "feat(db): agenda a expiracao de pedidos no pg_cron (CHECKOUT-010)"
 ```
+
+---
+
+## 🛑 PORTÃO OBRIGATÓRIO — parar aqui
+
+**Decisão do Gabriel em 06/08/2026: a execução PARA depois da Task 4.**
+
+As Tasks 1 a 4 constroem a máquina e não tocam pedido de cliente nenhum. Da Task
+5 em diante, muda dado real: 13 pedidos de clientes são cancelados e 33 unidades
+voltam ao catálogo.
+
+**Antes de seguir para a Task 5, mostre ao Gabriel:**
+
+```bash
+node scripts/db-prove-checkout-010.cjs
+```
+
+```bash
+node -e "const{Client}=require('pg');const fs=require('fs');const l=fs.readFileSync('.env','utf8').split(/\r?\n/).find(x=>x.startsWith('DATABASE_URL='));const c=new Client({connectionString:l.slice(13).replace(/^\"|\"$/g,''),ssl:{rejectUnauthorized:false}});c.connect().then(()=>c.query(\"SELECT jobname, schedule, active FROM cron.job WHERE jobname='expirar-pedidos-vencidos'\")).then(r=>{console.table(r.rows);return c.end()})"
+```
+
+E **esperar aprovação explícita**. Não interprete "continue" genérico como
+liberação do backfill — pergunte de novo, citando os 13 pedidos.
 
 ---
 
