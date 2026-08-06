@@ -195,10 +195,13 @@ async function main() {
     `);
     const produtoId = prod.rows[0].id;
 
+    // `customer_data` (jsonb) e `subtotal` sao NOT NULL sem default nesta
+    // tabela — omitir qualquer um dos dois quebra o INSERT. E por isso que os
+    // outros db-prove-*.cjs criam pedido pela RPC em vez de INSERT cru.
     const ped = await client.query(`
       INSERT INTO public.marketplace_orders
-        (total, status, payment_status, customer_name)
-      VALUES (20.00, 'pending', 'aguardando', 'PROVA')
+        (total, subtotal, status, payment_status, customer_name, customer_data)
+      VALUES (20.00, 20.00, 'pending', 'aguardando', 'PROVA', '{}'::jsonb)
       RETURNING id
     `);
     const pedidoId = ped.rows[0].id;
@@ -255,8 +258,8 @@ async function main() {
 
     const pedVar = await client.query(`
       INSERT INTO public.marketplace_orders
-        (total, status, payment_status, customer_name)
-      VALUES (10.00, 'pending', 'aguardando', 'PROVA VARIANTE')
+        (total, subtotal, status, payment_status, customer_name, customer_data)
+      VALUES (10.00, 10.00, 'pending', 'aguardando', 'PROVA VARIANTE', '{}'::jsonb)
       RETURNING id
     `);
     await client.query(
@@ -378,8 +381,8 @@ Acrescentar ao `db-prove-checkout-010.cjs`, dentro do `try`, depois do bloco ant
 
     const vencido = await client.query(`
       INSERT INTO public.marketplace_orders
-        (total, status, payment_status, expires_at, customer_name)
-      VALUES (10.00, 'pending', 'aguardando', now() - interval '1 minute', 'VENCIDO')
+        (total, subtotal, status, payment_status, expires_at, customer_name, customer_data)
+      VALUES (10.00, 10.00, 'pending', 'aguardando', now() - interval '1 minute', 'VENCIDO', '{}'::jsonb)
       RETURNING id
     `);
     await client.query(
@@ -392,16 +395,16 @@ Acrescentar ao `db-prove-checkout-010.cjs`, dentro do `try`, depois do bloco ant
     // Pedido AINDA NO PRAZO: nao pode ser tocado.
     const noPrazo = await client.query(`
       INSERT INTO public.marketplace_orders
-        (total, status, payment_status, expires_at, customer_name)
-      VALUES (10.00, 'pending', 'aguardando', now() + interval '20 minutes', 'NO PRAZO')
+        (total, subtotal, status, payment_status, expires_at, customer_name, customer_data)
+      VALUES (10.00, 10.00, 'pending', 'aguardando', now() + interval '20 minutes', 'NO PRAZO', '{}'::jsonb)
       RETURNING id
     `);
 
     // Pedido HISTORICO (payment_status NULL): nao pode ser tocado.
     const historico = await client.query(`
       INSERT INTO public.marketplace_orders
-        (total, status, customer_name)
-      VALUES (10.00, 'pending', 'HISTORICO')
+        (total, subtotal, status, customer_name, customer_data)
+      VALUES (10.00, 10.00, 'pending', 'HISTORICO', '{}'::jsonb)
       RETURNING id
     `);
 
