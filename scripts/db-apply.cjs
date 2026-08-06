@@ -12,7 +12,11 @@
  *
  * O QUE ELE FAZ, nesta ordem:
  *   1. Salva num arquivo a definição ATUAL de cada função que a migration toca,
- *      para servir de rollback.
+ *      para servir de rollback. ATENÇÃO AO ALCANCE: é só isso que ele salva.
+ *      ADD COLUMN, CREATE INDEX, constraint e qualquer UPDATE/INSERT/DELETE da
+ *      migration NÃO entram no rollback e continuam sendo desfeitos à mão. O
+ *      cabeçalho do arquivo gerado diz isso, e grita quando o arquivo sai sem
+ *      nenhuma instrução.
  *   2. Aplica cada migration numa transação própria. Se falhar, faz ROLLBACK e para.
  *   3. Registra a versão em supabase_migrations.schema_migrations.
  *   4. Reexecuta uma verificação: confere se os marcadores esperados estão mesmo
@@ -37,14 +41,20 @@ const path = require("node:path");
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const MIGRATIONS_DIR = path.join(PROJECT_ROOT, "supabase", "migrations");
 
-let Client;
-try {
-  ({ Client } = require("pg"));
-} catch {
-  console.error(
-    "Pacote 'pg' não encontrado. Instale uma vez com:\n\n  npm i -D pg\n",
-  );
-  process.exit(1);
+/**
+ * O `pg` é carregado só na hora de conectar, e não no topo, para que
+ * `montarRollback` possa ser importado por um teste sem exigir node_modules
+ * (a suíte deste projeto roda em Deno, sem `npm ci`).
+ */
+function carregarClient() {
+  try {
+    return require("pg").Client;
+  } catch {
+    console.error(
+      "Pacote 'pg' não encontrado. Instale uma vez com:\n\n  npm i -D pg\n",
+    );
+    process.exit(1);
+  }
 }
 
 /** Marcadores que devem existir na função depois de aplicada. */
@@ -185,6 +195,68 @@ function funcoesAlteradas(sql) {
   return [...nomes];
 }
 
+/**
+ * Monta o texto do arquivo de rollback a partir do que já foi lido do banco.
+ *
+ * `restauracoes` é uma lista de `{ funcao, defs }` — `defs` vazio quer dizer
+ * que a função ainda não existe no banco, então não há definição a restaurar.
+ *
+ * POR QUE O CABEÇALHO É CONDICIONAL: até 06/08/2026 ele afirmava, sempre,
+ * "para desfazer, rode este arquivo inteiro no SQL Editor". Isso só é verdade
+ * quando a migration redefine função, porque `funcoesAlteradas()` é a única
+ * coisa que este script sabe ler. Naquele dia dois rollbacks saíram sem uma
+ * única instrução — um deles referente a uma migration que já tinha cancelado
+ * 13 pedidos e creditado 33 unidades de estoque — e mesmo assim mandavam
+ * rodar o arquivo para desfazer. Quem lê esse arquivo lê durante um incidente,
+ * com backup de até 24 h de idade e sem PITR neste projeto: um "rodei e não
+ * aconteceu nada" vira "então já estava desfeito".
+ *
+ * Devolve `{ conteudo, instrucoes }`, onde `instrucoes` é o número de
+ * definições de função efetivamente gravadas — 0 significa arquivo inerte.
+ */
+function montarRollback(arquivos, restauracoes) {
+  const corpo = [];
+  let instrucoes = 0;
+  for (const { funcao, defs } of restauracoes) {
+    if (defs.length === 0) {
+      corpo.push(`-- ${funcao}: não existe hoje no banco (será criada).`, "");
+      continue;
+    }
+    corpo.push(`-- ${funcao}`, ...defs.map((d) => `${d};`), "");
+    instrucoes += defs.length;
+  }
+
+  const cabecalho = [
+    `-- Rollback gerado automaticamente antes de aplicar: ${arquivos.join(", ")}`,
+    "--",
+  ];
+  if (instrucoes === 0) {
+    cabecalho.push(
+      "-- ATENÇÃO: ESTE ROLLBACK NÃO CONTÉM NENHUM COMANDO EXECUTÁVEL.",
+      "-- Rodar este arquivo NÃO DESFAZ NADA.",
+      "--",
+      "-- Esta migration não redefine função, e o db-apply só sabe restaurar",
+      "-- definição de função (CREATE OR REPLACE FUNCTION public.<nome>).",
+      "-- Desfazer o DDL/DML dela — ADD COLUMN, CREATE INDEX, constraint,",
+      "-- UPDATE/INSERT/DELETE — é MANUAL, e o ponto de partida é ler a",
+      "-- própria migration em supabase/migrations/.",
+    );
+  } else {
+    cabecalho.push(
+      "-- ESCOPO: este arquivo restaura APENAS a definição anterior das funções",
+      "-- listadas abaixo. É o único tipo de rollback que o db-apply sabe gerar.",
+      "-- O resto da migration NÃO está aqui: ADD COLUMN, CREATE INDEX,",
+      "-- constraint e UPDATE/INSERT/DELETE continuam aplicados e são manuais.",
+      "--",
+      "-- Para restaurar as funções, rode este arquivo no SQL Editor. Isso não",
+      "-- desfaz a migration inteira.",
+    );
+  }
+  cabecalho.push("");
+
+  return { conteudo: [...cabecalho, ...corpo].join("\n"), instrucoes };
+}
+
 async function definicaoAtual(client, nomeFuncao) {
   const { rows } = await client.query(
     `SELECT pg_get_functiondef(p.oid) AS def
@@ -214,6 +286,7 @@ async function main() {
     }
   }
 
+  const Client = carregarClient();
   const client = new Client({
     connectionString: lerDatabaseUrl(),
     ssl: { rejectUnauthorized: false },
@@ -225,36 +298,40 @@ async function main() {
   console.log(`Migrations a aplicar: ${arquivos.length}\n`);
 
   // 1. Rollback das definições atuais.
-  const partesRollback = [
-    `-- Rollback gerado automaticamente antes de aplicar: ${arquivos.join(", ")}`,
-    "-- Para desfazer, rode este arquivo inteiro no SQL Editor.",
-    "",
-  ];
+  const restauracoes = [];
   for (const nome of arquivos) {
     const sql = fs.readFileSync(
       path.join(MIGRATIONS_DIR, path.basename(nome)),
       "utf8",
     );
     for (const fn of funcoesAlteradas(sql)) {
-      const defs = await definicaoAtual(client, fn);
-      if (defs.length === 0) {
-        partesRollback.push(
-          `-- ${fn}: não existe hoje no banco (será criada).`,
-          "",
-        );
-        continue;
-      }
-      partesRollback.push(`-- ${fn}`, ...defs.map((d) => `${d};`), "");
+      restauracoes.push({ funcao: fn, defs: await definicaoAtual(client, fn) });
     }
   }
+  const { conteudo, instrucoes } = montarRollback(arquivos, restauracoes);
   const arquivoRollback = path.join(
     PROJECT_ROOT,
     `rollback-${arquivos[0].replace(/\.sql$/, "")}.sql`,
   );
-  fs.writeFileSync(arquivoRollback, partesRollback.join("\n"));
-  console.log(
-    `Rollback salvo em: ${path.relative(PROJECT_ROOT, arquivoRollback)}\n`,
-  );
+  fs.writeFileSync(arquivoRollback, conteudo);
+  const caminhoRollback = path.relative(PROJECT_ROOT, arquivoRollback);
+  if (instrucoes === 0) {
+    // O mesmo aviso do cabeçalho do arquivo, aqui no terminal: quem aplica a
+    // migration costuma ler só esta linha e nunca abrir o arquivo. Um
+    // "Rollback salvo em: ..." sozinho passa a impressão de rede de proteção.
+    console.warn(
+      `ATENÇÃO: o rollback gerado NÃO CONTÉM NENHUM COMANDO — rodá-lo não desfaz nada.
+   Arquivo:  ${caminhoRollback}
+   Motivo:   nenhuma destas migrations redefine função existente, e o db-apply
+             só sabe restaurar definição de função. Desfazer o DDL/DML delas
+             (ADD COLUMN, CREATE INDEX, constraint, UPDATE/INSERT/DELETE) é
+             MANUAL. Escreva o desfazer À MÃO ANTES de seguir.\n`,
+    );
+  } else {
+    console.log(
+      `Rollback salvo em: ${caminhoRollback} (${instrucoes} definição(ões) de função; o resto da migration é manual)\n`,
+    );
+  }
 
   if (dryRun) {
     console.log("--dry-run: nada foi aplicado.");
@@ -329,7 +406,14 @@ async function main() {
   process.exit(tudoOk ? 0 : 1);
 }
 
-main().catch((erro) => {
-  console.error("Erro:", erro.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((erro) => {
+    console.error("Erro:", erro.message);
+    process.exit(1);
+  });
+}
+
+// Exportado para tests/db_apply_rollback_test.ts, que fixa o cabeçalho do
+// arquivo de rollback. O guarda acima existe por causa disso: sem ele, importar
+// o módulo dispararia a aplicação das migrations.
+module.exports = { funcoesAlteradas, montarRollback };
