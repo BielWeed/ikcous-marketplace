@@ -588,7 +588,12 @@ No PowerShell, use `$env:TEMP\v23.sql` no lugar de `/tmp/v23.sql`.
 
 - [ ] **Step 2: Aplicar a única mudança**
 
-No texto extraído, trocar `create_marketplace_order_v23` por `create_marketplace_order_v24` no cabeçalho, e trocar **este bloco**:
+No texto extraído, trocar `create_marketplace_order_v23` por `create_marketplace_order_v24` no cabeçalho — e o cabeçalho vira **`CREATE OR REPLACE FUNCTION`**, não `CREATE FUNCTION` como vem do baseline. Duas razões, as duas medidas:
+
+- este arquivo é **reaplicado a cada task**, e todo o resto dele é `IF NOT EXISTS` / `CREATE OR REPLACE`. Um `CREATE FUNCTION` cru faz a segunda aplicação morrer em `42723 function already exists`, e o `db-apply.cjs` dá `ROLLBACK` na transação inteira — a correção que você estava reaplicando não entra junto;
+- o `funcoesAlteradas()` do `db-apply.cjs` só captura para o arquivo de rollback o que casa `CREATE OR REPLACE FUNCTION`. Com `CREATE FUNCTION`, a v24 **fica de fora do rollback gerado** — e o caminho de recuperação passa a exigir `DROP FUNCTION` na mão contra produção.
+
+Depois do cabeçalho, trocar **este bloco**:
 
 ```sql
     INSERT INTO public.marketplace_orders (
@@ -664,13 +669,15 @@ Acrescentar ao `db-prove-checkout-010.cjs`:
       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'public' AND p.proname = 'create_marketplace_order_v24'
     `);
+    // `?.` importa: sem ele, v24 ausente estoura TypeError e derruba o script
+    // inteiro — some a contagem final e os asserts anteriores viram silêncio.
     conferir(
       "v24 carimba payment_status aguardando",
-      corpo.rows[0].def.includes("'aguardando'"),
+      corpo.rows[0]?.def?.includes("'aguardando'") ?? false,
     );
     conferir(
       "v24 carimba expiracao de 30 minutos",
-      corpo.rows[0].def.includes("interval '30 minutes'"),
+      corpo.rows[0]?.def?.includes("interval '30 minutes'") ?? false,
     );
 ```
 
