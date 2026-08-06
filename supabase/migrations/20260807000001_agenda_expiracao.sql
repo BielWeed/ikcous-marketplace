@@ -12,3 +12,7 @@ SELECT cron.schedule(
   '*/5 * * * *',
   $cron$ SELECT public.expirar_pedidos_vencidos(); $cron$
 );
+
+-- Botao de desligar, se a varredura se comportar mal (comentario, nao
+-- instrucao executavel):
+-- SELECT cron.unschedule('expirar-pedidos-vencidos');

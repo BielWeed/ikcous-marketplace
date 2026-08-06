@@ -59,10 +59,12 @@ async function main() {
     ssl: { rejectUnauthorized: false },
   });
   await client.connect();
+  console.log(`Conectado em ${new URL(lerDatabaseUrl()).hostname}`);
+  console.log("Somente leitura. Nada sera alterado.");
 
   try {
     const { rows } = await client.query(
-      `SELECT jobname, schedule, active
+      `SELECT jobname, schedule, command, active
          FROM cron.job
         WHERE jobname = $1`,
       [NOME_JOB],
@@ -76,6 +78,13 @@ async function main() {
     }
 
     console.table(rows);
+
+    if (!rows[0].active) {
+      console.log(
+        `Job '${NOME_JOB}' existe mas esta INATIVO (active=false). A varredura nao esta rodando.`,
+      );
+      process.exit(1);
+    }
   } catch (erro) {
     // 42P01 = undefined_table: cron.job nao existe, ou seja, a extensao
     // pg_cron ainda nao foi instalada/ligada neste banco.
