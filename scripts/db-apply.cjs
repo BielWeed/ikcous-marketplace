@@ -104,6 +104,60 @@ const VERIFICACOES = {
       "RAISE EXCEPTION USING",
     ],
   },
+  "20260807000000_reserva_com_expiracao.sql": [
+    {
+      funcao: "devolver_estoque",
+      esperado: [
+        // Guarda do IF/ELSE (variante XOR produto), nao dois IF independentes.
+        // Se alguem trocar por dois IF, este ELSE colado no UPDATE de produtos
+        // deixa de existir no corpo, e a verificacao reprova. E essa a regra
+        // que evita creditar variante E produto pai a cada expiracao.
+        "ELSE\n            UPDATE public.produtos",
+        "SET stock_increment = stock_increment + v_item.quantity",
+      ],
+    },
+    {
+      funcao: "expirar_pedidos_vencidos",
+      esperado: [
+        // So varre pedido 'aguardando': sem este filtro, a funcao passaria a
+        // cancelar pedido ja pago ou historico (payment_status NULL).
+        "WHERE payment_status = 'aguardando'",
+        // So varre pedido 'pending': sem este filtro, um pedido que o
+        // cliente ja cancelou pelo app (a update_order_status_atomic devolve
+        // o estoque no cancelamento e nao escreve payment_status) seria
+        // creditado uma segunda vez pela varredura.
+        "AND status = 'pending'",
+        // FOR UPDATE SKIP LOCKED: sem ele, a varredura disputa a linha com o
+        // webhook da Fase 3 em vez de pular o pedido que ja esta sendo
+        // confirmado — e pode expirar um pedido que acabou de ser pago.
+        "FOR UPDATE SKIP LOCKED",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        // O carimbo desta task: sem ele o pedido nasce sem prazo e a
+        // varredura nunca o alcanca.
+        "'aguardando', now() + interval '30 minutes'",
+        // Recalculo do total pelos precos do banco (Price Tampering
+        // Protection da v23). Se um REPLACE mal copiado apagar esta linha, o
+        // cliente volta a poder mandar o proprio total — e a verificacao tem
+        // de gritar em vez de deixar passar em silencio.
+        "IF ABS(v_calculated_total - p_total_amount) > 0.05 THEN",
+        // Checagem de estoque contra o valor do banco (nao o do cliente).
+        // Mesma logica: sem esta linha o pedido pode vender o que nao tem.
+        "IF v_db_stock < v_quantity THEN",
+        // Paridade de frete gratis para usuario logado (a correcao da
+        // 20260729000000_fix_free_shipping_rule_parity.sql, hoje guardada
+        // pela entrada da v22 acima). Quando a Task 6 apontar o front para a
+        // v24, e esta linha que passa a ser a guarda que importa — sem
+        // marcador aqui, um REPLACE mal copiado da v24 poderia perder o
+        // predicado e ninguem notaria, porque a entrada da v22 continuaria
+        // passando para uma funcao que ninguem mais chama.
+        "OR (v_user_id IS NOT NULL AND v_calculated_subtotal >= v_free_shipping_min)",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
@@ -239,16 +293,30 @@ async function main() {
   let tudoOk = true;
   for (const nome of arquivos) {
     const base = path.basename(nome);
-    const checagem = VERIFICACOES[base];
-    if (!checagem) {
+    const registro = VERIFICACOES[base];
+    if (!registro) {
       console.log(`  ${base}: sem verificação registrada, pulando.`);
       continue;
     }
-    const [def] = await definicaoAtual(client, checagem.funcao);
-    for (const marcador of checagem.esperado) {
-      const ok = Boolean(def?.includes(marcador));
-      if (!ok) tudoOk = false;
-      console.log(`  ${ok ? "ok     " : "AUSENTE"}  ${marcador.slice(0, 64)}`);
+    // Um arquivo pode redefinir mais de uma função (ex.: a mesma migration
+    // reaplicada task a task) — registro vira lista nesse caso.
+    const checagens = Array.isArray(registro) ? registro : [registro];
+    for (const checagem of checagens) {
+      const [def] = await definicaoAtual(client, checagem.funcao);
+      // Normaliza \r\n -> \n dos dois lados antes de comparar. O repo nao tem
+      // .gitattributes e core.autocrlf converte as migrations para CRLF no
+      // working tree a cada checkout/clone/stash; sem isso, um marcador que
+      // cruza uma quebra de linha (ex.: "ELSE\n            UPDATE ...") deixa
+      // de casar contra um corpo em CRLF e a verificacao grita AUSENTE para
+      // uma migration que esta correta — DEPOIS do COMMIT ja ter acontecido.
+      const defNormalizado = def?.replace(/\r\n/g, "\n");
+      for (const marcador of checagem.esperado) {
+        const marcadorNormalizado = marcador.replace(/\r\n/g, "\n");
+        const ok = Boolean(defNormalizado?.includes(marcadorNormalizado));
+        if (!ok) tudoOk = false;
+        const rotulo = `${checagem.funcao}: ${marcador.slice(0, 64)}`;
+        console.log(`  ${ok ? "ok     " : "AUSENTE"}  ${rotulo}`);
+      }
     }
   }
 
