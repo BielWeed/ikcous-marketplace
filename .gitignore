@@ -92,7 +92,13 @@ scratch_*
 
 # Ferramentas de agente (local da máquina, não do projeto).
 # Mesmo critério já aplicado a `.agents/` acima.
-.claude/
+#
+# Exceção: `.claude/agents/` é processo do time, não estado de máquina. Os
+# subagentes `implementador` e `revisor` definem como uma tarefa vira código
+# aqui, e mudá-los é mudança de processo — precisa chegar no clone do outro dev
+# e passar por PR. `settings.local.json`, `worktrees/` e o resto continuam fora.
+.claude/*
+!.claude/agents/
 .serena/
 
 # Estado local do Supabase CLI: muda a cada comando e suja o `git status`.
