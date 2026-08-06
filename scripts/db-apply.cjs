@@ -104,6 +104,17 @@ const VERIFICACOES = {
       "RAISE EXCEPTION USING",
     ],
   },
+  "20260807000000_reserva_com_expiracao.sql": {
+    funcao: "devolver_estoque",
+    esperado: [
+      // Guarda do IF/ELSE (variante XOR produto), nao dois IF independentes.
+      // Se alguem trocar por dois IF, este ELSE colado no UPDATE de produtos
+      // deixa de existir no corpo, e a verificacao reprova. E essa a regra
+      // que evita creditar variante E produto pai a cada expiracao.
+      "ELSE\n            UPDATE public.produtos",
+      "SET stock_increment = stock_increment + v_item.quantity",
+    ],
+  },
 };
 
 function lerDatabaseUrl() {

@@ -67,3 +67,8 @@ END;
 $devolver$;
 
 REVOKE ALL ON FUNCTION public.devolver_estoque(uuid) FROM PUBLIC, anon, authenticated;
+
+COMMENT ON FUNCTION public.devolver_estoque(uuid) IS
+  'Nao e idempotente: duas chamadas para o mesmo pedido creditam estoque duas '
+  'vezes. O chamador e responsavel por garantir chamada unica (ex.: transicao '
+  'de payment_status que so ocorre uma vez).';

@@ -59,10 +59,13 @@ async function main() {
     `);
     const produtoId = prod.rows[0].id;
 
+    // `customer_data` (jsonb) e `subtotal` sao NOT NULL sem default nesta
+    // tabela — omitir qualquer um dos dois quebra o INSERT. E por isso que os
+    // outros db-prove-*.cjs criam pedido pela RPC em vez de INSERT cru.
     const ped = await client.query(`
       INSERT INTO public.marketplace_orders
-        (total, status, payment_status, customer_name)
-      VALUES (20.00, 'pending', 'aguardando', 'PROVA')
+        (total, subtotal, status, payment_status, customer_name, customer_data)
+      VALUES (20.00, 20.00, 'pending', 'aguardando', 'PROVA', '{}'::jsonb)
       RETURNING id
     `);
     const pedidoId = ped.rows[0].id;
@@ -119,8 +122,8 @@ async function main() {
 
     const pedVar = await client.query(`
       INSERT INTO public.marketplace_orders
-        (total, status, payment_status, customer_name)
-      VALUES (10.00, 'pending', 'aguardando', 'PROVA VARIANTE')
+        (total, subtotal, status, payment_status, customer_name, customer_data)
+      VALUES (10.00, 10.00, 'pending', 'aguardando', 'PROVA VARIANTE', '{}'::jsonb)
       RETURNING id
     `);
     await client.query(
