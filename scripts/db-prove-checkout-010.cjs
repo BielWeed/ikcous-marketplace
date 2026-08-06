@@ -1,0 +1,170 @@
+#!/usr/bin/env node
+/**
+ * Prova as funcoes da Fase 1 (CHECKOUT-010 #109).
+ *
+ * TUDO roda em UMA transacao terminada em ROLLBACK. Nada e gravado.
+ * Isso so e verdade porque a migration NAO tem COMMIT embutido — se alguem
+ * acrescentar um, este script passa a gravar em producao sem avisar.
+ */
+const fs = require("node:fs");
+const path = require("node:path");
+const { Client } = require("pg");
+
+const RAIZ = path.resolve(__dirname, "..");
+
+function lerDatabaseUrl() {
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+  for (const arquivo of [".env.local", ".env"]) {
+    const caminho = path.join(RAIZ, arquivo);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
+    if (!fs.existsSync(caminho)) continue;
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
+    const linha = fs.readFileSync(caminho, "utf8")
+      .split(/\r?\n/)
+      .find((l) => l.startsWith("DATABASE_URL="));
+    if (linha) return linha.slice("DATABASE_URL=".length).replace(/^"|"$/g, "");
+  }
+  throw new Error("DATABASE_URL não encontrada.");
+}
+
+let passou = 0;
+let falhou = 0;
+
+function conferir(nome, condicao, detalhe) {
+  if (condicao) {
+    passou++;
+    console.log(`  ok   ${nome}`);
+  } else {
+    falhou++;
+    console.error(`  FALHA ${nome}${detalhe ? ` — ${detalhe}` : ""}`);
+  }
+}
+
+async function main() {
+  const client = new Client({
+    connectionString: lerDatabaseUrl(),
+    ssl: { rejectUnauthorized: false },
+  });
+  await client.connect();
+  await client.query("BEGIN");
+
+  try {
+    console.log("\n=== devolver_estoque ===");
+
+    // `custo` e NOT NULL sem default nesta tabela — omitir quebra o INSERT.
+    const prod = await client.query(`
+      INSERT INTO public.produtos (nome, custo, preco_venda, estoque, categoria)
+      VALUES ('PROVA CHECKOUT-010', 5.00, 10.00, 5, 'teste')
+      RETURNING id, estoque
+    `);
+    const produtoId = prod.rows[0].id;
+
+    const ped = await client.query(`
+      INSERT INTO public.marketplace_orders
+        (total, status, payment_status, customer_name)
+      VALUES (20.00, 'pending', 'aguardando', 'PROVA')
+      RETURNING id
+    `);
+    const pedidoId = ped.rows[0].id;
+
+    await client.query(
+      `INSERT INTO public.marketplace_order_items
+         (order_id, product_id, product_name, quantity, price)
+       VALUES ($1, $2, 'PROVA CHECKOUT-010', 2, 10.00)`,
+      [pedidoId, produtoId],
+    );
+
+    await client.query(
+      "UPDATE public.produtos SET estoque = estoque - 2 WHERE id = $1",
+      [produtoId],
+    );
+
+    const devolvidas = await client.query(
+      "SELECT public.devolver_estoque($1) AS unidades",
+      [pedidoId],
+    );
+    conferir(
+      "devolve o numero de unidades do pedido",
+      devolvidas.rows[0].unidades === 2,
+      `veio ${devolvidas.rows[0].unidades}`,
+    );
+
+    const depois = await client.query(
+      "SELECT estoque FROM public.produtos WHERE id = $1",
+      [produtoId],
+    );
+    conferir(
+      "estoque volta ao valor original",
+      depois.rows[0].estoque === 5,
+      `veio ${depois.rows[0].estoque}`,
+    );
+
+    // Item de VARIANTE: a linha carrega product_id E variant_id, porque e assim
+    // que a v23 grava. Como o debito dela e XOR, a devolucao tambem tem de ser —
+    // creditar os dois infla o catalogo. Este par de asserts e a trava disso.
+    const prodVar = await client.query(`
+      INSERT INTO public.produtos (nome, custo, preco_venda, estoque, categoria)
+      VALUES ('PROVA VARIANTE', 5.00, 10.00, 7, 'teste')
+      RETURNING id
+    `);
+    const produtoVarId = prodVar.rows[0].id;
+
+    const variante = await client.query(
+      `INSERT INTO public.product_variants (product_id, name, value, stock_increment)
+       VALUES ($1, 'Tamanho', 'M', 4)
+       RETURNING id`,
+      [produtoVarId],
+    );
+    const varianteId = variante.rows[0].id;
+
+    const pedVar = await client.query(`
+      INSERT INTO public.marketplace_orders
+        (total, status, payment_status, customer_name)
+      VALUES (10.00, 'pending', 'aguardando', 'PROVA VARIANTE')
+      RETURNING id
+    `);
+    await client.query(
+      `INSERT INTO public.marketplace_order_items
+         (order_id, product_id, variant_id, product_name, quantity, price)
+       VALUES ($1, $2, $3, 'PROVA VARIANTE', 1, 10.00)`,
+      [pedVar.rows[0].id, produtoVarId, varianteId],
+    );
+    await client.query(
+      "UPDATE public.product_variants SET stock_increment = stock_increment - 1 WHERE id = $1",
+      [varianteId],
+    );
+
+    await client.query("SELECT public.devolver_estoque($1)", [pedVar.rows[0].id]);
+
+    const varDepois = await client.query(
+      "SELECT stock_increment FROM public.product_variants WHERE id = $1",
+      [varianteId],
+    );
+    conferir(
+      "variante volta ao estoque original",
+      varDepois.rows[0].stock_increment === 4,
+      `veio ${varDepois.rows[0].stock_increment}`,
+    );
+
+    const paiDepois = await client.query(
+      "SELECT estoque FROM public.produtos WHERE id = $1",
+      [produtoVarId],
+    );
+    conferir(
+      "produto pai da variante NAO e creditado",
+      paiDepois.rows[0].estoque === 7,
+      `veio ${paiDepois.rows[0].estoque}, esperava 7 — creditar os dois infla o catalogo`,
+    );
+  } finally {
+    await client.query("ROLLBACK");
+    await client.end();
+  }
+
+  console.log(`\n${passou} passaram, ${falhou} falharam.`);
+  process.exit(falhou > 0 ? 1 : 0);
+}
+
+main().catch((e) => {
+  console.error(e.message);
+  process.exit(1);
+});
