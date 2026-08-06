@@ -1328,10 +1328,16 @@ Em `vercel.json:36`, a política precisa ganhar, **nesta ordem de diretiva**:
 
 | diretiva | acrescentar | por quê |
 | --- | --- | --- |
-| `script-src` | `https://sdk.mercadopago.com https://http2.mlstatic.com` | o SDK v2 e o bundle do Brick. **Host exato, não `*.mlstatic.com`**: os dois bundles apontam para esse host único (`assetsBaseUrl` e o `publicPath` do webpack), e `mlstatic.com` é CDN do Mercado Livre com muitos subdomínios — curinga ali autoriza execução de script no site inteiro, incluindo as rotas onde a sessão do Supabase está no `localStorage` |
+| `script-src` | `https://sdk.mercadopago.com https://http2.mlstatic.com` | o SDK v2 e o bundle do Brick. **Host exato, não `*.mlstatic.com`**: os dois bundles apontam para esse host único (`assetsBaseUrl` e o `publicPath` do webpack), e `mlstatic.com` é CDN do Mercado Livre com muitos subdomínios. Curinga ali autoriza qualquer um deles a executar script **dentro da nossa origem** — e script na nossa origem lê o `localStorage` da nossa origem, onde mora a sessão do Supabase. O risco não é "as rotas do mlstatic terem a nossa sessão"; é terceiro rodando de dentro |
 | `connect-src` | `https://api.mercadopago.com https://api.mercadolibre.com https://secure-fields.mercadopago.com https://api-static.mercadopago.com` | os dois primeiros são API e telemetria. **Os dois últimos são o que faz o cartão funcionar**: o SDK faz `fetchPage` (requisição, não navegação) contra `secure-fields.mercadopago.com`, com `api-static.mercadopago.com/secure-fields` de fallback, ANTES de atribuir o `src` do iframe do campo de cartão. Sem eles o Brick emite `Unable to load cardNumber: Failed to fetch` |
 | `frame-src` | **criar a diretiva** com `https://*.mercadopago.com https://*.mercadolibre.com` | hoje ela não existe e cai no `default-src 'self'`, que recusa o iframe do cartão. O curinga de `mercadopago.com` é o que cobre `secure-fields` |
-| `img-src` | `https://http2.mlstatic.com` | bandeiras de cartão, servidas de `/storage/logos-api-admin/` |
+| `img-src` | **nada — fica `https://*.mlstatic.com`** | bandeiras de cartão, servidas de `/storage/logos-api-admin/`. O curinga permanece de propósito: as URLs vêm do **runtime da API**, não de literais no bundle, então apertar arrisca ícone quebrado em silêncio, descoberto só em produção. E o ganho seria zero — a diretiva já tem `https://*.supabase.co`, e qualquer um cria um projeto Supabase de graça, então já existe ali um destino de caminho arbitrário sob controle de terceiro |
+
+> **Por que `script-src` foi apertado e `img-src` não, e isso não é incoerência:** script
+> autorizado executa **dentro da sua origem** e alcança o que a origem alcança. Imagem
+> não executa; o risco dela é servir de canal de exfiltração (`new Image().src = "…?token=…"`),
+> e esse canal já está aberto pelo `*.supabase.co` que estava lá antes. Apertar um e não
+> o outro é a leitura correta da assimetria.
 
 **O que NÃO entra, e por que — cada um foi procurado e não achado nos bundles:**
 
