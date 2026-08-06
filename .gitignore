@@ -118,3 +118,6 @@ supabase/.temp/
 # nao ha motivo para versionar: quem precisa gera o proprio com
 # `node scripts/db-snapshot-politicas.cjs`. O que fica versionado e o SCRIPT.
 backups/
+
+# Ledger e briefs do subagent-driven-development: rascunho de sessao.
+.superpowers/

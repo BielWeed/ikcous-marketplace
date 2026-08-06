@@ -102,13 +102,16 @@ BEGIN
         FROM public.marketplace_order_items
         WHERE order_id = p_order_id
     LOOP
+        -- IF/ELSE, nao dois IF: a v23 debita XOR (variante OU produto, nunca os
+        -- dois), e o front manda product_id preenchido junto com variant_id. Com
+        -- dois IF, todo pedido de variante que expirasse creditaria o produto pai
+        -- tambem, inflando o catalogo para sempre. Mesma forma do restore que ja
+        -- existe em update_order_status_atomic.
         IF v_item.variant_id IS NOT NULL THEN
             UPDATE public.product_variants
                SET stock_increment = stock_increment + v_item.quantity
              WHERE id = v_item.variant_id;
-        END IF;
-
-        IF v_item.product_id IS NOT NULL THEN
+        ELSE
             UPDATE public.produtos
                SET estoque = estoque + v_item.quantity
              WHERE id = v_item.product_id;
@@ -231,6 +234,63 @@ async function main() {
       depois.rows[0].estoque === 5,
       `veio ${depois.rows[0].estoque}`,
     );
+
+    // Item de VARIANTE: a linha carrega product_id E variant_id, porque e assim
+    // que a v23 grava. Como o debito dela e XOR, a devolucao tambem tem de ser —
+    // creditar os dois infla o catalogo. Este par de asserts e a trava disso.
+    const prodVar = await client.query(`
+      INSERT INTO public.produtos (nome, custo, preco_venda, estoque, categoria)
+      VALUES ('PROVA VARIANTE', 5.00, 10.00, 7, 'teste')
+      RETURNING id
+    `);
+    const produtoVarId = prodVar.rows[0].id;
+
+    const variante = await client.query(
+      `INSERT INTO public.product_variants (product_id, name, value, stock_increment)
+       VALUES ($1, 'Tamanho', 'M', 4)
+       RETURNING id`,
+      [produtoVarId],
+    );
+    const varianteId = variante.rows[0].id;
+
+    const pedVar = await client.query(`
+      INSERT INTO public.marketplace_orders
+        (total, status, payment_status, customer_name)
+      VALUES (10.00, 'pending', 'aguardando', 'PROVA VARIANTE')
+      RETURNING id
+    `);
+    await client.query(
+      `INSERT INTO public.marketplace_order_items
+         (order_id, product_id, variant_id, product_name, quantity, price)
+       VALUES ($1, $2, $3, 'PROVA VARIANTE', 1, 10.00)`,
+      [pedVar.rows[0].id, produtoVarId, varianteId],
+    );
+    await client.query(
+      "UPDATE public.product_variants SET stock_increment = stock_increment - 1 WHERE id = $1",
+      [varianteId],
+    );
+
+    await client.query("SELECT public.devolver_estoque($1)", [pedVar.rows[0].id]);
+
+    const varDepois = await client.query(
+      "SELECT stock_increment FROM public.product_variants WHERE id = $1",
+      [varianteId],
+    );
+    conferir(
+      "variante volta ao estoque original",
+      varDepois.rows[0].stock_increment === 4,
+      `veio ${varDepois.rows[0].stock_increment}`,
+    );
+
+    const paiDepois = await client.query(
+      "SELECT estoque FROM public.produtos WHERE id = $1",
+      [produtoVarId],
+    );
+    conferir(
+      "produto pai da variante NAO e creditado",
+      paiDepois.rows[0].estoque === 7,
+      `veio ${paiDepois.rows[0].estoque}, esperava 7 — creditar os dois infla o catalogo`,
+    );
   } finally {
     await client.query("ROLLBACK");
     await client.end();
@@ -252,7 +312,7 @@ main().catch((e) => {
 node scripts/db-prove-checkout-010.cjs
 ```
 
-Esperado: erro `function public.devolver_estoque(uuid) does not exist`. Se passar, a migration já foi aplicada antes da hora — pare e investigue.
+Esperado: erro. A coluna `payment_status` ainda não existe, então a falha vem antes da função — `column "payment_status" of relation "marketplace_orders" does not exist` é tão válido quanto `function public.devolver_estoque(uuid) does not exist`. O que importa é que **falhe**. Se passar, a migration já foi aplicada antes da hora — pare e investigue.
 
 - [ ] **Step 4: Cumprir o § 9 antes de aplicar**
 
@@ -278,7 +338,7 @@ node scripts/db-apply.cjs 20260807000000_reserva_com_expiracao.sql
 node scripts/db-prove-checkout-010.cjs
 ```
 
-Esperado: `2 passaram, 0 falharam.`
+Esperado: `4 passaram, 0 falharam.`
 
 - [ ] **Step 7: Commit**
 
@@ -444,7 +504,7 @@ node scripts/db-apply.cjs 20260807000000_reserva_com_expiracao.sql
 node scripts/db-prove-checkout-010.cjs
 ```
 
-Esperado: `6 passaram, 0 falharam.`
+Esperado: `8 passaram, 0 falharam.`
 
 - [ ] **Step 5: Commit**
 
@@ -572,7 +632,7 @@ node scripts/db-apply.cjs 20260807000000_reserva_com_expiracao.sql
 node scripts/db-prove-checkout-010.cjs
 ```
 
-Esperado: `9 passaram, 0 falharam.`
+Esperado: `11 passaram, 0 falharam.`
 
 - [ ] **Step 5: Commit**
 
@@ -844,6 +904,6 @@ Estado esperado, verificável:
 | pedidos em `pending` | 2 (os recentes, para revisão manual) |
 | estoque no catálogo | 61 unidades |
 | `cron.job` ativo | 1 |
-| provas em `db-prove-checkout-010.cjs` | 9 passando |
+| provas em `db-prove-checkout-010.cjs` | 11 passando |
 
 O vazamento de estoque está fechado, **sem uma linha de Mercado Pago**. A Fase 2 pode começar — ou não começar — sem que este trabalho perca valor.
