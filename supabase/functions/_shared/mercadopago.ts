@@ -43,9 +43,11 @@ export function mapearStatus(status: string): string | null {
 }
 
 /**
- * O MP recusa `date_of_expiration` terminado em 'Z' — exige offset explícito.
- * A loja é de Monte Carmelo/MG, então o offset é o de São Paulo (-03:00), que
- * não tem horário de verão desde 2019.
+ * Esta função não converte fuso horário — ela normaliza o offset que o MP
+ * exige. `date_of_expiration` terminado em 'Z' é recusado; qualquer offset
+ * explícito serve, desde que denote o mesmo instante. Por isso o
+ * deslocamento (-3h) e o rótulo (-03:00) SEMPRE mudam juntos: trocar só um
+ * dos dois desloca a expiração real sem que nenhum teste de formato acuse.
  */
 export function formatarExpiracao(iso: string): string {
   const d = new Date(iso);
@@ -58,6 +60,7 @@ export function montarCorpoPix(args: {
   descricao: string;
   email: string;
   expiraEm: string;
+  orderId: string;
 }): Record<string, unknown> {
   return {
     transaction_amount: args.valor,
@@ -65,6 +68,10 @@ export function montarCorpoPix(args: {
     payment_method_id: "pix",
     date_of_expiration: args.expiraEm,
     payer: { email: args.email },
+    // Sem isso o MP não guarda ponteiro de volta para o pedido, e a
+    // reconciliação da Fase 3 teria que casar valor + e-mail + horário na
+    // mão. Com isso vira GET /v1/payments/search?external_reference=<id>.
+    external_reference: args.orderId,
   };
 }
 
@@ -77,6 +84,7 @@ export function montarCorpoCartao(args: {
   metodo: string;
   emissor?: string;
   documento?: { type: string; number: string };
+  orderId: string;
 }): Record<string, unknown> {
   const payer: Record<string, unknown> = { email: args.email };
   if (args.documento) payer.identification = args.documento;
@@ -88,6 +96,9 @@ export function montarCorpoCartao(args: {
     installments: args.parcelas,
     payment_method_id: args.metodo,
     payer,
+    // Mesmo motivo do PIX: é o que permite achar o pedido a partir do
+    // pagamento na reconciliação da Fase 3.
+    external_reference: args.orderId,
   };
   if (args.emissor) corpo.issuer_id = args.emissor;
   return corpo;
@@ -142,16 +153,44 @@ export async function criarPagamento(args: {
     };
   }
 
-  const json = await resposta.json();
-  const dados = json?.point_of_interaction?.transaction_data ?? {};
+  // A leitura do corpo mora no MESMO try que trata resposta ilegível: um
+  // 2xx com corpo HTML, vazio ou "null" faria json() rejeitar, e a rejeição
+  // escaparia esta função inteira. A Task 2 não tem try/catch externo em
+  // volta de criarPagamento — nenhum caminho aqui pode rejeitar.
+  let json: Record<string, unknown> | null;
+  try {
+    json = await resposta.json();
+  } catch (_err) {
+    console.error("mercadopago: resposta 2xx com corpo ilegível", resposta.status);
+    return {
+      ok: false,
+      erro: "Resposta inválida do gateway.",
+      status: resposta.status,
+    };
+  }
+
+  if (json?.id === undefined || json?.id === null) {
+    // "undefined" nunca pode virar gateway_payment_id: a coluna tem índice
+    // UNIQUE parcial, e a segunda ocorrência estoura 23505.
+    console.error("mercadopago: resposta 2xx sem id", resposta.status, JSON.stringify(json));
+    return {
+      ok: false,
+      erro: "Resposta inválida do gateway.",
+      status: resposta.status,
+    };
+  }
+
+  const dados =
+    (json.point_of_interaction as Record<string, unknown> | undefined)
+      ?.transaction_data as Record<string, unknown> | undefined ?? {};
 
   return {
     ok: true,
     // A coluna gateway_payment_id é text e o MP devolve número.
     id: String(json.id),
     status: String(json.status),
-    qrCode: dados.qr_code,
-    qrCodeBase64: dados.qr_code_base64,
-    ticketUrl: dados.ticket_url,
+    qrCode: dados.qr_code as string | undefined,
+    qrCodeBase64: dados.qr_code_base64 as string | undefined,
+    ticketUrl: dados.ticket_url as string | undefined,
   };
 }
