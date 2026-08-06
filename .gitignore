@@ -92,7 +92,20 @@ scratch_*
 
 # Ferramentas de agente (local da máquina, não do projeto).
 # Mesmo critério já aplicado a `.agents/` acima.
-.claude/
+#
+# Exceção: `.claude/agents/` é processo do time, não estado de máquina. Os
+# subagentes `implementador` e `revisor` definem como uma tarefa vira código
+# aqui: é o registro do processo que o código atravessou — fica legível no PR,
+# e qualquer clone precisa dele para o fluxo rodar igual. Mudá-los é mudança de
+# processo e passa por PR. `settings.local.json`, `worktrees/` e o resto
+# continuam fora.
+#
+# Mesma exceção para `launch.json`: o CLAUDE.md manda subir o preview com
+# `{name: "core_app_mkt"}`, e esse nome só existe para quem tem o arquivo. É
+# `npm run dev` na porta 5173 — descrição do projeto, sem credencial.
+.claude/*
+!.claude/agents/
+!.claude/launch.json
 .serena/
 
 # Estado local do Supabase CLI: muda a cada comando e suja o `git status`.
