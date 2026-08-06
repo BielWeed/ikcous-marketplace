@@ -704,21 +704,43 @@ loja: policies, grants e a lista das 64 funções `SECURITY DEFINER`. Isso é ma
 para quem quiser atacar, e não há motivo para versionar. **Versionado fica o
 script**; quem precisar gera o próprio.
 
-### `pg_dump` e a armadilha do Docker
+### `pg_dump`: duas armadilhas, e a segunda é pior
 
 O snapshot de policies **não é um backup**. Não tem dados, índices, constraints,
-triggers nem sequences. Backup de verdade é `pg_dump`:
+triggers nem sequences. Backup de verdade é `pg_dump`.
+
+**Armadilha 1 — Docker.** O `supabase db dump` levanta um container `postgres`
+para executar o `pg_dump`. Sem Docker Desktop no ar ele falha com
+`LegacyDockerRunError` e **escreve um arquivo vazio**, sem erro visível na
+primeira linha. Já aconteceu aqui: dois arquivos de 0 KB. **Confira o tamanho do
+arquivo, sempre** — registrar um arquivo vazio como backup é pior do que não ter
+backup.
+
+**Armadilha 2 — `supabase db dump` OMITE TRIGGERS.** Medido em 06/08/2026 no
+banco de produção, com Docker no ar e o comando terminando com sucesso:
+
+| objeto | no banco | no `supabase db dump` |
+| --- | ---: | ---: |
+| tabelas | 29 | 29 |
+| views | 5 | 5 |
+| policies | 71 | 71 |
+| funções | 66 | 66 |
+| **triggers** | **9** | **0** |
+
+Entre os 9 que sumiriam estão `tr_prevent_role_change`,
+`tr_ensure_role_protection` e `tr_sync_profile_role_to_auth` — **proteção de
+privilégio**. Um baseline gerado por ali derrubaria as três sem avisar, e o dump
+não reclama de nada.
+
+**Use `pg_dump` direto, dentro do container:**
 
 ```bash
-supabase db dump --db-url "$env:DATABASE_URL" -f backups/schema.sql
+docker run --rm -e PGURL public.ecr.aws/supabase/postgres:17.6.1.143 \
+  pg_dump --schema-only --schema=public --no-owner --no-privileges "$PGURL"
 ```
 
-**Esse comando exige Docker rodando** — ele levanta um container `postgres` para
-executar o `pg_dump`. Sem Docker Desktop no ar, ele falha com
-`LegacyDockerRunError` e **escreve um arquivo vazio**, sem sair com erro visível
-na primeira linha. Já aconteceu aqui: dois arquivos de 0 KB. **Confira o tamanho
-do arquivo depois, sempre** — senão você registra um arquivo vazio como se fosse
-backup, que é pior do que não ter backup nenhum.
+E **confira a contagem** contra a introspecção, em vez de confiar no exit 0. Foi
+assim que a omissão apareceu: o dump "funcionou", e os números não bateram.
 
 ### Restauração
 
