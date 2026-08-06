@@ -95,8 +95,10 @@ scratch_*
 #
 # Exceção: `.claude/agents/` é processo do time, não estado de máquina. Os
 # subagentes `implementador` e `revisor` definem como uma tarefa vira código
-# aqui, e mudá-los é mudança de processo — precisa chegar no clone do outro dev
-# e passar por PR. `settings.local.json`, `worktrees/` e o resto continuam fora.
+# aqui: é o registro do processo que o código atravessou — fica legível no PR,
+# e qualquer clone precisa dele para o fluxo rodar igual. Mudá-los é mudança de
+# processo e passa por PR. `settings.local.json`, `worktrees/` e o resto
+# continuam fora.
 #
 # Mesma exceção para `launch.json`: o CLAUDE.md manda subir o preview com
 # `{name: "core_app_mkt"}`, e esse nome só existe para quem tem o arquivo. É
