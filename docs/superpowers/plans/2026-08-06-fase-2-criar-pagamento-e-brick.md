@@ -1028,6 +1028,27 @@ git commit -m "feat(edge): criar-pagamento gera a cobranca do pedido no Mercado 
 - Modify: `.env.example`
 - Test: `tests/front/pagamento-online.test.tsx` (o arquivo nasce aqui, cresce na Task 4)
 
+> **Efeito colateral de acrescentar `"online"` ao `PaymentMethod`, que este plano não
+> tinha previsto:** o tipo é consumido em dois lugares que passam a não compilar ou,
+> pior, a mentir.
+>
+> - `src/components/ui/custom/OrderList.tsx` — lista do **cliente** — tem um
+>   `Record<PaymentMethod, ...>` que deixa de ser exaustivo. O TypeScript cobra, então
+>   este é o caso barulhento. O rótulo tem de ser **"Pagamento online"**, não "Pago
+>   online": o tipo `Order` não carrega status de pagamento (`src/lib/mappers.ts:230` só
+>   mapeia `paymentMethod`), então a tela mostraria "Pago" para um pedido `aguardando` e
+>   para um `expirado` igual.
+> - `src/components/admin/orders/OrderDetail.tsx:438-442` — tela do **lojista** — tem
+>   `getPaymentMethodLabel(method: string)`, um if/else sobre `string` solto. O
+>   compilador **não** cobra, e o `return` final é `"Dinheiro Espécie"`. É o caso
+>   silencioso e o caro: pedido pago por PIX online apareceria para o lojista como
+>   dinheiro, e ele iria cobrar na entrega um pedido já pago. Tipar o parâmetro como
+>   `PaymentMethod` transforma isso em erro de compilação.
+>
+> Também é preciso ajustar `tests/front/mappers.test.ts` (a fixture fica incompleta com
+> as três colunas novas) e o `include` do `vitest.config.ts`, que só varria `.ts` e não
+> pegaria o `.tsx` novo.
+
 **Interfaces:**
 - Consumes: o contrato HTTP da Task 2.
 - Produces:
@@ -1052,9 +1073,15 @@ git commit -m "feat(edge): criar-pagamento gera a cobranca do pedido no Mercado 
 
 Crie `tests/front/pagamento-online.test.tsx`:
 
+> **Ordem dos imports:** `@/lib/flags` vem ANTES de `vitest`. O biome tem
+> `organizeImports` ligado e o CI mede uma **catraca** — teto de 30 erros, gravado em
+> `.lint-baseline.json`. Um import fora de ordem sobe para 31 e reprova o job, mesmo
+> com todos os testes verdes. O número que aparece localmente é ruído de CRLF; para
+> medir como o CI mede, extraia a árvore em LF.
+
 ```tsx
-import { describe, expect, it } from "vitest";
 import { lerFlagPagamentoOnline } from "@/lib/flags";
+import { describe, expect, it } from "vitest";
 
 describe("flag de pagamento online", () => {
   it("liga apenas com a string exata 'true'", () => {
