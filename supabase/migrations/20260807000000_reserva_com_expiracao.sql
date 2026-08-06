@@ -84,13 +84,27 @@ DECLARE
     v_pedido   RECORD;
     v_expirados integer := 0;
 BEGIN
-    -- FOR UPDATE SKIP LOCKED: se o webhook da Fase 3 estiver confirmando este
-    -- mesmo pedido agora, ele detem a trava e a varredura pula em vez de
-    -- disputar. Quem chegou primeiro ganha; nao ha sobrescrita.
+    -- FOR UPDATE SKIP LOCKED protege contra OUTRA varredura: se dois ciclos do
+    -- pg_cron se sobrepuserem, o segundo pula a linha travada em vez de creditar
+    -- estoque duas vezes. NAO resolve a corrida com o webhook da Fase 3: se a
+    -- varredura pegar a trava primeiro, o UPDATE do webhook espera, reavalia o
+    -- WHERE por id (que continua valendo) e sobrescreve — sai pedido 'pago' com
+    -- status 'cancelled' e estoque ja devolvido. Tratar esse estado e' obrigacao
+    -- de quem escrever o webhook; a CHECK ja reserva 'pago_apos_expirar' para
+    -- ele. Este comentario e' o que a Fase 3 vai ler: nao prometa aqui garantia
+    -- que o codigo nao da.
+    --
+    -- status = 'pending' e' o filtro que impede credito em dobro: quando o
+    -- cliente cancela pelo app, a update_order_status_atomic JA devolve o
+    -- estoque e NAO escreve payment_status. Sem este AND, o pedido cancelado as
+    -- 10:05 seria varrido as 10:30 e creditado uma segunda vez. Vale tambem para
+    -- o pedido que o admin adiantou para 'processing' dentro dos 30 minutos:
+    -- venda fechada por fora nao pode ser cancelada por varredura.
     FOR v_pedido IN
         SELECT id
         FROM public.marketplace_orders
         WHERE payment_status = 'aguardando'
+          AND status = 'pending'
           AND expires_at IS NOT NULL
           AND expires_at < now()
         FOR UPDATE SKIP LOCKED

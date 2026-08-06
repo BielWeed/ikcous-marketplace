@@ -198,7 +198,42 @@ async function main() {
       RETURNING id
     `);
 
+    // Pedido JA CANCELADO pelo cliente, e vencido depois. A
+    // update_order_status_atomic ja devolveu o estoque no cancelamento e NAO
+    // escreve payment_status, entao a linha continua 'aguardando'. Se a
+    // varredura agir sobre ela, credita o estoque uma SEGUNDA vez — catalogo
+    // com mais unidade do que existe. Este assert e' a trava disso.
+    const prod3 = await client.query(`
+      INSERT INTO public.produtos (nome, custo, preco_venda, estoque, categoria)
+      VALUES ('PROVA JA CANCELADO', 5.00, 10.00, 9, 'teste')
+      RETURNING id
+    `);
+    const produto3 = prod3.rows[0].id;
+
+    const jaCancelado = await client.query(`
+      INSERT INTO public.marketplace_orders
+        (total, subtotal, status, payment_status, expires_at, customer_name, customer_data)
+      VALUES (10.00, 10.00, 'cancelled', 'aguardando', now() - interval '1 minute', 'JA CANCELADO', '{}'::jsonb)
+      RETURNING id
+    `);
+    await client.query(
+      `INSERT INTO public.marketplace_order_items
+         (order_id, product_id, product_name, quantity, price)
+       VALUES ($1, $2, 'PROVA JA CANCELADO', 2, 10.00)`,
+      [jaCancelado.rows[0].id, produto3],
+    );
+
     await client.query("SELECT public.expirar_pedidos_vencidos()");
+
+    const est3 = await client.query(
+      "SELECT estoque FROM public.produtos WHERE id = $1",
+      [produto3],
+    );
+    conferir(
+      "pedido ja cancelado NAO e creditado de novo",
+      est3.rows[0].estoque === 9,
+      `veio ${est3.rows[0].estoque}, esperava 9 — a varredura creditou em dobro`,
+    );
 
     const est2 = await client.query(
       "SELECT estoque FROM public.produtos WHERE id = $1",

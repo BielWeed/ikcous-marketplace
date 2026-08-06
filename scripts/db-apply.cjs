@@ -122,6 +122,11 @@ const VERIFICACOES = {
         // So varre pedido 'aguardando': sem este filtro, a funcao passaria a
         // cancelar pedido ja pago ou historico (payment_status NULL).
         "WHERE payment_status = 'aguardando'",
+        // So varre pedido 'pending': sem este filtro, um pedido que o
+        // cliente ja cancelou pelo app (a update_order_status_atomic devolve
+        // o estoque no cancelamento e nao escreve payment_status) seria
+        // creditado uma segunda vez pela varredura.
+        "AND status = 'pending'",
         // FOR UPDATE SKIP LOCKED: sem ele, a varredura disputa a linha com o
         // webhook da Fase 3 em vez de pular o pedido que ja esta sendo
         // confirmado — e pode expirar um pedido que acabou de ser pago.
@@ -285,7 +290,8 @@ async function main() {
         const marcadorNormalizado = marcador.replace(/\r\n/g, "\n");
         const ok = Boolean(defNormalizado?.includes(marcadorNormalizado));
         if (!ok) tudoOk = false;
-        console.log(`  ${ok ? "ok     " : "AUSENTE"}  ${checagem.funcao}: ${marcador.slice(0, 64)}`);
+        const rotulo = `${checagem.funcao}: ${marcador.slice(0, 64)}`;
+        console.log(`  ${ok ? "ok     " : "AUSENTE"}  ${rotulo}`);
       }
     }
   }
