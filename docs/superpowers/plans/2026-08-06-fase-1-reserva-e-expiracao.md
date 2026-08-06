@@ -22,6 +22,8 @@
 - **Linhas históricas ficam com `payment_status = NULL`.** Todas as funções desta fase só agem sobre `'aguardando'`. Isso protege os 64 pedidos que já existem de qualquer varredura automática.
 - **Nomes em português** nas funções novas, seguindo `devolver_estoque` / `expirar_pedidos_vencidos`, como o resto do banco (`update_order_status_atomic` é legado em inglês; não seguir).
 - A catraca de lint reprova se qualquer contagem subir: `npm run lint:ratchet` tem de sair `ok` antes de cada commit.
+- **Toda função nova entra no mapa `VERIFICACOES` de `scripts/db-apply.cjs`.** Sem entrada, o apply imprime "sem verificação registrada, pulando" e sai 0 — a função vai para produção sem nenhuma checagem pós-aplicação. O mapa aceita lista de funções por arquivo. Escolha marcadores que reprovem se a **regra** sumir numa reaplicação futura, não só que confirmem que a função existe: para a v24, isso significa marcar o recálculo de total, a checagem de estoque e a paridade de frete grátis — não só o carimbo novo. A comparação normaliza `\r\n` → `\n` dos dois lados; não desfaça isso, ou o próximo checkout em CRLF faz a verificação reprovar migration correta **depois** do COMMIT.
+- **A catraca do Biome mede em LF.** O número local no Windows conta CRLF que no Linux do CI não existe. Arquivo novo em `scripts/` tem de sair `No fixes applied.` no `npx biome check`, senão a catraca acusa `+1` no PR — o teto foi nivelado ao medido na `develop`, e margem zero foi decisão.
 
 ---
 
