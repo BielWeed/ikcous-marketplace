@@ -42,9 +42,22 @@
  * COMMIT_EDITMSG.
  *
  * Falha fechada: se o caminho resolvido não apontar para um arquivo que
- * existe, o script sai com erro em vez de deixar o commitlint "passar" sem
- * ter lido mensagem nenhuma — foi exatamente essa aprovação silenciosa que
- * caracterizou a regressão do parágrafo acima.
+ * existe, quem detecta isso é o PRÓPRIO commitlint — `@commitlint/read`
+ * tenta abrir o arquivo e lança ENOENT não tratado, o processo filho morre
+ * com status != 0, e esse status é o que este script propaga (linha final).
+ * Medido nesta mesma data, chamando com caminho inexistente:
+ *
+ *   Error: ENOENT: no such file or directory, open '...'
+ *       at async getEditCommit (@commitlint/read/lib/get-edit-commit.js:...)
+ *   exit status 1
+ *
+ * Por isso NÃO há um `existsSync` prévio aqui: seria uma segunda checagem do
+ * mesmo caminho no disco, sem mudar o resultado — e o eslint marca esse
+ * padrão (`security/detect-non-literal-fs-filename`) porque o argumento não
+ * é um literal. A ausência do arquivo já é fechada pela camada de baixo; foi
+ * exatamente essa aprovação silenciosa (sem chegar a checar nada) que
+ * caracterizou a regressão do parágrafo acima — não a falta de uma checagem
+ * redundante.
  *
  * O CLI é invocado pelo arquivo (`cli.js`) em vez de `npx` porque `npx` no
  * Windows é um .cmd e reintroduziria o mesmo problema de citação.
@@ -53,7 +66,6 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -76,13 +88,6 @@ const caminhoMensagem = execFileSync(
   ["rev-parse", "--git-path", nomeArquivo],
   { encoding: "utf8" },
 ).trim();
-
-if (!existsSync(caminhoMensagem)) {
-  console.error(
-    `commitlint-mensagem: arquivo de mensagem não encontrado (${nomeArquivo} -> ${caminhoMensagem}).`,
-  );
-  process.exit(1);
-}
 
 const cli = require.resolve("@commitlint/cli/cli.js");
 
