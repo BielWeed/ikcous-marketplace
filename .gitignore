@@ -121,3 +121,6 @@ backups/
 
 # Ledger e briefs do subagent-driven-development: rascunho de sessao.
 .superpowers/
+
+# Rollbacks que o db-apply.cjs gera a cada aplicacao: artefato de execucao.
+rollback-*.sql
