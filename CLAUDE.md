@@ -4,9 +4,11 @@ Este arquivo diz **quem faz o quê**. As regras de produto, PWA, Supabase e MCP 
 [AGENTS.md](AGENTS.md); as de contribuição, em [CONTRIBUTING.md](CONTRIBUTING.md). Não duplique
 conteúdo aqui.
 
-> Correção sobre o AGENTS.md: a ferramenta `auto_orchestrate_skills` descrita lá **não existe
-> mais** nesta sessão. O orquestrador de skills atual é o MCP `skill-router`
-> (`buscar_skill` → `carregar_skill` → `ler_recurso_skill`), com 245 skills indexadas.
+> O `AGENTS.md` descreve as ferramentas do **Cursor/Antigravity**, que são outras. Lá o
+> orquestrador é o MCP `orchestrator` (`auto_orchestrate_skills`) — que existe e funciona, só
+> não aqui. **No Claude Code o orquestrador é o `skill-router`** (`buscar_skill` →
+> `carregar_skill` → `ler_recurso_skill`). Ferramenta citada no `AGENTS.md` que não estiver na
+> sua lista não existe para você: não invoque e não invente substituto.
 
 ## Sempre: orquestre skills antes de agir
 
