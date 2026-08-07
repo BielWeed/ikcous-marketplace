@@ -168,6 +168,23 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20260808000000_confirmar_pagamento.sql": [
+    {
+      funcao: "confirmar_pagamento",
+      esperado: [
+        // FOR UPDATE sem SKIP LOCKED: e' o que faz o webhook ESPERAR a
+        // varredura em vez de pular a linha. Trocado por SKIP LOCKED, o
+        // pagamento fica sem registro e o teste nao pega.
+        "FOR UPDATE;",
+        // A releitura que decide. Sem ela volta o UPDATE cego que produz
+        // pedido 'pago' com status 'cancelled'.
+        "IF v_pedido.payment_status = 'expirado' THEN",
+        "RETURN 'pago_apos_expirar';",
+        // A guarda que impede credito de estoque em dobro.
+        "IF v_pedido.payment_status <> 'aguardando' THEN",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
