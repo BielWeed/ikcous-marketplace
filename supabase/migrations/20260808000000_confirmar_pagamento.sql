@@ -38,17 +38,52 @@ BEGIN
     -- O pedido guarda o id da cobranca desde a criacao (Fase 2). Se o que
     -- chegou nao bate, alguem esta confirmando o pagamento de OUTRO pedido:
     -- nao escrever e deixar para uma pessoa olhar.
-    IF v_pedido.gateway_payment_id IS DISTINCT FROM p_payment_id THEN
+    --
+    -- As duas primeiras clausulas NAO sao redundantes. `IS DISTINCT FROM`
+    -- sozinho e' NULL-safe no sentido ERRADO para uma checagem de
+    -- identidade: dois NULLs contam como iguais, e a guarda LIBERA
+    -- justamente quando nao ha com o que comparar. Medido em 07/08/2026
+    -- contra o banco real: pedido 'aguardando' sem gateway_payment_id,
+    -- confirmado com p_payment_id NULL, virava 'pago' com paid_at carimbado
+    -- e sem pagamento nenhum. E 'aguardando' + gateway_payment_id NULL e' o
+    -- estado NORMAL de todo pedido entre o checkout e a criacao da cobranca
+    -- — com a flag da Fase 2 desligada, e' o estado permanente.
+    IF p_payment_id IS NULL
+       OR v_pedido.gateway_payment_id IS NULL
+       OR v_pedido.gateway_payment_id IS DISTINCT FROM p_payment_id THEN
         RETURN 'divergente';
     END IF;
 
-    -- Estorno vale a partir de QUALQUER estado, e NUNCA mexe em estoque: o
-    -- dinheiro entrou e voltou, possivelmente com entrega feita. Repor
-    -- estoque sozinho aqui e' chutar onde a mercadoria esta.
     IF p_status = 'estornado' THEN
         IF v_pedido.payment_status = 'estornado' THEN
             RETURN 'ja_estornado';
         END IF;
+
+        -- A partir de 'aguardando' NADA saiu: o estoque esta apenas
+        -- RESERVADO, e devolver e' seguro. A regra "estorno nunca mexe em
+        -- estoque" existe para o caso 'pago', onde a mercadoria pode ja ter
+        -- saido — nao para este.
+        --
+        -- Sem este ramo o pedido ficaria 'estornado' com status 'pending', e
+        -- a expirar_pedidos_vencidos (que exige payment_status='aguardando',
+        -- ver 20260807000000:106) NUNCA MAIS o alcancaria: a reserva sumiria
+        -- do catalogo para sempre. Medido em 07/08/2026 — 3 unidades
+        -- perdidas, e a varredura rodando logo depois nao tocou na linha.
+        IF v_pedido.payment_status = 'aguardando' THEN
+            PERFORM public.devolver_estoque(p_order_id);
+            UPDATE public.marketplace_orders
+               SET payment_status = 'estornado',
+                   status         = 'cancelled',
+                   updated_at     = now()
+             WHERE id = p_order_id;
+            RETURN 'estornado';
+        END IF;
+
+        -- 'pago', 'pago_apos_expirar', 'expirado', 'recusado' ou NULL: marca
+        -- e NAO mexe em estoque. A partir de 'pago' houve venda e
+        -- possivelmente entrega; repor sozinho e' chutar onde a mercadoria
+        -- esta. Nos demais o estoque JA voltou por outro caminho, e mexer de
+        -- novo creditaria em dobro — devolver_estoque nao e' idempotente.
         UPDATE public.marketplace_orders
            SET payment_status = 'estornado',
                updated_at     = now()
