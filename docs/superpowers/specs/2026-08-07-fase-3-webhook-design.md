@@ -184,7 +184,15 @@ Nenhuma coluna de `payment_status` nova: a CHECK da Fase 1 já reserva os seis v
 | arquivo | `verify_jwt` | papel |
 | --- | --- | --- |
 | `webhook-mercadopago/index.ts` | **`false`** | recebe a confirmação; o MP não manda JWT |
-| `reconciliar-pagamentos/index.ts` | `true` | varre candidatos; chamada pelo `pg_cron` |
+| `reconciliar-pagamentos/index.ts` | **`false`** | varre candidatos; chamada pelo `pg_cron` via `pg_net` |
+
+**Correção feita em 07/08 ao escrever o plano.** Esta linha dizia `true`. Não fecha: o
+`pg_net` precisa de credencial para chamar a função, e com `verify_jwt = true` essa
+credencial seria a `service_role` — passando a viver dentro do banco, o que mina metade
+do motivo de ter escolhido `pg_cron` em vez de GitHub Actions. A função roda com
+`verify_jwt = false` e valida um **`RECONCILIACAO_SECRET` próprio**, guardado no Vault.
+Se ele vazar, o pior caso é alguém disparar uma reconciliação — que é idempotente e só
+pergunta ao MP.
 
 **`_shared/mercadopago.ts`** ganha uma função, e só uma:
 `validarAssinatura({ xSignature, xRequestId, dataId, segredo })` — **pura**, HMAC-SHA256
@@ -222,8 +230,8 @@ aconteceu neste projeto, agora por escrito.
 `criar-pagamento`, `notify-new-order`, `reconciliar-pagamentos`, `send-order-whatsapp`,
 `send-otp-email`, `send-push`, `webhook-mercadopago`), cada uma com o `verify_jwt` que
 tem hoje em produção, **conferido contra o painel antes de o arquivo existir**.
-`send-otp-email`, `notify-new-order` e `webhook-mercadopago` em `false`; as demais em
-`true`. Nenhuma omissão.
+`send-otp-email`, `notify-new-order`, `webhook-mercadopago` e `reconciliar-pagamentos`
+em `false`; as demais em `true`. Nenhuma omissão.
 
 O comportamento exato do CLI aqui **se confirma na documentação na hora de implementar**,
 não de memória. É o tipo de detalhe que já custou caro.
