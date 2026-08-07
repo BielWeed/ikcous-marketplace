@@ -154,10 +154,21 @@ tira a dúvida de quem for ler depois.
 # 2. Este arquivo NAO protege contra a flag. Quem digitar --no-verify-jwt na
 #    funcao errada continua ganhando de tudo que esta escrito aqui.
 
+# project_id e' identificador LOCAL — distingue projetos no mesmo host, e
+# NAO escolhe o destino do deploy. O alvo e' o projeto linkado ou o
+# --project-ref. Isso importa aqui: o DEPLOYMENT.md:28 avisa que o seletor
+# interativo lista o sandbox ANTES do projeto certo, e que dar Enter direto
+# publica no lugar errado sem erro nenhum. Ver este campo como "alvo fixado"
+# e largar o --project-ref e' exatamente como se publica no sandbox.
 project_id = "cafkrminfnokvgjqtkle"
 
-# Sem JWT de proposito: o link do e-mail e' aberto por quem ainda nao tem
-# sessao. Ver DEPLOYMENT.md:52.
+# Sem JWT de proposito, e NAO porque exista link aberto por quem nao tem
+# sessao — nao existe link: esta funcao manda um codigo de 6 digitos.
+#
+# O unico chamador e' um trigger do banco (handle_new_otp_verification), que
+# se autentica com um segredo opaco lido do Vault, nao com JWT. Com
+# verify_jwt = true o gateway devolve 401 ANTES de a funcao rodar, nenhum
+# codigo chega ao cliente, e o login cai. Ver DEPLOYMENT.md:52.
 [functions."send-otp-email"]
 verify_jwt = false
 
