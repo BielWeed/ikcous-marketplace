@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import type { Order, OrderStatus } from "@/types";
+import type { Order, OrderStatus, PaymentMethod } from "@/types";
 import {
   Check,
   CheckCircle2,
@@ -435,9 +435,13 @@ interface OrderFinanceCardProps {
 }
 
 function OrderFinanceCard({ order }: Readonly<OrderFinanceCardProps>) {
-  const getPaymentMethodLabel = (method: string) => {
+  const getPaymentMethodLabel = (method: PaymentMethod) => {
     if (method === "pix") return "Rede PIX";
     if (method === "card") return "Rede Crédito";
+    // "online" existe desde a Fase 2 (CHECKOUT-010): pedido cobrado no site
+    // via Mercado Pago, não confundir com dinheiro na entrega — quem lança o
+    // caixa a partir daqui não pode ler "Dinheiro Espécie" e cobrar de novo.
+    if (method === "online") return "Pagamento Online";
     return "Dinheiro Espécie";
   };
 

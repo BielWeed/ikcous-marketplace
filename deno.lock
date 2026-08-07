@@ -125,6 +125,7 @@
         "npm:framer-motion@^12.34.1",
         "npm:globals@^16.5.0",
         "npm:htmlhint@^1.1.4",
+        "npm:jsdom@^29.1.1",
         "npm:kimi-plugin-inspect-react@^1.0.3",
         "npm:knip@^5.45.0",
         "npm:lefthook@^2.1.10",
