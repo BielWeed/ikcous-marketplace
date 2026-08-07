@@ -232,6 +232,12 @@ git commit -m "chore(edge): versiona o verify_jwt das funcoes no config.toml (#1
 **Arquivos:**
 - Criar: `supabase/migrations/20260808000000_confirmar_pagamento.sql`
 - Criar: `scripts/db-prove-checkout-060.cjs`
+- Modificar: `scripts/db-apply.cjs` (registrar a migration no mapa `VERIFICACOES`)
+
+**Esta é a primeira tarefa que escreve no banco de PRODUÇÃO.** Backup é diário e não há PITR;
+reverter custa até 24 h de pedidos. A migration é aditiva (`ADD COLUMN IF NOT EXISTS`,
+`CREATE OR REPLACE FUNCTION`) e não apaga nem reescreve dado — mas o `ADD COLUMN` **não entra
+no rollback** que o `db-apply` gera.
 
 **Interfaces:**
 - Consome: `public.devolver_estoque(uuid)` (Fase 1, migration `20260807000000`).
@@ -409,7 +415,48 @@ node scripts/db-prove-checkout-060.cjs
 Esperado: **FALHA** com erro de função inexistente (`confirmar_pagamento does not exist`), já
 que a migration ainda não foi aplicada. Se passar aqui, o script não está provando nada.
 
-- [ ] **Passo 4: aplicar a migration e rodar a prova**
+- [ ] **Passo 4: registrar a migration no `VERIFICACOES` do `db-apply.cjs`**
+
+**Leia `scripts/db-apply.cjs:13-36` e `:117-130` antes.** O script tem um mapa `VERIFICACOES`
+que, depois de aplicar, relê a função que ficou no banco e confere se os marcadores esperados
+estão lá. **Migration não registrada não é verificada** — e essa é a trava que pega
+`CREATE OR REPLACE` que aplicou mas perdeu um trecho no caminho.
+
+Acrescente a entrada, na forma de array que a `20260807000000_reserva_com_expiracao.sql` já
+usa (ela toca duas funções):
+
+```js
+  "20260808000000_confirmar_pagamento.sql": [
+    {
+      funcao: "confirmar_pagamento",
+      esperado: [
+        // FOR UPDATE sem SKIP LOCKED: e' o que faz o webhook ESPERAR a
+        // varredura em vez de pular a linha. Trocado por SKIP LOCKED, o
+        // pagamento fica sem registro e o teste nao pega.
+        "FOR UPDATE;",
+        // A releitura que decide. Sem ela volta o UPDATE cego que produz
+        // pedido 'pago' com status 'cancelled'.
+        "IF v_pedido.payment_status = 'expirado' THEN",
+        "RETURN 'pago_apos_expirar';",
+        // A guarda que impede credito de estoque em dobro.
+        "IF v_pedido.payment_status <> 'aguardando' THEN",
+      ],
+    },
+  ],
+```
+
+- [ ] **Passo 5: ensaiar com `--dry-run`, depois aplicar**
+
+```bash
+node scripts/db-apply.cjs --dry-run supabase/migrations/20260808000000_confirmar_pagamento.sql
+```
+
+Leia o plano impresso. **Duas coisas que o script avisa e que valem repetir aqui:** o arquivo
+de rollback que ele gera guarda **só a definição atual das funções** que a migration toca —
+`ADD COLUMN`, índice e constraint **não entram**. Como esta migration adiciona `paid_at`,
+desfazer a coluna seria manual. E o banco é o de **produção**: backup é diário e não há PITR.
+
+Se o dry-run acusar qualquer coisa que você não esperava, **pare e reporte** em vez de aplicar.
 
 ```bash
 node scripts/db-apply.cjs supabase/migrations/20260808000000_confirmar_pagamento.sql
@@ -419,9 +466,10 @@ node scripts/db-apply.cjs supabase/migrations/20260808000000_confirmar_pagamento
 node scripts/db-prove-checkout-060.cjs
 ```
 
-Esperado: todos os `ok`, nenhum `FALHA`. **Cole a saída inteira no relatório final.**
+Esperado: todos os `ok`, nenhum `FALHA`, e a verificação de marcadores do próprio `db-apply`
+passando. **Cole a saída inteira das duas execuções no relatório final.**
 
-- [ ] **Passo 5: prova por mutação — o teste tem dente?**
+- [ ] **Passo 6: prova por mutação — o teste tem dente?**
 
 Comente a linha `IF v_pedido.gateway_payment_id IS DISTINCT FROM p_payment_id` e o `RETURN
 'divergente'`, reaplique num `ROLLBACK` e rode a prova: o caso `divergente` **tem que
@@ -431,10 +479,10 @@ reprovar**. Depois desfaça. Faça o mesmo com o ramo `IN ('pago','pago_apos_exp
 Se algum caso continuar verde com o mecanismo removido, o teste é decorativo e precisa ser
 reescrito antes de seguir.
 
-- [ ] **Passo 6: commit**
+- [ ] **Passo 7: commit**
 
 ```bash
-git add supabase/migrations/20260808000000_confirmar_pagamento.sql scripts/db-prove-checkout-060.cjs
+git add supabase/migrations/20260808000000_confirmar_pagamento.sql scripts/db-prove-checkout-060.cjs scripts/db-apply.cjs
 ```
 
 ```bash
