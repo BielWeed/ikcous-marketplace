@@ -222,9 +222,17 @@ webhook marcar `pago`, ela reflete sozinha.
 Hoje **só `send-otp-email` e `notify-new-order` rodam sem JWT**, e isso vive na cabeça de
 quem digita o deploy (`DEPLOYMENT.md:52` e `:57`), não no repositório. É a #162.
 
-**Criar o arquivo é o ato arriscado.** Função que ficar de fora herda o padrão
-`verify_jwt = true` no próximo deploy — que é exatamente a queda do OTP que já
-aconteceu neste projeto, agora por escrito.
+**Correção medida em 07/08/2026, ao executar a Task 1.** Esta seção afirmava que função
+fora do arquivo herda `verify_jwt = true` no próximo deploy. **Está errado.** A precedência
+real do CLI é `--no-verify-jwt` (flag) > `verify_jwt` no `config.toml` > **preserva o que
+já está no servidor** — três fontes do código do CLI concordam, com comentário explícito do
+mantenedor. Logo: omitir uma função não a derruba, e **este arquivo não protege contra a
+flag**, que continua ganhando de tudo.
+
+O que se ganha, então, é menor do que esta spec prometia, mas é real: a configuração passa
+a ser revisável em PR, e um deploy sem flag aplica o que está escrito no arquivo em vez de
+depender do que sobrou no servidor de um deploy anterior. O risco de fato aberto continua
+sendo **a flag digitada à mão** — e fechá-lo é outra conversa, não esta.
 
 **Regra:** o arquivo enumera as **oito** funções (`calculate-shipping`,
 `criar-pagamento`, `notify-new-order`, `reconciliar-pagamentos`, `send-order-whatsapp`,

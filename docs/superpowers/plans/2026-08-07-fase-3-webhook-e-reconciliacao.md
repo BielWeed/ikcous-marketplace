@@ -79,22 +79,37 @@ Valem para **todas** as tarefas. Cada tarefa herda esta seção sem repetir.
 - Consome: nada.
 - Produz: o arquivo que as tarefas 4 e 6 vão **acrescentar** a própria entrada.
 
-**Por que esta tarefa é perigosa apesar de ser um arquivo de configuração.** Hoje só
-`send-otp-email` e `notify-new-order` rodam sem JWT, e isso está documentado em
-`DEPLOYMENT.md:52` e `:57` — não no repositório. **Função que ficar de fora do arquivo herda
-o padrão `verify_jwt = true` no próximo deploy**, e é exatamente assim que o OTP já caiu neste
-projeto. Omitir uma linha aqui custa mais que qualquer outra tarefa deste plano.
+**O que este arquivo faz e o que ele NÃO faz** — medido na documentação do CLI em 07/08/2026,
+não suposto. A precedência no deploy é:
 
-- [ ] **Passo 1: confirmar o comportamento do CLI na documentação**
+```
+--no-verify-jwt (flag)  >  verify_jwt no config.toml  >  preserva o que está no servidor
+```
 
-Use `mcp__context7__query-docs` para a CLI do Supabase: como `[functions.<nome>]` e
-`verify_jwt` se comportam no `config.toml`, e **o que acontece com uma função que não está
-declarada**. Não escreva o arquivo antes disso — a premissa desta tarefa inteira é essa, e ela
-não pode vir de memória.
+Três leituras que saem daí, e que a primeira versão deste plano errava:
 
-Se a documentação disser que função não declarada **mantém** a configuração atual em vez de
-herdar o padrão, **pare e reporte**: o desenho desta tarefa muda, e a decisão é da sessão
-principal, não sua.
+1. **Função sem entrada aqui NÃO é revertida para `true`.** O CLI omite o campo e a API
+   preserva o que já está no servidor. Omitir não derruba a função — o custo é o repositório
+   continuar sem dizer a verdade sobre ela, que é exatamente o estado que a #162 descreve.
+2. **Este arquivo não protege contra a flag.** `--no-verify-jwt` continua ganhando do
+   `config.toml`. Quem digitar a flag na função errada ainda quebra as coisas.
+3. **O que se ganha é real, mas é outra coisa:** a configuração passa a ser revisável em PR, e
+   um deploy sem flag aplica o que está escrito aqui em vez de depender do que sobrou no
+   servidor de um deploy anterior que ninguém lembra.
+
+Escreva o comentário do arquivo dizendo **isto**, não uma promessa maior.
+
+- [ ] **Passo 1: a checagem do CLI já foi feita — leia e siga**
+
+Este passo era "confirme na documentação antes de escrever". A checagem foi feita em
+07/08/2026, pela sessão principal e por um implementador antes de você, contra
+`/supabase/cli` no `context7`, e o resultado está no bloco acima: **flag > config > preserva**.
+Três fontes independentes do código do CLI (`deploy.go`, `deploy.ts`, `deploy.command.ts`)
+concordam, com comentário explícito do mantenedor.
+
+Não precisa refazer a consulta. Se você **discordar** do que está escrito acima ao ler a
+documentação por outro motivo, pare e reporte — não escreva o arquivo contradizendo isto em
+silêncio.
 
 - [ ] **Passo 2: levantar o estado atual de cada função**
 
@@ -113,49 +128,62 @@ com o Gabriel contra o painel antes de qualquer deploy.
 
 - [ ] **Passo 3: escrever o arquivo**
 
+O slug vai **entre aspas** (`[functions."send-otp-email"]`), que é a forma que os testes do
+próprio CLI usam. TOML aceitaria a chave nua com hifen, mas seguir a forma da documentação
+tira a dúvida de quem for ler depois.
+
 ```toml
 # Versiona o verify_jwt de cada edge function (#162).
 #
 # POR QUE ESTE ARQUIVO EXISTE
 #
-# Ate 07/08/2026 o verify_jwt vivia na linha de comando de quem deployava:
-# `--no-verify-jwt` digitado a mao, documentado so no DEPLOYMENT.md. Um deploy
-# sem a flag na funcao errada JA derrubou o OTP deste projeto. Aqui a
-# configuracao passa a ser revisavel em PR como o resto.
+# Ate 07/08/2026 o verify_jwt so existia na linha de comando de quem deployava
+# (`--no-verify-jwt` digitado a mao) e no DEPLOYMENT.md. Aqui ele passa a ser
+# revisavel em PR como o resto do projeto.
 #
-# REGRA: nenhuma funcao pode ficar de fora. Funcao nao declarada herda o
-# padrao (verify_jwt = true) no proximo deploy — que e' a queda do OTP de novo.
+# PRECEDENCIA MEDIDA NO CLI EM 07/08/2026 — nao suponha outra coisa:
+#
+#   --no-verify-jwt (flag)  >  verify_jwt aqui  >  preserva o que ja esta no
+#                                                  servidor
+#
+# Duas consequencias, ditas para ninguem confiar demais neste arquivo:
+#
+# 1. Funcao SEM entrada aqui nao e' revertida: o CLI omite o campo e a API
+#    preserva o valor atual. O custo de omitir nao e' derrubar a funcao — e'
+#    o repositorio voltar a nao dizer a verdade sobre ela.
+# 2. Este arquivo NAO protege contra a flag. Quem digitar --no-verify-jwt na
+#    funcao errada continua ganhando de tudo que esta escrito aqui.
 
 project_id = "cafkrminfnokvgjqtkle"
 
 # Sem JWT de proposito: o link do e-mail e' aberto por quem ainda nao tem
 # sessao. Ver DEPLOYMENT.md:52.
-[functions.send-otp-email]
+[functions."send-otp-email"]
 verify_jwt = false
 
 # Sem JWT de proposito (PEDIDO-020 #89): o pedido de convidado nasce sem
 # sessao. O que protege e' a propria funcao — corpo so aceita orderId, janela
 # de 15 min, forma de UUID. Ver DEPLOYMENT.md:57.
-[functions.notify-new-order]
+[functions."notify-new-order"]
 verify_jwt = false
 
-[functions.calculate-shipping]
+[functions."calculate-shipping"]
 verify_jwt = true
 
-[functions.send-order-whatsapp]
+[functions."send-order-whatsapp"]
 verify_jwt = true
 
-[functions.send-push]
+[functions."send-push"]
 verify_jwt = true
 
 # Chamada pelo cliente logado ou convidado com sessao; o verify_jwt filtra
 # trafego de fora do projeto e a funcao extrai a identidade do token.
-[functions.criar-pagamento]
+[functions."criar-pagamento"]
 verify_jwt = true
 ```
 
-O `project_id` acima **precisa ser conferido** contra o que o `DEPLOYMENT.md` usa nos comandos
-de deploy (`--project-ref`). Se divergir, use o do `DEPLOYMENT.md` e diga no relatório.
+O `project_id` acima **já foi conferido** contra o `--project-ref` do `DEPLOYMENT.md` em
+07/08/2026: bate, sem divergência.
 
 - [ ] **Passo 4: provar que o arquivo é TOML válido e não quebra o CI**
 
@@ -736,7 +764,7 @@ deno test --allow-all --no-check supabase/functions/webhook-mercadopago/
 # e' o x-signature validado em _shared/mercadopago.ts. Ligar o verify_jwt aqui
 # faz o gateway recusar TODA confirmacao de pagamento, em silencio, e os
 # pedidos pagos expiram como se ninguem tivesse pago.
-[functions.webhook-mercadopago]
+[functions."webhook-mercadopago"]
 verify_jwt = false
 ```
 
@@ -960,7 +988,7 @@ Depois remova a checagem do segredo — o teste 1 tem que **reprovar**. Desfaça
 # verify_jwt = true a credencial teria de ser a service_role — que passaria a
 # viver dentro do banco. Aqui a autenticacao e' o RECONCILIACAO_SECRET, cujo
 # pior caso ao vazar e' alguem disparar uma reconciliacao idempotente.
-[functions.reconciliar-pagamentos]
+[functions."reconciliar-pagamentos"]
 verify_jwt = false
 ```
 
