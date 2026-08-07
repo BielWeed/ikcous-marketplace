@@ -35,6 +35,21 @@ Valem para **todas** as tarefas. Cada tarefa herda esta seção sem repetir.
 - **Nenhum deploy de edge function neste plano.** Deploy é a etapa de rollout, atrás dos dois
   portões do Gabriel (`vercel env ls` e Task 0 do Mercado Pago). Se uma tarefa parecer pedir
   deploy, ela está mal lida.
+- **O implementador NUNCA aplica migration no banco.** Escreve o arquivo, escreve o script de
+  prova, e roda a prova — que vive inteira dentro de `BEGIN`/`ROLLBACK` e **não grava**. A
+  aplicação é da sessão principal, **depois** de o `revisor` ter lido.
+
+  *Por que esta regra existe:* a primeira versão deste plano mandava o implementador aplicar,
+  e a Task 2 chegou a rodar em produção **antes** de qualquer revisão. Isso torna o portão do
+  `revisor` Opus para migration decorativo — ele passa a revisar o que já rodou. Num banco com
+  backup diário e sem PITR, a ordem certa é: escrever → provar com `ROLLBACK` → revisar →
+  aplicar. Decisão do Gabriel em 07/08/2026, depois do fato.
+
+  Antes de aplicar, a prova roda uma vez **contra o banco sem a migration** e tem de **FALHAR**
+  (`function ... does not exist`). Prova que passa antes de a função existir não prova nada.
+
+  Passe ao `db-apply.cjs` **só o nome-base** do arquivo, não o caminho: o caminho completo
+  quebra a montagem do nome do rollback (`ENOENT`). Medido na Task 2.
 - **`npm run dev` aponta para o Supabase de PRODUÇÃO** e já vem logado como admin. Não testar
   cadastro nem pedido pela tela.
 - **Segredo nunca vai para o `.env` do front** (vira bundle). `MP_WEBHOOK_SECRET` e
@@ -445,7 +460,9 @@ usa (ela toca duas funções):
   ],
 ```
 
-- [ ] **Passo 5: ensaiar com `--dry-run`, depois aplicar**
+- [ ] **Passo 5: ensaiar com `--dry-run`** *(a aplicação é da sessão principal — ver
+      Restrições globais. Este passo pedia que o implementador aplicasse; foi corrigido em
+      07/08/2026, depois de a Task 2 ter chegado a produção antes da revisão.)*
 
 ```bash
 node scripts/db-apply.cjs --dry-run supabase/migrations/20260808000000_confirmar_pagamento.sql
@@ -456,10 +473,12 @@ de rollback que ele gera guarda **só a definição atual das funções** que a 
 `ADD COLUMN`, índice e constraint **não entram**. Como esta migration adiciona `paid_at`,
 desfazer a coluna seria manual. E o banco é o de **produção**: backup é diário e não há PITR.
 
-Se o dry-run acusar qualquer coisa que você não esperava, **pare e reporte** em vez de aplicar.
+Se o dry-run acusar qualquer coisa que você não esperava, **pare e reporte**.
+
+A aplicação e a prova pós-aplicação ficam com a sessão principal:
 
 ```bash
-node scripts/db-apply.cjs supabase/migrations/20260808000000_confirmar_pagamento.sql
+node scripts/db-apply.cjs 20260808000000_confirmar_pagamento.sql
 ```
 
 ```bash
@@ -467,7 +486,7 @@ node scripts/db-prove-checkout-060.cjs
 ```
 
 Esperado: todos os `ok`, nenhum `FALHA`, e a verificação de marcadores do próprio `db-apply`
-passando. **Cole a saída inteira das duas execuções no relatório final.**
+passando. **A saída inteira das duas execuções vai no relatório.**
 
 - [ ] **Passo 6: prova por mutação — o teste tem dente?**
 
@@ -956,17 +975,50 @@ No `db-prove-checkout-060.cjs`, dentro da mesma transação com `ROLLBACK`:
 | `expirado` há 30 h | **não aparece** (fora da janela) |
 | `aguardando` no prazo | **não aparece** |
 
-- [ ] **Passo 4: aplicar e provar**
+- [ ] **Passo 4: registrar no `VERIFICACOES` e provar SEM aplicar**
 
-```bash
-node scripts/db-apply.cjs supabase/migrations/20260808000100_reconciliacao.sql
+Acrescente a entrada da `pagamentos_a_reconciliar` ao mapa `VERIFICACOES` do
+`scripts/db-apply.cjs`, na mesma forma que a Task 2 usou. Marcadores que valem — trechos cuja
+remoção muda comportamento:
+
+```js
+  "20260808000100_reconciliacao.sql": [
+    {
+      funcao: "pagamentos_a_reconciliar",
+      esperado: [
+        // Sem isto a varredura revisita pedido ja reconciliado a cada ciclo.
+        "AND paid_at IS NULL",
+        // A janela. Sem ela vira varredura do historico inteiro a cada 10 min.
+        "interval '24 hours'",
+        // So quem chegou a ter cobranca no MP.
+        "AND gateway_payment_id IS NOT NULL",
+      ],
+    },
+  ],
 ```
+
+**Você NÃO aplica esta migration.** Rode a prova contra o banco **sem** ela e confirme que os
+casos novos **FALHAM** (`function pagamentos_a_reconciliar does not exist`):
 
 ```bash
 node scripts/db-prove-checkout-060.cjs
 ```
 
-Esperado: todos os casos das tarefas 2 e 5 verdes. **Cole a saída.**
+Depois rode o ensaio, que não grava, e **cole a saída**:
+
+```bash
+node scripts/db-apply.cjs --dry-run 20260808000100_reconciliacao.sql
+```
+
+**Por que esta migration é mais perigosa que a da Task 2, e por isso a sessão principal aplica
+depois da revisão:** a da Task 2 era aditiva e inerte (uma coluna nula e uma função que
+ninguém chamava). Esta habilita a extensão **`pg_net`** e cria um **job no `pg_cron` que passa
+a rodar a cada 10 minutos** em produção, fazendo requisição HTTP. Nem a extensão nem o
+agendamento entram no arquivo de rollback que o `db-apply` gera — desfazer os dois é manual.
+
+Deixe no relatório, explicitamente, o comando de desfazer que a sessão vai precisar se algo
+der errado (`cron.unschedule('reconciliar-pagamentos')` e o `DROP FUNCTION`), para ninguém ter
+de descobrir isso no meio de um incidente.
 
 - [ ] **Passo 5: prova por mutação**
 
