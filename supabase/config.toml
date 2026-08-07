@@ -1,0 +1,47 @@
+# Versiona o verify_jwt de cada edge function (#162).
+#
+# POR QUE ESTE ARQUIVO EXISTE
+#
+# Ate 07/08/2026 o verify_jwt so existia na linha de comando de quem deployava
+# (`--no-verify-jwt` digitado a mao) e no DEPLOYMENT.md. Aqui ele passa a ser
+# revisavel em PR como o resto do projeto.
+#
+# PRECEDENCIA MEDIDA NO CLI EM 07/08/2026 — nao suponha outra coisa:
+#
+#   --no-verify-jwt (flag)  >  verify_jwt aqui  >  preserva o que ja esta no
+#                                                  servidor
+#
+# Duas consequencias, ditas para ninguem confiar demais neste arquivo:
+#
+# 1. Funcao SEM entrada aqui nao e' revertida: o CLI omite o campo e a API
+#    preserva o valor atual. O custo de omitir nao e' derrubar a funcao — e'
+#    o repositorio voltar a nao dizer a verdade sobre ela.
+# 2. Este arquivo NAO protege contra a flag. Quem digitar --no-verify-jwt na
+#    funcao errada continua ganhando de tudo que esta escrito aqui.
+
+project_id = "cafkrminfnokvgjqtkle"
+
+# Sem JWT de proposito: o link do e-mail e' aberto por quem ainda nao tem
+# sessao. Ver DEPLOYMENT.md:52.
+[functions."send-otp-email"]
+verify_jwt = false
+
+# Sem JWT de proposito (PEDIDO-020 #89): o pedido de convidado nasce sem
+# sessao. O que protege e' a propria funcao — corpo so aceita orderId, janela
+# de 15 min, forma de UUID. Ver DEPLOYMENT.md:57.
+[functions."notify-new-order"]
+verify_jwt = false
+
+[functions."calculate-shipping"]
+verify_jwt = true
+
+[functions."send-order-whatsapp"]
+verify_jwt = true
+
+[functions."send-push"]
+verify_jwt = true
+
+# Chamada pelo cliente logado ou convidado com sessao; o verify_jwt filtra
+# trafego de fora do projeto e a funcao extrai a identidade do token.
+[functions."criar-pagamento"]
+verify_jwt = true
