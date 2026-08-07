@@ -311,17 +311,52 @@ BEGIN
     -- O pedido guarda o id da cobranca desde a criacao (Fase 2). Se o que
     -- chegou nao bate, alguem esta confirmando o pagamento de OUTRO pedido:
     -- nao escrever e deixar para uma pessoa olhar.
-    IF v_pedido.gateway_payment_id IS DISTINCT FROM p_payment_id THEN
+    --
+    -- As duas primeiras clausulas NAO sao redundantes. `IS DISTINCT FROM`
+    -- sozinho e' NULL-safe no sentido ERRADO para uma checagem de
+    -- identidade: dois NULLs contam como iguais, e a guarda LIBERA
+    -- justamente quando nao ha com o que comparar. Medido em 07/08/2026
+    -- contra o banco real: pedido 'aguardando' sem gateway_payment_id,
+    -- confirmado com p_payment_id NULL, virava 'pago' com paid_at carimbado
+    -- e sem pagamento nenhum. E 'aguardando' + gateway_payment_id NULL e' o
+    -- estado NORMAL de todo pedido entre o checkout e a criacao da cobranca
+    -- — com a flag da Fase 2 desligada, e' o estado permanente.
+    IF p_payment_id IS NULL
+       OR v_pedido.gateway_payment_id IS NULL
+       OR v_pedido.gateway_payment_id IS DISTINCT FROM p_payment_id THEN
         RETURN 'divergente';
     END IF;
 
-    -- Estorno vale a partir de QUALQUER estado, e NUNCA mexe em estoque: o
-    -- dinheiro entrou e voltou, possivelmente com entrega feita. Repor
-    -- estoque sozinho aqui e' chutar onde a mercadoria esta.
     IF p_status = 'estornado' THEN
         IF v_pedido.payment_status = 'estornado' THEN
             RETURN 'ja_estornado';
         END IF;
+
+        -- A partir de 'aguardando' NADA saiu: o estoque esta apenas
+        -- RESERVADO, e devolver e' seguro. A regra "estorno nunca mexe em
+        -- estoque" existe para o caso 'pago', onde a mercadoria pode ja ter
+        -- saido — nao para este.
+        --
+        -- Sem este ramo o pedido ficaria 'estornado' com status 'pending', e
+        -- a expirar_pedidos_vencidos (que exige payment_status='aguardando',
+        -- ver 20260807000000:106) NUNCA MAIS o alcancaria: a reserva sumiria
+        -- do catalogo para sempre. Medido em 07/08/2026 — 3 unidades
+        -- perdidas, e a varredura rodando logo depois nao tocou na linha.
+        IF v_pedido.payment_status = 'aguardando' THEN
+            PERFORM public.devolver_estoque(p_order_id);
+            UPDATE public.marketplace_orders
+               SET payment_status = 'estornado',
+                   status         = 'cancelled',
+                   updated_at     = now()
+             WHERE id = p_order_id;
+            RETURN 'estornado';
+        END IF;
+
+        -- 'pago', 'pago_apos_expirar', 'expirado', 'recusado' ou NULL: marca
+        -- e NAO mexe em estoque. A partir de 'pago' houve venda e
+        -- possivelmente entrega; repor sozinho e' chutar onde a mercadoria
+        -- esta. Nos demais o estoque JA voltou por outro caminho, e mexer de
+        -- novo creditaria em dobro — devolver_estoque nao e' idempotente.
         UPDATE public.marketplace_orders
            SET payment_status = 'estornado',
                updated_at     = now()
@@ -413,13 +448,34 @@ Os casos que o script tem de cobrir — **um por linha da tabela de decisão**:
 | `payment_status='expirado'`, `gateway_payment_id='MP2'` | `('MP2','pago')` | `'pago_apos_expirar'`, `status` continua `'cancelled'`, estoque **inalterado** |
 | `payment_status='aguardando'` com 3 unidades reservadas | `('MP3','recusado')` | `'recusado'`, estoque **+3**, `status='cancelled'` |
 | pedido já `'recusado'` | `('MP3','recusado')` | `'ignorado'`, estoque **inalterado** (é a prova de que não credita duas vezes) |
-| `payment_status='pago'` | `('MP1','estornado')` | `'estornado'`, estoque **inalterado** |
-| `gateway_payment_id='MP1'` | `('OUTRO','pago')` | `'divergente'`, `payment_status` **inalterado** |
+| `pago` com 3 unidades, `'MP4'` | `('MP4','estornado')` | `'estornado'`, estoque **inalterado** (pode ter saído) |
+| **`aguardando` com 3 unidades, `'MP5'`** | `('MP5','estornado')` | `'estornado'`, estoque **+3**, `status='cancelled'` |
+| o mesmo pedido, de novo | `('MP5','estornado')` | `'ja_estornado'`, estoque **inalterado** |
+| `aguardando`, `'MP6'` | `('OUTRO','pago')` | `'divergente'`, `payment_status` **inalterado** |
+| **`aguardando` com `gateway_payment_id` NULL** | `(NULL,'pago')` | `'divergente'` — **não** `'pago'` |
+| **`aguardando`, `'MP7'`** | `(NULL,'pago')` | `'divergente'` |
 | id que não existe | `(uuid aleatório,'X','pago')` | `'inexistente'` |
 
-Para o caso de `recusado`, monte o pedido com item de verdade em
-`marketplace_order_items` (`product_id`, `quantity`) e meça `produtos.estoque` antes e depois
-— é a única forma de provar que `devolver_estoque` foi chamada.
+As três linhas em **negrito** são as que a revisão de 07/08/2026 provou que faltavam, e cada
+uma cobre um defeito que estava mesmo no banco: o vazamento de estoque no estorno cedo, e a
+guarda de identidade que liberava no par NULL/NULL.
+
+**TODO pedido montado leva item de verdade em `marketplace_order_items`** (`product_id`,
+`quantity > 0`), sem exceção — **inclusive** os casos cuja asserção é "estoque intacto".
+
+*Por que isso não é zelo:* na primeira versão deste script, `criarPedido()` não inseria item
+nenhum e só um caso tinha. Medido em 07/08/2026: `devolver_estoque` devolveria 0 unidades,
+então três asserções de "estoque intacto" passavam **mesmo com o mecanismo invertido**. A
+revisão mutou o ramo do estorno para creditar estoque — o que o comentário proíbe em caixa
+alta — e a prova continuou verde. Asserção de estoque sobre pedido sem item não prova nada.
+
+**Cada caso monta o próprio pedido.** Na primeira versão os casos 2, 6 e 7 dependiam do estado
+deixado pelos anteriores no mesmo pedido: mudar o caso 2 mudava o significado do 6 e do 7 em
+silêncio, e o 7 acabava comparando `'estornado'` com `'estornado'`. Um
+`gateway_payment_id` distinto por pedido resolve — o índice UNIQUE é parcial.
+
+Meça `produtos.estoque` antes e depois em **todos** os casos: é a única forma de separar "não
+mexeu" de "não tinha o que mexer".
 
 - [ ] **Passo 3: rodar a prova e verificar que FALHA**
 

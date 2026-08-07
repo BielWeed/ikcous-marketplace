@@ -79,7 +79,21 @@ LOCKED`) e **relê o estado antes de decidir**:
 | `expirado` — a varredura ganhou | `pago_apos_expirar`, grava `paid_at`, **não toca estoque nem `status`** | `pago_apos_expirar` |
 | já `pago` | nada | `ja_pago` |
 | `aguardando` + MP diz recusado | `devolver_estoque` + `recusado` + `cancelled` | `recusado` |
-| qualquer + MP diz estornado | marca `estornado`, **nunca toca estoque** | `estornado` |
+| `aguardando` + MP diz estornado | `devolver_estoque` + `estornado` + `cancelled` | `estornado` |
+| qualquer outro + MP diz estornado | marca `estornado`, **não toca estoque** | `estornado` |
+
+**As duas linhas do estorno são uma correção de 07/08/2026**, feita depois de a revisão medir
+o defeito no banco. Esta spec dizia que estorno vale a partir de qualquer estado e **nunca**
+toca estoque. A partir de `pago` isso está certo — houve venda e possivelmente entrega, e
+repor sozinho é chutar onde a mercadoria está. A partir de `aguardando` estava errado: o
+pedido virava `estornado` com `status = 'pending'`, e a `expirar_pedidos_vencidos` — que exige
+`payment_status = 'aguardando'` — **nunca mais o alcançava**. As unidades reservadas sumiam do
+catálogo para sempre. Medido: 3 unidades perdidas, com a varredura rodando logo depois sem
+tocar na linha.
+
+A regra passa a ser escopada, e é essa a formulação correta: **estorno não mexe em estoque
+quando houve venda**; a partir de `aguardando` nada saiu, a reserva é só reserva, e devolver é
+seguro e imediato. Decisão do Gabriel em 07/08/2026.
 | `gateway_payment_id` ≠ `p_payment_id` | **não escreve** | `divergente` |
 
 ### Três consequências do desenho
