@@ -56,3 +56,10 @@ verify_jwt = true
 # trafego de fora do projeto e a funcao extrai a identidade do token.
 [functions."criar-pagamento"]
 verify_jwt = true
+
+# verify_jwt = false OBRIGATORIO: o Mercado Pago nao manda JWT. Quem autentica
+# e' o x-signature validado em _shared/mercadopago.ts. Ligar o verify_jwt aqui
+# faz o gateway recusar TODA confirmacao de pagamento, em silencio, e os
+# pedidos pagos expiram como se ninguem tivesse pago.
+[functions."webhook-mercadopago"]
+verify_jwt = false

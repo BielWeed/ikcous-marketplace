@@ -116,6 +116,13 @@ type ResultadoPagamento =
       ok: true;
       id: string;
       status: string;
+      // Adicionado na Task 4 (Fase 3): a webhook-mercadopago precisa saber A
+      // QUAL PEDIDO a confirmação pertence, e o corpo do webhook não serve
+      // para isso — qualquer um pode forjar um POST. A resposta do MP, do
+      // outro lado, veio autenticada pelo token do gateway. `criarPagamento`
+      // grava este mesmo valor (montarCorpoPix/montarCorpoCartao, acima) na
+      // criação; aqui é onde ele volta.
+      externalReference?: string;
       qrCode?: string;
       qrCodeBase64?: string;
       ticketUrl?: string;
@@ -236,6 +243,8 @@ async function interpretarRespostaDePagamento(
     // A coluna gateway_payment_id é text e o MP devolve número.
     id: String(json.id),
     status: String(json.status),
+    externalReference:
+      typeof json.external_reference === "string" ? json.external_reference : undefined,
     qrCode: dados.qr_code as string | undefined,
     qrCodeBase64: dados.qr_code_base64 as string | undefined,
     ticketUrl: dados.ticket_url as string | undefined,

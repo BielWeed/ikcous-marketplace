@@ -319,6 +319,35 @@ Deno.test("consultarPagamento consulta por GET, sem corpo e sem chave de idempot
   assertStringIncludes(capturada!.url, "/v1/payments/1234567890");
 });
 
+Deno.test("consultarPagamento devolve o external_reference da resposta do MP — Task 4 precisa dele para achar o pedido", async () => {
+  // O corpo do webhook NÃO é confiável para descobrir de qual pedido se
+  // trata (qualquer um pode forjar um POST); a resposta do MP, autenticada
+  // pelo token do gateway, é. Sem este campo a webhook-mercadopago não tem
+  // como montar `p_order_id` para `confirmar_pagamento`.
+  const fetchStub = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          id: 999,
+          status: "approved",
+          external_reference: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+        }),
+        { status: 200 },
+      ),
+    )) as unknown as typeof fetch;
+
+  const r = await consultarPagamento({
+    token: "TEST-token",
+    paymentId: "999",
+    fetchImpl: fetchStub,
+  });
+
+  assertEquals(r.ok, true);
+  if (r.ok) {
+    assertEquals(r.externalReference, "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b");
+  }
+});
+
 Deno.test("consultarPagamento não vaza o corpo do erro quando o MP devolve 404", async () => {
   const fetchStub = (() =>
     Promise.resolve(

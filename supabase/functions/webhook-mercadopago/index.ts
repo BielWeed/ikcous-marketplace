@@ -1,0 +1,315 @@
+// @ts-nocheck
+/**
+ * webhook-mercadopago — fecha o laço da cobrança (Fase 3, Task 4): recebe a
+ * confirmação do Mercado Pago e é o ÚNICO caminho que faz um pedido virar
+ * 'pago' de verdade — `criar-pagamento` (Fase 2) nunca escreve isso.
+ *
+ * O QUE PROTEGE ESTA FUNÇÃO
+ *
+ * Roda com `verify_jwt = false` (config.toml) porque o MP não manda JWT.
+ * Quem autentica é o `x-signature`, validado por `validarAssinatura` — sem
+ * ele, qualquer um que descubra a URL forja um "aprovado" e leva produto de
+ * graça. É por isso que a checagem de assinatura vem ANTES de qualquer
+ * leitura de corpo além do `data.id` (que a própria assinatura depende
+ * dele) e antes de qualquer chamada ao MP ou ao banco.
+ *
+ * POR QUE O `p_order_id` VEM DA RESPOSTA DO MP, NÃO DO CORPO DO WEBHOOK
+ *
+ * O corpo só é autenticado pelo `x-signature`, que amarra o `data.id` — não
+ * amarra nenhum outro campo. Um corpo forjado com a MESMA assinatura de um
+ * pagamento real não existe (a assinatura barra isso), mas o corpo em si
+ * nunca carrega o pedido: quem sabe a qual pedido um pagamento pertence é o
+ * `external_reference` que `criarPagamento`/`consultarPagamento` leem de
+ * volta da API do MP, autenticada pelo `MP_ACCESS_TOKEN`. Por isso o pedido
+ * sai de `consulta.externalReference`, nunca de `body`.
+ *
+ * `pareceUuid` nesse valor é a segunda trava: sem forma de UUID (ausente,
+ * vazio, ou pagamento criado por fora deste sistema), o Postgres recusaria o
+ * cast com 22P02, a chamada rejeitaria, e o handler devolveria 500 — fazendo
+ * o MP reenviar PARA SEMPRE um evento que nunca vai dar certo. Aqui isso vira
+ * 200 com log, e a RPC nem é chamada.
+ *
+ * A RPC `confirmar_pagamento` (Task 2) É A ÚNICA ESCRITA
+ *
+ * Ela decide sob `FOR UPDATE` — inclusive idempotência do reenvio do MP
+ * (`ja_pago`, `ja_estornado`) — e devolve só um texto. Este handler nunca
+ * escreve `payment_status` diretamente: o UPDATE mora todo dentro da RPC.
+ *
+ * PUSH: SÓ 'pago' E 'pago_apos_expirar'
+ *
+ * É o retorno da RPC que decide, não o `status` que o MP mandou — outros
+ * retornos (`ja_pago`, `divergente`, `ignorado`...) são exatamente o
+ * reenvio do MP encontrando um estado que já foi tratado, e disparar push
+ * de novo a cada reenvio (o MP tenta a cada ~15 min até receber 200)
+ * transformaria o canal do lojista em spam.
+ */
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import * as webpush from "jsr:@negrel/webpush@0.3.0";
+import { consultarPagamento, mapearStatus, validarAssinatura } from "../_shared/mercadopago.ts";
+import {
+  carregarChavesVapid,
+  corsHeaders,
+  enviarParaInscritos,
+  readKey,
+  resumir,
+} from "../_shared/webpush.ts";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Copiadas de notify-new-order/index.ts (:66, :73) e o formatarBRL local
+// dali (:93) — de propósito, e não importadas de lá: aquele módulo chama
+// `serve()` no topo (guardado só contra o runner de teste), então importar
+// dele levantaria um segundo servidor HTTP dentro desta função. Extrair as
+// três para `_shared` é refatoração que a sessão principal decide, não esta
+// tarefa.
+export const pareceUuid = (valor: unknown): boolean => typeof valor === "string" && UUID.test(valor);
+
+export const numeroDoPedido = (id: string): string => `#${String(id).slice(-6).toUpperCase()}`;
+
+const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+export function formatarBRL(valor: unknown): string {
+  const numero = Number(valor ?? 0);
+  if (!Number.isFinite(numero)) return "R$ 0,00";
+  // \u00a0 escapado, e nao o caractere literal: NBSP cru no fonte dispara
+  // no-irregular-whitespace (erro de eslint, teto zero) -- mesma razao do
+  // original em notify-new-order/index.ts:96-98.
+  return BRL.format(numero).replace(/\u00a0/g, " ");
+}
+
+const json = (corpo: unknown, status = 200) =>
+  new Response(JSON.stringify(corpo), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+/**
+ * Dispara o push de "pedido pago" para os admins inscritos. Mesmo padrão de
+ * `notify-new-order/index.ts:194-243`: carrega VAPID, monta o
+ * `ApplicationServer`, busca os admins em `profiles` e as inscrições em
+ * `push_subscriptions`, envia via `enviarParaInscritos`.
+ *
+ * Erros aqui NUNCA sobem: o pedido já está marcado 'pago' no banco quando
+ * esta função roda, e uma falha de push não pode virar 500 — isso faria o MP
+ * reenviar um evento que já foi tratado com sucesso, e reprocessar a RPC de
+ * novo só para cair em 'ja_pago'. Só loga.
+ */
+async function disparoPushReal(args: {
+  supabase: ReturnType<typeof createClient>;
+  aviso: { title: string; body: string; url: string };
+}): Promise<void> {
+  const { supabase, aviso } = args;
+  try {
+    const { data: admins, error: erroAdmins } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("role", "admin");
+    if (erroAdmins) throw erroAdmins;
+
+    const ids = (admins ?? []).map((a: any) => a.id);
+    if (ids.length === 0) {
+      console.warn("webhook-mercadopago: nenhum admin cadastrado, aviso de pagamento sem destino");
+      return;
+    }
+
+    const { data: inscricoes, error: erroInscricoes } = await supabase
+      .from("push_subscriptions")
+      .select("endpoint, p256dh, auth")
+      .in("user_id", ids);
+    if (erroInscricoes) throw erroInscricoes;
+
+    if (!inscricoes || inscricoes.length === 0) {
+      console.warn("webhook-mercadopago: nenhum admin inscrito para push");
+      return;
+    }
+
+    const vapidKeys = await carregarChavesVapid(
+      Deno.env.get("VAPID_PUBLIC_KEY"),
+      Deno.env.get("VAPID_PRIVATE_KEY"),
+    );
+    const servidor = await webpush.ApplicationServer.new({
+      contactInformation: Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.org",
+      vapidKeys,
+    });
+
+    const itens = await enviarParaInscritos({
+      servidor,
+      inscricoes,
+      mensagem: JSON.stringify(aviso),
+      rotulo: "webhook-mercadopago",
+      aoDetectarMorta: (endpoint: string) =>
+        supabase.from("push_subscriptions").delete().eq("endpoint", endpoint),
+    });
+
+    const resumo = resumir(itens);
+    console.log(
+      `webhook-mercadopago: aviso de pagamento → ${resumo.enviados} entregues, ${resumo.falharam} falharam`,
+    );
+  } catch (erro) {
+    console.error("webhook-mercadopago: falha ao disparar push de pagamento", erro);
+  }
+}
+
+/**
+ * `deps` é a mesma costura da `criar-pagamento` (index.ts:124-135): em
+ * produção o `serve()` lá embaixo chama `handler(req)` com um único
+ * argumento — nunca `serve(handler)` direto, porque o `serve` do std passa
+ * um segundo argumento (`ConnInfo`) que cairia em `deps` por acidente.
+ */
+async function handler(
+  req: Request,
+  deps: {
+    supabase?: ReturnType<typeof createClient>;
+    fetchImpl?: typeof fetch;
+    enviarPush?: typeof disparoPushReal;
+  } = {},
+): Promise<Response> {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return json({ error: "Corpo inválido." }, 400);
+  }
+
+  // Lê SÓ body.data.id — nada mais do corpo influencia decisão nenhuma.
+  const dataId = (body?.data as Record<string, unknown> | undefined)?.id;
+  if (dataId === undefined || dataId === null || dataId === "") {
+    return json({ error: "data.id ausente." }, 400);
+  }
+  const dataIdStr = String(dataId);
+
+  // A ÚNICA autenticação: sem ela, quem descobrir a URL forja um "aprovado".
+  const assinaturaOk = await validarAssinatura({
+    xSignature: req.headers.get("x-signature"),
+    xRequestId: req.headers.get("x-request-id"),
+    dataId: dataIdStr,
+    segredo: Deno.env.get("MP_WEBHOOK_SECRET") ?? "",
+    // 86400s (24h), não o default de 300s: o MP reenvia a cada ~15 min até
+    // receber 200, e não há garantia de que ele re-assine com `ts` novo a
+    // cada tentativa (o SDK oficial deixa essa checagem DESLIGADA por
+    // padrão). Com 300s, um timeout ou cold start na primeira tentativa já
+    // vira 401 permanente — o pedido expira e o pg_cron devolve o estoque de
+    // um pedido PAGO. A janela larga aceita, no pior caso, uma confirmação
+    // repetida (que `confirmar_pagamento` já trata como `ja_pago`); a janela
+    // curta troca isso por um pedido pago sem produto.
+    toleranciaSegundos: 86400,
+  });
+  if (!assinaturaOk) {
+    console.warn("webhook-mercadopago: assinatura inválida", dataIdStr);
+    return json({ error: "Assinatura inválida." }, 401);
+  }
+
+  const consulta = await consultarPagamento({
+    token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
+    paymentId: dataIdStr,
+    fetchImpl: deps.fetchImpl,
+  });
+
+  if (!consulta.ok) {
+    // 404: "esse pagamento não existe" — reenviar não muda isso.
+    if (consulta.status === 404) {
+      return json({ ok: false, ignorado: "pagamento não encontrado" }, 200);
+    }
+    // Todo o resto (inclusive 401 — token do MP errado é emergência
+    // operacional) mantém o evento vivo na fila do MP: 500 faz reenviar.
+    console.error("webhook-mercadopago: consultarPagamento falhou", consulta.status, consulta.erro);
+    return json({ error: consulta.erro }, 500);
+  }
+
+  // Usa o status que o MP DEVOLVEU, nunca o do corpo do webhook.
+  const statusMapeado = mapearStatus(consulta.status);
+  if (statusMapeado === null) {
+    console.warn("webhook-mercadopago: status desconhecido do MP", consulta.status, dataIdStr);
+    return json({ ok: true, ignorado: "status desconhecido", status: consulta.status }, 200);
+  }
+
+  if (!pareceUuid(consulta.externalReference)) {
+    console.warn(
+      "webhook-mercadopago: external_reference sem forma de UUID",
+      consulta.externalReference,
+      dataIdStr,
+    );
+    return json({ ok: true, ignorado: "external_reference inválido" }, 200);
+  }
+  const orderId = consulta.externalReference as string;
+
+  const supabase =
+    deps.supabase ??
+    createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+    );
+
+  let resultado: string;
+  try {
+    const { data, error: erroRpc } = await supabase.rpc("confirmar_pagamento", {
+      p_order_id: orderId,
+      p_payment_id: consulta.id,
+      p_status: statusMapeado,
+    });
+    if (erroRpc) throw erroRpc;
+    resultado = data as string;
+  } catch (erro) {
+    // Erro de banco mantém o evento vivo na fila do MP.
+    console.error("webhook-mercadopago: confirmar_pagamento falhou", erro);
+    return json({ error: "Erro ao confirmar pagamento." }, 500);
+  }
+
+  // Só estes dois retornos disparam push. Todo o resto (ja_pago, divergente,
+  // inexistente, ignorado, estornado, ja_estornado, recusado) é reenvio do
+  // MP encontrando um estado que já foi tratado — 200, sem push, é o que
+  // impede o reenvio de virar spam para o lojista.
+  if (resultado === "pago" || resultado === "pago_apos_expirar") {
+    // A RPC devolve só um texto — o push precisa de nome/número/valor, que
+    // vêm de uma leitura extra do pedido.
+    let pedido: Record<string, unknown> | null = null;
+    try {
+      const { data } = await supabase
+        .from("marketplace_orders")
+        .select("id, customer_name, total, total_amount")
+        .eq("id", orderId)
+        .maybeSingle();
+      pedido = data ?? null;
+    } catch (erro) {
+      // Pedido já está pago no banco; deixar o lojista sem aviso porque essa
+      // leitura cosmética falhou é pior que mandar o push sem o valor.
+      console.error("webhook-mercadopago: leitura do pedido para o push falhou", erro);
+    }
+
+    const valor = pedido?.total ?? pedido?.total_amount;
+    const aviso =
+      resultado === "pago_apos_expirar"
+        ? {
+            title: "Pagamento fora do prazo",
+            body: `${numeroDoPedido(orderId)} · ${formatarBRL(valor)} · estoque já devolvido`,
+            url: "/admin-orders",
+          }
+        : {
+            title: "Pedido pago",
+            body: `${numeroDoPedido(orderId)} · ${formatarBRL(valor)}`,
+            url: "/admin-orders",
+          };
+
+    const enviarPush = deps.enviarPush ?? disparoPushReal;
+    await enviarPush({ supabase, aviso });
+  }
+
+  return json({ ok: true, resultado }, 200);
+}
+
+// O guard do runner de teste é COPIADO de notify-new-order/criar-pagamento:
+// sem ele, `npm run test:edge` importa este módulo e sobe um servidor HTTP
+// no meio da suíte.
+const emTeste =
+  Deno.mainModule.endsWith("_test.ts") ||
+  Deno.mainModule.endsWith("_test.js") ||
+  Deno.mainModule.includes("index_test");
+
+// (req) => handler(req), não serve(handler) direto: o serve() do std passa
+// um segundo argumento (ConnInfo) que cairia em `deps` por acidente.
+if (!emTeste) serve((req) => handler(req));
+
+export { handler };
