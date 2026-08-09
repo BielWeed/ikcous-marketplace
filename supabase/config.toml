@@ -63,3 +63,10 @@ verify_jwt = true
 # pedidos pagos expiram como se ninguem tivesse pago.
 [functions."webhook-mercadopago"]
 verify_jwt = false
+
+# verify_jwt = false de proposito: quem chama e' o pg_cron via pg_net, e com
+# verify_jwt = true a credencial teria de ser a service_role — que passaria a
+# viver dentro do banco. Aqui a autenticacao e' o RECONCILIACAO_SECRET, cujo
+# pior caso ao vazar e' alguem disparar uma reconciliacao idempotente.
+[functions."reconciliar-pagamentos"]
+verify_jwt = false
