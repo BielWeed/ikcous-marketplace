@@ -725,18 +725,24 @@ Deno.test("recusa ts fora da tolerancia", async () => {
 // condicional do request-id — as duas decisoes que o manifesto realmente toma.
 // Sem eles, trocar toLowerCase por toUpperCase deixava os 5 testes verdes.
 Deno.test("preserva o casing do dataId no manifesto", async () => {
-  // Vetor gerado no Node sobre `id:ABC12;request-id:abc-123;ts:1700000000;`
-  // — com o casing ORIGINAL, que e' como o MP assina (SDK #439).
-  const V1_MAIUSCULO =
-    "2e0210699be77c929286388b5ccfcf8cb1bf788477f8a88a9654e0b67b53c084";
+  // Vetor gerado no Node sobre `id:AbC12;request-id:abc-123;ts:1700000000;`.
+  //
+  // O id e' MISTO de proposito. Um id todo maiusculo ("ABC12") nao serve
+  // aqui: `"ABC12".toUpperCase()` e' ele mesmo, entao a mutacao que forca
+  // maiusculas passaria despercebida e o teste so provaria metade do que
+  // promete. Com "AbC12", QUALQUER normalizacao de caixa — toLowerCase ou
+  // toUpperCase — muda o manifesto e derruba o teste. Medido em 09/08/2026,
+  // depois de a primeira versao deste teste falhar exatamente por isso.
+  const V1_MISTO =
+    "eb23df430623adc6ed3593f4a4a5f0b2e275750ee790ab1bae37af4d2f5e9c78";
   const ok = await validarAssinatura({
-    xSignature: `ts=${TS},v1=${V1_MAIUSCULO}`,
+    xSignature: `ts=${TS},v1=${V1_MISTO}`,
     xRequestId: REQUEST_ID,
-    dataId: "ABC12",
+    dataId: "AbC12",
     segredo: SEGREDO,
     agora: agoraOk,
   });
-  assert(ok, "id com maiuscula tem de validar com o casing preservado");
+  assert(ok, "id com caixa mista tem de validar com o casing preservado");
 });
 
 Deno.test("omite o segmento request-id quando o header nao veio", async () => {
