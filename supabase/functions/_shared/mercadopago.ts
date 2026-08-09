@@ -241,3 +241,84 @@ async function interpretarRespostaDePagamento(
     ticketUrl: dados.ticket_url as string | undefined,
   };
 }
+
+/**
+ * Valida o x-signature do webhook do Mercado Pago.
+ *
+ * E' a UNICA autenticacao que a webhook-mercadopago tem: ela roda com
+ * verify_jwt = false porque o MP nao manda JWT. Sem isto, quem descobrir a URL
+ * forja um "aprovado" e leva produto de graca.
+ *
+ * Formato confirmado na documentacao do MP (context7, 09/08/2026): o header
+ * vem como `ts=<epoch>,v1=<hex>`, o manifesto e
+ * `id:<data.id>;request-id:<x-request-id>;ts:<ts>;` — com o segmento
+ * request-id OMITIDO quando o header nao veio, igual ao SDK oficial — e o
+ * hash e HMAC-SHA256 do manifesto, comparado ao `v1` em hex. A UNICA
+ * divergencia do que o plano assumiu: a doc pede `data.id` em minusculas no
+ * manifesto ("ensuring data.id_url is in lowercase"), por isso o
+ * `.toLowerCase()` abaixo — sem efeito quando o id e' so digitos, mas
+ * necessario se o MP um dia mandar id alfanumerico.
+ *
+ * Pura e com `agora` injetavel para o teste nao depender do relogio.
+ */
+export async function validarAssinatura(args: {
+  xSignature: string | null;
+  xRequestId: string | null;
+  dataId: string;
+  segredo: string;
+  agora?: number;
+  toleranciaSegundos?: number;
+}): Promise<boolean> {
+  const { xSignature, xRequestId, dataId, segredo } = args;
+  const agora = args.agora ?? Date.now();
+  const tolerancia = args.toleranciaSegundos ?? 300;
+
+  if (!xSignature || !segredo || !dataId) return false;
+
+  let ts = "";
+  let v1 = "";
+  for (const parte of xSignature.split(",")) {
+    const [chave, ...resto] = parte.split("=");
+    const valor = resto.join("=").trim();
+    if (chave?.trim() === "ts") ts = valor;
+    if (chave?.trim() === "v1") v1 = valor;
+  }
+  if (!ts || !v1) return false;
+
+  // `ts` fora da janela: header legitimo reaproveitado semanas depois nao vale.
+  const tsNumero = Number(ts);
+  if (!Number.isFinite(tsNumero)) return false;
+  const idadeSegundos = Math.abs(agora / 1000 - tsNumero);
+  if (idadeSegundos > tolerancia) return false;
+
+  // O segmento de request-id so entra quando o header veio — confirmado
+  // contra o SDK oficial do MP, que monta o manifesto do mesmo jeito.
+  const manifesto = xRequestId
+    ? `id:${dataId.toLowerCase()};request-id:${xRequestId};ts:${ts};`
+    : `id:${dataId.toLowerCase()};ts:${ts};`;
+
+  const chave = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(segredo),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const assinado = await crypto.subtle.sign(
+    "HMAC",
+    chave,
+    new TextEncoder().encode(manifesto),
+  );
+  const esperado = Array.from(new Uint8Array(assinado))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  // Comparacao de tempo constante: `===` em string vaza, pelo tempo de
+  // resposta, quantos caracteres do prefixo o atacante ja acertou.
+  if (esperado.length !== v1.length) return false;
+  let diferenca = 0;
+  for (let i = 0; i < esperado.length; i++) {
+    diferenca |= esperado.charCodeAt(i) ^ v1.charCodeAt(i);
+  }
+  return diferenca === 0;
+}
