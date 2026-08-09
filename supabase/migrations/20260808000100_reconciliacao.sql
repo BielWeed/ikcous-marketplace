@@ -28,8 +28,15 @@ REVOKE ALL ON FUNCTION public.pagamentos_a_reconciliar()
   FROM PUBLIC, anon, authenticated;
 
 -- 2. pg_net + agendamento ---------------------------------------------
--- pg_cron ja foi habilitado pela 20260807000001_agenda_expiracao.sql; so
--- pg_net e novo aqui.
+-- Medido em 09/08/2026, antes de aplicar: NENHUMA extensao e' nova aqui.
+-- pg_cron ja veio da 20260807000001_agenda_expiracao.sql, e o pg_net JA
+-- ESTAVA instalado (0.19.5, no namespace `extensions`, funcoes no schema
+-- `net`) — a linha abaixo e' no-op.
+--
+-- Fica escrita mesmo assim, para a migration ser auto-suficiente em um banco
+-- que ainda nao tenha o pg_net. Mas o registro honesto e' este: aplicar isto
+-- em producao NAO ligou extensao nenhuma. Se alguem for avaliar o risco desta
+-- migration depois, o risco esta no agendamento abaixo, nao aqui.
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
 -- Remove agendamento anterior de mesmo nome, para a migration ser
