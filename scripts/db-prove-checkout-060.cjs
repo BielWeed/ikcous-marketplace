@@ -106,6 +106,51 @@ async function criarPedido(
   return pedidoId;
 }
 
+/**
+ * Monta um pedido para os casos de `pagamentos_a_reconciliar` — diferente de
+ * `criarPedido`, aceita `paidAt`/`expiresAt` explicitos porque a funcao sob
+ * prova decide inteiramente a partir dessas duas colunas. Mesma regra 1 do
+ * cabecalho: leva item de verdade mesmo nos casos que esperam "nao aparece".
+ */
+async function criarPedidoReconciliacao(
+  client,
+  {
+    nome,
+    paymentStatus = "expirado",
+    status = "cancelled",
+    gatewayPaymentId,
+    paidAt,
+    expiresAt,
+    produtoId,
+    quantity,
+  },
+) {
+  const r = await client.query(
+    `INSERT INTO public.marketplace_orders
+       (total, subtotal, status, payment_status, gateway_payment_id, paid_at,
+        expires_at, customer_name, customer_data)
+     VALUES (10.00, 10.00, $1, $2, $3, $4, $5, $6, '{}'::jsonb)
+     RETURNING id`,
+    [status, paymentStatus, gatewayPaymentId, paidAt, expiresAt, nome],
+  );
+  const pedidoId = r.rows[0].id;
+  await client.query(
+    `INSERT INTO public.marketplace_order_items
+       (order_id, product_id, product_name, quantity, price)
+     VALUES ($1, $2, $3, $4, 10.00)`,
+    [pedidoId, produtoId, nome, quantity],
+  );
+  return pedidoId;
+}
+
+/** Le a lista de candidatos que a `pagamentos_a_reconciliar` devolve hoje. */
+async function candidatosReconciliacao(client) {
+  const r = await client.query(
+    "SELECT order_id, gateway_payment_id FROM public.pagamentos_a_reconciliar()",
+  );
+  return r.rows;
+}
+
 async function estadoPedido(client, pedidoId) {
   const r = await client.query(
     `SELECT payment_status, status, paid_at
@@ -421,6 +466,98 @@ async function main() {
     // --- caso 14: pedido inexistente -> 'inexistente' ----------------------
     const r14 = await confirmar(client, crypto.randomUUID(), "X", "pago");
     conferir("id inexistente -> 'inexistente'", r14 === "inexistente", `veio ${r14}`);
+
+    console.log("\n=== pagamentos_a_reconciliar (Task 5) ===");
+
+    const AGORA = Date.now();
+    const UMA_HORA_MS = 60 * 60 * 1000;
+
+    // --- caso 15: expirado + cobranca + paid_at nulo + expirou ha 1h -------
+    const produto15 = await criarProduto(client, "PROVA RECONCILIACAO APARECE", 5);
+    const pedido15 = await criarPedidoReconciliacao(client, {
+      nome: "PROVA RECONCILIACAO APARECE",
+      gatewayPaymentId: "MP10",
+      paidAt: null,
+      expiresAt: new Date(AGORA - UMA_HORA_MS),
+      produtoId: produto15,
+      quantity: 1,
+    });
+
+    // --- caso 16: expirado SEM gateway_payment_id -> nunca teve cobranca ---
+    const produto16 = await criarProduto(client, "PROVA RECONCILIACAO SEM GATEWAY", 5);
+    const pedido16 = await criarPedidoReconciliacao(client, {
+      nome: "PROVA RECONCILIACAO SEM GATEWAY",
+      gatewayPaymentId: null,
+      paidAt: null,
+      expiresAt: new Date(AGORA - UMA_HORA_MS),
+      produtoId: produto16,
+      quantity: 1,
+    });
+
+    // --- caso 17: expirado + paid_at preenchido -> ja reconciliado ---------
+    const produto17 = await criarProduto(client, "PROVA RECONCILIACAO JA PAGO", 5);
+    const pedido17 = await criarPedidoReconciliacao(client, {
+      nome: "PROVA RECONCILIACAO JA PAGO",
+      gatewayPaymentId: "MP11",
+      paidAt: new Date(AGORA - UMA_HORA_MS),
+      expiresAt: new Date(AGORA - UMA_HORA_MS),
+      produtoId: produto17,
+      quantity: 1,
+    });
+
+    // --- caso 18: expirado ha 30h -> fora da janela de 24h ------------------
+    const produto18 = await criarProduto(client, "PROVA RECONCILIACAO FORA DA JANELA", 5);
+    const pedido18 = await criarPedidoReconciliacao(client, {
+      nome: "PROVA RECONCILIACAO FORA DA JANELA",
+      gatewayPaymentId: "MP12",
+      paidAt: null,
+      expiresAt: new Date(AGORA - 30 * UMA_HORA_MS),
+      produtoId: produto18,
+      quantity: 1,
+    });
+
+    // --- caso 19: 'aguardando' no prazo -> nunca expirou --------------------
+    const produto19 = await criarProduto(client, "PROVA RECONCILIACAO AGUARDANDO", 5);
+    const pedido19 = await criarPedidoReconciliacao(client, {
+      nome: "PROVA RECONCILIACAO AGUARDANDO",
+      paymentStatus: "aguardando",
+      status: "pending",
+      gatewayPaymentId: "MP13",
+      paidAt: null,
+      expiresAt: new Date(AGORA + 30 * 60 * 1000),
+      produtoId: produto19,
+      quantity: 1,
+    });
+
+    const listaCandidatos = await candidatosReconciliacao(client);
+    const idsCandidatos = listaCandidatos.map((linha) => linha.order_id);
+
+    conferir(
+      "expirado recente com cobranca -> aparece na lista",
+      idsCandidatos.includes(pedido15),
+    );
+    const achado15 = listaCandidatos.find((linha) => linha.order_id === pedido15);
+    conferir(
+      "gateway_payment_id devolvido bate com o do pedido",
+      achado15?.gateway_payment_id === "MP10",
+      `veio ${achado15?.gateway_payment_id}`,
+    );
+    conferir(
+      "expirado sem gateway_payment_id -> nao aparece (nunca teve cobranca)",
+      !idsCandidatos.includes(pedido16),
+    );
+    conferir(
+      "expirado com paid_at preenchido -> nao aparece (ja reconciliado)",
+      !idsCandidatos.includes(pedido17),
+    );
+    conferir(
+      "expirado ha 30h -> nao aparece (fora da janela de 24h)",
+      !idsCandidatos.includes(pedido18),
+    );
+    conferir(
+      "'aguardando' no prazo -> nao aparece (nunca expirou)",
+      !idsCandidatos.includes(pedido19),
+    );
   } finally {
     await client.query("ROLLBACK");
     await client.end();

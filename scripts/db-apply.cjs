@@ -185,6 +185,19 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20260808000100_reconciliacao.sql": [
+    {
+      funcao: "pagamentos_a_reconciliar",
+      esperado: [
+        // Sem isto a varredura revisita pedido ja reconciliado a cada ciclo.
+        "AND paid_at IS NULL",
+        // A janela. Sem ela vira varredura do historico inteiro a cada 10 min.
+        "interval '24 hours'",
+        // So quem chegou a ter cobranca no MP.
+        "AND gateway_payment_id IS NOT NULL",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

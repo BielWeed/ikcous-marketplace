@@ -41,6 +41,16 @@ Valem para **todas** as tarefas. Cada tarefa herda esta seção sem repetir.
   para o implementador. As tarefas 1 e 2 commitaram porque o plano mandava; a partir da 3, não.
   Se você é um implementador e chegou num passo de commit, **pare ali** e reporte o que deixou
   no working tree.
+- **Prova por mutação de função de banco roda DENTRO da transação, sem aplicar nada.** Esta
+  regra existe porque as duas anteriores se contradiziam na Task 5: "prove por mutação" exige
+  uma função no banco, e "não aplique" proíbe pôr uma lá. As duas coisas são compatíveis pela
+  técnica que a revisão da Task 2 usou — abra `BEGIN`, rode `CREATE OR REPLACE FUNCTION` com a
+  versão **mutada** dentro da transação, rode as asserções, e termine em `ROLLBACK`. A função
+  mutada nunca existe fora daquela transação, e o banco volta ao estado anterior.
+
+  Faça o mesmo para provar a versão **correta** antes de ela ser aplicada: cria dentro da
+  transação, roda a prova inteira, `ROLLBACK`. É assim que se sabe que a migration funciona
+  **antes** de gravá-la em produção.
 - **O implementador NUNCA aplica migration no banco.** Escreve o arquivo, escreve o script de
   prova, e roda a prova — que vive inteira dentro de `BEGIN`/`ROLLBACK` e **não grava**. A
   aplicação é da sessão principal, **depois** de o `revisor` ter lido.
