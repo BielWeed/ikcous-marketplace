@@ -913,10 +913,21 @@ git commit -m "feat(edge): valida a assinatura do webhook do Mercado Pago"
 - Produz: nada que outra tarefa consuma.
 
 **A costura de teste é a mesma da `criar-pagamento`:** um `handler(req, deps = {})` com
-`deps.supabase` e `deps.fetchImpl`, e **`serve((req) => handler(req))` com um único
-argumento** — nunca `serve(handler)` direto, porque o `serve` do std passa um segundo
-argumento (`ConnInfo`) que cairia em `deps` por acidente. Leia
+`deps.supabase`, `deps.fetchImpl` e `deps.enviarPush`, registrada com
+**`serve((req) => handler(req))`**, um único argumento. Leia
 `supabase/functions/criar-pagamento/index.ts:124-140` antes de escrever.
+
+**Uma correção de 09/08/2026, para a regra não virar dogma copiado.** Este plano dizia que
+`serve(handler)` direto **quebraria produção**, porque o `serve` do std passa um segundo
+argumento (`ConnInfo`) que cairia em `deps`. A revisão da Task 4 **mediu e refutou**: passando
+um `ConnInfo` como segundo argumento, o handler se comporta igual, porque **toda** dep usa `??`
+com fallback real (`deps.supabase ?? createClient(...)`, `deps.fetchImpl` → `fetch`,
+`deps.enviarPush ?? disparoPushReal`). Um objeto estranho em `deps` sem as chaves esperadas
+cai nos mesmos defaults.
+
+Continue escrevendo com um argumento — é mais claro e não depende de todo fallback estar
+correto para sempre. Mas **não é a trava de segurança** que o comentário da `criar-pagamento`
+sugere, e escrever isso no código como se fosse é plantar uma crença falsa.
 
 - [ ] **Passo 1: escrever os testes que falham**
 
@@ -932,6 +943,26 @@ Cubra, com `deps` injetadas (sem rede, sem banco):
    status inventado.** `mapearStatus` devolve `null`; a função não pode traduzir `null` em
    nada.
 7. **corpo sem `data.id` → 400**, sem tocar em MP nem banco.
+
+**Mais três, que a revisão de 09/08/2026 provou que faltavam.** Ela mutou o handler nas três
+direções abaixo e a suíte ficou **verde nas três** — são as invariantes mais caras da função, e
+eram justamente as sem teste:
+
+8. **O corpo NÃO decide qual pedido é confirmado.** Monte um webhook com assinatura válida para
+   `data.id=999` e, no corpo, `external_reference`, `order_id`, `p_order_id` e
+   `data.external_reference` **todos** apontando para um UUID hostil — com o MP devolvendo
+   outro. Asserte que o `p_order_id` que chegou à RPC é **o do MP**. Esta é a invariante nº 1:
+   sem ela, quem descobrir a URL confirma o pedido que quiser. A mutação que passa hoje é
+   trocar por `body?.data?.external_reference ?? consulta.externalReference` — refatoração
+   plausível, porque as notificações do MP em alguns tópicos carregam esse campo.
+9. **Push exatamente em 2 dos 9 retornos.** Um laço sobre os nove valores, asserindo a contagem
+   de pushes: 1 para `'pago'` e `'pago_apos_expirar'`, **0** para os outros sete. A mutação que
+   passa hoje é `if (resultado !== "ja_pago")` — e ela faria `divergente` virar push a cada ~15
+   min, no ritmo do reenvio do MP.
+10. **`ts` antigo é ACEITO.** Assine com `ts = agora - 3600` (uma hora atrás) e asserte `200`
+    com a RPC chamada. Todos os testes atuais assinam com `ts = agora`, então a decisão de
+    desligar a janela não está presa por nada — alguém remove a linha achando que é redundante
+    e o primeiro reenvio do MP vira 401 permanente.
 
 Para o push, injete uma dependência `enviarPush` em `deps` que só conta chamadas — não suba
 push service local aqui; o envio em si já é coberto pelos testes da `send-push`, que
@@ -954,19 +985,24 @@ Esperado: FALHA — o módulo não existe.
 Regras que o código tem de obedecer, e que os testes acima cobrem:
 
 - Lê **só** `body.data.id`. Nada mais do corpo influencia decisão.
-- **Passe `toleranciaSegundos: 86400` explicitamente** para `validarAssinatura`. Não herde o
-  default de 300 s.
+- **Passe `toleranciaSegundos: Number.POSITIVE_INFINITY`** para `validarAssinatura` — ou seja,
+  **desligue a janela de `ts` nesta função**. Não herde o default de 300 s.
 
-  *Por que, medido em 09/08/2026:* o MP **reenvia a cada 15 minutos** até receber resposta, e
-  não há declaração oficial de que ele re-assine com `ts` novo — os indícios apontam para
-  reúso (o SDK oficial deixa a checagem de tolerância **desligada por padrão**). Com 300 s, a
-  **primeira** retentativa já cai fora da janela: um timeout ou cold start vira 401 permanente,
-  o pedido expira e o `pg_cron` devolve o estoque de um pedido **pago**.
+  *Primeira versão deste plano dizia 86400 (24 h). Foi corrigido em 09/08/2026, com um número
+  que a revisão da Task 4 mediu:* o MP não para de reenviar depois da terceira tentativa — ele
+  **estende o intervalo e continua**, sem limite documentado. Logo **nenhuma janela finita é
+  segura**: uma cadeia longa de reenvios ultrapassa qualquer valor que se escolha, e o último
+  reenvio vira 401 permanente.
 
-  A assimetria decide. Aceitar um header antigo custa, no pior caso, uma confirmação repetida —
-  que a `confirmar_pagamento` já trata (`ja_pago`, sem push). Recusar um reenvio legítimo custa
-  um pedido pago sem produto. A janela larga continua barrando replay de header capturado há
-  dias, que é o que ela realmente protege.
+  *Por que desligar não custa nada:* **o webhook nunca confia no que chega.** Ele pega só o
+  `data.id` e vai perguntar ao MP o status **atual**. Um header replayado — mesmo capturado há
+  meses — produz uma consulta nova ao MP e a decisão correta para o estado de agora. A
+  `confirmar_pagamento` fecha o resto: retorno terminal, sem push. Não existe cenário em que
+  aceitar um `ts` antigo cause dano.
+
+  A assimetria é total: a janela protege contra nada e pode custar um pedido pago sem produto.
+  É por isso que o SDK oficial do MP entrega essa checagem **desligada por padrão**. Quem
+  autentica aqui é o HMAC, não o relógio.
 - Chama `consultarPagamento` e usa **o status que o MP devolveu**, nunca o do corpo.
 - `mapearStatus(...) === null` → `200` com `console.warn` alto, **sem chamar a RPC**.
 - Chama `supabase.rpc("confirmar_pagamento", { p_order_id, p_payment_id, p_status })`, onde
