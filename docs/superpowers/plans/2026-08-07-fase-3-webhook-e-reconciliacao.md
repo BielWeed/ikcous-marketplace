@@ -35,6 +35,12 @@ Valem para **todas** as tarefas. Cada tarefa herda esta seção sem repetir.
 - **Nenhum deploy de edge function neste plano.** Deploy é a etapa de rollout, atrás dos dois
   portões do Gabriel (`vercel env ls` e Task 0 do Mercado Pago). Se uma tarefa parecer pedir
   deploy, ela está mal lida.
+- **O implementador NÃO commita.** Entrega o diff no working tree; quem commita é a sessão
+  principal. É a regra do `CLAUDE.md` ("Só a sessão principal commita"), e este plano a
+  contrariava: os passos "Passo N: commit" de cada tarefa foram escritos para a **sessão**, não
+  para o implementador. As tarefas 1 e 2 commitaram porque o plano mandava; a partir da 3, não.
+  Se você é um implementador e chegou num passo de commit, **pare ali** e reporte o que deixou
+  no working tree.
 - **O implementador NUNCA aplica migration no banco.** Escreve o arquivo, escreve o script de
   prova, e roda a prova — que vive inteira dentro de `BEGIN`/`ROLLBACK` e **não grava**. A
   aplicação é da sessão principal, **depois** de o `revisor` ter lido.
