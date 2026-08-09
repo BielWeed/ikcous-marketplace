@@ -58,6 +58,24 @@ WHERE EXISTS (
 -- pg_net (Passo 1 do brief); os nomes dos parametros usados abaixo (url,
 -- headers, body) e vault.decrypted_secrets batem com o que a documentacao
 -- devolveu, sem divergencia em relacao ao rascunho do brief.
+--
+-- timeout_milliseconds NAO pode ficar no default: as tres fontes checadas
+-- (Passo 1 do brief) DIVERGEM entre si sobre qual e' o default do pg_net —
+-- o README do pg_net diz 1000 ms, a pagina do pg_net na documentacao do
+-- Supabase diz 2000 ms, o sql/pg_net.sql do upstream diz 5000 ms. E' por
+-- isso que o valor fica explicito aqui: nenhum dos tres cabe um boot de
+-- edge function mais UM GET api.mercadopago.com/v1/payments/{id} — quanto
+-- mais um lote de ate 100 candidatos em serie (LIMIT 100, acima) — entao
+-- qual dos tres vale deixa de importar. Sem o parametro, o pg_net cancela a
+-- cada ciclo, grava timed_out = true com content vazio em
+-- net._http_response, e o corpo {ok, verificados, confirmados, ignorados,
+-- falhas} nunca chega a existir para ninguem — o mesmo padrao ja medido em
+-- 20260805120000_otp_aponta_para_o_projeto_certo.sql:22.
+--
+-- 120000 (2 min) cobre o pior lote com folga e continua sendo um QUINTO do
+-- intervalo do cron (*/10 * * * *), entao dois ciclos nunca se empilham.
+-- ESTE NUMERO E O "LIMIT 100" DA pagamentos_a_reconciliar MUDAM JUNTOS:
+-- quem aumentar o limite sem aumentar o timeout volta ao estado de agora.
 SELECT cron.schedule(
     'reconciliar-pagamentos',
     '*/10 * * * *',
@@ -71,7 +89,8 @@ SELECT cron.schedule(
             (SELECT decrypted_secret FROM vault.decrypted_secrets
               WHERE name = 'reconciliacao_secret')
         ),
-        body    := '{}'::jsonb
+        body    := '{}'::jsonb,
+        timeout_milliseconds := 120000
     ) AS request_id;
     $cron$
 );
