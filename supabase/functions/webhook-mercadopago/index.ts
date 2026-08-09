@@ -184,7 +184,12 @@ async function handler(
     return json({ error: "Corpo inválido." }, 400);
   }
 
-  // Lê SÓ body.data.id — nada mais do corpo influencia decisão nenhuma.
+  // Do corpo saem exatamente dois campos: `data.id`, que diz QUAL COBRANÇA
+  // perguntar ao MP, e `type` (abaixo), que só serve para descartar tópico
+  // que não é de pagamento. Nenhum dos dois diz QUAL PEDIDO confirmar — isso
+  // vem do `external_reference` que o MP devolve, autenticado pelo token do
+  // gateway. É a invariante nº 1 desta função, e o teste do corpo hostil
+  // existe para prendê-la.
   const dataId = (body?.data as Record<string, unknown> | undefined)?.id;
   if (dataId === undefined || dataId === null || dataId === "") {
     return json({ error: "data.id ausente." }, 400);

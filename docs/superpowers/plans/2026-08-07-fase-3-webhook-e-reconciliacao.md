@@ -984,7 +984,16 @@ Esperado: FALHA — o módulo não existe.
 
 Regras que o código tem de obedecer, e que os testes acima cobrem:
 
-- Lê **só** `body.data.id`. Nada mais do corpo influencia decisão.
+- Do corpo saem **exatamente dois campos**: `data.id`, que diz qual **cobrança** perguntar ao
+  MP, e `type`, que só serve para descartar tópico que não é de pagamento. **Nenhum dos dois
+  diz qual PEDIDO confirmar** — isso vem do `external_reference` da resposta do MP.
+
+  O filtro de `type` entrou na rodada de conserto de 09/08/2026 e é seguro **porque só age
+  quando o campo está presente**: notificação sem `type`, com `topic: "payment"`, ou com `type`
+  não-string continua sendo processada. Medido com contrafactual, e preso nos dois sentidos —
+  mutar o gate para `if (tipoDoEvento !== "payment")` (que descartaria notificação sem o campo)
+  reprova 7 testes. Ele roda **depois** do HMAC, então não é oráculo para quem não tem o
+  segredo, e loga o `type` recusado como tripwire caso o formato do MP mude.
 - **Passe `toleranciaSegundos: Number.POSITIVE_INFINITY`** para `validarAssinatura` — ou seja,
   **desligue a janela de `ts` nesta função**. Não herde o default de 300 s.
 
