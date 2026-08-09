@@ -720,6 +720,39 @@ Deno.test("recusa ts fora da tolerancia", async () => {
   assertEquals(ok, false);
 });
 
+// Os dois testes abaixo existem porque a prova por mutacao da revisao de
+// 09/08/2026 mostrou que a suite NAO pegava nem o casing do dataId nem o ramo
+// condicional do request-id — as duas decisoes que o manifesto realmente toma.
+// Sem eles, trocar toLowerCase por toUpperCase deixava os 5 testes verdes.
+Deno.test("preserva o casing do dataId no manifesto", async () => {
+  // Vetor gerado no Node sobre `id:ABC12;request-id:abc-123;ts:1700000000;`
+  // — com o casing ORIGINAL, que e' como o MP assina (SDK #439).
+  const V1_MAIUSCULO =
+    "2e0210699be77c929286388b5ccfcf8cb1bf788477f8a88a9654e0b67b53c084";
+  const ok = await validarAssinatura({
+    xSignature: `ts=${TS},v1=${V1_MAIUSCULO}`,
+    xRequestId: REQUEST_ID,
+    dataId: "ABC12",
+    segredo: SEGREDO,
+    agora: agoraOk,
+  });
+  assert(ok, "id com maiuscula tem de validar com o casing preservado");
+});
+
+Deno.test("omite o segmento request-id quando o header nao veio", async () => {
+  // Vetor gerado no Node sobre `id:12345;ts:1700000000;` — SEM request-id.
+  const V1_SEM_REQUEST_ID =
+    "0ada36b4ecda6b0e1d969a628e11b8a70430c3f77bc510fe9ad37fd2a713250c";
+  const ok = await validarAssinatura({
+    xSignature: `ts=${TS},v1=${V1_SEM_REQUEST_ID}`,
+    xRequestId: null,
+    dataId: DATA_ID,
+    segredo: SEGREDO,
+    agora: agoraOk,
+  });
+  assert(ok);
+});
+
 Deno.test("recusa header ausente ou malformado", async () => {
   for (const xSignature of [null, "", "v1=semtimestamp", "ts=abc,v1=xyz", "lixo"]) {
     const ok = await validarAssinatura({
@@ -787,7 +820,20 @@ export async function validarAssinatura(args: {
   const idadeSegundos = Math.abs(agora / 1000 - tsNumero);
   if (idadeSegundos > tolerancia) return false;
 
-  // O segmento de request-id so entra quando o header veio — ver Passo 1.
+  // O segmento de request-id so entra quando o header veio — igual ao
+  // buildManifest do SDK oficial (`if (requestId) parts.push(...)`).
+  //
+  // `dataId` vai COM O CASING ORIGINAL. A documentacao do MP pede minusculas
+  // ("ensuring data.id_url is in lowercase") e ESTA ERRADA: o SDK oficial
+  // REMOVEU o .toLowerCase() de proposito (PR mercadopago/sdk-nodejs#439),
+  // porque o MP assina com o casing original e qualquer id com maiuscula
+  // falhava com SignatureMismatch. Medido em 09/08/2026: com .toLowerCase(),
+  // um dataId "ABC12" assinado como o MP assina e' RECUSADO.
+  //
+  // Nao e' a unica coisa que essa pagina da doc erra: ela tambem diz que o
+  // `ts` vem em milissegundos, e vem em SEGUNDOS (issue #458 do mesmo SDK).
+  // Quando doc e SDK divergirem aqui, o SDK ganha — ele foi corrigido por
+  // observacao de trafego real, a doc nao.
   const manifesto = xRequestId
     ? `id:${dataId};request-id:${xRequestId};ts:${ts};`
     : `id:${dataId};ts:${ts};`;
@@ -902,6 +948,19 @@ Esperado: FALHA — o módulo não existe.
 Regras que o código tem de obedecer, e que os testes acima cobrem:
 
 - Lê **só** `body.data.id`. Nada mais do corpo influencia decisão.
+- **Passe `toleranciaSegundos: 86400` explicitamente** para `validarAssinatura`. Não herde o
+  default de 300 s.
+
+  *Por que, medido em 09/08/2026:* o MP **reenvia a cada 15 minutos** até receber resposta, e
+  não há declaração oficial de que ele re-assine com `ts` novo — os indícios apontam para
+  reúso (o SDK oficial deixa a checagem de tolerância **desligada por padrão**). Com 300 s, a
+  **primeira** retentativa já cai fora da janela: um timeout ou cold start vira 401 permanente,
+  o pedido expira e o `pg_cron` devolve o estoque de um pedido **pago**.
+
+  A assimetria decide. Aceitar um header antigo custa, no pior caso, uma confirmação repetida —
+  que a `confirmar_pagamento` já trata (`ja_pago`, sem push). Recusar um reenvio legítimo custa
+  um pedido pago sem produto. A janela larga continua barrando replay de header capturado há
+  dias, que é o que ela realmente protege.
 - Chama `consultarPagamento` e usa **o status que o MP devolveu**, nunca o do corpo.
 - `mapearStatus(...) === null` → `200` com `console.warn` alto, **sem chamar a RPC**.
 - Chama `supabase.rpc("confirmar_pagamento", { p_order_id, p_payment_id, p_status })`, onde
