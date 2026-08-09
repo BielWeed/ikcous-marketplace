@@ -78,9 +78,23 @@ LOCKED`) e **relê o estado antes de decidir**:
 | `aguardando`, no prazo | `pago`, grava `paid_at` | `pago` |
 | `expirado` — a varredura ganhou | `pago_apos_expirar`, grava `paid_at`, **não toca estoque nem `status`** | `pago_apos_expirar` |
 | já `pago` | nada | `ja_pago` |
-| `aguardando` + MP diz recusado | `devolver_estoque` + `recusado` + `cancelled` | `recusado` |
-| `aguardando` + MP diz estornado | `devolver_estoque` + `estornado` + `cancelled` | `estornado` |
+| `aguardando` **e `pending`** + MP diz recusado | `devolver_estoque` + `recusado` + `cancelled` | `recusado` |
+| `aguardando` **e `pending`** + MP diz estornado | `devolver_estoque` + `estornado` + `cancelled` | `estornado` |
+| `aguardando` mas **não** `pending` | marca, **não toca estoque nem `status`** | `recusado` / `estornado` |
 | qualquer outro + MP diz estornado | marca `estornado`, **não toca estoque** | `estornado` |
+| `p_payment_id` NULL, ou `gateway_payment_id` NULL, ou os dois diferentes | **não escreve** | `divergente` |
+
+**A guarda `status = 'pending'` é a correção mais cara desta fase**, achada pela re-revisão em
+07/08/2026 e medida no banco: sem ela o estoque ia de 10 para 13. A `update_order_status_atomic`
+devolve o estoque quando o cliente cancela pelo app e **não escreve `payment_status`** — o
+pedido fica `aguardando` + `cancelled` com o estoque já de volta. Creditar de novo põe no
+catálogo unidade que não existe. É a mesma guarda que a `expirar_pedidos_vencidos` da Fase 1
+já usa, pelo mesmo motivo, documentada em `20260807000000:97-102`.
+
+**A linha do `divergente` cobre três casos, não um.** `IS DISTINCT FROM` sozinho trata dois
+NULLs como iguais, então a guarda liberava justamente quando não havia com o que comparar —
+e `aguardando` + `gateway_payment_id` nulo é o estado normal de todo pedido entre o checkout e
+a criação da cobrança.
 
 **As duas linhas do estorno são uma correção de 07/08/2026**, feita depois de a revisão medir
 o defeito no banco. Esta spec dizia que estorno vale a partir de qualquer estado e **nunca**
@@ -92,9 +106,8 @@ catálogo para sempre. Medido: 3 unidades perdidas, com a varredura rodando logo
 tocar na linha.
 
 A regra passa a ser escopada, e é essa a formulação correta: **estorno não mexe em estoque
-quando houve venda**; a partir de `aguardando` nada saiu, a reserva é só reserva, e devolver é
-seguro e imediato. Decisão do Gabriel em 07/08/2026.
-| `gateway_payment_id` ≠ `p_payment_id` | **não escreve** | `divergente` |
+quando houve venda**; a partir de `aguardando` **em pedido ainda `pending`** nada saiu, a
+reserva é só reserva, e devolver é seguro e imediato. Decisão do Gabriel em 07/08/2026.
 
 ### Três consequências do desenho
 

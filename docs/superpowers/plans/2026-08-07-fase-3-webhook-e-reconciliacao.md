@@ -298,7 +298,9 @@ BEGIN
     -- linha, ESPERAR e' o comportamento correto. Pular deixaria o pagamento
     -- sem registro. Depois da espera, o payment_status lido aqui embaixo ja
     -- e' o que a varredura gravou — e' a releitura que decide, nao o WHERE.
-    SELECT id, payment_status, gateway_payment_id
+    -- `status` entra no SELECT porque as duas transicoes que mexem em
+    -- estoque dependem dele — ver a guarda `status = 'pending'` mais abaixo.
+    SELECT id, payment_status, status, gateway_payment_id
       INTO v_pedido
       FROM public.marketplace_orders
      WHERE id = p_order_id
@@ -342,7 +344,19 @@ BEGIN
         -- ver 20260807000000:106) NUNCA MAIS o alcancaria: a reserva sumiria
         -- do catalogo para sempre. Medido em 07/08/2026 — 3 unidades
         -- perdidas, e a varredura rodando logo depois nao tocou na linha.
-        IF v_pedido.payment_status = 'aguardando' THEN
+        -- `AND status = 'pending'` NAO e' zelo: e' a MESMA guarda que a
+        -- expirar_pedidos_vencidos ja usa, pelo MESMO motivo, e esta
+        -- explicada em 20260807000000:97-102. A update_order_status_atomic
+        -- devolve o estoque quando o cliente cancela pelo app e NAO escreve
+        -- payment_status — o pedido fica 'aguardando' + 'cancelled' com o
+        -- estoque JA de volta. Sem esta clausula, creditar aqui poe no
+        -- catalogo unidade que nao existe. Medido em 07/08/2026: 10 -> 13.
+        --
+        -- Vale igual para 'processing': venda que o admin fechou por fora
+        -- dentro dos 30 min nao pode ser cancelada por confirmacao de
+        -- gateway, e a mercadoria pode ja ter saido.
+        IF v_pedido.payment_status = 'aguardando'
+           AND v_pedido.status = 'pending' THEN
             PERFORM public.devolver_estoque(p_order_id);
             UPDATE public.marketplace_orders
                SET payment_status = 'estornado',
@@ -352,11 +366,13 @@ BEGIN
             RETURN 'estornado';
         END IF;
 
-        -- 'pago', 'pago_apos_expirar', 'expirado', 'recusado' ou NULL: marca
-        -- e NAO mexe em estoque. A partir de 'pago' houve venda e
-        -- possivelmente entrega; repor sozinho e' chutar onde a mercadoria
-        -- esta. Nos demais o estoque JA voltou por outro caminho, e mexer de
-        -- novo creditaria em dobro — devolver_estoque nao e' idempotente.
+        -- Todo o resto: marca e NAO mexe em estoque. Isso inclui 'pago',
+        -- 'pago_apos_expirar', 'expirado', 'recusado', NULL — e tambem o
+        -- 'aguardando' que NAO esta 'pending', que caiu ate aqui pela guarda
+        -- acima. A partir de 'pago' houve venda e possivelmente entrega;
+        -- repor sozinho e' chutar onde a mercadoria esta. Nos demais o
+        -- estoque JA voltou por outro caminho, e mexer de novo creditaria em
+        -- dobro — devolver_estoque nao e' idempotente.
         UPDATE public.marketplace_orders
            SET payment_status = 'estornado',
                updated_at     = now()
@@ -402,6 +418,23 @@ BEGIN
         -- acontece uma vez, e de dentro desta trava.
         IF v_pedido.payment_status <> 'aguardando' THEN
             RETURN 'ignorado';
+        END IF;
+
+        -- Mesma guarda do ramo do estorno, e pelo mesmo motivo — o gatilho
+        -- aqui e' ate mais provavel: cartao recusado logo depois de o
+        -- cliente desistir e cancelar pelo app. O estoque JA voltou pela
+        -- update_order_status_atomic; creditar de novo poe unidade fantasma
+        -- no catalogo. Medido em 07/08/2026: 10 -> 13.
+        --
+        -- Marca mesmo assim, em vez de 'ignorado': sem isso o pedido ficaria
+        -- 'aguardando' para sempre — a varredura tambem exige
+        -- status = 'pending' e nunca mais o alcancaria.
+        IF v_pedido.status <> 'pending' THEN
+            UPDATE public.marketplace_orders
+               SET payment_status = 'recusado',
+                   updated_at     = now()
+             WHERE id = p_order_id;
+            RETURN 'recusado';
         END IF;
 
         PERFORM public.devolver_estoque(p_order_id);
@@ -454,7 +487,15 @@ Os casos que o script tem de cobrir — **um por linha da tabela de decisão**:
 | `aguardando`, `'MP6'` | `('OUTRO','pago')` | `'divergente'`, `payment_status` **inalterado** |
 | **`aguardando` com `gateway_payment_id` NULL** | `(NULL,'pago')` | `'divergente'` — **não** `'pago'` |
 | **`aguardando`, `'MP7'`** | `(NULL,'pago')` | `'divergente'` |
+| **`aguardando` + `status='cancelled'` com 3 un., `'MP8'`** | `('MP8','estornado')` | `'estornado'`, estoque **inalterado**, `status` continua `'cancelled'` |
+| **`aguardando` + `status='cancelled'` com 3 un., `'MP9'`** | `('MP9','recusado')` | `'recusado'`, estoque **inalterado** |
 | id que não existe | `(uuid aleatório,'X','pago')` | `'inexistente'` |
+
+**As duas linhas de `status='cancelled'` são o achado da re-revisão de 07/08/2026**, e sem elas
+a guarda entra sem teste. Elas montam o estado que a `update_order_status_atomic` produz
+quando o cliente cancela pelo app: ela devolve o estoque e **não escreve `payment_status`**,
+deixando `aguardando` + `cancelled` com o estoque já de volta. Medido sem a guarda: o estoque
+ia de 10 para 13 — unidade fantasma no catálogo.
 
 As três linhas em **negrito** são as que a revisão de 07/08/2026 provou que faltavam, e cada
 uma cobre um defeito que estava mesmo no banco: o vazamento de estoque no estorno cedo, e a
