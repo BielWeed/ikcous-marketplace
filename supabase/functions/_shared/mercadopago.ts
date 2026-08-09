@@ -253,11 +253,7 @@ async function interpretarRespostaDePagamento(
  * vem como `ts=<epoch>,v1=<hex>`, o manifesto e
  * `id:<data.id>;request-id:<x-request-id>;ts:<ts>;` — com o segmento
  * request-id OMITIDO quando o header nao veio, igual ao SDK oficial — e o
- * hash e HMAC-SHA256 do manifesto, comparado ao `v1` em hex. A UNICA
- * divergencia do que o plano assumiu: a doc pede `data.id` em minusculas no
- * manifesto ("ensuring data.id_url is in lowercase"), por isso o
- * `.toLowerCase()` abaixo — sem efeito quando o id e' so digitos, mas
- * necessario se o MP um dia mandar id alfanumerico.
+ * hash e HMAC-SHA256 do manifesto, comparado ao `v1` em hex.
  *
  * Pura e com `agora` injetavel para o teste nao depender do relogio.
  */
@@ -291,11 +287,23 @@ export async function validarAssinatura(args: {
   const idadeSegundos = Math.abs(agora / 1000 - tsNumero);
   if (idadeSegundos > tolerancia) return false;
 
-  // O segmento de request-id so entra quando o header veio — confirmado
-  // contra o SDK oficial do MP, que monta o manifesto do mesmo jeito.
+  // O segmento de request-id so entra quando o header veio — igual ao
+  // buildManifest do SDK oficial (`if (requestId) parts.push(...)`).
+  //
+  // `dataId` vai COM O CASING ORIGINAL. A documentacao do MP pede minusculas
+  // ("ensuring data.id_url is in lowercase") e ESTA ERRADA: o SDK oficial
+  // REMOVEU o .toLowerCase() de proposito (PR mercadopago/sdk-nodejs#439),
+  // porque o MP assina com o casing original e qualquer id com maiuscula
+  // falhava com SignatureMismatch. Medido em 09/08/2026: com .toLowerCase(),
+  // um dataId "ABC12" assinado como o MP assina e' RECUSADO.
+  //
+  // Nao e' a unica coisa que essa pagina da doc erra: ela tambem diz que o
+  // `ts` vem em milissegundos, e vem em SEGUNDOS (issue #458 do mesmo SDK).
+  // Quando doc e SDK divergirem aqui, o SDK ganha — ele foi corrigido por
+  // observacao de trafego real, a doc nao.
   const manifesto = xRequestId
-    ? `id:${dataId.toLowerCase()};request-id:${xRequestId};ts:${ts};`
-    : `id:${dataId.toLowerCase()};ts:${ts};`;
+    ? `id:${dataId};request-id:${xRequestId};ts:${ts};`
+    : `id:${dataId};ts:${ts};`;
 
   const chave = await crypto.subtle.importKey(
     "raw",
