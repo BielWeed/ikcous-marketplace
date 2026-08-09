@@ -7,8 +7,9 @@
  * acrescentar um, este script passa a gravar em producao sem avisar.
  *
  * Cada caso deste script e uma linha da tabela de decisao do brief da Task 2
- * (regerado em 07/08/2026, apos a revisao que achou dois defeitos reais no
- * SQL do plano). Duas regras vieram da revisao e valem para TODOS os casos:
+ * (regerado em 07/08/2026 e de novo em 09/08/2026, apos duas rodadas de
+ * revisao que acharam defeitos reais no SQL do plano). Tres regras vieram
+ * das revisoes e valem para TODOS os casos:
  *
  * 1. TODO pedido montado leva item de verdade em marketplace_order_items
  *    (product_id, quantity > 0) — inclusive os casos cuja asserção e
@@ -21,6 +22,13 @@
  *    20260807000000), entao cada caso usa um valor diferente. Na primeira
  *    versao, os casos 2, 6 e 7 dependiam do estado deixado pelos anteriores
  *    no MESMO pedido: mudar um mudava o significado dos outros em silencio.
+ * 3. Os casos `aguardando` + `status='cancelled'` (estorno e recusado) sao o
+ *    achado da re-revisao de 09/08/2026: os ramos que chamam
+ *    devolver_estoque olhavam so para payment_status='aguardando', sem
+ *    `AND status='pending'`. update_order_status_atomic devolve o estoque
+ *    quando o cliente cancela pelo app e NAO escreve payment_status — o
+ *    pedido fica 'aguardando' + 'cancelled' com o estoque JA de volta.
+ *    Medido sem a guarda: 10 -> 13, unidade fantasma no catalogo.
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -353,9 +361,66 @@ async function main() {
       `veio ${r11}`,
     );
 
-    // --- caso 12: pedido inexistente -> 'inexistente' ----------------------
-    const r12 = await confirmar(client, crypto.randomUUID(), "X", "pago");
-    conferir("id inexistente -> 'inexistente'", r12 === "inexistente", `veio ${r12}`);
+    // --- caso 12: 'aguardando' + status='cancelled' com 3 un. + estornado --
+    // O achado da re-revisao de 09/08/2026: o cliente cancelou pelo app (a
+    // update_order_status_atomic ja devolveu o estoque e NAO escreve
+    // payment_status), entao o pedido fica 'aguardando' + 'cancelled' com o
+    // estoque JA de volta. Sem `AND status='pending'`, o estorno credita de
+    // novo — unidade fantasma. Aqui o estoque tem que ficar INALTERADO e o
+    // status continua 'cancelled' (nao pode "descancelar" o pedido).
+    const produto12 = await criarProduto(client, "PROVA ESTORNO JA CANCELADO", 5);
+    const pedido12 = await criarPedido(client, {
+      nome: "PROVA ESTORNO JA CANCELADO",
+      paymentStatus: "aguardando",
+      status: "cancelled",
+      gatewayPaymentId: "MP8",
+      produtoId: produto12,
+      quantity: 3,
+    });
+
+    const r12 = await confirmar(client, pedido12, "MP8", "estornado");
+    conferir(
+      "aguardando + cancelled + estornado -> 'estornado'",
+      r12 === "estornado",
+      `veio ${r12}`,
+    );
+    conferir(
+      "estoque INALTERADO ao estornar pedido ja cancelado (nao credita fantasma)",
+      (await estoqueDe(client, produto12)) === 5,
+    );
+    const estado12 = await estadoPedido(client, pedido12);
+    conferir(
+      "status continua 'cancelled' (nao descancela)",
+      estado12.status === "cancelled",
+    );
+
+    // --- caso 13: 'aguardando' + status='cancelled' com 3 un. + recusado ---
+    // Mesmo achado, ramo 'recusado' — gatilho ainda mais provavel: cartao
+    // recusado logo depois de o cliente desistir e cancelar pelo app.
+    const produto13 = await criarProduto(client, "PROVA RECUSADO JA CANCELADO", 5);
+    const pedido13 = await criarPedido(client, {
+      nome: "PROVA RECUSADO JA CANCELADO",
+      paymentStatus: "aguardando",
+      status: "cancelled",
+      gatewayPaymentId: "MP9",
+      produtoId: produto13,
+      quantity: 3,
+    });
+
+    const r13 = await confirmar(client, pedido13, "MP9", "recusado");
+    conferir(
+      "aguardando + cancelled + recusado -> 'recusado'",
+      r13 === "recusado",
+      `veio ${r13}`,
+    );
+    conferir(
+      "estoque INALTERADO ao recusar pedido ja cancelado (nao credita fantasma)",
+      (await estoqueDe(client, produto13)) === 5,
+    );
+
+    // --- caso 14: pedido inexistente -> 'inexistente' ----------------------
+    const r14 = await confirmar(client, crypto.randomUUID(), "X", "pago");
+    conferir("id inexistente -> 'inexistente'", r14 === "inexistente", `veio ${r14}`);
   } finally {
     await client.query("ROLLBACK");
     await client.end();
