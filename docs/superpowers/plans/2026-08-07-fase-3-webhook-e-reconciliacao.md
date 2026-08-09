@@ -900,12 +900,34 @@ Regras que o código tem de obedecer, e que os testes acima cobrem:
 - `mapearStatus(...) === null` → `200` com `console.warn` alto, **sem chamar a RPC**.
 - Chama `supabase.rpc("confirmar_pagamento", { p_order_id, p_payment_id, p_status })`, onde
   `p_order_id` vem do `external_reference` da resposta do MP — **não** do corpo do webhook.
+- **Valide o `external_reference` com `pareceUuid` antes de chamar a RPC.** Se não tiver forma
+  de UUID (ausente, vazio, ou pagamento criado por fora deste sistema), responda `200` com log
+  alto e **não** chame a RPC. Sem isso, o Postgres recusa o cast com `22P02`, a chamada
+  rejeita, e o handler devolve `500` — fazendo o MP reenviar para sempre um evento que nunca
+  vai dar certo. `pareceUuid` está em `notify-new-order/index.ts:66`.
 - **O retorno da RPC decide o push:** só `'pago'` e `'pago_apos_expirar'` disparam.
-- `500` só para falha transitória: `consultarPagamento` com `status >= 500` ou `status === 0`,
-  e erro de banco. Todo o resto é `200`.
+- **Código HTTP:** `200` quando o evento foi tratado ou é intratável (status desconhecido,
+  `external_reference` inválido, RPC devolvendo `divergente`/`inexistente`/`ignorado`/`ja_pago`).
+  `500` quando reenviar ajuda: **qualquer** `consultarPagamento` com `ok: false` — exceto
+  `status === 404`, que significa "esse pagamento não existe" e não melhora com retentativa —
+  e erro de banco. Note que isso inclui `401`: token do MP errado é emergência operacional, e
+  `500` mantém o evento vivo na fila do MP enquanto alguém conserta.
 
-O texto do push (o lojista precisa distinguir venda de lixo em formação — "novo pedido" virou
-sinônimo de lixo neste projeto):
+**O push precisa de dados que a RPC não devolve.** Ela retorna só um texto. Depois de a RPC
+devolver `'pago'` ou `'pago_apos_expirar'`, **leia o pedido** para montar o aviso:
+
+```ts
+const { data: pedido } = await supabase
+  .from("marketplace_orders")
+  .select("id, customer_name, total, total_amount")
+  .eq("id", orderId)
+  .maybeSingle();
+```
+
+`total` e `total_amount` coexistem nesta tabela e a `notify-new-order` lê as duas com fallback
+(`index.ts:163`) — faça igual, não escolha uma. Se o `select` falhar ou vier vazio, **mande o
+push mesmo assim**, com o que você tem: o pedido foi pago, e deixar o lojista sem aviso porque
+a leitura cosmética falhou é pior que um aviso sem valor.
 
 ```ts
 const aviso = resultado === "pago_apos_expirar"
@@ -921,10 +943,15 @@ const aviso = resultado === "pago_apos_expirar"
     };
 ```
 
-`numeroDoPedido` e `formatarBRL` **não são exportados de um lugar comum hoje** —
-`numeroDoPedido` está em `notify-new-order/index.ts:73` e `formatarBRL` é local ali. Importar
-de `notify-new-order` acopla uma função à outra. **Copie as duas para este arquivo** e diga no
-relatório: extrair para `_shared` é refatoração que a sessão principal decide, não você.
+`numeroDoPedido`, `formatarBRL` e `pareceUuid` **não são exportados de um lugar comum hoje** —
+`numeroDoPedido` está em `notify-new-order/index.ts:73`, `pareceUuid` em `:66`, e `formatarBRL`
+é local ali. Importar de `notify-new-order` acopla uma função à outra. **Copie as três para
+este arquivo** e diga no relatório: extrair para `_shared` é refatoração que a sessão principal
+decide, não você.
+
+**Acrescente um teste para a validação do `external_reference`:** MP responde `approved` mas
+com `external_reference` ausente — e outro caso com `"nao-e-uuid"` — e a função devolve `200`
+com a RPC **não** chamada. Asserte o contador de chamadas da RPC em zero, não só o código HTTP.
 
 - [ ] **Passo 4: rodar e verificar que passam**
 
