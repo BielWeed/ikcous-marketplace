@@ -59,10 +59,23 @@ function requisicao(corpo: Record<string, unknown>, headers: Record<string, stri
   });
 }
 
-/** Requisição com assinatura VÁLIDA para o `dataId` dado. */
+/**
+ * Requisição com assinatura VÁLIDA para o `dataId` dado.
+ *
+ * `corpoExtra`/`dataExtra` existem para o teste 8 (rodada de conserto 1):
+ * montar um corpo com campos hostis (`external_reference`, `order_id`,
+ * `p_order_id`, `data.external_reference`) SEM mexer na assinatura, que só
+ * amarra `data.id`.
+ */
 async function requisicaoAssinada(
   dataId: string,
-  opts: { segredo?: string; ts?: number; requestId?: string | null } = {},
+  opts: {
+    segredo?: string;
+    ts?: number;
+    requestId?: string | null;
+    corpoExtra?: Record<string, unknown>;
+    dataExtra?: Record<string, unknown>;
+  } = {},
 ): Promise<Request> {
   const segredo = opts.segredo ?? SEGREDO;
   const ts = opts.ts ?? Math.floor(Date.now() / 1000);
@@ -70,7 +83,11 @@ async function requisicaoAssinada(
   const v1 = await assinar(dataId, ts, requestId, segredo);
   const headers: Record<string, string> = { "x-signature": `ts=${ts},v1=${v1}` };
   if (requestId !== null) headers["x-request-id"] = requestId;
-  return requisicao({ data: { id: dataId } }, headers);
+  const corpo = {
+    ...opts.corpoExtra,
+    data: { id: dataId, ...opts.dataExtra },
+  };
+  return requisicao(corpo, headers);
 }
 
 function fetchConsulta(status: number, corpo: Record<string, unknown>) {
@@ -115,11 +132,22 @@ function clienteFalso(opts: {
 Deno.test("assinatura inválida -> 401, e confirmar_pagamento NÃO é chamada", async () => {
   const registro = { chamadasRpc: [] };
   const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  // Stub de fetch que ACUSA se for chamado: sem ele, a suíte só fica offline
+  // porque a assinatura curto-circuita antes — sob mutação (achado da
+  // revisão), chegou a disparar uma chamada real para api.mercadopago.com
+  // (846ms). Com o stub, qualquer reordenação que chame o MP antes da
+  // assinatura falha aqui, não em produção.
+  let chamouFetch = false;
+  const fetchImpl = async (_url: string, _init?: RequestInit) => {
+    chamouFetch = true;
+    return new Response("{}", { status: 200 });
+  };
   const req = requisicao({ data: { id: "999" } }, { "x-signature": "ts=1,v1=deadbeef" });
 
-  const resposta = await handler(req, { supabase });
+  const resposta = await handler(req, { supabase, fetchImpl });
 
   assertEquals(resposta.status, 401);
+  assertEquals(chamouFetch, false);
   assertEquals(registro.chamadasRpc.length, 0);
 });
 
@@ -289,6 +317,141 @@ Deno.test("MP devolve 404 ao consultar o pagamento -> 200, não 500 — reenviar
   const resposta = await handler(req, { supabase, fetchImpl });
 
   assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+// --- 8. o corpo NÃO decide qual pedido é confirmado (rodada de conserto 1) --
+
+Deno.test("corpo hostil não decide o pedido — p_order_id vem SEMPRE da resposta do MP", async () => {
+  // Invariante nº 1: sem ela, quem descobre a URL (verify_jwt=false) manda um
+  // corpo com assinatura válida para QUALQUER data.id de um pagamento real, e
+  // aponta external_reference/order_id/p_order_id para o pedido que quiser —
+  // a mutação medida pela revisão (`body?.data?.external_reference ??
+  // consulta.externalReference`) confirmaria o pedido ERRADO.
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const UUID_HOSTIL = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  const req = await requisicaoAssinada("999", {
+    corpoExtra: {
+      external_reference: UUID_HOSTIL,
+      order_id: UUID_HOSTIL,
+      p_order_id: UUID_HOSTIL,
+    },
+    dataExtra: { external_reference: UUID_HOSTIL },
+  });
+  // O MP diz que este pagamento é de OUTRO pedido — o real.
+  const fetchImpl = fetchConsulta(200, {
+    id: 999,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_order_id, UUID_PEDIDO);
+});
+
+// --- 9. push exatamente em 2 dos 9 retornos possíveis da RPC ----------------
+
+Deno.test("push dispara em exatamente 2 dos 9 retornos possíveis da RPC", async () => {
+  // Os nove retornos de confirmar_pagamento (migration
+  // 20260808000000_confirmar_pagamento.sql). A mutação medida pela revisão
+  // (`if (resultado !== "ja_pago")`) faria 'divergente' virar push a cada
+  // ~15 min, no ritmo do reenvio do MP — um laço sobre os nove é o que pega
+  // isso, um teste por valor não pegaria a contagem agregada.
+  const NOVE_RETORNOS = [
+    "pago",
+    "pago_apos_expirar",
+    "ja_pago",
+    "recusado",
+    "estornado",
+    "ja_estornado",
+    "divergente",
+    "inexistente",
+    "ignorado",
+  ];
+  const DISPARAM_PUSH = new Set(["pago", "pago_apos_expirar"]);
+
+  for (const resultado of NOVE_RETORNOS) {
+    const registro = { chamadasRpc: [] };
+    const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+    const supabase = clienteFalso({ rpcResultado: resultado, pedido, registro });
+    const req = await requisicaoAssinada("999");
+    const fetchImpl = fetchConsulta(200, {
+      id: 999,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+    });
+    const chamadasPush: unknown[] = [];
+    const enviarPush = async (args: unknown) => {
+      chamadasPush.push(args);
+    };
+
+    await handler(req, { supabase, fetchImpl, enviarPush });
+
+    const esperado = DISPARAM_PUSH.has(resultado) ? 1 : 0;
+    assertEquals(chamadasPush.length, esperado, `resultado="${resultado}" deveria disparar ${esperado} push(es)`);
+  }
+});
+
+// --- 10. ts antigo é ACEITO (rodada de conserto 1: janela desligada) -------
+
+Deno.test("ts de 1h atrás é ACEITO — o webhook nunca confia no que chega, só no que consulta no MP", async () => {
+  // O MP não para de reenviar depois da 3ª tentativa — estende o intervalo
+  // e continua, sem limite documentado. Nenhuma janela finita é segura, e
+  // aceitar um ts velho não custa nada: quem autentica é o HMAC, e a decisão
+  // vem de uma consulta NOVA ao MP (o status ATUAL), não do que veio no
+  // header. Todos os outros testes assinam com ts=agora; sem este, a decisão
+  // de desligar a janela não está presa por nenhum teste.
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const agora = Math.floor(Date.now() / 1000);
+  const req = await requisicaoAssinada("999", { ts: agora - 3600 });
+  const fetchImpl = fetchConsulta(200, {
+    id: 999,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+});
+
+// --- type/topic que não é payment: barato de filtrar, evita poluir o log ---
+
+Deno.test("type diferente de 'payment' não consulta o MP nem chama a RPC", async () => {
+  // Notificação de merchant_order (ou qualquer tópico que não seja payment)
+  // hoje seria consultada como pagamento, o MP devolveria 404, e a função
+  // responderia 200 mesmo assim — inofensivo, mas cada uma dessas gera log de
+  // erro (`mercadopago: recusou 404`) sem nunca ter sido um pagamento. Filtrar
+  // antes de tocar o MP evita o ruído.
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  let chamouFetch = false;
+  const fetchImpl = async (_url: string, _init?: RequestInit) => {
+    chamouFetch = true;
+    return new Response("{}", { status: 200 });
+  };
+  const req = await requisicaoAssinada("999", { corpoExtra: { type: "merchant_order" } });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(chamouFetch, false);
   assertEquals(registro.chamadasRpc.length, 0);
 });
 

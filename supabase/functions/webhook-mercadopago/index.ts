@@ -154,8 +154,18 @@ async function disparoPushReal(args: {
 /**
  * `deps` é a mesma costura da `criar-pagamento` (index.ts:124-135): em
  * produção o `serve()` lá embaixo chama `handler(req)` com um único
- * argumento — nunca `serve(handler)` direto, porque o `serve` do std passa
- * um segundo argumento (`ConnInfo`) que cairia em `deps` por acidente.
+ * argumento.
+ *
+ * Correção de 09/08/2026 (rodada de conserto 1): a versão anterior deste
+ * comentário dizia que isso era necessário para produção não quebrar,
+ * porque o segundo argumento que o `serve` do std passa (`ConnInfo`) cairia
+ * em `deps`. A revisão MEDIU e refutou: passando um `ConnInfo` como
+ * segundo argumento, o handler se comporta igual, porque TODA dep aqui usa
+ * `??` com fallback real (`deps.supabase ?? createClient(...)`,
+ * `deps.fetchImpl` → `fetch`, `deps.enviarPush ?? disparoPushReal`) — um
+ * objeto estranho sem as chaves esperadas cai nos mesmos defaults. Continua
+ * um único argumento porque é mais claro e não depende de todo fallback
+ * continuar correto para sempre — não porque seja uma trava de segurança.
  */
 async function handler(
   req: Request,
@@ -187,19 +197,41 @@ async function handler(
     xRequestId: req.headers.get("x-request-id"),
     dataId: dataIdStr,
     segredo: Deno.env.get("MP_WEBHOOK_SECRET") ?? "",
-    // 86400s (24h), não o default de 300s: o MP reenvia a cada ~15 min até
-    // receber 200, e não há garantia de que ele re-assine com `ts` novo a
-    // cada tentativa (o SDK oficial deixa essa checagem DESLIGADA por
-    // padrão). Com 300s, um timeout ou cold start na primeira tentativa já
-    // vira 401 permanente — o pedido expira e o pg_cron devolve o estoque de
-    // um pedido PAGO. A janela larga aceita, no pior caso, uma confirmação
-    // repetida (que `confirmar_pagamento` já trata como `ja_pago`); a janela
-    // curta troca isso por um pedido pago sem produto.
-    toleranciaSegundos: 86400,
+    // Number.POSITIVE_INFINITY: a janela de `ts` fica DESLIGADA nesta
+    // função. Corrigido em 09/08/2026 (rodada de conserto 1) — a versão
+    // anterior usava 86400s (24h), medida contra um limite que não existe:
+    // a revisão mediu que o MP NÃO PARA de reenviar depois da terceira
+    // tentativa, ele estende o intervalo e continua sem limite documentado.
+    // Nenhuma janela finita é segura — uma cadeia longa de reenvios
+    // ultrapassa qualquer valor escolhido, e o ÚLTIMO reenvio vira 401
+    // permanente.
+    //
+    // Desligar não custa nada porque O WEBHOOK NUNCA CONFIA NO QUE CHEGA:
+    // ele só lê `data.id` daqui, e vai perguntar ao MP o status ATUAL logo
+    // abaixo. Um header replayado — mesmo capturado meses atrás — produz
+    // uma consulta NOVA ao MP e a decisão correta para o estado de agora; a
+    // `confirmar_pagamento` fecha o resto (idempotência sob `FOR UPDATE`).
+    // Não existe cenário em que aceitar um `ts` velho cause dano: quem
+    // autentica aqui é o HMAC, não o relógio — é por isso que o SDK oficial
+    // do MP entrega essa checagem desligada por padrão.
+    toleranciaSegundos: Number.POSITIVE_INFINITY,
   });
   if (!assinaturaOk) {
     console.warn("webhook-mercadopago: assinatura inválida", dataIdStr);
     return json({ error: "Assinatura inválida." }, 401);
+  }
+
+  // Barato de filtrar, caro de deixar passar: uma notificação de
+  // merchant_order (ou qualquer type que não seja "payment") seria
+  // consultada como pagamento, o MP devolveria 404, e a função responderia
+  // 200 mesmo assim — inofensivo, mas cada uma dessas suja o log
+  // (`mercadopago: recusou 404`) sem nunca ter sido um pagamento de
+  // verdade. `type` ausente passa (notificações antigas/de teste podem não
+  // mandar o campo); só barra quando ele VEIO e diz outra coisa.
+  const tipoDoEvento = body?.type;
+  if (typeof tipoDoEvento === "string" && tipoDoEvento !== "payment") {
+    console.warn("webhook-mercadopago: type não é payment, ignorado sem consultar o MP", tipoDoEvento);
+    return json({ ok: true, ignorado: "type não é payment" }, 200);
   }
 
   const consulta = await consultarPagamento({
@@ -308,8 +340,8 @@ const emTeste =
   Deno.mainModule.endsWith("_test.js") ||
   Deno.mainModule.includes("index_test");
 
-// (req) => handler(req), não serve(handler) direto: o serve() do std passa
-// um segundo argumento (ConnInfo) que cairia em `deps` por acidente.
+// (req) => handler(req), um único argumento — mais claro, ver o comentário
+// acima de `handler` sobre por que isso NÃO é uma trava de segurança aqui.
 if (!emTeste) serve((req) => handler(req));
 
 export { handler };
