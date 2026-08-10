@@ -177,7 +177,12 @@ const VERIFICACOES = {
         // pagamento fica sem registro e o teste nao pega.
         "FOR UPDATE;",
         // A releitura que decide. Sem ela volta o UPDATE cego que produz
-        // pedido 'pago' com status 'cancelled'.
+        // pedido 'pago' com status 'cancelled' pela rota da EXPIRACAO (a
+        // varredura ja marcou 'expirado' antes do webhook chegar). A mesma
+        // combinacao pela rota do CANCELAMENTO NO APP e' o que a guarda
+        // "IF v_pedido.status = 'cancelled' THEN" logo abaixo, dentro do
+        // ramo 'aguardando', previne — ver 20260810000000_confirmar_
+        // pagamento_guarda_status.sql.
         "IF v_pedido.payment_status = 'expirado' THEN",
         "RETURN 'pago_apos_expirar';",
         // A guarda que impede credito de estoque em dobro.
@@ -195,6 +200,39 @@ const VERIFICACOES = {
         "interval '24 hours'",
         // So quem chegou a ter cobranca no MP.
         "AND gateway_payment_id IS NOT NULL",
+        // DESC, nao ASC: sem isto o LIMIT 100 sempre escolhe os candidatos
+        // mais velhos (menos capazes de ainda mudar de estado) em vez dos
+        // que expiraram ha pouco (unicos com chance real de terem sido
+        // pagos). Achado da revisao do PR #179 (Item 3).
+        "ORDER BY expires_at DESC",
+      ],
+    },
+  ],
+  "20260810000000_confirmar_pagamento_guarda_status.sql": [
+    {
+      funcao: "confirmar_pagamento",
+      esperado: [
+        // A guarda que faltava (Item 1 do achado bloqueante do PR #179): sem
+        // ela, pedido cancelado pelo app com PIX pago depois virava 'pago'
+        // com status 'cancelled' — dinheiro recebido, estoque ja revendivel,
+        // sem sinal de atencao no admin.
+        //
+        // Marcador e' o BLOCO INTEIRO, nao as duas linhas soltas de antes.
+        // "IF v_pedido.status = 'cancelled' THEN" e "SET payment_status =
+        // 'pago_apos_expirar'," JA EXISTEM, separados, em outros pontos desta
+        // mesma funcao (ramo do estorno e ramo do 'expirado') — provado
+        // contra uma versao SEM esta guarda: os dois marcadores soltos davam
+        // "ok" mesmo faltando exatamente o trecho que esta migration
+        // acrescenta. So o bloco junto, nesta ordem, prova que a guarda nova
+        // esta no lugar certo.
+        `IF v_pedido.status = 'cancelled' THEN
+                UPDATE public.marketplace_orders
+                   SET payment_status = 'pago_apos_expirar',
+                       paid_at        = now(),
+                       updated_at     = now()
+                 WHERE id = p_order_id;
+                RETURN 'pago_apos_expirar';
+            END IF;`,
       ],
     },
   ],

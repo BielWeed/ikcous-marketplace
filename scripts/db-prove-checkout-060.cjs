@@ -6,6 +6,17 @@
  * Isso so e verdade porque a migration NAO tem COMMIT embutido — se alguem
  * acrescentar um, este script passa a gravar em producao sem avisar.
  *
+ * RISCO — DDL dentro da transacao: este script roda `CREATE OR REPLACE
+ * FUNCTION` (duas vezes, ver main()) e `CREATE EXTENSION IF NOT EXISTS`
+ * + `cron.schedule`/`cron.unschedule` (da 20260808000100_reconciliacao.sql)
+ * contra o banco de PRODUCAO. Isso e' DDL na funcao de dinheiro viva, nao um
+ * INSERT qualquer — mudou de classe de risco em relacao a um script que so
+ * grava linha e desfaz. E' seguro porque tudo, sem excecao, esta dentro de
+ * um unico `BEGIN`/`ROLLBACK` (ver main()): as funcoes mutadas e o
+ * agendamento do cron NUNCA existem fora desta transacao — o ROLLBACK final
+ * desfaz o CREATE OR REPLACE e o cron.schedule tanto quanto desfaria um
+ * INSERT.
+ *
  * Cada caso deste script e uma linha da tabela de decisao do brief da Task 2
  * (regerado em 07/08/2026 e de novo em 09/08/2026, apos duas rodadas de
  * revisao que acharam defeitos reais no SQL do plano). Tres regras vieram
@@ -22,13 +33,36 @@
  *    20260807000000), entao cada caso usa um valor diferente. Na primeira
  *    versao, os casos 2, 6 e 7 dependiam do estado deixado pelos anteriores
  *    no MESMO pedido: mudar um mudava o significado dos outros em silencio.
- * 3. Os casos `aguardando` + `status='cancelled'` (estorno e recusado) sao o
- *    achado da re-revisao de 09/08/2026: os ramos que chamam
- *    devolver_estoque olhavam so para payment_status='aguardando', sem
- *    `AND status='pending'`. update_order_status_atomic devolve o estoque
- *    quando o cliente cancela pelo app e NAO escreve payment_status — o
- *    pedido fica 'aguardando' + 'cancelled' com o estoque JA de volta.
- *    Medido sem a guarda: 10 -> 13, unidade fantasma no catalogo.
+ * 3. Os casos `aguardando` + `status='cancelled'` (estorno, recusado e — desde
+ *    a revisao do PR #179 — pago) sao o achado da re-revisao de 09/08/2026 e
+ *    da revisao de 10/08/2026: os ramos que chamam devolver_estoque OU que
+ *    decidem entre 'pago' e 'pago_apos_expirar' olhavam so para
+ *    payment_status='aguardando', sem olhar `status`. update_order_status_
+ *    atomic devolve o estoque quando o cliente cancela pelo app e NAO
+ *    escreve payment_status — o pedido fica 'aguardando' + 'cancelled' com o
+ *    estoque JA de volta. Medido sem a guarda de estoque: 10 -> 13, unidade
+ *    fantasma no catalogo. O ramo 'pago' (Item 1 do PR #179) era o UNICO dos
+ *    tres que ainda faltava essa guarda — sem ela, pedido cancelado com PIX
+ *    pago depois virava 'pago' com status 'cancelled', dinheiro recebido e
+ *    sem sinal de atencao no admin.
+ *
+ * Este script aplica DENTRO da transacao a versao de confirmar_pagamento da
+ * migration 20260810000000_confirmar_pagamento_guarda_status.sql (o CREATE OR
+ * REPLACE FUNCTION, ver main()) ANTES de rodar os casos — a migration ainda
+ * nao foi aplicada em producao, e e' assim que a prova cobre o SQL dela sem
+ * aplicar nada: o ROLLBACK do fim desfaz o CREATE OR REPLACE tambem.
+ *
+ * Achado 3 da revisao do PR #179: pela mesma razao, este script TAMBEM
+ * aplica DENTRO da transacao a 20260808000100_reconciliacao.sql (que cria
+ * `pagamentos_a_reconciliar`) — sem isso os casos 15-19 (Task 5) estouravam
+ * em "function pagamentos_a_reconciliar() does not exist" e o script morria
+ * com exit code 1 ANTES do sumario, deixando o `ORDER BY expires_at DESC`
+ * sem nenhum teste rodando. Antes de aplicar cada uma das duas, main()
+ * mede a funcao/migration JA VIVA no banco e imprime qual dos dois mundos
+ * esta sendo provado (Achado 4): se a guarda ou a reconciliacao ja tiverem
+ * sido aplicadas de verdade, as assercoes passam a provar o BANCO; senao,
+ * provam o ARQUIVO dentro desta transacao. So log, sem afetar o resultado —
+ * a diferenca tem de ficar visivel na saida, nao implicita.
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -169,6 +203,52 @@ async function estoqueDe(client, produtoId) {
   return r.rows[0].estoque;
 }
 
+/**
+ * Achado 4 da revisao do PR #179: depois que as duas migrations forem
+ * aplicadas de verdade em producao, este script passaria a provar o
+ * ARQUIVO (porque o CREATE OR REPLACE dentro da transacao so reescreve o
+ * que ja e' identico), nao mais o banco vivo antes de main() mexer nele —
+ * e ficaria verde do mesmo jeito mesmo que a migration nunca tivesse
+ * rodado de verdade fora desta transacao. Isto mede o mundo ANTES do
+ * CREATE OR REPLACE desta run, para a saida dizer qual dos dois esta
+ * sendo provado. So log — nao entra em `passou`/`falhou`.
+ */
+async function guardaStatusJaAplicadaAoVivo(client) {
+  const { rows } = await client.query(
+    `SELECT pg_get_functiondef(p.oid) AS def
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = 'confirmar_pagamento'`,
+  );
+  const def = (rows[0]?.def ?? "").replace(/\r\n/g, "\n");
+  // MESMO furo que o Item 2 fechou no VERIFICACOES do db-apply.cjs, e o mesmo
+  // conserto: "IF v_pedido.status = 'cancelled' THEN" sozinho JA EXISTE hoje
+  // em outro ramo desta funcao (o do estorno tambem raciocina sobre
+  // 'cancelled') e pode aparecer de novo no ramo do estorno numa migration
+  // futura sem que o ramo 'pago' tenha a guarda — o marcador de uma linha
+  // acusaria "JA aplicada" mesmo assim. So o bloco inteiro, na mesma ordem
+  // do marcador de db-apply.cjs, prova que e' ESTE ramo que tem a guarda.
+  const bloco = `IF v_pedido.status = 'cancelled' THEN
+                UPDATE public.marketplace_orders
+                   SET payment_status = 'pago_apos_expirar',
+                       paid_at        = now(),
+                       updated_at     = now()
+                 WHERE id = p_order_id;
+                RETURN 'pago_apos_expirar';
+            END IF;`;
+  return def.includes(bloco);
+}
+
+/** Mesma ideia acima, para a 20260808000100_reconciliacao.sql: a funcao ou
+ * existe ao vivo, ou este script vai cria-la dentro da transacao. */
+async function reconciliacaoJaAplicadaAoVivo(client) {
+  const { rows } = await client.query(
+    `SELECT 1
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = 'pagamentos_a_reconciliar'`,
+  );
+  return rows.length > 0;
+}
+
 async function confirmar(client, pedidoId, paymentId, status) {
   const r = await client.query(
     "SELECT public.confirmar_pagamento($1, $2, $3) AS resultado",
@@ -186,6 +266,60 @@ async function main() {
   await client.query("BEGIN");
 
   try {
+    // Achado 4 da revisao do PR #179: mede o mundo ANTES de mexer em nada,
+    // para a saida dizer se as assercoes a seguir provam o BANCO (migration
+    // ja aplicada de verdade em producao) ou o ARQUIVO (aplicado so aqui,
+    // dentro desta transacao — o caso comum hoje).
+    console.log(
+      (await guardaStatusJaAplicadaAoVivo(client))
+        ? "banco: 20260810000000 JA aplicada (assercoes provam o BANCO real)"
+        : "banco: 20260810000000 AINDA NAO aplicada (assercoes provam o ARQUIVO, dentro da transacao)",
+    );
+    console.log(
+      (await reconciliacaoJaAplicadaAoVivo(client))
+        ? "banco: 20260808000100 JA aplicada (assercoes provam o BANCO real)"
+        : "banco: 20260808000100 AINDA NAO aplicada (assercoes provam o ARQUIVO, dentro da transacao)",
+    );
+
+    // Aplica DENTRO da transacao a versao nova de confirmar_pagamento (Item 1
+    // do achado bloqueante da revisao do PR #179 — a migration ainda NAO foi
+    // aplicada em producao). E' assim que este script prova o SQL da
+    // migration sem aplica-la: CREATE OR REPLACE dentro da transacao, roda as
+    // asserções, termina em ROLLBACK — a funcao nova nunca existe fora desta
+    // transacao.
+    // O caminho e' montado de constantes deste arquivo, nao de entrada — o
+    // mesmo motivo pelo qual a leitura do .env em lerDatabaseUrl() ja suprime
+    // esta regra. Sem a supressao, sobe a catraca de eslint em +1.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
+    const guardaStatusSql = fs.readFileSync(
+      path.join(
+        RAIZ,
+        "supabase",
+        "migrations",
+        "20260810000000_confirmar_pagamento_guarda_status.sql",
+      ),
+      "utf8",
+    );
+    await client.query(guardaStatusSql);
+
+    // Achado 3 da revisao do PR #179: mesma logica para a reconciliacao —
+    // sem isto os casos 15-19 estouravam em "function
+    // pagamentos_a_reconciliar() does not exist" e o script morria antes do
+    // sumario. Aplicada dentro da MESMA transacao, junto com a guarda acima:
+    // um unico ROLLBACK no fim desfaz as duas.
+    // Mesma supressao da leitura acima, pelo mesmo motivo.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
+    const reconciliacaoSql = fs.readFileSync(
+      path.join(
+        RAIZ,
+        "supabase",
+        "migrations",
+        "20260808000100_reconciliacao.sql",
+      ),
+      "utf8",
+    );
+    await client.query(reconciliacaoSql);
+
     console.log("\n=== confirmar_pagamento ===");
 
     // --- caso 1: 'aguardando' + ('MP1','pago') -> 'pago' -------------------
@@ -498,6 +632,107 @@ async function main() {
       (await estoqueDe(client, produto13)) === 5,
     );
 
+    // --- caso 13b: 'aguardando' + status='cancelled' com 3 un. + pago ------
+    // O Item 1 do achado bloqueante da revisao do PR #179: irmao do meio dos
+    // casos 12 e 13, o que tem dinheiro. Cliente cancela pelo app (estoque
+    // JA voltou pela update_order_status_atomic, payment_status continua
+    // 'aguardando') e paga o PIX assim mesmo. Sem a guarda de status, isto
+    // virava 'pago' com o pedido 'cancelled' — dinheiro recebido, estoque ja
+    // revendivel, badge "Pago" verde sem sinal de atencao. Tem de virar
+    // 'pago_apos_expirar' (mesmo balde de atencao que o caso 3 ja prova para
+    // a rota da expiracao), com paid_at carimbado, status continuando
+    // 'cancelled' e estoque INALTERADO.
+    const produto13b = await criarProduto(
+      client,
+      "PROVA PAGO APOS CANCELAR NO APP",
+      5,
+    );
+    const pedido13b = await criarPedido(client, {
+      nome: "PROVA PAGO APOS CANCELAR NO APP",
+      paymentStatus: "aguardando",
+      status: "cancelled",
+      gatewayPaymentId: "MP_PAGO_CANCELADO",
+      produtoId: produto13b,
+      quantity: 3,
+    });
+
+    const r13b = await confirmar(
+      client,
+      pedido13b,
+      "MP_PAGO_CANCELADO",
+      "pago",
+    );
+    conferir(
+      "aguardando + cancelled + pago -> 'pago_apos_expirar'",
+      r13b === "pago_apos_expirar",
+      `veio ${r13b}`,
+    );
+    const estado13b = await estadoPedido(client, pedido13b);
+    conferir(
+      "paid_at carimbado ao pagar pedido ja cancelado no app",
+      estado13b.paid_at !== null,
+    );
+    conferir(
+      "status continua 'cancelled' (nao descancela)",
+      estado13b.status === "cancelled",
+    );
+    conferir(
+      "estoque INALTERADO ao pagar pedido ja cancelado (nao mexe de novo)",
+      (await estoqueDe(client, produto13b)) === 5,
+    );
+
+    // --- caso 13c: 'aguardando' + status='processing' + pago -> 'pago' -----
+    // A REGRESSAO que a revisao do PR #179 pegou na primeira versao deste
+    // conserto (que usava `status <> 'pending'` em vez de `= 'cancelled'`).
+    // Cenario: o admin adianta o pedido para 'processing' dentro dos 30 min
+    // (20260807000000_reserva_com_expiracao.sql:100-102 documenta este
+    // avanco como esperado), e SO DEPOIS o cliente paga o PIX. Aqui o
+    // estoque NUNCA voltou — 'processing' nao passa pela
+    // update_order_status_atomic com p_new_status='cancelled' — entao o
+    // resultado tem que continuar sendo 'pago', igual ao caso 1, e NAO
+    // 'pago_apos_expirar'. Com `<> 'pending'` este caso cairia no ramo
+    // errado e o pedido ficaria preso na fila de atencao do admin para
+    // sempre, porque nada reescreve 'pago_apos_expirar' de volta para
+    // 'pago'.
+    const produto13c = await criarProduto(
+      client,
+      "PROVA PAGO APOS ADIANTAR PARA PROCESSING",
+      5,
+    );
+    const pedido13c = await criarPedido(client, {
+      nome: "PROVA PAGO APOS ADIANTAR PARA PROCESSING",
+      paymentStatus: "aguardando",
+      status: "processing",
+      gatewayPaymentId: "MP_PAGO_PROCESSING",
+      produtoId: produto13c,
+      quantity: 3,
+    });
+
+    const r13c = await confirmar(
+      client,
+      pedido13c,
+      "MP_PAGO_PROCESSING",
+      "pago",
+    );
+    conferir(
+      "aguardando + processing + pago -> 'pago' (NAO 'pago_apos_expirar')",
+      r13c === "pago",
+      `veio ${r13c}`,
+    );
+    const estado13c = await estadoPedido(client, pedido13c);
+    conferir(
+      "paid_at carimbado ao pagar pedido em 'processing'",
+      estado13c.paid_at !== null,
+    );
+    conferir(
+      "status continua 'processing' (venda em andamento, nao mexe)",
+      estado13c.status === "processing",
+    );
+    conferir(
+      "estoque INALTERADO ao pagar pedido em 'processing' (nunca voltou)",
+      (await estoqueDe(client, produto13c)) === 5,
+    );
+
     // --- caso 14: pedido inexistente -> 'inexistente' ----------------------
     const r14 = await confirmar(client, crypto.randomUUID(), "X", "pago");
     conferir(
@@ -588,8 +823,65 @@ async function main() {
       quantity: 1,
     });
 
+    // --- caso 20: dois candidatos elegiveis, expires_at diferentes ---------
+    // Prova o `ORDER BY expires_at DESC` (Item 3 do achado da revisao do PR
+    // #179 — sem este caso o DESC nao tinha NENHUM teste, porque os casos
+    // 15-19 morriam antes de rodar). Dois pedidos elegiveis, o mais recente
+    // (expirou ha 10 min) tem que vir ANTES do mais antigo (expirou ha 50
+    // min) na lista — com ASC os dois trocariam de posicao.
+    const produto20a = await criarProduto(
+      client,
+      "PROVA RECONCILIACAO DESC MAIS VELHO",
+      5,
+    );
+    const pedido20a = await criarPedidoReconciliacao(client, {
+      nome: "PROVA RECONCILIACAO DESC MAIS VELHO",
+      gatewayPaymentId: "MP14",
+      paidAt: null,
+      expiresAt: new Date(AGORA - 50 * 60 * 1000),
+      produtoId: produto20a,
+      quantity: 1,
+    });
+    const produto20b = await criarProduto(
+      client,
+      "PROVA RECONCILIACAO DESC MAIS RECENTE",
+      5,
+    );
+    const pedido20b = await criarPedidoReconciliacao(client, {
+      nome: "PROVA RECONCILIACAO DESC MAIS RECENTE",
+      gatewayPaymentId: "MP15",
+      paidAt: null,
+      expiresAt: new Date(AGORA - 10 * 60 * 1000),
+      produtoId: produto20b,
+      quantity: 1,
+    });
+
     const listaCandidatos = await candidatosReconciliacao(client);
     const idsCandidatos = listaCandidatos.map((linha) => linha.order_id);
+
+    const posicao20a = idsCandidatos.indexOf(pedido20a);
+    const posicao20b = idsCandidatos.indexOf(pedido20b);
+    // `pagamentos_a_reconciliar()` le linhas REAIS de producao sob
+    // `LIMIT 100` — hoje ha poucos candidatos e os dois sinteticos sempre
+    // aparecem, mas no dia em que houver mais de 100 um dos dois pode nao
+    // entrar no resultado. Sem esta trava, `indexOf` devolve -1 para o que
+    // sumiu, e "-1 < indice_do_outro" pode dar TRUE por acidente (ex.:
+    // mais_recente sumiu, mais_velho ficou no indice 5: "-1 < 5" e' true) —
+    // a comparacao de ORDEM passaria em verde mesmo com um candidato
+    // ausente. `presentes` blinda a comparacao de ordem: se qualquer um dos
+    // dois sumiu, a asserção de ordem reprova junto, em vez de um "ok"
+    // contraditorio ao lado do FALHA de presenca.
+    const presentes = posicao20a !== -1 && posicao20b !== -1;
+    conferir(
+      "os dois candidatos do caso 20 aparecem na lista",
+      presentes,
+      `posicoes: mais_velho=${posicao20a} mais_recente=${posicao20b}`,
+    );
+    conferir(
+      "ORDER BY expires_at DESC: o mais recente vem ANTES do mais velho",
+      presentes && posicao20b < posicao20a,
+      `posicoes: mais_velho=${posicao20a} mais_recente=${posicao20b}`,
+    );
 
     conferir(
       "expirado recente com cobranca -> aparece na lista",

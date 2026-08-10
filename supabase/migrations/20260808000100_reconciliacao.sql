@@ -20,7 +20,18 @@ AS $candidatos$
        -- 24 h: depois disso o PIX ja nao e' pagavel e a janela vira varredura
        -- do historico inteiro a cada 10 minutos.
        AND expires_at > now() - interval '24 hours'
-     ORDER BY expires_at
+     -- DESC, nao ASC: um candidato so sai desta fila envelhecendo para fora
+     -- da janela de 24h acima — nunca por ter sido resolvido, porque um PIX
+     -- expirado e nao pago volta 'ignorado' sem escrever nada (ver o ramo
+     -- final da confirmar_pagamento). Com ASC + LIMIT 100, os 100 escolhidos
+     -- a cada ciclo seriam sempre os MAIS VELHOS — o PIX vencido ha 23h, que
+     -- e' o menos capaz de ainda mudar de estado — e o que expirou ha 10 min,
+     -- o unico com chance real de ter sido pago, ficaria por ultimo. DESC
+     -- serve primeiro quem tem mais chance de ter pago. A starvation do outro
+     -- lado (candidato bem velho pode nunca ser revisitado antes de sair da
+     -- janela) e' aceita de proposito: um PIX vencido ha quase 24h e sem
+     -- pagamento quase certamente nunca foi pago.
+     ORDER BY expires_at DESC
      LIMIT 100;
 $candidatos$;
 
