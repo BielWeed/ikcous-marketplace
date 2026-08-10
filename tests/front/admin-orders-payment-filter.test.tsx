@@ -159,7 +159,7 @@ describe("PaymentStatusBadge", () => {
     expect(hospedeiro.querySelector("div")?.className).toContain(
       "ring-red-500",
     );
-    expect(hospedeiro.textContent).toContain("Estornado");
+    expect(hospedeiro.textContent).toContain("Estornado — precisa de atenção");
 
     await act(async () => {
       raiz.render(<PaymentStatusBadge paymentStatus="pago_apos_expirar" />);
@@ -167,7 +167,9 @@ describe("PaymentStatusBadge", () => {
     expect(hospedeiro.querySelector("div")?.className).toContain(
       "ring-red-500",
     );
-    expect(hospedeiro.textContent).toContain("Pago fora do prazo");
+    expect(hospedeiro.textContent).toContain(
+      "Pago fora do fluxo — precisa de atenção",
+    );
   });
 
   it("payment_status nulo não quebra a renderização e mostra 'Sem cobrança online'", async () => {

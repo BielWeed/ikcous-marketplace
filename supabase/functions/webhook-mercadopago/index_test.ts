@@ -12,7 +12,7 @@
  * pagamento de um pedido que o corpo do webhook não pode determinar sozinho
  * (por isso o `p_order_id` sai da RESPOSTA do MP, nunca do corpo).
  */
-import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler } from "./index.ts";
 
 const SEGREDO = "segredo-webhook-teste";
@@ -236,7 +236,7 @@ Deno.test("RPC devolve 'pago_apos_expirar' -> 200 e push com texto diferente", a
 
   assertEquals(resposta.status, 200);
   assertEquals(chamadasPush.length, 1);
-  assertEquals(chamadasPush[0].aviso.title, "Pagamento fora do prazo");
+  assertEquals(chamadasPush[0].aviso.title, "Pagamento fora do fluxo");
 });
 
 // --- 6. status desconhecido --------------------------------------------------
@@ -470,4 +470,55 @@ Deno.test("RPC devolve erro de banco -> 500, para o MP reenviar", async () => {
   const resposta = await handler(req, { supabase, fetchImpl });
 
   assertEquals(resposta.status, 500);
+});
+
+// --- 'divergente'/'inexistente': dinheiro sem registro (achado BLOQUEANTE
+// da revisão do PR #179) -------------------------------------------------
+//
+// A `criar-pagamento` já prova o cenário onde o MP responde 200 na criação
+// da cobrança e o UPDATE seguinte falha (loga
+// "criar-pagamento: cobrança criada mas não gravada"). Quando o webhook
+// chega depois, autenticado pelo x-signature, `confirmar_pagamento` recusa
+// com 'divergente' porque `gateway_payment_id IS NULL` no pedido — e sem
+// log aqui o pedido expira em 30 min, o estoque volta, e fica "dinheiro no
+// Mercado Pago, nada no app, 200 no log de acesso e zero aviso". A
+// reconciliação (reconciliar-pagamentos/index.ts:191-197) já loga esses
+// dois retornos com console.warn; este teste prende o mesmo tratamento
+// aqui, com console.error — é dinheiro que entrou sem registro, não um
+// reenvio inofensivo do MP encontrando um estado já tratado.
+Deno.test("RPC devolve 'divergente' ou 'inexistente' -> 200 e console.error acusa, com orderId/paymentId/resultado", async () => {
+  for (const resultado of ["divergente", "inexistente"]) {
+    const registro = { chamadasRpc: [] };
+    const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+    const supabase = clienteFalso({ rpcResultado: resultado, pedido, registro });
+    const req = await requisicaoAssinada("999");
+    const fetchImpl = fetchConsulta(200, {
+      id: 999,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+    });
+    const chamadasErro: unknown[][] = [];
+    const console_error = console.error;
+    console.error = (...args: unknown[]) => {
+      chamadasErro.push(args);
+    };
+    try {
+      const resposta = await handler(req, { supabase, fetchImpl });
+
+      assertEquals(resposta.status, 200);
+      assertEquals(
+        chamadasErro.length,
+        1,
+        `resultado="${resultado}" deveria logar console.error exatamente uma vez`,
+      );
+      const textoCompleto = chamadasErro[0]
+        .map((v) => (typeof v === "string" ? v : JSON.stringify(v)))
+        .join(" ");
+      assertStringIncludes(textoCompleto, UUID_PEDIDO);
+      assertStringIncludes(textoCompleto, "999");
+      assertStringIncludes(textoCompleto, resultado);
+    } finally {
+      console.error = console_error;
+    }
+  }
 });

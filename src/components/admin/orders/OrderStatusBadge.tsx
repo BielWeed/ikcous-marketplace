@@ -149,7 +149,14 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
       needsAttention: true,
     },
     pago_apos_expirar: {
-      label: "Pago fora do prazo — precisa de atenção",
+      // "fora do fluxo", não "fora do prazo": desde a migration que faz o
+      // ramo 'pago' devolver este mesmo valor também quando o pedido foi
+      // CANCELADO pelo app e pago depois (não só quando expirou), o texto
+      // falava em prazo na metade dos casos. O valor cobre as duas rotas de
+      // propósito — já significa "dinheiro entrou, estoque já voltou,
+      // precisa de gente" — só o rótulo não podia continuar prometendo uma
+      // causa que às vezes é outra.
+      label: "Pago fora do fluxo — precisa de atenção",
       color: "text-red-400",
       bgColor: "bg-red-500/10",
       borderColor: "border-red-500/40",

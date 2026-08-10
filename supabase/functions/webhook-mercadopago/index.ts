@@ -37,11 +37,14 @@
  *
  * PUSH: SÓ 'pago' E 'pago_apos_expirar'
  *
- * É o retorno da RPC que decide, não o `status` que o MP mandou — outros
- * retornos (`ja_pago`, `divergente`, `ignorado`...) são exatamente o
- * reenvio do MP encontrando um estado que já foi tratado, e disparar push
- * de novo a cada reenvio (o MP tenta a cada ~15 min até receber 200)
- * transformaria o canal do lojista em spam.
+ * É o retorno da RPC que decide, não o `status` que o MP mandou. `ja_pago`
+ * e `ignorado` são o reenvio do MP encontrando um estado que já foi
+ * tratado, e disparar push de novo a cada reenvio (o MP tenta a cada ~15
+ * min até receber 200) transformaria o canal do lojista em spam.
+ * `divergente` e `inexistente` NÃO entram nesse grupo: a confirmação já
+ * veio aprovada pelo MP, mas não bate com nenhum pedido — dinheiro que pode
+ * ter entrado sem registro. Por isso não disparam push (não haveria pedido
+ * certo para avisar), mas são logados como erro, não silenciados.
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -295,10 +298,12 @@ async function handler(
     return json({ error: "Erro ao confirmar pagamento." }, 500);
   }
 
-  // Só estes dois retornos disparam push. Todo o resto (ja_pago, divergente,
-  // inexistente, ignorado, estornado, ja_estornado, recusado) é reenvio do
-  // MP encontrando um estado que já foi tratado — 200, sem push, é o que
-  // impede o reenvio de virar spam para o lojista.
+  // Só estes dois retornos disparam push. `ja_pago`/`ja_estornado`/`ignorado`
+  // são reenvio do MP encontrando um estado que já foi tratado — 200, sem
+  // push, é o que impede o reenvio de virar spam para o lojista.
+  // `divergente`/`inexistente` NÃO são esse caso benigno: significam que a
+  // confirmação (já aprovada pelo MP) não bate com o pedido, e por isso são
+  // logados como erro no bloco abaixo, não silenciados.
   if (resultado === "pago" || resultado === "pago_apos_expirar") {
     // A RPC devolve só um texto — o push precisa de nome/número/valor, que
     // vêm de uma leitura extra do pedido.
@@ -320,7 +325,12 @@ async function handler(
     const aviso =
       resultado === "pago_apos_expirar"
         ? {
-            title: "Pagamento fora do prazo",
+            // "fora do fluxo", não "fora do prazo": a RPC devolve este
+            // mesmo valor tanto quando o pedido EXPIROU quanto quando foi
+            // CANCELADO pelo app e pago depois — "prazo" só é verdade na
+            // primeira rota. O corpo continua igual: "estoque já devolvido"
+            // já é verdade nas duas.
+            title: "Pagamento fora do fluxo",
             body: `${numeroDoPedido(orderId)} · ${formatarBRL(valor)} · estoque já devolvido`,
             url: "/admin-orders",
           }
@@ -332,6 +342,24 @@ async function handler(
 
     const enviarPush = deps.enviarPush ?? disparoPushReal;
     await enviarPush({ supabase, aviso });
+  } else if (resultado === "divergente" || resultado === "inexistente") {
+    // error, não warn: ao contrário dos outros retornos deste laço (ja_pago,
+    // ignorado...), estes dois chegam com o pagamento JÁ APROVADO pelo MP —
+    // a assinatura lá em cima já provou isso. 'divergente' é
+    // gateway_payment_id que não bate com o pedido; 'inexistente' é pedido
+    // que sumiu. A `criar-pagamento` cobre o cenário gêmeo (MP responde 200
+    // na criação, o UPDATE seguinte falha) com o mesmo nível de log
+    // ("cobrança criada mas não gravada") — sem isto aqui, o pedido expira
+    // em 30 min, o estoque volta, e fica "dinheiro no Mercado Pago, nada no
+    // app, 200 no log de acesso" até alguém notar batendo o extrato manual.
+    // A reconciliação (reconciliar-pagamentos/index.ts:191-197) já trata os
+    // dois com console.warn porque lá o `p_payment_id` sai da MESMA linha do
+    // banco — divergir é quase impossível. Aqui o payment_id sai da resposta
+    // do MP, então divergir é o caminho normal de um UPDATE que falhou.
+    console.error(
+      "webhook-mercadopago: confirmar_pagamento devolveu resultado inesperado — dinheiro pode ter entrado sem registro",
+      { orderId, paymentId: consulta.id, resultado },
+    );
   }
 
   return json({ ok: true, resultado }, 200);

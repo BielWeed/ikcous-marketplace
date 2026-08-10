@@ -1058,7 +1058,7 @@ a leitura cosmética falhou é pior que um aviso sem valor.
 ```ts
 const aviso = resultado === "pago_apos_expirar"
   ? {
-      title: "Pagamento fora do prazo",
+      title: "Pagamento fora do fluxo",
       body: `${numeroDoPedido(orderId)} · ${formatarBRL(valor)} · estoque ja devolvido`,
       url: "/admin-orders",
     }
@@ -1568,7 +1568,7 @@ rótulos em português, na convenção do resto do admin:
 | `recusado` | Recusado |
 | `expirado` | Expirado |
 | `estornado` | Estornado — precisa de atenção |
-| `pago_apos_expirar` | Pago fora do prazo — precisa de atenção |
+| `pago_apos_expirar` | Pago fora do fluxo — precisa de atenção |
 | `NULL` | Sem cobrança online |
 
 - [ ] **Passo 5: rodar, verificar, e ver na tela**

@@ -280,6 +280,18 @@ export async function validarAssinatura(args: {
 }): Promise<boolean> {
   const { xSignature, xRequestId, dataId, segredo } = args;
   const agora = args.agora ?? Date.now();
+  // 300s É O DEFAULT DO PARÂMETRO, NÃO O QUE RODA EM PRODUÇÃO: o único
+  // chamador de produção (webhook-mercadopago/index.ts) passa
+  // Number.POSITIVE_INFINITY de propósito — o commit 398ae08 desligou a
+  // janela aqui. O MP reenvia sem limite documentado (não para depois da
+  // 3ª tentativa, só estende o intervalo), então nenhuma janela finita é
+  // segura: uma cadeia longa de reenvios ultrapassa qualquer valor
+  // escolhido, e o ÚLTIMO reenvio vira 401 permanente. Quem autentica aqui
+  // é o HMAC, não o relógio — replayar um header velho só produz uma
+  // consulta NOVA ao MP (ver `consultarPagamento`), e a decisão sai do
+  // estado ATUAL, não do que veio no header. A janela continua existindo
+  // como parâmetro para quem quiser um chamador diferente (ex.: teste que
+  // queira provar a expiração em si).
   const tolerancia = args.toleranciaSegundos ?? 300;
 
   if (!xSignature || !segredo || !dataId) return false;
@@ -294,7 +306,9 @@ export async function validarAssinatura(args: {
   }
   if (!ts || !v1) return false;
 
-  // `ts` fora da janela: header legitimo reaproveitado semanas depois nao vale.
+  // `ts` fora da janela: só importa para um chamador que passe uma
+  // `toleranciaSegundos` finita — a webhook-mercadopago, o único chamador de
+  // produção, desliga isto (ver comentário acima de `tolerancia`).
   const tsNumero = Number(ts);
   if (!Number.isFinite(tsNumero)) return false;
   const idadeSegundos = Math.abs(agora / 1000 - tsNumero);
