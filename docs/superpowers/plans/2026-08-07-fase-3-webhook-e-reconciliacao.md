@@ -1327,7 +1327,7 @@ Mesma costura `handler(req, deps = {})` da Task 4. Regras:
   segue para o próximo; senão `supabase.rpc("confirmar_pagamento", ...)`.
 - **Cada candidato dentro do seu próprio `try`.** Um erro não pode abortar o lote — é
   exatamente o cenário do teste 5.
-- Devolve `{ ok: true, verificados, confirmados, falhas }`. Contagem verdadeira: responder
+- Devolve `{ ok: true, verificados, confirmados, ignorados, falhas }`. Contagem verdadeira: responder
   sucesso sem verificar nada é como este projeto passou meses achando que o push funcionava
   (#80).
 - **Não manda push.** Quem avisa é o webhook; se a reconciliação também avisasse, o lojista
