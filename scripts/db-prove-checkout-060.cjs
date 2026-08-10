@@ -213,7 +213,11 @@ async function main() {
 
     // --- caso 2: mesmo pedido, 'pago' de novo -> 'ja_pago' (idempotencia) --
     const r2 = await confirmar(client, pedido1, "MP1", "pago");
-    conferir("segunda confirmacao -> 'ja_pago'", r2 === "ja_pago", `veio ${r2}`);
+    conferir(
+      "segunda confirmacao -> 'ja_pago'",
+      r2 === "ja_pago",
+      `veio ${r2}`,
+    );
 
     const estado2 = await estadoPedido(client, pedido1);
     conferir(
@@ -264,14 +268,21 @@ async function main() {
     });
 
     const r4 = await confirmar(client, pedido4, "MP3", "recusado");
-    conferir("aguardando + recusado -> 'recusado'", r4 === "recusado", `veio ${r4}`);
+    conferir(
+      "aguardando + recusado -> 'recusado'",
+      r4 === "recusado",
+      `veio ${r4}`,
+    );
 
     conferir(
       "estoque devolvido (+3) ao recusar",
       (await estoqueDe(client, produto4)) === 5,
     );
     const estado4 = await estadoPedido(client, pedido4);
-    conferir("status vira 'cancelled' ao recusar", estado4.status === "cancelled");
+    conferir(
+      "status vira 'cancelled' ao recusar",
+      estado4.status === "cancelled",
+    );
 
     // --- caso 5: pedido ja 'recusado' + recusado de novo -> 'ignorado' -----
     // A prova de que devolver_estoque (nao idempotente) NAO e chamada de novo.
@@ -296,7 +307,11 @@ async function main() {
     });
 
     const r6 = await confirmar(client, pedido6, "MP4", "estornado");
-    conferir("pago + estornado -> 'estornado'", r6 === "estornado", `veio ${r6}`);
+    conferir(
+      "pago + estornado -> 'estornado'",
+      r6 === "estornado",
+      `veio ${r6}`,
+    );
     conferir(
       "estorno a partir de 'pago' nao mexe em estoque (pode ter saido)",
       (await estoqueDe(client, produto6)) === 4,
@@ -307,7 +322,11 @@ async function main() {
     // saiu, entao estornar tem que DEVOLVER o estoque e CANCELAR o pedido —
     // senao a reserva fica presa para sempre (expirar_pedidos_vencidos so
     // varre 'aguardando', e o pedido deixou de estar 'aguardando').
-    const produto7 = await criarProduto(client, "PROVA ESTORNO DE AGUARDANDO", 1);
+    const produto7 = await criarProduto(
+      client,
+      "PROVA ESTORNO DE AGUARDANDO",
+      1,
+    );
     const pedido7 = await criarPedido(client, {
       nome: "PROVA ESTORNO DE AGUARDANDO",
       paymentStatus: "aguardando",
@@ -335,7 +354,11 @@ async function main() {
 
     // --- caso 8: mesmo pedido, estornado de novo -> 'ja_estornado' ---------
     const r8 = await confirmar(client, pedido7, "MP5", "estornado");
-    conferir("estornado de novo -> 'ja_estornado'", r8 === "ja_estornado", `veio ${r8}`);
+    conferir(
+      "estornado de novo -> 'ja_estornado'",
+      r8 === "ja_estornado",
+      `veio ${r8}`,
+    );
     conferir(
       "estoque NAO e creditado uma segunda vez no reestorno",
       (await estoqueDe(client, produto7)) === 4,
@@ -354,7 +377,11 @@ async function main() {
 
     const antesDivergente = await estadoPedido(client, pedido9);
     const r9 = await confirmar(client, pedido9, "OUTRO", "pago");
-    conferir("payment_id divergente -> 'divergente'", r9 === "divergente", `veio ${r9}`);
+    conferir(
+      "payment_id divergente -> 'divergente'",
+      r9 === "divergente",
+      `veio ${r9}`,
+    );
     const depoisDivergente = await estadoPedido(client, pedido9);
     conferir(
       "payment_status inalterado quando o payment_id diverge",
@@ -413,7 +440,11 @@ async function main() {
     // estoque JA de volta. Sem `AND status='pending'`, o estorno credita de
     // novo — unidade fantasma. Aqui o estoque tem que ficar INALTERADO e o
     // status continua 'cancelled' (nao pode "descancelar" o pedido).
-    const produto12 = await criarProduto(client, "PROVA ESTORNO JA CANCELADO", 5);
+    const produto12 = await criarProduto(
+      client,
+      "PROVA ESTORNO JA CANCELADO",
+      5,
+    );
     const pedido12 = await criarPedido(client, {
       nome: "PROVA ESTORNO JA CANCELADO",
       paymentStatus: "aguardando",
@@ -442,7 +473,11 @@ async function main() {
     // --- caso 13: 'aguardando' + status='cancelled' com 3 un. + recusado ---
     // Mesmo achado, ramo 'recusado' — gatilho ainda mais provavel: cartao
     // recusado logo depois de o cliente desistir e cancelar pelo app.
-    const produto13 = await criarProduto(client, "PROVA RECUSADO JA CANCELADO", 5);
+    const produto13 = await criarProduto(
+      client,
+      "PROVA RECUSADO JA CANCELADO",
+      5,
+    );
     const pedido13 = await criarPedido(client, {
       nome: "PROVA RECUSADO JA CANCELADO",
       paymentStatus: "aguardando",
@@ -465,7 +500,11 @@ async function main() {
 
     // --- caso 14: pedido inexistente -> 'inexistente' ----------------------
     const r14 = await confirmar(client, crypto.randomUUID(), "X", "pago");
-    conferir("id inexistente -> 'inexistente'", r14 === "inexistente", `veio ${r14}`);
+    conferir(
+      "id inexistente -> 'inexistente'",
+      r14 === "inexistente",
+      `veio ${r14}`,
+    );
 
     console.log("\n=== pagamentos_a_reconciliar (Task 5) ===");
 
@@ -473,7 +512,11 @@ async function main() {
     const UMA_HORA_MS = 60 * 60 * 1000;
 
     // --- caso 15: expirado + cobranca + paid_at nulo + expirou ha 1h -------
-    const produto15 = await criarProduto(client, "PROVA RECONCILIACAO APARECE", 5);
+    const produto15 = await criarProduto(
+      client,
+      "PROVA RECONCILIACAO APARECE",
+      5,
+    );
     const pedido15 = await criarPedidoReconciliacao(client, {
       nome: "PROVA RECONCILIACAO APARECE",
       gatewayPaymentId: "MP10",
@@ -484,7 +527,11 @@ async function main() {
     });
 
     // --- caso 16: expirado SEM gateway_payment_id -> nunca teve cobranca ---
-    const produto16 = await criarProduto(client, "PROVA RECONCILIACAO SEM GATEWAY", 5);
+    const produto16 = await criarProduto(
+      client,
+      "PROVA RECONCILIACAO SEM GATEWAY",
+      5,
+    );
     const pedido16 = await criarPedidoReconciliacao(client, {
       nome: "PROVA RECONCILIACAO SEM GATEWAY",
       gatewayPaymentId: null,
@@ -495,7 +542,11 @@ async function main() {
     });
 
     // --- caso 17: expirado + paid_at preenchido -> ja reconciliado ---------
-    const produto17 = await criarProduto(client, "PROVA RECONCILIACAO JA PAGO", 5);
+    const produto17 = await criarProduto(
+      client,
+      "PROVA RECONCILIACAO JA PAGO",
+      5,
+    );
     const pedido17 = await criarPedidoReconciliacao(client, {
       nome: "PROVA RECONCILIACAO JA PAGO",
       gatewayPaymentId: "MP11",
@@ -506,7 +557,11 @@ async function main() {
     });
 
     // --- caso 18: expirado ha 30h -> fora da janela de 24h ------------------
-    const produto18 = await criarProduto(client, "PROVA RECONCILIACAO FORA DA JANELA", 5);
+    const produto18 = await criarProduto(
+      client,
+      "PROVA RECONCILIACAO FORA DA JANELA",
+      5,
+    );
     const pedido18 = await criarPedidoReconciliacao(client, {
       nome: "PROVA RECONCILIACAO FORA DA JANELA",
       gatewayPaymentId: "MP12",
@@ -517,7 +572,11 @@ async function main() {
     });
 
     // --- caso 19: 'aguardando' no prazo -> nunca expirou --------------------
-    const produto19 = await criarProduto(client, "PROVA RECONCILIACAO AGUARDANDO", 5);
+    const produto19 = await criarProduto(
+      client,
+      "PROVA RECONCILIACAO AGUARDANDO",
+      5,
+    );
     const pedido19 = await criarPedidoReconciliacao(client, {
       nome: "PROVA RECONCILIACAO AGUARDANDO",
       paymentStatus: "aguardando",
@@ -536,7 +595,9 @@ async function main() {
       "expirado recente com cobranca -> aparece na lista",
       idsCandidatos.includes(pedido15),
     );
-    const achado15 = listaCandidatos.find((linha) => linha.order_id === pedido15);
+    const achado15 = listaCandidatos.find(
+      (linha) => linha.order_id === pedido15,
+    );
     conferir(
       "gateway_payment_id devolvido bate com o do pedido",
       achado15?.gateway_payment_id === "MP10",

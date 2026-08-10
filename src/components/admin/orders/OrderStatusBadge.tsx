@@ -80,7 +80,6 @@ export const OrderStatusBadge = memo(function OrderStatusBadge({
   );
 });
 
-
 /**
  * Chave usada no badge de pagamento: os seis valores da CHECK constraint
  * `marketplace_orders_payment_status_check` mais `sem_cobranca`, que cobre
@@ -116,52 +115,53 @@ interface PaymentStatusEntry {
  * escreve quando o gateway diverge do que o pedido já tinha — dinheiro que
  * entrou fora do fluxo esperado, e por isso pede o olho do lojista.
  */
-export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> = {
-  aguardando: {
-    label: "Aguardando pagamento",
-    color: "text-amber-400",
-    bgColor: "bg-amber-500/10",
-    borderColor: "border-amber-500/20",
-  },
-  pago: {
-    label: "Pago",
-    color: "text-emerald-400",
-    bgColor: "bg-emerald-500/10",
-    borderColor: "border-emerald-500/20",
-  },
-  recusado: {
-    label: "Recusado",
-    color: "text-rose-400",
-    bgColor: "bg-rose-500/10",
-    borderColor: "border-rose-500/20",
-  },
-  expirado: {
-    label: "Expirado",
-    color: "text-zinc-400",
-    bgColor: "bg-zinc-500/10",
-    borderColor: "border-zinc-500/20",
-  },
-  estornado: {
-    label: "Estornado — precisa de atenção",
-    color: "text-red-400",
-    bgColor: "bg-red-500/10",
-    borderColor: "border-red-500/40",
-    needsAttention: true,
-  },
-  pago_apos_expirar: {
-    label: "Pago fora do prazo — precisa de atenção",
-    color: "text-red-400",
-    bgColor: "bg-red-500/10",
-    borderColor: "border-red-500/40",
-    needsAttention: true,
-  },
-  sem_cobranca: {
-    label: "Sem cobrança online",
-    color: "text-zinc-500",
-    bgColor: "bg-zinc-500/10",
-    borderColor: "border-zinc-500/20",
-  },
-};
+export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
+  {
+    aguardando: {
+      label: "Aguardando pagamento",
+      color: "text-amber-400",
+      bgColor: "bg-amber-500/10",
+      borderColor: "border-amber-500/20",
+    },
+    pago: {
+      label: "Pago",
+      color: "text-emerald-400",
+      bgColor: "bg-emerald-500/10",
+      borderColor: "border-emerald-500/20",
+    },
+    recusado: {
+      label: "Recusado",
+      color: "text-rose-400",
+      bgColor: "bg-rose-500/10",
+      borderColor: "border-rose-500/20",
+    },
+    expirado: {
+      label: "Expirado",
+      color: "text-zinc-400",
+      bgColor: "bg-zinc-500/10",
+      borderColor: "border-zinc-500/20",
+    },
+    estornado: {
+      label: "Estornado — precisa de atenção",
+      color: "text-red-400",
+      bgColor: "bg-red-500/10",
+      borderColor: "border-red-500/40",
+      needsAttention: true,
+    },
+    pago_apos_expirar: {
+      label: "Pago fora do prazo — precisa de atenção",
+      color: "text-red-400",
+      bgColor: "bg-red-500/10",
+      borderColor: "border-red-500/40",
+      needsAttention: true,
+    },
+    sem_cobranca: {
+      label: "Sem cobrança online",
+      color: "text-zinc-500",
+      bgColor: "bg-zinc-500/10",
+      borderColor: "border-zinc-500/20",
+    },
+  };
 
 /**
  * Mesmo conteúdo de `paymentStatusConfig`, como `Map` — a chave vem de uma
@@ -172,7 +172,10 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
  * rótulos numa segunda fonte — só existe uma definição para divergir.
  */
 const paymentStatusConfigByKey = new Map(
-  Object.entries(paymentStatusConfig) as [PaymentStatusKey, PaymentStatusEntry][],
+  Object.entries(paymentStatusConfig) as [
+    PaymentStatusKey,
+    PaymentStatusEntry,
+  ][],
 );
 
 /**
@@ -181,7 +184,9 @@ const paymentStatusConfigByKey = new Map(
  * presente no Record acima) cobre qualquer valor que escape do tipo
  * `PaymentStatusKey` em runtime.
  */
-export function getPaymentStatusConfig(key: PaymentStatusKey): PaymentStatusEntry {
+export function getPaymentStatusConfig(
+  key: PaymentStatusKey,
+): PaymentStatusEntry {
   return paymentStatusConfigByKey.get(key) ?? paymentStatusConfig.sem_cobranca;
 }
 

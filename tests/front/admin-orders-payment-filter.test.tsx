@@ -96,10 +96,9 @@ describe("filterOrdersByPaymentStatus", () => {
     );
 
     expect(
-      filterOrdersByPaymentStatus(
-        PEDIDOS_EM_MEMORIA,
-        "pago_apos_expirar",
-      ).map((p) => p.id),
+      filterOrdersByPaymentStatus(PEDIDOS_EM_MEMORIA, "pago_apos_expirar").map(
+        (p) => p.id,
+      ),
     ).toEqual(["ped-pago-apos-expirar"]);
 
     expect(
@@ -261,9 +260,7 @@ describe("AdminOrdersView — estado vazio da lista (Item 1 da revisão)", () =>
     expect(hospedeiro.textContent).toContain(
       "Nenhum pedido desta página tem este status de pagamento",
     );
-    expect(hospedeiro.textContent).not.toContain(
-      "Ainda não tem nenhum pedido",
-    );
+    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
   });
 
   it("lista vazia de verdade, SEM filtro ativo: mostra 'Ainda não tem nenhum pedido'", async () => {

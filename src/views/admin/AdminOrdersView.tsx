@@ -9,8 +9,8 @@ import { SupportBanners } from "@/components/admin/dashboard/SupportBanners";
 import { OrderDetail } from "@/components/admin/orders/OrderDetail";
 import {
   OrderStatusBadge,
-  type PaymentStatusKey,
   PaymentStatusBadge,
+  type PaymentStatusKey,
   getPaymentStatusConfig,
   paymentStatusKey,
   statusConfig,
@@ -170,10 +170,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // RPC get_admin_orders_paged não tem parâmetro pra isso (mudar a RPC é
   // migration, fora do escopo desta tarefa). Por isso não reduz totalOrders
   // nem totalPages, só a lista visível na página atual.
-  const [paymentFilter, setPaymentFilter] = useLocalStorage<PaymentStatusFilter>(
-    "admin_orders_payment_filter",
-    "all",
-  );
+  const [paymentFilter, setPaymentFilter] =
+    useLocalStorage<PaymentStatusFilter>("admin_orders_payment_filter", "all");
   const [viewMode, setViewMode] = useState<"detailed" | "compact">(() => {
     const saved = localStorage.getItem("admin_orders_view_mode");
     return saved === "detailed" || saved === "compact" ? saved : "compact";
@@ -1031,8 +1029,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       Nenhum pedido desta página tem este status de pagamento
                     </h3>
                     <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
-                      O filtro só olha a página atual. Navegue pelas páginas
-                      ou limpe o filtro para ver todos os pedidos.
+                      O filtro só olha a página atual. Navegue pelas páginas ou
+                      limpe o filtro para ver todos os pedidos.
                     </p>
                   </>
                 ) : (
