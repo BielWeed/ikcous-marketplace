@@ -427,4 +427,16 @@ describe("mapOrderFromDB", () => {
     );
     expect(o.total).toBe(250);
   });
+
+  it("copia payment_status quando o webhook já confirmou o pagamento", () => {
+    // Task 9 (Fase 3): o mapper é fiel, não traduz — quem transforma `null`
+    // em "sem cobrança online" é o PaymentStatusBadge, não este mapper.
+    const o = mapOrderFromDB(pedido({ payment_status: "pago_apos_expirar" }));
+    expect(o.paymentStatus).toBe("pago_apos_expirar");
+  });
+
+  it("payment_status nulo (os 64 pedidos históricos) continua nulo", () => {
+    const o = mapOrderFromDB(pedido({ payment_status: null }));
+    expect(o.paymentStatus).toBeNull();
+  });
 });
