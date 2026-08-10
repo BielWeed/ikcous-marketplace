@@ -409,6 +409,45 @@ describe("montarBrick", () => {
     expect(unmount).not.toHaveBeenCalled();
   });
 
+  // Conserto de cópia: as duas instruções antigas ("tente outro cartão ou
+  // pague com PIX") eram impossíveis de seguir — cartão está desligado no
+  // Brick, e "pague com PIX" reconsulta a MESMA cobrança recusada
+  // (podeCobrar manda para `reconsultar` sempre que já existe
+  // gateway_payment_id, sem criar cobrança nova). A asserção de
+  // `not.toMatch` é a que tem dente: sem ela, uma reescrita futura que volte
+  // a falar em cartão passaria despercebida.
+  it("mensagem de 'rejected' não fala em cartão nem sugere tentar de novo neste pedido", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    const onErro = vi.fn();
+    const criarPagamento = vi.fn().mockResolvedValue({
+      paymentId: "pay-1",
+      status: "rejected",
+      expiraEm: "2026-08-06T15:30:00.000Z",
+    });
+
+    montarBrick(opcoesPadrao({ criarPagamento, onErro }));
+    await carregarSdk();
+
+    const { onSubmit } = create.mock.calls[0][2].callbacks;
+    await expect(
+      onSubmit({ formData: { token: "tok-123" } }),
+    ).rejects.toThrow();
+
+    expect(onErro).toHaveBeenCalledTimes(1);
+    const mensagem = onErro.mock.calls[0][0] as string;
+    expect(mensagem).toBe(
+      "Este pagamento foi recusado e não pode ser tentado novamente neste pedido. Faça um pedido novo ou fale com a loja.",
+    );
+    expect(mensagem).not.toMatch(/cart[aã]o/i);
+  });
+
   it("status 'cancelled' chama onErro e MANTÉM o Brick vivo — não desmonta", async () => {
     const { montarBrick } = await importarLimpo();
 

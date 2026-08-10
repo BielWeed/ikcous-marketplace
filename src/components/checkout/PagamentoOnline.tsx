@@ -139,8 +139,15 @@ export function montarBrick({
               // volta CRU do Mercado Pago — comparado contra os valores
               // dele, nunca traduzido para o vocabulário do banco.
               if (r.status === "rejected" || r.status === "cancelled") {
+                // Nem "outro cartão" nem "pague com PIX" cabem aqui: cartão
+                // está desligado no Brick (só PIX, ver comentário acima), e
+                // `podeCobrar` (criar-pagamento/index.ts) manda para
+                // `reconsultar` sempre que o pedido já tem
+                // gateway_payment_id — o que devolve o status da MESMA
+                // cobrança recusada, sem criar outra. Qualquer nova
+                // tentativa neste pedido bate na mesma recusa até expirar.
                 throw new Error(
-                  "Pagamento recusado. Tente outro cartão ou pague com PIX.",
+                  "Este pagamento foi recusado e não pode ser tentado novamente neste pedido. Faça um pedido novo ou fale com a loja.",
                 );
               }
               const statusConhecido = [
