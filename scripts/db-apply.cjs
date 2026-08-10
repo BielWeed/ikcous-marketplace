@@ -541,8 +541,13 @@ async function main() {
   await client.end();
   console.log(
     tudoOk
-      ? "\nTudo aplicado e verificado."
-      : "\nATENÇÃO: algum marcador esperado não apareceu. Confira antes de confiar.",
+      ? "\nTudo aplicado e verificado. (O COMMIT do passo 2 já aconteceu antes desta checagem.)"
+      : `\nATENÇÃO: algum marcador esperado não apareceu. Confira antes de confiar.
+   O COMMIT do passo 2 já aconteceu — esta verificação roda DEPOIS dele, então
+   o que foi aplicado já está gravado no banco independente do resultado
+   acima; não há "não aplicar" a partir daqui.
+   Ponto de partida para desfazer: ${caminhoRollback}, salvo no passo 1 — leia
+   acima o que ele cobre e o que continua manual.`,
   );
   process.exit(tudoOk ? 0 : 1);
 }

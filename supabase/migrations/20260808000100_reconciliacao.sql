@@ -20,10 +20,12 @@ AS $candidatos$
        -- 24 h: depois disso o PIX ja nao e' pagavel e a janela vira varredura
        -- do historico inteiro a cada 10 minutos.
        AND expires_at > now() - interval '24 hours'
-     -- DESC, nao ASC: um candidato so sai desta fila envelhecendo para fora
-     -- da janela de 24h acima — nunca por ter sido resolvido, porque um PIX
-     -- expirado e nao pago volta 'ignorado' sem escrever nada (ver o ramo
-     -- final da confirmar_pagamento). Com ASC + LIMIT 100, os 100 escolhidos
+     -- DESC, nao ASC: a MAIORIA dos candidatos so sai desta fila envelhecendo
+     -- para fora da janela de 24h acima, porque um PIX expirado e nao pago
+     -- volta 'ignorado' sem escrever nada (ver o ramo final da
+     -- confirmar_pagamento) — o caso pago e' excecao: confirmar_pagamento
+     -- grava paid_at, e o `AND paid_at IS NULL` desta funcao tira o candidato
+     -- ja no ciclo seguinte. Com ASC + LIMIT 100, os 100 escolhidos
      -- a cada ciclo seriam sempre os MAIS VELHOS — o PIX vencido ha 23h, que
      -- e' o menos capaz de ainda mudar de estado — e o que expirou ha 10 min,
      -- o unico com chance real de ter sido pago, ficaria por ultimo. DESC

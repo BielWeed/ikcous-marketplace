@@ -733,6 +733,120 @@ async function main() {
       (await estoqueDe(client, produto13c)) === 5,
     );
 
+    // --- caso 13d: 'aguardando' + status='shipping' + pago -> 'pago' -------
+    // Clone do 13c para outro status que a CHECK permite e que tambem NAO
+    // passa pela update_order_status_atomic com p_new_status='cancelled' — a
+    // mercadoria ja saiu para entrega, o estoque nunca volta por aqui. Achado
+    // da revisao do commit 4c58bfb: a regressao mutada (`NOT IN ('pending',
+    // 'processing')`) so tinha caso de prova para 'pending', 'cancelled' e
+    // 'processing' — 'shipping', 'delivered' e 'new' ficavam sem dente.
+    const produto13d = await criarProduto(
+      client,
+      "PROVA PAGO APOS ADIANTAR PARA SHIPPING",
+      5,
+    );
+    const pedido13d = await criarPedido(client, {
+      nome: "PROVA PAGO APOS ADIANTAR PARA SHIPPING",
+      paymentStatus: "aguardando",
+      status: "shipping",
+      gatewayPaymentId: "MP_PAGO_SHIPPING",
+      produtoId: produto13d,
+      quantity: 3,
+    });
+
+    const r13d = await confirmar(client, pedido13d, "MP_PAGO_SHIPPING", "pago");
+    conferir(
+      "aguardando + shipping + pago -> 'pago' (NAO 'pago_apos_expirar')",
+      r13d === "pago",
+      `veio ${r13d}`,
+    );
+    const estado13d = await estadoPedido(client, pedido13d);
+    conferir(
+      "paid_at carimbado ao pagar pedido em 'shipping'",
+      estado13d.paid_at !== null,
+    );
+    conferir(
+      "status continua 'shipping' (ja saiu para entrega, nao mexe)",
+      estado13d.status === "shipping",
+    );
+    conferir(
+      "estoque INALTERADO ao pagar pedido em 'shipping' (nunca voltou)",
+      (await estoqueDe(client, produto13d)) === 5,
+    );
+
+    // --- caso 13e: 'aguardando' + status='new' + pago -> 'pago' ------------
+    // Mesmo clone, para 'new' — outro status que a CHECK permite e que
+    // tambem nao passa pela update_order_status_atomic com
+    // p_new_status='cancelled'.
+    const produto13e = await criarProduto(
+      client,
+      "PROVA PAGO APOS ADIANTAR PARA NEW",
+      5,
+    );
+    const pedido13e = await criarPedido(client, {
+      nome: "PROVA PAGO APOS ADIANTAR PARA NEW",
+      paymentStatus: "aguardando",
+      status: "new",
+      gatewayPaymentId: "MP_PAGO_NEW",
+      produtoId: produto13e,
+      quantity: 3,
+    });
+
+    const r13e = await confirmar(client, pedido13e, "MP_PAGO_NEW", "pago");
+    conferir(
+      "aguardando + new + pago -> 'pago' (NAO 'pago_apos_expirar')",
+      r13e === "pago",
+      `veio ${r13e}`,
+    );
+    const estado13e = await estadoPedido(client, pedido13e);
+    conferir(
+      "paid_at carimbado ao pagar pedido em 'new'",
+      estado13e.paid_at !== null,
+    );
+    conferir("status continua 'new' (nao mexe)", estado13e.status === "new");
+    conferir(
+      "estoque INALTERADO ao pagar pedido em 'new' (nunca voltou)",
+      (await estoqueDe(client, produto13e)) === 5,
+    );
+
+    // --- caso 13f: 'aguardando' + status='delivered' + pago -> 'pago' ------
+    // O quinto e ultimo valor da CHECK que nao e' 'cancelled'. Com 13c, 13d e
+    // 13e a classe ja estava ancorada — este fecha a simetria, para quem for
+    // reler a guarda nao ter de deduzir por que tres dos cinco tem caso.
+    const produto13f = await criarProduto(
+      client,
+      "PROVA PAGO APOS ADIANTAR PARA DELIVERED",
+      5,
+    );
+    const pedido13f = await criarPedido(client, {
+      nome: "PROVA PAGO APOS ADIANTAR PARA DELIVERED",
+      paymentStatus: "aguardando",
+      status: "delivered",
+      gatewayPaymentId: "MP_PAGO_DELIV",
+      produtoId: produto13f,
+      quantity: 3,
+    });
+
+    const r13f = await confirmar(client, pedido13f, "MP_PAGO_DELIV", "pago");
+    conferir(
+      "aguardando + delivered + pago -> 'pago' (NAO 'pago_apos_expirar')",
+      r13f === "pago",
+      `veio ${r13f}`,
+    );
+    const estado13f = await estadoPedido(client, pedido13f);
+    conferir(
+      "paid_at carimbado ao pagar pedido em 'delivered'",
+      estado13f.paid_at !== null,
+    );
+    conferir(
+      "status continua 'delivered' (ja foi entregue, nao mexe)",
+      estado13f.status === "delivered",
+    );
+    conferir(
+      "estoque INALTERADO ao pagar pedido em 'delivered' (nunca voltou)",
+      (await estoqueDe(client, produto13f)) === 5,
+    );
+
     // --- caso 14: pedido inexistente -> 'inexistente' ----------------------
     const r14 = await confirmar(client, crypto.randomUUID(), "X", "pago");
     conferir(
