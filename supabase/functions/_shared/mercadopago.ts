@@ -62,6 +62,7 @@ export function montarCorpoPix(args: {
   expiraEm: string;
   orderId: string;
   documento?: { type: string; number: string };
+  notificationUrl?: string;
 }): Record<string, unknown> {
   const payer: Record<string, unknown> = { email: args.email };
   // A-2 da revisão final: sem isso o documento entrava pelo front e sumia
@@ -79,6 +80,9 @@ export function montarCorpoPix(args: {
     // reconciliação da Fase 3 teria que casar valor + e-mail + horário na
     // mão. Com isso vira GET /v1/payments/search?external_reference=<id>.
     external_reference: args.orderId,
+    // Sem isto o webhook depende de configuracao no painel do MP — que ninguem
+    // percebe quando some, e nenhum teste pega. Herança nº 4 da Fase 2.
+    ...(args.notificationUrl ? { notification_url: args.notificationUrl } : {}),
   };
 }
 

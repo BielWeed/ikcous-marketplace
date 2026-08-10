@@ -94,6 +94,41 @@ Deno.test("montarCorpoPix não quebra quando o documento não vem", () => {
   );
 });
 
+Deno.test("montarCorpoPix leva notification_url quando informado — Task 7 da Fase 3", () => {
+  // Sem isto o webhook depende de configuracao no painel do MP — que ninguem
+  // percebe quando some, e nenhum teste pega. Herança nº 4 da Fase 2.
+  const corpo = montarCorpoPix({
+    valor: 149.9,
+    descricao: "Pedido 3f2a1b8c",
+    email: "cliente@exemplo.com",
+    expiraEm: "2026-08-06T15:30:00.000-03:00",
+    orderId: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+    notificationUrl: "https://xyz.supabase.co/functions/v1/webhook-mercadopago",
+  });
+
+  assertEquals(
+    corpo.notification_url,
+    "https://xyz.supabase.co/functions/v1/webhook-mercadopago",
+  );
+});
+
+Deno.test("montarCorpoPix sem notificationUrl NÃO inclui a chave no corpo — não pode virar 'undefined' serializado", () => {
+  // Asserção sobre a CHAVE, não sobre o valor: `corpo.notification_url ===
+  // undefined` passaria tanto se a chave nunca existisse quanto se existisse
+  // com valor `undefined` (que o JSON.stringify do fetch real simplesmente
+  // omite, mas que um mutante poderia deixar passar aqui sem que este teste
+  // acusasse).
+  const corpo = montarCorpoPix({
+    valor: 149.9,
+    descricao: "Pedido 3f2a1b8c",
+    email: "cliente@exemplo.com",
+    expiraEm: "2026-08-06T15:30:00.000-03:00",
+    orderId: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+  });
+
+  assertEquals("notification_url" in corpo, false);
+});
+
 Deno.test("montarCorpoCartao leva o token, a referência do pedido, e NUNCA dados do cartão", () => {
   const corpo = montarCorpoCartao({
     valor: 149.9,

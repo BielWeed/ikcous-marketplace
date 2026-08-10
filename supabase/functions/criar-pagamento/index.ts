@@ -153,8 +153,12 @@ async function handler(
   }
 
   if (!pareceUuid(body.orderId)) return json({ error: "Pedido inválido." }, 400);
-  if (body.metodo !== "pix" && body.metodo !== "cartao") {
-    return json({ error: "Meio de pagamento inválido." }, 400);
+  // Fase 3 entrega SÓ PIX. O cartão continua desligado no Brick (Task 8), mas
+  // a recusa tem de ser aqui também: a tela é do cliente, e o caminho de
+  // cartão tem defeito conhecido — depois da primeira recusa o pedido fica
+  // impagável até expirar (herança nº 2 da Fase 2). Cartão é a Fase 3.5.
+  if (body.metodo !== "pix") {
+    return json({ error: "No momento aceitamos apenas PIX." }, 400);
   }
 
   const mpToken = Deno.env.get("MP_ACCESS_TOKEN");
@@ -230,6 +234,7 @@ async function handler(
           email: String(email),
           expiraEm: formatarExpiracao(pedido.expires_at),
           documento: body.documento as { type: string; number: string } | undefined,
+          notificationUrl: `${Deno.env.get("SUPABASE_URL")}/functions/v1/webhook-mercadopago`,
         })
       : montarCorpoCartao({
           orderId: pedido.id,
