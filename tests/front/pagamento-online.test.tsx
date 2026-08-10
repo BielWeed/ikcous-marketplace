@@ -503,6 +503,31 @@ describe("montarBrick", () => {
     expect(onPix).not.toHaveBeenCalled();
     expect(unmount).not.toHaveBeenCalled();
   });
+
+  // Task 8 da Fase 3: o caminho de cartão fica desligado até a Fase 3.5 (ver
+  // comentário em PagamentoOnline.tsx) — o Brick só pode oferecer PIX. A
+  // documentação do SDK (bricks/payment-review.md e
+  // checkout-bricks/payment-brick/advanced-features/manage-payment-methods)
+  // descreve cada chave de `paymentMethods` como "Optional — Allow payments
+  // with X": a chave OMITIDA é o jeito de desligar um meio de pagamento, não
+  // um valor vazio — por isso o teste confere ausência (`toBeUndefined`), não
+  // `""` nem `[]`.
+  it("customization.paymentMethods habilita só PIX — creditCard não entra", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    montarBrick(opcoesPadrao());
+    await carregarSdk();
+
+    const { paymentMethods } = create.mock.calls[0][2].customization;
+    expect(paymentMethods.bankTransfer).toBe("all");
+    expect(paymentMethods.creditCard).toBeUndefined();
+  });
 });
 
 // Revisão da rodada de correção 1: remover o `jaMontou` (para o StrictMode

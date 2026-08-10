@@ -102,7 +102,12 @@ export function montarBrick({
       const criado = await mp.bricks().create("payment", "mp-container", {
         initialization: { amount: valor },
         customization: {
-          paymentMethods: { bankTransfer: "all", creditCard: "all" },
+          // So PIX na Fase 3. O caminho de cartao existe no codigo mas tem
+          // defeito conhecido: depois da primeira recusa o pedido fica
+          // impagavel ate expirar, e a mensagem atual pede "tente outro
+          // cartao", o que e' impossivel. Religar cartao e' a Fase 3.5, e
+          // depende de chave de idempotencia versionada.
+          paymentMethods: { bankTransfer: "all" },
         },
         callbacks: {
           onReady: () => {},
