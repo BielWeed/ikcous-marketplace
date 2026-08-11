@@ -1,13 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useStore } from "@/contexts/StoreContext";
+import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { cn } from "@/lib/utils";
 import type { Address } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { toast } from "sonner";
 import * as z from "zod";
 
 const addressSchema = z.object({
@@ -39,7 +39,6 @@ export function AddressForm({
 }: AddressFormProps) {
   const { config, isLoaded } = useStore();
   const [loading, setLoading] = useState(false);
-  const [isSearchingCep, setIsSearchingCep] = useState(false);
 
   const form = useForm<AddressFormValues>({
     resolver: zodResolver(addressSchema),
@@ -59,14 +58,26 @@ export function AddressForm({
   });
 
   const hasInitializedRef = useRef(false);
-  // Sequência da busca de CEP em voo — incrementa a cada busca disparada;
-  // uma resposta só é aplicada se ainda for a mais recente quando o
-  // `await` volta. Resolve a corrida: duas buscas em voo, a mais antiga
-  // responde por último e não pode sobrescrever o endereço da mais nova.
-  const cepRequestIdRef = useRef(0);
-  // Controller da busca de CEP em voo — a próxima busca cancela a anterior
-  // de verdade, em vez de só ignorar a resposta quando ela chegar.
-  const cepAbortControllerRef = useRef<AbortController | null>(null);
+
+  // Corrida, timeout e abort no desmonte ficam por conta do hook (#184,
+  // #185, #186) — aqui só mapeia o endereço encontrado para os campos deste
+  // formulário, escrevendo apenas o que o ViaCEP de fato devolveu.
+  const { buscando: buscandoCep, buscar: buscarCep } = useBuscaCep(
+    (endereco) => {
+      if (endereco.logradouro)
+        form.setValue("street", endereco.logradouro, {
+          shouldValidate: true,
+        });
+      if (endereco.bairro)
+        form.setValue("neighborhood", endereco.bairro, {
+          shouldValidate: true,
+        });
+      if (endereco.localidade)
+        form.setValue("city", endereco.localidade, { shouldValidate: true });
+      if (endereco.uf)
+        form.setValue("state", endereco.uf, { shouldValidate: true });
+    },
+  );
 
   useEffect(() => {
     if (isLoaded && !hasInitializedRef.current) {
@@ -190,83 +201,14 @@ export function AddressForm({
               name="cep"
               render={({ field }) => {
                 const isNational = config.shippingCoverage === "national";
-                const handleCepChange = async (
+                const handleCepChange = (
                   e: React.ChangeEvent<HTMLInputElement>,
                 ) => {
-                  const rawVal = e.target.value;
-                  const clean = rawVal.replace(/\D/g, "");
-                  let formatted = clean;
-                  if (clean.length > 5) {
-                    formatted = `${clean.slice(0, 5)}-${clean.slice(5, 8)}`;
-                  }
+                  const { limpo, formatado } = formatarCep(e.target.value);
+                  field.onChange(formatado);
 
-                  field.onChange(formatted);
-
-                  if (clean.length === 8 && isNational) {
-                    // Marca esta busca como a corrente e guarda o id local
-                    // para comparar quando o `await` voltar. Cancela a busca
-                    // anterior de verdade, em vez de só ignorar a resposta
-                    // dela quando chegar.
-                    cepAbortControllerRef.current?.abort();
-                    const requestId = ++cepRequestIdRef.current;
-                    const controller = new AbortController();
-                    cepAbortControllerRef.current = controller;
-                    setIsSearchingCep(true);
-                    try {
-                      const res = await fetch(
-                        `https://viacep.com.br/ws/${clean}/json/`,
-                        { signal: controller.signal },
-                      );
-                      const data = await res.json();
-
-                      // Uma busca mais nova já começou enquanto esta estava
-                      // em voo — a resposta chegou velha, descarta sem tocar
-                      // no formulário nem no spinner.
-                      if (requestId !== cepRequestIdRef.current) return;
-
-                      if (data && !data.erro) {
-                        if (data.logradouro)
-                          form.setValue("street", data.logradouro, {
-                            shouldValidate: true,
-                          });
-                        if (data.bairro)
-                          form.setValue("neighborhood", data.bairro, {
-                            shouldValidate: true,
-                          });
-                        if (data.localidade)
-                          form.setValue("city", data.localidade, {
-                            shouldValidate: true,
-                          });
-                        if (data.uf)
-                          form.setValue("state", data.uf, {
-                            shouldValidate: true,
-                          });
-                        toast.success("CEP localizado!");
-                      } else {
-                        toast.error("CEP não encontrado");
-                      }
-                    } catch (err) {
-                      // Cancelamento intencional (busca mais nova assumiu) —
-                      // não é erro, não loga. Confere por `name`, não por
-                      // `instanceof DOMException`: em jsdom o `AbortError`
-                      // (o `signal.reason` que o próprio AbortController
-                      // fabrica) não é `instanceof` o `DOMException` global,
-                      // porque vêm de realms diferentes. Medido: com
-                      // `instanceof`, o cancelamento cai no `console.error`.
-                      // Por `name` funciona nos dois casos e também cobre
-                      // quem chamar `abort(motivo)` com um motivo que não
-                      // seja um `DOMException`.
-                      if (
-                        (err as { name?: string } | null)?.name === "AbortError"
-                      ) {
-                        return;
-                      }
-                      console.error("Error fetching CEP:", err);
-                    } finally {
-                      if (requestId === cepRequestIdRef.current) {
-                        setIsSearchingCep(false);
-                      }
-                    }
+                  if (isNational) {
+                    void buscarCep(limpo);
                   }
                 };
 
@@ -280,7 +222,7 @@ export function AddressForm({
                       readOnly={!isNational}
                       placeholder={isNational ? "00000-000" : "38500-000"}
                       maxLength={9}
-                      disabled={loading || isSearchingCep}
+                      disabled={loading || buscandoCep}
                       className={cn(
                         "w-full rounded-xl border-2 border-transparent px-4 py-3 text-sm font-medium outline-none transition-all",
                         isNational
@@ -289,7 +231,7 @@ export function AddressForm({
                       )}
                       autoComplete="postal-code"
                     />
-                    {isSearchingCep && (
+                    {buscandoCep && (
                       <div className="absolute right-3 top-1/2 -translate-y-1/2">
                         <Loader2 className="size-4 animate-spin text-zinc-400" />
                       </div>

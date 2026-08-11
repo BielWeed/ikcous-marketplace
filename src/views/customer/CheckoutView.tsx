@@ -6,6 +6,7 @@ import { CouponInput } from "@/components/ui/custom/CouponInput";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
+import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
@@ -71,7 +72,6 @@ export function CheckoutView({
   onSetBackOverride,
 }: CheckoutViewProps) {
   const { config, isLoaded: storeConfigLoaded } = useStore();
-  const [isSearchingCep, setIsSearchingCep] = useState(false);
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(380);
   const {
@@ -212,6 +212,28 @@ export function CheckoutView({
     profile,
     user,
   ]);
+
+  // Busca de CEP do checkout de convidado — mesma implementação do
+  // AddressForm, atrás de useBuscaCep (#184 corrida, #185 timeout, #186
+  // abort no desmonte).
+  const { buscando: isSearchingCep, buscar: buscarCep } = useBuscaCep(
+    (endereco) => {
+      if (endereco.logradouro)
+        form.setValue("street", endereco.logradouro, {
+          shouldValidate: true,
+        });
+      if (endereco.bairro)
+        form.setValue("neighborhood", endereco.bairro, {
+          shouldValidate: true,
+        });
+      if (endereco.localidade)
+        form.setValue("city", endereco.localidade, {
+          shouldValidate: true,
+        });
+      if (endereco.uf)
+        form.setValue("state", endereco.uf, { shouldValidate: true });
+    },
+  );
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
   const [notes, setNotes] = useState("");
@@ -651,54 +673,21 @@ export function CheckoutView({
                         disabled={isSearchingCep}
                         className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                         onChange={async (e) => {
-                          const clean = e.target.value.replace(/\D/g, "");
-                          let formatted = clean;
-                          if (clean.length > 5) {
-                            formatted = `${clean.slice(0, 5)}-${clean.slice(5, 8)}`;
-                          }
-                          form.setValue("cep", formatted, {
+                          const { limpo, formatado } = formatarCep(
+                            e.target.value,
+                          );
+                          form.setValue("cep", formatado, {
                             shouldValidate: true,
                           });
                           localStorage.setItem(
                             "ikcous_last_shipping_cep",
-                            formatted,
+                            formatado,
                           );
 
                           const isNational =
                             config.shippingCoverage === "national";
-                          if (clean.length === 8 && isNational) {
-                            setIsSearchingCep(true);
-                            try {
-                              const res = await fetch(
-                                `https://viacep.com.br/ws/${clean}/json/`,
-                              );
-                              const data = await res.json();
-                              if (data && !data.erro) {
-                                if (data.logradouro)
-                                  form.setValue("street", data.logradouro, {
-                                    shouldValidate: true,
-                                  });
-                                if (data.bairro)
-                                  form.setValue("neighborhood", data.bairro, {
-                                    shouldValidate: true,
-                                  });
-                                if (data.localidade)
-                                  form.setValue("city", data.localidade, {
-                                    shouldValidate: true,
-                                  });
-                                if (data.uf)
-                                  form.setValue("state", data.uf, {
-                                    shouldValidate: true,
-                                  });
-                                toast.success("CEP localizado!");
-                              } else {
-                                toast.error("CEP não encontrado");
-                              }
-                            } catch (err) {
-                              console.error("Error fetching CEP:", err);
-                            } finally {
-                              setIsSearchingCep(false);
-                            }
+                          if (isNational) {
+                            await buscarCep(limpo);
                           }
                         }}
                       />

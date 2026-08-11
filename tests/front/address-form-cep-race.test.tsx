@@ -7,9 +7,9 @@
 // Caminho usado para disparar a corrida: dois eventos "input" despachados
 // diretamente no elemento (`el.dispatchEvent(new Event("input"))`), sem
 // nenhum `await`/microtarefa entre eles. Isto NÃO é o que uma digitação de
-// usuário alcança — o input tem `disabled={loading || isSearchingCep}`
-// e `setIsSearchingCep(true)` roda de forma síncrona antes do
-// `await fetch(...)`, então o navegador já recusa gerar um segundo evento
+// usuário alcança — o input tem `disabled={loading || buscandoCep}`
+// e o `setBuscando(true)` do hook `useBuscaCep` roda de forma síncrona
+// antes do `await fetch(...)`, então o navegador já recusa gerar um segundo evento
 // "input" a partir de interação real depois do primeiro caractere: cada
 // gesto (colar, digitar, Ctrl+Z, IME) é uma tarefa separada do event loop, o
 // React aplica o `disabled` com flush síncrono do handler antes de devolver
@@ -27,9 +27,19 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// `mockConfig` precisa ser declarado via `vi.hoisted` porque `vi.mock` é
+// hoisted acima dos imports — referenciar uma variável de módulo comum aqui
+// dentro do factory falharia com "Cannot access before initialization".
+// Mutável de propósito: o caso do item 2 (gate `isNational`) muda
+// `shippingCoverage` para "local" e restaura em seguida, sem precisar de um
+// segundo arquivo de teste inteiro só por causa de um valor de config.
+const { mockConfig } = vi.hoisted(() => ({
+  mockConfig: { shippingCoverage: "national", originCep: "38500-000" },
+}));
+
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
-    config: { shippingCoverage: "national", originCep: "38500-000" },
+    config: mockConfig,
     isLoaded: true,
   }),
 }));
@@ -54,6 +64,7 @@ describe("AddressForm — corrida na busca de CEP", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   let pendentes: Map<string, FetchResolver>;
+  let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     pendentes = new Map();
@@ -68,17 +79,15 @@ describe("AddressForm — corrida na busca de CEP", () => {
         disconnect() {}
       },
     );
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) => {
-        const cep = /viacep\.com\.br\/ws\/(\d+)\/json/.exec(url)?.[1] ?? "";
-        return new Promise((resolve) => {
-          pendentes.set(cep, (data: unknown) =>
-            resolve({ json: () => Promise.resolve(data) } as Response),
-          );
-        });
-      }),
-    );
+    fetchMock = vi.fn((url: string) => {
+      const cep = /viacep\.com\.br\/ws\/(\d+)\/json/.exec(url)?.[1] ?? "";
+      return new Promise((resolve) => {
+        pendentes.set(cep, (data: unknown) =>
+          resolve({ json: () => Promise.resolve(data) } as Response),
+        );
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -91,6 +100,14 @@ describe("AddressForm — corrida na busca de CEP", () => {
     hospedeiro.remove();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    // Repõe o objeto INTEIRO, não só o campo que os casos de hoje mexem: se
+    // amanhã alguém mudar `originCep` num caso, o vazamento só apareceria sob
+    // shuffle (o caso que muda a config é o último do arquivo, então na ordem
+    // natural ninguém roda depois dele). Mesmo preço, fecha a categoria.
+    Object.assign(mockConfig, {
+      shippingCoverage: "national",
+      originCep: "38500-000",
+    });
   });
 
   it("descarta a resposta da busca antiga quando ela chega depois da busca nova", async () => {
@@ -151,8 +168,9 @@ describe("AddressForm — corrida na busca de CEP", () => {
 
   it("nao reabilita o campo quando a resposta velha chega com a busca nova ainda em voo", async () => {
     // ESTE CASO EXISTE POR UM MUTANTE QUE SOBREVIVEU. Trocar a guarda do
-    // `finally` em AddressForm.tsx —
-    //   if (requestId === cepRequestIdRef.current) setIsSearchingCep(false);
+    // `finally` em useBuscaCep.ts —
+    //   if (sequencia === sequenciaRef.current && !desmontadoRef.current)
+    //     setBuscando(false);
     // — por uma chamada incondicional deixava os outros três casos verdes.
     //
     // O motivo é a ORDEM DE RESOLUÇÃO. No primeiro caso a busca nova responde
@@ -312,5 +330,20 @@ describe("AddressForm — corrida na busca de CEP", () => {
     const city = document.getElementById("city") as HTMLInputElement;
     expect(street.value).toBe("Avenida Paulista");
     expect(city.value).toBe("São Paulo");
+  });
+
+  it("gate isNational: loja local não busca CEP mesmo com 8 dígitos", async () => {
+    mockConfig.shippingCoverage = "local";
+    const { AddressForm } = await import("@/components/ui/custom/AddressForm");
+
+    await act(async () => {
+      raiz.render(<AddressForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
+    });
+
+    act(() => {
+      digitar("cep", "01310100");
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
