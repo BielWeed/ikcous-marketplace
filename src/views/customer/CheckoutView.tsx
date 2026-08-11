@@ -927,7 +927,14 @@ export function CheckoutView({
                 ? [
                     {
                       value: "online" as PaymentMethod,
-                      label: "Pagar agora (PIX ou cartão)",
+                      // SÓ PIX, e o rótulo tem de dizer isso. A Fase 3 recusa
+                      // cartão em DOIS lugares — o Brick só oferece
+                      // `bankTransfer` (PagamentoOnline.tsx) e a criar-pagamento
+                      // devolve 400 "No momento aceitamos apenas PIX". O rótulo
+                      // antigo dizia "(PIX ou cartão)" e sobreviveu à Fase 3:
+                      // prometia ao cliente o que o código nega.
+                      // Ao religar cartão na Fase 3.5, este rótulo volta junto.
+                      label: "Pagar agora com PIX",
                       icon: CreditCard,
                       color: "text-violet-500 bg-violet-50",
                     },
