@@ -620,4 +620,6 @@ Nenhum roda em CI, porque não existe CI. A dívida não é "faltam testes de ba
 | [`03-SETUP-AMBIENTE.md`](03-SETUP-AMBIENTE.md) | Do clone até `npm run dev`, os 11 `.env` e as armadilhas |
 | [`04-GLOSSARIO.md`](04-GLOSSARIO.md) | Os nomes inventados — leia antes de abrir código |
 | [`05-FLUXOS-CRITICOS.md`](05-FLUXOS-CRITICOS.md) | Os 5 fluxos, passo a passo |
-| `06-ESTADO-ATUAL.md`, `../backlog/BACKLOG.md`, `../backlog/ROADMAP.md` | **Ainda não existem** — saem do segundo bloco de prompts |
+| [`06-ESTADO-ATUAL.md`](06-ESTADO-ATUAL.md) | O placar dos achados e o semáforo por área |
+| [`../backlog/BACKLOG.md`](../backlog/BACKLOG.md) | As 111 tarefas com evidência, critério de aceite e arquivos |
+| [`../backlog/ROADMAP.md`](../backlog/ROADMAP.md) | A sequência de execução em 4 ondas |

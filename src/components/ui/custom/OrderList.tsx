@@ -60,6 +60,7 @@ const paymentConfig: Record<PaymentMethod, { label: string; icon: any }> = {
   pix: { label: "PIX", icon: QrCode },
   card: { label: "Cartão", icon: CreditCard },
   cash: { label: "Dinheiro", icon: Banknote },
+  online: { label: "Pagamento online", icon: CreditCard },
 };
 
 function OrderSegmentedProgressBar({ status }: { status: OrderStatus }) {

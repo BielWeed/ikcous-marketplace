@@ -32,10 +32,19 @@ try {
 }
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), "");
 
   const isDev = mode === "development";
+
+  // O Vite deriva isProduction de process.env.NODE_ENV e RESPEITA o que já vier
+  // do shell: ele só assume "production" se a variável estiver vazia. Com
+  // NODE_ENV=development exportado na máquina, `npm run build` saía como
+  // artefato de desenvolvimento (2544 KiB de precache contra 1857 KiB), sem
+  // nenhum aviso. O mode do Vite é a fonte de verdade aqui, não o ambiente.
+  if (command === "build" && !isDev) {
+    process.env.NODE_ENV = "production";
+  }
   const gitSha = process.env.VERCEL_GIT_COMMIT_SHA || "";
   const buildTime = new Date().toISOString();
 
@@ -140,7 +149,7 @@ export default defineConfig(({ mode }) => {
           filename: "dist/stats.html",
           open: true,
         }),
-      process.env.NODE_ENV === "development" && inspectAttr(),
+      isDev && inspectAttr(),
       react(),
       {
         name: "html-branding-transform",

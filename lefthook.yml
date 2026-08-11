@@ -28,15 +28,23 @@ pre-commit:
     # pré-existentes (medido em 30/07/2026) e um hook que reprova por causa
     # deles seria desligado no primeiro dia.
     #
-    # Os 7 erros que existem hoje estão em 3 arquivos:
-    #   src/views/admin/AdminCarouselsView.tsx   (3x react-hooks)
-    #   src/views/admin/AdminProductFormView.tsx (2x jsx-a11y)
-    #   src/views/admin/AdminShippingView.tsx    (2x jsx-a11y)
-    # Se você tocar num deles, vai ter que corrigir o erro para commitar.
-    # Isso é proposital: é a regra do escoteiro aplicada onde dói pouco.
+    # Em 05/08/2026 os erros de eslint chegaram a ZERO. Eram 7 quando este hook
+    # entrou, e a regra do escoteiro fez o trabalho: os 6 que sobravam foram
+    # limpos no PR da ADMIN-010 (#94), que precisava tocar exatamente naqueles
+    # arquivos e não conseguia commitar sem resolvê-los.
+    #
+    # Com o teto do `.lint-baseline.json` em 0, erro novo reprova o CI direto.
+    # Se você tocar num arquivo que ganhou erro, vai ter que corrigir para
+    # commitar — que é o ponto.
     - name: eslint
       glob: "*.{ts,tsx}"
-      run: npx eslint --max-warnings=-1 {staged_files}
+      # --cache pelo mesmo motivo do lint:ratchet: neste repositorio o eslint
+      # custa ~8 s por arquivo no Windows, quase tudo numa regra so
+      # (tailwindcss/no-custom-classname, 97,9% do tempo, medido em
+      # 10/08/2026). Sem cache, um commit que toca cinco componentes segura o
+      # terminal por quase um minuto. O cache guarda o RESULTADO por arquivo,
+      # entao o hook continua reprovando erro novo — provado com erro plantado.
+      run: npx eslint --max-warnings=-1 --cache --cache-strategy content {staged_files}
       fail_text: |
         Erro de eslint nos arquivos staged (warnings foram ignorados de propósito).
         Corrija o erro — ou, se o erro for pré-existente no arquivo que você tocou,
@@ -54,8 +62,25 @@ pre-commit:
 
 commit-msg:
   jobs:
+    # Era `npx commitlint --edit {1}`. Num clone normal funciona, porque o git
+    # passa o relativo `.git/COMMIT_EDITMSG`; dentro de um `git worktree` ele
+    # passa o caminho ABSOLUTO, e o caminho deste projeto tem espaços — o shell
+    # do lefthook quebrava o argumento e o hook reprovava commit válido.
+    #
+    # A correção original (06/08/2026) resolveu isso jogando o argumento fora
+    # e resolvendo sempre COMMIT_EDITMSG sozinha — mas o hook `commit-msg`
+    # também roda em `git merge -m "..."`, e aí o git passa MERGE_MSG, não
+    # COMMIT_EDITMSG. Ignorar `{1}` fazia o script validar a mensagem do
+    # commit ANTERIOR (já aprovada) em vez do merge em curso: um merge com
+    # mensagem fora do Conventional Commits passava. Reproduzido e consertado
+    # no mesmo dia — o script volta a receber `{1}` e extrai só o basename do
+    # último fragmento (nunca tem espaço: é sempre COMMIT_EDITMSG, MERGE_MSG
+    # ou SQUASH_MSG), depois pede pro git reconstruir o caminho certo com
+    # `--git-path`. Ver o cabeçalho de scripts/commitlint-mensagem.mjs para a
+    # medição completa. Não volte a omitir `{1}` sem reproduzir o cenário de
+    # merge dentro de um worktree.
     - name: commitlint
-      run: npx commitlint --edit {1}
+      run: node scripts/commitlint-mensagem.mjs {1}
       fail_text: |
         Mensagem de commit fora do padrão Conventional Commits.
         Formato:  tipo(escopo): assunto no imperativo, minúsculo, até 100 caracteres

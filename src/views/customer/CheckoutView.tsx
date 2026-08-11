@@ -1,3 +1,4 @@
+import { PagamentoOnline } from "@/components/checkout/PagamentoOnline";
 import { Button } from "@/components/ui/button";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
@@ -5,10 +6,12 @@ import { CouponInput } from "@/components/ui/custom/CouponInput";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
+import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useOrders } from "@/hooks/useOrders";
+import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
 import { cn } from "@/lib/utils";
 import type { Address, CartItem, Customer, PaymentMethod, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -69,7 +72,6 @@ export function CheckoutView({
   onSetBackOverride,
 }: CheckoutViewProps) {
   const { config, isLoaded: storeConfigLoaded } = useStore();
-  const [isSearchingCep, setIsSearchingCep] = useState(false);
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(380);
   const {
@@ -211,11 +213,41 @@ export function CheckoutView({
     user,
   ]);
 
+  // Busca de CEP do checkout de convidado — mesma implementação do
+  // AddressForm, atrás de useBuscaCep (#184 corrida, #185 timeout, #186
+  // abort no desmonte).
+  const { buscando: isSearchingCep, buscar: buscarCep } = useBuscaCep(
+    (endereco) => {
+      if (endereco.logradouro)
+        form.setValue("street", endereco.logradouro, {
+          shouldValidate: true,
+        });
+      if (endereco.bairro)
+        form.setValue("neighborhood", endereco.bairro, {
+          shouldValidate: true,
+        });
+      if (endereco.localidade)
+        form.setValue("city", endereco.localidade, {
+          shouldValidate: true,
+        });
+      if (endereco.uf)
+        form.setValue("state", endereco.uf, { shouldValidate: true });
+    },
+  );
+
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [orderId, setOrderId] = useState("");
+  // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
+  // function, dentro do PagamentoOnline (ver comentário lá).
+  const [aguardandoPagamento, setAguardandoPagamento] = useState(false);
+  // Congelado no momento do submit, como orderId — sem isso, o onClearCart()
+  // duas linhas abaixo zera o carrinho, cartTotal/shippingFee caem para 0
+  // (ou ficam negativos com cupom aplicado) e o Brick nasce cobrando um
+  // valor que não bate com o total já gravado no pedido.
+  const [valorDoPedido, setValorDoPedido] = useState(0);
   const [appliedCoupon, setAppliedCoupon] = useState<{
     code: string;
     discount: number;
@@ -261,15 +293,24 @@ export function CheckoutView({
         setIsAddressModalOpen(false);
         setEditingAddressId(null);
       });
-    } else if (showSuccess) {
-      // On success, back button should go to home
+    } else if (showSuccess || aguardandoPagamento) {
+      // Sucesso ou aguardando pagamento: o pedido já foi criado e o carrinho
+      // já foi limpo — não existe formulário para o botão voltar recuperar.
+      // Sem este ramo, o voltar do Android saía direto para o carrinho vazio,
+      // sem aviso, com o pedido reservado e o prazo de 30 minutos correndo.
       onSetBackOverride(() => () => onNavigate("home"));
     } else {
       onSetBackOverride(null);
     }
 
     return () => onSetBackOverride(null);
-  }, [isAddressModalOpen, showSuccess, onSetBackOverride, onNavigate]);
+  }, [
+    isAddressModalOpen,
+    showSuccess,
+    aguardandoPagamento,
+    onSetBackOverride,
+    onNavigate,
+  ]);
 
   // Guest checkout enabled - no redirect
   useEffect(() => {
@@ -443,11 +484,24 @@ export function CheckoutView({
     };
 
     try {
-      const order = await createOrder(orderData);
+      const ehOnline = paymentMethod === "online";
+      const order = await createOrder(orderData, {
+        comPagamentoOnline: ehOnline,
+      });
       setOrderId(order.id);
+      setValorDoPedido(finalTotal);
 
       // 🤖 Automação Solo-Ninja: O disparo agora é 100% via Backend (Edge Function + Webhook)
       onClearCart();
+
+      if (ehOnline) {
+        // NÃO mostra sucesso e NÃO solta confete: o pedido só está reservado,
+        // e quem confirma pagamento é o webhook (Fase 3). Chamar isso de
+        // sucesso aqui é a mentira que a tela de hoje conta.
+        setAguardandoPagamento(true);
+        return;
+      }
+
       setShowSuccess(true);
 
       // Trigger confetti celebration
@@ -471,6 +525,25 @@ export function CheckoutView({
       setIsSubmitting(false);
     }
   };
+
+  if (aguardandoPagamento && orderId) {
+    return (
+      <div className="min-h-dvh space-y-4 bg-gray-50/10 px-3.5 pt-4">
+        <h1 className="text-lg font-bold text-zinc-900">
+          Finalize o pagamento
+        </h1>
+        <p className="text-xs text-zinc-500">
+          Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os
+          itens voltam para o estoque e o pedido é cancelado.
+        </p>
+        <PagamentoOnline
+          orderId={orderId}
+          valor={valorDoPedido}
+          onErro={(msg) => toast.error(msg)}
+        />
+      </div>
+    );
+  }
 
   if (showSuccess) {
     return (
@@ -600,54 +673,21 @@ export function CheckoutView({
                         disabled={isSearchingCep}
                         className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                         onChange={async (e) => {
-                          const clean = e.target.value.replace(/\D/g, "");
-                          let formatted = clean;
-                          if (clean.length > 5) {
-                            formatted = `${clean.slice(0, 5)}-${clean.slice(5, 8)}`;
-                          }
-                          form.setValue("cep", formatted, {
+                          const { limpo, formatado } = formatarCep(
+                            e.target.value,
+                          );
+                          form.setValue("cep", formatado, {
                             shouldValidate: true,
                           });
                           localStorage.setItem(
                             "ikcous_last_shipping_cep",
-                            formatted,
+                            formatado,
                           );
 
                           const isNational =
                             config.shippingCoverage === "national";
-                          if (clean.length === 8 && isNational) {
-                            setIsSearchingCep(true);
-                            try {
-                              const res = await fetch(
-                                `https://viacep.com.br/ws/${clean}/json/`,
-                              );
-                              const data = await res.json();
-                              if (data && !data.erro) {
-                                if (data.logradouro)
-                                  form.setValue("street", data.logradouro, {
-                                    shouldValidate: true,
-                                  });
-                                if (data.bairro)
-                                  form.setValue("neighborhood", data.bairro, {
-                                    shouldValidate: true,
-                                  });
-                                if (data.localidade)
-                                  form.setValue("city", data.localidade, {
-                                    shouldValidate: true,
-                                  });
-                                if (data.uf)
-                                  form.setValue("state", data.uf, {
-                                    shouldValidate: true,
-                                  });
-                                toast.success("CEP localizado!");
-                              } else {
-                                toast.error("CEP não encontrado");
-                              }
-                            } catch (err) {
-                              console.error("Error fetching CEP:", err);
-                            } finally {
-                              setIsSearchingCep(false);
-                            }
+                          if (isNational) {
+                            await buscarCep(limpo);
                           }
                         }}
                       />
@@ -872,6 +912,23 @@ export function CheckoutView({
           </div>
           <div className="grid grid-cols-1 gap-2.5 p-4">
             {[
+              ...(PAGAMENTO_ONLINE_LIGADO
+                ? [
+                    {
+                      value: "online" as PaymentMethod,
+                      // SÓ PIX, e o rótulo tem de dizer isso. A Fase 3 recusa
+                      // cartão em DOIS lugares — o Brick só oferece
+                      // `bankTransfer` (PagamentoOnline.tsx) e a criar-pagamento
+                      // devolve 400 "No momento aceitamos apenas PIX". O rótulo
+                      // antigo dizia "(PIX ou cartão)" e sobreviveu à Fase 3:
+                      // prometia ao cliente o que o código nega.
+                      // Ao religar cartão na Fase 3.5, este rótulo volta junto.
+                      label: "Pagar agora com PIX",
+                      icon: CreditCard,
+                      color: "text-violet-500 bg-violet-50",
+                    },
+                  ]
+                : []),
               {
                 value: "pix" as PaymentMethod,
                 label: "Pix na Entrega",

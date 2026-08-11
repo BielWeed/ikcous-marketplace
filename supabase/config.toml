@@ -1,0 +1,69 @@
+# Versiona o verify_jwt de cada edge function (#162).
+#
+# POR QUE ESTE ARQUIVO EXISTE
+#
+# Ate 07/08/2026 o verify_jwt so existia na linha de comando de quem deployava
+# (`--no-verify-jwt` digitado a mao) e no DEPLOYMENT.md. Aqui ele passa a ser
+# revisavel em PR como o resto do projeto.
+#
+# PRECEDENCIA MEDIDA NO CLI EM 07/08/2026 — nao suponha outra coisa:
+#
+#   --no-verify-jwt (flag)  >  verify_jwt aqui  >  preserva o que ja esta no
+#                                                  servidor
+#
+# Duas consequencias, ditas para ninguem confiar demais neste arquivo:
+#
+# 1. Funcao SEM entrada aqui nao e' revertida: o CLI omite o campo e a API
+#    preserva o valor atual. O custo de omitir nao e' derrubar a funcao — e'
+#    o repositorio voltar a nao dizer a verdade sobre ela.
+# 2. Este arquivo NAO protege contra a flag. Quem digitar --no-verify-jwt na
+#    funcao errada continua ganhando de tudo que esta escrito aqui.
+
+# project_id e' identificador LOCAL — distingue projetos no mesmo host, e
+# NAO escolhe o destino do deploy. O alvo e' o projeto linkado ou o
+# --project-ref. Isso importa aqui: o DEPLOYMENT.md:28 avisa que o seletor
+# interativo lista o sandbox ANTES do projeto certo, e que dar Enter direto
+# publica no lugar errado sem erro nenhum. Ver este campo como "alvo fixado"
+# e largar o --project-ref e' exatamente como se publica no sandbox.
+project_id = "cafkrminfnokvgjqtkle"
+
+# Sem JWT de proposito, e NAO porque exista link aberto por quem nao tem
+# sessao — nao existe link: esta funcao manda um codigo de 6 digitos.
+#
+# O unico chamador e' um trigger do banco (handle_new_otp_verification), que
+# se autentica com um segredo opaco lido do Vault, nao com JWT. Com
+# verify_jwt = true o gateway devolve 401 ANTES de a funcao rodar, nenhum
+# codigo chega ao cliente, e o login cai. Ver DEPLOYMENT.md:52.
+[functions."send-otp-email"]
+verify_jwt = false
+
+# Sem JWT de proposito (PEDIDO-020 #89): o pedido de convidado nasce sem
+# sessao. O que protege e' a propria funcao — corpo so aceita orderId, janela
+# de 15 min, forma de UUID. Ver DEPLOYMENT.md:57.
+[functions."notify-new-order"]
+verify_jwt = false
+
+[functions."calculate-shipping"]
+verify_jwt = true
+
+[functions."send-push"]
+verify_jwt = true
+
+# Chamada pelo cliente logado ou convidado com sessao; o verify_jwt filtra
+# trafego de fora do projeto e a funcao extrai a identidade do token.
+[functions."criar-pagamento"]
+verify_jwt = true
+
+# verify_jwt = false OBRIGATORIO: o Mercado Pago nao manda JWT. Quem autentica
+# e' o x-signature validado em _shared/mercadopago.ts. Ligar o verify_jwt aqui
+# faz o gateway recusar TODA confirmacao de pagamento, em silencio, e os
+# pedidos pagos expiram como se ninguem tivesse pago.
+[functions."webhook-mercadopago"]
+verify_jwt = false
+
+# verify_jwt = false de proposito: quem chama e' o pg_cron via pg_net, e com
+# verify_jwt = true a credencial teria de ser a service_role — que passaria a
+# viver dentro do banco. Aqui a autenticacao e' o RECONCILIACAO_SECRET, cujo
+# pior caso ao vazar e' alguem disparar uma reconciliacao idempotente.
+[functions."reconciliar-pagamentos"]
+verify_jwt = false

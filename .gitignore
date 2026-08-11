@@ -22,6 +22,11 @@ vapid_keys.json
 dist/
 build/
 
+# Cache do eslint (--cache). Guarda o resultado por arquivo para a rodada
+# seguinte so analisar o que mudou. E' derivado e por maquina: versionar traria
+# resultado de OUTRO sistema de arquivos para dentro da catraca.
+.eslintcache
+
 # Log files accumulated during development
 *.log
 *.txt
@@ -92,7 +97,20 @@ scratch_*
 
 # Ferramentas de agente (local da máquina, não do projeto).
 # Mesmo critério já aplicado a `.agents/` acima.
-.claude/
+#
+# Exceção: `.claude/agents/` é processo do time, não estado de máquina. Os
+# subagentes `implementador` e `revisor` definem como uma tarefa vira código
+# aqui: é o registro do processo que o código atravessou — fica legível no PR,
+# e qualquer clone precisa dele para o fluxo rodar igual. Mudá-los é mudança de
+# processo e passa por PR. `settings.local.json`, `worktrees/` e o resto
+# continuam fora.
+#
+# Mesma exceção para `launch.json`: o CLAUDE.md manda subir o preview com
+# `{name: "core_app_mkt"}`, e esse nome só existe para quem tem o arquivo. É
+# `npm run dev` na porta 5173 — descrição do projeto, sem credencial.
+.claude/*
+!.claude/agents/
+!.claude/launch.json
 .serena/
 
 # Estado local do Supabase CLI: muda a cada comando e suja o `git status`.
@@ -104,3 +122,23 @@ supabase/.temp/
 .vscode/mcp.json
 .cursor/mcp.json
 .agents/mcp_config.json
+
+# Snapshot de ferramenta, não código. O context.json guardava um DATABASE_URL
+# completo, com senha em texto puro, do projeto `br` — e a senha estava VIVA
+# quando foi testada em 05/08/2026 (o projeto foi excluído no mesmo dia, #85).
+# Ninguém pensa em auditar estado de ferramenta atrás de segredo; foi por isso
+# que passou meses despercebido.
+.ship-safe/
+
+# Snapshots e dumps do banco de producao (BANCO-040, #40).
+# Nao sao segredo, mas sao o schema inteiro da loja — grants, policies e a
+# lista de funcoes SECURITY DEFINER. Isso e mapa para quem quiser atacar, e
+# nao ha motivo para versionar: quem precisa gera o proprio com
+# `node scripts/db-snapshot-politicas.cjs`. O que fica versionado e o SCRIPT.
+backups/
+
+# Ledger e briefs do subagent-driven-development: rascunho de sessao.
+.superpowers/
+
+# Rollbacks que o db-apply.cjs gera a cada aplicacao: artefato de execucao.
+rollback-*.sql

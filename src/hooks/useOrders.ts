@@ -140,8 +140,12 @@ export function useOrders(
   useEffect(() => {
     if (isAdmin) return;
 
+    // Mesma regra do fetch: só troca a referência se o conteúdo mudou. Aqui o
+    // efeito roda pouco (só quando o usuário muda), mas manter as duas
+    // escritas com a mesma disciplina evita que a próxima pessoa reintroduza o
+    // loop da PEDIDO-040 por este caminho.
     if (!user?.id) {
-      setOrders([]);
+      setOrders((atual) => (atual.length === 0 ? atual : []));
       return;
     }
     const cacheKey = `ikcous_orders_cache_${user.id}`;
@@ -150,7 +154,9 @@ export function useOrders(
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          setOrders(parsed);
+          setOrders((atual) =>
+            JSON.stringify(atual) === JSON.stringify(parsed) ? atual : parsed,
+          );
         }
       }
     } catch (e) {
@@ -201,8 +207,23 @@ export function useOrders(
 
       if (data) {
         const mappedOrders = data.map((item) => mapOrderFromDB(item as any));
-        setOrders(mappedOrders);
-        localStorage.setItem(cacheKey, JSON.stringify(mappedOrders));
+        const serializado = JSON.stringify(mappedOrders);
+
+        // Devolver a MESMA referência quando o resultado não mudou faz o React
+        // desistir do re-render. Sem isto, `setOrders` trocava a referência a
+        // cada volta — inclusive para lista vazia, porque `if (data)` é
+        // verdadeiro para `[]` — e quem tivesse `orders` nas dependências de um
+        // useCallback ficava em loop de requisição. Era o caso do
+        // OrderDetailsView para usuário logado sem nenhum pedido (PEDIDO-040,
+        // #84).
+        //
+        // A comparação é contra o state ATUAL, não contra o último fetch: se um
+        // update otimista mexeu na lista e o servidor devolver o valor antigo,
+        // a tela precisa voltar para o que o servidor diz.
+        setOrders((atual) =>
+          JSON.stringify(atual) === serializado ? atual : mappedOrders,
+        );
+        localStorage.setItem(cacheKey, serializado);
         return mappedOrders;
       }
       return [];
@@ -827,17 +848,61 @@ export function useOrders(
       }
     }, [isUserAdmin]);
 
-  const createOrder = useCallback(async (orderData: any) => {
-    // 🛡️ Checkout de Convidados: O login não é mais obrigatório no frontend.
-    // O RPC v22 cuidará da atribuição do user_id (NULL para convidados).
-
+  /**
+   * Avisa o lojista que entrou pedido novo (PEDIDO-020, #89).
+   *
+   * Deliberadamente SEM await e com catch que só registra. Neste ponto o pedido
+   * JÁ está criado no banco: o critério 3 da issue exige que falha do aviso não
+   * derrube o checkout, e a forma de garantir isso é o fluxo do cliente nunca
+   * esperar por esta chamada nem enxergar o resultado dela.
+   *
+   * O que pode dar errado aqui e é aceito de propósito: função fora do ar, rede
+   * do cliente caindo, ou o cliente fechando a aba antes de a requisição sair.
+   * Nos três casos o pedido está salvo e o lojista vê pelo painel. É o preço da
+   * arquitetura sem trigger, registrado na issue — quando a BANCO-040 (#40) for
+   * respondida e o trigger virar possível, este disparo passa a ser redundante,
+   * não errado.
+   */
+  const avisarLojista = useCallback((orderId: string) => {
     try {
-      // 🛡️ SECURITY: Usando a RPC v22 Blindada (Zero-Trust)
-      // O backend recalcula o total consultando os preços diretamente do banco (produtos/variants)
-      // e usa o 'p_total_amount' como um Checksum para garantir integridade.
-      const { data, error } = await (supabase as any).rpc(
-        "create_marketplace_order_v23",
-        {
+      void (supabase as any).functions
+        .invoke("notify-new-order", { body: { orderId } })
+        .then((r: any) => {
+          if (r?.error) {
+            console.warn("notify-new-order: aviso não saiu", r.error);
+          }
+        })
+        .catch((err: unknown) => {
+          console.warn("notify-new-order: aviso não saiu", err);
+        });
+    } catch (err) {
+      // invoke() lançar de forma síncrona não deveria acontecer, mas se
+      // acontecer não pode chegar ao checkout.
+      console.warn("notify-new-order: aviso não saiu", err);
+    }
+  }, []);
+
+  const createOrder = useCallback(
+    async (orderData: any, opts?: { comPagamentoOnline?: boolean }) => {
+      // 🛡️ Checkout de Convidados: O login não é mais obrigatório no frontend.
+      // O RPC v22 cuidará da atribuição do user_id (NULL para convidados).
+
+      // A v24 é idêntica à v23 no caminho do dinheiro — validação de preço,
+      // estoque, frete e cupom são o mesmo corpo. A ÚNICA diferença é que ela
+      // carimba payment_status='aguardando' e expires_at = now() + 30min.
+      //
+      // Por isso a escolha é do chamador e não uma troca global: pedido "na
+      // entrega" não pode ganhar prazo, senão o pg_cron cancela venda legítima
+      // — foi essa a correção que tirou a troca da Fase 1.
+      const rpc = opts?.comPagamentoOnline
+        ? "create_marketplace_order_v24"
+        : "create_marketplace_order_v23";
+
+      try {
+        // 🛡️ SECURITY: Usando a RPC v22 Blindada (Zero-Trust)
+        // O backend recalcula o total consultando os preços diretamente do banco (produtos/variants)
+        // e usa o 'p_total_amount' como um Checksum para garantir integridade.
+        const { data, error } = await (supabase as any).rpc(rpc, {
           p_items: orderData.items.map((item: any) => ({
             product_id: item.product_id || item.productId,
             variant_id: item.variant_id || item.variantId || null,
@@ -856,25 +921,92 @@ export function useOrders(
           // confirmar o valor do frete. O preço enviado pelo cliente é ignorado.
           p_destination_cep: orderData.destinationCep || null,
           p_shipping_option_id: orderData.shippingOptionId || null,
-        },
+        });
+
+        if (error) throw error;
+        if (!data) throw new Error("Falha ao obter ID do pedido");
+
+        // PEDIDO-020 (#89). Depois do `throw`, para não avisar de pedido que não
+        // existe; e antes do return, para o disparo sair mesmo que a tela navegue
+        // em seguida.
+        //
+        // A-3 da revisão final: no caminho online o pedido é uma RESERVA que o
+        // pg_cron cancela em 30 min, não um pedido definitivo — avisar aqui faria
+        // o lojista separar mercadoria de um pedido que pode morrer. Quem avisa
+        // nesse caminho é o webhook da Fase 3, quando o pagamento é confirmado
+        // ("aprovado → payment_status='pago', dispara notify-new-order").
+        if (!opts?.comPagamentoOnline) avisarLojista(data);
+
+        return {
+          ...orderData,
+          id: data,
+          status: "pending" as const,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      } catch (err: any) {
+        console.error("Error creating order:", err);
+        toast.error(err.message || "Erro ao processar pedido");
+        throw err;
+      }
+    },
+    [avisarLojista],
+  );
+
+  /**
+   * Pede à edge function que crie a cobrança no Mercado Pago.
+   *
+   * Diferente do avisarLojista (PEDIDO-020), aqui o cliente ESPERA: sem a
+   * resposta não há QR code para mostrar. Erro aqui não perde o pedido — ele
+   * já está criado e expira sozinho em 30 minutos, que é a rede descrita na
+   * spec.
+   */
+  const criarPagamento = useCallback(
+    async (args: {
+      orderId: string;
+      metodo: "pix" | "cartao";
+      token?: string;
+      parcelas?: number;
+      paymentMethodId?: string;
+      issuerId?: string;
+      email?: string;
+      documento?: { type: string; number: string };
+    }) => {
+      const { data, error } = await (supabase as any).functions.invoke(
+        "criar-pagamento",
+        { body: args },
       );
 
-      if (error) throw error;
-      if (!data) throw new Error("Falha ao obter ID do pedido");
-
-      return {
-        ...orderData,
-        id: data,
-        status: "pending" as const,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+      // ATENÇÃO ao contrato do supabase-js v2, que não é o intuitivo: quando a
+      // resposta NÃO é 2xx, `data` chega NULL e o corpo fica em `error.context`,
+      // que é um Response. Ler só `data?.error` — como a primeira versão deste
+      // plano mandava — jogaria fora as quatro mensagens distintas que a edge
+      // function escreve com cuidado ("Este pedido já tem uma cobrança gerada.",
+      // "O prazo para pagar este pedido acabou.", "Pedido inválido.",
+      // "Pagamento indisponível.") e mostraria a mesma frase genérica em todas.
+      if (error) {
+        let mensagem = "Não foi possível gerar a cobrança.";
+        try {
+          const corpo = await (error as any).context?.json?.();
+          if (corpo?.error) mensagem = corpo.error;
+        } catch {
+          // Corpo ilegível: fica a mensagem genérica, que é melhor que vazar
+          // o texto cru de um erro de infraestrutura para o cliente.
+        }
+        throw new Error(mensagem);
+      }
+      if (data?.error) throw new Error(data.error);
+      return data as {
+        paymentId: string;
+        status: string;
+        expiraEm: string;
+        qrCode?: string;
+        qrCodeBase64?: string;
+        ticketUrl?: string;
       };
-    } catch (err: any) {
-      console.error("Error creating order:", err);
-      toast.error(err.message || "Erro ao processar pedido");
-      throw err;
-    }
-  }, []);
+    },
+    [],
+  );
 
   const generateOrderOtp = useCallback(
     async (
@@ -1078,6 +1210,7 @@ export function useOrders(
     generateOrderOtp,
     fetchOrdersByOtp,
     createOrder,
+    criarPagamento,
     fetchDashboardSummary,
     fetchOrderHistory,
     subscribeToOrders,

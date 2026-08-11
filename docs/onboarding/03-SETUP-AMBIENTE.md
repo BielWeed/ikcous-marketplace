@@ -382,6 +382,47 @@ Replique à mão.
 
 ## 6. Regras para o Supabase de produção
 
+### Antes das regras: quais projetos existem, e qual é qual
+
+A org `vtwznprwuptaquiysenb` tem **dois** projetos. Confirme com
+`supabase projects list` antes de confiar nesta tabela — ela envelhece.
+
+| Ref | Nome | Região | O que é |
+| --- | --- | --- | --- |
+| `cafkrminfnokvgjqtkle` | BielWeed's Project | West US (Oregon) | **A loja no ar.** É o que está em `VITE_SUPABASE_URL` e na `DATABASE_URL` do `.env`. |
+| `lofznuxcvezrhxsgjqyg` | ikcous-mkt-priemira-cliente | South America (São Paulo) | **Sandbox do MCP.** Apesar do nome, não é loja de cliente nenhum. |
+
+Existiu um terceiro, `jvgyjlbjhbfrncwbytls` (`ikcous-marketplace-br`), **excluído em 05/08/2026**.
+Se você encontrar esse ref em documento, script ou comentário, é resíduo — ver #85.
+
+### O sandbox, e por que ele existe
+
+O `lofznuxcvezrhxsgjqyg` foi criado em 15/07/2026 para o **servidor MCP do Supabase** ter onde
+trabalhar sem tocar na loja no ar. Os três edge functions foram publicados nele em v1 no mesmo
+minuto (02:14 UTC), espelhando o ambiente de produção.
+
+É para lá que apontam os arquivos de MCP das IDEs:
+
+```
+.agents/mcp_config.json    → project_ref=lofznuxcvezrhxsgjqyg
+.cursor/mcp.json           → project_ref=lofznuxcvezrhxsgjqyg
+.vscode/mcp.json           → project_ref=lofznuxcvezrhxsgjqyg
+```
+
+Esses três arquivos estão no `.gitignore` — cada um já guardou credencial. Se o seu não existir,
+peça o modelo; não copie de produção.
+
+> **Armadilha:** `.agents_inactive/mcp_config.json` aponta para **produção**
+> (`cafkrminfnokvgjqtkle`). Se alguém reativar aquelas skills copiando o config de volta, o MCP
+> passa a falar com a loja no ar — e ferramenta de IA escrevendo em produção não avisa antes.
+> Ao reativar qualquer coisa de `.agents_inactive/`, **conferir o `project_ref` primeiro.**
+
+O que o sandbox **não** é: não é o staging do INFRA-270 (#131). Aquele cartão precisa de um projeto
+cujo schema seja reprodutível a partir do repositório, e o schema deste nunca foi conferido contra
+o de produção. Pode vir a servir; hoje é candidato, não solução.
+
+### As 12 regras
+
 Você vai ter credencial do banco de uma loja no ar. São 12 regras, divididas em três listas.
 
 **Faz sozinho, sem avisar ninguém:**
@@ -502,8 +543,9 @@ real em `main` — se vier vermelho no seu primeiro dia, não foi você.
 | `npm run dev` (`package.json:7`) | sempre | não medido em partida limpa; falha em ~2 s se a 5173 estiver ocupada | 0 / **1** se porta ocupada | `[PWA Build] Version determined: 1.0.0-dev` + banner do Vite |
 | `npm run typecheck` (`:11`) | antes de abrir PR | **14 a 18 s** | 0 | `tsc -b --force`: 0 linha de saída = os projetos referenciados estão limpos. É o mesmo comando do `pre-push` e do job `Tipos` do CI |
 | `npx tsc -p tsconfig.app.json --noEmit` | só para isolar `src/` do resto | **17,30 s** | 0 | subconjunto do anterior; não cobre o `tsconfig.node.json` |
+| `npm test` (`:12`) | antes de abrir PR | **5,77 s** medido em 05/08/2026 | 0 | roda os três conjuntos em sequência — **66 casos**: 32 Deno de edge function, 11 Deno do Truth Gate, 23 vitest dos mappers. Ver a [seção 8](#8-testes-onde-ficam-e-como-rodar) |
 | `npm run lint` (`:9`) | antes de PR | **58,08 s** | **1** | **560 problemas: 7 erros, 553 warnings** — remedido em 04/08/2026, e é o que a Catraca cobra. O `1120 / 14 / 1106` que este documento trazia contava duas vezes: a varredura pegou `.claude/worktrees/`, que é uma cópia do repo |
-| `npm run biome:check` (`:18`) | diagnóstico local, **não** é o número que vale | **2,41 s** | **1** | ~24× mais rápido que o eslint, regras sobrepostas. **No Windows a contagem infla**: cada `␍` de CRLF vira erro de formatação que o Linux do CI não vê. Medido aqui em 04/08: 103 erros. **O número que a Catraca cobra é o do CI: 31 erros, 3 warnings** — lido do log do job `Catraca de lint` em duas runs distintas (`30944348274` e `30950267639`), e é o que está gravado em `.lint-baseline.json`. Para saber se você subiu dívida, rode `npm run lint:ratchet`, não o biome cru |
+| `npm run biome:check` (`:18`) | diagnóstico local, **não** é o número que vale | **2,41 s** | **1** | ~24× mais rápido que o eslint, regras sobrepostas. **No Windows a contagem infla**: cada `␍` de CRLF vira erro de formatação que o Linux do CI não vê. Medido aqui em 04/08: 103 erros. **O número que a Catraca cobra é o do CI: 30 erros, 3 warnings** — lido do log do job `Catraca de lint` (run `31009603766`), e é o que está gravado em `.lint-baseline.json`. Eram 31 até 05/08/2026: o número caiu na develop sem ninguém abaixar o teto, porque a catraca só avisa quando cai. Para saber se você subiu dívida, rode `npm run lint:ratchet`, não o biome cru |
 | `$env:NODE_ENV='production'; npx vite build` | build local correto | **20,93 s** | 0 | 3934 módulos, 2645,2 kB de `.js`, precache de 85 entradas |
 | `npm run build` (`:8`) sem tocar `NODE_ENV` | **nunca localmente** | 39,56 s | 0 | passa e entrega bundle de dev — armadilha 2 |
 | `npm run size` (`:20`) | **depois** de buildar | **33,09 s** | 0 | JS 515,14 kB / 800 kB; CSS 26,7 kB / 100 kB. Sobe um Chrome headless |
@@ -514,6 +556,203 @@ real em `main` — se vier vermelho no seu primeiro dia, não foi você.
 **Não rode `--fix` nem `biome format --write` em massa.** São 712 warnings auto-corrigíveis no eslint
 e 16 correções no biome; um commit gigante de formatação vai colidir com o outro dev — e não existe
 CI para segurar isso (armadilha 6).
+
+---
+
+## 8. Testes: onde ficam e como rodar
+
+São **três** conjuntos e **dois** runners. Rodar `npm test` executa os três; o
+job `Testes` do CI roda exatamente essa linha, para não haver comando de CI que
+o dev não consiga repetir na máquina.
+
+| Conjunto | Runner | Onde mora | Script |
+| --- | --- | --- | --- |
+| Edge functions (frete e push) | Deno | `supabase/functions/**/index_test.ts` | `npm run test:edge` |
+| Axiomas do Truth Gate | Deno | `tests/truth_gate_test.ts` | `npm run test:unit` |
+| Mappers do front | vitest | `tests/front/*.test.ts` | `npm run test:front` |
+
+Para escrever teste enquanto mexe no código: `npm run test:front:watch`.
+
+**O `test:edge` aponta para a pasta, não para um arquivo.** Até a PUSH-010 (#156)
+ele citava `calculate-shipping/index_test.ts` diretamente, e o efeito foi que o
+teste novo da `send-push` nasceria fora do CI sem ninguém perceber. Teste que o
+CI não roda não é teste.
+
+**Por que os dois runners convivem, em vez de um só.** As edge functions rodam
+em Deno na Supabase; testá-las em Node exigiria simular o runtime, e o teste
+deixaria de provar o que roda em produção. Já o front é Vite, e o vitest lê o
+`vitest.config.ts` — mesmo alias `@`, mesma resolução de módulo do build.
+Trocar um pelo outro trocaria fidelidade por uniformidade.
+
+**A fronteira entre eles é uma pasta, e ela é frágil.** O Deno considera
+qualquer `*.test.ts` um teste dele. Como o `test:unit` aponta para `tests/`, um
+arquivo de vitest ali dentro seria executado pelo Deno e quebraria com erro de
+importação. As duas metades do acordo:
+
+- os testes de vitest ficam em `tests/front/`, e o `vitest.config.ts` só olha lá;
+- o `test:unit` passa `--ignore=tests/front`.
+
+Mexer em um sem o outro quebra o `npm test`.
+
+**Onde NÃO colocar teste de front:** ao lado do fonte, em `src/`. O
+`tsconfig.app.json` inclui `src` e `tests/front` — os testes de vitest são
+checados pelo `tsc -b` de propósito, para que uma fixture que não corresponda
+mais ao tipo da linha do banco quebre o job `Tipos`. Um teste Deno em `src/`
+quebraria esse mesmo job, porque traz globais que o `tsconfig.app.json` não
+conhece.
+
+**O que ainda não existe:** runner com DOM. Não há `jsdom` nem
+`@testing-library` nas dependências, então não dá para testar componente ou
+hook React hoje. Instalar as duas coisas é trabalho do primeiro PR que
+realmente precise — assim a dependência entra junto com o teste que a
+justifica, e não antes.
+
+---
+
+## 9. Backup e ponto de restauração
+
+Medido em 05/08/2026 com `supabase backups list --project-ref cafkrminfnokvgjqtkle`
+(`BANCO-040`, #40). Rode o comando em vez de confiar nesta seção — ela envelhece
+como qualquer outra.
+
+| pergunta | resposta medida |
+| --- | --- |
+| Existe backup automático? | **Sim.** `walg_enabled: true` |
+| Frequência | **Diária**, por volta de 11:37 UTC (≈08:37 em Brasília) |
+| Retenção | **7 dias.** Havia 8 backups, de 29/07 a 05/08, todos `COMPLETED` |
+| PITR | **NÃO.** `pitr_enabled: false` |
+
+### PITR foi avaliado e RECUSADO — decisão de 05/08/2026
+
+Ligar PITR custaria, medido no painel de Add-ons:
+
+| janela | preço |
+| --- | --- |
+| 7 dias | **US$ 100,00/mês** |
+| 14 dias | US$ 200,00/mês |
+| 28 dias | US$ 400,00/mês |
+
+E não é só isso: o painel exige **subir o compute para pelo menos `Small`** antes
+de o add-on ficar habilitável ("Project needs to be at least on a Small compute
+size to enable PITR"). Ou seja, o custo real é US$ 100/mês **mais** o upgrade de
+compute, recorrente, para uma loja com 64 pedidos no total.
+
+**Decisão do Gabriel: não vale.** O que substitui está na seção seguinte, custa
+zero e cobre quase o mesmo risco.
+
+### A consequência real — e por que ela é menor do que parece
+
+A frase "sem PITR você perde até 24 h de pedidos" está certa no pior caso e
+**errada na prática**, porque a janela de perda não é fixa em 24 h: ela é *o
+tempo decorrido desde o último backup*. E esse tempo você escolhe.
+
+Os 8 backups medidos saíram entre **11:33 e 11:41 UTC** — ~08:35 em Brasília,
+com uns 8 minutos de variação. Então:
+
+| quando você roda a migration | pior caso de perda |
+| --- | --- |
+| 09:00 BRT (logo após o backup) | **~25 minutos** |
+| 08:00 BRT (logo antes) | **~23,5 horas** |
+
+A mesma migration, 50× mais risco, só pela hora do relógio. É isso que o PITR
+compraria por US$ 1.200 ao ano.
+
+### O procedimento — obrigatório antes de qualquer migration
+
+Quatro passos. Nenhum custa dinheiro.
+
+**1. Confirme que o backup de HOJE já saiu.** Não confie no horário: os backups
+variam ~8 minutos e um dia pode atrasar.
+
+```bash
+npx supabase backups list --project-ref cafkrminfnokvgjqtkle
+```
+
+Olhe o `inserted_at` mais recente. **Se não for de hoje, pare e espere.** Rodar
+migration antes do backup do dia é o que transforma 25 minutos de exposição em
+23 horas.
+
+**2. Fotografe as policies.**
+
+```bash
+node scripts/db-snapshot-politicas.cjs
+```
+
+O modo de falha mais provável aqui não é "o banco sumiu" — é "as policies
+sumiram e ninguém sabe como elas eram". As migrations pendentes executam
+**190 `DROP POLICY` contra 127 `CREATE POLICY`** sobre um banco com **71
+policies vivas**. O snapshot grava as 71 como `CREATE POLICY` executável, então
+policy apagada por engano se recria por diff — **sem restaurar nada**, sem
+perder pedido nenhum.
+
+**3. Ensaie numa cópia antes de tocar produção.** O projeto
+`lofznuxcvezrhxsgjqyg` já existe e já tem as três edge functions publicadas.
+Usá-lo como banco de ensaio não cria custo novo. É a `INFRA-270` (#131).
+
+**4. `pg_dump` completo antes da PRIMEIRA migration da série.** Com Docker no ar
+— ver a armadilha abaixo.
+
+Os quatro somados cobrem o risco real. O que o PITR daria a mais é reverter erro
+percebido **tarde** — e para isso o backup de 7 dias já serve, com granularidade
+pior.
+
+### Onde o snapshot vai parar
+
+`node scripts/db-snapshot-politicas.cjs` grava em `backups/` — **pasta ignorada
+pelo git, de propósito**. O conteúdo não é segredo, mas é o schema inteiro da
+loja: policies, grants e a lista das 64 funções `SECURITY DEFINER`. Isso é mapa
+para quem quiser atacar, e não há motivo para versionar. **Versionado fica o
+script**; quem precisar gera o próprio.
+
+### `pg_dump`: duas armadilhas, e a segunda é pior
+
+O snapshot de policies **não é um backup**. Não tem dados, índices, constraints,
+triggers nem sequences. Backup de verdade é `pg_dump`.
+
+**Armadilha 1 — Docker.** O `supabase db dump` levanta um container `postgres`
+para executar o `pg_dump`. Sem Docker Desktop no ar ele falha com
+`LegacyDockerRunError` e **escreve um arquivo vazio**, sem erro visível na
+primeira linha. Já aconteceu aqui: dois arquivos de 0 KB. **Confira o tamanho do
+arquivo, sempre** — registrar um arquivo vazio como backup é pior do que não ter
+backup.
+
+**Armadilha 2 — `supabase db dump` OMITE TRIGGERS.** Medido em 06/08/2026 no
+banco de produção, com Docker no ar e o comando terminando com sucesso:
+
+| objeto | no banco | no `supabase db dump` |
+| --- | ---: | ---: |
+| tabelas | 29 | 29 |
+| views | 5 | 5 |
+| policies | 71 | 71 |
+| funções | 66 | 66 |
+| **triggers** | **9** | **0** |
+
+Entre os 9 que sumiriam estão `tr_prevent_role_change`,
+`tr_ensure_role_protection` e `tr_sync_profile_role_to_auth` — **proteção de
+privilégio**. Um baseline gerado por ali derrubaria as três sem avisar, e o dump
+não reclama de nada.
+
+**Use `pg_dump` direto, dentro do container:**
+
+```bash
+docker run --rm -e PGURL public.ecr.aws/supabase/postgres:17.6.1.143 \
+  pg_dump --schema-only --schema=public --no-owner --no-privileges "$PGURL"
+```
+
+E **confira a contagem** contra a introspecção, em vez de confiar no exit 0. Foi
+assim que a omissão apareceu: o dump "funcionou", e os números não bateram.
+
+### Restauração
+
+Restaurar é pelo **painel do Supabase**, e só o dono da org (o Gabriel) tem
+acesso. O `supabase backups restore` existe no CLI mas serve ao PITR, que está
+desligado — com backup diário, o caminho é a interface.
+
+**Quanto tempo leva uma restauração continua não medido, e vai continuar.**
+Medir exigiria restaurar produção de verdade. É um desconhecido **aceito**: a
+mitigação foi desenhada justamente para não depender de restauração — o
+snapshot de policies resolve o caso provável sem restaurar nada, e o passo 1 do
+procedimento limita o caso improvável a minutos.
 
 ---
 
@@ -535,14 +774,16 @@ CI para segurar isso (armadilha 6).
 - **Se as 42 migrations pendentes (41 versões) são seguras de aplicar, e o que fazem as 28 versões do
   ledger sem arquivo.** Dos 42 medi só quantos contêm `CREATE OR REPLACE FUNCTION` (**19**); nenhum
   SQL foi lido linha a linha nem comparado ao schema vivo. As 28 sem arquivo não têm como ser lidas.
-- **Qual política de backup/PITR está ativa no plano Supabase.** O painel não foi aberto.
+- ~~**Qual política de backup/PITR está ativa no plano Supabase.** O painel não foi aberto.~~
+  **Respondido em 05/08/2026 — ver [§ Backup e ponto de restauração](#backup-e-ponto-de-restauração).**
 - **Se o build da Vercel produz o mesmo resultado.** Nenhum log de build da Vercel foi inspecionado.
 - **As Edge Functions.** Nenhuma foi invocada nem deployada. Existem 3 (`calculate-shipping`,
   `send-otp-email`, `send-push`) mais um `tsconfig.json` em `supabase/functions/`.
 - **Versão do PowerShell na máquina do Netim.** Esta sessão reportou `7.6.3`, onde `&&` funciona; a
   memória do projeto registra 5.1, onde não funciona. Vale nos dois: separe com `;` e atribua com
   `$env:VAR='valor'` — **não existe** prefixo inline `VAR=valor comando` em PowerShell nenhum.
-- **`02-ARQUITETURA.md`, `05-FLUXOS-CRITICOS.md`:** irmãos deste documento, escritos no mesmo lote —
-  podem ainda não existir no seu clone. **`06-ESTADO-ATUAL.md`, `../backlog/BACKLOG.md` e
-  `../backlog/ROADMAP.md` não existem ainda**, apesar de já serem linkados pelo
-  [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md).
+- ~~**`06-ESTADO-ATUAL.md`, `../backlog/BACKLOG.md` e `../backlog/ROADMAP.md` não existem ainda.**~~
+  **Venceu em 05/08/2026** (`DOC-050`): os três existem e todos os links relativos de `docs/`
+  resolvem — 151 verificados, 0 quebrados, medido por `npm run lint:links`. Rode o comando antes de
+  confiar nesta linha; ela é o exemplo vivo de aviso que envelhece e passa a mentir na direção
+  oposta.

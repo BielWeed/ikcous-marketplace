@@ -1,137 +1,162 @@
-# Equipe de Desenvolvimento de Agentes do IKCOUS Marketplace (v12 Local)
+# Agentes no IKCOUS Marketplace
 
-Este perfil local estabelece as diretrizes e papéis da equipe de agentes trabalhando especificamente no desenvolvimento e evolução do **IKCOUS Marketplace**, integrando as melhores práticas do Orquestrador de Skills v12 e o uso dos MCPs disponíveis.
+> **Este arquivo tem uma cópia byte-a-byte em `.cursorrules`.** São dois mecanismos diferentes
+> lendo o mesmo conteúdo (o Cursor não segue ponteiro, precisa do texto literal). **Editou um,
+> copie no outro** — `Copy-Item AGENTS.md .cursorrules -Force`.
 
-## Papéis e Responsabilidades do Enxame
+## Antes de tudo: qual agente você é
 
-### 1. IKCOUS Coordinator & Arquiteto PWA (Líder Técnico v12)
-- Coordenar a execução de tarefas complexas e fluxos concorrentes baseados em intenção no Blackboard.
-- Supervisionar a arquitetura offline-first e de Service Workers.
-- Gerenciar deploys de teste/produção e monitorar logs de build usando o **Vercel MCP** (`https://mcp.vercel.com`).
+As ferramentas disponíveis **dependem de onde você está rodando**, e a versão anterior deste
+arquivo mandava usar MCPs que metade dos agentes não tem. Confira antes de seguir a matriz:
 
-### 2. Engenheiro de Implementação Frontend & PWA (Desenvolvedor)
-- Desenvolver interfaces de usuário modernas, rápidas e responsivas utilizando **React 19**, **TypeScript** e **Tailwind CSS**.
-- Garantir que a aplicação cumpra os requisitos de PWA (manifesto, service worker, caching).
-- Realizar alterações em branches sombra no Git e executar testes estáticos locais antes de mesclar mudanças.
+| Você está no | MCPs que existem | Onde está o seu fluxo |
+|---|---|---|
+| **Cursor / Antigravity** | `filesystem`, `orchestrator`, `playwright`, `supabase`, `grep`, `shadcn`, `context7` — 7, em `.cursor/mcp.json` | este arquivo |
+| **Claude Code** | `context7`, `serena`, `skill-router` — 3, em escopo de usuário | [CLAUDE.md](CLAUDE.md), que tem precedência |
 
-### 3. Especialista em Banco de Dados & Supabase (Backend v12)
-- Projetar tabelas de banco de dados, migrações estruturadas e auditoria de segurança de Row Level Security (RLS).
-- Criar e depurar funções do banco (RPC) e triggers com a permissão correta.
-- Utilizar o **Supabase MCP** (`https://mcp.supabase.com/mcp`) para consultar esquemas, gerar tipagens automáticas para o TypeScript e verificar logs de funções Deno.
-
-### 4. Especialista em QA, Testes e Automação (Tester v12)
-- Criar e rodar testes de integração e ponta a ponta para validar fluxos críticos de negócio (checkout com WhatsApp, cupons, persistência de carrinho).
-- Usar o **Playwright MCP** e o **UI Annotator** para interagir visualmente com a interface e validar o comportamento responsivo móvel e offline.
-
-### 5. Orquestrador de Qualidade e Segurança (Reviewer v12)
-- Rodar e validar os testes e linters locais chamando o Modo Rápido da suíte de qualidade antes de aprovar a promoção de código.
-- Auditar a base de código contra vulnerabilidades conhecidas (usando relatórios como `SECURITY_REPORT.md`).
-- Tratar exceções de forma robusta e garantir que variáveis de ambiente críticas nunca sejam expostas.
-- Validar se as regras de concorrência e integridade do projeto são seguidas rigorosamente.
-
-### 9. Sniper Context & JIT Skill Orchestration (Orquestração em Tempo Real)
-- Sempre que for iniciar uma tarefa ou se deparar com um problema específico (ex: acessibilidade, performance, banco de dados, deploy, etc.), você DEVE chamar a ferramenta `auto_orchestrate_skills` do orquestrador passando uma busca/intento (ex: 'PWA performance check' ou 'Supabase RLS policy').
-- O orquestrador irá buscar na biblioteca de 2000+ skills, validar a qualidade/segurança da skill em tempo real (score >= 70) e instalá-la como uma skill JIT no diretório `.agents/skills/` local do projeto.
-- Isso garante que você sempre tenha as diretrizes mais precisas, seguras e atualizadas (o 'sniper context') sem poluir o seu contexto com centenas de diretrizes irrelevantes.
-- Declare obrigatoriamente as skills utilizadas no final da sua resposta.
-
-
-# Diretrizes de Desenvolvimento e Operação - IKCOUS Marketplace (v12 Local)
-
-Estas diretrizes complementam as regras do projeto e regulam o uso seguro das ferramentas de MCP e frameworks no workspace local do **IKCOUS Marketplace**.
+Se uma ferramenta citada aqui não estiver na sua lista, ela não existe para você — **não tente
+invocá-la e não invente substituto**. Diga que não tem e siga com o que tem.
 
 ---
 
-## 1. Princípios do Produto (PWA & UX)
+## Papéis
 
-- **Mobile First & PWA**: A interface deve ser impecavelmente fluida em smartphones. Toda funcionalidade de checkout, carrinho e busca deve rodar offline ou com conexões instáveis (Offline-first por meio de Service Workers).
-- **Aesthetics & Performance**: Usar fontes limpas (Inter, Outfit), animações de micro-interação suaves, Tailwind CSS e garantir que o carregamento inicial da página (Core Web Vitals) seja extremamente rápido.
+**1. Coordenador & Arquiteto PWA.** Coordena tarefas complexas, supervisiona a arquitetura
+offline-first e de Service Workers, e acompanha deploy e logs de build.
 
----
+**2. Engenheiro Frontend & PWA.** Interfaces em **React 19**, **TypeScript** e **Tailwind**.
+Garante manifesto, service worker e caching. Roda a verificação local antes de promover mudança.
 
-## 2. Uso Seguro do Supabase MCP
+**3. Especialista em Banco & Supabase.** Tabelas, migrações e auditoria de RLS. Funções RPC e
+triggers com a permissão correta. Tipagem TypeScript regenerada quando o esquema muda.
 
-O banco de dados do Supabase é a espinha dorsal de dados do marketplace. Siga estas restrições estritas:
-- **Segurança de RLS (Row Level Security)**: Toda tabela de dados do usuário (como perfis, pedidos e avaliações) deve ter RLS ativado por padrão.
-- **Funções SECURITY DEFINER**: Qualquer função SQL executada com privilégios elevados deve ter a cláusula `search_path = public` explícita para evitar ataques de busca de caminho. Apenas crie funções RPC se forem estritamente necessárias e auditadas.
-- **Ambiente Dev-Only**: O **Supabase MCP** não deve fazer modificações destrutivas ou migrações de dados em produção sem validação de rollback em sandbox/local.
-- **Tipagem Estática**: Sempre que alterar o banco de dados local ou remoto, execute a geração automática de tipos do TypeScript via Supabase MCP para manter a integridade estática no código frontend.
+**4. QA, Testes e Automação.** Valida os fluxos críticos de negócio — carrinho, cupom, checkout,
+Q&A — em múltiplos cenários de rede, e o comportamento responsivo e offline.
 
----
-
-## 3. Gestão de Deploy e Logs (Vercel MCP)
-
-- **Auditoria de Builds**: Após cada deploy automatizado ou solicitação de preview, use o **Vercel MCP** para inspecionar os logs de build. Corrija avisos de compilação, pacotes duplicados e erros de geração de páginas estáticas.
-- **Depuração de Erros em Produção**: Se houver relatos de falhas de usuários finais, consulte os logs de servidor e Edge Functions via Vercel MCP para identificar rotas de API quebradas ou problemas de latência.
+**5. Qualidade e Segurança.** Roda a verificação e **não aceita o "passou" de quem escreveu**.
+Audita contra vulnerabilidade conhecida (ver `SECURITY_REPORT.md`), garante que variável de
+ambiente crítica nunca seja exposta, e confere as regras de concorrência e integridade.
 
 ---
 
-## 4. Testes e Estabilidade (QA & Sandbox)
+## 1. Princípios do produto (PWA & UX)
 
-- **Especulação Paralela**: Mudanças estruturais na lógica de estado global (como Contexts de Autenticação e Carrinho) devem ser testadas em isolamento no diretório `/scratch` antes de serem promovidas ao código do projeto.
-- **Fluxos de Testes Automatizados**: Fluxos críticos (carrinho de compras, aplicação de cupons de desconto, checkout no WhatsApp e sistema de Q&A) devem ser validados usando testes do **Playwright MCP** para múltiplos cenários de rede.
+- **Mobile first & PWA.** A interface tem que ser fluida em smartphone. Checkout, carrinho e busca
+  precisam funcionar offline ou com conexão instável, por Service Worker.
+- **Estética e performance.** Fontes limpas (Inter, Outfit), micro-interação suave, Tailwind, e
+  carregamento inicial rápido (Core Web Vitals).
 
----
+## 2. Banco de dados — as regras que não se negociam
 
-## 5. Orquestração e Uso Mandatório de Skills (Habilidades v12)
+- **RLS.** Toda tabela de dado de usuário (perfil, pedido, avaliação) nasce com Row Level Security
+  ativado.
+- **`SECURITY DEFINER`.** Função com privilégio elevado precisa de `search_path = public`
+  explícito, senão vira vetor de ataque por busca de caminho. Só crie RPC se for necessária e
+  auditada.
+- **Tipagem estática.** Mudou o esquema, regenere os tipos TypeScript — senão o front mente sobre
+  a forma do dado.
 
-- **Priorizar Habilidades (Skills)**: Habilidades (Skills) são a principal ferramenta de capacitação e robustez do enxame de agentes. Sempre carregue e siga as diretrizes das skills JIT ativas (`antigravity-skill-orchestrator-v12`, `skill-installer-v12` e `skill-evaluator-v12`). Você deve carregar e usar skills proativamente para guiar praticamente todas as tarefas complexas de refatoração, teste, banco de dados ou integração.
-- **Uso e Abuso de Habilidades**: Considere o uso de skills obrigatório para fortalecer as capacidades do agente. Sempre use e abuse das diretrizes de skills para validar suas execuções sob sandbox, garantir cobertura de testes com Playwright e gerenciar transações atômicas no Git shadow branches. Evite edições ad-hoc sem o amparo de diretrizes e validações formais descritas nas skills.
+**E os perigos já medidos neste repositório, que valem para qualquer agente:**
 
----
+- **Este repositório é o app-molde, não uma loja.** Quando uma assinatura é vendida, os arquivos
+  são clonados e a loja do cliente é montada separada. O Supabase ligado aqui é de
+  desenvolvimento — medido em 10/08/2026: 64 pedidos em 5 meses, **um único e-mail de cliente
+  distinto**, 57 cancelados, 22 produtos. `npm run dev` aponta para ele, logado como admin.
 
----
+  O risco não some, **muda de lugar**: defeito escrito aqui é replicado em cada loja vendida, e
+  é lá que existe dinheiro. Rigor sobre o que o código faz; sobre escrever no banco, apenas
+  higiene (nome óbvio de teste, limpar depois).
+- **Nunca `supabase db push`.** Há 42 migrations locais nunca aplicadas e 28 versões no banco sem
+  arquivo. Enquanto isso não for resolvido, **nenhum cliente pode ter o schema reproduzido a
+  partir do repositório** — deixou de ser higiene e virou pré-requisito de venda.
+- **Migration não leva `BEGIN`/`COMMIT`.** Com eles, o `ROLLBACK` do script de prova vira no-op e
+  a mudança fica gravada.
+- **Backup é diário e não há PITR.** O custo de reverter é tempo remontando massa de
+  desenvolvimento, não pedido de cliente perdido.
+- **Nunca `--no-verify` no commit.** O hook de `secretlint` é a única trava contra credencial
+  vazada — o histórico deste repo já teve `service_role` e senha de banco commitadas.
 
-## 6. Homologação com Suíte de Qualidade (Compliance & Autonomia)
+## 3. Deploy e logs
 
-- **Validação Mandatória:** Qualquer alteração de código ou banco de dados deve ser validada por testes antes da conclusão da tarefa. O agente tem autonomia para escolher o nível de teste apropriado:
-  - **Modo Rápido (Geral):** Execute `C:\\Users\\Gabriel\\Documents\\Ferramentas para projetos\\Executar_Todas_Suites_Modo_Rapido.bat` para um diagnóstico ágil de linters (Biome, ESLint, etc.) e tipagem antes de pequenas entregas.
-  - **Modo Completo (Geral):** Execute `C:\\Users\\Gabriel\\Documents\\Ferramentas para projetos\\Executar_Todas_Suites_Modo_Completo.bat` para homologação profunda de builds, testes unitários, testes Deno/pgTAP e DAST antes de deploys, PRs ou refatorações de grande escala.
-  - **Execução Focalizada (Filtro por Componente):** Para otimizar tempo, o agente tem autonomia para executar diretamente scripts individuais específicos dentro das subpastas das 6 categorias de qualidade em `C:\\Users\\Gabriel\\Documents\\Ferramentas para projetos\\` (ex: rodar apenas `01_ESLint_Backend.bat` para código de funções, `06_Supabase_pgTAP.bat` se alterar RLS/banco de dados, ou `01_Playwright_E2E_UI.bat` para fluxos visuais do frontend).
-- **Tratamento de Resultados:** O agente deve ler as saídas do terminal ou logs consolidados e se auto-corrigir caso alguma validação falhe.
-- **Declaração Obrigatória de Skills da Biblioteca (+6.700 Skills JIT):** No final de cada resposta/execução, o agente DEVE incluir obrigatoriamente uma seção denominada `### Skills Utilizadas nesta Execução` listando especificamente os nomes das **skills especializadas da biblioteca carregadas/instaladas (pastas `jit-*` do diretório `.agents/skills`)**, e NÃO as meta-skills locais de infraestrutura.
+Deploy é na Vercel. **Não há Vercel MCP configurado** (a versão anterior deste arquivo mandava
+usar um): consulte build e logs pelo painel da Vercel ou pela CLI. Depois de deploy, confira
+aviso de compilação, pacote duplicado e erro de geração de página; em relato de falha de usuário,
+olhe os logs de Edge Function.
 
-### 9. Protocolo Obrigatório de Uso Intensivo e Proativo dos Servidores MCP e Skills JIT (14 MCPs Ativos)
-O agente DEVE utilizar obrigatoriamente e de forma proativa as ferramentas dos 14 servidores MCP configurados no ecossistema e a biblioteca de +6.700 skills JIT. Em NENHUMA hipótese o agente deve limitar-se a programar sem consultar as ferramentas disponíveis. Abaixo está a matriz de gatilhos operacionais mandatória:
+## 4. Testes e estabilidade
 
-1. **`orchestrator` MCP (`search_library_skills`, `auto_orchestrate_skills`, `validate_skill`, `call_server_tool`)**:
-   - **Gatilho**: Em toda e qualquer tarefa complexa, busque e orquestre skills JIT da biblioteca global de +6.700 skills. Sempre utilize `validate_skill` antes de promover a execução.
+- **Isolamento antes de promover.** Mudança estrutural em estado global (Context de Autenticação,
+  de Carrinho) se testa isolada em `scratch/` antes de entrar no código do projeto.
+- **Fluxos críticos.** Carrinho, cupom, checkout no WhatsApp e Q&A precisam de validação em mais
+  de um cenário de rede. No Cursor, use o `playwright` MCP para isso.
 
-2. **`grep` MCP (`https://mcp.grep.app`)**:
-   - **Gatilho**: Sempre que for criar componentes, lógicas de backend, hooks React ou resolver bugs, consulte padrões reais de referência no GitHub via `grep` MCP para extrair a arquitetura ideal.
+## 5. Skills
 
-3. **`supabase` MCP (`https://mcp.supabase.com/mcp`)**:
-   - **Gatilho**: Sempre que alterar esquemas de banco, tabelas, políticas de RLS, RPCs ou tipos no frontend, consulte o esquema no Supabase MCP e execute a geração estática de tipos TypeScript.
+**No Cursor/Antigravity:** o MCP `orchestrator` (`.agents/orchestrator.js`) expõe
+`search_library_skills`, `auto_orchestrate_skills`, `validate_skill`, `install_library_skills`,
+`uninstall_library_skills` e `clear_dynamic_skills`. Ao iniciar tarefa não trivial, busque e
+oriente-se pela skill; valide antes de promover.
 
-4. **`shadcn` MCP (`shadcn`)**:
-   - **Gatilho**: Ao criar ou refatorar componentes de interface de usuário (UI), consulte modelos e primitivas do `shadcn` para garantir visual moderno, acessibilidade e padrões limpos de Tailwind CSS.
+**No Claude Code:** o equivalente é o MCP `skill-router` — `buscar_skill` → `carregar_skill` →
+`ler_recurso_skill`. Ele **não indexa as skills de plugin** do Claude Code; essas se invocam pelo
+`Skill` tool, prefixadas (`engineering:code-review`).
 
-5. **`context7` MCP (`@upstash/context7-mcp`)**:
-   - **Gatilho**: Sempre que utilizar bibliotecas externas ou frameworks (React 19, Vite, Supabase, Tailwind, Zustand, Zod), consulte o `context7` para obter os trechos de documentação técnica mais recentes.
+**Declare as skills usadas** no fim da resposta. Liste as que você de fato carregou — as locais de
+`.agents/skills/` contam. (A regra anterior mandava declarar só as pastas `jit-*`; não existe
+nenhuma pasta `jit-*` hoje, então essa instrução nunca teve o que declarar.)
 
-6. **`magic` MCP (`@21st-dev/magic`)**:
-   - **Gatilho**: Utilize para gerar blocos de UI modernos, micro-interações dinâmicas e design systems visuais de ponta.
+## 6. Verificação — o que realmente cobra
 
-7. **`weweb-ai` MCP (`https://ai-api.weweb.io/v1/mcp`)**:
-   - **Gatilho**: Consulte para estruturar e validar diagramas de fluxo de lógica de negócios, integrações e workflows.
+**Os comandos do projeto são a fonte de verdade**, porque são o que o CI roda
+(`.github/workflows/ci.yml`), nesta ordem:
 
-8. **`github` MCP (`@modelcontextprotocol/server-github`)**:
-   - **Gatilho**: Consulte para inspecionar repositórios de referência, histórico de versões, commits e issues em projetos abertos.
+```bash
+npm ci
+npm run typecheck      # tsc -b --force
+npm test               # test:edge + test:unit + test:front
+npm run build
+npm run lint:links
+npm run lint:ratchet
+npm run size
+```
 
-9. **`upstash` MCP (`@upstash/mcp-server`)**:
-   - **Gatilho**: Utilize ao projetar camadas de cache Redis, rate-limiting ou bancos vetoriais serverless.
+`npm test` são três suítes com runners diferentes: `test:edge` (Deno, `supabase/functions/`),
+`test:unit` (Deno, `tests/`) e `test:front` (Vitest, `tests/front/`).
 
-10. **`linear` MCP (`https://mcp.linear.app/mcp`)**:
-    - **Gatilho**: Consulte para sincronizar requisitos, ler especificações de tarefas e gerenciar o backlog do projeto.
+Duas leituras que enganam:
 
-11. **`firecrawl` MCP (`firecrawl-mcp`)**:
-    - **Gatilho**: Sempre que precisar raspagem técnica, conversão de documentações web para Markdown ou extração de endpoints públicos.
+- **`eslint` tem 553 warnings pré-existentes e 0 erro.** Warning não reprova; **erro novo
+  reprova**, porque o teto do `.lint-baseline.json` está em 0.
+- **`lint:ratchet` acusa Biome acima do teto no Windows por causa de CRLF.** O próprio script
+  avisa que Biome só é cobrado no CI (Linux). Não é dívida.
 
-12. **`figma` MCP (`figma-developer-mcp`)**:
-    - **Gatilho**: Consulte para extrair especificações de design, paletas de cores, tipografia e medidas de layout.
+Há também hooks de git ativos (`lefthook.yml`): `secretlint` e guarda de branch no pre-commit,
+`commitlint` no commit-msg, guarda de branch e `typecheck` no pre-push.
 
-13. **`semgrep` & `ast-grep` MCP (`mcp-server-semgrep`, `@cabbages/tree-grep`)**:
-    - **Gatilho**: Execute para análise estática AST, refatoração estrutural de código e varredura de vulnerabilidades de segurança antes de concluir entregas.
+**As suítes `.bat` são complementares, não substitutas.** Em
+`C:\Users\Gabriel\Documents\Ferramentas para projetos\` há `Executar_Todas_Suites_Modo_Rapido.bat`
+(6 módulos, diagnóstico ágil) e `..._Modo_Completo.bat` (build, unitários, Deno/pgTAP, DAST), além
+dos scripts por categoria. Elas cobrem acessibilidade, SEO e PWA, que o CI não cobre. **Mas quem
+reprova o PR é o CI** — rodar só o `.bat` não prova que o merge passa.
 
-14. **`qdrant` MCP (`mcp-server-qdrant`)**:
-    - **Gatilho**: Utilize para persistência e consulta semântica em base vetorial de conhecimento local.
+**Leia a saída e se autocorrija** quando algo falhar. E cole a saída real no relatório: "deve estar
+passando" não é evidência.
+
+## 7. Os MCPs que existem, e quando usar cada um
+
+Sete, configurados em `.cursor/mcp.json` (mesma lista no global do Cursor). A versão anterior
+listava 14; sete daqueles — `magic`, `weweb-ai`, `github`, `upstash`, `linear`, `firecrawl`,
+`figma`, `semgrep`/`ast-grep`, `qdrant` — **não estão configurados em lugar nenhum**.
+
+| MCP | Quando |
+|---|---|
+| `orchestrator` | tarefa não trivial: busque skill antes de começar |
+| `context7` | API de biblioteca (React 19, Vite, Supabase, Tailwind) — em vez de escrever de memória |
+| `supabase` | esquema, tabela, política de RLS, RPC, geração de tipos |
+| `grep` | procurar padrão real de implementação em código aberto |
+| `shadcn` | criar ou refatorar componente de UI |
+| `playwright` | validar fluxo visual, responsivo e offline |
+| `filesystem` | leitura e escrita de arquivo fora do editor |
+
+Não se limite a programar sem consultar o que está disponível — mas também **não invoque o que não
+está na sua lista**. Se você é o Claude Code, a sua lista é outra: veja a tabela do topo.

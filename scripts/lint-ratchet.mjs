@@ -60,8 +60,32 @@ function rodar(comando) {
   }
 }
 
+/**
+ * O `--cache` NAO afrouxa a catraca: o eslint guarda o RESULTADO de cada
+ * arquivo (achados inclusive) chaveado por conteudo e pelo hash da config, e
+ * devolve o mesmo relatorio na rodada seguinte. O que ele evita e' reanalisar
+ * arquivo que nao mudou.
+ *
+ * `--cache-strategy content` em vez do padrao (metadata, por mtime+tamanho):
+ * trocar de branch reescreve o mtime de arquivo com o MESMO conteudo, e pelo
+ * padrao isso invalidaria o cache inteiro justamente no momento em que ele mais
+ * serve. Por conteudo, so muda o que mudou de verdade.
+ *
+ * POR QUE ISTO IMPORTA AQUI, medido em 10/08/2026: uma unica regra —
+ * `tailwindcss/no-custom-classname` — respondia por 97,9% do tempo do eslint
+ * nesta maquina (609 s de 627 s em 76 arquivos), enquanto produzia 33 dos 553
+ * warnings. No Linux do CI a catraca inteira fecha em 1,2 min; no Windows
+ * passava de 40. O custo caia sobre cada subagente que rodava a verificacao, e
+ * a regra continua ligada porque ela pega classe Tailwind escrita errada, que
+ * falha em silencio — o cache tira o preco sem tirar o sinal.
+ *
+ * No CI nao ha cache em disco, entao a primeira (e unica) rodada mede tudo do
+ * zero, como antes. Quem cobra continua sendo o CI.
+ */
 function contarEslint() {
-  const saida = rodar("npx eslint . --format json");
+  const saida = rodar(
+    "npx eslint . --format json --cache --cache-strategy content",
+  );
   const inicio = saida.indexOf("[");
   if (inicio === -1) {
     throw new Error(`eslint não devolveu JSON:\n${saida.slice(0, 800)}`);

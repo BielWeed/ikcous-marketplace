@@ -111,6 +111,12 @@ branches. Se você mergear o hotfix só na `main`, o bug volta no próximo relea
 porque a `develop` nunca recebeu a correção. Isso já é a causa mais comum de
 regressão em GitFlow — não confie na memória, siga o passo a passo abaixo.
 
+**Toda branch acima é apagada à mão depois de mergeada**, no remoto e no local.
+O `delete_branch_on_merge` do repositório está desligado (`INFRA-290`, #150), e
+é por isso que as receitas abaixo terminam sempre com um passo de limpeza. Nas
+que mergeiam em duas branches, esse passo vem **por último**: apagar antes do
+segundo PR deixa ele sem head ref.
+
 ---
 
 ## Mensagem de commit
@@ -221,7 +227,34 @@ git switch -c feat/<assunto>
 # trabalhe, commite
 git push -u origin feat/<assunto>
 gh pr create --base develop --fill
+
+# depois do merge, apague a branch. O GitHub NÃO faz isso sozinho.
+# Local primeiro, remoto depois — a ordem importa, ver abaixo:
+git switch develop && git pull
+git branch -d feat/<assunto>
+git push origin --delete feat/<assunto>
+git fetch --prune
 ```
+
+**A limpeza é manual de propósito.** O `delete_branch_on_merge` do repositório
+foi desligado em 05/08/2026 (`INFRA-290`, #150) porque o auto-delete apagava a
+branch de release no instante do merge e inviabilizava o passo 6 do
+[Release](#release) — que precisa dela viva. O preço é este: branch mergeada
+fica no remoto até alguém apagar.
+
+**Por que local antes de remoto.** Squash é o padrão aqui, e squash cria um
+commit novo: o original da sua branch nunca vira ancestral da `develop`. O
+`git branch -d` ainda aceita apagar, porque a branch bate com o ref de upstream
+(`origin/feat/...`) — ele avisa "não mergeada em HEAD" e apaga assim mesmo. Mas
+se você apagar o remoto primeiro, esse ref some no `--prune` e aí o `-d` passa a
+recusar, exigindo `-D`.
+
+Se cair no `-D`, confirme antes que o conteúdo entrou de verdade:
+`git diff develop <branch>` tem que sair vazio. `-D` não pergunta nada, e
+branch que nunca foi mergeada some igual.
+
+Branch local que virou `[gone]` porque o remoto sumiu primeiro é outro caso, e
+tem receita própria em [Branch órfã](#branch-órfã-quando-o-remoto-some-primeiro).
 
 **O que precisa estar verde antes de pedir revisão:** todos os cinco jobs.
 
@@ -242,6 +275,50 @@ neste plano.
 
 **PR parado é o principal modo de falha de dupla assíncrona.** Se um PR passar
 de 48h sem revisão, cobre no Discord. Não é cobrança pessoal, é o processo.
+
+### Branch órfã: quando o remoto some primeiro
+
+A receita acima apaga o local antes do remoto e não deixa branch órfã. Mas o
+inverso acontece: alguém aperta o botão "Delete branch" na página do PR, ou o
+outro dev apaga a branch dele e você tinha uma cópia local para revisar. Aí
+sobra branch local marcada `[gone]`.
+
+**Não use o `/clean_gone`** do plugin `commit-commands` para isso. Ele não faz
+`--prune` antes de olhar — então não enxerga justamente essas branches — e
+quando enxerga, apaga direto com `-D`, sem conferir nada. Medido em `INFRA-290`
+(#150). Faça assim:
+
+```bash
+# 1. sem o --prune a marca [gone] nem aparece
+git fetch --prune
+
+# 2. liste. Use -v: o -vv imprime "[origin/x: gone]" e quebra qualquer filtro
+git branch -v
+
+# 3. branch com prefixo "+" tem worktree; ela sai primeiro
+git worktree list
+git worktree remove <caminho>
+
+# 4. tente o -d antes do -D. Se apagar, acabou
+git branch -d <branch>
+```
+
+**Se o `-d` recusar com `not fully merged`, pare.** Sem o ref de upstream, ele
+recusa até branch que foi mergeada por squash — a recusa **não** distingue
+trabalho salvo de trabalho perdido, e o `-D` apaga os dois calados. Quem
+distingue é o diff:
+
+```bash
+git diff origin/develop <branch>
+```
+
+- **Vazio** → o conteúdo entrou. `git branch -D <branch>`.
+- **Com conteúdo** → há trabalho fora da `develop`. Não apague; fale com o dono
+  da branch. Se for sua, abra o PR que faltou.
+
+O `origin/` não é detalhe: você acabou de dar `fetch`, não `pull`, então a
+`develop` local costuma estar atrás. Comparar contra ela acusa conteúdo em
+branch já mergeada. Para `hotfix/` e `release/`, compare contra `origin/main`.
 
 ---
 
@@ -270,7 +347,22 @@ git push origin v1.2.0
 
 # 6. E ENTÃO O PASSO QUE TODO MUNDO ESQUECE:
 gh pr create --base develop --head release/1.2.0 --title "chore: volta a release 1.2.0 para develop"
+
+# 7. só DEPOIS do passo 6 mergeado, apague a branch:
+git switch develop && git pull
+git branch -d release/1.2.0
+git push origin --delete release/1.2.0
+git fetch --prune
 ```
+
+**O passo 7 vem por último por um motivo.** O passo 6 precisa da
+`release/1.2.0` viva no remoto: sem ela o `gh pr create` falha com
+`No commits between develop and release/1.2.0 / Head ref must be a branch`.
+Foi o que aconteceu na 1.0.3, quando o repositório ainda tinha
+`delete_branch_on_merge: true` e o GitHub apagou a branch no merge do passo 4 —
+ela precisou ser republicada a partir da cópia local para o passo 6 sair. O
+auto-delete foi desligado por causa disso (`INFRA-290`, #150). Se um dia for
+religado, o passo 6 volta a exigir `git push origin release/X.Y.Z` antes.
 
 Versionamento semântico, sobre o comportamento da **loja**, não do código:
 
@@ -309,10 +401,19 @@ git tag -a v1.2.1 -m "hotfix <assunto>" && git push origin v1.2.1
 
 # 3. O PASSO QUE CAUSA REGRESSÃO QUANDO ESQUECIDO:
 gh pr create --base develop --head hotfix/<assunto> --title "fix: leva o hotfix <assunto> para develop"
+
+# 4. só depois do passo 3 mergeado, apague a branch:
+git switch develop && git pull
+git branch -d hotfix/<assunto>
+git push origin --delete hotfix/<assunto>
+git fetch --prune
 ```
 
 Se você pular o passo 3, o bug **volta** no próximo release, porque a `develop`
 nunca recebeu a correção — e vai voltar sem ninguém entender por quê.
+
+O passo 4 vem depois do 3 pela mesma razão do release: o PR para a `develop`
+precisa da branch viva. Apagar antes obriga a republicá-la.
 
 Antes de fechar: escreva no Discord o que aconteceu, o que causou e o que
 impediria de acontecer de novo. Isso vira task, não culpa.
@@ -348,10 +449,31 @@ Nenhum PR que altera schema é mergeado sem, no PR:
 O checklist condicional do template de PR cobre isso. Marque a label
 `toca-banco` na issue.
 
-> Pendência conhecida: a migration
-> `supabase/migrations/20260729000002_shipping_quote_validation_v23.sql` está
-> validada (14/14 em transação com `ROLLBACK`) mas **ainda não aplicada** em
-> produção. Não assuma que a RPC `create_marketplace_order_v23` existe no banco.
+> **Não existe migration pendente hoje.** Medido no banco em 05/08/2026, depois
+> da AUTH-020 (#154): o ledger está em 126 linhas e as duas últimas que este
+> documento acompanhava entraram — `20260729000002` (validação de cotação de
+> frete) e `20260805120000` (OTP apontando para o projeto certo).
+>
+> Ledger não prova nada sozinho, então confirmei os objetos:
+> `create_marketplace_order_v23` existe com uma definição, e os quatro
+> marcadores da v23 (`0.05`, `shipping_quotes`, `v_calculated_total`,
+> `p_total_amount`) estão no corpo vivo **e** no arquivo.
+>
+> Este bloco dizia o contrário até hoje — "não assuma que a RPC
+> `create_marketplace_order_v23` existe no banco" — e estava errado para o lado
+> perigoso: mandava o dev programar defesa para um problema que não existe. Foi
+> escrito quando era verdade e ninguém voltou para conferir. **Antes de
+> acrescentar uma pendência aqui, meça; antes de confiar numa que já está,
+> meça também.** A consulta:
+>
+> ```sql
+> SELECT version FROM supabase_migrations.schema_migrations
+>  WHERE version IN ('<as que te interessam>');
+>
+> SELECT pg_get_functiondef(p.oid)
+>   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+>  WHERE n.nspname = 'public' AND p.proname = '<funcao>';
+> ```
 
 ---
 
@@ -362,7 +484,7 @@ O checklist condicional do template de PR cobre isso. Marque a label
 | Job | Comando | Estado em 30/07/2026 |
 | --- | --- | --- |
 | `Tipos` | `npm run typecheck` | verde — 911 arquivos, 16s |
-| `Testes (Deno)` | `npm test` | verde — 12 testes, ~30ms |
+| `Testes` | `npm test` | verde — 66 testes em ~5,8 s (medido em 05/08/2026: 32 Deno de edge function + 11 Deno do Truth Gate + 23 vitest. O job chamava `Testes (Deno)` e rodava 12 até a INFRA-150 e a PUSH-010 entrarem) |
 | `Build e tamanho` | `npm run build` + `npm run size` | verde — 515 kB de 800 kB |
 | `Varredura de segredo` | secretlint no diff | verde — 0 achados |
 | `Catraca de lint` | `npm run lint:ratchet` | verde — dívida no teto |

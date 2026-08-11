@@ -1,17 +1,25 @@
 {
   "name": "ikcous-marketplace",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.1.0",
+  "description": "Marketplace IKCOUS — PWA de catálogo, carrinho e pedidos, com painel do lojista, sobre Supabase.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BielWeed/ikcous-marketplace.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "npx tsc -b && vite build",
-    "lint": "eslint .",
+    "lint": "eslint . --cache --cache-strategy content",
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
+    "lint:links": "node scripts/verifica-links-md.mjs",
     "typecheck": "tsc -b --force",
-    "test": "npm run test:edge && npm run test:unit",
-    "test:edge": "deno test --allow-all --no-check supabase/functions/calculate-shipping/index_test.ts",
-    "test:unit": "deno test --allow-all --no-check tests/",
+    "test": "npm run test:edge && npm run test:unit && npm run test:front",
+    "test:edge": "deno test --allow-all --no-check supabase/functions/",
+    "test:unit": "deno test --allow-all --no-check --ignore=tests/front tests/",
+    "test:front": "vitest run",
+    "test:front:watch": "vitest",
     "secretlint": "secretlint --secretlintignore .secretlintignore \"**/*\"",
     "prepare": "lefthook install || exit 0",
     "knip": "knip",
@@ -78,6 +86,7 @@
     "eslint-plugin-tailwindcss": "^3.18.0",
     "globals": "^16.5.0",
     "htmlhint": "^1.1.4",
+    "jsdom": "^29.1.1",
     "kimi-plugin-inspect-react": "^1.0.3",
     "knip": "^5.45.0",
     "lefthook": "^2.1.10",
@@ -97,7 +106,8 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.3.6",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "eslint": {

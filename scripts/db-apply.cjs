@@ -12,7 +12,11 @@
  *
  * O QUE ELE FAZ, nesta ordem:
  *   1. Salva num arquivo a definição ATUAL de cada função que a migration toca,
- *      para servir de rollback.
+ *      para servir de rollback. ATENÇÃO AO ALCANCE: é só isso que ele salva.
+ *      ADD COLUMN, CREATE INDEX, constraint e qualquer UPDATE/INSERT/DELETE da
+ *      migration NÃO entram no rollback e continuam sendo desfeitos à mão. O
+ *      cabeçalho do arquivo gerado diz isso, e grita quando o arquivo sai sem
+ *      nenhuma instrução.
  *   2. Aplica cada migration numa transação própria. Se falhar, faz ROLLBACK e para.
  *   3. Registra a versão em supabase_migrations.schema_migrations.
  *   4. Reexecuta uma verificação: confere se os marcadores esperados estão mesmo
@@ -37,14 +41,20 @@ const path = require("node:path");
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const MIGRATIONS_DIR = path.join(PROJECT_ROOT, "supabase", "migrations");
 
-let Client;
-try {
-  ({ Client } = require("pg"));
-} catch {
-  console.error(
-    "Pacote 'pg' não encontrado. Instale uma vez com:\n\n  npm i -D pg\n",
-  );
-  process.exit(1);
+/**
+ * O `pg` é carregado só na hora de conectar, e não no topo, para que
+ * `montarRollback` possa ser importado por um teste sem exigir node_modules
+ * (a suíte deste projeto roda em Deno, sem `npm ci`).
+ */
+function carregarClient() {
+  try {
+    return require("pg").Client;
+  } catch {
+    console.error(
+      "Pacote 'pg' não encontrado. Instale uma vez com:\n\n  npm i -D pg\n",
+    );
+    process.exit(1);
+  }
 }
 
 /** Marcadores que devem existir na função depois de aplicada. */
@@ -89,6 +99,143 @@ const VERIFICACOES = {
       "SET estoque = estoque + v_item.quantity",
     ],
   },
+  "20260805120000_otp_aponta_para_o_projeto_certo.sql": {
+    funcao: "handle_new_otp_verification",
+    esperado: [
+      // O destino certo. Entre 08/07 e 05/08/2026 o corpo vivo apontava para
+      // jvgyjlbjhbfrncwbytls, onde send-otp-email nao existe — 404 silencioso.
+      "https://cafkrminfnokvgjqtkle.functions.supabase.co/send-otp-email",
+      // A credencial vem do Vault. Se esta linha sumir, voltou o caminho por
+      // app_settings/header, que manda a chave anon e leva 401.
+      "FROM vault.decrypted_secrets",
+      "WHERE name = 'otp_trigger_secret'",
+      // Sem segredo a funcao falha em vez de gravar um OTP que nao seria
+      // entregue. E o PEDIDO-080 visto pelo lado do banco.
+      "RAISE EXCEPTION USING",
+    ],
+  },
+  "20260807000000_reserva_com_expiracao.sql": [
+    {
+      funcao: "devolver_estoque",
+      esperado: [
+        // Guarda do IF/ELSE (variante XOR produto), nao dois IF independentes.
+        // Se alguem trocar por dois IF, este ELSE colado no UPDATE de produtos
+        // deixa de existir no corpo, e a verificacao reprova. E essa a regra
+        // que evita creditar variante E produto pai a cada expiracao.
+        "ELSE\n            UPDATE public.produtos",
+        "SET stock_increment = stock_increment + v_item.quantity",
+      ],
+    },
+    {
+      funcao: "expirar_pedidos_vencidos",
+      esperado: [
+        // So varre pedido 'aguardando': sem este filtro, a funcao passaria a
+        // cancelar pedido ja pago ou historico (payment_status NULL).
+        "WHERE payment_status = 'aguardando'",
+        // So varre pedido 'pending': sem este filtro, um pedido que o
+        // cliente ja cancelou pelo app (a update_order_status_atomic devolve
+        // o estoque no cancelamento e nao escreve payment_status) seria
+        // creditado uma segunda vez pela varredura.
+        "AND status = 'pending'",
+        // FOR UPDATE SKIP LOCKED: sem ele, a varredura disputa a linha com o
+        // webhook da Fase 3 em vez de pular o pedido que ja esta sendo
+        // confirmado — e pode expirar um pedido que acabou de ser pago.
+        "FOR UPDATE SKIP LOCKED",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        // O carimbo desta task: sem ele o pedido nasce sem prazo e a
+        // varredura nunca o alcanca.
+        "'aguardando', now() + interval '30 minutes'",
+        // Recalculo do total pelos precos do banco (Price Tampering
+        // Protection da v23). Se um REPLACE mal copiado apagar esta linha, o
+        // cliente volta a poder mandar o proprio total — e a verificacao tem
+        // de gritar em vez de deixar passar em silencio.
+        "IF ABS(v_calculated_total - p_total_amount) > 0.05 THEN",
+        // Checagem de estoque contra o valor do banco (nao o do cliente).
+        // Mesma logica: sem esta linha o pedido pode vender o que nao tem.
+        "IF v_db_stock < v_quantity THEN",
+        // Paridade de frete gratis para usuario logado (a correcao da
+        // 20260729000000_fix_free_shipping_rule_parity.sql, hoje guardada
+        // pela entrada da v22 acima). Quando a Task 6 apontar o front para a
+        // v24, e esta linha que passa a ser a guarda que importa — sem
+        // marcador aqui, um REPLACE mal copiado da v24 poderia perder o
+        // predicado e ninguem notaria, porque a entrada da v22 continuaria
+        // passando para uma funcao que ninguem mais chama.
+        "OR (v_user_id IS NOT NULL AND v_calculated_subtotal >= v_free_shipping_min)",
+      ],
+    },
+  ],
+  "20260808000000_confirmar_pagamento.sql": [
+    {
+      funcao: "confirmar_pagamento",
+      esperado: [
+        // FOR UPDATE sem SKIP LOCKED: e' o que faz o webhook ESPERAR a
+        // varredura em vez de pular a linha. Trocado por SKIP LOCKED, o
+        // pagamento fica sem registro e o teste nao pega.
+        "FOR UPDATE;",
+        // A releitura que decide. Sem ela volta o UPDATE cego que produz
+        // pedido 'pago' com status 'cancelled' pela rota da EXPIRACAO (a
+        // varredura ja marcou 'expirado' antes do webhook chegar). A mesma
+        // combinacao pela rota do CANCELAMENTO NO APP e' o que a guarda
+        // "IF v_pedido.status = 'cancelled' THEN" logo abaixo, dentro do
+        // ramo 'aguardando', previne — ver 20260810000000_confirmar_
+        // pagamento_guarda_status.sql.
+        "IF v_pedido.payment_status = 'expirado' THEN",
+        "RETURN 'pago_apos_expirar';",
+        // A guarda que impede credito de estoque em dobro.
+        "IF v_pedido.payment_status <> 'aguardando' THEN",
+      ],
+    },
+  ],
+  "20260808000100_reconciliacao.sql": [
+    {
+      funcao: "pagamentos_a_reconciliar",
+      esperado: [
+        // Sem isto a varredura revisita pedido ja reconciliado a cada ciclo.
+        "AND paid_at IS NULL",
+        // A janela. Sem ela vira varredura do historico inteiro a cada 10 min.
+        "interval '24 hours'",
+        // So quem chegou a ter cobranca no MP.
+        "AND gateway_payment_id IS NOT NULL",
+        // DESC, nao ASC: sem isto o LIMIT 100 sempre escolhe os candidatos
+        // mais velhos (menos capazes de ainda mudar de estado) em vez dos
+        // que expiraram ha pouco (unicos com chance real de terem sido
+        // pagos). Achado da revisao do PR #179 (Item 3).
+        "ORDER BY expires_at DESC",
+      ],
+    },
+  ],
+  "20260810000000_confirmar_pagamento_guarda_status.sql": [
+    {
+      funcao: "confirmar_pagamento",
+      esperado: [
+        // A guarda que faltava (Item 1 do achado bloqueante do PR #179): sem
+        // ela, pedido cancelado pelo app com PIX pago depois virava 'pago'
+        // com status 'cancelled' — dinheiro recebido, estoque ja revendivel,
+        // sem sinal de atencao no admin.
+        //
+        // Marcador e' o BLOCO INTEIRO, nao as duas linhas soltas de antes.
+        // "IF v_pedido.status = 'cancelled' THEN" e "SET payment_status =
+        // 'pago_apos_expirar'," JA EXISTEM, separados, em outros pontos desta
+        // mesma funcao (ramo do estorno e ramo do 'expirado') — provado
+        // contra uma versao SEM esta guarda: os dois marcadores soltos davam
+        // "ok" mesmo faltando exatamente o trecho que esta migration
+        // acrescenta. So o bloco junto, nesta ordem, prova que a guarda nova
+        // esta no lugar certo.
+        `IF v_pedido.status = 'cancelled' THEN
+                UPDATE public.marketplace_orders
+                   SET payment_status = 'pago_apos_expirar',
+                       paid_at        = now(),
+                       updated_at     = now()
+                 WHERE id = p_order_id;
+                RETURN 'pago_apos_expirar';
+            END IF;`,
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
@@ -114,6 +261,118 @@ function funcoesAlteradas(sql) {
   let m;
   while ((m = re.exec(sql))) nomes.add(m[1]);
   return [...nomes];
+}
+
+/**
+ * Monta o texto do arquivo de rollback a partir do que já foi lido do banco.
+ *
+ * `restauracoes` é uma lista de `{ funcao, defs }` — `defs` vazio quer dizer
+ * que a função ainda não existe no banco, então não há definição a restaurar.
+ *
+ * POR QUE O CABEÇALHO É CONDICIONAL: até 06/08/2026 ele afirmava, sempre,
+ * "para desfazer, rode este arquivo inteiro no SQL Editor". Isso só é verdade
+ * quando a migration redefine função, porque `funcoesAlteradas()` é a única
+ * coisa que este script sabe ler. Naquele dia dois rollbacks saíram sem uma
+ * única instrução — um deles referente a uma migration que já tinha cancelado
+ * 13 pedidos e creditado 33 unidades de estoque — e mesmo assim mandavam
+ * rodar o arquivo para desfazer. Quem lê esse arquivo lê durante um incidente,
+ * com backup de até 24 h de idade e sem PITR neste projeto: um "rodei e não
+ * aconteceu nada" vira "então já estava desfeito".
+ *
+ * Devolve `{ conteudo, instrucoes }`, onde `instrucoes` é o número de
+ * definições de função efetivamente gravadas — 0 significa arquivo inerte.
+ */
+function montarRollback(arquivos, restauracoes) {
+  const corpo = [];
+  let instrucoes = 0;
+  for (const { funcao, defs } of restauracoes) {
+    if (defs.length === 0) {
+      corpo.push(`-- ${funcao}: não existe hoje no banco (será criada).`, "");
+      continue;
+    }
+    corpo.push(`-- ${funcao}`, ...defs.map((d) => `${d};`), "");
+    instrucoes += defs.length;
+  }
+
+  // `restauracoes` mistura dois casos que o cabeçalho não pode tratar como
+  // iguais: função que já existia (dá para restaurar a definição anterior) e
+  // função que a migration está CRIANDO (não existe definição anterior — o
+  // único jeito de desfazer é DROP FUNCTION, que este script não gera).
+  const restauradas = restauracoes.filter((r) => r.defs.length > 0);
+  const criadas = restauracoes.filter((r) => r.defs.length === 0);
+  const nomesCriadas = criadas.map((r) => r.funcao).join(", ");
+
+  const cabecalho = [
+    `-- Rollback gerado automaticamente antes de aplicar: ${arquivos.join(", ")}`,
+    "--",
+  ];
+
+  if (restauracoes.length === 0) {
+    // Nenhum CREATE OR REPLACE FUNCTION em nenhuma migration: só aqui "não
+    // redefine função" é verdade.
+    cabecalho.push(
+      "-- ATENÇÃO: ESTE ROLLBACK NÃO CONTÉM NENHUM COMANDO EXECUTÁVEL.",
+      "-- Rodar este arquivo NÃO DESFAZ NADA.",
+      "--",
+      "-- Esta migration não redefine função, e o db-apply só sabe restaurar",
+      "-- definição de função (CREATE OR REPLACE FUNCTION public.<nome>).",
+      "-- Desfazer o resto dela — coisas como ADD COLUMN, CREATE INDEX,",
+      "-- constraint, UPDATE/INSERT/DELETE — é MANUAL, e o ponto de partida",
+      "-- é ler a própria migration em supabase/migrations/.",
+    );
+  } else if (restauradas.length === 0) {
+    // Toca função, mas todas novas: nada a restaurar, arquivo continua
+    // inerte — mas por um motivo diferente do caso acima, e o cabeçalho tem
+    // de nomear a criação em vez de negá-la.
+    cabecalho.push(
+      "-- ATENÇÃO: ESTE ROLLBACK NÃO CONTÉM NENHUM COMANDO EXECUTÁVEL.",
+      "-- Rodar este arquivo NÃO DESFAZ NADA.",
+      "--",
+      "-- Esta migration CRIA função nova — a função ainda não existia no",
+      `-- banco, então não há definição anterior para restaurar: ${nomesCriadas}.`,
+      "-- Desfazê-la(s) é DROP FUNCTION public.<nome>, manual (este script não",
+      "-- gera esse comando). O resto da migration — coisas como ADD COLUMN,",
+      "-- CREATE INDEX, constraint, UPDATE/INSERT/DELETE — também é MANUAL;",
+      "-- o ponto de partida é ler a própria migration em",
+      "-- supabase/migrations/.",
+    );
+  } else {
+    // Restaura ao menos uma função que já existia.
+    cabecalho.push(
+      "-- ESCOPO: este arquivo restaura APENAS a definição anterior das funções",
+      "-- listadas abaixo. É o único tipo de rollback que o db-apply sabe gerar.",
+      "-- O resto da migration NÃO está aqui: coisas como ADD COLUMN, CREATE",
+      "-- INDEX, constraint e UPDATE/INSERT/DELETE continuam aplicados e são",
+      "-- manuais.",
+      "--",
+      "-- Para restaurar as funções, rode este arquivo no SQL Editor. Isso não",
+      "-- desfaz a migration inteira.",
+    );
+    if (criadas.length > 0) {
+      // Caso misto: a mesma migration restaura uma função e cria outra.
+      // Rodar o arquivo some com a impressão de "desfiz tudo", mas a função
+      // nova continua viva no banco.
+      cabecalho.push(
+        "--",
+        "-- Esta migration também CRIA função nova, que não existia no banco:",
+        `-- ${nomesCriadas}. Restaurar as funções acima NÃO remove as novas.`,
+        "-- Desfazê-la(s) é DROP FUNCTION public.<nome>, manual (este script",
+        "-- não gera esse comando).",
+      );
+    }
+  }
+  cabecalho.push("");
+
+  return {
+    conteudo: [...cabecalho, ...corpo].join("\n"),
+    instrucoes,
+    // Devolvido para o `main()` reaproveitar em vez de derivar de novo. A
+    // mensagem do terminal e o cabeçalho do arquivo TÊM de concordar sobre o
+    // que é "função criada" — duas derivações independentes divergiriam em
+    // silêncio no dia em que a definição mudar, e o assunto deste script é
+    // justamente arquivo e terminal contarem a mesma história.
+    nomesCriadas,
+  };
 }
 
 async function definicaoAtual(client, nomeFuncao) {
@@ -145,6 +404,7 @@ async function main() {
     }
   }
 
+  const Client = carregarClient();
   const client = new Client({
     connectionString: lerDatabaseUrl(),
     ssl: { rejectUnauthorized: false },
@@ -156,36 +416,63 @@ async function main() {
   console.log(`Migrations a aplicar: ${arquivos.length}\n`);
 
   // 1. Rollback das definições atuais.
-  const partesRollback = [
-    `-- Rollback gerado automaticamente antes de aplicar: ${arquivos.join(", ")}`,
-    "-- Para desfazer, rode este arquivo inteiro no SQL Editor.",
-    "",
-  ];
+  const restauracoes = [];
   for (const nome of arquivos) {
     const sql = fs.readFileSync(
       path.join(MIGRATIONS_DIR, path.basename(nome)),
       "utf8",
     );
     for (const fn of funcoesAlteradas(sql)) {
-      const defs = await definicaoAtual(client, fn);
-      if (defs.length === 0) {
-        partesRollback.push(
-          `-- ${fn}: não existe hoje no banco (será criada).`,
-          "",
-        );
-        continue;
-      }
-      partesRollback.push(`-- ${fn}`, ...defs.map((d) => `${d};`), "");
+      restauracoes.push({ funcao: fn, defs: await definicaoAtual(client, fn) });
     }
   }
+  const { conteudo, instrucoes, nomesCriadas } = montarRollback(
+    arquivos,
+    restauracoes,
+  );
   const arquivoRollback = path.join(
     PROJECT_ROOT,
     `rollback-${arquivos[0].replace(/\.sql$/, "")}.sql`,
   );
-  fs.writeFileSync(arquivoRollback, partesRollback.join("\n"));
-  console.log(
-    `Rollback salvo em: ${path.relative(PROJECT_ROOT, arquivoRollback)}\n`,
-  );
+  fs.writeFileSync(arquivoRollback, conteudo);
+  const caminhoRollback = path.relative(PROJECT_ROOT, arquivoRollback);
+  // Mesma distinção do cabeçalho do arquivo, aqui no terminal: quem aplica a
+  // migration costuma ler só esta linha e nunca abrir o arquivo. O
+  // `nomesCriadas` vem de `montarRollback` de propósito — ver o comentário lá.
+  const temCriadas = nomesCriadas !== "";
+  if (instrucoes === 0 && !temCriadas) {
+    console.warn(
+      `ATENÇÃO: o rollback gerado NÃO CONTÉM NENHUM COMANDO — rodá-lo não desfaz nada.
+   Arquivo:  ${caminhoRollback}
+   Motivo:   nenhuma destas migrations redefine função existente, e o db-apply
+             só sabe restaurar definição de função. Desfazer o resto delas
+             (ADD COLUMN, CREATE INDEX, constraint, UPDATE/INSERT/DELETE, entre
+             outras coisas) é MANUAL. Escreva o desfazer À MÃO ANTES de seguir.\n`,
+    );
+  } else if (instrucoes === 0) {
+    // Toca função, mas todas novas: nada a restaurar, e "não redefine
+    // função" seria falso — foi exatamente essa frase que o achado da
+    // revisão pegou.
+    console.warn(
+      `ATENÇÃO: o rollback gerado NÃO CONTÉM NENHUM COMANDO — rodá-lo não desfaz nada.
+   Arquivo:  ${caminhoRollback}
+   Motivo:   esta(s) migration(ões) CRIA(M) função nova, que ainda não existia
+             no banco: ${nomesCriadas}. Não há definição anterior para
+             restaurar. Desfazê-la(s) é DROP FUNCTION manual (este script não
+             gera esse comando). Escreva o desfazer À MÃO ANTES de seguir.\n`,
+    );
+  } else if (!temCriadas) {
+    console.log(
+      `Rollback salvo em: ${caminhoRollback} (${instrucoes} definição(ões) de função; o resto da migration é manual)\n`,
+    );
+  } else {
+    // Caso misto: restaura uma função e cria outra na mesma migration.
+    console.log(
+      `Rollback salvo em: ${caminhoRollback} (${instrucoes} definição(ões) de função; o resto da migration é manual)
+   ATENÇÃO: esta(s) migration(ões) também CRIA(M) função nova (${nomesCriadas}) —
+   restaurar as funções acima NÃO remove as novas. DROP FUNCTION é manual.\n`,
+    );
+  }
 
   if (dryRun) {
     console.log("--dry-run: nada foi aplicado.");
@@ -224,29 +511,55 @@ async function main() {
   let tudoOk = true;
   for (const nome of arquivos) {
     const base = path.basename(nome);
-    const checagem = VERIFICACOES[base];
-    if (!checagem) {
+    const registro = VERIFICACOES[base];
+    if (!registro) {
       console.log(`  ${base}: sem verificação registrada, pulando.`);
       continue;
     }
-    const [def] = await definicaoAtual(client, checagem.funcao);
-    for (const marcador of checagem.esperado) {
-      const ok = Boolean(def?.includes(marcador));
-      if (!ok) tudoOk = false;
-      console.log(`  ${ok ? "ok     " : "AUSENTE"}  ${marcador.slice(0, 64)}`);
+    // Um arquivo pode redefinir mais de uma função (ex.: a mesma migration
+    // reaplicada task a task) — registro vira lista nesse caso.
+    const checagens = Array.isArray(registro) ? registro : [registro];
+    for (const checagem of checagens) {
+      const [def] = await definicaoAtual(client, checagem.funcao);
+      // Normaliza \r\n -> \n dos dois lados antes de comparar. O repo nao tem
+      // .gitattributes e core.autocrlf converte as migrations para CRLF no
+      // working tree a cada checkout/clone/stash; sem isso, um marcador que
+      // cruza uma quebra de linha (ex.: "ELSE\n            UPDATE ...") deixa
+      // de casar contra um corpo em CRLF e a verificacao grita AUSENTE para
+      // uma migration que esta correta — DEPOIS do COMMIT ja ter acontecido.
+      const defNormalizado = def?.replace(/\r\n/g, "\n");
+      for (const marcador of checagem.esperado) {
+        const marcadorNormalizado = marcador.replace(/\r\n/g, "\n");
+        const ok = Boolean(defNormalizado?.includes(marcadorNormalizado));
+        if (!ok) tudoOk = false;
+        const rotulo = `${checagem.funcao}: ${marcador.slice(0, 64)}`;
+        console.log(`  ${ok ? "ok     " : "AUSENTE"}  ${rotulo}`);
+      }
     }
   }
 
   await client.end();
   console.log(
     tudoOk
-      ? "\nTudo aplicado e verificado."
-      : "\nATENÇÃO: algum marcador esperado não apareceu. Confira antes de confiar.",
+      ? "\nTudo aplicado e verificado. (O COMMIT do passo 2 já aconteceu antes desta checagem.)"
+      : `\nATENÇÃO: algum marcador esperado não apareceu. Confira antes de confiar.
+   O COMMIT do passo 2 já aconteceu — esta verificação roda DEPOIS dele, então
+   o que foi aplicado já está gravado no banco independente do resultado
+   acima; não há "não aplicar" a partir daqui.
+   Ponto de partida para desfazer: ${caminhoRollback}, salvo no passo 1 — leia
+   acima o que ele cobre e o que continua manual.`,
   );
   process.exit(tudoOk ? 0 : 1);
 }
 
-main().catch((erro) => {
-  console.error("Erro:", erro.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((erro) => {
+    console.error("Erro:", erro.message);
+    process.exit(1);
+  });
+}
+
+// Exportado para tests/db_apply_rollback_test.ts, que fixa o cabeçalho do
+// arquivo de rollback. O guarda acima existe por causa disso: sem ele, importar
+// o módulo dispararia a aplicação das migrations.
+module.exports = { funcoesAlteradas, montarRollback };

@@ -47,7 +47,18 @@ interface StoreContextType {
   isLoaded: boolean;
   products: Product[];
   loadingProducts: boolean;
-  updateConfig: (updates: Partial<StoreConfig>) => Promise<void>;
+  /**
+   * Devolve `true` se a configuração foi mesmo gravada, `false` se não.
+   *
+   * Era `Promise<void>` e engolia qualquer falha — RLS, sessão expirada, rede —
+   * devolvendo normalmente. Todo chamador seguia para `onSetDirty(false)`,
+   * fechava modal e mostrava toast de sucesso em cima de uma gravação que não
+   * aconteceu (ADMIN-010, #94).
+   *
+   * Quem chama TEM de olhar o retorno. O toast de erro já sai daqui de dentro;
+   * o chamador só precisa não seguir em frente.
+   */
+  updateConfig: (updates: Partial<StoreConfig>) => Promise<boolean>;
   refresh: (options?: { onlyConfig?: boolean }) => Promise<void>;
   fetchProducts: () => Promise<void>;
   calculateShipping: (
@@ -439,11 +450,11 @@ export function StoreProvider({
   }, [isAdmin, loading]);
 
   const updateConfig = useCallback(
-    async (updates: Partial<StoreConfig>) => {
+    async (updates: Partial<StoreConfig>): Promise<boolean> => {
       try {
         if (!isAdmin) {
           toast.error("Acesso negado");
-          return;
+          return false;
         }
 
         const dbUpdates: any = {};
@@ -503,9 +514,11 @@ export function StoreProvider({
         });
         if (updates.primaryColor) applyBranding(updates.primaryColor);
         toast.success("Configurações salvas");
+        return true;
       } catch (err) {
         console.error("[StoreContext] Update error:", err);
         toast.error("Erro ao salvar as configurações");
+        return false;
       }
     },
     [isAdmin, applyBranding],

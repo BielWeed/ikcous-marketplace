@@ -3,6 +3,7 @@ import type {
   Order,
   OrderStatus,
   PaymentMethod,
+  PaymentStatus,
   Product,
   ProductVariant,
 } from "@/types";
@@ -228,6 +229,9 @@ export function mapOrderFromDB(
     shipping: Number(row.shipping || 0),
     discount: Number(row.discount || 0),
     paymentMethod: (row.payment_method as PaymentMethod) || "cash",
+    // Fiel à coluna: `null` continua `null`, não vira "sem_cobranca" aqui.
+    // Quem traduz é o PaymentStatusBadge (src/components/admin/orders/OrderStatusBadge.tsx).
+    paymentStatus: row.payment_status as PaymentStatus | null,
     status: (row.status as OrderStatus) || "pending",
     notes: row.notes || undefined,
     couponCode: row.coupon_code || undefined,
