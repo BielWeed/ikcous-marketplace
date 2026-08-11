@@ -271,3 +271,47 @@ expiração chegou antes do webhook. O pedido cai na fila de atenção do admin 
 sandbox — só pode ser confirmado com credenciais de teste reais em mãos, o que depende do 5.1.
 Se a página se comportar diferente do descrito aqui, **corrija esta seção no mesmo PR** em vez
 de descobrir de novo na próxima vez.
+
+### 5.6 Como saber se a reconciliação está viva
+
+A reconciliação é a única parte do sistema que **roda sozinha e não fala com ninguém**: o
+`pg_cron` chama a edge function a cada 10 minutos pelo `pg_net`, e o resultado não aparece em
+tela nenhuma. Se ela parar, o sintoma é a ausência de algo — pedido pago que o webhook perdeu e
+que ninguém foi buscar.
+
+O registro fica em `net._http_response`, que o `pg_net` preenche. Esta é a consulta:
+
+```sql
+SELECT created, status_code, timed_out, left(coalesce(content, ''), 200) AS corpo
+  FROM net._http_response
+ ORDER BY created DESC
+ LIMIT 5;
+```
+
+Como ler o que voltar:
+
+| resposta | significa |
+| --- | --- |
+| `200` + `{"ok":true,"verificados":N,...}` | funcionando. `verificados: 0` é normal e frequente — só há candidato quando um PIX expira **tendo** cobrança criada |
+| `401` | **o caso silencioso.** O `RECONCILIACAO_SECRET` do ambiente das functions não bate com o `reconciliacao_secret` do Vault. Ver §5.2 |
+| `404` | a função não está publicada. É o estado entre aplicar a migration e fazer o deploy |
+| `timed_out = true`, corpo vazio | o lote passou de 2 min. Ver o comentário sobre `timeout_milliseconds` na migration `20260808000100` — esse número e o `LIMIT 100` da `pagamentos_a_reconciliar` mudam juntos |
+
+**Medido em 11/08/2026, no deploy desta fase**, e serve de referência do que "funcionando"
+parece:
+
+```
+02:50:00  HTTP 200  {"ok":true,"verificados":0,"confirmados":0,"ignorados":0,"falhas":0}
+02:40:00  HTTP 404  {"code":"NOT_FOUND","message":"Requested function was not found"}
+```
+
+A virada de `404` para `200` é o deploy. E o `200` prova mais do que parece: para chegar nele, o
+`pg_cron` disparou, o `pg_net` leu URL **e segredo** do Vault, e a função **aceitou o segredo** —
+se ele divergisse, seria `401`. É o teste de ponta a ponta da autenticação da reconciliação, e
+sai de graça a cada 10 minutos.
+
+Para desligar o job, se ele se comportar mal:
+
+```sql
+SELECT cron.unschedule('reconciliar-pagamentos');
+```
