@@ -122,6 +122,29 @@ Duas leituras que enganam:
 - **`lint:ratchet` acusa Biome acima do teto no Windows por causa de CRLF.** Não é dívida — o
   próprio script avisa que Biome só é cobrado no CI (Linux).
 
+### Quanto da verificação pedir a um subagente
+
+**A primeira rodada de `lint:ratchet` numa máquina fria é cara; as seguintes não.** O eslint
+roda com `--cache`, então depois da primeira ele só reanalisa o que mudou. Quem pagar a
+primeira paga por todos.
+
+Medido em 10/08/2026: uma regra só — `tailwindcss/no-custom-classname` — era 97,9% do tempo
+do eslint no Windows (609 s de 627 s em 76 arquivos), e a catraca passava de 40 min aqui
+contra **1,2 min no Linux do CI**. Numa cadeia revisão → conserto → re-revisão, esse preço
+era pago três vezes, por um diff que às vezes tinha duas linhas.
+
+Por isso, ao montar o prompt de um subagente:
+
+- **Diff toca `src/`, `supabase/functions/` ou `tests/`:** peça os sete comandos. É o caso
+  normal e não se negocia.
+- **Diff toca só `scripts/`, comentário, migration ou documentação:** nomeie os comandos que
+  fazem sentido e diga explicitamente para **não** rodar o resto — a sessão roda o que faltar.
+  Foi assim que uma re-revisão voltou em 5 min em vez de 80.
+
+O que **não** muda: quem cobra é o CI, e nenhuma dessas escolhas altera regra, teto ou o que
+reprova um PR. Escopar a verificação de um subagente é decisão de custo, nunca de exigência —
+e ela é da sessão principal, que sabe o tamanho do diff, não do subagente, que não sabe.
+
 ## Perigos deste repositório
 
 Fatos medidos, não hipóteses. Valem para a sessão e para todo subagente:
