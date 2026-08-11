@@ -7,6 +7,120 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.1.0] — 2026-08-11
+
+Release da cobrança online. As três fases do checkout com Mercado Pago entraram — reserva de
+estoque com expiração, criação de pagamento PIX com o Brick, e o webhook que confirma o pagamento
+— mas **a loja em produção continua sem cobrar**. Tudo está atrás da flag `VITE_PAGAMENTO_ONLINE`,
+que falha fechada (só a string exata `"true"` liga) e que **não existe no ambiente de Production**.
+Ligar é decisão separada, e ainda depende de um pré-requisito que não é código: a conta do Mercado
+Pago nunca criou um pagamento PIX de verdade. Ver *Sabido e não corrigido*.
+
+O que **quem compra** ganha hoje, com a flag desligada: a busca de endereço por CEP passa a
+funcionar. Ela nunca funcionou em produção — `viacep.com.br` faltava na `connect-src` da CSP e o
+navegador bloqueava a requisição em silêncio, deixando o cliente digitar o endereço inteiro à mão.
+
+O que o **lojista** ganha: notificação quando entra pedido novo, push de status que só sai depois
+de o banco confirmar a mudança, e erro visível quando salvar a configuração da loja falha — antes
+falhava calado e a tela dizia que tinha salvo.
+
+### Adicionado
+
+- **Cobrança com Mercado Pago, em três fases, atrás de flag** (#176, #178, #179). A Fase 1 deu ao
+  pedido uma reserva de estoque com prazo: colunas de expiração, `devolver_estoque`,
+  `expirar_pedidos_vencidos` e um `pg_cron` a cada 5 minutos que cancela o que venceu e devolve as
+  unidades ao catálogo — isso já está em produção desde 06/08 e é o que fechou o vazamento de
+  estoque antigo. A Fase 2 acrescentou a edge function `criar-pagamento` e o Brick do Mercado Pago
+  no checkout, oferecendo **só PIX**; cartão é recusado na função e desligado no Brick. A Fase 3
+  fechou o ciclo com a `webhook-mercadopago`, que valida o `x-signature` antes de aceitar qualquer
+  confirmação, a RPC `confirmar_pagamento` com guarda de status, e a `reconciliar-pagamentos`, um
+  cron a cada 10 minutos que reconsulta o Mercado Pago sobre pedidos aguardando — a rede de
+  segurança para o webhook que se perde.
+- **Aviso ao lojista quando entra pedido novo** (#166, PEDIDO-020). Edge function
+  `notify-new-order`, sem JWT de propósito: o pedido de convidado nasce sem sessão, e o que
+  protege é a própria função (aceita só `orderId`, janela de 15 minutos, forma de UUID).
+- **`verify_jwt` de cada edge function versionado** em `supabase/config.toml` (#162, INFRA-310).
+  Até então ele só existia na linha de comando de quem deployava — e um deploy sem
+  `--no-verify-jwt` na função errada derrubava o OTP sem erro nenhum. O arquivo não impede a flag,
+  mas põe a decisão em revisão de PR como o resto do projeto.
+- **Vitest no projeto, cobrindo os mappers** (#155, INFRA-150). É a terceira suíte: `test:edge` e
+  `test:unit` rodam em Deno, `test:front` em Vitest.
+
+### Corrigido
+
+- **A busca de endereço por CEP nunca funcionou em produção** (#179). Faltava `viacep.com.br` na
+  `connect-src` da CSP. Junto vieram três defeitos da própria busca, hoje unificada no hook
+  `useBuscaCep`: a corrida em que duas requisições em voo terminavam com a resposta velha
+  sobrescrevendo o endereço (#184); a ausência de timeout, que deixava o campo `disabled` para
+  sempre se o ViaCEP pendurasse a conexão, impedindo a compra (#185); e a falta de abort no
+  desmonte, que fazia o toast "CEP localizado!" aparecer por cima da tela seguinte (#186).
+- **O service worker derrubava script de terceiro** (#179). O catch-all de
+  stale-while-revalidate interceptava requisição cross-origin e a reemitia como `fetch()` — que é
+  governado por `connect-src`, não por `script-src`. Um guard de origem consertou.
+- **`send-push` não enviava e reportava sucesso falso** (#156, PUSH-010).
+- **O push de status saía antes de a RPC confirmar** (#159, PEDIDO-090). O cliente era avisado de
+  uma mudança que podia não ter acontecido.
+- **`updateConfig` engolia a falha** (#158, ADMIN-010). Salvar a configuração da loja podia falhar
+  com a tela dizendo que salvou.
+- **Loop de requisição no detalhe do pedido** (#157, PEDIDO-040).
+- **O e-mail de OTP apontava para o projeto Supabase errado** (#154, AUTH-020). O trigger fazia
+  `net.http_post` para um projeto onde a `send-otp-email` jamais esteve publicada, e respondia
+  404 — o convidado nunca receberia o código. Nunca chegou a acontecer com cliente real porque
+  `otp_verifications` estava zerada.
+- **`NODE_ENV` do shell degradava o build de produção** (#153).
+
+### Banco
+
+- **Baseline do schema vivo**, gerado por `pg_dump` direto (#172), e o ledger de migrations
+  reconciliado a partir dele, com as 42 pendentes arquivadas (#171). Sem isso não havia como
+  reproduzir o schema a partir do repositório.
+- **O rollback do `db-apply` parou de mentir quando sai vazio** (#177). Ele só sabe restaurar
+  definição anterior de função; para migration que cria função nova ou agenda cron, o arquivo
+  saía vazio e parecia um rollback válido.
+
+### Infraestrutura
+
+- **Segundo projeto Supabase aposentado** (#163, fecha #41 e #85), com o `preconnect` do
+  `index.html`, o `.ship-safe` com credencial versionada e a documentação que o desenhava como
+  arquitetura saindo junto.
+- **`send-order-whatsapp` versionada** (#173, INFRA-330) — era a última publicada sem fonte no
+  repositório — e depois **despublicada** (#187, INFRA-340), morta desde 01/06/2026.
+- **Identidade do pacote completada e verificador de links ligado** (#164).
+- **Subagentes `implementador` e `revisor` versionados**, com o fluxo escrito no `CLAUDE.md`
+  (#175). Mudança neles é mudança de processo do time e passa por PR como o resto.
+- **A catraca de lint caiu de 29 min para 10 s** (#181). Uma única regra —
+  `tailwindcss/no-custom-classname` — era 97,9% do tempo do eslint no Windows. Consertado com
+  `--cache`, sem desligar regra nenhuma.
+
+### Documentação
+
+- **O PITR foi recusado por custo, e o procedimento que o substitui está escrito** (#169, #170).
+  O backup continua diário: reverter uma migration custa até 24 h de dados.
+- **De onde vem o risco neste repositório** (#182). Este repo é o molde que se clona por cliente,
+  e o Supabase ligado aqui é de desenvolvimento — o rigor é sobre o que se replica em cada loja
+  vendida, não sobre este banco.
+- **Limpeza manual de branch** no CONTRIBUTING, agora que o auto-delete está desligado (#151), e
+  **recuperação de branch órfã** (#152).
+- **`notify-new-order` publicada e o WAF na frente dela** (#168).
+
+### Sabido e não corrigido
+
+- **A cobrança nunca foi exercitada contra um Mercado Pago real.** `POST /v1/payments` devolve
+  `500 http is unavailable for request create_ti` para cinco corpos diferentes, inclusive o mínimo
+  que a documentação pede — é a conta, não a requisição. O caminho é criar um **usuário de teste**
+  no Mercado Pago. Enquanto isso não acontecer, nenhum PIX percorreu
+  `pagamento → webhook → pago → push`.
+- **Pedido cancelado no app que paga o PIX fica invisível se o webhook se perder** (#180). Buraco
+  pré-existente, não regressão; ficou fora da Fase 3 por decisão de 10/08.
+- **Como nasce o Supabase de cada loja clonada ainda não está decidido** (#183).
+- **O ambiente Preview aponta para o mesmo Supabase** (#131, INFRA-270). Pedido de teste no
+  Preview reserva estoque de verdade, revertido pelo `pg_cron` 35 min depois.
+- **Nenhum e-mail chega a cliente**: o Resend segue em modo de teste (#161, INFRA-300).
+- **`anon` tem INSERT, UPDATE, DELETE e TRUNCATE em `produtos`** (#141, BANCO-090).
+- **O que a Fase 3 deliberadamente não entrega:** cartão, painel de status de pagamento (#110),
+  e-mail de confirmação de pedido (#106), status em `notificacoes` (#107) e devolução de cupom em
+  pedido cancelado (#116).
+
 ## [1.0.3] — 2026-08-05
 
 Release de integridade de dados do catálogo. O Truth Gate — a camada que valida os axiomas de
