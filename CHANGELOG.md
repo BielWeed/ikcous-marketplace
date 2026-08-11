@@ -16,9 +16,17 @@ que falha fechada (só a string exata `"true"` liga) e que **não existe no ambi
 Ligar é decisão separada, e ainda depende de um pré-requisito que não é código: a conta do Mercado
 Pago nunca criou um pagamento PIX de verdade. Ver *Sabido e não corrigido*.
 
-O que **quem compra** ganha hoje, com a flag desligada: a busca de endereço por CEP passa a
-funcionar. Ela nunca funcionou em produção — `viacep.com.br` faltava na `connect-src` da CSP e o
-navegador bloqueava a requisição em silêncio, deixando o cliente digitar o endereço inteiro à mão.
+O que **quem compra** ganha, com a flag desligada: a busca de endereço por CEP passa a funcionar.
+Ela nunca funcionou em produção — `viacep.com.br` faltava na `connect-src` da CSP e o navegador
+bloqueava a requisição em silêncio, deixando o cliente digitar o endereço inteiro à mão.
+
+> **Ressalva medida em produção, depois da release:** quem já tem a PWA instalada **não recebe
+> esta correção na hora**. O `vite.config.ts` usa `registerType: "prompt"`, então o service worker
+> novo só assume quando a pessoa aceita o aviso de atualização — e o service worker antigo é
+> justamente o que derruba a requisição. Verificado no ar: com o service worker antigo no
+> controle, a busca de CEP falha mesmo com a CSP correta sendo servida; depois de trocar o service
+> worker, ela responde. Vale igual para o SDK do Mercado Pago. Visita nova pega a correção
+> direto; PWA instalada espera o update.
 
 O que o **lojista** ganha: notificação quando entra pedido novo, push de status que só sai depois
 de o banco confirmar a mudança, e erro visível quando salvar a configuração da loja falha — antes
