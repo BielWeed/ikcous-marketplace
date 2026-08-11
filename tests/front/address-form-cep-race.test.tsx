@@ -149,6 +149,76 @@ describe("AddressForm — corrida na busca de CEP", () => {
     expect(city.value).toBe("Monte Carmelo");
   });
 
+  it("nao reabilita o campo quando a resposta velha chega com a busca nova ainda em voo", async () => {
+    // ESTE CASO EXISTE POR UM MUTANTE QUE SOBREVIVEU. Trocar a guarda do
+    // `finally` em AddressForm.tsx —
+    //   if (requestId === cepRequestIdRef.current) setIsSearchingCep(false);
+    // — por uma chamada incondicional deixava os outros três casos verdes.
+    //
+    // O motivo é a ORDEM DE RESOLUÇÃO. No primeiro caso a busca nova responde
+    // primeiro e já desliga o spinner; quando a velha chega, `false` para
+    // `false` é no-op e a guarda não muda nada observável. A guarda só é
+    // observável na ordem INVERTIDA — velha primeiro, nova ainda em voo — que
+    // é o que este caso monta. Sem a guarda, a resposta velha REABILITA o
+    // campo de CEP enquanto a busca nova ainda não voltou, e o usuário pode
+    // disparar uma terceira busca por cima de duas já em andamento.
+    const { AddressForm } = await import("@/components/ui/custom/AddressForm");
+
+    await act(async () => {
+      raiz.render(<AddressForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
+    });
+
+    act(() => {
+      digitar("cep", "01310100"); // busca ANTIGA
+      digitar("cep", "38500000"); // busca NOVA
+    });
+    expect(pendentes.size).toBe(2);
+    expect((document.getElementById("cep") as HTMLInputElement).disabled).toBe(
+      true,
+    );
+
+    // A ANTIGA responde primeiro, com a NOVA ainda pendente.
+    pendentes.get("01310100")!({
+      logradouro: "Avenida Paulista",
+      bairro: "Bela Vista",
+      localidade: "São Paulo",
+      uf: "SP",
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // A guarda do `finally`: a resposta velha não desliga o spinner de uma
+    // busca que não é dela. É esta asserção que mata o mutante.
+    expect((document.getElementById("cep") as HTMLInputElement).disabled).toBe(
+      true,
+    );
+    // E, pela guarda de sequência, ela também não escreveu no formulário.
+    expect(
+      (document.getElementById("street") as HTMLInputElement).value,
+    ).not.toBe("Avenida Paulista");
+
+    // Só a resposta da busca corrente desliga o spinner.
+    pendentes.get("38500000")!({
+      logradouro: "Rua Nova",
+      bairro: "Bairro Novo",
+      localidade: "Monte Carmelo",
+      uf: "MG",
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect((document.getElementById("cep") as HTMLInputElement).disabled).toBe(
+      false,
+    );
+    expect((document.getElementById("street") as HTMLInputElement).value).toBe(
+      "Rua Nova",
+    );
+  });
+
   it("aborta a busca antiga de verdade quando a nova começa, sem logar erro", async () => {
     const pendentesComSignal = new Map<string, FetchResolver>();
     const abortadas: string[] = [];
