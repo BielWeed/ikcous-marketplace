@@ -59,6 +59,14 @@ export function AddressForm({
   });
 
   const hasInitializedRef = useRef(false);
+  // Sequência da busca de CEP em voo — incrementa a cada busca disparada;
+  // uma resposta só é aplicada se ainda for a mais recente quando o
+  // `await` volta. Resolve a corrida: duas buscas em voo, a mais antiga
+  // responde por último e não pode sobrescrever o endereço da mais nova.
+  const cepRequestIdRef = useRef(0);
+  // Controller da busca de CEP em voo — a próxima busca cancela a anterior
+  // de verdade, em vez de só ignorar a resposta quando ela chegar.
+  const cepAbortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (isLoaded && !hasInitializedRef.current) {
@@ -195,12 +203,27 @@ export function AddressForm({
                   field.onChange(formatted);
 
                   if (clean.length === 8 && isNational) {
+                    // Marca esta busca como a corrente e guarda o id local
+                    // para comparar quando o `await` voltar. Cancela a busca
+                    // anterior de verdade, em vez de só ignorar a resposta
+                    // dela quando chegar.
+                    cepAbortControllerRef.current?.abort();
+                    const requestId = ++cepRequestIdRef.current;
+                    const controller = new AbortController();
+                    cepAbortControllerRef.current = controller;
                     setIsSearchingCep(true);
                     try {
                       const res = await fetch(
                         `https://viacep.com.br/ws/${clean}/json/`,
+                        { signal: controller.signal },
                       );
                       const data = await res.json();
+
+                      // Uma busca mais nova já começou enquanto esta estava
+                      // em voo — a resposta chegou velha, descarta sem tocar
+                      // no formulário nem no spinner.
+                      if (requestId !== cepRequestIdRef.current) return;
+
                       if (data && !data.erro) {
                         if (data.logradouro)
                           form.setValue("street", data.logradouro, {
@@ -223,9 +246,26 @@ export function AddressForm({
                         toast.error("CEP não encontrado");
                       }
                     } catch (err) {
+                      // Cancelamento intencional (busca mais nova assumiu) —
+                      // não é erro, não loga. Confere por `name`, não por
+                      // `instanceof DOMException`: em jsdom o `AbortError`
+                      // (o `signal.reason` que o próprio AbortController
+                      // fabrica) não é `instanceof` o `DOMException` global,
+                      // porque vêm de realms diferentes. Medido: com
+                      // `instanceof`, o cancelamento cai no `console.error`.
+                      // Por `name` funciona nos dois casos e também cobre
+                      // quem chamar `abort(motivo)` com um motivo que não
+                      // seja um `DOMException`.
+                      if (
+                        (err as { name?: string } | null)?.name === "AbortError"
+                      ) {
+                        return;
+                      }
                       console.error("Error fetching CEP:", err);
                     } finally {
-                      setIsSearchingCep(false);
+                      if (requestId === cepRequestIdRef.current) {
+                        setIsSearchingCep(false);
+                      }
                     }
                   }
                 };
