@@ -94,6 +94,41 @@ Deno.test("montarCorpoPix não quebra quando o documento não vem", () => {
   );
 });
 
+Deno.test("montarCorpoPix leva notification_url quando informado — Task 7 da Fase 3", () => {
+  // Sem isto o webhook depende de configuracao no painel do MP — que ninguem
+  // percebe quando some, e nenhum teste pega. Herança nº 4 da Fase 2.
+  const corpo = montarCorpoPix({
+    valor: 149.9,
+    descricao: "Pedido 3f2a1b8c",
+    email: "cliente@exemplo.com",
+    expiraEm: "2026-08-06T15:30:00.000-03:00",
+    orderId: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+    notificationUrl: "https://xyz.supabase.co/functions/v1/webhook-mercadopago",
+  });
+
+  assertEquals(
+    corpo.notification_url,
+    "https://xyz.supabase.co/functions/v1/webhook-mercadopago",
+  );
+});
+
+Deno.test("montarCorpoPix sem notificationUrl NÃO inclui a chave no corpo — não pode virar 'undefined' serializado", () => {
+  // Asserção sobre a CHAVE, não sobre o valor: `corpo.notification_url ===
+  // undefined` passaria tanto se a chave nunca existisse quanto se existisse
+  // com valor `undefined` (que o JSON.stringify do fetch real simplesmente
+  // omite, mas que um mutante poderia deixar passar aqui sem que este teste
+  // acusasse).
+  const corpo = montarCorpoPix({
+    valor: 149.9,
+    descricao: "Pedido 3f2a1b8c",
+    email: "cliente@exemplo.com",
+    expiraEm: "2026-08-06T15:30:00.000-03:00",
+    orderId: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+  });
+
+  assertEquals("notification_url" in corpo, false);
+});
+
 Deno.test("montarCorpoCartao leva o token, a referência do pedido, e NUNCA dados do cartão", () => {
   const corpo = montarCorpoCartao({
     valor: 149.9,
@@ -317,6 +352,35 @@ Deno.test("consultarPagamento consulta por GET, sem corpo e sem chave de idempot
   assertEquals(headers.Authorization, "Bearer TEST-token");
   assertEquals(headers["X-Idempotency-Key"], undefined);
   assertStringIncludes(capturada!.url, "/v1/payments/1234567890");
+});
+
+Deno.test("consultarPagamento devolve o external_reference da resposta do MP — Task 4 precisa dele para achar o pedido", async () => {
+  // O corpo do webhook NÃO é confiável para descobrir de qual pedido se
+  // trata (qualquer um pode forjar um POST); a resposta do MP, autenticada
+  // pelo token do gateway, é. Sem este campo a webhook-mercadopago não tem
+  // como montar `p_order_id` para `confirmar_pagamento`.
+  const fetchStub = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          id: 999,
+          status: "approved",
+          external_reference: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+        }),
+        { status: 200 },
+      ),
+    )) as unknown as typeof fetch;
+
+  const r = await consultarPagamento({
+    token: "TEST-token",
+    paymentId: "999",
+    fetchImpl: fetchStub,
+  });
+
+  assertEquals(r.ok, true);
+  if (r.ok) {
+    assertEquals(r.externalReference, "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b");
+  }
 });
 
 Deno.test("consultarPagamento não vaza o corpo do erro quando o MP devolve 404", async () => {

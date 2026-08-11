@@ -62,6 +62,7 @@ export function montarCorpoPix(args: {
   expiraEm: string;
   orderId: string;
   documento?: { type: string; number: string };
+  notificationUrl?: string;
 }): Record<string, unknown> {
   const payer: Record<string, unknown> = { email: args.email };
   // A-2 da revisão final: sem isso o documento entrava pelo front e sumia
@@ -79,6 +80,9 @@ export function montarCorpoPix(args: {
     // reconciliação da Fase 3 teria que casar valor + e-mail + horário na
     // mão. Com isso vira GET /v1/payments/search?external_reference=<id>.
     external_reference: args.orderId,
+    // Sem isto o webhook depende de configuracao no painel do MP — que ninguem
+    // percebe quando some, e nenhum teste pega. Herança nº 4 da Fase 2.
+    ...(args.notificationUrl ? { notification_url: args.notificationUrl } : {}),
   };
 }
 
@@ -116,6 +120,13 @@ type ResultadoPagamento =
       ok: true;
       id: string;
       status: string;
+      // Adicionado na Task 4 (Fase 3): a webhook-mercadopago precisa saber A
+      // QUAL PEDIDO a confirmação pertence, e o corpo do webhook não serve
+      // para isso — qualquer um pode forjar um POST. A resposta do MP, do
+      // outro lado, veio autenticada pelo token do gateway. `criarPagamento`
+      // grava este mesmo valor (montarCorpoPix/montarCorpoCartao, acima) na
+      // criação; aqui é onde ele volta.
+      externalReference?: string;
       qrCode?: string;
       qrCodeBase64?: string;
       ticketUrl?: string;
@@ -236,8 +247,113 @@ async function interpretarRespostaDePagamento(
     // A coluna gateway_payment_id é text e o MP devolve número.
     id: String(json.id),
     status: String(json.status),
+    externalReference:
+      typeof json.external_reference === "string" ? json.external_reference : undefined,
     qrCode: dados.qr_code as string | undefined,
     qrCodeBase64: dados.qr_code_base64 as string | undefined,
     ticketUrl: dados.ticket_url as string | undefined,
   };
+}
+
+/**
+ * Valida o x-signature do webhook do Mercado Pago.
+ *
+ * E' a UNICA autenticacao que a webhook-mercadopago tem: ela roda com
+ * verify_jwt = false porque o MP nao manda JWT. Sem isto, quem descobrir a URL
+ * forja um "aprovado" e leva produto de graca.
+ *
+ * Formato confirmado na documentacao do MP (context7, 09/08/2026): o header
+ * vem como `ts=<epoch>,v1=<hex>`, o manifesto e
+ * `id:<data.id>;request-id:<x-request-id>;ts:<ts>;` — com o segmento
+ * request-id OMITIDO quando o header nao veio, igual ao SDK oficial — e o
+ * hash e HMAC-SHA256 do manifesto, comparado ao `v1` em hex.
+ *
+ * Pura e com `agora` injetavel para o teste nao depender do relogio.
+ */
+export async function validarAssinatura(args: {
+  xSignature: string | null;
+  xRequestId: string | null;
+  dataId: string;
+  segredo: string;
+  agora?: number;
+  toleranciaSegundos?: number;
+}): Promise<boolean> {
+  const { xSignature, xRequestId, dataId, segredo } = args;
+  const agora = args.agora ?? Date.now();
+  // 300s É O DEFAULT DO PARÂMETRO, NÃO O QUE RODA EM PRODUÇÃO: o único
+  // chamador de produção (webhook-mercadopago/index.ts) passa
+  // Number.POSITIVE_INFINITY de propósito — o commit 398ae08 desligou a
+  // janela aqui. O MP reenvia sem limite documentado (não para depois da
+  // 3ª tentativa, só estende o intervalo), então nenhuma janela finita é
+  // segura: uma cadeia longa de reenvios ultrapassa qualquer valor
+  // escolhido, e o ÚLTIMO reenvio vira 401 permanente. Quem autentica aqui
+  // é o HMAC, não o relógio — replayar um header velho só produz uma
+  // consulta NOVA ao MP (ver `consultarPagamento`), e a decisão sai do
+  // estado ATUAL, não do que veio no header. A janela continua existindo
+  // como parâmetro para quem quiser um chamador diferente (ex.: teste que
+  // queira provar a expiração em si).
+  const tolerancia = args.toleranciaSegundos ?? 300;
+
+  if (!xSignature || !segredo || !dataId) return false;
+
+  let ts = "";
+  let v1 = "";
+  for (const parte of xSignature.split(",")) {
+    const [chave, ...resto] = parte.split("=");
+    const valor = resto.join("=").trim();
+    if (chave?.trim() === "ts") ts = valor;
+    if (chave?.trim() === "v1") v1 = valor;
+  }
+  if (!ts || !v1) return false;
+
+  // `ts` fora da janela: só importa para um chamador que passe uma
+  // `toleranciaSegundos` finita — a webhook-mercadopago, o único chamador de
+  // produção, desliga isto (ver comentário acima de `tolerancia`).
+  const tsNumero = Number(ts);
+  if (!Number.isFinite(tsNumero)) return false;
+  const idadeSegundos = Math.abs(agora / 1000 - tsNumero);
+  if (idadeSegundos > tolerancia) return false;
+
+  // O segmento de request-id so entra quando o header veio — igual ao
+  // buildManifest do SDK oficial (`if (requestId) parts.push(...)`).
+  //
+  // `dataId` vai COM O CASING ORIGINAL. A documentacao do MP pede minusculas
+  // ("ensuring data.id_url is in lowercase") e ESTA ERRADA: o SDK oficial
+  // REMOVEU o .toLowerCase() de proposito (PR mercadopago/sdk-nodejs#439),
+  // porque o MP assina com o casing original e qualquer id com maiuscula
+  // falhava com SignatureMismatch. Medido em 09/08/2026: com .toLowerCase(),
+  // um dataId "ABC12" assinado como o MP assina e' RECUSADO.
+  //
+  // Nao e' a unica coisa que essa pagina da doc erra: ela tambem diz que o
+  // `ts` vem em milissegundos, e vem em SEGUNDOS (issue #458 do mesmo SDK).
+  // Quando doc e SDK divergirem aqui, o SDK ganha — ele foi corrigido por
+  // observacao de trafego real, a doc nao.
+  const manifesto = xRequestId
+    ? `id:${dataId};request-id:${xRequestId};ts:${ts};`
+    : `id:${dataId};ts:${ts};`;
+
+  const chave = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(segredo),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const assinado = await crypto.subtle.sign(
+    "HMAC",
+    chave,
+    new TextEncoder().encode(manifesto),
+  );
+  const esperado = Array.from(new Uint8Array(assinado))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  // Comparacao de tempo constante: `===` em string vaza, pelo tempo de
+  // resposta, quantos caracteres do prefixo o atacante ja acertou.
+  if (esperado.length !== v1.length) return false;
+  let diferenca = 0;
+  for (let i = 0; i < esperado.length; i++) {
+    diferenca |= esperado.charCodeAt(i) ^ v1.charCodeAt(i);
+  }
+  return diferenca === 0;
 }

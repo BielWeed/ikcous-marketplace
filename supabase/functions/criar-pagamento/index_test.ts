@@ -332,6 +332,28 @@ Deno.test("handler: PIX leva o documento do pagador quando o front manda — A-2
   );
 });
 
+Deno.test("handler: o corpo enviado ao MP leva o notification_url MONTADO — URL inteira", async () => {
+  // Achado da revisão: os testes de mercadopago_test.ts provam montarCorpoPix
+  // como função pura (recebem a URL pronta), o que não prova que o handler
+  // MONTA e LIGA essa URL. Sem este teste, apagar a linha de notificationUrl
+  // em index.ts (ou trocar o caminho) deixava a suíte inteira verde — o MP
+  // fica sem para onde notificar, e o pedido pago some no 'aguardando' até o
+  // pg_cron expirar (mesmo padrão do achado A-2, já fechado para o documento).
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  Deno.env.set("SUPABASE_URL", "https://xyz.supabase.co");
+  const pedido = pedidoBase();
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const capturado: { corpo?: Record<string, unknown> } = {};
+  const fetchImpl = fetchFalsoMP(capturado);
+
+  await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+
+  assertEquals(
+    capturado.corpo?.notification_url,
+    "https://xyz.supabase.co/functions/v1/webhook-mercadopago",
+  );
+});
+
 Deno.test("handler: pedido expirado pelo pg_cron no meio da corrida NÃO devolve 200, e a mensagem é a de prazo", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   const pedido = pedidoBase();
@@ -481,6 +503,33 @@ Deno.test("handler: pedido expirado com cobrança existente recusa, não reconsu
   assertEquals(corpo.error, "O prazo para pagar este pedido acabou.");
   assertEquals(chamouFetch, false);
   assertEquals(registro.chamadasUpdate, 0);
+});
+
+// --- handler: Task 7 da Fase 3 — cartão fica recusado desde a edge function
+
+Deno.test("handler: metodo 'cartao' devolve 400 e NÃO chama o Mercado Pago", async () => {
+  // A Fase 3 entrega só PIX. O caminho de cartão tem defeito conhecido
+  // (herança nº 2 da Fase 2): depois da primeira recusa o pedido fica
+  // impagável até expirar. A recusa tem que acontecer aqui, antes de
+  // qualquer chamada ao gateway — não só no Brick (Task 8).
+  const pedido = pedidoBase();
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  let chamadasFetch = 0;
+  const fetchImpl = async (_url: string, _init?: RequestInit) => {
+    chamadasFetch++;
+    return new Response(JSON.stringify({ id: 1, status: "pending" }), { status: 201 });
+  };
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "cartao" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 400);
+  assertEquals(corpo.error, "No momento aceitamos apenas PIX.");
+  // A prova que importa: não é só o código HTTP, é o contador do MP em zero.
+  assertEquals(chamadasFetch, 0);
 });
 
 Deno.test("handler: consulta ao Mercado Pago falhando devolve 502, sem confirmar nada com 200", async () => {

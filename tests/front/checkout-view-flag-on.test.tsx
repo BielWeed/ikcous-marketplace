@@ -227,9 +227,13 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
       );
     });
 
+    // O rótulo casa por texto exato, e é por isso que ele pegou a divergência:
+    // a Fase 3 desligou cartão nos dois lados (Brick e criar-pagamento) e o
+    // rótulo continuava prometendo "(PIX ou cartão)". Ao religar cartão na
+    // Fase 3.5, este texto e o de CheckoutView.tsx mudam juntos.
     const botaoOnline = localizarBotaoPorTexto(
       hospedeiro,
-      "Pagar agora (PIX ou cartão)",
+      "Pagar agora com PIX",
     );
     expect(botaoOnline).toBeDefined();
 

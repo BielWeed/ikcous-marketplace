@@ -148,6 +148,13 @@ export interface Order {
   total: number;
   paymentMethod: PaymentMethod;
   status: OrderStatus;
+  /**
+   * Estado da cobrança online (webhook do Mercado Pago). Os 64 pedidos
+   * históricos têm `NULL` na coluna, e o mapper é fiel a isso — `null`
+   * significa "sem cobrança online", não é traduzido aqui. Ver
+   * PaymentStatusBadge para a tradução de exibição.
+   */
+  paymentStatus?: PaymentStatus | null;
   notes?: string;
   couponCode?: string;
   createdAt: string;

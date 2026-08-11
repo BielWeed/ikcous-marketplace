@@ -9,6 +9,10 @@ import { SupportBanners } from "@/components/admin/dashboard/SupportBanners";
 import { OrderDetail } from "@/components/admin/orders/OrderDetail";
 import {
   OrderStatusBadge,
+  PaymentStatusBadge,
+  type PaymentStatusKey,
+  getPaymentStatusConfig,
+  paymentStatusKey,
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
 import { Button } from "@/components/ui/button";
@@ -30,7 +34,7 @@ import { useViewTransition } from "@/hooks/useViewTransition";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import type { Order, OrderStatus, View } from "@/types";
+import type { Order, OrderStatus, PaymentStatus, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { motion } from "framer-motion";
 import {
@@ -68,6 +72,42 @@ const STATUS_ORDER_COLORS: Record<string, string> = {
   delivered: "bg-emerald-500",
   cancelled: "bg-zinc-500",
 };
+
+/**
+ * `mapOrderFromDB` (src/lib/mappers.ts) já copia `payment_status` para
+ * `Order.paymentStatus` — `null` nos 64 pedidos históricos, tratado pelo
+ * filtro/badge exatamente como "Sem cobrança online".
+ */
+type PaymentStatusFilter = PaymentStatusKey | "all";
+
+/** Valores do filtro de pagamento, na ordem em que aparecem no dropdown. */
+const PAYMENT_STATUS_FILTER_VALUES: PaymentStatusKey[] = [
+  "aguardando",
+  "pago",
+  "recusado",
+  "expirado",
+  "estornado",
+  "pago_apos_expirar",
+  "sem_cobranca",
+];
+
+/**
+ * Restringe uma lista de pedidos por `payment_status`, seguindo o mesmo
+ * tratamento de `NULL`/`undefined` do badge: caem em "sem_cobranca", nunca
+ * quebram o filtro. Exportada para o teste exercitar a regra sem montar a
+ * tela inteira (que arrasta useAuth, useOrders, canal realtime etc.).
+ */
+export function filterOrdersByPaymentStatus<
+  T extends { paymentStatus?: PaymentStatus | null },
+>(orders: readonly T[], paymentFilter: PaymentStatusFilter): T[] {
+  if (paymentFilter === "all") return [...orders];
+  // paymentStatusKey() é o único lugar que decide "null/undefined vira
+  // sem_cobranca" (ver OrderStatusBadge.tsx) — reusar aqui em vez de
+  // reescrever a regra evita a mesma divergência silenciosa do #53.
+  return orders.filter(
+    (order) => paymentStatusKey(order.paymentStatus) === paymentFilter,
+  );
+}
 
 interface AdminOrdersViewProps {
   onNavigate: (view: View, id?: string) => void;
@@ -126,6 +166,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     "admin_orders_filter",
     "all",
   );
+  // Filtro de payment_status: client-side, sobre a página já carregada — a
+  // RPC get_admin_orders_paged não tem parâmetro pra isso (mudar a RPC é
+  // migration, fora do escopo desta tarefa). Por isso não reduz totalOrders
+  // nem totalPages, só a lista visível na página atual.
+  const [paymentFilter, setPaymentFilter] =
+    useLocalStorage<PaymentStatusFilter>("admin_orders_payment_filter", "all");
   const [viewMode, setViewMode] = useState<"detailed" | "compact">(() => {
     const saved = localStorage.getItem("admin_orders_view_mode");
     return saved === "detailed" || saved === "compact" ? saved : "compact";
@@ -430,7 +476,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   }, [loadStats, handleSelectOrder]);
 
   const totalPages = Math.ceil(totalOrders / itemsPerPage);
-  const paginatedOrders = orders;
+  const paginatedOrders = useMemo(
+    () => filterOrdersByPaymentStatus(orders, paymentFilter),
+    [orders, paymentFilter],
+  );
 
   const handleStatusChange = async (
     orderId: string,
@@ -686,9 +735,18 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   <Button
                     variant="outline"
                     size="icon"
-                    className="group size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    className="group relative size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
                   >
                     <Filter className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                    {paymentFilter !== "all" && (
+                      // O filtro persiste em localStorage: sem isto, o admin
+                      // reabre a tela já filtrada sem nenhuma pista visível
+                      // (achado da revisão da Task 9).
+                      <span
+                        aria-hidden="true"
+                        className="absolute right-2.5 top-2.5 size-2 rounded-full bg-admin-gold shadow-[0_0_6px_rgba(212,175,55,0.6)]"
+                      />
+                    )}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
@@ -757,6 +815,57 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         }}
                       >
                         Limpar Datas
+                      </Button>
+                    )}
+
+                    <h4 className="mt-6 px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                      Status de Pagamento
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentFilter("all");
+                          setCurrentPage(0);
+                        }}
+                        className={cn(
+                          "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                          paymentFilter === "all"
+                            ? "bg-admin-gold border-admin-gold text-black"
+                            : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                        )}
+                      >
+                        Todos
+                      </button>
+                      {PAYMENT_STATUS_FILTER_VALUES.map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => {
+                            setPaymentFilter(value);
+                            setCurrentPage(0);
+                          }}
+                          className={cn(
+                            "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                            paymentFilter === value
+                              ? "bg-admin-gold border-admin-gold text-black"
+                              : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                          )}
+                        >
+                          {getPaymentStatusConfig(value).label}
+                        </button>
+                      ))}
+                    </div>
+                    {paymentFilter !== "all" && (
+                      <Button
+                        variant="ghost"
+                        className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                        onClick={() => {
+                          setPaymentFilter("all");
+                          setCurrentPage(0);
+                        }}
+                      >
+                        Limpar Status de Pagamento
                       </Button>
                     )}
                   </div>
@@ -909,9 +1018,26 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
                   <Package className="size-6 text-zinc-600" />
                 </div>
-                <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-                  Ainda não tem nenhum pedido
-                </h3>
+                {paymentFilter !== "all" ? (
+                  // O filtro de payment_status é client-side sobre a página já
+                  // carregada (12 pedidos), não sobre os 64+ pedidos do banco —
+                  // "nenhum pedido" aqui é "nenhum NESTA página", nunca "não
+                  // existe nenhum pedido com este status". Ver Item 1 da
+                  // revisão da Task 9.
+                  <>
+                    <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
+                      Nenhum pedido desta página tem este status de pagamento
+                    </h3>
+                    <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      O filtro só olha a página atual. Navegue pelas páginas ou
+                      limpe o filtro para ver todos os pedidos.
+                    </p>
+                  </>
+                ) : (
+                  <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
+                    Ainda não tem nenhum pedido
+                  </h3>
+                )}
               </div>
             ) : viewMode === "detailed" ? (
               <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
@@ -1160,7 +1286,10 @@ const AdminOrderCard = memo(function AdminOrderCard({
               </span>
             </div>
           </div>
-          <OrderStatusBadge status={order.status} />
+          <div className="flex flex-col items-end gap-1.5">
+            <OrderStatusBadge status={order.status} />
+            <PaymentStatusBadge paymentStatus={order.paymentStatus} />
+          </div>
         </div>
 
         <div className="relative z-10 space-y-6">
@@ -1287,8 +1416,9 @@ const AdminOrderCard = memo(function AdminOrderCard({
             </span>
           </div>
         </div>
-        <div className="flex shrink-0 justify-start min-[400px]:justify-end">
-          <OrderStatusBadge status={order.status} className="px-1.5 py-0.5" />
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <OrderStatusBadge status={order.status} />
+          <PaymentStatusBadge paymentStatus={order.paymentStatus} />
         </div>
       </div>
 

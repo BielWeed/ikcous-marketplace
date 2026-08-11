@@ -158,3 +158,160 @@ Para que as notificações funcionem:
 - O arquivo `public/sw.js` deve estar acessível na raiz do domínio.
 
 ## 4. ICKOUS Marketplace - Monte Carmelo, MG
+
+## 5. Cobrança online (Mercado Pago)
+
+Esta seção existe porque o `DEPLOYMENT.md` não mencionava Mercado Pago em lugar nenhum, e o
+plano da Fase 3 terminava com "um PIX de teste percorrendo pagamento → webhook → pago → push"
+sem dizer **como o PIX de teste é pago** — que é a única parte não óbvia do processo.
+
+### 5.1 O que precisa existir na conta antes de qualquer deploy
+
+1. **Chave PIX cadastrada na conta do Mercado Pago.** A documentação do MP é explícita: o PIX
+   só aparece como meio de pagamento se houver chave cadastrada. **Se isto faltar, nada abaixo
+   funciona** — comece por aqui.
+2. Uma **aplicação** criada em <https://www.mercadopago.com.br/developers/panel> →
+   *Suas integrações*.
+3. As **credenciais de TESTE** dessa aplicação: *Public Key* e *Access Token*. As duas começam
+   com `TEST-`. Se não começarem, são as de produção — não use nesta fase.
+4. A **assinatura secreta** do webhook, que aparece em *Detalhes da aplicação → Notificações*
+   ao cadastrar a URL de notificação.
+
+A URL a cadastrar é:
+
+```
+https://cafkrminfnokvgjqtkle.supabase.co/functions/v1/webhook-mercadopago
+```
+
+O código manda `notification_url` dentro de cada cobrança, então o cadastro no painel é
+redundante para o roteamento. **Mas a assinatura secreta só existe se a aplicação tiver webhook
+configurado** — por isso o passo continua obrigatório.
+
+### 5.2 Onde cada valor vive
+
+Nomes conferidos no código, não de memória (`Deno.env.get` nas functions, `import.meta.env` no
+front).
+
+| variável | onde | observação |
+| --- | --- | --- |
+| `VITE_MP_PUBLIC_KEY` | Vercel → Environment Variables → **só Preview** | `TEST-…`; vai para o bundle, é pública por natureza |
+| `VITE_PAGAMENTO_ONLINE` | Vercel → **só Preview** | exatamente a string `true`; qualquer outro valor mantém o checkout antigo |
+| `MP_ACCESS_TOKEN` | Supabase → Edge Functions → Secrets | `TEST-…`; **nunca** com prefixo `VITE_`, senão vaza no bundle |
+| `MP_WEBHOOK_SECRET` | Supabase → Secrets | a assinatura secreta do 5.1 |
+| `RECONCILIACAO_SECRET` | Supabase → Secrets | **tem de bater** com o segredo homônimo no Vault |
+
+Os dois segredos do Vault (`reconciliacao_url` e `reconciliacao_secret`) foram criados em
+10/08/2026 pela migration `20260808000100`, **fora** dela, com `vault.create_secret`. Se o
+`RECONCILIACAO_SECRET` do ambiente das functions não bater com o do Vault, a
+`reconciliar-pagamentos` devolve `401` a cada 10 minutos, em silêncio.
+
+### 5.3 Deploy das três functions
+
+**Sempre com o nome da função** — sem nome, publica todas as do diretório (ver §2).
+
+O `verify_jwt` de cada uma está versionado em `supabase/config.toml`, mas **a flag da linha de
+comando ganha do arquivo**. Então os três comandos abaixo não são intercambiáveis:
+
+```bash
+supabase functions deploy criar-pagamento --project-ref cafkrminfnokvgjqtkle
+```
+
+```bash
+supabase functions deploy webhook-mercadopago --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
+```
+
+```bash
+supabase functions deploy reconciliar-pagamentos --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
+```
+
+- `criar-pagamento` vai **sem** `--no-verify-jwt`: quem chama é o cliente com sessão.
+- As outras duas vão **com**: o Mercado Pago não manda JWT, e o `pg_cron` chama por `pg_net`
+  com segredo próprio. Quem autentica ali é o `x-signature` e o `RECONCILIACAO_SECRET`.
+
+Trocar isso é o erro que já derrubou o OTP uma vez (#162).
+
+### 5.4 O teste de ponta a ponta — e como o PIX de teste é pago
+
+Esta é a parte que o plano não descrevia.
+
+Um QR de teste **não pode ser pago pelo app do seu banco**. O caminho é o `ticket_url` que o
+Mercado Pago devolve junto com o QR: em modo de teste ele aponta para o domínio
+`mercadopago.com.br/sandbox/…`, que é a página onde o pagamento de teste se conclui.
+
+O código **já carrega esse valor até o front**: `_shared/mercadopago.ts` extrai
+`point_of_interaction.transaction_data.ticket_url`, e `criar-pagamento` devolve como
+`ticketUrl` nos dois ramos (criação e reconsulta). O que **não** acontece é o componente
+renderizar esse link — `PagamentoOnline.tsx` usa só `qrCode` e `qrCodeBase64`.
+
+Então, para o teste, pegue o `ticketUrl` da resposta da rede:
+
+1. Abra o Preview com a flag ligada e monte um pedido.
+2. Com o DevTools aberto na aba Rede, escolha PIX e finalize.
+3. Na resposta de `criar-pagamento`, copie o campo `ticketUrl`.
+4. Abra essa URL e conclua o pagamento de teste.
+
+**Higiene, não contenção:** o Supabase deste repositório é de desenvolvimento (ver *Onde o risco
+realmente mora*, no `CLAUDE.md`). Ainda assim, use um produto de teste com nome óbvio e estoque
+controlado, e limpe o pedido depois — senão a massa vira lixo que confunde a próxima medição.
+
+### 5.5 O que confirma que funcionou
+
+Nesta ordem, e todos os quatro:
+
+1. `marketplace_orders.payment_status` do pedido vira `pago`, com `paid_at` carimbado.
+2. O push "Pedido pago" chega ao dispositivo inscrito.
+3. Os logs da `webhook-mercadopago` mostram `200` — se mostrarem `500`, o MP vai reenviar, e é
+   isso que você quer enquanto o problema não for resolvido.
+4. O estoque **não** foi devolvido (o pedido foi pago, não cancelado).
+
+Se o pedido virar `pago_apos_expirar` em vez de `pago`, não é bug: significa que a varredura de
+expiração chegou antes do webhook. O pedido cai na fila de atenção do admin de propósito.
+
+**Ainda não verificado na prática:** o passo 4 do 5.4 — concluir o pagamento na página de
+sandbox — só pode ser confirmado com credenciais de teste reais em mãos, o que depende do 5.1.
+Se a página se comportar diferente do descrito aqui, **corrija esta seção no mesmo PR** em vez
+de descobrir de novo na próxima vez.
+
+### 5.6 Como saber se a reconciliação está viva
+
+A reconciliação é a única parte do sistema que **roda sozinha e não fala com ninguém**: o
+`pg_cron` chama a edge function a cada 10 minutos pelo `pg_net`, e o resultado não aparece em
+tela nenhuma. Se ela parar, o sintoma é a ausência de algo — pedido pago que o webhook perdeu e
+que ninguém foi buscar.
+
+O registro fica em `net._http_response`, que o `pg_net` preenche. Esta é a consulta:
+
+```sql
+SELECT created, status_code, timed_out, left(coalesce(content, ''), 200) AS corpo
+  FROM net._http_response
+ ORDER BY created DESC
+ LIMIT 5;
+```
+
+Como ler o que voltar:
+
+| resposta | significa |
+| --- | --- |
+| `200` + `{"ok":true,"verificados":N,...}` | funcionando. `verificados: 0` é normal e frequente — só há candidato quando um PIX expira **tendo** cobrança criada |
+| `401` | **o caso silencioso.** O `RECONCILIACAO_SECRET` do ambiente das functions não bate com o `reconciliacao_secret` do Vault. Ver §5.2 |
+| `404` | a função não está publicada. É o estado entre aplicar a migration e fazer o deploy |
+| `timed_out = true`, corpo vazio | o lote passou de 2 min. Ver o comentário sobre `timeout_milliseconds` na migration `20260808000100` — esse número e o `LIMIT 100` da `pagamentos_a_reconciliar` mudam juntos |
+
+**Medido em 11/08/2026, no deploy desta fase**, e serve de referência do que "funcionando"
+parece:
+
+```
+02:50:00  HTTP 200  {"ok":true,"verificados":0,"confirmados":0,"ignorados":0,"falhas":0}
+02:40:00  HTTP 404  {"code":"NOT_FOUND","message":"Requested function was not found"}
+```
+
+A virada de `404` para `200` é o deploy. E o `200` prova mais do que parece: para chegar nele, o
+`pg_cron` disparou, o `pg_net` leu URL **e segredo** do Vault, e a função **aceitou o segredo** —
+se ele divergisse, seria `401`. É o teste de ponta a ponta da autenticação da reconciliação, e
+sai de graça a cada 10 minutos.
+
+Para desligar o job, se ele se comportar mal:
+
+```sql
+SELECT cron.unschedule('reconciliar-pagamentos');
+```
