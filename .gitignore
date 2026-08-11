@@ -22,6 +22,11 @@ vapid_keys.json
 dist/
 build/
 
+# Cache do eslint (--cache). Guarda o resultado por arquivo para a rodada
+# seguinte so analisar o que mudou. E' derivado e por maquina: versionar traria
+# resultado de OUTRO sistema de arquivos para dentro da catraca.
+.eslintcache
+
 # Log files accumulated during development
 *.log
 *.txt

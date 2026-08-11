@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "vite",
     "build": "npx tsc -b && vite build",
-    "lint": "eslint .",
+    "lint": "eslint . --cache --cache-strategy content",
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "lint:links": "node scripts/verifica-links-md.mjs",
     "typecheck": "tsc -b --force",
