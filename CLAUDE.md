@@ -166,9 +166,20 @@ seção apontava para o lado errado e cobrava um preço que não existia:
 
 ### Continua valendo, independente do acima
 
-- **Nunca `supabase db push`**: 42 migrations locais nunca aplicadas, 28 versões no banco sem
-  arquivo. Isto não é higiene — enquanto não estiver resolvido, **nenhum cliente pode ter o
-  schema reproduzido a partir do repositório**.
+- **Nunca `supabase db push`** — mas **não** pelo motivo que estava escrito aqui. A fila de
+  pendentes acabou: medido em 11/08/2026 com `node scripts/db-reconcilia-ledger.cjs` (só
+  leitura), são **105 arquivos, 105 casadas, 0 pendentes**, e o saldo de policies se a fila
+  rodasse é **0**. As "42 migrations locais nunca aplicadas" foram arquivadas pelo ADR 0002 e
+  o baseline entrou em 06/08. Um `db push` acidental hoje é **no-op**.
+
+  O que continua verdadeiro é a consequência, por outra causa: **nenhum cliente pode ter o
+  schema reproduzido a partir do repositório**, porque `supabase/migrations/` tem o baseline
+  **mais** as 98 históricas, todas no ledger — um banco zerado rodaria as 98 e depois o
+  baseline, e colidiria. Arquivar as 98 foi adiado de propósito no ADR 0002 e está amarrado à
+  `INFRA-270` (#131). Ver [docs/decisoes/0002-baseline-do-ledger-de-migrations.md](docs/decisoes/0002-baseline-do-ledger-de-migrations.md).
+
+  As **28 versões do ledger sem arquivo** são permanentes: o SQL não existe em lugar nenhum.
+  O baseline absorve o efeito delas; o porquê está perdido. Não é dívida a pagar.
 - **Migration não leva `BEGIN`/`COMMIT`** — com eles, o `ROLLBACK` do script de prova vira
   no-op e a mudança fica gravada mesmo assim.
 - **Backup é diário e não há PITR.** O custo de reverter é seu tempo remontando massa de
