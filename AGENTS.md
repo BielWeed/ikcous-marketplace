@@ -58,13 +58,21 @@ ambiente crítica nunca seja exposta, e confere as regras de concorrência e int
 
 **E os perigos já medidos neste repositório, que valem para qualquer agente:**
 
-- **`npm run dev` aponta para o Supabase de PRODUÇÃO** e já vem logado como admin. Testar cadastro
-  ou pedido pela tela suja o catálogo real.
+- **Este repositório é o app-molde, não uma loja.** Quando uma assinatura é vendida, os arquivos
+  são clonados e a loja do cliente é montada separada. O Supabase ligado aqui é de
+  desenvolvimento — medido em 10/08/2026: 64 pedidos em 5 meses, **um único e-mail de cliente
+  distinto**, 57 cancelados, 22 produtos. `npm run dev` aponta para ele, logado como admin.
+
+  O risco não some, **muda de lugar**: defeito escrito aqui é replicado em cada loja vendida, e
+  é lá que existe dinheiro. Rigor sobre o que o código faz; sobre escrever no banco, apenas
+  higiene (nome óbvio de teste, limpar depois).
 - **Nunca `supabase db push`.** Há 42 migrations locais nunca aplicadas e 28 versões no banco sem
-  arquivo; um push aplica lixo em produção.
+  arquivo. Enquanto isso não for resolvido, **nenhum cliente pode ter o schema reproduzido a
+  partir do repositório** — deixou de ser higiene e virou pré-requisito de venda.
 - **Migration não leva `BEGIN`/`COMMIT`.** Com eles, o `ROLLBACK` do script de prova vira no-op e
   a mudança fica gravada.
-- **Backup é diário e não há PITR.** Reverter migration custa até 24 h de pedidos.
+- **Backup é diário e não há PITR.** O custo de reverter é tempo remontando massa de
+  desenvolvimento, não pedido de cliente perdido.
 - **Nunca `--no-verify` no commit.** O hook de `secretlint` é a única trava contra credencial
   vazada — o histórico deste repo já teve `service_role` e senha de banco commitadas.
 

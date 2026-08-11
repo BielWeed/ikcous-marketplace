@@ -145,17 +145,35 @@ O que **não** muda: quem cobra é o CI, e nenhuma dessas escolhas altera regra,
 reprova um PR. Escopar a verificação de um subagente é decisão de custo, nunca de exigência —
 e ela é da sessão principal, que sabe o tamanho do diff, não do subagente, que não sabe.
 
-## Perigos deste repositório
+## Onde o risco realmente mora
 
-Fatos medidos, não hipóteses. Valem para a sessão e para todo subagente:
+**Este repositório é o app de desenvolvimento — o molde, não uma loja.** Quando uma assinatura
+é vendida, os arquivos são clonados e a loja do cliente é montada separada. O Supabase ligado
+aqui é de desenvolvimento: medido em 10/08/2026, tem 64 pedidos em 5 meses com **um único
+e-mail de cliente distinto** (57 deles cancelados) e 22 produtos. Não há negócio rodando nele.
 
-- **`npm run dev` aponta para o Supabase de PRODUÇÃO** e já vem logado como admin. Testar
-  cadastro ou pedido pela tela suja o catálogo real.
+Isso **desloca** o risco, não o remove — e a direção importa, porque a versão anterior desta
+seção apontava para o lado errado e cobrava um preço que não existia:
+
+- **Escrever neste banco é barato.** Pedido de teste pela tela não suja catálogo de cliente
+  nenhum; suja massa de desenvolvimento que você mesmo montou. Higiene (produto de teste com
+  nome óbvio, limpar depois) continua boa prática — não é contenção de incidente.
+- **O que o código FAZ é caro, e mais caro do que parecia.** Todo defeito daqui é replicado
+  em cada loja vendida, e é lá que existe dinheiro de verdade. A `confirmar_pagamento` não
+  movimenta um centavo neste banco; movimenta no de cada cliente. É por isso que a tabela de
+  *Calibrar o custo da revisão* continua valendo inteira — o rigor é sobre o que se replica,
+  não sobre este banco.
+
+### Continua valendo, independente do acima
+
 - **Nunca `supabase db push`**: 42 migrations locais nunca aplicadas, 28 versões no banco sem
-  arquivo.
-- **Migration não leva `BEGIN`/`COMMIT`** — com eles, o `ROLLBACK` do script de prova vira no-op
-  e a mudança fica gravada em produção.
-- **Backup é diário e não há PITR.** Reverter migration custa até 24 h de pedidos.
+  arquivo. Isto não é higiene — enquanto não estiver resolvido, **nenhum cliente pode ter o
+  schema reproduzido a partir do repositório**.
+- **Migration não leva `BEGIN`/`COMMIT`** — com eles, o `ROLLBACK` do script de prova vira
+  no-op e a mudança fica gravada mesmo assim.
+- **Backup é diário e não há PITR.** O custo de reverter é seu tempo remontando massa de
+  desenvolvimento, não pedido de cliente perdido. Continua chato; deixou de ser urgência.
 - **Nunca `--no-verify` no commit.** O hook de `secretlint` é a única trava contra credencial
-  vazada — o histórico deste repo já teve `service_role` e senha de banco commitadas.
+  vazada — o histórico deste repo já teve `service_role` e senha de banco commitadas. Banco de
+  desenvolvimento exposto continua sendo banco exposto.
 - **Finalizar branch por Pull Request**, não por merge direto na `main` local.
