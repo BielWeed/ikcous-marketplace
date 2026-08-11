@@ -151,6 +151,18 @@ sw.addEventListener("fetch", (event: any) => {
     return;
   }
 
+  // GUARD DE ORIGEM: a partir daqui só sobra o catch-all de assets estáticos,
+  // que faz stale-while-revalidate via fetch() manual dentro do SW. Esse
+  // fetch() é regido pela CSP connect-src — NÃO pela script-src que liberou
+  // a tag <script> na página (ex.: sdk.mercadopago.com está em script-src,
+  // não em connect-src). Se deixarmos o catch-all reemitir uma requisição
+  // cross-origin como fetch(), a CSP barra, o catch cai no throw e o SW
+  // cancela o carregamento do script de terceiro (respondWith rejeitado).
+  // Para requisição de outra origem, não interceptar: dar `return` sem
+  // `respondWith` devolve o controle ao navegador, que busca nativamente
+  // e não passa pelo filtro de connect-src do SW.
+  if (url.origin !== sw.location.origin) return;
+
   // 3. STALE-WHILE-REVALIDATE: Assets estáticos (JS, CSS, Imagens)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
