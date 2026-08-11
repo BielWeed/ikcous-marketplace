@@ -38,7 +38,13 @@ pre-commit:
     # commitar — que é o ponto.
     - name: eslint
       glob: "*.{ts,tsx}"
-      run: npx eslint --max-warnings=-1 {staged_files}
+      # --cache pelo mesmo motivo do lint:ratchet: neste repositorio o eslint
+      # custa ~8 s por arquivo no Windows, quase tudo numa regra so
+      # (tailwindcss/no-custom-classname, 97,9% do tempo, medido em
+      # 10/08/2026). Sem cache, um commit que toca cinco componentes segura o
+      # terminal por quase um minuto. O cache guarda o RESULTADO por arquivo,
+      # entao o hook continua reprovando erro novo — provado com erro plantado.
+      run: npx eslint --max-warnings=-1 --cache --cache-strategy content {staged_files}
       fail_text: |
         Erro de eslint nos arquivos staged (warnings foram ignorados de propósito).
         Corrija o erro — ou, se o erro for pré-existente no arquivo que você tocou,
