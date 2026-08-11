@@ -70,19 +70,25 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    ter sido criado nos últimos 15 minutos. O pior caso de um id vazado é
    duplicar o aviso de um pedido que acabou de entrar.
 
-   **O que está publicado hoje** — medido em 05/08/2026 com
+   **O que está publicado hoje** — medido em 11/08/2026, depois da
+   despublicação da `send-order-whatsapp`, com
    `supabase functions list --project-ref cafkrminfnokvgjqtkle`. Esta tabela
    envelhece; rode o comando em vez de confiar nela:
 
    | Função | Versão | Atualizada em (UTC) |
    | --- | --- | --- |
-   | `send-push` | 12 | 2026-08-05 20:03 |
-   | `send-otp-email` | 8 | 2026-08-05 12:31 |
-   | `calculate-shipping` | 11 | 2026-07-30 08:22 |
-   | `send-order-whatsapp` | 8 | 2026-04-20 20:14 |
-   | `notify-new-order` | 2 | 2026-08-05 23:41 |
+   | `send-push` | 18 | 2026-08-05 20:03:54 |
+   | `calculate-shipping` | 17 | 2026-07-30 08:22:07 |
+   | `send-otp-email` | 15 | 2026-08-05 20:24:02 |
+   | `notify-new-order` | 8 | 2026-08-05 23:25:40 |
+   | `criar-pagamento` | 5 | 2026-08-11 02:43:51 |
+   | `webhook-mercadopago` | 5 | 2026-08-11 02:44:10 |
+   | `reconciliar-pagamentos` | 5 | 2026-08-11 02:44:22 |
 
-   Ressalvas desta tabela, medidas em 05/08/2026:
+   São sete — as quatro antigas mais as três do checkout (§5.3). A
+   `send-order-whatsapp`, despublicada em 11/08/2026, não aparece mais.
+
+   Ressalvas desta tabela, cada uma com sua própria data:
 
    - **`notify-new-order` foi publicada em 05/08/2026**, com `--no-verify-jwt`,
      e respondeu ao smoke test: corpo vazio devolve
@@ -91,26 +97,36 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
      aceita sem JWT e as guardas funcionam. **O critério 1 da #89 — pedido real
      com o painel fechado — continua não exercitado**, porque testá-lo cria
      pedido em produção.
-   - **`send-order-whatsapp` foi versionada em 06/08/2026** (`INFRA-330`, #167).
-     Baixada com `supabase functions download` e conferida: o fonte publicado é
-     **byte a byte idêntico** à cópia que existia fora do repositório. As cinco
-     functions publicadas agora têm fonte aqui.
+   - **`send-order-whatsapp` foi DESPUBLICADA em 11/08/2026** (#167, rastreada
+     pela #187):
 
-     Ela **avisa o CLIENTE, não o lojista** — quem avisa o lojista é a
-     `notify-new-order`. E está **morta**: consulta três colunas de
+     ```
+     supabase functions delete send-order-whatsapp --project-ref cafkrminfnokvgjqtkle --yes
+     Deleted Function send-order-whatsapp from project cafkrminfnokvgjqtkle.
+     ```
+
+     Ela avisava o CLIENTE, não o lojista — quem avisa o lojista é a
+     `notify-new-order` — e estava **morta**: consultava três colunas de
      `store_config` que a migration `20260601000001_remove_whatsapp_infrastructure.sql`
      (aplicada) removeu de propósito em 01/06/2026, junto do trigger e da função
-     de trigger. Devolve 500 em toda invocação. Ver
-     [`supabase/functions/send-order-whatsapp/README.md`](supabase/functions/send-order-whatsapp/README.md).
+     de trigger. Devolvia 500 em toda invocação, e nada a chamava.
 
-     **Não edite o `index.ts` dela.** Ele é cópia exata do publicado, e é isso
-     que permite provar por `download` + diff se algo mudou no ar sem passar
-     pelo repositório.
+     O código continua no repositório, em
+     [`supabase/functions/send-order-whatsapp/`](supabase/functions/send-order-whatsapp/README.md)
+     — não é para reativar, é o único registro do que esteve publicado e por
+     quê. Não edite o `index.ts` dela.
 
    - **`supabase functions deploy` sem nome de função publica TODAS as do
-     diretório.** Com as cinco versionadas isso deixou de poder apagar uma
-     função sem origem — mas continua podendo publicar em massa o que você não
-     revisou. **Sempre passe o nome da função.**
+     diretório.** Continua podendo publicar em massa o que você não revisou,
+     mesmo com as funções restantes versionadas. **Sempre passe o nome da
+     função.** Isso tem uma consequência específica para a
+     `send-order-whatsapp`: a pasta continua no repositório de propósito (é
+     o único registro do que esteve publicado — ver o README dela), então um
+     deploy sem nome a republica junto com as outras, e a contagem volta a 8.
+     Verificado: **não há regressão de segurança nisso.** Sem entrada em
+     `supabase/config.toml` e sem a flag `--no-verify-jwt` (que é opt-in), o
+     pior caso de uma republicação acidental é a verificação de JWT ficar
+     **ligada**, nunca `false`.
    - **Há um Cloudflare na frente do `functions.supabase.co`.** Um payload de
      teste com cara de SQL injection leva `403` do WAF antes de chegar na
      função — o corpo é uma página HTML da Cloudflare, não JSON. Se um teste

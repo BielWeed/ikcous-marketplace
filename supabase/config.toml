@@ -46,9 +46,6 @@ verify_jwt = false
 [functions."calculate-shipping"]
 verify_jwt = true
 
-[functions."send-order-whatsapp"]
-verify_jwt = true
-
 [functions."send-push"]
 verify_jwt = true
 
