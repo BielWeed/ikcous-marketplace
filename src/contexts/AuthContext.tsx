@@ -17,12 +17,19 @@ export interface ResetPasswordResult {
   message?: string;
 }
 
+// #123 — três estados em vez de um booleano só: "unknown" separa "ainda não
+// sei" de "não é admin", para o painel não expulsar ninguém enquanto a
+// verificação (a RPC `is_admin`, do servidor) ainda está em voo. `isAdmin`
+// continua existindo, derivado: `adminStatus === "admin"`.
+export type AdminStatus = "unknown" | "admin" | "not-admin";
+
 interface AuthContextType {
   session: Session | null;
   user: User | null;
   profile: any | null;
   loading: boolean;
   isAdmin: boolean;
+  adminStatus: AdminStatus;
   login: (
     email: string,
     senha: string,
@@ -54,8 +61,14 @@ export const AuthContext = createContext<AuthContextType>(
   {} as AuthContextType,
 );
 
-// Shared semaphore and state for all Auth instances (prevents redundant parallel checks)
-let checkingLock: Promise<void> | null = null;
+// Coalescência por usuário (#121): antes disto era um semáforo GLOBAL
+// (`checkingLock: Promise<void> | null`), compartilhado por qualquer
+// checagem em voo — na troca de conta na mesma aba, a checagem do cliente
+// novo simplesmente esperava (e descartava) a do admin antigo, sem nunca
+// calcular o próprio resultado. Agora só coalesce quando o `userId` bate;
+// um `userId` diferente inicia a sua própria verificação, nunca compartilha
+// a promise de outro usuário.
+let checkInFlight: { userId: string; promise: Promise<boolean> } | null = null;
 let initPromise: Promise<any> | null = null;
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
@@ -83,10 +96,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const cachedSession = getCachedSession();
-  const cachedIsAdmin = (() => {
-    if (!cachedSession?.user) return false;
-    return cachedSession.user.app_metadata?.role === "admin";
-  })();
 
   const [session, setSession] = useState<Session | null>(cachedSession);
   const [user, setUser] = useState<User | null>(
@@ -94,7 +103,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
   const [profile, setProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(!!cachedSession); // Non-blocking for guests, verifying for returned users
-  const [isAdmin, setIsAdmin] = useState<boolean>(cachedIsAdmin);
+  // #123 — `adminStatus` NUNCA nasce confirmado a partir do texto em cache
+  // (`getCachedSession()` é `JSON.parse` de `localStorage`, editável no
+  // DevTools). Com sessão, nasce "unknown" e só a RPC promove para "admin"
+  // ou "not-admin". Sem sessão, não há usuário para verificar.
+  const [adminStatus, setAdminStatus] = useState<AdminStatus>(
+    cachedSession?.user ? "unknown" : "not-admin",
+  );
+  const isAdmin = adminStatus === "admin";
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -118,53 +134,88 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [isPasswordRecovery]);
 
+  // #121 — precisa existir ANTES de `checkAdmin`: é a guarda que decide, na
+  // resolução de uma verificação, se o usuário que a disparou ainda é o
+  // ativo (troca de conta no meio da checagem não pode gravar por cima).
+  const activeUserIdRef = useRef<string | null>(
+    cachedSession?.user?.id || null,
+  );
+
   const checkAdmin = async (u: User | null | undefined) => {
     if (!u) {
-      setIsAdmin(false);
+      setAdminStatus("not-admin");
       return;
     }
 
     const userId = u.id;
     const cacheKey = `ikcous_is_admin_${userId}`;
 
-    // Fast Path 1: JWT Metadata (Zero latency, cryptographically secure. Rely ONLY on app_metadata, as user_metadata is client-writable)
-    const jwtRole = u.app_metadata?.role;
-    if (jwtRole === "admin") {
-      setIsAdmin(true);
-      localStorage.setItem(cacheKey, "true");
-      return;
-    }
+    // Aplica o resultado só se o usuário verificado ainda for o ativo no
+    // momento em que a checagem termina (#121) — sem isto, a checagem do
+    // usuário que SAIU pode gravar `isAdmin`/cache por cima do usuário que
+    // entrou depois, inclusive quando chega atrasada (promise órfã do
+    // timeout, ver `networkCheck`).
+    //
+    // Achado 2 (revisão #121/#123) — `verified` distingue um VEREDITO real
+    // (a RPC ou o fallback em `profiles` respondeu) de um NÃO-VEREDITO
+    // (timeout de 3s ou erro de rede, ver o `catch` mais abaixo). Só um
+    // veredito pode ser persistido: gravar "false" no `localStorage` a
+    // partir de uma resposta que nunca chegou vira uma conclusão permanente
+    // — nas cargas SEGUINTES, o Fast Path 2 leria esse cache e resolveria
+    // "not-admin" antes de qualquer rede, sem chance de correção. Um
+    // não-veredito só pode mexer no estado em memória desta carga.
+    const applyResult = (isAdminResult: boolean, verified: boolean) => {
+      if (activeUserIdRef.current !== userId) {
+        console.debug(
+          "[Auth] Discarding stale admin check result for user:",
+          userId,
+        );
+        return;
+      }
+      setAdminStatus(isAdminResult ? "admin" : "not-admin");
+      if (verified) {
+        localStorage.setItem(cacheKey, isAdminResult ? "true" : "false");
+      }
+    };
+
+    // #123 — a sessão local é texto que o usuário edita no DevTools; o
+    // supabase-js não valida a assinatura do JWT no cliente. `app_metadata`
+    // NUNCA confirma admin por si só — só a RPC abaixo (ou o fallback em
+    // `profiles`), verificada pelo servidor nesta carga de página, decide.
 
     // Fast Path 2: Local Cache (Immediate return for confirmed customers, keyed by user ID)
     const cachedAdmin = localStorage.getItem(cacheKey);
     if (cachedAdmin === "false") {
-      setIsAdmin(false);
+      setAdminStatus("not-admin");
       // Run background check to sync with potential admin status updates without blocking initial load
-      networkCheck().catch((err) =>
-        console.error("[Auth] background networkCheck error:", err),
-      );
+      networkCheck()
+        .then((result) => applyResult(result, true))
+        .catch((err) =>
+          console.error("[Auth] background networkCheck error:", err),
+        );
       return;
     }
 
-    // Network validation (Heavy)
-    async function networkCheck() {
-      if (checkingLock) {
-        try {
-          await checkingLock;
-        } catch {
-          // Ignore concurrent check errors
-        }
-        return;
+    // Network validation (Heavy). Resolve o booleano — não escreve estado
+    // nem localStorage por conta própria; quem faz isso é `applyResult`,
+    // guardado pelo usuário ativo. Timeout/erro REJEITA em vez de resolver
+    // `false` — quem decide o que fazer com um não-veredito é quem chama
+    // (`applyResult(..., false)` mais abaixo), não esta função.
+    async function networkCheck(): Promise<boolean> {
+      if (checkInFlight && checkInFlight.userId === userId) {
+        // Mesmo usuário já tem uma verificação em voo: reaproveita a
+        // promise dela em vez de disparar outra RPC.
+        return checkInFlight.promise;
       }
 
-      checkingLock = (async () => {
-        const queryPromise = (async () => {
+      // Usuário diferente (ou nenhuma verificação em voo): inicia a
+      // própria, sem esperar nem descartar a de outro usuário.
+      const myCheck = (async (): Promise<boolean> => {
+        const queryPromise = (async (): Promise<boolean> => {
           // First try direct RPC (fastest, most secure)
           const { data, error } = await supabase.rpc("is_admin");
           if (!error && typeof data === "boolean") {
-            setIsAdmin(data);
-            localStorage.setItem(cacheKey, data ? "true" : "false");
-            return;
+            return data;
           }
 
           // Fallback: check profiles table
@@ -174,31 +225,44 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             .eq("id", userId)
             .single();
 
-          const isDbAdmin = !profileError && profile?.role === "admin";
-          setIsAdmin(isDbAdmin);
-          localStorage.setItem(cacheKey, isDbAdmin ? "true" : "false");
+          return !profileError && profile?.role === "admin";
         })();
 
         // Add a resilient 3-second timeout limit to the network query
-        const timeoutPromise = new Promise((_, reject) =>
+        const timeoutPromise = new Promise<boolean>((_, reject) =>
           setTimeout(() => reject(new Error("Admin check timeout")), 3000),
         );
 
-        await Promise.race([queryPromise, timeoutPromise]);
+        return Promise.race([queryPromise, timeoutPromise]);
       })();
 
+      checkInFlight = { userId, promise: myCheck };
+
       try {
-        await checkingLock;
-      } catch (err) {
-        console.error("[Auth] Error/Timeout checking admin status:", err);
-        setIsAdmin(false);
+        return await myCheck;
       } finally {
-        checkingLock = null;
+        // Anotado 3 (revisão #121/#123) — compara pela IDENTIDADE da
+        // promise, não pelo `userId`. Só o `userId` não distingue DUAS
+        // checagens do MESMO usuário: na sequência A → B → A dentro da
+        // mesma janela, a checagem ORIGINAL de A pode liquidar por último e,
+        // comparando só o `userId`, apagaria o slot da SEGUNDA checagem de
+        // A — que ainda está em voo — mesmo sem ser a dona dele.
+        if (checkInFlight?.promise === myCheck) {
+          checkInFlight = null;
+        }
       }
     }
 
-    // Await the network check to prevent privilege bypass on client spoofing
-    await networkCheck();
+    // Await the network check to prevent privilege bypass on client spoofing.
+    try {
+      const result = await networkCheck();
+      applyResult(result, true);
+    } catch (err) {
+      console.error("[Auth] Error/Timeout checking admin status:", err);
+      // Não-veredito (Achado 2): trata como não-admin SÓ nesta carga, sem
+      // persistir no localStorage.
+      applyResult(false, false);
+    }
   };
 
   useEffect(() => {
@@ -248,9 +312,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const hasInited = useRef(false);
   const isVerifying = useRef(false);
   const isFirstMount = useRef(true);
-  const activeUserIdRef = useRef<string | null>(
-    cachedSession?.user?.id || null,
-  );
 
   useEffect(() => {
     // Immediate session resolution with internal timeout guard
@@ -320,7 +381,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                   setSession(null);
                   setUser(null);
                   activeUserIdRef.current = null;
-                  setIsAdmin(false);
+                  setAdminStatus("not-admin");
                   return;
                 }
               }
@@ -350,7 +411,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setSession(null);
           setUser(null);
           activeUserIdRef.current = null;
-          setIsAdmin(false);
+          setAdminStatus("not-admin");
           setLoading(false);
           isFirstMount.current = false;
         }
@@ -455,7 +516,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       } else {
         setProfile(null);
-        setIsAdmin(false);
+        setAdminStatus("not-admin");
         if (event === "SIGNED_OUT" && typeof window !== "undefined") {
           localStorage.removeItem("app.favorites");
           localStorage.removeItem("marketplace_cart_v1");
@@ -535,7 +596,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } else {
       setSession(null);
       setUser(null);
-      setIsAdmin(false);
+      setAdminStatus("not-admin");
       setIsPasswordRecovery(false);
     }
   }, []);
@@ -734,6 +795,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       profile,
       loading,
       isAdmin,
+      adminStatus,
       login,
       signUp,
       resetPassword,
@@ -752,6 +814,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       profile,
       loading,
       isAdmin,
+      adminStatus,
       login,
       signUp,
       resetPassword,
