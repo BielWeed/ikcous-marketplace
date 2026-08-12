@@ -236,6 +236,34 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20260812000000_reconciliar_pedido_cancelado.sql": [
+    {
+      funcao: "pagamentos_a_reconciliar",
+      esperado: [
+        // Mesmos quatro marcadores da entrada de
+        // "20260808000100_reconciliacao.sql" acima, exigidos de novo pelo
+        // Item 3 do achado da revisao do PR #179 sobre esta mesma funcao:
+        // sem isto a varredura revisita pedido ja reconciliado a cada ciclo.
+        "AND paid_at IS NULL",
+        // A janela. Sem ela vira varredura do historico inteiro a cada 10 min.
+        "interval '24 hours'",
+        // So quem chegou a ter cobranca no MP. SEM o "AND" da entrada
+        // vizinha: esta migration reordenou o WHERE e colocou esta condicao
+        // primeiro — provado contra a definicao viva (ver relatorio da
+        // tarefa); com "AND" na frente o marcador nunca casa e a
+        // verificacao reprova a propria migration correta.
+        "gateway_payment_id IS NOT NULL",
+        // DESC, nao ASC: mesmo raciocinio da entrada de 20260808000100 acima
+        // — sem isto o LIMIT 100 favorece sempre os candidatos mais velhos.
+        "ORDER BY expires_at DESC",
+        // O ramo novo do issue #180: sem ele, o pedido cancelado pelo app
+        // (update_order_status_atomic devolveu o estoque e nao escreveu
+        // payment_status) cujo PIX foi pago mesmo assim nunca entra na fila
+        // de reconciliacao — dinheiro parado no MP, zero sinal de atencao.
+        "OR (payment_status = 'aguardando' AND status = 'cancelled')",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
