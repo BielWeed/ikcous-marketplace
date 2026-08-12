@@ -157,6 +157,12 @@ async function handler(
   // a recusa tem de ser aqui também: a tela é do cliente, e o caminho de
   // cartão tem defeito conhecido — depois da primeira recusa o pedido fica
   // impagável até expirar (herança nº 2 da Fase 2). Cartão é a Fase 3.5.
+  // CHECKOUT-050 (#194), correção da revisão (a rodada anterior marcou isto
+  // terminal por engano): NÃO é permanente. "Tentar de novo" remonta o
+  // Brick, e é justamente lá que o cliente escolhe PIX — o próprio retry
+  // TROCA de método, que é a saída que a própria mensagem sugere. Marcar
+  // terminal prendia o cliente numa caixa que já tinha desmontado o
+  // formulário onde ele faria essa troca.
   if (body.metodo !== "pix") {
     return json({ error: "No momento aceitamos apenas PIX." }, 400);
   }
@@ -180,15 +186,48 @@ async function handler(
     .eq("id", body.orderId)
     .maybeSingle();
 
+  // CHECKOUT-050 (#194), achado da revisão: `error` truthy é FALHA DE
+  // LEITURA — statement timeout, pool esgotado, fetch caindo — nunca
+  // "pedido não existe". Verificado no postgrest-js instalado: zero linhas
+  // devolve `{data: null, error: null}`, então `error` truthy só acontece
+  // quando a leitura em si falhou. Recuperável, com status e mensagem
+  // PRÓPRIOS: reaproveitar "Pedido não encontrado." (e seu `terminal: true`)
+  // aqui matava um pedido vivo por um soluço passageiro do banco — o
+  // cliente perdia o "Tentar de novo" e o pedido morria no pg_cron 20
+  // minutos depois. Mensagem própria também não vaza quais ids existem: a
+  // falha de leitura acontece igual para id existente e inexistente.
+  if (error) {
+    console.error("criar-pagamento: falha ao ler pedido", body.orderId, error);
+    return json({ error: "Não foi possível verificar o pedido." }, 503);
+  }
+
   // Mensagem igual para "não existe" e "não é seu": responder diferente
   // transformaria esta função em oráculo de quais ids existem.
-  if (error || !pedido) return json({ error: "Pedido não encontrado." }, 404);
+  //
+  // CHECKOUT-050 (#194): os dois 404 abaixo são PERMANENTES. Se a sessão do
+  // cliente cai no meio dos 30 minutos de reserva, `subDoToken` devolve
+  // `null`, `donoConfere` reprova, e o mesmo 404 se repete para sempre — sem
+  // `terminal`, "Tentar de novo" nunca teria efeito nenhum.
+  if (!pedido) return json({ error: "Pedido não encontrado.", terminal: true }, 404);
 
   const sub = subDoToken(req.headers.get("Authorization"));
-  if (!donoConfere(pedido, sub)) return json({ error: "Pedido não encontrado." }, 404);
+  if (!donoConfere(pedido, sub)) {
+    return json({ error: "Pedido não encontrado.", terminal: true }, 404);
+  }
 
   const decisao = podeCobrar(pedido, new Date());
-  if (decisao.acao === "recusar") return json({ error: decisao.motivo }, 409);
+  // CHECKOUT-050 (#194): os três ramos de "recusar" de podeCobrar são
+  // permanentes PARA ESTE PEDIDO. `terminal: true` é DADO, não texto: antes
+  // disso o front reconhecia só a mensagem exata de prazo vencido, e assim
+  // que o pg_cron (a cada 5 min) marca o pedido 'expirado', a MESMA reserva
+  // morta passa a cair no ramo 1 (payment_status !== 'aguardando') com uma
+  // mensagem que o front nunca soube reconhecer — o cliente ganhava "Tentar
+  // de novo" para uma recusa que nunca muda. A releitura pós-UPDATE-falho,
+  // mais abaixo, tem seu próprio ramo 'expirado' — mesma categoria, mesmo
+  // campo — porque é a MESMA condição vista por um caminho diferente.
+  if (decisao.acao === "recusar") {
+    return json({ error: decisao.motivo, terminal: true }, 409);
+  }
 
   if (decisao.acao === "reconsultar") {
     // O QR só existe na resposta da CRIAÇÃO. Aqui é onde a tela recupera o
@@ -286,13 +325,20 @@ async function handler(
       .maybeSingle();
 
     if (atual?.payment_status === "expirado") {
-      return json({ error: "O prazo para pagar este pedido acabou." }, 409);
+      // Definitivo, mesma categoria dos três ramos de podeCobrar acima: o
+      // pedido já está 'expirado', e qualquer nova tentativa cai no ramo 1
+      // de podeCobrar (payment_status !== 'aguardando') e é recusada de
+      // novo, para sempre.
+      return json({ error: "O prazo para pagar este pedido acabou.", terminal: true }, 409);
     }
     if (atual?.gateway_payment_id !== null && atual?.gateway_payment_id !== undefined) {
+      // Recuperável: a OUTRA chamada concorrente já gravou a cobrança —
+      // nova tentativa converge pelo caminho `reconsultar`, sem `terminal`.
       return json({ error: "Este pedido já tem uma cobrança gerada." }, 409);
     }
     // Estado que a releitura não explicou (ex.: ela também falhou) — sem
-    // inventar causa.
+    // inventar causa. Recuperável: sem causa conhecida, tentar de novo é
+    // razoável, e a chave de idempotência protege contra cobrança duplicada.
     return json({ error: "Não foi possível confirmar a cobrança." }, 409);
   }
 
