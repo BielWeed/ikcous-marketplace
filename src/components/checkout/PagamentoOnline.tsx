@@ -47,6 +47,35 @@ export function carregarSdkMercadoPago(): Promise<void> {
 }
 
 /**
+ * De que tipo é a falha que `onErro` está reportando — ver CHECKOUT-050.
+ *
+ * "recuperavel": tentar de novo pode dar um resultado diferente. Cobre dois
+ * casos bem distintos: a cobrança pode não ter chegado a existir (rede caiu,
+ * SDK não carregou, Brick não montou) — aí `criar-pagamento` cria do zero,
+ * sem `gateway_payment_id` gravado; OU o PIX voltou sem QR code num 200 que
+ * JÁ CRIOU a cobrança (o UPDATE grava `gateway_payment_id` antes de
+ * responder) — aí a próxima tentativa cai em `reconsultar`, que pode trazer
+ * o QR que a criação não trouxe. Nos dois casos insistir é seguro; muda só o
+ * caminho que `criar-pagamento` escolhe.
+ *
+ * "terminal": a cobrança já existe e está morta para este pedido (recusada,
+ * cancelada, com status que o banco não reconhece) OU a reserva do pedido já
+ * venceu. Tentar de novo bate na MESMA recusa — `podeCobrar` manda para
+ * `reconsultar` sempre que já existe `gateway_payment_id`, devolvendo o
+ * status da mesma cobrança (ver o comentário grande dentro de `onSubmit`
+ * abaixo).
+ */
+export type CategoriaErroPagamento = "recuperavel" | "terminal";
+
+/**
+ * Marca um erro como TERMINAL para quem captura no catch de `onSubmit` —
+ * usado só nos dois pontos abaixo onde SABEMOS que reconsultar devolve a
+ * mesma recusa. Qualquer outro erro (rede, `criarPagamento` rejeitando por
+ * outro motivo) é tratado como recuperável por padrão.
+ */
+class ErroPagamentoTerminal extends Error {}
+
+/**
  * Monta o Payment Brick e devolve a função de desmontagem do efeito.
  *
  * Extraída do `useEffect` do componente por dois motivos:
@@ -78,7 +107,7 @@ export function montarBrick({
   orderId: string;
   valor: number;
   criarPagamento: ReturnType<typeof useOrders>["criarPagamento"];
-  onErro: (msg: string) => void;
+  onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
   onPix: (pix: {
     qrCodeBase64?: string;
     qrCode?: string;
@@ -113,7 +142,8 @@ export function montarBrick({
           onReady: () => {},
           onError: (erro: unknown) => {
             console.error("brick:", erro);
-            onErro("Não foi possível carregar o pagamento.");
+            // O Brick nem chegou a montar — nenhuma cobrança foi criada.
+            onErro("Não foi possível carregar o pagamento.", "recuperavel");
           },
           onSubmit: async ({ formData }: { formData: Record<string, any> }) => {
             try {
@@ -146,7 +176,7 @@ export function montarBrick({
                 // gateway_payment_id — o que devolve o status da MESMA
                 // cobrança recusada, sem criar outra. Qualquer nova
                 // tentativa neste pedido bate na mesma recusa até expirar.
-                throw new Error(
+                throw new ErroPagamentoTerminal(
                   "Este pagamento foi recusado e não pode ser tentado novamente neste pedido. Faça um pedido novo ou fale com a loja.",
                 );
               }
@@ -157,8 +187,12 @@ export function montarBrick({
                 "authorized",
               ].includes(r.status);
               if (!statusConhecido) {
-                // Status novo do MP não pode virar sucesso silencioso.
-                throw new Error("Não foi possível confirmar o pagamento.");
+                // Status novo do MP não pode virar sucesso silencioso — e,
+                // como o rejected/cancelled acima, reconsultar não muda o
+                // que o MP já respondeu.
+                throw new ErroPagamentoTerminal(
+                  "Não foi possível confirmar o pagamento.",
+                );
               }
 
               if (ehPix) {
@@ -184,7 +218,32 @@ export function montarBrick({
               // As quatro mensagens de criarPagamento (useOrders.ts:974-980)
               // só chegam ao cliente se saírem por aqui — sem este catch, a
               // rejeição desaparece dentro do próprio SDK e a tela fica muda.
-              onErro(err?.message ?? "Não foi possível gerar a cobrança.");
+              //
+              // Categoria: terminal para os dois `throw new
+              // ErroPagamentoTerminal` acima, e para qualquer erro de
+              // `criarPagamento` (useOrders.ts) que traga `.terminal ===
+              // true` — DADO que a edge function manda no corpo do 409,
+              // não texto. CHECKOUT-050 (#194), achado da revisão: a
+              // versão anterior comparava a MENSAGEM por igualdade exata
+              // com o texto de prazo vencido; assim que o pg_cron marca o
+              // pedido 'expirado' (a cada 5 min), a mesma reserva morta
+              // passa a cair no ramo 1 de podeCobrar (payment_status !==
+              // 'aguardando'), com uma mensagem que a comparação de texto
+              // nunca reconhecia — o cliente ganhava "Tentar de novo" para
+              // uma recusa que nunca muda. Sem compatibilidade com a
+              // versão antiga da criar-pagamento (que não manda o campo):
+              // a loja em produção não cobra online hoje (VITE_
+              // PAGAMENTO_ONLINE falha fechada), e o deploy da function é
+              // pré-requisito conhecido de ligar a flag — um fallback por
+              // texto "só durante a transição" reintroduziria exatamente
+              // este defeito. Qualquer outro erro — rede, gateway fora do
+              // ar, corpo de erro genérico — é recuperável por padrão.
+              const terminal =
+                err instanceof ErroPagamentoTerminal || err?.terminal === true;
+              onErro(
+                err?.message ?? "Não foi possível gerar a cobrança.",
+                terminal ? "terminal" : "recuperavel",
+              );
               // Relança para o Brick saber que o envio falhou e sair do
               // estado "processando" — engolir aqui prende o botão.
               throw err;
@@ -202,8 +261,19 @@ export function montarBrick({
       }
       controlador = criado;
     } catch (err: any) {
+      // SDK que não carregou, chave pública ausente ou create() que falhou —
+      // em qualquer um destes, nenhuma cobrança chegou a ser criada.
+      //
+      // Achado 2 da revisão (CHECKOUT-050, #194): NUNCA usar `err?.message`
+      // aqui. Quando quem rejeita é o próprio create() do SDK do Mercado
+      // Pago, essa mensagem é texto do BUNDLE deles — em inglês, com
+      // jargão de configuração. Um toast escondia isso em 2500ms; agora a
+      // caixa de erro fica NA TELA até o cliente sair, então uma mensagem
+      // de terceiro travada ali é pior que antes. `err` continua indo para
+      // o console, que é onde ela serve.
+      console.error("montarBrick:", err);
       if (!cancelado)
-        onErro(err?.message ?? "Não foi possível carregar o pagamento.");
+        onErro("Não foi possível carregar o pagamento.", "recuperavel");
     }
   })();
 
@@ -221,7 +291,7 @@ export function PagamentoOnline({
 }: {
   orderId: string;
   valor: number;
-  onErro: (msg: string) => void;
+  onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
 }) {
   const { criarPagamento } = useOrders(false, true);
   // `expiraEm` vem junto do PIX, da resposta da edge function — é o prazo que
@@ -256,7 +326,7 @@ export function PagamentoOnline({
       orderId,
       valor,
       criarPagamento,
-      onErro: (msg) => onErroRef.current(msg),
+      onErro: (msg, categoria) => onErroRef.current(msg, categoria),
       onPix: setPix,
     });
     // `onErro` de propósito fora das deps — ver o comentário do onErroRef

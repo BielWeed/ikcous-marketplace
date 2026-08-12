@@ -986,16 +986,39 @@ export function useOrders(
       // "Pagamento indisponível.") e mostraria a mesma frase genérica em todas.
       if (error) {
         let mensagem = "Não foi possível gerar a cobrança.";
+        // CHECKOUT-050 (#194): `terminal` viaja JUNTO da mensagem, lido do
+        // mesmo corpo — é o campo que a edge function grava nos três ramos
+        // de "recusar" de podeCobrar() (supabase/functions/criar-pagamento
+        // /index.ts). Sem ele, quem chama esta função tinha que ADIVINHAR a
+        // categoria comparando a MENSAGEM por igualdade exata com um texto
+        // fixo — e quebrava assim que a mensagem real mudava (achado da
+        // revisão, ver o comentário grande em PagamentoOnline.tsx). Default
+        // `false`: falha fechada quando o corpo não tem o campo (edge
+        // function antiga ainda no ar, ou corpo ilegível) — de propósito
+        // SEM reconstruir a categoria a partir de texto nesse caso.
+        let terminal = false;
         try {
           const corpo = await (error as any).context?.json?.();
           if (corpo?.error) mensagem = corpo.error;
+          if (typeof corpo?.terminal === "boolean") terminal = corpo.terminal;
         } catch {
           // Corpo ilegível: fica a mensagem genérica, que é melhor que vazar
           // o texto cru de um erro de infraestrutura para o cliente.
         }
-        throw new Error(mensagem);
+        throw Object.assign(new Error(mensagem), { terminal });
       }
-      if (data?.error) throw new Error(data.error);
+      if (data?.error) {
+        // Mesma regra estrita do ramo `error` acima: só `true` literal vira
+        // terminal. `Boolean(...)` aceitaria "false" (string), 1, `{}` — este
+        // ramo é inalcançável hoje (o supabase-js v2 sempre preenche `error`
+        // numa resposta não-2xx), mas duas leituras do mesmo campo lado a
+        // lado é convite para elas divergirem.
+        throw Object.assign(new Error(data.error), {
+          terminal:
+            typeof (data as any).terminal === "boolean" &&
+            (data as any).terminal,
+        });
+      }
       return data as {
         paymentId: string;
         status: string;

@@ -319,9 +319,14 @@ describe("montarBrick", () => {
     };
 
     const onErro = vi.fn();
-    const criarPagamento = vi
-      .fn()
-      .mockRejectedValue(new Error("O prazo para pagar este pedido acabou."));
+    // `useOrders.criarPagamento` (CHECKOUT-050) anexa `.terminal` no Error
+    // que lança, lido do corpo do 409 da edge function — é esse campo, não
+    // o texto da mensagem, que classifica a categoria abaixo.
+    const erro = Object.assign(
+      new Error("O prazo para pagar este pedido acabou."),
+      { terminal: true },
+    );
+    const criarPagamento = vi.fn().mockRejectedValue(erro);
 
     montarBrick(opcoesPadrao({ criarPagamento, onErro }));
     await carregarSdk();
@@ -331,8 +336,86 @@ describe("montarBrick", () => {
     await expect(onSubmit({ formData: { token: "tok-123" } })).rejects.toThrow(
       "O prazo para pagar este pedido acabou.",
     );
+    // Categoria "terminal": a reserva já morreu (pg_cron cobra o prazo), e
+    // tentar de novo bate na mesma recusa — ver podeCobrar() em
+    // supabase/functions/criar-pagamento/index.ts.
     expect(onErro).toHaveBeenCalledWith(
       "O prazo para pagar este pedido acabou.",
+      "terminal",
+    );
+  });
+
+  // CHECKOUT-050 (#194) — o achado da revisão: o front classificava
+  // "terminal" comparando a mensagem por igualdade EXATA com o texto de
+  // prazo vencido. Assim que o pg_cron marca o pedido 'expirado' (a cada 5
+  // min), a MESMA reserva morta passa a cair no ramo 1 de podeCobrar
+  // ("Este pedido não está aguardando pagamento.") — uma mensagem que a
+  // comparação por texto nunca reconhecia, e o cliente ganhava "Tentar de
+  // novo" para uma recusa permanente. Este teste usa essa mensagem —
+  // DIFERENTE da de prazo — e prova que quem decide agora é `.terminal`, um
+  // dado, não mais um texto congelado.
+  it("erro com .terminal=true classifica como 'terminal' mesmo com mensagem que não é a de prazo vencido", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    const onErro = vi.fn();
+    const erro = Object.assign(
+      new Error("Este pedido não está aguardando pagamento."),
+      { terminal: true },
+    );
+    const criarPagamento = vi.fn().mockRejectedValue(erro);
+
+    montarBrick(opcoesPadrao({ criarPagamento, onErro }));
+    await carregarSdk();
+
+    const { onSubmit } = create.mock.calls[0][2].callbacks;
+
+    await expect(
+      onSubmit({ formData: { token: "tok-123" } }),
+    ).rejects.toThrow();
+
+    expect(onErro).toHaveBeenCalledWith(
+      "Este pedido não está aguardando pagamento.",
+      "terminal",
+    );
+  });
+
+  // Contraste do teste acima: sem `.terminal`, e sem ser um dos dois
+  // `throw new ErroPagamentoTerminal` internos, o erro é recuperável por
+  // padrão — inclusive um erro genérico de rede que por acaso repete a
+  // MESMA mensagem de prazo vencido (não pode haver comparação de texto
+  // nenhuma sobrando).
+  it("erro sem .terminal classifica como 'recuperavel', mesmo que o texto repita a mensagem de prazo vencido", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    const onErro = vi.fn();
+    const criarPagamento = vi
+      .fn()
+      .mockRejectedValue(new Error("O prazo para pagar este pedido acabou."));
+
+    montarBrick(opcoesPadrao({ criarPagamento, onErro }));
+    await carregarSdk();
+
+    const { onSubmit } = create.mock.calls[0][2].callbacks;
+
+    await expect(
+      onSubmit({ formData: { token: "tok-123" } }),
+    ).rejects.toThrow();
+
+    expect(onErro).toHaveBeenCalledWith(
+      "O prazo para pagar este pedido acabou.",
+      "recuperavel",
     );
   });
 
@@ -405,6 +488,9 @@ describe("montarBrick", () => {
     ).rejects.toThrow();
 
     expect(onErro).toHaveBeenCalledTimes(1);
+    // Terminal: a MESMA cobrança recusada volta em qualquer reconsulta —
+    // não pode haver "tentar de novo" para este pedido.
+    expect(onErro.mock.calls[0][1]).toBe("terminal");
     expect(onPix).not.toHaveBeenCalled();
     expect(unmount).not.toHaveBeenCalled();
   });
@@ -473,6 +559,8 @@ describe("montarBrick", () => {
     await expect(onSubmit({ formData: {} })).rejects.toThrow();
 
     expect(onErro).toHaveBeenCalledTimes(1);
+    // Terminal: mesmo motivo do 'rejected' acima.
+    expect(onErro.mock.calls[0][1]).toBe("terminal");
     expect(onPix).not.toHaveBeenCalled();
     expect(unmount).not.toHaveBeenCalled();
   });
@@ -508,6 +596,9 @@ describe("montarBrick", () => {
     await expect(onSubmit({ formData: {} })).rejects.toThrow();
 
     expect(onErro).toHaveBeenCalledTimes(1);
+    // Recuperável: a cobrança em si não existe de forma útil (sem QR), e uma
+    // nova tentativa cria/reconsulta do zero sem risco de duplicar cobrança.
+    expect(onErro.mock.calls[0][1]).toBe("recuperavel");
     expect(onPix).not.toHaveBeenCalled();
     expect(unmount).not.toHaveBeenCalled();
   });
@@ -539,6 +630,9 @@ describe("montarBrick", () => {
     await expect(onSubmit({ formData: {} })).rejects.toThrow();
 
     expect(onErro).toHaveBeenCalledTimes(1);
+    // Terminal: status novo/desconhecido do MP também não dá para reconsultar
+    // e obter algo diferente — a reconsulta devolve o mesmo status cru.
+    expect(onErro.mock.calls[0][1]).toBe("terminal");
     expect(onPix).not.toHaveBeenCalled();
     expect(unmount).not.toHaveBeenCalled();
   });
@@ -566,6 +660,84 @@ describe("montarBrick", () => {
     const { paymentMethods } = create.mock.calls[0][2].customization;
     expect(paymentMethods.bankTransfer).toBe("all");
     expect(paymentMethods.creditCard).toBeUndefined();
+  });
+
+  // CHECKOUT-050: o Brick nunca chegou a criar cobrança nenhuma aqui — a
+  // falha é do carregamento em si (rede, SDK indisponível). Tentar de novo
+  // simplesmente remonta e tenta carregar de novo, sem risco de duplicar
+  // cobrança.
+  it("SDK que não carrega chama onErro com categoria 'recuperavel'", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const onErro = vi.fn();
+    montarBrick(opcoesPadrao({ onErro }));
+
+    const tag = document.querySelector("script[data-mp-sdk]")!;
+    tag.dispatchEvent(new Event("error"));
+    await esperarMicrotarefas();
+
+    expect(onErro).toHaveBeenCalledTimes(1);
+    expect(onErro.mock.calls[0][1]).toBe("recuperavel");
+  });
+
+  // Mesmo raciocínio: o próprio Brick avisou que não conseguiu montar
+  // (callbacks.onError) antes de qualquer onSubmit rodar — nenhuma cobrança
+  // chegou a ser criada.
+  it("onError do Brick (callback de montagem) chama onErro com categoria 'recuperavel'", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    const onErro = vi.fn();
+    montarBrick(opcoesPadrao({ onErro }));
+    await carregarSdk();
+
+    const { onError } = create.mock.calls[0][2].callbacks;
+    onError(new Error("falha simulada de montagem"));
+
+    expect(onErro).toHaveBeenCalledTimes(1);
+    expect(onErro.mock.calls[0][1]).toBe("recuperavel");
+  });
+
+  // Achado 2 da revisão do CHECKOUT-050 (#194): o catch EXTERNO (em volta de
+  // carregarSdkMercadoPago + mp.bricks().create()) mandava `err?.message` —
+  // e quando quem rejeita é o próprio create() do SDK do Mercado Pago, essa
+  // mensagem é texto do BUNDLE deles (inglês, jargão de configuração). Um
+  // toast escondia isso em 2500ms; agora a mensagem fica NA TELA até o
+  // cliente sair (CHECKOUT-050). Este caminho tem que usar sempre a frase
+  // curada em português — a mensagem crua vai só para o console.
+  it("create() do SDK rejeitando com mensagem do bundle deles não vaza na tela — usa a frase curada e loga no console", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const consoleErroSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const mensagemDoBundle = "Invalid public key format provided";
+    const create = vi.fn().mockRejectedValue(new Error(mensagemDoBundle));
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    const onErro = vi.fn();
+    montarBrick(opcoesPadrao({ onErro }));
+    await carregarSdk();
+    await esperarMicrotarefas();
+
+    expect(onErro).toHaveBeenCalledTimes(1);
+    expect(onErro).toHaveBeenCalledWith(
+      "Não foi possível carregar o pagamento.",
+      "recuperavel",
+    );
+    // A prova que tem dente: o texto do bundle NÃO pode estar na mensagem
+    // que vai para a tela.
+    expect(onErro.mock.calls[0][0]).not.toContain(mensagemDoBundle);
+    // O erro cru continua indo para o console — é onde ele serve.
+    expect(consoleErroSpy).toHaveBeenCalled();
   });
 });
 
