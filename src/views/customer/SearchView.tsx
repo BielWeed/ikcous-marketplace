@@ -343,6 +343,7 @@ export const SearchView = React.memo(function SearchView({
                     onToggleFavorite={toggleFavorite}
                     onClick={handleProductClick}
                     isEligibleForFreeShipping={config.freeShippingMin > 0}
+                    showRating={config.enableReviews}
                     onMouseEnter={handlePrefetchProductDetail}
                     onTouchStart={handlePrefetchProductDetail}
                     priority={index < 4}
@@ -405,6 +406,7 @@ export const SearchView = React.memo(function SearchView({
                     onToggleFavorite={toggleFavorite}
                     onClick={handleProductClick}
                     isEligibleForFreeShipping={config.freeShippingMin > 0}
+                    showRating={config.enableReviews}
                     onMouseEnter={handlePrefetchProductDetail}
                     onTouchStart={handlePrefetchProductDetail}
                   />

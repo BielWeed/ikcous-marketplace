@@ -204,6 +204,7 @@ export const PremiumOffers = React.memo(function PremiumOffers({
                   onMouseEnter={handlePrefetchProductDetail}
                   onTouchStart={handlePrefetchProductDetail}
                   isEligibleForFreeShipping={config.freeShippingMin > 0}
+                  showRating={config.enableReviews}
                 />
               </div>
             ))}
@@ -247,6 +248,10 @@ interface HeroOfferCardProps {
   onMouseEnter?: () => void;
   onTouchStart?: () => void;
   isEligibleForFreeShipping: boolean;
+  /** ADMIN-091 (#202): espelha `config.enableReviews`, lido uma vez pelo
+   * `PremiumOffers` pai e repassado aqui -- mesmo padrão de
+   * `isEligibleForFreeShipping`. */
+  showRating: boolean;
 }
 
 function HeroOfferCard({
@@ -260,6 +265,7 @@ function HeroOfferCard({
   onMouseEnter,
   onTouchStart,
   isEligibleForFreeShipping,
+  showRating,
 }: HeroOfferCardProps) {
   const [cartStatus, setCartStatus] = useState<"idle" | "loading" | "success">(
     "idle",
@@ -392,13 +398,22 @@ function HeroOfferCard({
             </h3>
 
             <div className="mb-3 flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <StarRating rating={product.rating || 5} size={12} />
-              {product.reviewCount && product.reviewCount > 0 && (
-                <span className="text-[11px] font-bold text-slate-400">
-                  ({product.reviewCount})
-                </span>
+              {showRating && (
+                <>
+                  <StarRating rating={product.rating || 5} size={12} />
+                  {product.reviewCount && product.reviewCount > 0 && (
+                    <span className="text-[11px] font-bold text-slate-400">
+                      ({product.reviewCount})
+                    </span>
+                  )}
+                  {/* Separador só faz sentido com a estrela antes dele --
+                      some junto (ADMIN-091, #202). O selo "Alta Procura"
+                      abaixo é um sinal de demanda que a loja já tinha,
+                      independente de avaliação, e continua sozinho na
+                      linha sem deixar buraco. */}
+                  <span className="text-xs text-slate-200">|</span>
+                </>
               )}
-              <span className="text-xs text-slate-200">|</span>
               <span className="flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-700 transition-transform duration-300 group-hover:scale-105">
                 <Flame className="size-2.5 animate-pulse fill-amber-500 text-amber-500" />
                 Alta Procura
