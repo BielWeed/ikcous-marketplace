@@ -88,6 +88,12 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  // #200 — distingue, dentro do erro de login, o caso "e-mail ainda não
+  // confirmado" (ver handleSubmit) para exibir o botão de reenvio SÓ nele.
+  // O oráculo que separa esse caso de "credenciais incorretas" já existia
+  // antes desta issue; aqui só guardamos qual dos dois foi o motivo.
+  const [emailNaoConfirmado, setEmailNaoConfirmado] = useState(false);
+  const [reenviandoConfirmacao, setReenviandoConfirmacao] = useState(false);
 
   const formatPhone = (value: string) => {
     const numbers = value.replace(/\D/g, "");
@@ -109,6 +115,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
+    setEmailNaoConfirmado(false);
 
     // Auditoria do Payload
     if (viewMode === "login") {
@@ -131,14 +138,39 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           // Tratamento de Erro - Localização de mensagens do Supabase
           let message = "Ocorreu um erro ao entrar. Tente novamente.";
 
+          // #200 — o Supabase Auth devolve HTTP 400 tanto para "Invalid
+          // login credentials" quanto para "Email not confirmed" (registro
+          // oficial de códigos de erro do Supabase Auth:
+          // https://supabase.com/docs/guides/auth/debugging/error-codes).
+          // Por isso "e-mail não confirmado" tem que ser checado ANTES da
+          // condição genérica de 400 — checar depois nunca é alcançado,
+          // porque o 400 genérico já capturou os dois casos. `error.code`
+          // é o campo estável da API (AuthApiError expõe `code` e
+          // `status`); a mensagem entra como reserva para clientes antigos
+          // que não populam `code`.
+          //
+          // Isto NÃO reabre a enumeração de e-mail que a #120 fechou no
+          // fluxo de "Esqueci a senha": no código-fonte do GoTrue
+          // (internal/api/token.go, ResourceOwnerPasswordGrant) a checagem
+          // de confirmação só roda DEPOIS de `user.Authenticate(...)`
+          // validar a senha. Ou seja, `email_not_confirmed` só volta para
+          // quem já acertou a senha — quem não sabe a senha continua vendo
+          // "credenciais inválidas" de qualquer forma.
           if (
+            error.code === "email_not_confirmed" ||
+            error.message?.includes("Email not confirmed")
+          ) {
+            message =
+              "Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada.";
+            // #200 — este é o único ramo em que a conta comprovadamente
+            // existe e só falta confirmar: o botão de reenvio (abaixo, no
+            // JSX) só aparece quando esta flag está ligada.
+            setEmailNaoConfirmado(true);
+          } else if (
             error.status === 400 ||
             error.message?.includes("Invalid login credentials")
           ) {
             message = "E-mail ou senha incorretos. Verifique suas credenciais.";
-          } else if (error.message?.includes("Email not confirmed")) {
-            message =
-              "Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada.";
           } else if (error.status === 429) {
             message = "Muitas tentativas. Tente novamente em alguns minutos.";
           } else if (error.message) {
@@ -201,6 +233,30 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
       setLoginError("Ocorreu um erro inesperado na autenticação.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // #200 — reenvia o link de confirmação a partir do erro de login (não do
+  // fluxo showConfirmation, que só existe na sessão em que a pessoa se
+  // cadastrou). `resendConfirmationEmail` (AuthContext) já mostra o toast de
+  // sucesso/erro no caminho normal — aqui só cuidamos do estado de
+  // carregando, de não disparar dois reenvios em paralelo, e do caminho
+  // excepcional em que a promise rejeita (reaproveita o mesmo banner de erro
+  // do login, não inventa feedback novo). `finally` garante que o botão sai
+  // do "carregando" mesmo nesse caminho, então nunca fica travado nem o erro
+  // fica preso em silêncio.
+  const handleResendConfirmation = async () => {
+    if (reenviandoConfirmacao) return;
+    setReenviandoConfirmacao(true);
+    try {
+      await resendConfirmationEmail(email.trim());
+    } catch (err) {
+      console.error(err);
+      setLoginError(
+        "Não foi possível reenviar o e-mail de confirmação. Tente novamente.",
+      );
+    } finally {
+      setReenviandoConfirmacao(false);
     }
   };
 
@@ -494,6 +550,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                       onChange={(e) => {
                         setEmail(e.target.value);
                         if (loginError) setLoginError(null);
+                        if (emailNaoConfirmado) setEmailNaoConfirmado(false);
                       }}
                       className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 pl-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-300 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
                       required
@@ -516,7 +573,15 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                     {viewMode === "login" && (
                       <button
                         type="button"
-                        onClick={() => setViewMode("forgot")}
+                        onClick={() => {
+                          // Mesma limpeza das outras quatro transições (e-mail,
+                          // senha, toggle login/cadastro, novo submit): sem
+                          // isto o banner de erro — e o botão de reenvio junto
+                          // com ele — sobrevive à ida para "Recuperar senha".
+                          if (loginError) setLoginError(null);
+                          if (emailNaoConfirmado) setEmailNaoConfirmado(false);
+                          setViewMode("forgot");
+                        }}
                         className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 transition-colors hover:text-zinc-900"
                       >
                         Esqueceu?
@@ -541,6 +606,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                       onChange={(e) => {
                         setPassword(e.target.value);
                         if (loginError) setLoginError(null);
+                        if (emailNaoConfirmado) setEmailNaoConfirmado(false);
                       }}
                       className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 px-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-300 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
                       required
@@ -567,6 +633,32 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                   className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest text-red-600"
                 >
                   {loginError}
+                  {/* #200 — só aparece no ramo "e-mail ainda não confirmado":
+                  esse é o único caso, dentro do erro de login, em que a
+                  informação "esta conta existe e não está confirmada" já
+                  era revelada ANTES desta mudança (oráculo pré-existente),
+                  então o botão não abre um vazamento novo.
+
+                  Cor: `text-amber-600` sobre o `bg-red-50` deste banner dava
+                  2,91:1 — abaixo do 4,5:1 da WCAG AA — num texto de 10px
+                  maiúsculo e espaçado. `text-red-700` sobre o mesmo fundo dá
+                  5,94:1, e o sublinhado fixo (em vez de só no hover) mantém a
+                  leitura de "ação" sem depender só da cor para se distinguir
+                  do texto do banner ao lado. */}
+                  {emailNaoConfirmado && (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={handleResendConfirmation}
+                        disabled={reenviandoConfirmacao}
+                        className="text-red-700 underline underline-offset-2 disabled:no-underline disabled:opacity-60"
+                      >
+                        {reenviandoConfirmacao
+                          ? "Reenviando..."
+                          : "Reenviar link de confirmação"}
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               )}
 
@@ -607,6 +699,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
             <button
               onClick={() => {
                 if (loginError) setLoginError(null);
+                if (emailNaoConfirmado) setEmailNaoConfirmado(false);
                 if (viewMode === "forgot" || viewMode === "new-password") {
                   setViewMode("login");
                   setIsPasswordRecovery(false);
