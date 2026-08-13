@@ -13,7 +13,12 @@ import { toast } from "sonner";
 
 export interface ResetPasswordResult {
   success: boolean;
-  status: "success" | "unconfirmed" | "not_found" | "error";
+  // #120 — "unconfirmed" e "not_found" saíram do union: eram exatamente o
+  // vazamento (a UI mostrava mensagem diferente por resultado, revelando se
+  // o e-mail tinha conta e se estava confirmado). Só resta "success" (a
+  // MESMA resposta neutra, exista ou não a conta) e "error" (falha genuína,
+  // que não pode distinguir os dois casos).
+  status: "success" | "error";
   message?: string;
 }
 
@@ -70,6 +75,43 @@ export const AuthContext = createContext<AuthContextType>(
 // a promise de outro usuário.
 let checkInFlight: { userId: string; promise: Promise<boolean> } | null = null;
 let initPromise: Promise<any> | null = null;
+
+// #122 — função ÚNICA de limpeza de sessão local, chamada tanto pelo
+// `logout` (caminho de sucesso e o fallback de erro) quanto pelo listener de
+// `SIGNED_OUT`. Antes disto a lógica estava duplicada e divergente: o
+// listener removia 'app.favorites' (chave morta — zero writers no
+// repositório) e nunca tocava os caches de pedidos e endereços, que guardam
+// dado pessoal (histórico de pedidos; CEP, rua, número e destinatário) e
+// sobreviviam ao logout indefinidamente num dispositivo compartilhado.
+// Varredura por PREFIXO, de trás para a frente (o índice se desloca ao
+// remover) — igual ao que o código já fazia para `ikcous_is_admin_`: um
+// dispositivo compartilhado acumula cache de vários usuários, não só do que
+// acabou de sair.
+function clearLocalUserData() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("marketplace_cart_v1");
+  localStorage.removeItem("ikcous_recently_viewed");
+  localStorage.removeItem("ikcous_compare");
+  localStorage.removeItem("ikcous_is_admin");
+  // Revisão de contexto limpo do diff (achado 2) — o CEP também é PII do
+  // usuário logado: `ikcous_last_shipping_cep` é lido na montagem do
+  // checkout e do calculador de frete, e `ikcous_shipping_cache_<cep>`
+  // carrega o CEP no PRÓPRIO NOME da chave (visível no DevTools sem abrir
+  // valor nenhum). Sem isto, cliente B via o CEP de cliente A pré-preenchido
+  // num dispositivo compartilhado.
+  localStorage.removeItem("ikcous_last_shipping_cep");
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (
+      key?.startsWith("ikcous_is_admin_") ||
+      key?.startsWith("ikcous_orders_cache_") ||
+      key?.startsWith("ikcous_addresses_cache_") ||
+      key?.startsWith("ikcous_shipping_cache_")
+    ) {
+      localStorage.removeItem(key);
+    }
+  }
+}
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Synchronously recover session from localStorage to prevent screen flash/delay on boot
@@ -517,18 +559,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         setProfile(null);
         setAdminStatus("not-admin");
-        if (event === "SIGNED_OUT" && typeof window !== "undefined") {
-          localStorage.removeItem("app.favorites");
-          localStorage.removeItem("marketplace_cart_v1");
-          localStorage.removeItem("ikcous_recently_viewed");
-          localStorage.removeItem("ikcous_compare");
-          localStorage.removeItem("ikcous_is_admin");
-          for (let i = localStorage.length - 1; i >= 0; i--) {
-            const key = localStorage.key(i);
-            if (key?.startsWith("ikcous_is_admin_")) {
-              localStorage.removeItem(key);
-            }
-          }
+        if (event === "SIGNED_OUT") {
+          clearLocalUserData();
         }
         if (isCriticalTransition) {
           setLoading(false);
@@ -592,7 +624,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
+      // #122 — `signOut()` devolvendo erro (rede caída, por exemplo) não
+      // dispara o evento `SIGNED_OUT`: sem este ramo, o app continuava
+      // "logado" e o token do supabase-js continuava vivo no localStorage,
+      // legível no DevTools. Terminamos deslogados MESMO ASSIM — o toast de
+      // erro continua existindo, mas deixa de ser a única consequência.
       toast.error(`Erro ao sair: ${error.message}`);
+      // Revisão de contexto limpo do diff (achado 1) — sem isto, uma checagem
+      // de admin (`checkAdmin`, RPC `is_admin`) que estivesse em voo no
+      // momento do logout via `activeUserIdRef.current` ainda apontando para
+      // o usuário que saiu, e `applyResult` gravava
+      // `ikcous_is_admin_<uuid>` por cima mesmo depois da sessão ter sido
+      // encerrada. É a mesma guarda que o listener de `onAuthStateChange`
+      // (`supabase.auth.onAuthStateChange`, acima neste efeito) já honra ao
+      // atualizar `activeUserIdRef.current = currentUserId` logo no início do
+      // callback, para qualquer evento — SIGNED_OUT incluso; este é o único
+      // caminho de saída que não a honrava.
+      activeUserIdRef.current = null;
+      setSession(null);
+      setUser(null);
+      setAdminStatus("not-admin");
+      setIsPasswordRecovery(false);
+      clearLocalUserData();
+      if (typeof window !== "undefined") {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key?.includes("-auth-token") || key?.includes("-code-verifier")) {
+            localStorage.removeItem(key);
+          }
+        }
+      }
     } else {
       setSession(null);
       setUser(null);
@@ -623,69 +684,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const resetPassword = useCallback(
     async (email: string): Promise<ResetPasswordResult> => {
       try {
-        // Check email confirmation status via RPC
-        const { data: checkData, error: checkError } = await supabase.rpc(
-          "check_user_confirmation_status",
-          {
-            p_email: email,
-          },
-        );
-
-        if (checkError) {
-          console.error(
-            "[Auth] Error checking verification status:",
-            checkError,
-          );
-          return {
-            success: false,
-            status: "error",
-            message: checkError.message,
-          };
-        }
-
-        const checkResult = checkData as {
-          exists?: boolean;
-          confirmed?: boolean;
-        } | null;
-        const exists = checkResult?.exists;
-        const confirmed = checkResult?.confirmed;
-
-        if (!exists) {
-          return {
-            success: false,
-            status: "not_found",
-            message:
-              "Este e-mail não está cadastrado. Verifique o endereço ou crie uma conta.",
-          };
-        }
-
-        if (!confirmed) {
-          // Resend confirmation email
-          const { error: resendError } = await supabase.auth.resend({
-            type: "signup",
-            email,
-            options: {
-              emailRedirectTo: window.location.origin,
-            },
-          });
-
-          if (resendError) {
-            return {
-              success: false,
-              status: "error",
-              message: `E-mail não confirmado. Falha ao reenviar e-mail de confirmação: ${resendError.message}`,
-            };
-          }
-
-          return {
-            success: false,
-            status: "unconfirmed",
-            message:
-              "Seu e-mail ainda não foi confirmado. Enviamos um novo link de confirmação para a sua caixa de entrada.",
-          };
-        }
-
-        // Email is confirmed, send recovery link to user's email
+        // #120 — antes disto, chamávamos a RPC `check_user_confirmation_status`
+        // para decidir entre três respostas diferentes ("not_found",
+        // "unconfirmed", "success"). Essa RPC é SECURITY DEFINER e tinha
+        // EXECUTE liberado para `anon`: um visitante jogando uma lista de
+        // e-mails no endpoint REST descobria quem tem conta e quem
+        // confirmou, e a própria UI confirmava isso em texto. A RPC foi
+        // revogada (ver migration nova em `supabase/migrations/`); agora
+        // chamamos `resetPasswordForEmail` direto, que por design do
+        // Supabase Auth NÃO confirma nem nega a existência da conta — a
+        // resposta é a mesma independentemente de o e-mail estar cadastrado.
+        //
+        // Decisão já tomada (não reabrir): perdemos o reenvio automático do
+        // e-mail de confirmação que rodava no ramo "unconfirmed" — não dá
+        // para mantê-lo sem voltar a distinguir os casos no cliente, que é
+        // exatamente o vazamento que estamos fechando. Corrigido na revisão
+        // de contexto limpo (achado 4): quem se cadastra e some antes de
+        // confirmar NÃO tem hoje um caminho de autoatendimento para um novo
+        // link — `resendConfirmationEmail` só é renderizado sob
+        // `showConfirmation` (AuthView.tsx), que nasce `false` e só vira
+        // `true` dentro de um `signUp` bem-sucedido DA MESMA sessão de
+        // navegador. Fechar a enumeração foi a decisão tomada mesmo assim;
+        // dar a esse usuário uma entrada nova na tela de login é escopo de
+        // outra issue, não desta.
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: `${
             window.location.origin + window.location.pathname
@@ -693,13 +714,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
 
         if (error) {
-          return { success: false, status: "error", message: error.message };
+          // Erro genuíno (rede, rate limit etc.) — não pode distinguir
+          // e-mail cadastrado de não cadastrado, só reportar que algo deu
+          // errado no envio. Revisão de contexto limpo (achado 3): o rate
+          // limit do Supabase Auth é POR USUÁRIO, então só dispara para quem
+          // TEM conta — ecoar `error.message` (ex.: "For security purposes,
+          // you can only request this after N seconds") na TELA reabria a
+          // mesma enumeração que a RPC revogada causava. A mensagem para o
+          // chamador é sempre genérica; o detalhe vai só para o console.
+          console.error("[Auth] resetPasswordForEmail error:", error.message);
+          return {
+            success: false,
+            status: "error",
+            message:
+              "Não foi possível enviar o link de recuperação agora. Tente novamente em instantes.",
+          };
         }
 
         return {
           success: true,
           status: "success",
-          message: "Link de recuperação enviado para o seu e-mail!",
+          message:
+            "Se este e-mail estiver cadastrado, enviamos um link de recuperação.",
         };
       } catch (err: any) {
         console.error("[Auth] Reset recovery exception:", err);

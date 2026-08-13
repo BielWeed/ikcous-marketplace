@@ -173,20 +173,16 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           setIsLoading(false);
           return;
         }
+        // #120 — o resultado de `resetPassword` não distingue mais e-mail
+        // cadastrado de não cadastrado (é assim que a enumeração se fecha):
+        // só resta o caminho de sucesso, que sempre leva à mesma tela de
+        // confirmação, e o de erro genuíno (rede, rate limit).
         const res = await resetPassword(email.trim());
         if (res.success) {
           toast.success(res.message);
           setViewMode("reset-prompt");
         } else {
-          if (res.status === "unconfirmed") {
-            toast.warning(res.message, { duration: 6000 });
-          } else if (res.status === "not_found") {
-            toast.error(res.message);
-          } else {
-            toast.error(
-              res.message || "Erro ao solicitar link de recuperação.",
-            );
-          }
+          toast.error(res.message || "Erro ao solicitar link de recuperação.");
         }
       } else if (viewMode === "new-password") {
         if (!password.trim() || password.length < 6) {
@@ -314,19 +310,26 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               variants={itemVariants}
               className="mb-3 text-2xl font-black tracking-tighter text-zinc-900 sm:mb-4 sm:text-3xl"
             >
-              E-mail enviado!
+              Verifique seu e-mail
             </motion.h1>
 
             <motion.p
               variants={itemVariants}
               className="mx-auto mb-8 max-w-[240px] text-xs font-medium leading-relaxed text-zinc-500 sm:mb-10 sm:max-w-none sm:text-sm"
             >
-              Enviamos um link de recuperação para:
+              {/* Revisão de contexto limpo do diff (achado 5) — "E-mail
+              enviado!" afirmava um envio que pode não ter acontecido (o
+              Supabase Auth responde a mesma coisa exista ou não a conta) e
+              contradizia o toast desta MESMA ação, que já é condicional ("Se
+              este e-mail estiver cadastrado..."). O endereço continua
+              visível: ajuda quem digitou errado a perceber. */}
+              Se este e-mail estiver cadastrado, enviamos um link de
+              recuperação para:
               <br />
               <span className="font-bold text-zinc-900">{email}</span>
               <br />
               <br />
-              Por favor, clique no link contido no e-mail para definir sua nova
+              Se você recebeu o e-mail, clique no link para definir sua nova
               senha.
             </motion.p>
 
