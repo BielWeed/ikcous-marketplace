@@ -13,8 +13,10 @@ import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useOrders } from "@/hooks/useOrders";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
+import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { Address, CartItem, Customer, PaymentMethod, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -82,6 +84,7 @@ export function CheckoutView({
     cartTotal: ctxSubtotal,
     shippingFee: ctxShipping,
     clearCart: ctxClearCart,
+    addToCart,
     selectedShippingOption,
     shippingCep,
   } = useCart();
@@ -91,9 +94,12 @@ export function CheckoutView({
   const shipping = propShipping ?? ctxShipping;
   const total = propTotal ?? ctxSubtotal + ctxShipping;
   const onClearCart = propOnClearCart ?? ctxClearCart;
-  const { createOrder } = useOrders(false, true);
+  const { createOrder, updateOrderStatus } = useOrders(false, true);
   const { validateCoupon } = useCoupons();
   const { user, profile, loading: authLoading } = useAuth();
+  // CHECKOUT-070 (#197): sinal de rede para o cancelamento do pagamento
+  // falho — mesmo hook já usado por ShippingCalculator, sem mecanismo novo.
+  const isOffline = useOnlineStatus();
   const {
     addresses,
     fetchAddresses,
@@ -256,11 +262,23 @@ export function CheckoutView({
     mensagem: string;
     categoria: CategoriaErroPagamento;
   } | null>(null);
+  // CHECKOUT-070 (#197): saída para pagamento falho. `isCancelandoPedido`
+  // trava o botão contra clique repetido (cancelar duas vezes bateria na
+  // guarda de status da RPC, mas evitar a segunda viagem de rede evita até
+  // o erro). `erroCancelamento` é o mesmo padrão de `erroPagamento`: banner
+  // fixo na tela, não toast — um toast (2500ms) some antes do cliente ler.
+  const [isCancelandoPedido, setIsCancelandoPedido] = useState(false);
+  const isCancelandoPedidoRef = useRef(false);
+  const [erroCancelamento, setErroCancelamento] = useState<string | null>(null);
   // Congelado no momento do submit, como orderId — sem isso, o onClearCart()
   // duas linhas abaixo zera o carrinho, cartTotal/shippingFee caem para 0
   // (ou ficam negativos com cupom aplicado) e o Brick nasce cobrando um
   // valor que não bate com o total já gravado no pedido.
   const [valorDoPedido, setValorDoPedido] = useState(0);
+  // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
+  // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
+  // ref (não estado) porque nada aqui precisa re-renderizar a tela.
+  const itensDoPedidoParaRestaurarRef = useRef<CartItem[]>([]);
   const [appliedCoupon, setAppliedCoupon] = useState<{
     code: string;
     discount: number;
@@ -503,6 +521,10 @@ export function CheckoutView({
       });
       setOrderId(order.id);
       setValorDoPedido(finalTotal);
+      // Snapshot ANTES do onClearCart() da linha seguinte — depois dele
+      // `cart` (propCart ?? ctxCart) já está vazio. CHECKOUT-070 (#197)
+      // usa isto para devolver os itens se o pagamento online falhar.
+      itensDoPedidoParaRestaurarRef.current = cart;
 
       // 🤖 Automação Solo-Ninja: O disparo agora é 100% via Backend (Edge Function + Webhook)
       onClearCart();
@@ -539,6 +561,93 @@ export function CheckoutView({
     }
   };
 
+  // CHECKOUT-070 (#197): saída para quem teve o pagamento online recusado —
+  // cancela o pedido (devolve estoque) e devolve o cliente ao carrinho para
+  // ele concluir escolhendo "pagar na entrega". Só existe para sessão
+  // autenticada: `update_order_status_atomic` recusa qualquer chamador sem
+  // `auth.uid()` desde o PEDIDO-010 (#115) — pedido de convidado não tem
+  // sessão para passar nessa guarda, e isso não é contornado aqui (ver botão
+  // condicionado a `user` abaixo, e o relatório desta task).
+  //
+  // Achados 1 e 2 da revisão: nunca confiar no retorno de updateOrderStatus
+  // para decidir "foi cancelado". O ramo offline de useOrders empilha a
+  // mudança e RESOLVE sem lançar (ele foi escrito para o admin); e a
+  // mensagem de guarda "Apenas pedidos pendentes..." é a MESMA (P0001) tanto
+  // para "o pg_cron já cancelou" quanto para "o lojista adiantou para
+  // processing" — casos opostos. Por isso o handler relê o status real do
+  // pedido depois de chamar a RPC (RLS do dono permite) e só navega quando a
+  // releitura confirma 'cancelled'. Qualquer outra coisa é falha segura.
+  const handleCancelarPedidoESairDoPagamento = async () => {
+    // Proteção contra clique duplo. Precisa ser REF, não o estado
+    // `isCancelandoPedido`: dois cliques síncronos (dois `dispatchEvent` na
+    // mesma tarefa, antes de qualquer re-render) leriam o mesmo `false`
+    // fechado no closure de cada chamada — o React 18 agrupa os dois
+    // `setIsCancelandoPedido(true)` num único commit, então checar o ESTADO
+    // aqui não pegaria o segundo clique a tempo. Mutação de ref é síncrona.
+    if (isCancelandoPedidoRef.current) return;
+    isCancelandoPedidoRef.current = true;
+
+    setIsCancelandoPedido(true);
+    setErroCancelamento(null);
+    try {
+      if (isOffline) {
+        // Sem rede o ramo offline de useOrders só empilha e resolve — não
+        // vale nem tentar a RPC. Mensagem específica em vez do genérico.
+        setErroCancelamento(
+          "Sem conexão com a internet. Conecte-se e tente cancelar de novo — o pedido continua reservado.",
+        );
+        return;
+      }
+
+      try {
+        // MESMA rpc que a reconciliação da #180 (PR #198) já ensinou a
+        // gravar payment_status — não existe, e não deve existir, outro
+        // caminho de cancelamento neste front. `silent=true`: o toast de
+        // 2500ms do useOrders someria antes do cliente ler; o erro fica no
+        // banner fixo abaixo, como erroCancelamento.
+        await updateOrderStatus(orderId, "cancelled", undefined, true);
+      } catch (erroRpc) {
+        // Não decide aqui: a RPC pode recusar com a MESMA mensagem P0001
+        // por dois motivos opostos (pg_cron já cancelou vs. lojista
+        // adiantou). Quem decide é a releitura logo abaixo.
+        console.error("Erro ao chamar RPC de cancelamento:", erroRpc);
+      }
+
+      const { data, error: erroLeitura } = await supabase
+        .from("marketplace_orders")
+        .select("status")
+        .eq("id", orderId)
+        .single();
+
+      const statusFinal = data?.status;
+      if (erroLeitura || statusFinal !== "cancelled") {
+        console.error("Cancelamento não confirmado:", erroLeitura);
+        // Precedente ADMIN-010 (#94): só não segue em frente quando a
+        // gravação não é confirmada — nunca leva o cliente ao carrinho como
+        // se o cancelamento tivesse dado certo.
+        setErroCancelamento(
+          statusFinal && statusFinal !== "pending"
+            ? "Este pedido não está mais pendente — o lojista já deve ter começado a prepará-lo. Fale com a loja se ainda quiser cancelar."
+            : "Não foi possível confirmar o cancelamento. Tente novamente.",
+        );
+        return;
+      }
+
+      for (const item of itensDoPedidoParaRestaurarRef.current) {
+        addToCart(
+          item.product,
+          item.quantity,
+          item.variantId,
+          item.variantNames,
+        );
+      }
+      onNavigate("cart");
+    } finally {
+      isCancelandoPedidoRef.current = false;
+      setIsCancelandoPedido(false);
+    }
+  };
+
   if (aguardandoPagamento && orderId) {
     return (
       <div className="min-h-dvh space-y-4 bg-gray-50/10 px-3.5 pt-4">
@@ -559,11 +668,59 @@ export function CheckoutView({
             </div>
             {erroPagamento.categoria === "recuperavel" && (
               <Button
-                onClick={() => setErroPagamento(null)}
+                onClick={() => {
+                  setErroPagamento(null);
+                  // Achado da 2ª revisão do #197: sem isto, um cancelamento
+                  // que falhou deixa a mensagem dele pendurada — "Tentar de
+                  // novo" limpava só o erro de pagamento, e no erro seguinte
+                  // a caixa vermelha reaparecia com um aviso de cancelamento
+                  // que já não vale mais.
+                  setErroCancelamento(null);
+                }}
                 className="w-full rounded-xl bg-red-600 text-white hover:bg-red-600/90"
               >
                 Tentar de novo
               </Button>
+            )}
+            {/* CHECKOUT-070 (#197): visível nos dois casos — no terminal é a
+                única ação; no recuperável fica em segundo plano (variant
+                "outline"), sem roubar o destaque de "Tentar de novo". Só
+                para sessão autenticada (ver comentário do handler acima). */}
+            {user ? (
+              <Button
+                onClick={handleCancelarPedidoESairDoPagamento}
+                disabled={isCancelandoPedido}
+                variant={
+                  erroPagamento.categoria === "terminal" ? "default" : "outline"
+                }
+                className={cn(
+                  "w-full rounded-xl gap-2",
+                  erroPagamento.categoria === "terminal" &&
+                    "bg-zinc-900 text-white hover:bg-zinc-900/90",
+                )}
+              >
+                {isCancelandoPedido && (
+                  <Loader2 className="size-4 animate-spin" />
+                )}
+                Cancelar pedido e voltar ao carrinho
+              </Button>
+            ) : (
+              // Achado 3 da revisão do #197: sem sessão, `update_order_status_atomic`
+              // recusaria a chamada (PEDIDO-010, #115) — não dá para
+              // esconder o botão e não dizer nada. O convidado precisa
+              // saber que o pedido se resolve sozinho e que entrar na
+              // conta é a única forma de cancelar antes disso.
+              <p className="text-xs text-zinc-500">
+                Como você não está com a conta aberta, não é possível cancelar
+                por aqui. Se o pagamento não sair em 30 minutos, o pedido é
+                cancelado automaticamente e os itens voltam para o estoque. Para
+                cancelar agora, entre na sua conta.
+              </p>
+            )}
+            {erroCancelamento && (
+              <p className="text-xs font-medium text-red-700">
+                {erroCancelamento}
+              </p>
             )}
           </div>
         ) : (

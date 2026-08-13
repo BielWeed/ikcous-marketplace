@@ -122,6 +122,14 @@ vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({ createOrder }),
 }));
 
+// CHECKOUT-070 (#197): CheckoutView passou a importar `@/lib/supabase`
+// direto (releitura de status no cancelamento) — sem mock aqui o import
+// tentaria criar um client de verdade e explodiria em jsdom ("Web Worker is
+// not supported"). Este arquivo não exercita o botão de cancelar, então o
+// dublê nunca precisa responder nada.
+vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+
 vi.mock("canvas-confetti", () => ({ default: confettiMock }));
 
 // Flag ligada — sem isso, "Pagar agora" nem aparece na lista para ser
