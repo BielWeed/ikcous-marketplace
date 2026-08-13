@@ -264,9 +264,7 @@ async function reconciliarPedidoCanceladoJaAplicadaAoVivo(client) {
       WHERE n.nspname = 'public' AND p.proname = 'pagamentos_a_reconciliar'`,
   );
   const def = (rows[0]?.def ?? "").replace(/\r\n/g, "\n");
-  return def.includes(
-    "payment_status = 'aguardando' AND status = 'cancelled'",
-  );
+  return def.includes("payment_status = 'aguardando' AND status = 'cancelled'");
 }
 
 async function confirmar(client, pedidoId, paymentId, status) {
@@ -1099,9 +1097,7 @@ async function main() {
       "aguardando + cancelled + gateway_payment_id + paid_at nulo, dentro da janela -> aparece",
       idsComCandidatoNovo.includes(pedido21),
     );
-    const achado21 = listaComCandidatoNovo.find(
-      (l) => l.order_id === pedido21,
-    );
+    const achado21 = listaComCandidatoNovo.find((l) => l.order_id === pedido21);
     conferir(
       "gateway_payment_id devolvido bate com o do candidato novo",
       achado21?.gateway_payment_id === "MP16",
