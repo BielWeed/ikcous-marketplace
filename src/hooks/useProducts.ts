@@ -780,6 +780,77 @@ export function useProducts({ autoFetch = true } = {}) {
     [isAdmin, products, refreshContext, backupStorageFile, fetchProduct],
   );
 
+  // #99 (ADMIN-070): mídia é movida para backup/ DEPOIS do soft-delete já
+  // confirmado, best-effort — uma falha aqui não desfaz a exclusão nem
+  // devolve erro ao admin, só fica logada. Extraído de dentro de
+  // `deleteProduct` para ser reaproveitado por `deleteProducts` (lote), que
+  // tinha a mesma ordem antiga (mídia antes do soft-delete) — sem isto os
+  // dois caminhos divergiriam de novo assim que o segundo ganhasse um
+  // chamador.
+  const backupProductMediaAfterDelete = useCallback(
+    async (product: { id: string; images?: string[]; variants?: any[] }) => {
+      try {
+        // Guard de array vazio: produto sem imagens não tem imagem_urls
+        // zerado à toa (o código antigo escrevia `imagem_urls: []` mesmo
+        // quando não havia nenhuma imagem para mover).
+        if (product.images && product.images.length > 0) {
+          const backedUpImages = await Promise.all(
+            product.images.map(
+              async (img) => (await backupStorageFile(img)) || img,
+            ),
+          );
+          const { error: mediaError } = await supabase
+            .from("produtos")
+            .update({
+              imagem_urls: backedUpImages,
+              imagem_url: backedUpImages[0] || null,
+            })
+            .eq("id", product.id);
+          if (mediaError) {
+            console.error(
+              "[useProducts] Error updating imagem_urls after backup on delete:",
+              mediaError,
+              product.id,
+            );
+          }
+        }
+
+        const variants = product.variants || [];
+        await Promise.all(
+          variants.map(async (v) => {
+            if (!v.imageUrl) return;
+            const newUrl = await backupStorageFile(v.imageUrl);
+            // #99 (conserto 5): `backupStorageFile` nunca devolve `null` numa
+            // falha — ela é engolida e a URL ORIGINAL volta (verdadeira).
+            // `!newUrl` sozinho nunca barra o UPDATE numa falha; comparar
+            // contra `v.imageUrl` evita gravar em `product_variants` o mesmo
+            // valor que já estava lá quando o backup não mudou nada.
+            if (!newUrl || newUrl === v.imageUrl) return;
+            const { error: variantError } = await supabase
+              .from("product_variants")
+              .update({ image_url: newUrl } as any)
+              .eq("id", v.id);
+            // #99: o erro deste UPDATE não é mais descartado em silêncio.
+            if (variantError) {
+              console.error(
+                "[useProducts] Error updating variant image_url after backup on delete:",
+                variantError,
+                v.id,
+              );
+            }
+          }),
+        );
+      } catch (mediaErr) {
+        console.error(
+          "[useProducts] Error moving product media to backup after soft-delete:",
+          mediaErr,
+          product.id,
+        );
+      }
+    },
+    [backupStorageFile],
+  );
+
   const deleteProduct = useCallback(
     async (id: string) => {
       if (!isAdmin) {
@@ -804,36 +875,17 @@ export function useProducts({ autoFetch = true } = {}) {
           throw new Error("Produto não encontrado");
         }
 
-        // Move product images to backup
-        const backedUpImages: string[] = [];
-        if (product.images && product.images.length > 0) {
-          for (const img of product.images) {
-            const newUrl = await backupStorageFile(img);
-            backedUpImages.push(newUrl || img);
-          }
-        }
-
-        // Move variant images to backup
-        const variants = product.variants || [];
-        for (const v of variants) {
-          if (v.imageUrl) {
-            const newUrl = await backupStorageFile(v.imageUrl);
-            if (newUrl) {
-              await supabase
-                .from("product_variants")
-                .update({ image_url: newUrl } as any)
-                .eq("id", v.id);
-            }
-          }
-        }
-
+        // #99 (ADMIN-070): soft-delete no banco PRIMEIRO. Antes, a mídia era
+        // movida para backup/ no Storage ANTES deste UPDATE — se ele
+        // falhasse, o catch abaixo restaurava o produto na listagem, mas as
+        // fotos já tinham sido movidas: produto "de volta" com todas as URLs
+        // quebradas. Com o soft-delete primeiro, uma falha aqui não move
+        // arquivo nenhum.
         const { error } = await supabase
           .from("produtos")
           .update({
             deleted_at: new Date().toISOString(),
             ativo: false,
-            imagem_urls: backedUpImages,
-            imagem_url: backedUpImages[0] || null,
           })
           .eq("id", id);
 
@@ -842,6 +894,13 @@ export function useProducts({ autoFetch = true } = {}) {
         clearAnalyticsCache();
         await refreshContext();
         toast.success("Produto removido");
+
+        // Mídia depois, best-effort: o soft-delete já foi confirmado, então
+        // uma falha aqui NÃO desfaz a exclusão nem devolve "Erro ao excluir
+        // produto" para o admin — só fica logada (try/catch próprio dentro
+        // de `backupProductMediaAfterDelete`).
+        await backupProductMediaAfterDelete(product);
+
         return true;
       } catch (err: any) {
         console.error("Error deleting product:", err);
@@ -852,7 +911,7 @@ export function useProducts({ autoFetch = true } = {}) {
         return false;
       }
     },
-    [isAdmin, localProducts, backupStorageFile, refreshContext],
+    [isAdmin, localProducts, backupProductMediaAfterDelete, refreshContext],
   );
 
   // Bulk Delete
@@ -878,44 +937,28 @@ export function useProducts({ autoFetch = true } = {}) {
       setLocalProducts((prev) => prev.filter((p) => !ids.includes(p.id)));
 
       try {
+        // #99 (ADMIN-070): mesma correção do `deleteProduct` unitário —
+        // soft-delete de CADA produto primeiro, mídia depois. Antes, a mídia
+        // do produto era movida para backup/ ANTES do UPDATE em `produtos`;
+        // se ele falhasse, o catch abaixo restaurava o LOTE inteiro na
+        // listagem, mas os arquivos já tinham sido movidos.
         for (const id of ids) {
           const product = originalProducts.find((p) => p.id === id);
           if (!product) continue;
-
-          // Move product images to backup
-          const backedUpImages: string[] = [];
-          if (product.images && product.images.length > 0) {
-            for (const img of product.images) {
-              const newUrl = await backupStorageFile(img);
-              backedUpImages.push(newUrl || img);
-            }
-          }
-
-          // Move variant images to backup
-          const variants = product.variants || [];
-          for (const v of variants) {
-            if (v.imageUrl) {
-              const newUrl = await backupStorageFile(v.imageUrl);
-              if (newUrl) {
-                await supabase
-                  .from("product_variants")
-                  .update({ image_url: newUrl } as any)
-                  .eq("id", v.id);
-              }
-            }
-          }
 
           const { error } = await supabase
             .from("produtos")
             .update({
               deleted_at: new Date().toISOString(),
               ativo: false,
-              imagem_urls: backedUpImages,
-              imagem_url: backedUpImages[0] || null,
             })
             .eq("id", id);
 
           if (error) throw error;
+
+          // Mídia best-effort, depois do soft-delete confirmado deste
+          // produto — mesma função usada por `deleteProduct`.
+          await backupProductMediaAfterDelete(product);
         }
 
         await refreshContext();
@@ -930,7 +973,7 @@ export function useProducts({ autoFetch = true } = {}) {
         return false;
       }
     },
-    [isAdmin, localProducts, backupStorageFile, refreshContext],
+    [isAdmin, localProducts, backupProductMediaAfterDelete, refreshContext],
   );
 
   // Bulk Status Update

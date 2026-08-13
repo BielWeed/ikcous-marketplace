@@ -339,6 +339,10 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     >
   >({});
   const evaluatedImagesRef = useRef<Set<string>>(new Set());
+  // #98 (ADMIN-060): guarda o setTimeout de navegação pós-sucesso para poder
+  // cancelá-lo se o admin sair da tela antes dos 1,5s — sem isto, onNavigate
+  // dispara mesmo com o componente já desmontado.
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isAdjusterOpen, setIsAdjusterOpen] = useState(false);
   const [adjustingImgUrl, setAdjustingImgUrl] = useState("");
   const [adjustingImgIndex, setAdjustingImgIndex] = useState<number | null>(
@@ -656,6 +660,13 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                   toast.success("Rascunho restaurado!");
                 },
               },
+              cancel: {
+                label: "Descartar",
+                onClick: () => {
+                  localStorage.removeItem(draftKey);
+                  toast.info("Rascunho descartado.");
+                },
+              },
               duration: 10000,
             });
           } else {
@@ -768,6 +779,31 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   }, [formData.variants, formData.stock]);
 
   // Draft auto-save on changes
+  //
+  // #98 (ADMIN-060): este efeito NUNCA remove a chave do rascunho — só
+  // decide se salva (quando o formulário está sujo). Antes do conserto, o
+  // `else` chamava `localStorage.removeItem(draftKey)` sempre que
+  // formData === initialData — que é EXATAMENTE o estado em que o formulário
+  // nasce ao abrir um produto para edição (os dois vêm do mesmo `product`
+  // carregado). Resultado: 1s depois de abrir a tela, o rascunho pendente
+  // era apagado sozinho, enquanto o toast de recuperação ainda prometia 10s
+  // para restaurar. Remoção só acontece por decisão explícita do usuário —
+  // Restaurar ou Descartar, no efeito de verificação acima.
+  //
+  // #99 (revisão): uma versão anterior deste efeito também parava de SALVAR
+  // enquanto o toast de rascunho pendente estivesse aberto (guarda
+  // `draftResolvedRef.current`). O toast tem `duration: 10000` e nenhum
+  // `onAutoClose`/`onDismiss` — se o admin não clicasse em Restaurar/
+  // Descartar, a flag ficava presa em `false` pelo resto da sessão de edição
+  // e o auto-save morria: as próximas edições nunca eram gravadas. Isso
+  // trocava a perda de trabalho da #98 (rascunho velho apagado) por outra
+  // (edições novas nunca salvas), no mesmo caminho.
+  //
+  // A guarda foi removida porque não defendia nada que já não estivesse
+  // defendido: o botão "Restaurar" aplica `draftFields`, uma variável
+  // capturada no closure do toast, não uma releitura do `localStorage` — o
+  // auto-save pode sobrescrever a chave enquanto o toast está aberto sem
+  // quebrar o Restaurar.
   useEffect(() => {
     if (isLoading || !draftChecked) return;
 
@@ -778,8 +814,6 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
         : `ikcous_product_form_draft_edit_${productId}`;
       if (isDirty) {
         localStorage.setItem(draftKey, JSON.stringify(formData));
-      } else {
-        localStorage.removeItem(draftKey);
       }
     }, 1000);
 
@@ -987,7 +1021,11 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (isSubmitting) return;
+    // #98 (ADMIN-060): showSuccess também bloqueia reentrada. Entre o
+    // sucesso e a navegação (1,5s) `isSubmitting` já voltou a false mas o
+    // botão ainda mostra "Salvo" — sem checar showSuccess aqui, um segundo
+    // clique nessa janela reentrava e criava um produto duplicado.
+    if (isSubmitting || showSuccess) return;
     if (isOffline) {
       toast.error("Não é possível salvar alterações em modo offline.");
       return;
@@ -1138,13 +1176,24 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
 
       setIsSubmitting(false);
       setShowSuccess(true);
+      // Achado da re-revisão da #98: iguala formData/initialData depois de
+      // publicar, para o auto-save já agendado (efeito acima) encontrar
+      // isDirty=false e não regravar a chave que a linha abaixo acabou de
+      // remover — sem isto, o timer pendente na última edição publica o
+      // rascunho de volta ~1s depois.
+      setInitialData(formData);
       if (!productId) {
         localStorage.removeItem("ikcous_product_form_draft");
       } else {
         localStorage.removeItem(`ikcous_product_form_draft_edit_${productId}`);
       }
 
-      setTimeout(() => {
+      // #98 (ADMIN-060): guardado em ref e cancelado no unmount (efeito
+      // logo abaixo) — sem isto, sair da tela na janela de "Salvo" ainda
+      // deixava esta navegação disparar 1,5s depois, com o componente já
+      // desmontado.
+      successTimerRef.current = setTimeout(() => {
+        successTimerRef.current = null;
         onSetDirty?.(false);
         onNavigate("admin-products", undefined, true);
       }, 1500);
@@ -1154,6 +1203,15 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       toast.error("Erro ao processar as modificações do produto.");
     }
   };
+
+  // #98 (ADMIN-060): cancela o setTimeout de navegação pós-sucesso se o
+  // componente desmontar antes dele disparar (ex.: admin clica em Voltar
+  // logo depois de salvar).
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
 
   const isValid =
     formData.name &&
@@ -1740,7 +1798,15 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               type="button"
               onClick={() => handleSubmit()}
               disabled={
-                !isValid || isSubmitting || isOffline || isImageUploading
+                // #98 (ADMIN-060): showSuccess entra aqui — entre o sucesso
+                // e a navegação (1,5s) o botão mostra "Salvo" mas
+                // isSubmitting já é false; sem showSuccess o botão reabria
+                // para um segundo clique nessa janela.
+                !isValid ||
+                isSubmitting ||
+                showSuccess ||
+                isOffline ||
+                isImageUploading
               }
               className={cn(
                 "px-3 py-2 md:px-4 md:py-2.5 rounded-xl flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-[0.98] font-black uppercase tracking-wider text-[9px] md:text-[10px] border shrink-0",

@@ -308,19 +308,27 @@ function AdminAccessDenied({
 }: {
   readonly onNavigate: (view: View) => void;
 }) {
-  const { isAdmin, loading } = useAuth();
+  // #123 — três estados: "unknown" (a RPC `is_admin` ainda não respondeu)
+  // não pode ser tratado como "não é admin". Um admin legítimo, no boot,
+  // passa por aqui com `adminStatus === "unknown"` (o pai só troca para
+  // `<AdminArea>` quando `isAdmin` vira `true`) — expulsar nesse instante
+  // era exatamente o piscar que a Parte B veio resolver.
+  const { adminStatus, loading } = useAuth();
 
   useEffect(() => {
     // If auth is still loading, wait.
     if (loading) return;
 
-    // If not admin, redirect immediately to home with a message.
-    if (!isAdmin) {
+    // Ainda verificando com o servidor — não expulsa, não redireciona.
+    if (adminStatus === "unknown") return;
+
+    // Confirmado que não é admin: redireciona com aviso.
+    if (adminStatus !== "admin") {
       console.warn("[App] Admin access denied. Redirecting to home.");
       toast.error("Acesso restrito a administradores.");
       onNavigate("home");
     }
-  }, [onNavigate, isAdmin, loading]);
+  }, [onNavigate, adminStatus, loading]);
 
   return <AdminRouteLoading />;
 }
@@ -491,7 +499,7 @@ const AppBadgeSynchronizer = React.memo(function AppBadgeSynchronizer() {
 });
 
 const AppContent = () => {
-  const { user, isAdmin, loading: authLoading } = useAuth();
+  const { user, isAdmin, adminStatus, loading: authLoading } = useAuth();
   const { products, loading: productsLoading } = useProducts();
   const { navigate: startTransition, isSupported: isTransitionSupported } =
     useViewTransition();
@@ -566,6 +574,11 @@ const AppContent = () => {
   const userRef = useRef(user);
   const authLoadingRef = useRef(authLoading);
   const isAdminRef = useRef(isAdmin);
+  // ACHADO 1 (revisão #121/#123) — `handleNavigate` só pode negar acesso a
+  // rota admin quando `adminStatus` já foi CONFIRMADO pelo servidor; durante
+  // "unknown" a checagem ainda está em voo, e negar aqui expulsa um admin de
+  // verdade que só ainda não recebeu a resposta da RPC `is_admin`.
+  const adminStatusRef = useRef(adminStatus);
   const isInitialMountRef = useRef(true);
   const isInitialAuthCheckedRef = useRef(false);
 
@@ -589,6 +602,10 @@ const AppContent = () => {
   useEffect(() => {
     isAdminRef.current = isAdmin;
   }, [isAdmin]);
+
+  useEffect(() => {
+    adminStatusRef.current = adminStatus;
+  }, [adminStatus]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isDebugOpen, setIsDebugOpen] = useState(false);
@@ -687,6 +704,7 @@ const AppContent = () => {
       const isAuthL = authLoadingRef.current;
       const usr = userRef.current;
       const isAdm = isAdminRef.current;
+      const adminSt = adminStatusRef.current;
 
       const isMainTabNav = [
         "home",
@@ -737,6 +755,7 @@ const AppContent = () => {
         view.startsWith("admin") &&
         view !== "admin-login" &&
         !isAuthL &&
+        adminSt !== "unknown" &&
         !isAdm
       ) {
         console.warn(
@@ -1533,6 +1552,7 @@ const AppContent = () => {
           targetView.startsWith("admin") &&
           targetView !== "admin-login" &&
           !authLoading &&
+          adminStatus !== "unknown" &&
           !isAdmin
         ) {
           console.warn(
@@ -1803,6 +1823,7 @@ const AppContent = () => {
     authLoading,
     user,
     isAdmin,
+    adminStatus,
     startTransition,
     isTransitionSupported,
     selectedProductId,

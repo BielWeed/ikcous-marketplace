@@ -249,6 +249,24 @@ async function reconciliacaoJaAplicadaAoVivo(client) {
   return rows.length > 0;
 }
 
+/**
+ * Mesma ideia, para a 20260812000000_reconciliar_pedido_cancelado.sql
+ * (issue #180). A checagem acima (`reconciliacaoJaAplicadaAoVivo`) so mede
+ * EXISTENCIA da funcao — insuficiente aqui, porque a funcao ja existe desde
+ * a 20260808000100 e o CREATE OR REPLACE desta migration troca o WHERE por
+ * dentro sem mudar RETURNS TABLE nem assinatura. Le a definicao viva e
+ * procura o trecho que so existe na versao com o ramo novo.
+ */
+async function reconciliarPedidoCanceladoJaAplicadaAoVivo(client) {
+  const { rows } = await client.query(
+    `SELECT pg_get_functiondef(p.oid) AS def
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = 'pagamentos_a_reconciliar'`,
+  );
+  const def = (rows[0]?.def ?? "").replace(/\r\n/g, "\n");
+  return def.includes("payment_status = 'aguardando' AND status = 'cancelled'");
+}
+
 async function confirmar(client, pedidoId, paymentId, status) {
   const r = await client.query(
     "SELECT public.confirmar_pagamento($1, $2, $3) AS resultado",
@@ -279,6 +297,11 @@ async function main() {
       (await reconciliacaoJaAplicadaAoVivo(client))
         ? "banco: 20260808000100 JA aplicada (assercoes provam o BANCO real)"
         : "banco: 20260808000100 AINDA NAO aplicada (assercoes provam o ARQUIVO, dentro da transacao)",
+    );
+    console.log(
+      (await reconciliarPedidoCanceladoJaAplicadaAoVivo(client))
+        ? "banco: 20260812000000 (issue #180) JA aplicada (assercoes provam o BANCO real)"
+        : "banco: 20260812000000 (issue #180) AINDA NAO aplicada (assercoes provam o ARQUIVO, dentro da transacao)",
     );
 
     // Aplica DENTRO da transacao a versao nova de confirmar_pagamento (Item 1
@@ -319,6 +342,22 @@ async function main() {
       "utf8",
     );
     await client.query(reconciliacaoSql);
+
+    // Mesmo padrao, para a 20260812000000_reconciliar_pedido_cancelado.sql
+    // (issue #180) — ainda nao aplicada em producao. O CREATE OR REPLACE
+    // troca a versao criada pela query acima, dentro da MESMA transacao; o
+    // ROLLBACK do fim desfaz as tres juntas.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
+    const reconciliarPedidoCanceladoSql = fs.readFileSync(
+      path.join(
+        RAIZ,
+        "supabase",
+        "migrations",
+        "20260812000000_reconciliar_pedido_cancelado.sql",
+      ),
+      "utf8",
+    );
+    await client.query(reconciliarPedidoCanceladoSql);
 
     console.log("\n=== confirmar_pagamento ===");
 
@@ -1024,6 +1063,179 @@ async function main() {
     conferir(
       "'aguardando' no prazo -> nao aparece (nunca expirou)",
       !idsCandidatos.includes(pedido19),
+    );
+
+    console.log(
+      "\n=== pagamentos_a_reconciliar — issue #180 (cancelado com PIX pago) ===",
+    );
+
+    // --- caso 21: candidato NOVO (aguardando + cancelled) aparece ----------
+    // O buraco do issue #180: cliente cancela pelo app (update_order_status_
+    // atomic ja devolveu o estoque e NAO escreve payment_status), pedido fica
+    // 'aguardando' + 'cancelled', e paga o PIX assim mesmo. Antes desta
+    // migration, `payment_status = 'expirado'` sozinho nunca deixava este
+    // candidato entrar na fila.
+    const produto21 = await criarProduto(
+      client,
+      "ISSUE 180 - CANCELADO COM PIX A CONFIRMAR",
+      5,
+    );
+    const pedido21 = await criarPedidoReconciliacao(client, {
+      nome: "ISSUE 180 - CANCELADO COM PIX A CONFIRMAR",
+      paymentStatus: "aguardando",
+      status: "cancelled",
+      gatewayPaymentId: "MP16",
+      paidAt: null,
+      expiresAt: new Date(AGORA - UMA_HORA_MS),
+      produtoId: produto21,
+      quantity: 2,
+    });
+
+    const listaComCandidatoNovo = await candidatosReconciliacao(client);
+    const idsComCandidatoNovo = listaComCandidatoNovo.map((l) => l.order_id);
+    conferir(
+      "aguardando + cancelled + gateway_payment_id + paid_at nulo, dentro da janela -> aparece",
+      idsComCandidatoNovo.includes(pedido21),
+    );
+    const achado21 = listaComCandidatoNovo.find((l) => l.order_id === pedido21);
+    conferir(
+      "gateway_payment_id devolvido bate com o do candidato novo",
+      achado21?.gateway_payment_id === "MP16",
+      `veio ${achado21?.gateway_payment_id}`,
+    );
+
+    // --- caso 22: candidato novo com paid_at preenchido -> NAO aparece -----
+    // Mesma guarda `paid_at IS NULL` do ramo 'expirado' (caso 17), agora para
+    // o ramo 'aguardando'+'cancelled': se ja tem paid_at, confirmar_pagamento
+    // ja decidiu ('ja_pago') e reconsultar o MP e' trabalho a toa.
+    const produto22 = await criarProduto(
+      client,
+      "ISSUE 180 - CANCELADO JA RECONCILIADO",
+      5,
+    );
+    const pedido22 = await criarPedidoReconciliacao(client, {
+      nome: "ISSUE 180 - CANCELADO JA RECONCILIADO",
+      paymentStatus: "aguardando",
+      status: "cancelled",
+      gatewayPaymentId: "MP17",
+      paidAt: new Date(AGORA - UMA_HORA_MS),
+      expiresAt: new Date(AGORA - UMA_HORA_MS),
+      produtoId: produto22,
+      quantity: 1,
+    });
+
+    const listaSemPaidAt = await candidatosReconciliacao(client);
+    conferir(
+      "aguardando + cancelled + paid_at preenchido -> NAO aparece (ja reconciliado)",
+      !listaSemPaidAt.map((l) => l.order_id).includes(pedido22),
+    );
+
+    // --- caso 23: contrato antigo intacto — 'expirado' continua aparecendo -
+    // Candidato dedicado (nao reaproveita o pedido15), para o issue #180 ter
+    // prova propria e autossuficiente do contrato antigo, sem depender de o
+    // caso 15 continuar existindo do jeito que existe hoje.
+    const produto23 = await criarProduto(
+      client,
+      "ISSUE 180 - EXPIRADO CONTRATO ANTIGO",
+      5,
+    );
+    const pedido23 = await criarPedidoReconciliacao(client, {
+      nome: "ISSUE 180 - EXPIRADO CONTRATO ANTIGO",
+      gatewayPaymentId: "MP18",
+      paidAt: null,
+      expiresAt: new Date(AGORA - UMA_HORA_MS),
+      produtoId: produto23,
+      quantity: 1,
+    });
+
+    const listaContratoAntigo = await candidatosReconciliacao(client);
+    conferir(
+      "'expirado' continua aparecendo depois da migration do issue #180",
+      listaContratoAntigo.map((l) => l.order_id).includes(pedido23),
+    );
+
+    // --- caso 24: contrato antigo intacto — aguardando+pending NAO aparece -
+    // O caminho normal, ainda no prazo: nao pode virar candidato so porque o
+    // OR novo existe.
+    const produto24 = await criarProduto(
+      client,
+      "ISSUE 180 - AGUARDANDO PENDING CONTRATO ANTIGO",
+      5,
+    );
+    const pedido24 = await criarPedidoReconciliacao(client, {
+      nome: "ISSUE 180 - AGUARDANDO PENDING CONTRATO ANTIGO",
+      paymentStatus: "aguardando",
+      status: "pending",
+      gatewayPaymentId: "MP19",
+      paidAt: null,
+      expiresAt: new Date(AGORA + 30 * 60 * 1000),
+      produtoId: produto24,
+      quantity: 1,
+    });
+
+    const listaAguardandoPending = await candidatosReconciliacao(client);
+    conferir(
+      "aguardando + pending (caminho normal, no prazo) -> NAO aparece",
+      !listaAguardandoPending.map((l) => l.order_id).includes(pedido24),
+    );
+
+    // --- caso 25: a volta — candidato novo pago vira 'pago_apos_expirar' ---
+    // Fecha o ciclo: o mesmo candidato do caso 21 (aguardando + cancelled,
+    // achado pela reconciliacao) passa por confirmar_pagamento com resultado
+    // 'pago'. Pelo ramo `IF v_pedido.status = 'cancelled' THEN` de
+    // 20260810000000_confirmar_pagamento_guarda_status.sql:173-180 (o MESMO
+    // ramo que o caso 13b ja prova para quem cancela e paga em seguida DENTRO
+    // do prazo), o resultado tem que ser 'pago_apos_expirar' — nao 'pago' — e
+    // o estoque NAO pode ser creditado de novo, porque update_order_status_
+    // atomic ja devolveu no cancelamento (regra 1 do cabecalho: estoque se
+    // afirma mesmo quando a expectativa e "intacto").
+    const produto25 = await criarProduto(
+      client,
+      "ISSUE 180 - VOLTA PAGO APOS CANCELAR",
+      5,
+    );
+    const pedido25 = await criarPedidoReconciliacao(client, {
+      nome: "ISSUE 180 - VOLTA PAGO APOS CANCELAR",
+      paymentStatus: "aguardando",
+      status: "cancelled",
+      gatewayPaymentId: "MP20",
+      paidAt: null,
+      expiresAt: new Date(AGORA - UMA_HORA_MS),
+      produtoId: produto25,
+      quantity: 3,
+    });
+
+    const listaAntesDeConfirmar25 = await candidatosReconciliacao(client);
+    conferir(
+      "candidato do caso 25 aparece na fila antes de ser confirmado",
+      listaAntesDeConfirmar25.map((l) => l.order_id).includes(pedido25),
+    );
+
+    const r25 = await confirmar(client, pedido25, "MP20", "pago");
+    conferir(
+      "candidato novo (aguardando+cancelled) + pago -> 'pago_apos_expirar'",
+      r25 === "pago_apos_expirar",
+      `veio ${r25}`,
+    );
+
+    const estado25 = await estadoPedido(client, pedido25);
+    conferir(
+      "paid_at carimbado ao confirmar o candidato achado pela reconciliacao",
+      estado25.paid_at !== null,
+    );
+    conferir(
+      "status continua 'cancelled' (nao descancela)",
+      estado25.status === "cancelled",
+    );
+    conferir(
+      "estoque INALTERADO ao confirmar (update_order_status_atomic ja devolveu no cancelamento)",
+      (await estoqueDe(client, produto25)) === 5,
+    );
+
+    const listaDepoisDeConfirmar25 = await candidatosReconciliacao(client);
+    conferir(
+      "candidato do caso 25 sai da fila depois de confirmado (paid_at agora preenchido)",
+      !listaDepoisDeConfirmar25.map((l) => l.order_id).includes(pedido25),
     );
   } finally {
     await client.query("ROLLBACK");

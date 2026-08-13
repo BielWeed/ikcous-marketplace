@@ -168,7 +168,9 @@ A spec de 06/08 chamava a reconciliação de `reconciliar_pagamentos()`, funçã
 O desenho corrigido separa selecionar de decidir:
 
 - **`pagamentos_a_reconciliar()`** — função SQL. Só seleciona candidatos:
-  `payment_status = 'expirado'`, com `gateway_payment_id`, `paid_at` nulo, expirados nas
+  `payment_status = 'expirado'` OU (`payment_status = 'aguardando'` e
+  `status = 'cancelled'` — pedido cancelado pelo app cujo PIX foi pago mesmo assim,
+  issue #180), sempre com `gateway_payment_id`, `paid_at` nulo, expirados nas
   últimas 24 h. **Não decide nada.**
 - **`reconciliar-pagamentos`** — edge function. Pega cada candidato, pergunta ao MP via
   `consultarPagamento`, e chama **a mesma `confirmar_pagamento`**.

@@ -6,6 +6,7 @@ import { ptBR } from "date-fns/locale";
 import { Check, Lock, MessageSquare, Reply, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import type { Question } from "@/hooks/useQuestions";
 import type { View } from "@/types";
 
 interface ProductQAProps {
@@ -53,6 +54,21 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
     setReplyText("");
     setReplyingTo(null);
     getQuestionsByProduct(productId);
+  };
+
+  // Achado da revisão da #100: esta caixa é a segunda chamadora de addAnswer
+  // (a primeira é o modal do painel, AdminQAView.tsx), e ela nascia sempre
+  // vazia -- inclusive em pergunta já respondida. Com a RPC fazendo upsert
+  // por question_id (migration 20260812000000), enviar ali sobrescreve a
+  // resposta anterior sem o admin ver o que está perdendo. O pré-preenchimento
+  // só acontece AQUI, no clique que abre a caixa -- nunca em cada render,
+  // senão o admin não consegue apagar o texto para escrever outra coisa.
+  const openReplyBox = (q: Question) => {
+    // answers vem ordenado ascendente por createdAt (useQuestions.ts) -- a
+    // mais recente é a última posição, não a primeira. Ver correção #2 da
+    // revisão da Trilha 3 (issue #100).
+    setReplyText(q.answers.at(-1)?.answer ?? "");
+    setReplyingTo(q.id);
   };
 
   const getInitials = (name: string) => {
@@ -322,6 +338,11 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                         <button
                           onClick={() => handleReply(q.id)}
                           disabled={!replyText.trim()}
+                          title={
+                            q.answers.length > 0
+                              ? "Salvar edição"
+                              : "Enviar resposta"
+                          }
                           className="absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-lg bg-primary text-white transition-all hover:bg-primary/90 active:scale-95 disabled:opacity-20"
                         >
                           <Send className="size-3" />
@@ -341,11 +362,13 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                     </div>
                   ) : (
                     <button
-                      onClick={() => setReplyingTo(q.id)}
+                      onClick={() => openReplyBox(q)}
                       className="group/reply flex w-fit items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:text-zinc-900"
                     >
                       <Reply className="size-3 transition-transform group-hover/reply:-translate-x-0.5" />
-                      Responder Pergunta
+                      {q.answers.length > 0
+                        ? "Editar Resposta"
+                        : "Responder Pergunta"}
                     </button>
                   )}
                 </div>

@@ -133,6 +133,12 @@ export function useAnalytics() {
   const [categoryLoading, setCategoryLoading] = useState(false);
   const loading = summaryLoading || categoryLoading;
   const [error, setError] = useState<string | null>(null);
+  // #104: estado de erro PRÓPRIO da análise por categoria — separado do
+  // `error` acima (que é só do resumo executivo). Sem isto, uma falha na
+  // RPC `get_category_analytics` não tinha como chegar até o bloco visual,
+  // que caía no empty state "Sem Dados Registrados" mesmo quando a consulta
+  // tinha quebrado, não devolvido zero linhas.
+  const [categoryError, setCategoryError] = useState<string | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(cachedStats);
   const [categoryData, setCategoryData] = useState<any>(cachedCategoryData);
 
@@ -347,19 +353,28 @@ export function useAnalytics() {
       }
 
       if (cachedCategoryData && !forceRefresh) {
-        // Background revalidation
+        // Background revalidation. #104: essa IIFE não é aguardada pelo
+        // chamador (dado stale volta na hora), mas uma falha aqui NÃO pode
+        // ficar muda — antes só olhava `data` e ignorava `error`, então uma
+        // RPC quebrada em segundo plano desaparecia sem deixar rastro.
         (async () => {
           try {
-            const { data } = await callRpcWithRetry<any>(() =>
+            const { data, error: err } = await callRpcWithRetry<any>(() =>
               (supabase as any).rpc("get_category_analytics", {
                 start_date: start,
                 end_date: end,
               }),
             );
+            if (err) {
+              console.error("Background fetch category failed:", err);
+              setCategoryError(err.message || "Erro ao atualizar categorias");
+              return;
+            }
             if (data) {
               cachedCategoryData = data;
               lastCategoryFetchTime = Date.now();
               setCategoryData(data);
+              setCategoryError(null);
               broadcastCategory(data);
 
               // Persist in DataVault
@@ -372,8 +387,9 @@ export function useAnalytics() {
                 })
                 .catch(() => {});
             }
-          } catch (e) {
+          } catch (e: any) {
             console.error("Background fetch category failed:", e);
+            setCategoryError(e?.message || "Erro ao atualizar categorias");
           }
         })();
         return cachedCategoryData;
@@ -391,6 +407,7 @@ export function useAnalytics() {
         cachedCategoryData = data;
         lastCategoryFetchTime = Date.now();
         setCategoryData(data);
+        setCategoryError(null);
         broadcastCategory(data);
 
         // Persist in DataVault
@@ -404,8 +421,9 @@ export function useAnalytics() {
           .catch(() => {});
 
         return data;
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error fetching category analytics:", err);
+        setCategoryError(err?.message || "Erro ao carregar categorias");
         return null;
       } finally {
         setCategoryLoading(false);
@@ -417,6 +435,7 @@ export function useAnalytics() {
   return {
     loading,
     error,
+    categoryError,
     stats,
     categoryData,
     fetchExecutiveSummary,

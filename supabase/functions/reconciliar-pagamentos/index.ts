@@ -18,10 +18,12 @@
  *
  * ESTA FUNÇÃO NÃO DECIDE NADA — SÓ PERGUNTA E REPASSA
  *
- * `pagamentos_a_reconciliar()` (Task 5) já filtrou os candidatos (expirado,
- * com `gateway_payment_id`, dentro de 24h). Para cada um, esta função só
- * pergunta ao MP o status ATUAL e repassa para `confirmar_pagamento` (Task
- * 2) — a MESMA RPC que o `webhook-mercadopago` chama. Se esta função também
+ * `pagamentos_a_reconciliar()` (Task 5, alargada pelo issue #180) já filtrou
+ * os candidatos — `expirado` OU `aguardando` com `status = 'cancelled'`
+ * (pedido cancelado pelo app cujo PIX foi pago mesmo assim) —, sempre com
+ * `gateway_payment_id`, `paid_at` nulo e dentro de 24h. Para cada um, esta
+ * função só pergunta ao MP o status ATUAL e repassa para `confirmar_pagamento`
+ * (Task 2) — a MESMA RPC que o `webhook-mercadopago` chama. Se esta função também
  * decidisse quando virar `pago_apos_expirar`, existiriam DOIS lugares
  * decidindo isso a partir de status de pagamento, e eles divergiriam em três
  * meses — como a regra de frete grátis, que chegou a estar escrita em sete

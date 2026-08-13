@@ -1,4 +1,7 @@
-import { PagamentoOnline } from "@/components/checkout/PagamentoOnline";
+import {
+  type CategoriaErroPagamento,
+  PagamentoOnline,
+} from "@/components/checkout/PagamentoOnline";
 import { Button } from "@/components/ui/button";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
@@ -243,6 +246,16 @@ export function CheckoutView({
   // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
   // function, dentro do PagamentoOnline (ver comentário lá).
   const [aguardandoPagamento, setAguardandoPagamento] = useState(false);
+  // CHECKOUT-050: falha da criação da cobrança precisa ficar NA TELA — um
+  // toast (2500ms, sonner.tsx) some antes do cliente sair de olhar o botão
+  // "Pagar", no rodapé, para o topo. `categoria` decide se existe "Tentar de
+  // novo" (ver CategoriaErroPagamento em PagamentoOnline.tsx): nunca
+  // reclassificada aqui por texto de mensagem, só repassada como o
+  // PagamentoOnline mandou.
+  const [erroPagamento, setErroPagamento] = useState<{
+    mensagem: string;
+    categoria: CategoriaErroPagamento;
+  } | null>(null);
   // Congelado no momento do submit, como orderId — sem isso, o onClearCart()
   // duas linhas abaixo zera o carrinho, cartTotal/shippingFee caem para 0
   // (ou ficam negativos com cupom aplicado) e o Brick nasce cobrando um
@@ -536,11 +549,43 @@ export function CheckoutView({
           Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os
           itens voltam para o estoque e o pedido é cancelado.
         </p>
-        <PagamentoOnline
-          orderId={orderId}
-          valor={valorDoPedido}
-          onErro={(msg) => toast.error(msg)}
-        />
+        {erroPagamento ? (
+          <div className="space-y-3 rounded-2xl border border-red-100 bg-red-50 p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-500" />
+              <p className="text-sm font-medium text-red-700">
+                {erroPagamento.mensagem}
+              </p>
+            </div>
+            {erroPagamento.categoria === "recuperavel" && (
+              <Button
+                onClick={() => setErroPagamento(null)}
+                className="w-full rounded-xl bg-red-600 text-white hover:bg-red-600/90"
+              >
+                Tentar de novo
+              </Button>
+            )}
+          </div>
+        ) : (
+          <PagamentoOnline
+            orderId={orderId}
+            valor={valorDoPedido}
+            onErro={(msg, categoria) =>
+              setErroPagamento((atual) =>
+                // Achado 3 da revisão do CHECKOUT-050 (#194): a doc do
+                // Mercado Pago não é clara sobre a ordem entre `onSubmit`
+                // rejeitado e `callbacks.onError` do Brick — o segundo pode
+                // disparar DEPOIS do primeiro. Uma vez terminal na tela,
+                // NENHUM erro seguinte substitui: rebaixar para recuperável
+                // reabriria "Tentar de novo" para uma recusa que nunca
+                // muda com nova tentativa.
+                atual?.categoria === "terminal"
+                  ? atual
+                  : { mensagem: msg, categoria },
+              )
+            }
+          />
+        )}
       </div>
     );
   }

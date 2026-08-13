@@ -25,6 +25,17 @@ const confettiMock = vi.fn();
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 const pagamentoOnlineProps: Array<{ orderId: string; valor: number }> = [];
+// CHECKOUT-050: cada montagem do dublê grava o `onErro` recebido — é assim
+// que os testes novos disparam uma falha "vinda do Brick" sem depender do
+// SDK real do Mercado Pago (isso já é coberto em pagamento-online.test.tsx).
+const pagamentoOnlineOnErro: Array<
+  (msg: string, categoria: "recuperavel" | "terminal") => void
+> = [];
+
+// Extraído em alias porque `import(...)` em posição de tipo não aceita
+// vírgula final — reflow para caber em 80 colunas (regra do Biome) quebraria
+// a sintaxe se ficasse inline no parâmetro da função abaixo.
+type TelaCheckout = typeof import("@/views/customer/CheckoutView").CheckoutView;
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
@@ -127,9 +138,10 @@ vi.mock("@/components/checkout/PagamentoOnline", () => ({
   PagamentoOnline: (props: {
     orderId: string;
     valor: number;
-    onErro: (msg: string) => void;
+    onErro: (msg: string, categoria: "recuperavel" | "terminal") => void;
   }) => {
     pagamentoOnlineProps.push({ orderId: props.orderId, valor: props.valor });
+    pagamentoOnlineOnErro.push(props.onErro);
     return null;
   },
 }));
@@ -170,6 +182,7 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
     clearCart.mockClear();
     confettiMock.mockClear();
     pagamentoOnlineProps.length = 0;
+    pagamentoOnlineOnErro.length = 0;
     mockCart = [
       {
         product: {
@@ -283,5 +296,147 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
     // limpo) em vez do valor congelado no submit, este número vem 0.
     expect(pagamentoOnlineProps).toHaveLength(1);
     expect(pagamentoOnlineProps[0]).toEqual({ orderId: "ped-999", valor: 120 });
+  });
+
+  // CHECKOUT-050: repete a sequência do teste acima até a tela "Finalize o
+  // pagamento" — as duas provas novas (recuperável x terminal) partem
+  // exatamente daqui.
+  async function chegarNaTelaDeAguardarPagamento(
+    CheckoutViewComponente: TelaCheckout,
+  ) {
+    await act(async () => {
+      raiz.render(
+        <CheckoutViewComponente
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+
+    const botaoOnline = localizarBotaoPorTexto(
+      hospedeiro,
+      "Pagar agora com PIX",
+    )!;
+
+    await act(async () => {
+      botaoOnline.click();
+      digitar("checkout-name", "Cliente Teste");
+      digitar("checkout-tel", "34999999999");
+      digitar("guest-street", "Rua Teste");
+      digitar("guest-number", "100");
+      digitar("guest-neighborhood", "Centro");
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 420));
+    });
+
+    const botaoFinalizar = localizarBotaoPorTexto(
+      document.body,
+      "Finalizar Pedido",
+    )!;
+
+    await act(async () => {
+      botaoFinalizar.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+  }
+
+  it("falha recuperável fica na tela, oferece 'Tentar de novo', e clicar remonta o PagamentoOnline no MESMO pedido", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    expect(pagamentoOnlineProps).toHaveLength(1);
+    const onErro = pagamentoOnlineOnErro[0];
+
+    await act(async () => {
+      onErro("Não foi possível gerar a cobrança.", "recuperavel");
+    });
+
+    // Critério 5 da issue: o aviso do prazo de 30 min continua visível.
+    expect(hospedeiro.textContent).toContain("Seu pedido está reservado");
+    // A mensagem exibida é a MESMA que a função mandou — sem status HTTP,
+    // sem jargão.
+    expect(hospedeiro.textContent).toContain(
+      "Não foi possível gerar a cobrança.",
+    );
+
+    const botaoTentar = localizarBotaoPorTexto(hospedeiro, "Tentar de novo");
+    expect(botaoTentar).toBeDefined();
+
+    await act(async () => {
+      botaoTentar!.click();
+    });
+
+    // Remontou: uma NOVA instância do PagamentoOnline para o MESMO pedido —
+    // sem recarregar a página e sem criar um segundo pedido.
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(pagamentoOnlineProps).toHaveLength(2);
+    expect(pagamentoOnlineProps[1]).toEqual({ orderId: "ped-999", valor: 120 });
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Tentar de novo"),
+    ).toBeUndefined();
+  });
+
+  it("falha terminal fica na tela mas NÃO oferece 'Tentar de novo'", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    const onErro = pagamentoOnlineOnErro[0];
+    const mensagem =
+      "Este pagamento foi recusado e não pode ser tentado novamente neste pedido. Faça um pedido novo ou fale com a loja.";
+
+    await act(async () => {
+      onErro(mensagem, "terminal");
+    });
+
+    expect(hospedeiro.textContent).toContain("Seu pedido está reservado");
+    expect(hospedeiro.textContent).toContain(mensagem);
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Tentar de novo"),
+    ).toBeUndefined();
+
+    // Sem retentativa: o PagamentoOnline não remonta sozinho.
+    expect(pagamentoOnlineProps).toHaveLength(1);
+  });
+
+  // Achado 3 da revisão do CHECKOUT-050 (#194): a doc do Mercado Pago não é
+  // clara sobre a ordem entre `onSubmit` rejeitado e `callbacks.onError` do
+  // Brick — e a revisão não conseguiu provar nem descartar que o segundo
+  // dispare DEPOIS do primeiro. Se acontecer, a mensagem genérica e
+  // recuperável de `onError` ("Não foi possível carregar o pagamento.") não
+  // pode sobrescrever uma recusa terminal que já está na tela: rebaixar
+  // reabriria "Tentar de novo" para uma recusa que nunca muda.
+  it("erro recuperável que chega DEPOIS de um terminal não rebaixa o que está na tela", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    const onErro = pagamentoOnlineOnErro[0];
+    const mensagemTerminal =
+      "Este pagamento foi recusado e não pode ser tentado novamente neste pedido. Faça um pedido novo ou fale com a loja.";
+
+    await act(async () => {
+      onErro(mensagemTerminal, "terminal");
+    });
+
+    expect(hospedeiro.textContent).toContain(mensagemTerminal);
+
+    await act(async () => {
+      onErro("Não foi possível carregar o pagamento.", "recuperavel");
+    });
+
+    // A mensagem terminal continua na tela — a recuperável NÃO substituiu.
+    expect(hospedeiro.textContent).toContain(mensagemTerminal);
+    expect(hospedeiro.textContent).not.toContain(
+      "Não foi possível carregar o pagamento.",
+    );
+    // E continua sem "Tentar de novo": rebaixar a categoria reabriria o
+    // botão para uma recusa que não muda com nova tentativa.
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Tentar de novo"),
+    ).toBeUndefined();
   });
 });

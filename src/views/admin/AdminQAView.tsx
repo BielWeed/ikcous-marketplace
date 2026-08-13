@@ -213,7 +213,12 @@ export const AdminQAView = memo(function AdminQAView({
     if (selectedQuestion) {
       const isAnswered =
         selectedQuestion.answers && selectedQuestion.answers.length > 0;
-      const val = isAnswered ? selectedQuestion.answers[0].answer : "";
+      // answers vem ordenado ascendente por createdAt (useQuestions.ts) --
+      // a mais recente é a última posição, não a primeira. Ver correção #2
+      // da revisão da Trilha 3 (issue #100).
+      const val = isAnswered
+        ? (selectedQuestion.answers.at(-1)?.answer ?? "")
+        : "";
       setAnswer(val);
       initialAnswerRef.current = val;
     } else {
@@ -652,11 +657,19 @@ export const AdminQAView = memo(function AdminQAView({
                             <MessageSquare className="size-3" /> Responder
                           </button>
                         ) : (
+                          // Reabre o modal pré-preenchido; o handleSendAnswer chama a
+                          // mesma RPC answer_question_atomic, que agora faz upsert por
+                          // question_id (issue #100). Não há botão para APAGAR a
+                          // resposta — ficou fora do escopo da #100 por decisão da
+                          // trilha, registrada também no comentário da migration
+                          // 20260812000000_upsert_answer_question_atomic.sql.
                           <button
                             disabled={isOffline}
                             onClick={() => {
                               setSelectedQuestion(q);
-                              setAnswer(q.answers[0].answer);
+                              // a mais recente é a última posição, ver
+                              // comentário acima (answers ordenado ascendente)
+                              setAnswer(q.answers.at(-1)?.answer ?? "");
                             }}
                             className="flex size-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-400 transition-all hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-40"
                             title="Editar Resposta"
@@ -709,12 +722,12 @@ export const AdminQAView = memo(function AdminQAView({
                           </span>
                           <span className="text-[8px] font-bold text-zinc-500">
                             {new Date(
-                              q.answers[0].createdAt,
+                              q.answers.at(-1)!.createdAt,
                             ).toLocaleDateString("pt-BR")}
                           </span>
                         </div>
                         <p className="text-xs font-medium leading-relaxed text-zinc-300">
-                          {q.answers[0].answer}
+                          {q.answers.at(-1)!.answer}
                         </p>
                       </div>
                     )}
