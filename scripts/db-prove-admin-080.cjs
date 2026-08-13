@@ -72,7 +72,7 @@ const MIGRATION = path.join(
   PROJECT_ROOT,
   "supabase",
   "migrations",
-  "20260812000000_upsert_answer_question_atomic.sql",
+  "20260812030000_upsert_answer_question_atomic.sql",
 );
 
 function lerDatabaseUrl() {
