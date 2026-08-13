@@ -7,6 +7,68 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.2.0] — 2026-08-13
+
+Release de correção: **dez defeitos**, quatro deles achados só porque a correção de outro defeito
+foi revisada com contexto limpo. Nenhuma funcionalidade nova. A loja continua **sem cobrar pelo
+site** — a flag `VITE_PAGAMENTO_ONLINE` segue sem existir em Production.
+
+### O que muda para quem COMPRA
+
+- **Recuperar senha não diz mais se o e-mail existe.** Antes, a tela respondia "Este e-mail não
+  está cadastrado" ou "seu e-mail ainda não foi confirmado" — o que permitia testar uma lista de
+  endereços e descobrir quem tem conta. Agora a resposta é a mesma nos dois casos. A consulta que
+  expunha isso também foi revogada no banco. *(#120)*
+- **Sair da conta agora sai de verdade, e limpa o rastro.** Com a rede ruim, o botão Sair mostrava
+  erro e deixava você logado. E o histórico de pedidos, os endereços com CEP e o último CEP
+  digitado ficavam no navegador **depois** do logout — num tablet de loja, para o próximo cliente
+  ver. *(#122)*
+- **Pedido cancelado que foi pago não some mais.** Se você cancelava e pagava o PIX assim mesmo, e
+  a notificação do Mercado Pago se perdia, o dinheiro ficava no limbo: o app dizia "Aguardando
+  pagamento" e nenhuma rotina corrigia. Agora a varredura automática alcança esse caso. *(#180)*
+
+### O que muda para quem VENDE
+
+- **O interruptor de Avaliações agora desliga as avaliações.** Ele mudava o selo para "Inativo" e
+  não escondia nada: nota, comentários e a nota enviada ao Google continuavam no ar, e o cliente
+  continuava conseguindo avaliar. Agora o desligamento vale na vitrine, no dado enviado aos
+  buscadores e **na regra do banco**. *(#101)*
+- **O painel para de dizer "Sem Dados Registrados" quando a consulta quebra.** Falha agora aparece
+  como falha, em vermelho, com botão de tentar de novo. Antes você concluía que não vendeu nada.
+  *(#104)*
+- **Editar resposta de pergunta deixa de criar uma segunda.** As duas apareciam empilhadas na
+  página do produto, sem como apagar. *(#100)*
+- **O formulário de produto para de perder rascunho e de aceitar clique duplo.** O salvamento
+  automático apagava o rascunho no instante em que você abria o produto para editar — enquanto o
+  aviso ainda prometia restaurá-lo. E o botão Publicar continuava clicável por 1,5 s depois de
+  salvar, criando produto duplicado. *(#98)*
+- **Excluir produto não quebra mais as fotos.** As imagens iam para o backup antes de o produto
+  sair do catálogo: se o segundo passo falhasse, o produto voltava para a vitrine com todas as
+  fotos quebradas. *(#99)*
+- **O painel não vira tema claro sozinho.** Salvar a cor primária apagava o tema escuro, deixando
+  texto branco sobre branco até você trocar de tela. *(#102)*
+- **Trocar de conta na mesma aba não dá mais menu de administrador ao cliente**, e não é mais
+  possível virar "admin" editando o navegador. Não era acesso real aos dados — o servidor sempre
+  barrou —, mas o painel montava inteiro, quebrado. *(#121, #123)*
+
+### Sabido e não corrigido
+
+- **O código de verificação do rastreio de pedido ainda não chega a cliente.** Ele sai por uma
+  função que fala com o Resend em modo de teste, que só entrega para o dono da conta. Os demais
+  e-mails (recuperar senha, confirmar cadastro) **saem normalmente pelo Gmail** — medido no painel
+  em 13/08/2026. *(#161)*
+- **A enumeração de e-mails não está eliminada, está fechada pela tela.** O limite de pedidos de
+  recuperação é por usuário, e limite por usuário só dispara para usuário que existe — quem olhar
+  a resposta bruta ainda distingue. Fechar isso é configuração do Supabase, não código. *(#120)*
+- **Quem se cadastrou e não confirmou o e-mail não tem como pedir um link novo** depois de fechar
+  a aba. O reenvio automático saiu junto com o vazamento que ele causava. *(#200)*
+- **Desligar Avaliações não esconde as estrelas na home, na grade, na comparação e no perfil.**
+  É decisão de produto em aberto. *(#202)*
+- **A suíte de testes falha por sorteio quando roda em paralelo** — 2 de 5 execuções, por estouro
+  de prazo, não por defeito de código. *(#201)*
+- **O script que aplica mudanças de banco diz "Tudo aplicado e verificado" mesmo quando não
+  verificou nada** — ele só sabe conferir função. *(#204)*
+
 ## [1.1.0] — 2026-08-11
 
 Release da cobrança online. As três fases do checkout com Mercado Pago entraram — reserva de
