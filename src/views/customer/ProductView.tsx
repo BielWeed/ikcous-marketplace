@@ -1335,6 +1335,7 @@ export const ProductView = React.memo(function ProductView({
                     onAddToCart={handleAddToCartFromCard}
                     onQuickBuy={handleQuickBuyFromCard}
                     onClick={handleProductClick}
+                    showRating={config.enableReviews}
                   />
                 ))}
           </div>

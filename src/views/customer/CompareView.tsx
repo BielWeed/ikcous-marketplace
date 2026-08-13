@@ -1,4 +1,5 @@
 import { StarRating } from "@/components/ui/custom/StarRating";
+import { useStore } from "@/contexts/StoreContext";
 import type { Product, View } from "@/types";
 import { ArrowLeft, Check, Package, Truck, X } from "lucide-react";
 
@@ -17,6 +18,10 @@ export function CompareView({
   onClearAll,
   onProductClick,
 }: CompareViewProps) {
+  // ADMIN-091 (#202): hook chamado antes de qualquer `return` cedo -- regra
+  // dos hooks do React.
+  const { config } = useStore();
+
   if (products.length === 0) {
     return (
       <div className="pb-customer flex min-h-dvh flex-col items-center justify-center px-4">
@@ -45,12 +50,20 @@ export function CompareView({
       label: "Preço",
       format: (p: Product) => `R$ ${p.price.toFixed(2).replace(".", ",")}`,
     },
-    {
-      key: "rating",
-      label: "Avaliação",
-      format: (p: Product) =>
-        p.rating ? `${p.rating.toFixed(1)}/5` : "Sem avaliações",
-    },
+    // ADMIN-091 (#202): com o interruptor de Avaliações desligado, a linha
+    // inteira some -- não só a estrela. Deixar só o ícone e manter o texto
+    // "4.5/5" continuaria publicando a nota, e a tabela é uma lista de
+    // linhas, então tirar a linha não deixa buraco (as outras só sobem).
+    ...(config.enableReviews
+      ? [
+          {
+            key: "rating",
+            label: "Avaliação",
+            format: (p: Product) =>
+              p.rating ? `${p.rating.toFixed(1)}/5` : "Sem avaliações",
+          },
+        ]
+      : []),
     {
       key: "stock",
       label: "Estoque",
