@@ -13,9 +13,20 @@ import { toast } from "sonner";
 
 export interface ResetPasswordResult {
   success: boolean;
-  status: "success" | "unconfirmed" | "not_found" | "error";
+  // #120 — "unconfirmed" e "not_found" saíram do union: eram exatamente o
+  // vazamento (a UI mostrava mensagem diferente por resultado, revelando se
+  // o e-mail tinha conta e se estava confirmado). Só resta "success" (a
+  // MESMA resposta neutra, exista ou não a conta) e "error" (falha genuína,
+  // que não pode distinguir os dois casos).
+  status: "success" | "error";
   message?: string;
 }
+
+// #123 — três estados em vez de um booleano só: "unknown" separa "ainda não
+// sei" de "não é admin", para o painel não expulsar ninguém enquanto a
+// verificação (a RPC `is_admin`, do servidor) ainda está em voo. `isAdmin`
+// continua existindo, derivado: `adminStatus === "admin"`.
+export type AdminStatus = "unknown" | "admin" | "not-admin";
 
 interface AuthContextType {
   session: Session | null;
@@ -23,6 +34,7 @@ interface AuthContextType {
   profile: any | null;
   loading: boolean;
   isAdmin: boolean;
+  adminStatus: AdminStatus;
   login: (
     email: string,
     senha: string,
@@ -54,9 +66,52 @@ export const AuthContext = createContext<AuthContextType>(
   {} as AuthContextType,
 );
 
-// Shared semaphore and state for all Auth instances (prevents redundant parallel checks)
-let checkingLock: Promise<void> | null = null;
+// Coalescência por usuário (#121): antes disto era um semáforo GLOBAL
+// (`checkingLock: Promise<void> | null`), compartilhado por qualquer
+// checagem em voo — na troca de conta na mesma aba, a checagem do cliente
+// novo simplesmente esperava (e descartava) a do admin antigo, sem nunca
+// calcular o próprio resultado. Agora só coalesce quando o `userId` bate;
+// um `userId` diferente inicia a sua própria verificação, nunca compartilha
+// a promise de outro usuário.
+let checkInFlight: { userId: string; promise: Promise<boolean> } | null = null;
 let initPromise: Promise<any> | null = null;
+
+// #122 — função ÚNICA de limpeza de sessão local, chamada tanto pelo
+// `logout` (caminho de sucesso e o fallback de erro) quanto pelo listener de
+// `SIGNED_OUT`. Antes disto a lógica estava duplicada e divergente: o
+// listener removia 'app.favorites' (chave morta — zero writers no
+// repositório) e nunca tocava os caches de pedidos e endereços, que guardam
+// dado pessoal (histórico de pedidos; CEP, rua, número e destinatário) e
+// sobreviviam ao logout indefinidamente num dispositivo compartilhado.
+// Varredura por PREFIXO, de trás para a frente (o índice se desloca ao
+// remover) — igual ao que o código já fazia para `ikcous_is_admin_`: um
+// dispositivo compartilhado acumula cache de vários usuários, não só do que
+// acabou de sair.
+function clearLocalUserData() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("marketplace_cart_v1");
+  localStorage.removeItem("ikcous_recently_viewed");
+  localStorage.removeItem("ikcous_compare");
+  localStorage.removeItem("ikcous_is_admin");
+  // Revisão de contexto limpo do diff (achado 2) — o CEP também é PII do
+  // usuário logado: `ikcous_last_shipping_cep` é lido na montagem do
+  // checkout e do calculador de frete, e `ikcous_shipping_cache_<cep>`
+  // carrega o CEP no PRÓPRIO NOME da chave (visível no DevTools sem abrir
+  // valor nenhum). Sem isto, cliente B via o CEP de cliente A pré-preenchido
+  // num dispositivo compartilhado.
+  localStorage.removeItem("ikcous_last_shipping_cep");
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (
+      key?.startsWith("ikcous_is_admin_") ||
+      key?.startsWith("ikcous_orders_cache_") ||
+      key?.startsWith("ikcous_addresses_cache_") ||
+      key?.startsWith("ikcous_shipping_cache_")
+    ) {
+      localStorage.removeItem(key);
+    }
+  }
+}
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Synchronously recover session from localStorage to prevent screen flash/delay on boot
@@ -83,10 +138,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const cachedSession = getCachedSession();
-  const cachedIsAdmin = (() => {
-    if (!cachedSession?.user) return false;
-    return cachedSession.user.app_metadata?.role === "admin";
-  })();
 
   const [session, setSession] = useState<Session | null>(cachedSession);
   const [user, setUser] = useState<User | null>(
@@ -94,7 +145,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
   const [profile, setProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(!!cachedSession); // Non-blocking for guests, verifying for returned users
-  const [isAdmin, setIsAdmin] = useState<boolean>(cachedIsAdmin);
+  // #123 — `adminStatus` NUNCA nasce confirmado a partir do texto em cache
+  // (`getCachedSession()` é `JSON.parse` de `localStorage`, editável no
+  // DevTools). Com sessão, nasce "unknown" e só a RPC promove para "admin"
+  // ou "not-admin". Sem sessão, não há usuário para verificar.
+  const [adminStatus, setAdminStatus] = useState<AdminStatus>(
+    cachedSession?.user ? "unknown" : "not-admin",
+  );
+  const isAdmin = adminStatus === "admin";
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -118,53 +176,88 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [isPasswordRecovery]);
 
+  // #121 — precisa existir ANTES de `checkAdmin`: é a guarda que decide, na
+  // resolução de uma verificação, se o usuário que a disparou ainda é o
+  // ativo (troca de conta no meio da checagem não pode gravar por cima).
+  const activeUserIdRef = useRef<string | null>(
+    cachedSession?.user?.id || null,
+  );
+
   const checkAdmin = async (u: User | null | undefined) => {
     if (!u) {
-      setIsAdmin(false);
+      setAdminStatus("not-admin");
       return;
     }
 
     const userId = u.id;
     const cacheKey = `ikcous_is_admin_${userId}`;
 
-    // Fast Path 1: JWT Metadata (Zero latency, cryptographically secure. Rely ONLY on app_metadata, as user_metadata is client-writable)
-    const jwtRole = u.app_metadata?.role;
-    if (jwtRole === "admin") {
-      setIsAdmin(true);
-      localStorage.setItem(cacheKey, "true");
-      return;
-    }
+    // Aplica o resultado só se o usuário verificado ainda for o ativo no
+    // momento em que a checagem termina (#121) — sem isto, a checagem do
+    // usuário que SAIU pode gravar `isAdmin`/cache por cima do usuário que
+    // entrou depois, inclusive quando chega atrasada (promise órfã do
+    // timeout, ver `networkCheck`).
+    //
+    // Achado 2 (revisão #121/#123) — `verified` distingue um VEREDITO real
+    // (a RPC ou o fallback em `profiles` respondeu) de um NÃO-VEREDITO
+    // (timeout de 3s ou erro de rede, ver o `catch` mais abaixo). Só um
+    // veredito pode ser persistido: gravar "false" no `localStorage` a
+    // partir de uma resposta que nunca chegou vira uma conclusão permanente
+    // — nas cargas SEGUINTES, o Fast Path 2 leria esse cache e resolveria
+    // "not-admin" antes de qualquer rede, sem chance de correção. Um
+    // não-veredito só pode mexer no estado em memória desta carga.
+    const applyResult = (isAdminResult: boolean, verified: boolean) => {
+      if (activeUserIdRef.current !== userId) {
+        console.debug(
+          "[Auth] Discarding stale admin check result for user:",
+          userId,
+        );
+        return;
+      }
+      setAdminStatus(isAdminResult ? "admin" : "not-admin");
+      if (verified) {
+        localStorage.setItem(cacheKey, isAdminResult ? "true" : "false");
+      }
+    };
+
+    // #123 — a sessão local é texto que o usuário edita no DevTools; o
+    // supabase-js não valida a assinatura do JWT no cliente. `app_metadata`
+    // NUNCA confirma admin por si só — só a RPC abaixo (ou o fallback em
+    // `profiles`), verificada pelo servidor nesta carga de página, decide.
 
     // Fast Path 2: Local Cache (Immediate return for confirmed customers, keyed by user ID)
     const cachedAdmin = localStorage.getItem(cacheKey);
     if (cachedAdmin === "false") {
-      setIsAdmin(false);
+      setAdminStatus("not-admin");
       // Run background check to sync with potential admin status updates without blocking initial load
-      networkCheck().catch((err) =>
-        console.error("[Auth] background networkCheck error:", err),
-      );
+      networkCheck()
+        .then((result) => applyResult(result, true))
+        .catch((err) =>
+          console.error("[Auth] background networkCheck error:", err),
+        );
       return;
     }
 
-    // Network validation (Heavy)
-    async function networkCheck() {
-      if (checkingLock) {
-        try {
-          await checkingLock;
-        } catch {
-          // Ignore concurrent check errors
-        }
-        return;
+    // Network validation (Heavy). Resolve o booleano — não escreve estado
+    // nem localStorage por conta própria; quem faz isso é `applyResult`,
+    // guardado pelo usuário ativo. Timeout/erro REJEITA em vez de resolver
+    // `false` — quem decide o que fazer com um não-veredito é quem chama
+    // (`applyResult(..., false)` mais abaixo), não esta função.
+    async function networkCheck(): Promise<boolean> {
+      if (checkInFlight && checkInFlight.userId === userId) {
+        // Mesmo usuário já tem uma verificação em voo: reaproveita a
+        // promise dela em vez de disparar outra RPC.
+        return checkInFlight.promise;
       }
 
-      checkingLock = (async () => {
-        const queryPromise = (async () => {
+      // Usuário diferente (ou nenhuma verificação em voo): inicia a
+      // própria, sem esperar nem descartar a de outro usuário.
+      const myCheck = (async (): Promise<boolean> => {
+        const queryPromise = (async (): Promise<boolean> => {
           // First try direct RPC (fastest, most secure)
           const { data, error } = await supabase.rpc("is_admin");
           if (!error && typeof data === "boolean") {
-            setIsAdmin(data);
-            localStorage.setItem(cacheKey, data ? "true" : "false");
-            return;
+            return data;
           }
 
           // Fallback: check profiles table
@@ -174,31 +267,44 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             .eq("id", userId)
             .single();
 
-          const isDbAdmin = !profileError && profile?.role === "admin";
-          setIsAdmin(isDbAdmin);
-          localStorage.setItem(cacheKey, isDbAdmin ? "true" : "false");
+          return !profileError && profile?.role === "admin";
         })();
 
         // Add a resilient 3-second timeout limit to the network query
-        const timeoutPromise = new Promise((_, reject) =>
+        const timeoutPromise = new Promise<boolean>((_, reject) =>
           setTimeout(() => reject(new Error("Admin check timeout")), 3000),
         );
 
-        await Promise.race([queryPromise, timeoutPromise]);
+        return Promise.race([queryPromise, timeoutPromise]);
       })();
 
+      checkInFlight = { userId, promise: myCheck };
+
       try {
-        await checkingLock;
-      } catch (err) {
-        console.error("[Auth] Error/Timeout checking admin status:", err);
-        setIsAdmin(false);
+        return await myCheck;
       } finally {
-        checkingLock = null;
+        // Anotado 3 (revisão #121/#123) — compara pela IDENTIDADE da
+        // promise, não pelo `userId`. Só o `userId` não distingue DUAS
+        // checagens do MESMO usuário: na sequência A → B → A dentro da
+        // mesma janela, a checagem ORIGINAL de A pode liquidar por último e,
+        // comparando só o `userId`, apagaria o slot da SEGUNDA checagem de
+        // A — que ainda está em voo — mesmo sem ser a dona dele.
+        if (checkInFlight?.promise === myCheck) {
+          checkInFlight = null;
+        }
       }
     }
 
-    // Await the network check to prevent privilege bypass on client spoofing
-    await networkCheck();
+    // Await the network check to prevent privilege bypass on client spoofing.
+    try {
+      const result = await networkCheck();
+      applyResult(result, true);
+    } catch (err) {
+      console.error("[Auth] Error/Timeout checking admin status:", err);
+      // Não-veredito (Achado 2): trata como não-admin SÓ nesta carga, sem
+      // persistir no localStorage.
+      applyResult(false, false);
+    }
   };
 
   useEffect(() => {
@@ -248,9 +354,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const hasInited = useRef(false);
   const isVerifying = useRef(false);
   const isFirstMount = useRef(true);
-  const activeUserIdRef = useRef<string | null>(
-    cachedSession?.user?.id || null,
-  );
 
   useEffect(() => {
     // Immediate session resolution with internal timeout guard
@@ -320,7 +423,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                   setSession(null);
                   setUser(null);
                   activeUserIdRef.current = null;
-                  setIsAdmin(false);
+                  setAdminStatus("not-admin");
                   return;
                 }
               }
@@ -350,7 +453,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setSession(null);
           setUser(null);
           activeUserIdRef.current = null;
-          setIsAdmin(false);
+          setAdminStatus("not-admin");
           setLoading(false);
           isFirstMount.current = false;
         }
@@ -455,19 +558,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       } else {
         setProfile(null);
-        setIsAdmin(false);
-        if (event === "SIGNED_OUT" && typeof window !== "undefined") {
-          localStorage.removeItem("app.favorites");
-          localStorage.removeItem("marketplace_cart_v1");
-          localStorage.removeItem("ikcous_recently_viewed");
-          localStorage.removeItem("ikcous_compare");
-          localStorage.removeItem("ikcous_is_admin");
-          for (let i = localStorage.length - 1; i >= 0; i--) {
-            const key = localStorage.key(i);
-            if (key?.startsWith("ikcous_is_admin_")) {
-              localStorage.removeItem(key);
-            }
-          }
+        setAdminStatus("not-admin");
+        if (event === "SIGNED_OUT") {
+          clearLocalUserData();
         }
         if (isCriticalTransition) {
           setLoading(false);
@@ -531,11 +624,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
+      // #122 — `signOut()` devolvendo erro (rede caída, por exemplo) não
+      // dispara o evento `SIGNED_OUT`: sem este ramo, o app continuava
+      // "logado" e o token do supabase-js continuava vivo no localStorage,
+      // legível no DevTools. Terminamos deslogados MESMO ASSIM — o toast de
+      // erro continua existindo, mas deixa de ser a única consequência.
       toast.error(`Erro ao sair: ${error.message}`);
+      // Revisão de contexto limpo do diff (achado 1) — sem isto, uma checagem
+      // de admin (`checkAdmin`, RPC `is_admin`) que estivesse em voo no
+      // momento do logout via `activeUserIdRef.current` ainda apontando para
+      // o usuário que saiu, e `applyResult` gravava
+      // `ikcous_is_admin_<uuid>` por cima mesmo depois da sessão ter sido
+      // encerrada. É a mesma guarda que o listener de `onAuthStateChange`
+      // (`supabase.auth.onAuthStateChange`, acima neste efeito) já honra ao
+      // atualizar `activeUserIdRef.current = currentUserId` logo no início do
+      // callback, para qualquer evento — SIGNED_OUT incluso; este é o único
+      // caminho de saída que não a honrava.
+      activeUserIdRef.current = null;
+      setSession(null);
+      setUser(null);
+      setAdminStatus("not-admin");
+      setIsPasswordRecovery(false);
+      clearLocalUserData();
+      if (typeof window !== "undefined") {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key?.includes("-auth-token") || key?.includes("-code-verifier")) {
+            localStorage.removeItem(key);
+          }
+        }
+      }
     } else {
       setSession(null);
       setUser(null);
-      setIsAdmin(false);
+      setAdminStatus("not-admin");
       setIsPasswordRecovery(false);
     }
   }, []);
@@ -562,69 +684,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const resetPassword = useCallback(
     async (email: string): Promise<ResetPasswordResult> => {
       try {
-        // Check email confirmation status via RPC
-        const { data: checkData, error: checkError } = await supabase.rpc(
-          "check_user_confirmation_status",
-          {
-            p_email: email,
-          },
-        );
-
-        if (checkError) {
-          console.error(
-            "[Auth] Error checking verification status:",
-            checkError,
-          );
-          return {
-            success: false,
-            status: "error",
-            message: checkError.message,
-          };
-        }
-
-        const checkResult = checkData as {
-          exists?: boolean;
-          confirmed?: boolean;
-        } | null;
-        const exists = checkResult?.exists;
-        const confirmed = checkResult?.confirmed;
-
-        if (!exists) {
-          return {
-            success: false,
-            status: "not_found",
-            message:
-              "Este e-mail não está cadastrado. Verifique o endereço ou crie uma conta.",
-          };
-        }
-
-        if (!confirmed) {
-          // Resend confirmation email
-          const { error: resendError } = await supabase.auth.resend({
-            type: "signup",
-            email,
-            options: {
-              emailRedirectTo: window.location.origin,
-            },
-          });
-
-          if (resendError) {
-            return {
-              success: false,
-              status: "error",
-              message: `E-mail não confirmado. Falha ao reenviar e-mail de confirmação: ${resendError.message}`,
-            };
-          }
-
-          return {
-            success: false,
-            status: "unconfirmed",
-            message:
-              "Seu e-mail ainda não foi confirmado. Enviamos um novo link de confirmação para a sua caixa de entrada.",
-          };
-        }
-
-        // Email is confirmed, send recovery link to user's email
+        // #120 — antes disto, chamávamos a RPC `check_user_confirmation_status`
+        // para decidir entre três respostas diferentes ("not_found",
+        // "unconfirmed", "success"). Essa RPC é SECURITY DEFINER e tinha
+        // EXECUTE liberado para `anon`: um visitante jogando uma lista de
+        // e-mails no endpoint REST descobria quem tem conta e quem
+        // confirmou, e a própria UI confirmava isso em texto. A RPC foi
+        // revogada (ver migration nova em `supabase/migrations/`); agora
+        // chamamos `resetPasswordForEmail` direto, que por design do
+        // Supabase Auth NÃO confirma nem nega a existência da conta — a
+        // resposta é a mesma independentemente de o e-mail estar cadastrado.
+        //
+        // Decisão já tomada (não reabrir): perdemos o reenvio automático do
+        // e-mail de confirmação que rodava no ramo "unconfirmed" — não dá
+        // para mantê-lo sem voltar a distinguir os casos no cliente, que é
+        // exatamente o vazamento que estamos fechando. Corrigido na revisão
+        // de contexto limpo (achado 4): quem se cadastra e some antes de
+        // confirmar NÃO tem hoje um caminho de autoatendimento para um novo
+        // link — `resendConfirmationEmail` só é renderizado sob
+        // `showConfirmation` (AuthView.tsx), que nasce `false` e só vira
+        // `true` dentro de um `signUp` bem-sucedido DA MESMA sessão de
+        // navegador. Fechar a enumeração foi a decisão tomada mesmo assim;
+        // dar a esse usuário uma entrada nova na tela de login é escopo de
+        // outra issue, não desta.
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: `${
             window.location.origin + window.location.pathname
@@ -632,13 +714,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
 
         if (error) {
-          return { success: false, status: "error", message: error.message };
+          // Erro genuíno (rede, rate limit etc.) — não pode distinguir
+          // e-mail cadastrado de não cadastrado, só reportar que algo deu
+          // errado no envio. Revisão de contexto limpo (achado 3): o rate
+          // limit do Supabase Auth é POR USUÁRIO, então só dispara para quem
+          // TEM conta — ecoar `error.message` (ex.: "For security purposes,
+          // you can only request this after N seconds") na TELA reabria a
+          // mesma enumeração que a RPC revogada causava. A mensagem para o
+          // chamador é sempre genérica; o detalhe vai só para o console.
+          console.error("[Auth] resetPasswordForEmail error:", error.message);
+          return {
+            success: false,
+            status: "error",
+            message:
+              "Não foi possível enviar o link de recuperação agora. Tente novamente em instantes.",
+          };
         }
 
         return {
           success: true,
           status: "success",
-          message: "Link de recuperação enviado para o seu e-mail!",
+          message:
+            "Se este e-mail estiver cadastrado, enviamos um link de recuperação.",
         };
       } catch (err: any) {
         console.error("[Auth] Reset recovery exception:", err);
@@ -734,6 +831,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       profile,
       loading,
       isAdmin,
+      adminStatus,
       login,
       signUp,
       resetPassword,
@@ -752,6 +850,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       profile,
       loading,
       isAdmin,
+      adminStatus,
       login,
       signUp,
       resetPassword,
