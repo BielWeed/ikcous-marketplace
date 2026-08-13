@@ -1,3 +1,4 @@
+import type { AdminStatus } from "@/contexts/AuthContext";
 // @vitest-environment jsdom
 //
 // Issues #121 e #123 — AuthContext.tsx é o dono de `isAdmin`/`adminStatus`
@@ -28,7 +29,6 @@
 // cima + `vi.resetAllMocks()` no `beforeEach` é o que garante teste
 // isolado.
 import { supabase } from "@/lib/supabase";
-import type { AdminStatus } from "@/contexts/AuthContext";
 import { act, useContext } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -270,7 +270,10 @@ describe("AuthContext — verificação de admin (issues #121 e #123)", () => {
   }
 
   function sessaoDe(userId: string) {
-    return { user: { id: userId, app_metadata: {} }, access_token: `tok-${userId}` };
+    return {
+      user: { id: userId, app_metadata: {} },
+      access_token: `tok-${userId}`,
+    };
   }
 
   // ---------------------------------------------------------------------

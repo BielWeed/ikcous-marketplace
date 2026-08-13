@@ -1,3 +1,4 @@
+import type { ResetPasswordResult } from "@/contexts/AuthContext";
 // @vitest-environment jsdom
 //
 // Issue #120 — `resetPassword` chamava a RPC `check_user_confirmation_status`
@@ -13,7 +14,6 @@
 import { act, useContext } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ResetPasswordResult } from "@/contexts/AuthContext";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
@@ -140,7 +140,10 @@ describe("AuthContext.resetPassword — fecha a enumeração de e-mails (issue #
       await esperarMicrotarefas();
     });
 
-    return { supabase, resetPassword: ultimoEstado(aoAtualizar)!.resetPassword };
+    return {
+      supabase,
+      resetPassword: ultimoEstado(aoAtualizar)!.resetPassword,
+    };
   }
 
   it("1. devolve resultado indistinguível para um e-mail cadastrado e um não cadastrado", async () => {
@@ -149,9 +152,7 @@ describe("AuthContext.resetPassword — fecha a enumeração de e-mails (issue #
     // O Supabase Auth de verdade não distingue os dois casos: sempre
     // resolve sem erro. O dublê reproduz esse comportamento.
     (
-      supabase.auth.resetPasswordForEmail as unknown as ReturnType<
-        typeof vi.fn
-      >
+      supabase.auth.resetPasswordForEmail as unknown as ReturnType<typeof vi.fn>
     ).mockResolvedValue({ data: {}, error: null });
 
     let resultadoCadastrado: ResetPasswordResult;
@@ -170,9 +171,7 @@ describe("AuthContext.resetPassword — fecha a enumeração de e-mails (issue #
     const { supabase, resetPassword } = await montar();
 
     (
-      supabase.auth.resetPasswordForEmail as unknown as ReturnType<
-        typeof vi.fn
-      >
+      supabase.auth.resetPasswordForEmail as unknown as ReturnType<typeof vi.fn>
     ).mockResolvedValue({ data: {}, error: null });
 
     await act(async () => {
@@ -207,11 +206,7 @@ describe("AuthContext.resetPassword — fecha a enumeração de e-mails (issue #
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
-    (
-      supabase.auth.resetPasswordForEmail as unknown as ReturnType<
-        typeof vi.fn
-      >
-    )
+    (supabase.auth.resetPasswordForEmail as unknown as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
         data: null,
         error: {

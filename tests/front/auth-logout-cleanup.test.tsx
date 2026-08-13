@@ -134,7 +134,10 @@ function todasAsChaves(): string[] {
 }
 
 function sessaoDe(userId: string) {
-  return { user: { id: userId, app_metadata: {} }, access_token: `tok-${userId}` };
+  return {
+    user: { id: userId, app_metadata: {} },
+    access_token: `tok-${userId}`,
+  };
 }
 
 describe("AuthContext — limpeza local de sessão (issue #122)", () => {
@@ -168,9 +171,10 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
     (
       supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>
     ).mockResolvedValue({ data: { session: null }, error: null });
-    (
-      supabase.rpc as unknown as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({ data: null, error: null });
+    (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: null,
+      error: null,
+    });
 
     let callback: AuthChangeCallback = () => {};
     (
@@ -323,16 +327,16 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
     // A RPC is_admin fica pendurada até o teste resolvê-la manualmente —
     // reproduz a janela de até 3s em que `checkAdmin` está em voo.
     let resolverIsAdmin: (v: unknown) => void = () => {};
-    (
-      supabase.rpc as unknown as ReturnType<typeof vi.fn>
-    ).mockImplementation((name: string) => {
-      if (name === "is_admin") {
-        return new Promise((resolve) => {
-          resolverIsAdmin = resolve;
-        });
-      }
-      return Promise.resolve({ data: null, error: null });
-    });
+    (supabase.rpc as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (name: string) => {
+        if (name === "is_admin") {
+          return new Promise((resolve) => {
+            resolverIsAdmin = resolve;
+          });
+        }
+        return Promise.resolve({ data: null, error: null });
+      },
+    );
 
     const aoAtualizar = vi.fn();
     await act(async () => {

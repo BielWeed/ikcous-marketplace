@@ -323,8 +323,8 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               contradizia o toast desta MESMA ação, que já é condicional ("Se
               este e-mail estiver cadastrado..."). O endereço continua
               visível: ajuda quem digitou errado a perceber. */}
-              Se este e-mail estiver cadastrado, enviamos um link de
-              recuperação para:
+              Se este e-mail estiver cadastrado, enviamos um link de recuperação
+              para:
               <br />
               <span className="font-bold text-zinc-900">{email}</span>
               <br />
