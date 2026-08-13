@@ -442,7 +442,11 @@ export function OrderDetailsView({
                   </div>
                 </div>
                 <div className="flex-shrink-0">
+                  {/* ADMIN-090 (#101): com o interruptor "Avaliações dos
+                      Clientes" desligado, a tela de pedido entregue não
+                      oferece avaliar. */}
                   {user &&
+                    config.enableReviews &&
                     order.status === "delivered" &&
                     (reviewedProductIds.has(item.productId) ? (
                       <span className="flex select-none items-center gap-1 rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-600 duration-300 animate-in fade-in">

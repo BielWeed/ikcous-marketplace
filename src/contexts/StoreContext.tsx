@@ -105,15 +105,15 @@ export function StoreProvider({
               hexToTailwindHsl(merged.primaryColor),
             );
           }
-          if (merged.themeMode === "dark" || merged.themeMode === "glass") {
-            document.documentElement.classList.add("dark");
-            if (merged.themeMode === "glass") {
-              document.documentElement.setAttribute("data-theme-mode", "glass");
-            }
-          } else {
-            document.documentElement.classList.remove("dark");
-            document.documentElement.removeAttribute("data-theme-mode");
-          }
+          // ADMIN-100 (#102): a classe `dark` (e o atributo `data-theme-mode`)
+          // NÃO é mexida aqui. App.tsx é o único dono — ele decide com base em
+          // `currentView` (admin força escuro) e `config.themeMode` (loja
+          // segue o que o lojista configurou). Duas mãos na mesma classe era
+          // exatamente o que fazia o admin virar tema claro no meio da
+          // sessão ao salvar a cor primária: este efeito disparava (a
+          // primaryColor mudou), recalculava com base só no themeMode e
+          // desfazia o "dark" que o App já tinha colocado por estar em rota
+          // de admin.
         }
 
         // Load products from IDB
@@ -169,26 +169,16 @@ export function StoreProvider({
     }
   }, []);
 
+  // ADMIN-100 (#102): só a cor primária é aplicada aqui. A classe `dark` e o
+  // atributo `data-theme-mode` são dono único do App.tsx (ver comentário no
+  // efeito de loadFromVault acima) — App.tsx já reage a `config.themeMode`
+  // pelo mesmo contexto, então remover a duplicata aqui não deixa nenhum
+  // dos três valores de themeMode (light/dark/glass) sem quem aplique.
   useEffect(() => {
     if (config.primaryColor) {
       applyBranding(config.primaryColor);
     }
-
-    // Sync theme mode with DOM
-    if (config.themeMode) {
-      const root = document.documentElement;
-      if (config.themeMode === "dark") {
-        root.classList.add("dark");
-        root.removeAttribute("data-theme-mode");
-      } else if (config.themeMode === "glass") {
-        root.classList.add("dark");
-        root.setAttribute("data-theme-mode", "glass");
-      } else {
-        root.classList.remove("dark");
-        root.removeAttribute("data-theme-mode");
-      }
-    }
-  }, [config.primaryColor, config.themeMode, applyBranding]);
+  }, [config.primaryColor, applyBranding]);
 
   const mapConfig = useCallback((data: any): StoreConfig => {
     const getVal = (snake: string, camel: string, fallback: any) => {
@@ -412,7 +402,7 @@ export function StoreProvider({
           .select("*, product_variants(*)")
           .limit(200)
           .order("data_cadastro", { ascending: false });
-        
+
         if (publicRes.error && error) {
           throw error;
         } else if (publicRes.data) {

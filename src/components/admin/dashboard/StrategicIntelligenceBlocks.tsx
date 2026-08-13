@@ -4,7 +4,12 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { formatCurrency } from "@/lib/utils";
-import { Eye, EyeOff, PieChart as PieChartIcon } from "lucide-react";
+import {
+  AlertCircle,
+  Eye,
+  EyeOff,
+  PieChart as PieChartIcon,
+} from "lucide-react";
 import React, {
   useState,
   useMemo,
@@ -37,6 +42,11 @@ interface StrategicIntelligenceBlocksProps {
   readonly categoryData: CategoryData[];
   readonly loading: boolean;
   readonly active?: boolean;
+  // #104: erro PRÓPRIO da análise por categoria — quando setado, o bloco
+  // mostra um banner de falha (visualmente distinto do empty state) em vez
+  // de "Sem Dados Registrados". `onRetry` liga o botão "Tentar novamente".
+  readonly error?: string | null;
+  readonly onRetry?: () => void;
 }
 
 const PREMIUM_PALETTE = [
@@ -134,6 +144,8 @@ export const StrategicIntelligenceBlocks = React.memo(
     categoryData,
     loading,
     active = true,
+    error = null,
+    onRetry,
   }: StrategicIntelligenceBlocksProps) {
     const [isChartReady, setIsChartReady] = useState(false);
 
@@ -313,6 +325,40 @@ export const StrategicIntelligenceBlocks = React.memo(
       );
     }
 
+    // #104: falha na RPC tem que ficar INCONFUNDÍVEL com "sem dados" — por
+    // isso este ramo vem ANTES do empty state, com cores de alerta (vermelho)
+    // em vez do cinza neutro, e não depende de `safeCategoryData` estar
+    // vazio: mesmo com dado antigo em cache, uma falha nova precisa aparecer.
+    if (!loading && error) {
+      return (
+        <div className="flex flex-col items-center justify-center space-y-4 rounded-[3rem] border border-red-500/20 bg-red-950/20 p-12 text-center shadow-2xl backdrop-blur-3xl">
+          <div className="flex size-16 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10">
+            <AlertCircle className="text-red-400" size={24} />
+          </div>
+          <div>
+            <h3 className="text-lg font-black text-red-400">
+              Falha ao Carregar Divisão de Faturamento
+            </h3>
+            <p className="mt-1 max-w-sm text-sm font-medium text-red-300/80">
+              Não foi possível calcular as categorias. {error}
+            </p>
+          </div>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-red-400 transition-colors hover:bg-red-500/20"
+            >
+              Tentar novamente
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    // "Sem Dados Registrados" só chega aqui quando a consulta TEVE sucesso
+    // (não caiu no ramo de erro acima) e devolveu zero linhas — nunca por
+    // falha de RPC.
     if (!loading && (safeCategoryData.length === 0 || totalRevenue === 0)) {
       return (
         <div className="flex flex-col items-center justify-center space-y-4 rounded-[3rem] border border-white/5 bg-zinc-950/60 p-12 text-center shadow-2xl backdrop-blur-3xl">
@@ -374,6 +420,20 @@ export const StrategicIntelligenceBlocks = React.memo(
                 <PieChartIcon size={14} className="text-admin-gold" />
               </div>
             </div>
+
+            {/*
+              #104: legenda da divergência entre bases. O total deste
+              gráfico soma `get_category_analytics` (itens + frete, SEM
+              subtrair desconto); o card "Volume Total" (KpiSummaryCards) usa
+              `SUM(marketplace_orders.total)`, já líquido de desconto. Com
+              qualquer pedido com cupom os dois números divergem — decisão do
+              brief da Trilha 4/#104 é não mudar o cálculo, só explicitar a
+              diferença aqui.
+            */}
+            <p className="relative z-10 mb-3 text-[9px] font-medium normal-case leading-snug text-zinc-600 sm:mb-5">
+              Total deste gráfico = itens + frete, sem desconto. Pode divergir
+              do card "Volume Total" (já líquido de desconto).
+            </p>
 
             {/* CONTAINER DO GRÁFICO E DA LEGENDA DETALHADA */}
             <div className="relative z-10 flex flex-col items-center justify-between gap-4 sm:gap-10 lg:flex-row">
