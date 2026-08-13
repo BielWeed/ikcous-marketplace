@@ -53,6 +53,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     stats,
     categoryData,
     error: analyticsError,
+    categoryError,
   } = useAnalytics();
 
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -316,6 +317,8 @@ export const AdminDashboardView = memo(function AdminDashboardView({
               categoryData={mappedCategoryData}
               loading={isLoading && !stats}
               active={active}
+              error={categoryError}
+              onRetry={() => loadDashboardData(true)}
             />
           </LocalErrorBoundary>
         </div>

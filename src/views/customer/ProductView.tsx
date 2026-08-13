@@ -7,10 +7,12 @@ import { ReviewCard } from "@/components/ui/custom/ReviewCard";
 import { StarRating } from "@/components/ui/custom/StarRating";
 import { useStore } from "@/contexts/StoreContext";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
+import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useProducts } from "@/hooks/useProducts";
 import { useReviews } from "@/hooks/useReviews";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
 import { cn } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -31,8 +33,6 @@ import {
 } from "lucide-react";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useDocumentMeta } from "@/hooks/useDocumentMeta";
-import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
 import { toast } from "sonner";
 
 const RECS_CACHE_KEY_PREFIX = "ikcous_recs_cache_";
@@ -399,17 +399,23 @@ export const ProductView = React.memo(function ProductView({
       const reviewsEl = reviewsSectionRef.current;
       const chatEl = chatSectionRef.current;
 
-      if (!detailsEl || !reviewsEl || !chatEl) return;
+      // ADMIN-090 (#101): com o interruptor desligado, `reviewsEl` nunca
+      // monta -- tratar a seção ausente como "ainda não alcançada", não
+      // abortar o scroll-spy inteiro. A guarda existia para ref ainda não
+      // montada, não para uma seção que sumiu por decisão de produto.
+      if (!detailsEl || !chatEl) return;
 
-      const reviewsRect = reviewsEl.getBoundingClientRect();
       const chatRect = chatEl.getBoundingClientRect();
+      const reviewsTop = reviewsEl
+        ? reviewsEl.getBoundingClientRect().top
+        : null;
 
       let currentActive: "description" | "reviews" | "questions" =
         "description";
 
       if (chatRect.top <= offsetThreshold) {
         currentActive = "questions";
-      } else if (reviewsRect.top <= offsetThreshold) {
+      } else if (reviewsTop !== null && reviewsTop <= offsetThreshold) {
         currentActive = "reviews";
       } else {
         currentActive = "description";
@@ -456,6 +462,12 @@ export const ProductView = React.memo(function ProductView({
   }, [product.id]);
 
   useEffect(() => {
+    // ADMIN-090 (#102): com o interruptor desligado nada do que volta é
+    // renderizado -- não gastar consulta ao banco nem assinatura de tempo
+    // real por visita de produto. `config.enableReviews` entra nas
+    // dependências para religar a busca se o flag voltar sem recarregar.
+    if (!config.enableReviews) return;
+
     getReviewsByProduct(product.id);
 
     const unsubscribe = subscribeToReviews(() => {
@@ -465,7 +477,12 @@ export const ProductView = React.memo(function ProductView({
     return () => {
       unsubscribe();
     };
-  }, [product.id, getReviewsByProduct, subscribeToReviews]);
+  }, [
+    product.id,
+    config.enableReviews,
+    getReviewsByProduct,
+    subscribeToReviews,
+  ]);
 
   useEffect(() => {
     if (!recsVisible) return;
@@ -672,13 +689,17 @@ export const ProductView = React.memo(function ProductView({
         : "https://schema.org/InStock",
       itemCondition: "https://schema.org/NewCondition",
     },
-    ...(reviewCount > 0 && {
-      aggregateRating: {
-        "@type": "AggregateRating",
-        ratingValue: averageRating.toFixed(1),
-        reviewCount: reviewCount,
-      },
-    }),
+    // ADMIN-090 (#101): com o interruptor "Avaliações dos Clientes"
+    // desligado, o JSON-LD não pode publicar aggregateRating para os
+    // buscadores — era o único gate que faltava além da UI.
+    ...(config.enableReviews &&
+      reviewCount > 0 && {
+        aggregateRating: {
+          "@type": "AggregateRating",
+          ratingValue: averageRating.toFixed(1),
+          reviewCount: reviewCount,
+        },
+      }),
   };
 
   const metaDescription =
@@ -708,7 +729,6 @@ export const ProductView = React.memo(function ProductView({
 
   return (
     <div className="pb-customer relative min-h-full bg-white">
-
       {/* Image Gallery */}
       <div className="group relative aspect-[4/3] overflow-hidden rounded-b-[2rem] bg-[#F8F9FA] sm:aspect-[4/3] lg:aspect-square">
         <div className="relative flex size-full items-center justify-center overflow-hidden lg:h-[70vh]">
@@ -836,7 +856,7 @@ export const ProductView = React.memo(function ProductView({
             {product.name}
           </h1>
           <div className="flex flex-wrap items-center gap-3">
-            {reviewCount > 0 && (
+            {config.enableReviews && reviewCount > 0 && (
               <div className="flex items-center gap-1">
                 <StarRating rating={averageRating} size={12} />
                 <span className="text-[11px] font-medium text-zinc-500">
@@ -1085,7 +1105,11 @@ export const ProductView = React.memo(function ProductView({
           <div className="mx-auto flex w-full max-w-[290px] items-center gap-0.5 rounded-full border border-zinc-200/40 bg-zinc-100/60 p-0.5">
             {[
               { id: "description", label: "Detalhes" },
-              { id: "reviews", label: `Avaliações (${reviewCount})` },
+              // ADMIN-090 (#101): com o interruptor desligado, a aba
+              // "Avaliações" some da vitrine — não só o pill do admin.
+              ...(config.enableReviews
+                ? [{ id: "reviews", label: `Avaliações (${reviewCount})` }]
+                : []),
               { id: "questions", label: "Perguntas" },
             ].map((tab) => {
               const isActive = activeTab === tab.id;
@@ -1155,122 +1179,130 @@ export const ProductView = React.memo(function ProductView({
           </div>
         </div>
 
-        <div
-          id="reviews-section"
-          ref={reviewsSectionRef}
-          className="mb-12 scroll-mt-[64px] border-t border-zinc-100 pt-8"
-        >
-          <div className="space-y-4 duration-300 animate-in fade-in slide-in-from-bottom-2">
-            <div className="mb-6 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-extrabold tracking-tight text-zinc-900">
-                  Avaliações
-                </h3>
-                <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
-                  {reviewCount > 0
-                    ? `${reviewCount} opiniões dos consumidores`
-                    : "Sem avaliações ainda"}
-                </p>
-              </div>
-            </div>
-
-            {loadingReviews ? (
-              <div className="flex flex-col items-center py-12 text-center">
-                <div className="border-3 mb-3 size-8 animate-spin rounded-full border-zinc-100 border-t-zinc-950" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                  Carregando Avaliações...
-                </span>
-              </div>
-            ) : reviews.length === 0 ? (
-              <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-gradient-to-b from-zinc-50/50 to-zinc-100/10 px-6 py-12 text-center shadow-sm">
-                {/* Breathing Concentric Circle Stars */}
-                <div className="relative mb-4 flex size-16 items-center justify-center">
-                  <div className="absolute inset-0 animate-ping rounded-full bg-amber-500/5 opacity-75 duration-1000" />
-                  <div className="flex size-12 items-center justify-center rounded-full border border-amber-500/20 bg-amber-500/10">
-                    <Star className="size-6 fill-amber-500/20 text-amber-500" />
-                  </div>
+        {/* ADMIN-090 (#101): com o interruptor desligado, a seção inteira
+            some da vitrine — nota, distribuição e lista de comentários. */}
+        {config.enableReviews && (
+          <div
+            id="reviews-section"
+            ref={reviewsSectionRef}
+            className="mb-12 scroll-mt-[64px] border-t border-zinc-100 pt-8"
+          >
+            <div className="space-y-4 duration-300 animate-in fade-in slide-in-from-bottom-2">
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-extrabold tracking-tight text-zinc-900">
+                    Avaliações
+                  </h3>
+                  <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
+                    {reviewCount > 0
+                      ? `${reviewCount} opiniões dos consumidores`
+                      : "Sem avaliações ainda"}
+                  </p>
                 </div>
-
-                <p className="text-sm font-bold tracking-tight text-zinc-900">
-                  Este produto ainda não foi avaliado
-                </p>
-                <p className="mt-1.5 max-w-[280px] text-xs leading-relaxed text-zinc-500">
-                  As avaliações podem ser enviadas por compradores confirmados a
-                  partir da tela de detalhes do pedido após a entrega.
-                </p>
               </div>
-            ) : (
-              <>
-                {/* Rating Distribution Chart */}
-                <div className="group relative mb-6 overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 text-white shadow-xl">
-                  {/* Subtle blur highlights */}
-                  <div className="absolute right-0 top-0 size-48 -translate-y-1/2 translate-x-1/2 rounded-full bg-amber-500/10 blur-[60px]" />
 
-                  <div className="relative z-10 flex flex-col items-center justify-between gap-6 md:flex-row md:gap-8">
-                    {/* Left Panel */}
-                    <div className="flex flex-col items-center text-center md:items-start md:text-left">
-                      <div className="flex items-baseline justify-center gap-1.5 md:justify-start">
-                        <span className="bg-gradient-to-br from-white to-zinc-400 bg-clip-text text-5xl font-extrabold tracking-tighter text-transparent">
-                          {averageRating.toFixed(1)}
-                        </span>
-                        <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                          / 5
-                        </span>
-                      </div>
-                      <div className="mt-1.5">
-                        <StarRating rating={averageRating} size={14} readonly />
-                      </div>
-                      <span className="mt-4 block text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                        Baseado em {reviewCount}{" "}
-                        {reviewCount === 1 ? "experiência" : "experiências"}
-                      </span>
+              {loadingReviews ? (
+                <div className="flex flex-col items-center py-12 text-center">
+                  <div className="border-3 mb-3 size-8 animate-spin rounded-full border-zinc-100 border-t-zinc-950" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                    Carregando Avaliações...
+                  </span>
+                </div>
+              ) : reviews.length === 0 ? (
+                <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-gradient-to-b from-zinc-50/50 to-zinc-100/10 px-6 py-12 text-center shadow-sm">
+                  {/* Breathing Concentric Circle Stars */}
+                  <div className="relative mb-4 flex size-16 items-center justify-center">
+                    <div className="absolute inset-0 animate-ping rounded-full bg-amber-500/5 opacity-75 duration-1000" />
+                    <div className="flex size-12 items-center justify-center rounded-full border border-amber-500/20 bg-amber-500/10">
+                      <Star className="size-6 fill-amber-500/20 text-amber-500" />
                     </div>
+                  </div>
 
-                    {/* Right Panel: Bars */}
-                    <div className="w-full flex-1 space-y-2 md:border-l md:border-zinc-800 md:pl-6">
-                      {[5, 4, 3, 2, 1].map((star) => {
-                        const count = reviews.filter(
-                          (r) => r.rating === star,
-                        ).length;
-                        const percentage =
-                          reviewCount > 0 ? (count / reviewCount) * 100 : 0;
-                        return (
-                          <div
-                            key={star}
-                            className="group/row flex items-center gap-3.5"
-                          >
-                            <span className="w-3 text-[10px] font-bold text-zinc-500 transition-colors group-hover/row:text-white">
-                              {star}
-                            </span>
-                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800/60 p-px">
-                              <div
-                                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)] transition-all duration-700 ease-out"
-                                style={{ width: `${percentage}%` }}
-                              />
+                  <p className="text-sm font-bold tracking-tight text-zinc-900">
+                    Este produto ainda não foi avaliado
+                  </p>
+                  <p className="mt-1.5 max-w-[280px] text-xs leading-relaxed text-zinc-500">
+                    As avaliações podem ser enviadas por compradores confirmados
+                    a partir da tela de detalhes do pedido após a entrega.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Rating Distribution Chart */}
+                  <div className="group relative mb-6 overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 text-white shadow-xl">
+                    {/* Subtle blur highlights */}
+                    <div className="absolute right-0 top-0 size-48 -translate-y-1/2 translate-x-1/2 rounded-full bg-amber-500/10 blur-[60px]" />
+
+                    <div className="relative z-10 flex flex-col items-center justify-between gap-6 md:flex-row md:gap-8">
+                      {/* Left Panel */}
+                      <div className="flex flex-col items-center text-center md:items-start md:text-left">
+                        <div className="flex items-baseline justify-center gap-1.5 md:justify-start">
+                          <span className="bg-gradient-to-br from-white to-zinc-400 bg-clip-text text-5xl font-extrabold tracking-tighter text-transparent">
+                            {averageRating.toFixed(1)}
+                          </span>
+                          <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                            / 5
+                          </span>
+                        </div>
+                        <div className="mt-1.5">
+                          <StarRating
+                            rating={averageRating}
+                            size={14}
+                            readonly
+                          />
+                        </div>
+                        <span className="mt-4 block text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                          Baseado em {reviewCount}{" "}
+                          {reviewCount === 1 ? "experiência" : "experiências"}
+                        </span>
+                      </div>
+
+                      {/* Right Panel: Bars */}
+                      <div className="w-full flex-1 space-y-2 md:border-l md:border-zinc-800 md:pl-6">
+                        {[5, 4, 3, 2, 1].map((star) => {
+                          const count = reviews.filter(
+                            (r) => r.rating === star,
+                          ).length;
+                          const percentage =
+                            reviewCount > 0 ? (count / reviewCount) * 100 : 0;
+                          return (
+                            <div
+                              key={star}
+                              className="group/row flex items-center gap-3.5"
+                            >
+                              <span className="w-3 text-[10px] font-bold text-zinc-500 transition-colors group-hover/row:text-white">
+                                {star}
+                              </span>
+                              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800/60 p-px">
+                                <div
+                                  className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)] transition-all duration-700 ease-out"
+                                  style={{ width: `${percentage}%` }}
+                                />
+                              </div>
+                              <span className="w-8 text-right text-[10px] font-bold text-zinc-600 transition-colors group-hover/row:text-zinc-300">
+                                {count}
+                              </span>
                             </div>
-                            <span className="w-8 text-right text-[10px] font-bold text-zinc-600 transition-colors group-hover/row:text-zinc-300">
-                              {count}
-                            </span>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="space-y-4">
-                  {reviews.map((review) => (
-                    <ReviewCard
-                      key={review.id}
-                      review={review}
-                      onHelpful={markHelpful}
-                      onNavigate={onNavigate}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
+                  <div className="space-y-4">
+                    {reviews.map((review) => (
+                      <ReviewCard
+                        key={review.id}
+                        review={review}
+                        onHelpful={markHelpful}
+                        onNavigate={onNavigate}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div
           id="chat-section"

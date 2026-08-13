@@ -367,11 +367,21 @@ export const AdminProductsView = memo(function AdminProductsView({
       return;
     }
     try {
-      await deleteProduct(productToDelete);
-      haptic.success();
-      toast.success("Produto Removido", {
-        description: "O produto foi excluído com sucesso.",
-      });
+      // `deleteProduct` nunca lança — captura tudo internamente e devolve
+      // `true`/`false` (já mostrando o toast de erro dela mesma numa
+      // falha). Descartar esse retorno fazia o admin ver DOIS toasts
+      // contraditórios numa falha de soft-delete: "Erro ao excluir
+      // produto" (do hook) e "Produto Removido" (daqui, incondicional). O
+      // toast de sucesso só aparece quando o hook confirma o sucesso.
+      const sucesso = await deleteProduct(productToDelete);
+      if (sucesso) {
+        haptic.success();
+        toast.success("Produto Removido", {
+          description: "O produto foi excluído com sucesso.",
+        });
+      } else {
+        haptic.error();
+      }
     } catch {
       haptic.error();
       toast.error("Erro na Exclusão", {

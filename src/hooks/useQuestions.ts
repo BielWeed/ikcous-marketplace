@@ -275,7 +275,11 @@ export function useQuestions() {
           return false;
         }
 
-        // Execute Atomic Answer & Log via RPC
+        // Execute Atomic Answer & Log via RPC. A mesma chamada serve para
+        // responder E para "editar": desde a migration 20260812000000
+        // (issue #100) a RPC faz upsert por question_id no banco, então não
+        // há — e não deve haver — um segundo caminho de UPDATE aqui no
+        // front. Apagar uma resposta pela UI continua fora do escopo.
         const { error } = await (supabase.rpc as any)(
           "answer_question_atomic",
           {
