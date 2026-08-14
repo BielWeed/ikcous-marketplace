@@ -112,6 +112,7 @@ export function montarBrick({
     qrCodeBase64?: string;
     qrCode?: string;
     expiraEm: string;
+    ticketUrl?: string;
   }) => void;
 }): () => void {
   let cancelado = false;
@@ -212,6 +213,7 @@ export function montarBrick({
                   qrCodeBase64: r.qrCodeBase64,
                   qrCode: r.qrCode,
                   expiraEm: r.expiraEm,
+                  ticketUrl: r.ticketUrl,
                 });
               }
             } catch (err: any) {
@@ -300,6 +302,7 @@ export function PagamentoOnline({
     qrCodeBase64?: string;
     qrCode?: string;
     expiraEm: string;
+    ticketUrl?: string;
   } | null>(null);
 
   // Padrão de ref para callback em recurso imperativo. `onErro` é tipicamente
@@ -351,6 +354,16 @@ export function PagamentoOnline({
         >
           Copiar código PIX
         </button>
+        {pix.ticketUrl && (
+          <a
+            href={pix.ticketUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-center text-xs font-medium text-zinc-500 underline"
+          >
+            Pagar pelo Mercado Pago
+          </a>
+        )}
         <p className="text-center text-xs text-zinc-500">
           Vence às{" "}
           {new Date(pix.expiraEm).toLocaleTimeString("pt-BR", {
