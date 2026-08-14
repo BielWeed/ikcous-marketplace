@@ -54,9 +54,11 @@ import {
   consultarPagamento,
   criarOrder,
   criarPagamento,
+  extrairDataExpiracaoOrder,
   extrairQrCode,
   idEhClassico,
   MAPA_STATUS_ORDER,
+  minutosDaExpiracaoPix,
   montarCorpoCartao,
   montarCorpoPixOrders,
 } from "../_shared/mercadopago.ts";
@@ -66,6 +68,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+/** Margem de latência de rede entre esta function e o MP, somada ao prazo
+ * pedido ao MP (`expiracaoPix`) para formar o teto da janela sã de
+ * `expiracaoRealinhavel`. Módulo, não local à função — o log de recusa
+ * (mais abaixo, no handler) usa o MESMO valor para interpolar o teto na
+ * mensagem, em vez de reintroduzir a duplicação que o Achado 1 (comentário
+ * grande de `expiracaoRealinhavel`) já fechou. */
+const MARGEM_LATENCIA_MINUTOS_PIX = 5;
 
 export function pareceUuid(v: unknown): boolean {
   return (
@@ -121,6 +131,66 @@ export function podeCobrar(
     return { acao: "reconsultar" };
   }
   return { acao: "criar" };
+}
+
+/**
+ * Decide se `date_of_expiration` (Orders API, ver `extrairDataExpiracaoOrder`
+ * em `_shared/mercadopago.ts`) pode REALINHAR `expires_at` do pedido —
+ * decisão do dono (14/08/2026): a reserva de estoque nasce com
+ * `expires_at = criação do PEDIDO + 30 min`, mas o QR do PIX vale 30 min a
+ * partir da criação da COBRANÇA, que acontece depois. Se o cliente demora
+ * escolhendo, o QR fica pagável bem depois de o pg_cron já ter devolvido o
+ * estoque — o cliente paga um produto que já pode ter sido vendido para
+ * outra pessoa. Realinhar os dois prazos para o mesmo instante fecha essa
+ * janela; o custo aceito é estoque preso por mais tempo em carrinho parado.
+ *
+ * TETO DE SEGURANÇA: `date_of_expiration` vem de TERCEIRO (o MP), e a doc
+ * oficial diz que o default é 24 HORAS quando `expiration_time` é omitido —
+ * gravar um valor assim em `expires_at` prenderia estoque por um dia inteiro
+ * por um bug de configuração alheio. Só aceita o valor dentro de uma janela
+ * sã em relação ao instante da REQUISIÇÃO (`agora`, injetado — mesmo padrão
+ * de `podeCobrar` acima, para o teste não depender do relógio real):
+ * estritamente no FUTURO, e não além do prazo REALMENTE PEDIDO ao MP
+ * (`expiracaoPix`, ex.: "PT30M" — o MESMO valor que o chamador manda para
+ * `montarCorpoPixOrders`) + 5 min de margem para a latência de rede entre
+ * esta function e o MP. Fora disso — ausente, não-parseável, no passado, ou
+ * longe demais — devolve `null`: quem chama mantém o `expires_at` de hoje e
+ * registra por log, nunca lança.
+ *
+ * `expiracaoPix` é PARÂMETRO, não um `30` embutido aqui, de propósito
+ * (Achado 1 da revisão do realinhamento, 14/08/2026): antes disso o "30
+ * minutos" morava em dois lugares que não se falavam — a literal mandada ao
+ * MP (`criar-pagamento/index.ts`, hoje "PT30M") e esta janela sã, hardcoded.
+ * Mudar só a literal deixaria a janela presa no valor antigo, e o
+ * realinhamento passaria a recusar TODO PIX em silêncio — o mesmo bug que
+ * esta função existe para fechar, reintroduzido sem alarme. Com o parâmetro,
+ * o CHAMADOR usa a MESMA variável nos dois lugares (ver o comentário grande
+ * onde o corpo do PIX é montado, mais abaixo), e a janela acompanha qualquer
+ * mudança de prazo automaticamente. `minutosDaExpiracaoPix`
+ * (`_shared/mercadopago.ts`) é o MESMO parser que valida o valor antes de
+ * mandá-lo ao MP — fonte única, não uma segunda regex divergente aqui.
+ */
+export function expiracaoRealinhavel(
+  dataExpiracaoBruta: string | null,
+  agora: Date,
+  expiracaoPix: string,
+): Date | null {
+  if (!dataExpiracaoBruta) return null;
+
+  const data = new Date(dataExpiracaoBruta);
+  if (Number.isNaN(data.getTime())) return null;
+
+  const minutosPix = minutosDaExpiracaoPix(expiracaoPix);
+  // Defensivo: por aqui `expiracaoPix` já passou por montarCorpoPixOrders,
+  // que teria lançado ANTES se a sintaxe fosse inválida — mas `null` aqui
+  // também recusa, nunca uma janela adivinhada.
+  if (minutosPix === null) return null;
+
+  const minimo = agora.getTime();
+  const maximo = agora.getTime() + (minutosPix + MARGEM_LATENCIA_MINUTOS_PIX) * 60_000;
+  if (data.getTime() <= minimo || data.getTime() > maximo) return null;
+
+  return data;
 }
 
 export function subDoToken(authorization: string | null): string | null {
@@ -406,6 +476,11 @@ async function handler(
   let qrCode: string | undefined;
   let qrCodeBase64: string | undefined;
   let ticketUrl: string | undefined;
+  // Realinhamento de expires_at (decisão do dono, 14/08/2026) — só o PIX
+  // preenche isto (a Orders API é quem manda date_of_expiration; o clássico
+  // de cartão nunca teve esse campo). `undefined` = não mexe em expires_at,
+  // que é o comportamento de hoje.
+  let expiresAtNovo: string | undefined;
 
   if (body.metodo === "pix") {
     // BLOQUEIO 1 da revisão (CHECKOUT-070): a detecção de ambiente pelo
@@ -454,6 +529,20 @@ async function handler(
       );
     }
 
+    // "PT30M": mínimo aceito pelo MP, e o valor que casa com a reserva de
+    // estoque de 30 minutos (20260807000000_reserva_com_expiracao.sql) — ver
+    // o comentário grande de montarCorpoPixOrders. `deps.expiracaoPix` só
+    // existe para teste (ver comentário de `deps` acima); em produção é
+    // sempre "PT30M".
+    //
+    // UMA VARIÁVEL SÓ (Achado 1 da revisão do realinhamento, 14/08/2026): o
+    // mesmo valor alimenta `montarCorpoPixOrders` (abaixo, o que é mandado ao
+    // MP) E `expiracaoRealinhavel` (mais abaixo, a janela sã que decide se o
+    // realinhamento é aceito). Antes, os dois liam o "30" de lugares
+    // diferentes que não se falavam — mudar só a literal aqui deixava a
+    // janela presa no valor antigo e o realinhamento morria em silêncio.
+    const expiracaoPix = deps.expiracaoPix ?? "PT30M";
+
     let corpo: Record<string, unknown>;
     try {
       corpo = montarCorpoPixOrders({
@@ -461,12 +550,7 @@ async function handler(
         valor: Number(pedido.total),
         email: emailPagadorSandbox ?? String(email),
         nome: nomePagadorSandbox,
-        // "PT30M": mínimo aceito pelo MP, e o valor que casa com a reserva
-        // de estoque de 30 minutos (20260807000000_reserva_com_expiracao.sql)
-        // — ver o comentário grande de montarCorpoPixOrders.
-        // `deps.expiracaoPix` só existe para teste (ver comentário de `deps`
-        // acima); em produção é sempre "PT30M".
-        expiracao: deps.expiracaoPix ?? "PT30M",
+        expiracao: expiracaoPix,
         documento: body.documento as { type: string; number: string } | undefined,
       });
     } catch (err) {
@@ -529,6 +613,44 @@ async function handler(
     qrCode = extraido.qrCode ?? undefined;
     qrCodeBase64 = extraido.qrCodeBase64 ?? undefined;
     ticketUrl = extraido.ticketUrl ?? undefined;
+
+    // Realinhamento de expires_at (decisão do dono, 14/08/2026) — ver o
+    // comentário grande de expiracaoRealinhavel, acima. Não `now() + 30min`
+    // calculado aqui: o relógio desta function não é o relógio do MP, e a
+    // divergência produziria de novo o desalinhamento que isto conserta.
+    const dataExpiracaoBruta = extrairDataExpiracaoOrder(r.order);
+    // `expiracaoPix`: a MESMA variável usada para montar o corpo mandado ao
+    // MP, poucas linhas acima — é o que faz a janela sã acompanhar o prazo
+    // real, em vez de um "30" congelado aqui (ver o comentário grande de
+    // expiracaoRealinhavel).
+    const dataRealinhada = expiracaoRealinhavel(dataExpiracaoBruta, new Date(), expiracaoPix);
+    if (dataRealinhada) {
+      expiresAtNovo = dataRealinhada.toISOString();
+    } else {
+      // Cobre os três casos de recusa (ausente, não-parseável, fora da
+      // janela sã) com o MESMO log — quem lê o log distingue pelo valor
+      // impresso. `expires_at` continua com o comportamento de hoje.
+      //
+      // Ressalva da revisão (14/08/2026): a janela sã é DERIVADA de
+      // `expiracaoPix` (comentário grande de `expiracaoRealinhavel`, acima),
+      // então a frase que a explica também precisa ser — um "30-35 min"
+      // hardcoded aqui ficaria mentindo assim que `expiracaoPix` mudasse
+      // (ex.: "PT45M" vira janela de 50 min, e o log continuaria acusando
+      // "fora de 30-35" para uma data que foi ACEITA). `tetoMinutos` usa o
+      // MESMO parser (`minutosDaExpiracaoPix`) e a MESMA margem
+      // (`MARGEM_LATENCIA_MINUTOS_PIX`) que `expiracaoRealinhavel` usou para
+      // decidir — nunca uma segunda conta que possa divergir da primeira.
+      const tetoMinutosPix = minutosDaExpiracaoPix(expiracaoPix);
+      const janelaSa =
+        tetoMinutosPix === null
+          ? "indeterminada — expiracaoPix não é uma duração válida"
+          : `até ${tetoMinutosPix + MARGEM_LATENCIA_MINUTOS_PIX} min a partir de agora`;
+      console.warn(
+        "criar-pagamento: date_of_expiration não realinhou expires_at " +
+          `(ausente, não-parseável, no passado, ou fora da janela sã: ${janelaSa}) — ` +
+          `valor recebido: ${JSON.stringify(dataExpiracaoBruta)}`,
+      );
+    }
   } else {
     // Cartão: caminho CLÁSSICO, código morto hoje — `body.metodo !== "pix"`
     // já recusa com 400 lá em cima, antes da leitura do pedido, então este
@@ -573,13 +695,28 @@ async function handler(
   // leitura e agora o pg_cron pode ter expirado o pedido: se expirou, o
   // update não acha linha e a cobrança fica órfã no MP — que é o caso que a
   // reconciliação da Fase 3 resolve. Sobrescrever seria pior.
+  //
+  // `expires_at` só entra no SET quando o realinhamento (decisão do dono,
+  // 14/08/2026, ver expiracaoRealinhavel acima) aprovou o valor do MP — sem
+  // isto, TODO pedido teria a coluna tocada, mesmo quando o comportamento
+  // certo é deixá-la como está.
+  const valoresUpdate: Record<string, unknown> = {
+    gateway_payment_id: idGateway,
+    updated_at: new Date().toISOString(),
+  };
+  if (expiresAtNovo) valoresUpdate.expires_at = expiresAtNovo;
+
   const { data: gravado, error: erroUpdate } = await supabase
     .from("marketplace_orders")
-    .update({ gateway_payment_id: idGateway, updated_at: new Date().toISOString() })
+    .update(valoresUpdate)
     .eq("id", pedido.id)
     .eq("payment_status", "aguardando")
     .is("gateway_payment_id", null)
-    .select("id")
+    // `expires_at` além de `id`: a resposta abaixo precisa do prazo
+    // EFETIVAMENTE gravado, não do que `pedido` (lido ANTES deste UPDATE)
+    // guardava em memória — sem isto a tela mostraria "Vence às HH:MM" do
+    // prazo ANTIGO mesmo com o banco já realinhado ao novo.
+    .select("id, expires_at")
     .maybeSingle();
 
   if (erroUpdate || !gravado) {
@@ -617,9 +754,12 @@ async function handler(
     {
       paymentId: idGateway,
       status: statusCru,
-      // O prazo sai da LINHA DO BANCO, não de um cálculo no navegador: é o
-      // mesmo instante que o pg_cron vai usar para cancelar.
-      expiraEm: pedido.expires_at,
+      // O prazo sai da LINHA GRAVADA pelo UPDATE acima (`gravado.expires_at`),
+      // NUNCA de `pedido.expires_at` — `pedido` foi lido ANTES do UPDATE, e o
+      // realinhamento (decisão do dono, 14/08/2026) pode ter mudado o prazo
+      // no banco nesta MESMA chamada. Usar a variável antiga mentiria o
+      // prazo velho para o cliente mesmo com o banco já certo.
+      expiraEm: gravado.expires_at,
       qrCode,
       qrCodeBase64,
       ticketUrl,
