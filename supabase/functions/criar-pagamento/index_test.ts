@@ -12,6 +12,7 @@ import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   descricaoDoPedido,
   donoConfere,
+  expiracaoRealinhavel,
   handler,
   pareceUuid,
   podeCobrar,
@@ -86,11 +87,20 @@ function clienteFalso(opts: {
           chamadasSelect++;
           const primeiraLeitura = chamadasSelect === 1;
           const erro = primeiraLeitura ? opts.erroLeitura ?? null : null;
-          const dados = erro
+          const dadosBrutos = erro
             ? null
             : primeiraLeitura
               ? opts.pedido
               : opts.releitura ?? opts.pedido;
+          // Achado 2 da revisão (14/08/2026): antes, `_cols` era recebido e
+          // DESCARTADO — este select sempre devolvia o fixture inteiro,
+          // qualquer que fosse a string pedida. Provado pela revisão: trocar
+          // `.select("id, expires_at")` (index.ts) de volta para `.select("id")`
+          // deixava a suíte inteira verde. `projetarColunas` reduz o fixture
+          // às colunas realmente pedidas — coluna pedida que o fixture não
+          // tem simplesmente não entra no objeto projetado, igual a nunca ter
+          // sido selecionada.
+          const dados = erro ? null : projetarColunas(dadosBrutos, _cols);
           return {
             eq(_col: string, _val: unknown) {
               return { maybeSingle: async () => ({ data: dados, error: erro }) };
@@ -118,7 +128,10 @@ function clienteFalso(opts: {
                       return {
                         select(_cols: string) {
                           return {
-                            maybeSingle: async () => ({ data: opts.gravado, error: null }),
+                            maybeSingle: async () => ({
+                              data: projetarColunas(opts.gravado, _cols),
+                              error: null,
+                            }),
                           };
                         },
                       };
@@ -132,6 +145,28 @@ function clienteFalso(opts: {
       };
     },
   };
+}
+
+/**
+ * Reduz um fixture às colunas que `.select("a, b, c")` pediu de verdade —
+ * Achado 2 da revisão (14/08/2026). Coluna pedida que não existe no fixture
+ * simplesmente não entra no objeto devolvido (equivalente a `undefined` na
+ * leitura), sem lançar: o postgrest real sempre devolve TODAS as colunas de
+ * uma linha existente, então um fixture incompleto para as colunas
+ * REALMENTE pedidas pela produção é bug do teste, não algo para mascarar
+ * aqui — mas nenhum teste desta suíte depende de uma coluna ausente do
+ * fixture continuar presente por acidente, então falhar alto não era
+ * necessário para provar o achado.
+ */
+function projetarColunas(
+  dados: Record<string, unknown> | null,
+  cols: string,
+): Record<string, unknown> | null {
+  if (dados === null) return null;
+  const colunas = new Set(cols.split(",").map((c) => c.trim()));
+  return Object.fromEntries(
+    Object.entries(dados).filter(([coluna]) => colunas.has(coluna)),
+  );
 }
 
 /** `fetch` falso que nunca toca rede: devolve uma ORDER 2xx válida (formato
@@ -270,6 +305,89 @@ Deno.test("podeCobrar recusa pedido sem prazo carimbado", () => {
     AGORA,
   );
   assertEquals(r.acao, "recusar");
+});
+
+// --- expiracaoRealinhavel: janela sã do date_of_expiration do MP, para
+// realinhar expires_at com o vencimento real do QR (decisão do dono,
+// 14/08/2026). Injeta `agora` como parâmetro — mesmo padrão de `podeCobrar`
+// acima — para o teste não depender do relógio real. Injeta também
+// `expiracaoPix` (o MESMO valor mandado ao MP) — todos os testes abaixo que
+// só exercitam a checagem de DATA usam "PT30M", igual ao default de
+// produção; os testes que exercitam a DERIVAÇÃO em si (mais abaixo) variam
+// esse parâmetro.
+
+Deno.test("expiracaoRealinhavel aceita um vencimento dentro da janela sã (20 min à frente)", () => {
+  const r = expiracaoRealinhavel("2026-08-06T12:20:00.000Z", AGORA, "PT30M");
+  assertEquals(r?.toISOString(), "2026-08-06T12:20:00.000Z");
+});
+
+Deno.test("expiracaoRealinhavel aceita o limite superior da margem de latência (35 min à frente)", () => {
+  // 30 min pedidos + 5 min de margem para latência de rede/gateway.
+  const r = expiracaoRealinhavel("2026-08-06T12:35:00.000Z", AGORA, "PT30M");
+  assertEquals(r?.toISOString(), "2026-08-06T12:35:00.000Z");
+});
+
+Deno.test("expiracaoRealinhavel recusa um vencimento além da margem de latência (36 min à frente)", () => {
+  const r = expiracaoRealinhavel("2026-08-06T12:36:00.000Z", AGORA, "PT30M");
+  assertEquals(r, null);
+});
+
+Deno.test("expiracaoRealinhavel recusa o default de 24h do MP (o teto de segurança que existe para barrar isto)", () => {
+  const r = expiracaoRealinhavel("2026-08-07T12:00:00.000Z", AGORA, "PT30M");
+  assertEquals(r, null);
+});
+
+Deno.test("expiracaoRealinhavel recusa um vencimento no passado", () => {
+  const r = expiracaoRealinhavel("2026-08-06T11:59:00.000Z", AGORA, "PT30M");
+  assertEquals(r, null);
+});
+
+Deno.test("expiracaoRealinhavel recusa um vencimento igual a agora — tem que ser estritamente futuro", () => {
+  const r = expiracaoRealinhavel("2026-08-06T12:00:00.000Z", AGORA, "PT30M");
+  assertEquals(r, null);
+});
+
+Deno.test("expiracaoRealinhavel recusa string não-parseável, sem estourar", () => {
+  const r = expiracaoRealinhavel("não é uma data", AGORA, "PT30M");
+  assertEquals(r, null);
+});
+
+Deno.test("expiracaoRealinhavel recusa ausência (null) — o caso mais comum antes de qualquer chamada ao MP falhar", () => {
+  const r = expiracaoRealinhavel(null, AGORA, "PT30M");
+  assertEquals(r, null);
+});
+
+// --- expiracaoRealinhavel: a janela sã DERIVA de `expiracaoPix`, não de um
+// "30" congelado na função (Achado 1 da revisão, 14/08/2026). Prova direta
+// da causa que o achado apontou: antes desta correção, a janela era sempre
+// (agora, agora+35min], hardcoded — estes dois testes reprovam se alguém
+// remover o parâmetro e voltar a fixar 30 aqui dentro, porque "PT45M"
+// produziria a MESMA janela de 35 min que "PT30M" produz.
+
+Deno.test("expiracaoRealinhavel: com expiracaoPix='PT45M', aceita um vencimento que 'PT30M' teria recusado (40 min à frente)", () => {
+  // Com "PT30M" (hardcoded do jeito antigo) o teto seria 35 min — 40 min à
+  // frente cairia fora e devolveria null. Com "PT45M" o teto é 50 min, e o
+  // mesmo vencimento é aceito. Se a janela voltar a ser fixa em 30, este
+  // teste reprova.
+  const r = expiracaoRealinhavel("2026-08-06T12:40:00.000Z", AGORA, "PT45M");
+  assertEquals(r?.toISOString(), "2026-08-06T12:40:00.000Z");
+});
+
+Deno.test("expiracaoRealinhavel: com expiracaoPix='PT45M', o teto acompanha (50 min aceita, 51 min recusa)", () => {
+  // 45 min pedidos + 5 min de margem = 50 min, não 35.
+  const dentro = expiracaoRealinhavel("2026-08-06T12:50:00.000Z", AGORA, "PT45M");
+  assertEquals(dentro?.toISOString(), "2026-08-06T12:50:00.000Z");
+
+  const fora = expiracaoRealinhavel("2026-08-06T12:51:00.000Z", AGORA, "PT45M");
+  assertEquals(fora, null);
+});
+
+Deno.test("expiracaoRealinhavel: expiracaoPix num formato que minutosDaExpiracaoPix não reconhece recusa, sem estourar", () => {
+  // Defensivo: em produção isto nunca acontece porque montarCorpoPixOrders já
+  // teria lançado antes — mas expiracaoRealinhavel não pode adivinhar uma
+  // janela para um valor que não sabe interpretar.
+  const r = expiracaoRealinhavel("2026-08-06T12:20:00.000Z", AGORA, "30 minutos");
+  assertEquals(r, null);
 });
 
 Deno.test("donoConfere: pedido de usuário logado exige o mesmo usuário", () => {
@@ -906,6 +1024,329 @@ Deno.test("handler: PIX sem QR na resposta da Orders API devolve 200 com qrCode 
   assertEquals(corpo.paymentId, "ORD777");
   assertEquals(corpo.qrCode, undefined);
   assertEquals(corpo.qrCodeBase64, undefined);
+});
+
+// --- handler: realinhamento de expires_at com date_of_expiration do MP —
+// decisão do dono (14/08/2026). O `date_of_expiration` vem no formato real
+// medido em 14/08/2026 (ver o comentário de extrairDataExpiracaoOrder em
+// _shared/mercadopago.ts), e a janela sã (`expiracaoRealinhavel`, testada
+// isoladamente acima) é checada contra o RELÓGIO REAL (o handler não tem um
+// hook de `agora` injetável, igual a `podeCobrar(pedido, new Date())` mais
+// acima) — por isso estes testes usam `Date.now()` para montar um vencimento
+// relativo ao instante em que o teste roda, em vez de uma data fixa.
+
+/** Mesmo corpo de `fetchFalsoMP`, mas com `date_of_expiration` como
+ * PARÂMETRO — usado pelos testes de CONTRASTE do realinhamento (Achado 3 da
+ * revisão, 14/08/2026): a mesma function, chamada duas vezes no mesmo teste,
+ * com só esse campo mudando entre as chamadas. `undefined` reproduz a
+ * resposta sem o campo (comportamento de hoje, sem erro). */
+function fetchFalsoComExpiracao(dataExpiracao?: string) {
+  return async (_url: string, _init?: RequestInit) =>
+    new Response(
+      JSON.stringify({
+        id: "ORD999",
+        status: "action_required",
+        status_detail: "waiting_transfer",
+        transactions: {
+          payments: [
+            {
+              id: "PAY999",
+              ...(dataExpiracao ? { date_of_expiration: dataExpiracao } : {}),
+              payment_method: {
+                qr_code: "QRCODE-PADRAO",
+                qr_code_base64: "QRBASE64-PADRAO",
+                ticket_url: "https://www.mercadopago.com.br/sandbox/payments/999/ticket",
+              },
+            },
+          ],
+        },
+      }),
+      { status: 201 },
+    );
+}
+
+Deno.test("handler: PIX com date_of_expiration na janela sã REALINHA expires_at no banco, e a RESPOSTA usa o prazo NOVO — não o antigo lido antes do UPDATE", async () => {
+  // A armadilha do plano: `pedido` é lido ANTES do UPDATE, então
+  // `pedido.expires_at` (2099, bem longe do vencimento real do QR) mentiria
+  // se a resposta usasse essa variável em memória em vez do que foi gravado.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase(); // expires_at: "2099-01-01T00:00:00.000Z"
+  const dataExpiracaoNova = new Date(Date.now() + 20 * 60 * 1000).toISOString();
+  const registro: {
+    chamadasUpdate: number;
+    filtrosUpdate?: Array<[string, unknown]>;
+    valoresUpdate?: Record<string, unknown>;
+  } = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({
+    pedido,
+    // O que o postgrest devolveria de verdade: a linha JÁ com o expires_at novo.
+    gravado: { id: UUID, expires_at: dataExpiracaoNova },
+    registro,
+  });
+  const fetchImpl = async (_url: string, _init?: RequestInit) =>
+    new Response(
+      JSON.stringify({
+        id: "ORD999",
+        status: "action_required",
+        status_detail: "waiting_transfer",
+        transactions: {
+          payments: [
+            {
+              id: "PAY999",
+              date_of_expiration: dataExpiracaoNova,
+              payment_method: { qr_code: "QRCODE-PADRAO" },
+            },
+          ],
+        },
+      }),
+      { status: 201 },
+    );
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.valoresUpdate?.expires_at, dataExpiracaoNova);
+  assertEquals(corpo.expiraEm, dataExpiracaoNova);
+  // A prova de que a armadilha foi evitada: a resposta NÃO é o valor antigo.
+  assertEquals(corpo.expiraEm !== pedido.expires_at, true);
+});
+
+Deno.test("handler: PIX sem date_of_expiration não mexe em expires_at — comportamento de hoje, sem erro (contraste: com o campo presente, mexe)", async () => {
+  // Correção pós-revisão (Achado 3): a asserção "expires_at não é tocado"
+  // sozinha é VÁCUA — nada neste teste jamais tentaria escrever a coluna de
+  // qualquer jeito, então ela passaria igual mesmo com o realinhamento
+  // inteiro removido do arquivo. O Bloco 2 é o CONTRASTE que dá dente: MESMO
+  // pedido, MESMA function, só a resposta do MP muda para incluir
+  // date_of_expiration — aí sim a coluna é escrita. Sem o Bloco 2, o Bloco 1
+  // não prova nada sobre o comportamento do código, só sobre o fixture.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase(); // expires_at: "2099-01-01T00:00:00.000Z"
+
+  // --- Bloco 1: SEM date_of_expiration — comportamento de hoje, sem erro.
+  const registroSemCampo: {
+    chamadasUpdate: number;
+    valoresUpdate?: Record<string, unknown>;
+  } = { chamadasUpdate: 0 };
+  const supabaseSemCampo = clienteFalso({
+    pedido,
+    // O que o postgrest devolveria de verdade: expires_at INTOCADO, igual ao
+    // que já estava no pedido — o UPDATE não tocou essa coluna.
+    gravado: { id: UUID, expires_at: pedido.expires_at },
+    registro: registroSemCampo,
+  });
+  const respostaSemCampo = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase: supabaseSemCampo,
+    fetchImpl: fetchFalsoComExpiracao(), // resposta padrão, sem date_of_expiration
+  });
+  const corpoSemCampo = await respostaSemCampo.json();
+
+  assertEquals(respostaSemCampo.status, 200);
+  assertEquals("expires_at" in (registroSemCampo.valoresUpdate ?? {}), false);
+  assertEquals(corpoSemCampo.expiraEm, pedido.expires_at);
+
+  // --- Bloco 2 (o contraste): COM date_of_expiration dentro da janela sã.
+  const dataDentroDaJanela = new Date(Date.now() + 20 * 60 * 1000).toISOString();
+  const registroComCampo: {
+    chamadasUpdate: number;
+    valoresUpdate?: Record<string, unknown>;
+  } = { chamadasUpdate: 0 };
+  const supabaseComCampo = clienteFalso({
+    pedido,
+    gravado: { id: UUID, expires_at: dataDentroDaJanela },
+    registro: registroComCampo,
+  });
+  const respostaComCampo = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase: supabaseComCampo,
+    fetchImpl: fetchFalsoComExpiracao(dataDentroDaJanela),
+  });
+  const corpoComCampo = await respostaComCampo.json();
+
+  assertEquals(respostaComCampo.status, 200);
+  assertEquals(registroComCampo.valoresUpdate?.expires_at, dataDentroDaJanela);
+  assertEquals(corpoComCampo.expiraEm, dataDentroDaJanela);
+});
+
+Deno.test("handler: PIX com date_of_expiration fora da janela sã (24h à frente, o default do MP) não mexe em expires_at e avisa por log (contraste: dentro da janela, mexe e não avisa)", async () => {
+  // Correção pós-revisão (Achado 3): antes deste contraste, só a asserção do
+  // `console.warn` tinha dente de verdade, e só contra a REMOÇÃO TOTAL do
+  // realinhamento — "expires_at não é tocado" sozinha não distinguia "a
+  // janela sã recusou este valor específico" de "esta function nunca escreve
+  // a coluna". O Bloco 2 é a MESMA function, no MESMO teste, com uma data
+  // DENTRO da janela sã — prova que o Bloco 1 recusa pela DATA, não porque a
+  // escrita esteja quebrada ou ausente.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase(); // expires_at: "2099-01-01T00:00:00.000Z"
+  const dataForaDaJanela = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  // --- Bloco 1: FORA da janela sã (24h à frente — o default do MP quando
+  // expiration_time falha em silêncio).
+  const registroFora: {
+    chamadasUpdate: number;
+    valoresUpdate?: Record<string, unknown>;
+  } = { chamadasUpdate: 0 };
+  const supabaseFora = clienteFalso({
+    pedido,
+    gravado: { id: UUID, expires_at: pedido.expires_at },
+    registro: registroFora,
+  });
+
+  const avisos: unknown[][] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    avisos.push(args);
+  };
+  let respostaFora: Response;
+  try {
+    respostaFora = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+      supabase: supabaseFora,
+      fetchImpl: fetchFalsoComExpiracao(dataForaDaJanela),
+    });
+  } finally {
+    console.warn = originalWarn;
+  }
+  const corpoFora = await respostaFora.json();
+
+  assertEquals(respostaFora.status, 200);
+  assertEquals("expires_at" in (registroFora.valoresUpdate ?? {}), false);
+  assertEquals(corpoFora.expiraEm, pedido.expires_at);
+  const juntos = avisos.map((a) => a.join(" ")).join("\n");
+  assertEquals(juntos.includes(dataForaDaJanela), true);
+
+  // --- Bloco 2 (o contraste): a MESMA function, DENTRO da janela sã.
+  const dataDentroDaJanela = new Date(Date.now() + 20 * 60 * 1000).toISOString();
+  const registroDentro: {
+    chamadasUpdate: number;
+    valoresUpdate?: Record<string, unknown>;
+  } = { chamadasUpdate: 0 };
+  const supabaseDentro = clienteFalso({
+    pedido,
+    gravado: { id: UUID, expires_at: dataDentroDaJanela },
+    registro: registroDentro,
+  });
+  const respostaDentro = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase: supabaseDentro,
+    fetchImpl: fetchFalsoComExpiracao(dataDentroDaJanela),
+  });
+  const corpoDentro = await respostaDentro.json();
+
+  assertEquals(respostaDentro.status, 200);
+  assertEquals(registroDentro.valoresUpdate?.expires_at, dataDentroDaJanela);
+  assertEquals(corpoDentro.expiraEm, dataDentroDaJanela);
+});
+
+// Achado 1 da revisão (14/08/2026): prova de ponta a ponta, pela FIAÇÃO real
+// do handler — não só pela função pura expiracaoRealinhavel acima — de que a
+// janela sã do realinhamento acompanha o prazo REALMENTE mandado ao MP
+// (`deps.expiracaoPix`), em vez de ficar presa num "30" hardcoded em algum
+// lugar do handler. Se alguém trocar só a literal de `criar-pagamento/
+// index.ts` (hoje "PT30M") por outro valor sem religar a janela ao mesmo
+// valor, este teste reprova: com o prazo real de 45 min, um vencimento de 40
+// min à frente cai FORA da janela de 35 min (30+5) que o código hardcoded
+// produzia antes da correção, e DENTRO da janela de 50 min (45+5) que a
+// versão corrigida deriva do mesmo valor mandado ao MP.
+Deno.test("handler: quando o prazo do PIX mandado ao MP muda (deps.expiracaoPix), a janela sã do realinhamento acompanha — não fica presa em 30 minutos", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase(); // expires_at: "2099-01-01T00:00:00.000Z"
+  const dataExpiracaoNova = new Date(Date.now() + 40 * 60 * 1000).toISOString();
+  const registro: {
+    chamadasUpdate: number;
+    filtrosUpdate?: Array<[string, unknown]>;
+    valoresUpdate?: Record<string, unknown>;
+  } = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({
+    pedido,
+    gravado: { id: UUID, expires_at: dataExpiracaoNova },
+    registro,
+  });
+  const fetchImpl = async (_url: string, _init?: RequestInit) =>
+    new Response(
+      JSON.stringify({
+        id: "ORD999",
+        status: "action_required",
+        status_detail: "waiting_transfer",
+        transactions: {
+          payments: [
+            {
+              id: "PAY999",
+              date_of_expiration: dataExpiracaoNova,
+              payment_method: { qr_code: "QRCODE-PADRAO" },
+            },
+          ],
+        },
+      }),
+      { status: 201 },
+    );
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+    expiracaoPix: "PT45M",
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.valoresUpdate?.expires_at, dataExpiracaoNova);
+  assertEquals(corpo.expiraEm, dataExpiracaoNova);
+});
+
+Deno.test("handler: pedido que já tem gateway_payment_id vai para o ramo de RECONSULTA — nunca recalcula nem regrava expires_at (idempotência do realinhamento)", async () => {
+  // A idempotência do UPDATE (podeCobrar recusa/reconsulta pedido com
+  // gateway_payment_id preenchido, e o WHERE .is('gateway_payment_id', null)
+  // protege contra corrida) já garante que este bloco de código só executa
+  // NO MÁXIMO uma vez por pedido — este teste prova que o ramo de
+  // reconsulta, que NÃO passa por aqui, continua sem tocar expires_at nem
+  // fazer UPDATE.
+  //
+  // Correção pós-revisão (Achado 3): a versão anterior deste teste era
+  // tautológica — a resposta mockada nunca trazia `date_of_expiration`, então
+  // "reconsulta não regrava expires_at" já seria verdade mesmo que o
+  // realinhamento nunca tivesse sido escrito no arquivo inteiro. Aqui a
+  // resposta da reconsulta TRAZ um `date_of_expiration` dentro da janela sã
+  // — exatamente o formato que, no ramo de CRIAÇÃO, dispararia o
+  // realinhamento (ver o teste "REALINHA expires_at" acima). A prova real de
+  // idempotência é que o ramo de RECONSULTA ignora esse mesmo sinal: nem
+  // chama UPDATE, nem troca `expiraEm` pelo valor novo na resposta.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ gateway_payment_id: "ORD789" }); // expires_at: "2099-01-01T00:00:00.000Z"
+  const dataDentroDaJanela = new Date(Date.now() + 20 * 60 * 1000).toISOString();
+  const registro = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const fetchImpl = async (_url: string, _init?: RequestInit) =>
+    new Response(
+      JSON.stringify({
+        id: "ORD789",
+        status: "action_required",
+        status_detail: "waiting_transfer",
+        transactions: {
+          payments: [
+            {
+              id: "PAY789",
+              date_of_expiration: dataDentroDaJanela,
+              payment_method: { qr_code: "QRCODE-DA-RECONSULTA" },
+            },
+          ],
+        },
+      }),
+      { status: 200 },
+    );
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasUpdate, 0);
+  // A prova que dá dente ao teste: o `date_of_expiration` da resposta é
+  // IGNORADO — `expiraEm` continua sendo o `expires_at` original do pedido,
+  // não o valor novo que a resposta trouxe.
+  assertEquals(corpo.expiraEm, pedido.expires_at);
+  assertEquals(corpo.expiraEm !== dataDentroDaJanela, true);
 });
 
 Deno.test("handler: o throw de montarCorpoPixOrders (expiração fora da faixa) não vira 500 cru — devolve JSON recuperável, sem chamar o MP", async () => {

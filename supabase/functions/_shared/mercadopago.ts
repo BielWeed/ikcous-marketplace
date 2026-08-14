@@ -261,6 +261,46 @@ export function mapearStatusOrder(
  *      folgado com este campo em produção: encurtá-lo sem entender a conta
  *      acima vira dinheiro que entra e nunca é reconciliado.
  */
+/**
+ * Converte uma duração ISO 8601 no formato que `expiration_time` da Orders
+ * API aceita (ex.: "PT30M", "PT2H") em MINUTOS. Devolve `null` para o que não
+ * casa `/^PT\d+[MH]$/` — "30M" sem prefixo, "PT" sem número, "PT30S" em
+ * segundos (não aceito) e ausência caem aqui. Nunca lança: quem precisa do
+ * `throw` (`montarCorpoPixOrders`, logo abaixo) decide isso a partir do
+ * `null` — mesma regra do resto deste arquivo (nunca um palpite).
+ *
+ * ORIGEM ÚNICA (Achado 1 da revisão do realinhamento de expires_at,
+ * 14/08/2026): antes, só `montarCorpoPixOrders` fazia este parse, para
+ * VALIDAR o valor mandado ao MP — e `expiracaoRealinhavel`
+ * (`criar-pagamento/index.ts`) tinha `30` HARDCODED para calcular a janela sã
+ * que decide se o realinhamento é aceito. Os dois liam o mesmo conceito
+ * ("quantos minutos o PIX dura") de lugares que não se falavam: trocar só a
+ * literal que esta function manda ao MP (hoje "PT30M", em
+ * `criar-pagamento/index.ts`) deixaria a janela sã presa em 30 min, e o
+ * realinhamento morreria em silêncio para todo PIX novo — reintroduzindo o
+ * bug que ele existe para fechar. Com um parser só, `expiracaoRealinhavel`
+ * deriva o teto da MESMA string que esta função valida e manda ao MP — mudar
+ * uma muda a outra junto.
+ */
+export function minutosDaExpiracaoPix(expiracao: string): number | null {
+  // /^PT\d+[MH]$/: duração ISO 8601 só em minutos ou horas (M/H) — o formato
+  // que a Orders API documenta para expiration_time.
+  const casamento = typeof expiracao === "string"
+    ? expiracao.match(/^PT(\d+)([MH])$/)
+    : null;
+  if (!casamento) return null;
+  const numero = Number(casamento[1]);
+  // Achado da revisão (14/08/2026): a regex casa só dígitos, então
+  // `Number(...)` nunca dá NaN aqui — mas uma string de dígitos absurdamente
+  // longa (ex.: 400 dígitos) estoura para `Infinity`, que passaria batido
+  // sem esta checagem. Duração não-finita é entrada inválida, igual a
+  // qualquer outra que não casa o formato: devolve `null`, nunca um valor
+  // que um consumidor (ex.: `expiracaoRealinhavel`) usaria como teto
+  // "infinito" e aceitaria qualquer data futura.
+  if (!Number.isFinite(numero)) return null;
+  return casamento[2] === "H" ? numero * 60 : numero;
+}
+
 export function montarCorpoPixOrders(args: {
   valor: number;
   email: string;
@@ -269,13 +309,8 @@ export function montarCorpoPixOrders(args: {
   nome?: string;
   documento?: { type: string; number: string };
 }): Record<string, unknown> {
-  // /^PT\d+[MH]$/: duração ISO 8601 só em minutos ou horas (M/H) — o formato
-  // que a Orders API documenta para expiration_time. "30M" sem prefixo,
-  // "PT" sem número, "PT30S" em segundos (não aceito) e ausência caem aqui.
-  const casamento = typeof args.expiracao === "string"
-    ? args.expiracao.match(/^PT(\d+)([MH])$/)
-    : null;
-  if (!casamento) {
+  const minutos = minutosDaExpiracaoPix(args.expiracao);
+  if (minutos === null) {
     throw new Error(
       'montarCorpoPixOrders: expiracao obrigatória, em duração ISO 8601 (ex.: "PT30M"), ' +
         "formato /^PT\\d+[MH]$/. Sem ela o MP usa o default de 24h contra uma reserva de " +
@@ -283,16 +318,14 @@ export function montarCorpoPixOrders(args: {
     );
   }
 
-  // Tarefa 2 (CHECKOUT-070), achado da revisão: a regex acima só validava
-  // SINTAXE, não FAIXA. "PT0M", "PT1M" e "PT29M" (abaixo do mínimo de 30 min
-  // que o MP aceita) e "PT721H"/"PT99999H" (acima do máximo de 30 dias =
-  // 43200 min) passavam. O docstring desta função promete o mínimo como
-  // restrição DURA — a checagem abaixo cumpre essa promessa. Não se sabe se
-  // o MP RECUSA (400, barulhento) ou TROCA em silêncio pelo default de 24h
-  // (o desastre que expiration_time existe para evitar) um valor fora da
-  // faixa — na dúvida, a validação é nossa.
-  const numero = Number(casamento[1]);
-  const minutos = casamento[2] === "H" ? numero * 60 : numero;
+  // Tarefa 2 (CHECKOUT-070), achado da revisão: a regex de minutosDaExpiracaoPix
+  // só validava SINTAXE, não FAIXA. "PT0M", "PT1M" e "PT29M" (abaixo do
+  // mínimo de 30 min que o MP aceita) e "PT721H"/"PT99999H" (acima do máximo
+  // de 30 dias = 43200 min) passavam. O docstring desta função promete o
+  // mínimo como restrição DURA — a checagem abaixo cumpre essa promessa. Não
+  // se sabe se o MP RECUSA (400, barulhento) ou TROCA em silêncio pelo
+  // default de 24h (o desastre que expiration_time existe para evitar) um
+  // valor fora da faixa — na dúvida, a validação é nossa.
   if (minutos < 30 || minutos > 43200) {
     throw new Error(
       `montarCorpoPixOrders: expiracao "${args.expiracao}" fora da faixa aceita pelo MP ` +
@@ -552,6 +585,50 @@ export function extrairQrCode(
     qrCodeBase64: typeof metodo?.qr_code_base64 === "string" ? metodo.qr_code_base64 : null,
     ticketUrl: typeof metodo?.ticket_url === "string" ? metodo.ticket_url : null,
   };
+}
+
+/**
+ * `extrairDataExpiracaoOrder` — o vencimento ABSOLUTO que o MP carimbou na
+ * order, usado para REALINHAR `expires_at` do pedido com o vencimento real
+ * do QR (decisão do dono, 14/08/2026).
+ *
+ * O PROBLEMA QUE ISTO RESOLVE: a reserva de estoque nasce com `expires_at =
+ * criação do PEDIDO + 30 min`; o QR do PIX vale 30 min a partir da criação
+ * da COBRANÇA, que acontece DEPOIS — se o cliente demora escolhendo, o QR
+ * fica pagável bem depois de o pg_cron já ter devolvido o estoque, e o
+ * cliente paga um produto que já pode ter sido vendido para outra pessoa.
+ * `date_of_expiration` é o vencimento que o MP DE FATO aplicou ao
+ * pagamento — fonte da verdade, ao contrário de um `now() + 30 min`
+ * calculado no relógio desta function, que diverge do relógio do MP.
+ *
+ * FUNÇÃO IRMÃ de `extrairQrCode`, não uma extensão dele: `date_of_expiration`
+ * mora um nível ACIMA de `payment_method` — é campo do PAGAMENTO, não do
+ * método (`order.transactions.payments[0].date_of_expiration`, medido na
+ * resposta real de `/v1/orders` em 14/08/2026, ao lado de `expiration_time`
+ * que `montarCorpoPixOrders` já manda). Estender `extrairQrCode` obrigaria
+ * TODO chamador dele (inclusive os que só querem o QR) a carregar um campo
+ * que não pediu, e quebraria os testes existentes que comparam o objeto
+ * inteiro por igualdade (`mercadopago_test.ts`) sem ganhar nada em troca —
+ * quem decide o que fazer com a data (a janela sã, o teto de segurança
+ * contra o default de 24h do MP) é o CHAMADOR (`criar-pagamento/index.ts`),
+ * não este arquivo compartilhado.
+ *
+ * Mesma regra de `typeof` que `extrairQrCode` já usa: ausência (campo
+ * faltando, `order` sem `transactions`) e tipo errado (não é string)
+ * devolvem `null` do mesmo jeito — nunca um palpite.
+ */
+export function extrairDataExpiracaoOrder(
+  order: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!order || typeof order !== "object") return null;
+
+  const transacoes = order.transactions as Record<string, unknown> | undefined;
+  const pagamentos = transacoes?.payments as unknown[] | undefined;
+  const pagamento = pagamentos?.[0] as Record<string, unknown> | undefined;
+
+  return typeof pagamento?.date_of_expiration === "string"
+    ? pagamento.date_of_expiration
+    : null;
 }
 
 type ResultadoPagamento =

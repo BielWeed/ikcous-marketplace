@@ -17,12 +17,14 @@ import {
   consultarPagamento,
   criarOrder,
   criarPagamento,
+  extrairDataExpiracaoOrder,
   extrairQrCode,
   formatarExpiracao,
   idEhClassico,
   MAPA_STATUS_ORDER,
   mapearStatus,
   mapearStatusOrder,
+  minutosDaExpiracaoPix,
   montarCorpoCartao,
   montarCorpoPix,
   montarCorpoPixOrders,
@@ -573,6 +575,65 @@ Deno.test("montarCorpoPixOrders lança quando a expiração não é uma duraçã
   );
 });
 
+// --- Ressalva da revisão (14/08/2026): minutosDaExpiracaoPix sem teste ----
+//
+// Símbolo novo e exportado, antes coberto só de lado (pelos testes de
+// montarCorpoPixOrders e de expiracaoRealinhavel, criar-pagamento/index.ts).
+// Aqui o contrato direto: devolve minutos, devolve null, nunca lança.
+
+Deno.test("minutosDaExpiracaoPix converte horas para minutos (PT1H -> 60, PT2H -> 120)", () => {
+  // A suíte inteira tinha só um caso com horas (PT720H, no teste de faixa
+  // abaixo) — e ele prova o LIMITE aceito por montarCorpoPixOrders, não a
+  // CONVERSÃO horas->minutos em si (bastaria a função devolver qualquer
+  // número >= 43200 para aquele teste passar).
+  assertEquals(minutosDaExpiracaoPix("PT1H"), 60);
+  assertEquals(minutosDaExpiracaoPix("PT2H"), 120);
+  assertEquals(minutosDaExpiracaoPix("PT30M"), 30);
+  assertEquals(minutosDaExpiracaoPix("PT45M"), 45);
+});
+
+Deno.test("minutosDaExpiracaoPix: 'PT0M' devolve 0, não null — a distinção importa porque 0 é falsy e quem chama compara com === null", () => {
+  assertEquals(minutosDaExpiracaoPix("PT0M"), 0);
+});
+
+Deno.test("minutosDaExpiracaoPix devolve null para sintaxe inválida, minúsculas, espaços e ausência — nunca lança", () => {
+  for (
+    const invalida of [
+      "30M", // sem o prefixo PT
+      "PT", // sem número
+      "PT30S", // segundos, não aceito
+      "", // vazia
+      "pt30m", // minúsculas
+      "PT30m", // unidade minúscula
+      " PT30M", // espaço antes
+      "PT30M ", // espaço depois
+      "PT-30M", // negativo
+      "PT30.5M", // fracionário
+    ]
+  ) {
+    assertEquals(minutosDaExpiracaoPix(invalida), null, `deveria ser null para ${JSON.stringify(invalida)}`);
+  }
+});
+
+Deno.test("minutosDaExpiracaoPix devolve null para tipos que não são string — nunca lança", () => {
+  for (const invalido of [null, undefined, 30, {}, [], true]) {
+    assertEquals(minutosDaExpiracaoPix(invalido as unknown as string), null);
+  }
+});
+
+Deno.test("minutosDaExpiracaoPix devolve null (não Infinity) quando o número da duração estoura para não-finito", () => {
+  // Achado da revisão (14/08/2026): Number("9".repeat(400)) é Infinity, não
+  // NaN — o guard `!casamento` não pega isso, porque a regex CASA (são só
+  // dígitos). Sem checar Number.isFinite, a função devolvia Infinity: hoje
+  // isso é inalcançável (montarCorpoPixOrders lança antes, pela faixa de
+  // 30-43200), mas a função é exportada — um consumidor futuro que a chame
+  // direto receberia Infinity, e em expiracaoRealinhavel isso vira
+  // `maximo = Infinity`, que aceita QUALQUER data futura, inclusive o
+  // default de 24h que o teto existe para barrar.
+  const duracaoAbsurda = `PT${"9".repeat(400)}M`;
+  assertEquals(minutosDaExpiracaoPix(duracaoAbsurda), null);
+});
+
 // --- Tarefa 2: faixa de expiração — a regex só validava SINTAXE ------------
 //
 // Achado da revisão: /^PT\d+[MH]$/ deixava passar "PT0M" (zero), "PT1M" e
@@ -1019,6 +1080,62 @@ Deno.test("extrairQrCode não transforma AUSÊNCIA de id em string 'undefined'/'
   // order.id === null explicitamente.
   const r2 = extrairQrCode({ id: null });
   assertEquals(r2?.orderId, null);
+});
+
+// --- extrairDataExpiracaoOrder: o vencimento ABSOLUTO do QR, para o
+// realinhamento de expires_at (decisão do dono, 14/08/2026) ---
+//
+// Medido na resposta real de /v1/orders: o campo mora um nível ACIMA de
+// payment_method — é o PAGAMENTO que carrega expiration_time/
+// date_of_expiration, não o payment_method (que só tem qr_code/ticket_url).
+// Função IRMÃ de extrairQrCode, não extensão dele — ver o comentário grande
+// de extrairDataExpiracaoOrder em mercadopago.ts para o motivo.
+
+Deno.test("extrairDataExpiracaoOrder lê date_of_expiration do pagamento", () => {
+  const order = {
+    id: "ORDTST01KZY123",
+    transactions: {
+      payments: [
+        {
+          id: "PAY01KZY456",
+          expiration_time: "PT30M",
+          date_of_expiration: "2026-08-14T20:25:32.488+00:00",
+          payment_method: { qr_code: "00020126580014br.gov.bcb..." },
+        },
+      ],
+    },
+  };
+
+  assertEquals(extrairDataExpiracaoOrder(order), "2026-08-14T20:25:32.488+00:00");
+});
+
+Deno.test("extrairDataExpiracaoOrder devolve null quando o campo está ausente — sem inventar prazo", () => {
+  assertEquals(extrairDataExpiracaoOrder({ id: "ORDTST01" }), null);
+  assertEquals(
+    extrairDataExpiracaoOrder({
+      id: "ORDTST01",
+      transactions: { payments: [{ id: "PAY1" }] },
+    }),
+    null,
+  );
+});
+
+Deno.test("extrairDataExpiracaoOrder devolve null quando a order em si é ilegível", () => {
+  assertEquals(extrairDataExpiracaoOrder(null), null);
+  assertEquals(extrairDataExpiracaoOrder(undefined), null);
+  assertEquals(
+    extrairDataExpiracaoOrder("não é um objeto" as unknown as Record<string, unknown>),
+    null,
+  );
+});
+
+Deno.test("extrairDataExpiracaoOrder devolve null quando o campo não é string (tipo errado)", () => {
+  assertEquals(
+    extrairDataExpiracaoOrder({
+      transactions: { payments: [{ date_of_expiration: 123456 }] },
+    }),
+    null,
+  );
 });
 
 // --- mapearStatusOrder: o mapa novo, para o par status + status_detail ---
