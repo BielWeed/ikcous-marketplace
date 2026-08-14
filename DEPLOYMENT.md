@@ -272,16 +272,16 @@ Mercado Pago devolve junto com o QR: em modo de teste ele aponta para o domínio
 `mercadopago.com.br/sandbox/…`, que é a página onde o pagamento de teste se conclui.
 
 O código **já carrega esse valor até o front**: `_shared/mercadopago.ts` extrai
-`point_of_interaction.transaction_data.ticket_url`, e `criar-pagamento` devolve como
-`ticketUrl` nos dois ramos (criação e reconsulta). O que **não** acontece é o componente
-renderizar esse link — `PagamentoOnline.tsx` usa só `qrCode` e `qrCodeBase64`.
+`point_of_interaction.transaction_data.ticket_url`, `criar-pagamento` devolve como `ticketUrl`
+nos dois ramos (criação e reconsulta), e `PagamentoOnline.tsx` já renderiza esse link — o texto
+**"Pagar pelo Mercado Pago"**, logo abaixo do botão "Copiar código PIX" e acima do "Vence às".
 
-Então, para o teste, pegue o `ticketUrl` da resposta da rede:
+Então, para o teste, é só clicar nele:
 
 1. Abra o Preview com a flag ligada e monte um pedido.
-2. Com o DevTools aberto na aba Rede, escolha PIX e finalize.
-3. Na resposta de `criar-pagamento`, copie o campo `ticketUrl`.
-4. Abra essa URL e conclua o pagamento de teste.
+2. Escolha PIX e finalize.
+3. Na tela do PIX, clique em **"Pagar pelo Mercado Pago"**.
+4. Conclua o pagamento de teste na página que abrir.
 
 **Higiene, não contenção:** o Supabase deste repositório é de desenvolvimento (ver *Onde o risco
 realmente mora*, no `CLAUDE.md`). Ainda assim, use um produto de teste com nome óbvio e estoque

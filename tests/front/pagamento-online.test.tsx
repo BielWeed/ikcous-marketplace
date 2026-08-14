@@ -26,14 +26,17 @@ vi.mock("@/lib/supabase", () => ({
 // `criarPagamento` seja uma referência ESTÁVEL entre re-renders — exatamente
 // o contrato real (`useCallback(..., [])` em useOrders.ts:958-1003) — sem
 // carregar useAuth/useLeaderElection/os efeitos de sincronização do
-// `useOrders` de verdade, que não são o que este arquivo testa. A função é
-// criada DENTRO da factory (não numa `const` de fora) para não esbarrar no
-// hoisting do `vi.mock` — referenciar uma `const` externa aqui daria "cannot
-// access before initialization".
-vi.mock("@/hooks/useOrders", () => {
-  const criarPagamento = vi.fn();
-  return { useOrders: () => ({ criarPagamento }) };
-});
+// `useOrders` de verdade, que não são o que este arquivo testa. Declarada via
+// `vi.hoisted` (mesmo padrão de checkout-guest-cep.test.tsx e
+// address-form-cep-race.test.tsx) — é o mecanismo do Vitest para uma `const`
+// sobreviver ao hoisting do `vi.mock` para o topo do arquivo — assim a
+// factory e o helper `renderComPix` (mais abaixo) compartilham a MESMA
+// referência sem que o teste precise invocar o hook para alcançá-la.
+const { criarPagamento } = vi.hoisted(() => ({ criarPagamento: vi.fn() }));
+
+vi.mock("@/hooks/useOrders", () => ({
+  useOrders: () => ({ criarPagamento }),
+}));
 
 // Este arquivo não usa @testing-library — só `act` puro (ver o describe
 // "PagamentoOnline (render de verdade)") — e sem este flag o React avisa
@@ -819,5 +822,116 @@ describe("PagamentoOnline (render de verdade)", () => {
 
     expect(create).toHaveBeenCalledTimes(1);
     expect(unmount).not.toHaveBeenCalled();
+  });
+});
+
+// `ticket_url` já chega da edge function (mercadopago.ts extrai, criar-pagamento
+// devolve como `ticketUrl`) e já está tipado no retorno de `criarPagamento`
+// (useOrders.ts) — só faltava a tela repassar e mostrar. Em modo de teste é a
+// ÚNICA forma de pagar o PIX simulado (um QR de teste não é reconhecido pelo
+// app de nenhum banco real); em produção é a página do MP para acompanhar/
+// pagar a mesma cobrança.
+describe("PagamentoOnline - link para o ticket_url", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    document.head.innerHTML = "";
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+    vi.stubEnv("VITE_MP_PUBLIC_KEY", "TEST-000000-0000-0000-0000-000000000000");
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    document.querySelectorAll("script[data-mp-sdk]").forEach((s) => s.remove());
+    // @ts-expect-error limpando o global entre testes
+    globalThis.MercadoPago = undefined;
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Renderiza o componente de verdade e dispara o `onSubmit` do Brick (PIX,
+   * sem token) com a resposta informada — o mesmo caminho que `montarBrick`
+   * usa para chegar no estado "pix", mas passando pelo componente real para
+   * poder inspecionar o DOM renderizado (o teste de `montarBrick` sozinho não
+   * alcança JSX nenhum).
+   */
+  async function renderComPix(respostaPix: Record<string, unknown>) {
+    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    // Mesma referência mocada em todo o arquivo (`vi.hoisted` no topo,
+    // compartilhada com a factory do `vi.mock` de "@/hooks/useOrders") —
+    // reset explícito porque `vi.restoreAllMocks()` não limpa implementação
+    // de um `vi.fn()` puro (sem `vi.spyOn`).
+    criarPagamento.mockReset().mockResolvedValue({
+      paymentId: "pay-1",
+      status: "pending",
+      expiraEm: "2026-08-06T15:30:00.000Z",
+      qrCode: "000201...",
+      qrCodeBase64: "abc123",
+      ...respostaPix,
+    });
+
+    await act(async () => {
+      raiz.render(
+        <PagamentoOnline orderId="ped-1" valor={100} onErro={() => {}} />,
+      );
+    });
+
+    document
+      .querySelector("script[data-mp-sdk]")
+      ?.dispatchEvent(new Event("load"));
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    const { onSubmit } = create.mock.calls[0][2].callbacks;
+    await act(async () => {
+      await onSubmit({ formData: {} }); // sem token => PIX
+    });
+  }
+
+  it("com ticketUrl na resposta, o link aparece apontando para o endereço e com rel de segurança", async () => {
+    await renderComPix({
+      ticketUrl: "https://www.mercadopago.com.br/payments/checkout?id=abc123",
+    });
+
+    const link = hospedeiro.querySelector<HTMLAnchorElement>("a[href]");
+    expect(link).not.toBeNull();
+    expect(link!.href).toBe(
+      "https://www.mercadopago.com.br/payments/checkout?id=abc123",
+    );
+    expect(link!.target).toBe("_blank");
+    // rel de segurança para target="_blank" — impede a página aberta de
+    // manipular a nossa via window.opener.
+    expect(link!.rel.split(" ")).toEqual(
+      expect.arrayContaining(["noopener", "noreferrer"]),
+    );
+
+    // O QR e o botão de copiar continuam sendo o caminho principal.
+    expect(
+      hospedeiro.querySelector("img[alt='QR code do PIX']"),
+    ).not.toBeNull();
+    expect(hospedeiro.textContent).toContain("Copiar código PIX");
+  });
+
+  it("sem ticketUrl na resposta, nenhum link é renderizado — QR e botão de copiar continuam lá", async () => {
+    await renderComPix({ ticketUrl: undefined });
+
+    expect(hospedeiro.querySelector("a[href]")).toBeNull();
+    expect(
+      hospedeiro.querySelector("img[alt='QR code do PIX']"),
+    ).not.toBeNull();
+    expect(hospedeiro.textContent).toContain("Copiar código PIX");
   });
 });
