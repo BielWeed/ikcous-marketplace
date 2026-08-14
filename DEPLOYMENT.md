@@ -188,8 +188,18 @@ sem dizer **como o PIX de teste é pago** — que é a única parte não óbvia 
    funciona** — comece por aqui.
 2. Uma **aplicação** criada em <https://www.mercadopago.com.br/developers/panel> →
    *Suas integrações*.
-3. As **credenciais de TESTE** dessa aplicação: *Public Key* e *Access Token*. As duas começam
-   com `TEST-`. Se não começarem, são as de produção — não use nesta fase.
+3. As **credenciais de TESTE** dessa aplicação, na aba **"Credenciais de teste"** do painel —
+   *Public Key* e *Access Token*. **Nenhuma das duas é discriminável pelo prefixo na Orders
+   API**: medido nesta sessão, a aplicação criada escolhendo "API de Orders" entrega uma Public
+   Key de teste com prefixo `APP_USR-` (ex.: `APP_USR-80eca126-8b37-4667-bbd0-49715e5532fd`) e um
+   Access Token de teste também com prefixo `APP_USR` (75 caracteres) — os dois iguais aos de
+   produção no formato. A doc oficial da Orders API confirma: o prefixo do Access Token de teste
+   varia conforme a solução, e nenhuma página promete prefixo `TEST-` para a Public Key de teste.
+   Foi essa não-discriminância que derrubou a heurística `startsWith("TEST-")` que
+   `criar-pagamento` chegou a usar para decidir ambiente (CHECKOUT-070); ambiente virou
+   configuração explícita (`MP_SANDBOX_PAYER_EMAIL`, ver 5.2), não dedução do formato da
+   credencial. O que garante que você pegou as credenciais de teste é estar na aba certa do
+   painel, não o texto delas.
 4. A **assinatura secreta** do webhook, que aparece em *Detalhes da aplicação → Notificações*
    ao cadastrar a URL de notificação.
 
@@ -199,9 +209,15 @@ A URL a cadastrar é:
 https://cafkrminfnokvgjqtkle.supabase.co/functions/v1/webhook-mercadopago
 ```
 
-O código manda `notification_url` dentro de cada cobrança, então o cadastro no painel é
-redundante para o roteamento. **Mas a assinatura secreta só existe se a aplicação tiver webhook
-configurado** — por isso o passo continua obrigatório.
+**Isto mudou com a migração para a Orders API.** Com `montarCorpoPix` (clássico) o código mandava
+`notification_url` dentro de cada cobrança, e o cadastro no painel era redundante para o
+roteamento. `montarCorpoPixOrders` **não tem esse parâmetro** — a Orders API não aceita o campo
+(o teste `criar-pagamento/index_test.ts:430` trava a ausência) — então **o cadastro da URL no
+painel passou a ser a única rota de notificação**. Sem ele, o pagamento só é alcançado pela
+reconciliação (§5.6), que roda de 10 em 10 minutos e é rede de segurança, não caminho principal:
+um cliente pode pagar o PIX e o pedido ficar sem confirmar até 10 minutos, ou expirar antes disso
+e devolver o estoque. A consequência operacional disso para cada loja clonada — garantir que o
+cadastro aconteça — é a issue #212, não resolvida aqui.
 
 ### 5.2 Onde cada valor vive
 
@@ -210,9 +226,10 @@ front).
 
 | variável | onde | observação |
 | --- | --- | --- |
-| `VITE_MP_PUBLIC_KEY` | Vercel → Environment Variables → **só Preview** | `TEST-…`; vai para o bundle, é pública por natureza |
+| `VITE_MP_PUBLIC_KEY` | Vercel → Environment Variables → **só Preview** | o prefixo não indica ambiente (ver 5.1); pegue-a na aba "Credenciais de teste" do painel. Vai para o bundle, é pública por natureza |
 | `VITE_PAGAMENTO_ONLINE` | Vercel → **só Preview** | exatamente a string `true`; qualquer outro valor mantém o checkout antigo |
-| `MP_ACCESS_TOKEN` | Supabase → Edge Functions → Secrets | `TEST-…`; **nunca** com prefixo `VITE_`, senão vaza no bundle |
+| `MP_ACCESS_TOKEN` | Supabase → Edge Functions → Secrets | o prefixo NÃO indica ambiente na Orders API (teste e produção começam com `APP_USR`, ver 5.1) — pegue-o na aba "Credenciais de teste" do painel; **nunca** com prefixo `VITE_`, senão vaza no bundle |
+| `MP_SANDBOX_PAYER_EMAIL` | Supabase → Edge Functions → Secrets | **opcional**, só faz sentido em ambiente de TESTE. Presente (e não vazia), `criar-pagamento` troca o e-mail do pagador do PIX por este valor e liga `payer.first_name = "APRO"` — o valor mágico que a doc de teste de PIX do MP exige para a order simular o fluxo completo. Desde 13/08/2026 uma string vazia já se comporta como ausente (achado de revisão: CHECKOUT-070), mas a forma CERTA de desligar o sandbox continua sendo **apagar o secret**, não deixar o campo em branco — é a única sem margem para engano |
 | `MP_WEBHOOK_SECRET` | Supabase → Secrets | a assinatura secreta do 5.1 |
 | `RECONCILIACAO_SECRET` | Supabase → Secrets | **tem de bater** com o segredo homônimo no Vault |
 

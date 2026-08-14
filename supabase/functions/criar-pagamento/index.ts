@@ -28,15 +28,37 @@
  * Não confirma pagamento. Nunca. Quem escreve 'pago' é o webhook (Fase 3), e é
  * por isso que esta função grava só `gateway_payment_id` e devolve o que o
  * Brick precisa desenhar.
+ *
+ * MIGRAÇÃO PARA A ORDERS API (CHECKOUT-070, Tarefa 2 de 4) — NÃO VAI SOZINHA
+ *
+ * `POST /v1/payments` com `payment_method_id: "pix"` passou a devolver 500 no
+ * Mercado Pago; o caminho que continua funcionando é `POST /v1/orders`. Esta
+ * function já fala com a Orders API (montarCorpoPixOrders/criarOrder/
+ * extrairQrCode/consultarOrder), e `gateway_payment_id` agora guarda o id da
+ * ORDER (prefixo ORD), não o de um pagamento (prefixo PAY).
+ *
+ * `webhook-mercadopago/index.ts` e `reconciliar-pagamentos/index.ts` AINDA
+ * NÃO foram migradas (Tarefas 3 e 4). Hoje o webhook descarta com 200 OK
+ * qualquer notificação cujo `type` não seja "payment" — e a Orders API notifica
+ * com `type: "order"`. Sem as Tarefas 3 e 4, uma order paga não confirma
+ * (200 OK engana o MP, que não reenvia), o pg_cron expira o pedido em 30 min
+ * e devolve o estoque, e a reconciliação busca por `GET /v1/payments/{id}`
+ * com um id de order (404, pula) — dinheiro que entra e nenhum registro
+ * sobra. As três tarefas vão no MESMO PR, de propósito: esta function não
+ * pode ir a produção sem as outras duas.
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  consultarOrder,
   consultarPagamento,
+  criarOrder,
   criarPagamento,
-  formatarExpiracao,
+  extrairQrCode,
+  idEhClassico,
+  MAPA_STATUS_ORDER,
   montarCorpoCartao,
-  montarCorpoPix,
+  montarCorpoPixOrders,
 } from "../_shared/mercadopago.ts";
 
 const corsHeaders = {
@@ -122,6 +144,49 @@ export function subDoToken(authorization: string | null): string | null {
 }
 
 /**
+ * Traduz status+status_detail da Orders API para o vocabulário CLÁSSICO de
+ * status de pagamento do MP ("pending", "approved", "rejected",
+ * "cancelled"…) — NÃO para o `payment_status` do nosso banco (essa tradução
+ * já existe em `mapearStatusOrder`, `_shared/mercadopago.ts`, e serve a outro
+ * consumidor). Leitor fino de `MAPA_STATUS_ORDER` (`_shared/mercadopago.ts`)
+ * — QUALIDADE 1 da revisão do PR: antes desta tabela, esta função e
+ * `mapearStatusOrder` viviam em arquivos diferentes com o próprio switch cada
+ * uma sobre o mesmo par, e já tinham divergido em 6 pares. Uma tabela só,
+ * dois leitores.
+ *
+ * POR QUE ISTO EXISTE: o front (PagamentoOnline.tsx:171-188) já sabe ler
+ * `r.status` — mas contra o vocabulário CLÁSSICO ("rejected"/"cancelled" são
+ * terminais; "pending"/"in_process"/"approved"/"authorized" são conhecidos),
+ * porque essa checagem nasceu com o caminho clássico e migrar o front está
+ * fora do escopo desta tarefa (Tarefa 2, CHECKOUT-070 — só a edge function).
+ * Sem esta tradução, TODA order PIX nova chegaria com status
+ * "action_required" — que não bate em NENHUM dos dois grupos que o front
+ * conhece — e o front trataria toda cobrança recém-criada como "Não foi
+ * possível confirmar o pagamento.", terminal: exatamente o problema que esta
+ * migração existe para resolver, só que reintroduzido de um jeito novo.
+ *
+ * Combinação desconhecida devolve o par cru "status:status_detail" por
+ * padrão — nunca um dos dois grupos conhecidos por engano — para o front
+ * tratar como "status novo do MP" (mesma regra do `mapearStatusOrder`: nunca
+ * um palpite). `opts.desconhecidoComo` deixa o CHAMADOR pedir um default
+ * diferente — usado só pelo ramo de CRIAÇÃO (ver comentário lá).
+ */
+export function traduzirStatusOrderParaClassico(
+  status: string,
+  statusDetail: string,
+  opts?: { desconhecidoComo?: string },
+): string {
+  const entrada = MAPA_STATUS_ORDER[`${status}:${statusDetail}`];
+  if (entrada?.front) return entrada.front;
+  // BLOQUEIO 2 da revisão (CHECKOUT-070): `opts.desconhecidoComo` existe só
+  // para o ramo de CRIAÇÃO poder pedir 'pending' em vez do par cru — ver o
+  // comentário grande no chamador, mais abaixo, sobre por que devolver o par
+  // cru ali é o pior desfecho possível para uma cobrança que acabou de
+  // nascer com 201.
+  return opts?.desconhecidoComo ?? `${status}:${statusDetail}`;
+}
+
+/**
  * `deps` é a mesma costura que a Task 1 já provou com `fetchImpl` em
  * `criarPagamento`: sem ela, o handler só é alcançável fazendo requisição HTTP
  * de verdade contra Postgres e Mercado Pago reais, e a fiação onde a
@@ -135,7 +200,15 @@ export function subDoToken(authorization: string | null): string | null {
  */
 async function handler(
   req: Request,
-  deps: { supabase?: ReturnType<typeof createClient>; fetchImpl?: typeof fetch } = {},
+  deps: {
+    supabase?: ReturnType<typeof createClient>;
+    fetchImpl?: typeof fetch;
+    // Tarefa 2 (CHECKOUT-070): mesma costura de `fetchImpl` acima, para o
+    // catch do throw de `montarCorpoPixOrders` (expiração fora da faixa)
+    // ser alcançável em teste sem depender de um bug de verdade neste
+    // arquivo. Em produção nunca é passado — default "PT30M" abaixo.
+    expiracaoPix?: string;
+  } = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -230,29 +303,90 @@ async function handler(
   }
 
   if (decisao.acao === "reconsultar") {
-    // O QR só existe na resposta da CRIAÇÃO. Aqui é onde a tela recupera o
-    // MESMO QR sem criar uma segunda cobrança — nenhum UPDATE, porque nada
-    // mudou no pedido, só a consulta.
-    const r = await consultarPagamento({
+    // Aqui é onde a tela recupera o MESMO QR sem criar uma segunda cobrança
+    // — nenhum UPDATE, porque nada mudou no pedido, só a consulta. MEDIDO em
+    // 14/08/2026 contra a API real: o GET /v1/orders/{id} devolve o QR
+    // idêntico ao da criação, então este ramo basta. (Dizia "o QR só existe
+    // na resposta da CRIAÇÃO" — era suposição, e a medição a derrubou.)
+    //
+    // Tarefa 2 (CHECKOUT-070): só PIX chega aqui (cartão já foi recusado
+    // acima, antes da leitura do pedido).
+    //
+    // Correção pós-revisão (BLOQUEIO 3, achado de revisão da Tarefa 3):
+    // discrimina pela FORMA do `gateway_payment_id` (`idEhClassico`,
+    // `_shared/mercadopago.ts`), não pelo código de erro HTTP que a Orders
+    // API devolvia. A versão anterior deste comentário afirmava que "o
+    // Orders API nunca reconhece esse id e devolve 404, SEMPRE, para todo
+    // pedido legado" — o MP não devolve 404 para um id sem forma de order:
+    // devolve 400 `invalid_path_param` ("must begin with the prefix
+    // 'ORD'..."); 404 só existe quando a FORMA já é de order, mas a order
+    // não existe. Um id clássico (numérico) nunca tem forma de order, então
+    // batia 400, nunca 404 — o fallback nunca disparava de verdade: o
+    // cliente legado que perdia a aba e voltava recebia 502 (não o 404 que
+    // o comentário antigo previa), e "Tentar de novo" repetia o mesmo 502
+    // até o pg_cron expirar o pedido em 30 min. Decidir pela forma, como o
+    // `webhook-mercadopago` já fazia, não depende de o MP manter essa
+    // taxonomia de erro — e poupa a chamada à Orders API para todo pedido
+    // legado, que nunca vai ser reconhecido por ela.
+    const idGatewayReconsulta = String(pedido.gateway_payment_id);
+
+    if (idEhClassico(idGatewayReconsulta)) {
+      // Pedido criado ANTES da migração para a Orders API — vai DIRETO para
+      // o endpoint clássico (GET /v1/payments/{id}), sem gastar uma consulta
+      // na Orders API que nunca vai reconhecer este id.
+      const classico = await consultarPagamento({
+        token: mpToken,
+        paymentId: idGatewayReconsulta,
+        fetchImpl: deps.fetchImpl,
+      });
+      if (!classico.ok) return json({ error: classico.erro }, 502);
+
+      return json(
+        {
+          paymentId: classico.id,
+          // Já vem no vocabulário CLÁSSICO — consultarPagamento fala com o
+          // endpoint clássico, que nunca precisou de tradução.
+          status: classico.status,
+          expiraEm: pedido.expires_at,
+          qrCode: classico.qrCode,
+          qrCodeBase64: classico.qrCodeBase64,
+          ticketUrl: classico.ticketUrl,
+        },
+        200,
+      );
+    }
+
+    // `gateway_payment_id` é um id de ORDER (prefixo ORD/ORDTST) — a
+    // reconsulta é GET /v1/orders/{id} (`consultarOrder`), não GET
+    // /v1/payments/{id}.
+    const r = await consultarOrder({
       token: mpToken,
-      paymentId: String(pedido.gateway_payment_id),
+      orderId: idGatewayReconsulta,
       fetchImpl: deps.fetchImpl,
     });
     if (!r.ok) return json({ error: r.erro }, 502);
+
+    const extraido = extrairQrCode(r.order);
+    const statusObjeto = r.order as Record<string, unknown>;
     return json(
       {
-        paymentId: r.id,
-        // Cru, não traduzido — igual ao ramo de criação. Se a cobrança
-        // existente é de cartão recusado, o cliente vê 'rejected' e a
-        // Task 5 decide o que mostrar. Reagir a isso (nova tentativa com
-        // idempotência versionada) é trabalho da Fase 3, de propósito não
-        // implementado aqui.
-        status: r.status,
+        paymentId: extraido?.orderId ?? idGatewayReconsulta,
+        // Traduzido para o vocabulário CLÁSSICO que o front já sabe ler
+        // (ver traduzirStatusOrderParaClassico) — igual ao ramo de criação,
+        // abaixo. Se a cobrança existente foi recusada, o cliente vê
+        // 'rejected' e a Task 5 decide o que mostrar.
+        status: traduzirStatusOrderParaClassico(
+          String(statusObjeto.status ?? ""),
+          String(statusObjeto.status_detail ?? ""),
+        ),
         // O prazo sai da LINHA DO BANCO, igual ao ramo de criação.
         expiraEm: pedido.expires_at,
-        qrCode: r.qrCode,
-        qrCodeBase64: r.qrCodeBase64,
-        ticketUrl: r.ticketUrl,
+        // AUSÊNCIA (order legível, sem QR ainda) não é ERRO — extrairQrCode
+        // distingue os dois; aqui só se converte null em undefined para não
+        // serializar `null` explícito onde o front espera campo ausente.
+        qrCode: extraido?.qrCode ?? undefined,
+        qrCodeBase64: extraido?.qrCodeBase64 ?? undefined,
+        ticketUrl: extraido?.ticketUrl ?? undefined,
       },
       200,
     );
@@ -264,39 +398,176 @@ async function handler(
     (pedido.customer_data as Record<string, unknown>)?.email ??
     "sem-email@ikcous.com.br";
 
-  const corpo =
-    body.metodo === "pix"
-      ? montarCorpoPix({
-          orderId: pedido.id,
-          valor: Number(pedido.total),
-          descricao: descricaoDoPedido(pedido.id),
-          email: String(email),
-          expiraEm: formatarExpiracao(pedido.expires_at),
-          documento: body.documento as { type: string; number: string } | undefined,
-          notificationUrl: `${Deno.env.get("SUPABASE_URL")}/functions/v1/webhook-mercadopago`,
-        })
-      : montarCorpoCartao({
-          orderId: pedido.id,
-          valor: Number(pedido.total),
-          descricao: descricaoDoPedido(pedido.id),
-          email: String(email),
-          token: String(body.token),
-          parcelas: Number(body.parcelas ?? 1),
-          metodo: String(body.paymentMethodId),
-          emissor: body.issuerId ? String(body.issuerId) : undefined,
-          documento: body.documento as { type: string; number: string } | undefined,
-        });
+  // Os quatro valores que os dois caminhos (PIX/Orders novo, cartão/clássico
+  // morto) precisam produzir para a gravação e a resposta abaixo, que são
+  // IGUAIS nos dois — só a CHAMADA ao gateway diverge.
+  let idGateway: string;
+  let statusCru: string;
+  let qrCode: string | undefined;
+  let qrCodeBase64: string | undefined;
+  let ticketUrl: string | undefined;
 
-  const r = await criarPagamento({
-    token: mpToken,
-    corpo,
-    // O id do pedido como chave: um retry do front sobre o MESMO pedido não
-    // cria uma segunda cobrança no MP.
-    chaveIdempotencia: String(pedido.id),
-    fetchImpl: deps.fetchImpl,
-  });
+  if (body.metodo === "pix") {
+    // BLOQUEIO 1 da revisão (CHECKOUT-070): a detecção de ambiente pelo
+    // PREFIXO do MP_ACCESS_TOKEN ("TEST-") era NÃO-DISCRIMINANTE — medido
+    // contra o painel do MP que a aplicação criada escolhendo "API de
+    // Orders" dá um Access Token de TESTE com prefixo "APP_USR" (75 chars),
+    // igual ao de produção. A heurística por prefixo era `false` em TODO
+    // ambiente da Orders API, e o e-mail real do cliente sempre ia para o
+    // MP em sandbox → 400 invalid_email_for_sandbox → 502 sem `terminal` →
+    // "Tentar de novo" que erra igual, para sempre. Nenhum PIX de teste
+    // ficava criável.
+    //
+    // Ambiente é CONFIGURAÇÃO, não dedução do formato da credencial —
+    // nenhum formato de credencial do MP carrega isso de forma confiável.
+    // MP_SANDBOX_PAYER_EMAIL é explícita e opcional: presente, usa esse
+    // e-mail como pagador (sandbox); ausente, usa o e-mail real do cliente
+    // (produção). Quem configura declara o ambiente, ninguém adivinha.
+    // `|| undefined` (não `??`): achado da revisão — a MESMA variável era
+    // lida com duas semânticas de vazio a 5 linhas de distância. Aqui era
+    // truthy ("" contava como AUSENTE, não ligava 'APRO'); em `email:` logo
+    // abaixo era nullish ("" contava como PRESENTE, `?? String(email)` não
+    // trocava por nada) — e o resultado era `payer.email: ""`, o e-mail REAL
+    // do cliente descartado em toda venda PIX. Realista porque, mesmo
+    // documentada (DEPLOYMENT.md §5.2), quem quiser DESLIGAR o sandbox pelo
+    // painel do Supabase pode limpar o campo em vez de apagar o secret — e
+    // limpar produz "". Com `|| undefined` as duas leituras concordam: "" é
+    // ausente, igual a nunca ter sido definida.
+    // `.trim()`: achado da revisão seguinte, mesma família — "   ", "\t" e
+    // "email@testuser.com\n" são todos truthy e sobreviviam ao `|| undefined`
+    // de cima. O e-mail real do cliente era descartado do mesmo jeito, só
+    // que o lixo (não uma string vazia) ia para `payer.email`.
+    const emailPagadorSandbox = Deno.env.get("MP_SANDBOX_PAYER_EMAIL")?.trim() || undefined;
+    // 'APRO' é o valor mágico que a doc oficial de teste de PIX exige
+    // (checkout-api-orders/integration-test/pix, context7, 13/08/2026) para
+    // a order de TESTE responder como esperado. montarCorpoPixOrders já
+    // aceita `nome` desde a Tarefa 1 — só ninguém ligava o parâmetro.
+    const nomePagadorSandbox = emailPagadorSandbox ? "APRO" : undefined;
+    if (emailPagadorSandbox) {
+      // ANOTADO 1 da revisão: sem log, ligar esta variável num deploy de
+      // PRODUÇÃO troca o e-mail do cliente em SILÊNCIO — nada quebra alto,
+      // só fica errado (e-mail real nunca chega ao MP, 'APRO' vira o
+      // primeiro nome nos registros do gateway). O gatilho real é o
+      // primeiro clone que copiar env de um deploy de desenvolvimento.
+      console.warn(
+        `criar-pagamento: MP_SANDBOX_PAYER_EMAIL definida — e-mail do pagador substituído por "${emailPagadorSandbox}" (ambiente de sandbox).`,
+      );
+    }
 
-  if (!r.ok) return json({ error: r.erro }, 502);
+    let corpo: Record<string, unknown>;
+    try {
+      corpo = montarCorpoPixOrders({
+        orderId: pedido.id,
+        valor: Number(pedido.total),
+        email: emailPagadorSandbox ?? String(email),
+        nome: nomePagadorSandbox,
+        // "PT30M": mínimo aceito pelo MP, e o valor que casa com a reserva
+        // de estoque de 30 minutos (20260807000000_reserva_com_expiracao.sql)
+        // — ver o comentário grande de montarCorpoPixOrders.
+        // `deps.expiracaoPix` só existe para teste (ver comentário de `deps`
+        // acima); em produção é sempre "PT30M".
+        expiracao: deps.expiracaoPix ?? "PT30M",
+        documento: body.documento as { type: string; number: string } | undefined,
+      });
+    } catch (err) {
+      // montarCorpoPixOrders LANÇA se a expiração faltar ou for inválida.
+      // Ela nasce de uma constante controlada por ESTE arquivo — um throw
+      // aqui só acontece por bug de configuração deste servidor, nunca por
+      // entrada do cliente (mesma categoria de "Pagamento indisponível."
+      // abaixo). Sem este catch o throw escaparia inteiro do handler e
+      // viraria 500 cru — o comentário desta função já avisava que "nenhum
+      // caminho aqui pode rejeitar", e isso deixou de ser verdade com a
+      // Orders API. Recuperável: nada foi cobrado nem gravado ainda.
+      console.error("criar-pagamento: montarCorpoPixOrders rejeitou", err);
+      return json({ error: "Não foi possível gerar a cobrança." }, 502);
+    }
+
+    const r = await criarOrder({
+      token: mpToken,
+      corpo,
+      // O id do pedido como chave: um retry do front sobre o MESMO pedido
+      // não cria uma segunda cobrança no MP.
+      chaveIdempotencia: String(pedido.id),
+      fetchImpl: deps.fetchImpl,
+    });
+    if (!r.ok) return json({ error: r.erro }, 502);
+
+    const extraido = extrairQrCode(r.order);
+    if (!extraido?.orderId) {
+      // Defensivo: criarOrder já garante `id` presente numa resposta 2xx, e
+      // isto só dispararia se a ORDER em si viesse ilegível — praticamente
+      // inalcançável, mas sem esta guarda um formato inesperado gravaria
+      // gateway_payment_id = "null" (String(null)) em vez de recusar.
+      console.error("criar-pagamento: order sem id utilizável", JSON.stringify(r.order));
+      return json({ error: "Resposta inválida do gateway." }, 502);
+    }
+
+    idGateway = extraido.orderId;
+    // gateway_payment_id = o id da ORDER (prefixo ORD), NUNCA o do pagamento
+    // (extraido.paymentId, prefixo PAY) — a Orders API não expõe reconsulta
+    // por id de pagamento; quem sobrevive e se reconsulta é a order (ver
+    // consultarOrder, e o comentário de extrairQrCode em
+    // _shared/mercadopago.ts).
+    //
+    // BLOQUEIO 2 da revisão (CHECKOUT-070): `desconhecidoComo: "pending"`
+    // SÓ neste ramo (o de reconsulta continua com o default cru). O MP
+    // acabou de responder 201 — a cobrança EXISTE e tem QR. O default cru
+    // desta função (o par "status:status_detail") não bate em nenhum dos
+    // grupos que o front conhece, e PagamentoOnline.tsx trata QUALQUER
+    // status desconhecido como terminal ("Não foi possível confirmar o
+    // pagamento."). Devolver isso aqui prenderia o cliente com um QR válido
+    // na mão e nenhum jeito de tentar de novo — exatamente o problema que
+    // esta migração existe para resolver, reintroduzido. 'pending' é o
+    // default honesto: o pedido fica 'aguardando' no banco de qualquer
+    // jeito, e quem decide a verdade depois é o webhook/reconciliação
+    // (Tarefas 3-4), não esta resposta.
+    statusCru = traduzirStatusOrderParaClassico(
+      String((r.order as Record<string, unknown>).status ?? ""),
+      String((r.order as Record<string, unknown>).status_detail ?? ""),
+      { desconhecidoComo: "pending" },
+    );
+    qrCode = extraido.qrCode ?? undefined;
+    qrCodeBase64 = extraido.qrCodeBase64 ?? undefined;
+    ticketUrl = extraido.ticketUrl ?? undefined;
+  } else {
+    // Cartão: caminho CLÁSSICO, código morto hoje — `body.metodo !== "pix"`
+    // já recusa com 400 lá em cima, antes da leitura do pedido, então este
+    // ramo nunca executa em produção. Mantido de propósito (Tarefa 2 migra
+    // SÓ o caminho PIX, que é o alcançável, e cartão é a Fase 3.5 — ver o
+    // comentário da checagem `body.metodo !== "pix"` acima). NÃO é porque
+    // `webhook-mercadopago`/`reconciliar-pagamentos` (Tasks 3-4) dependam de
+    // `montarCorpoCartao`/`criarPagamento` clássicos: conferido em 13/08/2026,
+    // os dois importam só `consultarPagamento`, `mapearStatus` e
+    // `validarAssinatura` de `_shared/mercadopago.ts` — nenhum toca cartão.
+    // Hoje o único chamador vivo de `montarCorpoCartao`/`criarPagamento` é
+    // este ramo e os testes deles em `mercadopago_test.ts`; a limpeza deste
+    // ramo fica para depois da Fase 3.5, não das Tasks 3-4.
+    const corpo = montarCorpoCartao({
+      orderId: pedido.id,
+      valor: Number(pedido.total),
+      descricao: descricaoDoPedido(pedido.id),
+      email: String(email),
+      token: String(body.token),
+      parcelas: Number(body.parcelas ?? 1),
+      metodo: String(body.paymentMethodId),
+      emissor: body.issuerId ? String(body.issuerId) : undefined,
+      documento: body.documento as { type: string; number: string } | undefined,
+    });
+
+    const r = await criarPagamento({
+      token: mpToken,
+      corpo,
+      chaveIdempotencia: String(pedido.id),
+      fetchImpl: deps.fetchImpl,
+    });
+    if (!r.ok) return json({ error: r.erro }, 502);
+
+    idGateway = r.id;
+    statusCru = r.status;
+    qrCode = r.qrCode;
+    qrCodeBase64 = r.qrCodeBase64;
+    ticketUrl = r.ticketUrl;
+  }
 
   // Grava a cobrança. O WHERE repete a condição de podeCobrar porque entre a
   // leitura e agora o pg_cron pode ter expirado o pedido: se expirou, o
@@ -304,7 +575,7 @@ async function handler(
   // reconciliação da Fase 3 resolve. Sobrescrever seria pior.
   const { data: gravado, error: erroUpdate } = await supabase
     .from("marketplace_orders")
-    .update({ gateway_payment_id: r.id, updated_at: new Date().toISOString() })
+    .update({ gateway_payment_id: idGateway, updated_at: new Date().toISOString() })
     .eq("id", pedido.id)
     .eq("payment_status", "aguardando")
     .is("gateway_payment_id", null)
@@ -312,7 +583,7 @@ async function handler(
     .maybeSingle();
 
   if (erroUpdate || !gravado) {
-    console.error("criar-pagamento: cobrança criada mas não gravada", r.id, erroUpdate);
+    console.error("criar-pagamento: cobrança criada mas não gravada", idGateway, erroUpdate);
     // A mensagem de prazo só é verdade na corrida com o pg_cron. Duas abas
     // (ou duplo submit) na MESMA janela também caem aqui: as duas leituras
     // veem gateway_payment_id null, as duas chamam o MP com a mesma chave de
@@ -344,14 +615,14 @@ async function handler(
 
   return json(
     {
-      paymentId: r.id,
-      status: r.status,
+      paymentId: idGateway,
+      status: statusCru,
       // O prazo sai da LINHA DO BANCO, não de um cálculo no navegador: é o
       // mesmo instante que o pg_cron vai usar para cancelar.
       expiraEm: pedido.expires_at,
-      qrCode: r.qrCode,
-      qrCodeBase64: r.qrCodeBase64,
-      ticketUrl: r.ticketUrl,
+      qrCode,
+      qrCodeBase64,
+      ticketUrl,
     },
     200,
   );

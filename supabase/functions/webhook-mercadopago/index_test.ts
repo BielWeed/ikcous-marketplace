@@ -486,6 +486,261 @@ Deno.test("RPC devolve erro de banco -> 500, para o MP reenviar", async () => {
 // dois retornos com console.warn; este teste prende o mesmo tratamento
 // aqui, com console.error — é dinheiro que entrou sem registro, não um
 // reenvio inofensivo do MP encontrando um estado já tratado.
+// --- Tarefa 3 (CHECKOUT-070): notificação da Orders API (`type: "order"`) --
+//
+// Depois da migração para a Orders API (Tarefas 1-2), a confirmação de PIX
+// chega como `type: "order"`, não mais `type: "payment"`. Sem estes testes,
+// o filtro de :240-243 descarta com 200 OK todo pedido pago — "aguardando"
+// para sempre.
+
+/**
+ * Fetch que INSPECIONA a URL chamada, para provar qual endpoint o handler
+ * escolheu (`/v1/orders/{id}` vs `/v1/payments/{id}`) — sem isso, os testes
+ * de "type ausente" só provariam o retorno da RPC, não a ROTA escolhida.
+ */
+function fetchInspecionavel(mapa: {
+  pagamento?: { status: number; corpo: Record<string, unknown> };
+  order?: { status: number; corpo: Record<string, unknown> };
+}) {
+  const chamadas: string[] = [];
+  const fn = async (url: string, _init?: RequestInit) => {
+    chamadas.push(url);
+    if (url.includes("/v1/orders/")) {
+      const r = mapa.order ?? { status: 404, corpo: {} };
+      return new Response(JSON.stringify(r.corpo), { status: r.status });
+    }
+    const r = mapa.pagamento ?? { status: 404, corpo: {} };
+    return new Response(JSON.stringify(r.corpo), { status: r.status });
+  };
+  return { fn, chamadas };
+}
+
+const ID_ORDER_TESTE = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
+
+Deno.test("type 'order' aprovada -> RPC recebe p_order_id do external_reference (raiz) e p_payment_id do order.id, NUNCA de payments[0]", async () => {
+  // status/status_detail existem em DOIS lugares no corpo real: a raiz (a
+  // verdade do pedido) e dentro de transactions.payments[0] (índice de
+  // array, vira escolha carregada no dia em que houver mais de um
+  // pagamento). Aqui os dois DIVERGEM de propósito: se a implementação ler
+  // de payments[0] por engano, o status mapeado muda e o teste pega.
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+    transactions: {
+      payments: [{ id: "PAY01KZZXXXXXXXXXXXXXXXXXXXXX", status: "action_required", status_detail: "waiting_transfer" }],
+    },
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_order_id, UUID_PEDIDO);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_TESTE);
+  assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
+  assertEquals(chamadasPush.length, 1);
+});
+
+Deno.test("type 'order' com status 'expired:expired' -> 200 com rótulo próprio, RPC NÃO chamada", async () => {
+  // confirmar_pagamento (20260810000000_confirmar_pagamento_guarda_status.sql)
+  // não conhece 'expirado' — cairia no RETURN 'ignorado' final, indistinguível
+  // no log de todos os outros "ignorado". Por isso o filtro é ANTES da RPC,
+  // com rótulo e warn próprios.
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "expired",
+    status_detail: "expired",
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 0);
+  assertEquals(corpo.ignorado, "order expirada");
+});
+
+Deno.test("type 'payment' explícito continua no caminho clássico (não-regressão)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999", { corpoExtra: { type: "payment" } });
+  const fetchImpl = fetchConsulta(200, { id: 999, status: "approved", external_reference: UUID_PEDIDO });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, "999");
+  assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
+  assertEquals(chamadasPush.length, 1);
+});
+
+Deno.test("type ausente + id em forma de ULID -> caminho de ORDER (consulta /v1/orders/)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE); // sem `type`
+  const { fn: fetchImpl, chamadas } = fetchInspecionavel({
+    order: {
+      status: 200,
+      corpo: { id: ID_ORDER_TESTE, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
+    },
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.some((u) => u.includes("/v1/orders/")), true, "deveria ter consultado /v1/orders/");
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_TESTE);
+});
+
+Deno.test("type ausente + id numérico -> caminho CLÁSSICO (consulta /v1/payments/, não-regressão)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999"); // sem `type`
+  const { fn: fetchImpl, chamadas } = fetchInspecionavel({
+    pagamento: { status: 200, corpo: { id: 999, status: "approved", external_reference: UUID_PEDIDO } },
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.some((u) => u.includes("/v1/payments/")), true, "deveria ter consultado /v1/payments/");
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, "999");
+});
+
+Deno.test("type 'order' com external_reference sem forma de UUID -> 200, RPC não chamada", async () => {
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: "nao-e-uuid",
+    status: "processed",
+    status_detail: "accredited",
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("type 'order': MP devolve 404 ao consultar a order -> 200, não 500 — reenviar não ajuda", async () => {
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(404, { message: "Order not found" });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("type 'order': MP devolve 500 ao consultar a order -> 500, para o MP reenviar", async () => {
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(500, { message: "erro interno" });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 500);
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+// --- Tarefa 3, ressalva de revisão: `type` DESCONHECIDO não pode ser
+// descartado às cegas — ninguém neste projeto jamais observou uma
+// notificação real da Orders API, e um tópico fora da lista de irrelevantes
+// conhecidos precisa cair no desempate por forma do id (igual ao caso
+// `type` ausente), não no descarte. -------------------------------------
+
+Deno.test("type DESCONHECIDO + id em forma de order -> consulta a Orders API (não descarta) e loga console.error", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "orders.v2" } });
+  const { fn: fetchImpl, chamadas } = fetchInspecionavel({
+    order: {
+      status: 200,
+      corpo: { id: ID_ORDER_TESTE, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
+    },
+  });
+  const chamadasErro: unknown[][] = [];
+  const console_error = console.error;
+  console.error = (...args: unknown[]) => {
+    chamadasErro.push(args);
+  };
+  try {
+    const resposta = await handler(req, { supabase, fetchImpl });
+
+    assertEquals(resposta.status, 200);
+    assertEquals(chamadas.some((u) => u.includes("/v1/orders/")), true, "deveria ter consultado /v1/orders/");
+    assertEquals(registro.chamadasRpc.length, 1);
+    assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_TESTE);
+    assertEquals(chamadasErro.length, 1, "type desconhecido deveria logar console.error, não console.warn");
+  } finally {
+    console.error = console_error;
+  }
+});
+
+Deno.test("type DESCONHECIDO + id numérico -> caminho CLÁSSICO (consulta /v1/payments/)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999", { corpoExtra: { type: "order.updated" } });
+  const { fn: fetchImpl, chamadas } = fetchInspecionavel({
+    pagamento: { status: 200, corpo: { id: 999, status: "approved", external_reference: UUID_PEDIDO } },
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.some((u) => u.includes("/v1/payments/")), true, "deveria ter consultado /v1/payments/");
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, "999");
+});
+
+Deno.test("type irrelevante da lista oficial (point_integration_wh) -> 200, descartado sem NENHUMA chamada ao MP", async () => {
+  // Diferente do teste de merchant_order (acima): aqui a prova é sobre as
+  // URLs efetivamente chamadas pelo fetchImpl (`chamadas`), não só o corpo
+  // da resposta — provando que a lista de irrelevantes cobre outro tópico
+  // oficial além do já testado.
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  const req = await requisicaoAssinada("999", { corpoExtra: { type: "point_integration_wh" } });
+  const { fn: fetchImpl, chamadas } = fetchInspecionavel({});
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.length, 0, "não deveria ter chamado o MP");
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
 Deno.test("RPC devolve 'divergente' ou 'inexistente' -> 200 e console.error acusa, com orderId/paymentId/resultado", async () => {
   for (const resultado of ["divergente", "inexistente"]) {
     const registro = { chamadasRpc: [] };

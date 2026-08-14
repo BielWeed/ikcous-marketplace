@@ -40,7 +40,13 @@
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { consultarPagamento, mapearStatus } from "../_shared/mercadopago.ts";
+import {
+  consultarOrder,
+  consultarPagamento,
+  idEhClassico,
+  mapearStatus,
+  mapearStatusOrder,
+} from "../_shared/mercadopago.ts";
 import { readKey } from "../_shared/webpush.ts";
 
 const json = (corpo: unknown, status = 200) =>
@@ -135,21 +141,82 @@ async function handler(
   for (const candidato of candidatos ?? []) {
     verificados++;
     try {
-      const consulta = await consultarPagamento({
-        token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
-        paymentId: candidato.gateway_payment_id,
-        fetchImpl: deps.fetchImpl,
-      });
+      const mpToken = Deno.env.get("MP_ACCESS_TOKEN") ?? "";
 
-      if (!consulta.ok) {
-        console.warn(
-          "reconciliar-pagamentos: consultarPagamento falhou",
-          candidato.order_id,
-          consulta.status,
-          consulta.erro,
-        );
-        falhas++;
-        continue;
+      // Tarefa 4 (CHECKOUT-070), correção pós-revisão: discrimina pela FORMA
+      // do id (`idEhClassico`, `_shared/mercadopago.ts`), não pelo código de
+      // erro HTTP que a Orders API devolveu. A versão anterior deste
+      // comentário afirmava que "a Orders API nunca reconhece esse id e
+      // devolve 404, sempre" — o MP não devolve 404 para um id sem forma de
+      // order: devolve 400 `invalid_path_param` ("must begin with the prefix
+      // 'ORD'..."); 404 só existe quando a forma JÁ é de order, mas a order
+      // não existe. Um id clássico (numérico) nunca tem forma de order, então
+      // batia 400, nunca 404 — o fallback para o legado nunca disparava de
+      // verdade: um candidato legado pago caía no `else` genérico, virava
+      // `falhas++`, e sumia da fila para sempre (dinheiro no MP, pedido
+      // `expirado`, estoque já revendido). Decidir pela forma, como o
+      // `webhook-mercadopago` já fazia, não depende de o MP manter essa
+      // taxonomia de erro — e poupa a chamada à Orders API para todo
+      // candidato legado, que nunca vai ser reconhecido por ela.
+      let statusMapeado: string | null;
+      // Só para o log de "status desconhecido do MP" logo abaixo — sem isto
+      // esse ramo (que existe justamente para descobrir status NOVO do MP)
+      // não dizia qual status tinha chegado.
+      let statusBrutoParaLog: string;
+
+      if (idEhClassico(candidato.gateway_payment_id)) {
+        // Candidato LEGADO, criado antes da migração para a Orders API — vai
+        // DIRETO para o endpoint clássico, sem gastar uma consulta na Orders
+        // API que nunca vai reconhecer este id.
+        const consultaClassica = await consultarPagamento({
+          token: mpToken,
+          paymentId: candidato.gateway_payment_id,
+          fetchImpl: deps.fetchImpl,
+        });
+
+        if (!consultaClassica.ok) {
+          console.warn(
+            "reconciliar-pagamentos: consultarPagamento falhou (candidato legado)",
+            candidato.order_id,
+            consultaClassica.status,
+            consultaClassica.erro,
+          );
+          falhas++;
+          continue;
+        }
+        statusMapeado = mapearStatus(consultaClassica.status);
+        statusBrutoParaLog = consultaClassica.status;
+      } else {
+        // Candidato NOVO — `gateway_payment_id` é um id de ORDER (prefixo
+        // ORD/ORDTST) desde a Tarefa 2.
+        const consultaOrder = await consultarOrder({
+          token: mpToken,
+          orderId: candidato.gateway_payment_id,
+          fetchImpl: deps.fetchImpl,
+        });
+
+        if (!consultaOrder.ok) {
+          console.warn(
+            "reconciliar-pagamentos: consultarOrder falhou",
+            candidato.order_id,
+            consultaOrder.status,
+            consultaOrder.erro,
+          );
+          falhas++;
+          continue;
+        }
+
+        // `status`/`status_detail` ficam na RAIZ da order — existe um par
+        // igual dentro de `transactions.payments[0]`, mas ali é um índice de
+        // array que viraria escolha carregada no dia em que a order tiver
+        // mais de um pagamento. A raiz é a verdade do pedido; mapearStatusOrder
+        // recebe exatamente o par da raiz (fato medido contra a API real,
+        // 14/08/2026).
+        const order = consultaOrder.order as Record<string, unknown>;
+        const statusRaiz = String(order.status ?? "");
+        const statusDetailRaiz = String(order.status_detail ?? "");
+        statusMapeado = mapearStatusOrder(statusRaiz, statusDetailRaiz);
+        statusBrutoParaLog = `${statusRaiz}:${statusDetailRaiz}`;
       }
 
       // Usa o status que o MP DEVOLVEU, nunca inventa um. Status
@@ -157,12 +224,28 @@ async function handler(
       // webhook: fica para o próximo ciclo de reconciliação. Mas "não
       // decide" não é "não conta": entra em ignorados (não confirmou, não é
       // falha), para o corpo continuar auditável sem abrir o log.
-      const statusMapeado = mapearStatus(consulta.status);
       if (statusMapeado === null) {
         console.warn(
           "reconciliar-pagamentos: status desconhecido do MP",
           candidato.order_id,
-          consulta.status,
+          statusBrutoParaLog,
+        );
+        ignorados++;
+        continue;
+      }
+
+      // Armadilha 2 do brief: 'expirado' só a Orders API produz (o clássico
+      // nunca mapeia para ele, ver mapearStatus), e a RPC confirmar_pagamento
+      // não tem ramo para esse valor (20260810000000_confirmar_pagamento_
+      // guarda_status.sql) — cairia no RETURN 'ignorado' do fim do jeito
+      // errado, indistinguível no log de um 'ignorado' que passou pela RPC
+      // de verdade. Filtra ANTES de chamar a RPC, com rótulo próprio, e
+      // conta em ignorados — sem inventar tratamento novo na RPC (migration
+      // não é desta tarefa).
+      if (statusMapeado === "expirado") {
+        console.warn(
+          "reconciliar-pagamentos: order expirada no MP — não chama confirmar_pagamento (RPC não trata 'expirado')",
+          candidato.order_id,
         );
         ignorados++;
         continue;
@@ -174,6 +257,11 @@ async function handler(
       // é sobre a transição de estado, não sobre a contagem. Sem isto, 3 PIX
       // expirados que ninguém pagou (MP ainda diz 'pending' → RPC cai no
       // RETURN 'ignorado' por default, sem erro) viravam "3 confirmados".
+      //
+      // p_payment_id sai da MESMA linha do banco (candidato.gateway_payment_id),
+      // nunca do id que a resposta do MP devolveu — igual ao caminho clássico
+      // já fazia (armadilha 4 do brief). É isto que torna 'divergente' quase
+      // impossível aqui, ao contrário do webhook.
       const { data: resultadoRpc, error: erroRpc } = await supabase.rpc("confirmar_pagamento", {
         p_order_id: candidato.order_id,
         p_payment_id: candidato.gateway_payment_id,
@@ -213,8 +301,10 @@ async function handler(
   // INVARIANTE (não quebrar): confirmados + ignorados + falhas === verificados.
   // Todo `continue` e todo fim de iteração do loop acima incrementa
   // exatamente um dos três — inclusive o status que o MP devolve fora do
-  // switch de mapearStatus, que cai em ignorados. Sem essa invariante o
-  // corpo não é auditável sem abrir o log: um candidato "sumiria" do total.
+  // mapa (ignorados), o 404 nos dois endpoints (falhas) e a order 'expirado'
+  // que a Tarefa 4 passou a filtrar ANTES da RPC (ignorados, sem chamá-la).
+  // Sem essa invariante o corpo não é auditável sem abrir o log: um
+  // candidato "sumiria" do total.
   return json({ ok: true, verificados, confirmados, ignorados, falhas }, 200);
 }
 

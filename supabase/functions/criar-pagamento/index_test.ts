@@ -16,6 +16,7 @@ import {
   pareceUuid,
   podeCobrar,
   subDoToken,
+  traduzirStatusOrderParaClassico,
 } from "./index.ts";
 
 const UUID = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
@@ -66,7 +67,16 @@ function clienteFalso(opts: {
   // o CONTEÚDO — só manter a forma do encadeamento — arrancar uma condição
   // (ex.: trocar "aguardando" por "pago") deixa a suíte verde, porque nada
   // além do nome do método (.eq/.is) estava sendo provado.
-  registro?: { chamadasUpdate: number; filtrosUpdate?: Array<[string, unknown]> };
+  //
+  // `valoresUpdate` (Tarefa 2, CHECKOUT-070) grava o SET de .update(...) em
+  // si — sem isso não dava para provar que gateway_payment_id é gravado com
+  // o id da ORDER (prefixo ORD), não o do pagamento (prefixo PAY): os testes
+  // antigos só conferiam o WHERE, nunca o valor gravado.
+  registro?: {
+    chamadasUpdate: number;
+    filtrosUpdate?: Array<[string, unknown]>;
+    valoresUpdate?: Record<string, unknown>;
+  };
 }) {
   let chamadasSelect = 0;
   return {
@@ -91,6 +101,7 @@ function clienteFalso(opts: {
           if (opts.registro) {
             opts.registro.chamadasUpdate++;
             opts.registro.filtrosUpdate = [];
+            opts.registro.valoresUpdate = _valores;
           }
           const registrarFiltro = (coluna: string, valor: unknown) => {
             opts.registro?.filtrosUpdate?.push([coluna, valor]);
@@ -123,13 +134,35 @@ function clienteFalso(opts: {
   };
 }
 
-/** `fetch` falso que nunca toca rede: devolve um pagamento 2xx válido e
- * guarda o corpo que a function mandou, para o teste conferir
- * `external_reference` sem depender dos testes da Task 1. */
+/** `fetch` falso que nunca toca rede: devolve uma ORDER 2xx válida (formato
+ * de `POST /v1/orders`, Tarefa 2 — CHECKOUT-070) e guarda o corpo que a
+ * function mandou, para o teste conferir `external_reference` sem depender
+ * dos testes da Task 1. O `id` "ORD999" (prefixo de order, não de pagamento)
+ * é de propósito: um teste que confundisse orderId com paymentId não
+ * distinguiria os dois se o stub usasse um id genérico. */
 function fetchFalsoMP(capturado: { corpo?: Record<string, unknown> }) {
   return async (_url: string, init?: RequestInit) => {
     capturado.corpo = JSON.parse(String(init?.body ?? "{}"));
-    return new Response(JSON.stringify({ id: 999, status: "pending" }), { status: 201 });
+    return new Response(
+      JSON.stringify({
+        id: "ORD999",
+        status: "action_required",
+        status_detail: "waiting_transfer",
+        transactions: {
+          payments: [
+            {
+              id: "PAY999",
+              payment_method: {
+                qr_code: "QRCODE-PADRAO",
+                qr_code_base64: "QRBASE64-PADRAO",
+                ticket_url: "https://www.mercadopago.com.br/sandbox/payments/999/ticket",
+              },
+            },
+          ],
+        },
+      }),
+      { status: 201 },
+    );
   };
 }
 
@@ -177,9 +210,9 @@ Deno.test("podeCobrar cria quando o pedido está aguardando, no prazo, e sem cob
 });
 
 Deno.test("podeCobrar reconsulta quando o pedido já tem cobrança, em vez de recusar", () => {
-  // Rodada 2: o QR do PIX só existe na resposta da CRIAÇÃO. O navegador
-  // mobile descarta a aba enquanto o cliente paga pelo app do banco; ao
-  // voltar, a tela remonta e chamava esta function de novo — recusar aqui
+  // Rodada 2: o navegador mobile descarta a aba enquanto o cliente paga pelo
+  // app do banco; ao voltar, a tela remonta e chamava esta function de novo
+  // — recusar aqui
   // (como a rodada 1 fazia) matava um pedido que ainda dava para pagar. Com
   // 63 dos 64 pedidos da loja em PIX, esse é o caminho principal.
   const r = podeCobrar(
@@ -394,13 +427,15 @@ Deno.test("handler: PIX leva o documento do pagador quando o front manda — A-2
   );
 });
 
-Deno.test("handler: o corpo enviado ao MP leva o notification_url MONTADO — URL inteira", async () => {
-  // Achado da revisão: os testes de mercadopago_test.ts provam montarCorpoPix
-  // como função pura (recebem a URL pronta), o que não prova que o handler
-  // MONTA e LIGA essa URL. Sem este teste, apagar a linha de notificationUrl
-  // em index.ts (ou trocar o caminho) deixava a suíte inteira verde — o MP
-  // fica sem para onde notificar, e o pedido pago some no 'aguardando' até o
-  // pg_cron expirar (mesmo padrão do achado A-2, já fechado para o documento).
+Deno.test("handler: o corpo Orders enviado ao MP NÃO leva notification_url — a Orders API não tem esse campo (issue #212, operacional)", async () => {
+  // Tarefa 2 (CHECKOUT-070), migração para a Orders API: este teste cobria
+  // o caminho clássico (montarCorpoPix aceita notificationUrl e o handler
+  // montava a URL). montarCorpoPixOrders NÃO tem esse parâmetro — a Orders
+  // API não documenta um campo equivalente (ver o comentário grande da
+  // função em _shared/mercadopago.ts). Resolver isso é a issue #212,
+  // operacional, explicitamente FORA do escopo desta tarefa — este teste
+  // agora prova que o corpo simplesmente não carrega o campo, para não
+  // deixar a suíte com uma expectativa que a migração já tornou falsa.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   Deno.env.set("SUPABASE_URL", "https://xyz.supabase.co");
   const pedido = pedidoBase();
@@ -410,10 +445,7 @@ Deno.test("handler: o corpo enviado ao MP leva o notification_url MONTADO — UR
 
   await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
 
-  assertEquals(
-    capturado.corpo?.notification_url,
-    "https://xyz.supabase.co/functions/v1/webhook-mercadopago",
-  );
+  assertEquals(capturado.corpo?.notification_url, undefined);
 });
 
 Deno.test("handler: pedido expirado pelo pg_cron no meio da corrida NÃO devolve 200, e a mensagem é a de prazo", async () => {
@@ -548,36 +580,54 @@ Deno.test("handler: recusa por prazo vencido (expires_at no passado) devolve ter
 // --- handler: rodada 2 — reconsultar em vez de recusar quando já tem cobrança
 
 /** `fetch` falso da reconsulta: devolve exatamente o corpo que o teste
- * passar, e GUARDA método e corpo da requisição que recebeu — mesmo padrão
- * de `mercadopago_test.ts:277-281` uma camada abaixo. Sem isso, trocar
- * `consultarPagamento` por `criarPagamento` dentro do ramo `reconsultar`
- * (um POST de verdade, com corpo, no Mercado Pago) passava batido: o
- * cliente falso aqui não olhava método nem body, só o que a resposta
- * continha. */
+ * passar, e GUARDA método, URL e corpo da requisição que recebeu — mesmo
+ * padrão de `mercadopago_test.ts:277-281` uma camada abaixo. Sem isso, trocar
+ * `consultarOrder` por outra chamada dentro do ramo `reconsultar` (um POST de
+ * verdade, com corpo, no Mercado Pago, OU o endpoint clássico errado —
+ * `/v1/payments/{id}` com um id de order) passava batido: o cliente falso
+ * aqui não olhava método, URL nem body, só o que a resposta continha.
+ */
 function fetchFalsoConsulta(
   corpoDaResposta: Record<string, unknown>,
-  capturado?: { method?: string; body?: BodyInit | null | undefined },
+  capturado?: { method?: string; body?: BodyInit | null | undefined; url?: string },
 ) {
-  return async (_url: string, init?: RequestInit) => {
+  return async (url: string, init?: RequestInit) => {
     if (capturado) {
       capturado.method = init?.method;
       capturado.body = init?.body;
+      capturado.url = url;
     }
     return new Response(JSON.stringify(corpoDaResposta), { status: 200 });
   };
 }
 
-Deno.test("handler: pedido com cobrança existente reconsulta no MP, devolve o MESMO QR, e NÃO faz UPDATE", async () => {
+Deno.test("handler: pedido com cobrança existente reconsulta a ORDER no MP (GET /v1/orders/{id}, não /v1/payments/{id}), devolve o MESMO QR, e NÃO faz UPDATE", async () => {
+  // Tarefa 2 (CHECKOUT-070): gateway_payment_id passa a guardar o id da
+  // ORDER (prefixo ORD) — reconsultar com o endpoint clássico chamaria
+  // /v1/payments/ORD789, que o MP nem reconhece como id de pagamento (404
+  // garantido para TODO pedido PIX criado depois desta migração).
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase({ gateway_payment_id: "789" });
+  const pedido = pedidoBase({ gateway_payment_id: "ORD789" });
   const registro = { chamadasUpdate: 0 };
   const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
-  const capturado: { method?: string; body?: BodyInit | null | undefined } = {};
+  const capturado: { method?: string; body?: BodyInit | null | undefined; url?: string } = {};
   const fetchImpl = fetchFalsoConsulta(
     {
-      id: 789,
-      status: "pending",
-      point_of_interaction: { transaction_data: { qr_code: "QRCODE-DA-RECONSULTA" } },
+      id: "ORD789",
+      status: "action_required",
+      status_detail: "waiting_transfer",
+      transactions: {
+        payments: [
+          {
+            id: "PAY789",
+            payment_method: {
+              qr_code: "QRCODE-DA-RECONSULTA",
+              qr_code_base64: "QRBASE64-DA-RECONSULTA",
+              ticket_url: "https://www.mercadopago.com.br/sandbox/payments/789/ticket",
+            },
+          },
+        ],
+      },
     },
     capturado,
   );
@@ -589,14 +639,119 @@ Deno.test("handler: pedido com cobrança existente reconsulta no MP, devolve o M
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
-  assertEquals(corpo.paymentId, "789");
+  assertEquals(corpo.paymentId, "ORD789");
+  // BLOQUEIO 2 da revisão: a revisão mutou a fiação (trocou as duas chamadas
+  // de traduzirStatusOrderParaClassico pelo status cru) e a suíte ficou 108
+  // passed | 0 failed — nenhum teste do handler afirmava `corpo.status`. Sem
+  // isto, "action_required:waiting_transfer" cru chega ao front, que não
+  // reconhece nenhum dos dois grupos que sabe ler e trata como terminal.
+  assertEquals(corpo.status, "pending");
   assertEquals(corpo.qrCode, "QRCODE-DA-RECONSULTA");
+  assertEquals(corpo.qrCodeBase64, "QRBASE64-DA-RECONSULTA");
+  assertEquals(corpo.ticketUrl, "https://www.mercadopago.com.br/sandbox/payments/789/ticket");
   assertEquals(registro.chamadasUpdate, 0);
-  // A metade que faltava provar: reconsulta é GET, sem body. Trocar
-  // consultarPagamento por criarPagamento aqui viraria um POST com corpo —
-  // e cada F5 do cliente geraria uma tentativa de cobrança nova no MP.
+  // A metade que faltava provar: reconsulta é GET, sem body, no endpoint de
+  // ORDER — trocar consultarOrder por criarPagamento/criarOrder aqui viraria
+  // um POST com corpo (nova cobrança a cada F5), e trocar por
+  // consultarPagamento bateria no endpoint clássico errado.
   assertEquals(capturado.method, "GET");
   assertEquals(capturado.body, undefined);
+  assertEquals(capturado.url?.includes("/v1/orders/ORD789"), true);
+});
+
+// --- handler: BLOQUEIO 3 da revisão — pedido em voo no momento do deploy --
+//
+// Pedido criado ANTES da migração para a Orders API tem gateway_payment_id no
+// formato CLÁSSICO (numérico). Reconsultar com consultarOrder (GET
+// /v1/orders/{id}) devolve 404 para esse id — o endpoint novo nunca vai
+// reconhecer um id que nasceu no clássico. Sem fallback, o cliente que perde
+// a aba e volta recebe 404 pra sempre, até o pg_cron expirar e devolver o
+// estoque: a venda se perde mesmo o cliente nunca tendo pagado.
+
+Deno.test("handler: reconsulta com id NOVO (order) resolve pelo Orders sem tocar o endpoint clássico", async () => {
+  // Contraste com o teste de fallback abaixo: aqui o id é de order, a
+  // primeira chamada já responde 200, e o endpoint clássico nunca é tocado.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ gateway_payment_id: "ORD789" });
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const urlsChamadas: string[] = [];
+  const fetchImpl = async (url: string, _init?: RequestInit) => {
+    urlsChamadas.push(url);
+    return new Response(
+      JSON.stringify({
+        id: "ORD789",
+        status: "action_required",
+        status_detail: "waiting_transfer",
+        transactions: {
+          payments: [{ id: "PAY789", payment_method: { qr_code: "QRCODE-ORDER" } }],
+        },
+      }),
+      { status: 200 },
+    );
+  };
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.qrCode, "QRCODE-ORDER");
+  assertEquals(urlsChamadas.length, 1);
+  assertEquals(urlsChamadas[0].includes("/v1/orders/ORD789"), true);
+});
+
+Deno.test("handler: reconsulta com id LEGADO (clássico, numérico) vai DIRETO para /v1/payments — nunca toca a Orders API — e devolve o MESMO QR", async () => {
+  // Correção pós-revisão (CHECKOUT-070): a versão anterior deste teste
+  // codificava a suposição errada de que o MP devolve 404 para um id
+  // clássico na Orders API — o MP devolve 400 `invalid_path_param` (id sem
+  // forma de order), e o fallback por CÓDIGO DE ERRO nunca disparava de
+  // verdade. Este teste prova a discriminação pela FORMA do id: um id
+  // legado nunca gasta uma chamada na Orders API antes de ir para o clássico.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  // Formato do id clássico: numérico, sem o prefixo ORD que a Orders API usa.
+  const pedido = pedidoBase({ gateway_payment_id: "112233445566" });
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const urlsChamadas: string[] = [];
+  const fetchImpl = async (url: string, _init?: RequestInit) => {
+    urlsChamadas.push(url);
+    if (url.includes("/v1/orders/")) {
+      throw new Error(`fetch inesperado nos testes: ${url} — id legado não pode tocar a Orders API`);
+    }
+    // /v1/payments/{id} — o endpoint clássico, formato clássico de resposta.
+    return new Response(
+      JSON.stringify({
+        id: 112233445566,
+        status: "pending",
+        point_of_interaction: {
+          transaction_data: {
+            qr_code: "QRCODE-CLASSICO",
+            qr_code_base64: "QRBASE64-CLASSICO",
+            ticket_url: "https://www.mercadopago.com.br/payments/112233445566/ticket",
+          },
+        },
+      }),
+      { status: 200 },
+    );
+  };
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.paymentId, "112233445566");
+  assertEquals(corpo.status, "pending");
+  assertEquals(corpo.qrCode, "QRCODE-CLASSICO");
+  assertEquals(corpo.qrCodeBase64, "QRBASE64-CLASSICO");
+  assertEquals(corpo.ticketUrl, "https://www.mercadopago.com.br/payments/112233445566/ticket");
+  // A prova que importa: UMA chamada só, direto ao clássico — nunca à
+  // Orders API antes.
+  assertEquals(urlsChamadas.length, 1);
+  assertEquals(urlsChamadas[0].includes("/v1/payments/112233445566"), true);
 });
 
 Deno.test("handler: pedido sem cobrança existente cria uma nova e grava gateway_payment_id", async () => {
@@ -629,6 +784,353 @@ Deno.test("handler: pedido sem cobrança existente cria uma nova e grava gateway
     ["payment_status", "aguardando"],
     ["gateway_payment_id", null],
   ]);
+});
+
+// --- handler: Tarefa 2 (CHECKOUT-070) — migração de PIX para a Orders API -
+
+Deno.test("handler: PIX monta o corpo Orders — total_amount string, expiração PT30M e processing_mode automatic", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ total: 149.9 });
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const capturado: { corpo?: Record<string, unknown> } = {};
+  const fetchImpl = fetchFalsoMP(capturado);
+
+  await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+
+  assertEquals(capturado.corpo?.type, "online");
+  assertEquals(capturado.corpo?.processing_mode, "automatic");
+  assertEquals(capturado.corpo?.total_amount, "149.90");
+  assertEquals(capturado.corpo?.external_reference, UUID);
+  const transacoes = capturado.corpo?.transactions as Record<string, unknown>;
+  const pagamentos = transacoes?.payments as Record<string, unknown>[];
+  assertEquals(pagamentos[0].expiration_time, "PT30M");
+  assertEquals(pagamentos[0].payment_method, { id: "pix", type: "bank_transfer" });
+});
+
+Deno.test("handler: PIX grava gateway_payment_id com o id da ORDER (prefixo ORD), não o do pagamento (prefixo PAY)", async () => {
+  // Achado da Task 1 (CHECKOUT-070): a Orders API não tem endpoint de
+  // reconsulta por id de pagamento — quem sobrevive e se reconsulta é a
+  // order (GET /v1/orders/{id}). Gravar o paymentId aqui faria
+  // confirmar_pagamento nunca casar o id que o webhook manda.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase();
+  const registro: {
+    chamadasUpdate: number;
+    filtrosUpdate?: Array<[string, unknown]>;
+    valoresUpdate?: Record<string, unknown>;
+  } = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const fetchImpl = fetchFalsoMP({});
+
+  await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+
+  assertEquals(registro.valoresUpdate?.gateway_payment_id, "ORD999");
+});
+
+Deno.test("handler: PIX devolve QR, imagem e ticket_url no formato que o front já espera (qrCode, qrCodeBase64, ticketUrl)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase();
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const fetchImpl = fetchFalsoMP({});
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.paymentId, "ORD999");
+  // BLOQUEIO 2 da revisão: mesmo motivo do teste de reconsulta acima — sem
+  // esta asserção, nada prova que o ramo de CRIAÇÃO liga a tradução.
+  assertEquals(corpo.status, "pending");
+  assertEquals(corpo.qrCode, "QRCODE-PADRAO");
+  assertEquals(corpo.qrCodeBase64, "QRBASE64-PADRAO");
+  assertEquals(corpo.ticketUrl, "https://www.mercadopago.com.br/sandbox/payments/999/ticket");
+});
+
+Deno.test("handler: PIX com status desconhecido no ramo de CRIAÇÃO vira 'pending', nunca o par cru — cliente não pode ficar sem 'Tentar de novo' com um QR válido na mão", async () => {
+  // Achado da revisão (BLOQUEIO 2): o default de traduzirStatusOrderParaClassico
+  // (o par cru "status:status_detail") faz o front tratar QUALQUER combinação
+  // que não reconheça como terminal (PagamentoOnline.tsx:189-196). No ramo de
+  // RECONSULTA isso é aceitável (a cobrança já existe há um tempo, pode ter
+  // sido recusada de um jeito novo). No ramo de CRIAÇÃO acabamos de receber
+  // 201 com QR — devolver algo que o front trata como terminal impede o
+  // cliente de pagar uma cobrança que EXISTE. O padrão honesto é 'pending':
+  // o pedido fica 'aguardando' no banco de qualquer jeito, e quem decide a
+  // verdade depois é o webhook/reconciliação, não a tela.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase();
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const fetchImpl = async (_url: string, _init?: RequestInit) =>
+    new Response(
+      JSON.stringify({
+        id: "ORD555",
+        status: "um_status_que_o_mp_ainda_nao_documentou",
+        status_detail: "um_detalhe_novo",
+      }),
+      { status: 201 },
+    );
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.status, "pending");
+});
+
+Deno.test("handler: PIX sem QR na resposta da Orders API devolve 200 com qrCode ausente — não vira erro genérico (ausência ≠ erro)", async () => {
+  // extrairQrCode distingue AUSÊNCIA (order legível, sem QR ainda) de ERRO
+  // (order ilegível). O front (PagamentoOnline.tsx) já sabe lidar com
+  // qrCode/qrCodeBase64 ausentes — igual ao caminho clássico, que também
+  // nunca validava a presença do QR aqui.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase();
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const fetchImpl = async (_url: string, _init?: RequestInit) =>
+    new Response(
+      JSON.stringify({ id: "ORD777", status: "created", status_detail: "created" }),
+      { status: 201 },
+    );
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.paymentId, "ORD777");
+  assertEquals(corpo.qrCode, undefined);
+  assertEquals(corpo.qrCodeBase64, undefined);
+});
+
+Deno.test("handler: o throw de montarCorpoPixOrders (expiração fora da faixa) não vira 500 cru — devolve JSON recuperável, sem chamar o MP", async () => {
+  // montarCorpoPixOrders LANÇA se a expiração faltar ou for inválida — o
+  // arquivo hoje monta uma constante controlada ("PT30M"), mas o comentário
+  // do handler já avisa que "nenhum caminho aqui pode rejeitar" DEIXOU DE
+  // SER VERDADE. `deps.expiracaoPix` é a mesma costura de `deps.fetchImpl`
+  // (ver comentário grande acima de `handler` em index.ts): sem ela não tem
+  // como este teste alcançar o catch sem depender de um bug de verdade no
+  // arquivo.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase();
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  let chamouFetch = false;
+  const fetchImpl = async (_url: string, _init?: RequestInit) => {
+    chamouFetch = true;
+    return new Response(JSON.stringify({ id: "ORD1" }), { status: 201 });
+  };
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+    expiracaoPix: "PT5M", // abaixo do mínimo de 30 — força o throw
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 502);
+  assertEquals(typeof corpo.error, "string");
+  assertEquals(chamouFetch, false);
+});
+
+// BLOQUEIO 1 da revisão (CHECKOUT-070): a detecção de ambiente pelo PREFIXO
+// do token (TEST-/APP_USR-) é NÃO-DISCRIMINANTE — medido nesta sessão que a
+// aplicação "API de Orders" do MP dá um Access Token de TESTE com prefixo
+// APP_USR (75 chars), igual ao de produção. Os dois testes que codificavam
+// essa regra falsa (o de "sandbox troca o e-mail" e o de "produção mantém o
+// e-mail", ambos usando `startsWith`) morreram com a heurística — ela nunca
+// classificava certo, e em produção o ramo `true` nem chegava a nunca
+// ser 'false' por acidente (ambiente vira CONFIGURAÇÃO, MP_SANDBOX_PAYER_EMAIL,
+// não dedução do formato da credencial.
+Deno.test("handler: MP_SANDBOX_PAYER_EMAIL presente troca o e-mail do pagador e liga payer.first_name = 'APRO'", async () => {
+  // 'APRO' é o valor mágico que a doc oficial de teste de PIX exige
+  // (checkout-api-orders/integration-test/pix) para a order de TESTE
+  // responder como esperado — sem ele o sandbox não simula o fluxo completo.
+  Deno.env.set("MP_ACCESS_TOKEN", "APP_USR-1234567890");
+  Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "sandbox-pix@testuser.com");
+  try {
+    const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" } });
+    const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+    const capturado: { corpo?: Record<string, unknown> } = {};
+    const fetchImpl = fetchFalsoMP(capturado);
+
+    await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+
+    const payer = capturado.corpo?.payer as Record<string, unknown>;
+    assertEquals(payer.email, "sandbox-pix@testuser.com");
+    assertEquals(payer.first_name, "APRO");
+  } finally {
+    // try/finally: se uma asserção falhar antes deste ponto, a variável não
+    // vaza para o teste seguinte (achado da revisão).
+    Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+  }
+});
+
+Deno.test("handler: MP_SANDBOX_PAYER_EMAIL ausente mantém o e-mail real do cliente e não define first_name", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "APP_USR-1234567890");
+  Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+  const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" } });
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const capturado: { corpo?: Record<string, unknown> } = {};
+  const fetchImpl = fetchFalsoMP(capturado);
+
+  await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+
+  const payer = capturado.corpo?.payer as Record<string, unknown>;
+  assertEquals(payer.email, "cliente-real@exemplo.com");
+  assertEquals("first_name" in payer, false);
+});
+
+Deno.test("handler: MP_SANDBOX_PAYER_EMAIL definida e VAZIA se comporta como ausente — mantém o e-mail real e não define first_name", async () => {
+  // BLOQUEIO da revisão: a mesma variável era lida com DUAS semânticas de
+  // vazio a 5 linhas de distância — truthy (:417, "" é AUSENTE, decide não
+  // ligar 'APRO') vs nullish (:424, "" é PRESENTE, `?? String(email)` não
+  // troca por nada). Resultado medido: `payer.email` virava "" — o e-mail
+  // REAL do cliente descartado, sem first_name — e um 400 do MP para toda
+  // venda PIX daquela loja. Realista porque `MP_SANDBOX_PAYER_EMAIL` não é
+  // documentada em lugar nenhum do repositório: quem quiser DESLIGAR o
+  // sandbox pelo painel do Supabase vai limpar o campo, não apagar o
+  // secret — e limpar produz exatamente "".
+  Deno.env.set("MP_ACCESS_TOKEN", "APP_USR-1234567890");
+  Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "");
+  try {
+    const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" } });
+    const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+    const capturado: { corpo?: Record<string, unknown> } = {};
+    const fetchImpl = fetchFalsoMP(capturado);
+
+    await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+
+    const payer = capturado.corpo?.payer as Record<string, unknown>;
+    assertEquals(payer.email, "cliente-real@exemplo.com");
+    assertEquals("first_name" in payer, false);
+  } finally {
+    // try/finally: mesma razão do teste acima — não vazar a variável se uma
+    // asserção falhar antes.
+    Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+  }
+});
+
+Deno.test("handler: MP_SANDBOX_PAYER_EMAIL definida só com espaços/tab se comporta como ausente — mantém o e-mail real e não define first_name", async () => {
+  // HIGIENE da revisão: mesma família do bloqueio de "" acima, gatilho mais
+  // estreito. "   ", "\t" e "email@testuser.com\n" são todos truthy — o
+  // `|| undefined` sozinho NÃO os trata como ausentes, então o lixo (não
+  // uma string vazia) vira `payer.email`, descartando o e-mail real do
+  // cliente. `?.trim() || undefined` fecha a família inteira.
+  Deno.env.set("MP_ACCESS_TOKEN", "APP_USR-1234567890");
+  Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "   ");
+  try {
+    const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" } });
+    const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+    const capturado: { corpo?: Record<string, unknown> } = {};
+    const fetchImpl = fetchFalsoMP(capturado);
+
+    await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+
+    const payer = capturado.corpo?.payer as Record<string, unknown>;
+    assertEquals(payer.email, "cliente-real@exemplo.com");
+    assertEquals("first_name" in payer, false);
+  } finally {
+    Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+  }
+});
+
+Deno.test("handler: MP_SANDBOX_PAYER_EMAIL presente avisa por log qual e-mail está substituindo o do cliente", async () => {
+  // ANOTADO 1 da revisão: com a variável setada num deploy de PRODUÇÃO
+  // (o gatilho real é o primeiro clone que copiar env de um deploy de
+  // desenvolvimento), o e-mail do cliente era trocado em silêncio — zero
+  // linha de log. Nada quebrava alto; só ficava errado.
+  Deno.env.set("MP_ACCESS_TOKEN", "APP_USR-1234567890");
+  Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "qa-interno@ikcous.com.br");
+  const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" } });
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const fetchImpl = fetchFalsoMP({});
+
+  const avisos: unknown[][] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    avisos.push(args);
+  };
+  try {
+    await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+  } finally {
+    console.warn = originalWarn;
+    Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+  }
+
+  const juntos = avisos.map((a) => a.join(" ")).join("\n");
+  assertEquals(juntos.includes("qa-interno@ikcous.com.br"), true);
+  // HIGIENE da revisão: o teste só travava o e-mail de sandbox aparecendo,
+  // não travava o e-mail do CLIENTE não aparecendo. Medido pela revisão em 7
+  // valores diferentes: não aparece — mas sem esta asserção, um regressão
+  // que vazasse o e-mail real do cliente no log (dívida de PII já conhecida
+  // neste repositório) passaria despercebida.
+  assertEquals(juntos.includes("cliente-real@exemplo.com"), false);
+});
+
+// --- traduzirStatusOrderParaClassico: o front lê `r.status` contra o
+// vocabulário CLÁSSICO do MP (PagamentoOnline.tsx:171-188: "rejected" /
+// "cancelled" são terminais; "pending"/"in_process"/"approved"/"authorized"
+// são conhecidos) — não contra o vocabulário da Orders API
+// ("action_required"/"processed"...) nem contra o payment_status do nosso
+// banco (mapearStatusOrder, _shared/mercadopago.ts, é outra tradução, para
+// outro consumidor). Sem esta função, TODA order nova chegaria como
+// "action_required" — que não bate em NENHUM dos dois grupos do front — e o
+// checkout pararia de funcionar de novo, o problema que esta migração existe
+// para resolver.
+
+Deno.test("traduzirStatusOrderParaClassico: waiting_transfer (o estado do PIX recém-criado) vira 'pending', que o front já reconhece como conhecido", () => {
+  assertEquals(
+    traduzirStatusOrderParaClassico("action_required", "waiting_transfer"),
+    "pending",
+  );
+});
+
+Deno.test("traduzirStatusOrderParaClassico: processed + accredited vira 'approved'", () => {
+  assertEquals(traduzirStatusOrderParaClassico("processed", "accredited"), "approved");
+});
+
+Deno.test("traduzirStatusOrderParaClassico: canceled + canceled vira 'cancelled' — o front trata como terminal", () => {
+  assertEquals(traduzirStatusOrderParaClassico("canceled", "canceled"), "cancelled");
+});
+
+Deno.test("traduzirStatusOrderParaClassico: failed + failed vira 'rejected' — o front trata como terminal", () => {
+  assertEquals(traduzirStatusOrderParaClassico("failed", "failed"), "rejected");
+});
+
+Deno.test("traduzirStatusOrderParaClassico: combinação desconhecida não vira um dos dois grupos conhecidos pelo front, de propósito", () => {
+  const r = traduzirStatusOrderParaClassico("um_status_novo", "um_detalhe_novo");
+  const statusConhecidosDoFront = [
+    "pending",
+    "in_process",
+    "approved",
+    "authorized",
+    "rejected",
+    "cancelled",
+  ];
+  assertEquals(statusConhecidosDoFront.includes(r), false);
+});
+
+Deno.test("traduzirStatusOrderParaClassico: combinação desconhecida aceita um default customizado via opts.desconhecidoComo", () => {
+  // BLOQUEIO 2 da revisão: o ramo de CRIAÇÃO usa isto para nunca devolver o
+  // par cru (que o front trata como terminal) para uma cobrança que acabou
+  // de nascer com 201 — ver o teste do handler logo acima.
+  assertEquals(
+    traduzirStatusOrderParaClassico("um_status_novo", "um_detalhe_novo", {
+      desconhecidoComo: "pending",
+    }),
+    "pending",
+  );
+  // Sem opts, continua devolvendo o par cru — não muda o comportamento já
+  // provado no teste acima para quem não passa nada.
+  assertEquals(
+    traduzirStatusOrderParaClassico("um_status_novo", "um_detalhe_novo"),
+    "um_status_novo:um_detalhe_novo",
+  );
 });
 
 Deno.test("handler: pedido expirado com cobrança existente recusa, não reconsulta", async () => {
@@ -707,6 +1209,66 @@ Deno.test("handler: consulta ao Mercado Pago falhando devolve 502, sem confirmar
   assertEquals(resposta.status, 502);
 });
 
+// --- handler: ANOTADO 2 da revisão — três invariantes certas, sem teste ---
+
+Deno.test("handler: id de ORDER com falha na Orders API (500) NÃO cai para o endpoint clássico — o roteamento é pela FORMA do id, não pelo erro", async () => {
+  // Correção pós-revisão (CHECKOUT-070): o roteamento não olha mais o
+  // código de erro HTTP — olha a FORMA do `gateway_payment_id` (`idEhClassico`,
+  // `_shared/mercadopago.ts`). "ORD500" não é forma clássica (não é só
+  // dígitos), então vai para consultarOrder e fica lá, mesmo se a Orders API
+  // falhar com 500: um id de ORDER nunca é reconhecido pelo endpoint
+  // clássico, e cair nele desperdiçaria uma chamada que sempre falha.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ gateway_payment_id: "ORD500" });
+  const supabase = clienteFalso({ pedido, gravado: null });
+  const urlsChamadas: string[] = [];
+  const fetchImpl = async (url: string, _init?: RequestInit) => {
+    urlsChamadas.push(url);
+    return new Response(JSON.stringify({ message: "Internal Server Error" }), { status: 500 });
+  };
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 502);
+  assertEquals(corpo.terminal, undefined);
+  // A prova que importa: só UMA chamada, ao endpoint de order — nunca tenta
+  // o clássico para um erro que não é 404.
+  assertEquals(urlsChamadas.length, 1);
+  assertEquals(urlsChamadas[0].includes("/v1/orders/ORD500"), true);
+});
+
+Deno.test("handler: id legado com falha no clássico devolve erro SEM terminal — continua recuperável, sem tocar a Orders API", async () => {
+  // Mutação da revisão: acrescentar `terminal: true` neste ponto de retorno
+  // (o `if (!classico.ok) return json({ error: classico.erro }, 502)` do
+  // ramo legado) passa despercebida sem este teste. Nada foi gravado no
+  // pedido — o ramo é só consulta —, então um retry é seguro assim que o MP
+  // responder; marcar como definitivo prenderia o cliente sem "Tentar de
+  // novo" por um soluço passageiro do gateway.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ gateway_payment_id: "112233445566" });
+  const supabase = clienteFalso({ pedido, gravado: null });
+  const fetchImpl = async (url: string, _init?: RequestInit) => {
+    if (url.includes("/v1/orders/")) {
+      throw new Error(`fetch inesperado nos testes: ${url} — id legado não pode tocar a Orders API`);
+    }
+    // /v1/payments/{id} — o endpoint clássico falha.
+    return new Response(JSON.stringify({ message: "Internal Server Error" }), { status: 500 });
+  };
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 502);
+  assertEquals(corpo.terminal, undefined);
+});
+
 // --- handler: a regra fechada PELA RAIZ, não ponto a ponto ----------------
 //
 // CHECKOUT-050 (#194), achado da revisão final: cada teste acima cobre UM
@@ -752,6 +1314,16 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
         "no pedido, retry é seguro",
     ],
     [
+      // BLOQUEIO 3 da revisão (CHECKOUT-070): o fallback para o endpoint
+      // clássico (consultarPagamento) quando consultarOrder devolve 404 (id
+      // legado, criado antes desta migração). Mesma categoria de "r.erro"
+      // acima — o MP não respondeu (desta vez pelo caminho clássico), nada
+      // foi gravado, retry é seguro.
+      "classico.erro",
+      "o Mercado Pago não respondeu pelo endpoint clássico (fallback de id " +
+        "legado); nada foi gravado no pedido, retry é seguro",
+    ],
+    [
       "Este pedido já tem uma cobrança gerada.",
       "a corrida do UPDATE já resolveu; a PRÓXIMA chamada converge sozinha " +
         "pelo caminho 'reconsultar'",
@@ -760,6 +1332,27 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
       "Não foi possível confirmar a cobrança.",
       "causa não gravada pela releitura; a chave de idempotência protege " +
         "contra cobrança duplicada num novo retry",
+    ],
+    [
+      // Tarefa 2 (CHECKOUT-070): montarCorpoPixOrders LANÇA se a expiração
+      // faltar ou for inválida. Aqui ela nasce de uma constante controlada
+      // por ESTE arquivo ("PT30M") — um throw só acontece por bug de
+      // configuração deste servidor, nunca por entrada do cliente, mesma
+      // categoria de "Pagamento indisponível." acima. Nada foi cobrado nem
+      // gravado quando isto acontece (o catch está ANTES de chamar o MP).
+      "Não foi possível gerar a cobrança.",
+      "montarCorpoPixOrders rejeitou a expiração — bug de configuração " +
+        "deste servidor, não do pedido; nada foi cobrado ainda",
+    ],
+    [
+      // Defensivo: criarOrder já garante que a resposta 2xx tem `id`, então
+      // extrairQrCode só devolveria orderId nulo se a ORDER em si vier
+      // ilegível (null/undefined/não-objeto) — o que criarOrder também já
+      // trata como falha. Praticamente inalcançável, mas sem isto um bug de
+      // formato na resposta do MP gravaria gateway_payment_id = "null"
+      // (String(null)) em vez de recusar.
+      "Resposta inválida do gateway.",
+      "a ORDER 2xx não trouxe um id utilizável; nada foi gravado, retry é seguro",
     ],
   ]);
 
@@ -803,11 +1396,25 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // muda só quando um ponto de retorno é acrescentado ou removido de
   // propósito — o que É a enumeração pedida, não um acidente de estilo.
   //
-  // 13, não mais 12: o antigo `if (error || !pedido) ...` (um só ponto de
-  // retorno) virou dois — falha de LEITURA (503) e "não existe" (404) —
-  // porque as duas causas eram opostas e tinham que responder diferente
-  // (achado da revisão do CHECKOUT-050, #194).
-  assertEquals(achados, 13);
+  // 17, não mais 16: BLOQUEIO 3 da revisão (CHECKOUT-070) acrescentou o
+  // fallback para o endpoint clássico dentro do ramo "reconsultar" — um
+  // `if (!classico.ok) return json({ error: classico.erro }, 502);` novo,
+  // que só existe para o id LEGADO (criado antes desta migração) que o
+  // Orders API não reconhece.
+  //
+  // 16, não mais 13: a Tarefa 2 (CHECKOUT-070, migração de PIX para a Orders
+  // API) split o ramo "criar" em PIX/Orders e cartão/clássico — cada um com
+  // seu próprio `if (!r.ok) return json({ error: r.erro }, 502);` (mais um
+  // "r.erro" do que antes, quando os dois métodos compartilhavam o mesmo
+  // ponto de retorno) — e acrescentou dois pontos de retorno NOVOS,
+  // exclusivos do caminho PIX: o catch do throw de montarCorpoPixOrders
+  // (502, "Não foi possível gerar a cobrança.") e a defesa contra ORDER 2xx
+  // sem id utilizável (502, "Resposta inválida do gateway."). Antes: 13, não
+  // mais 12 — o antigo `if (error || !pedido) ...` (um só ponto de retorno)
+  // virou dois — falha de LEITURA (503) e "não existe" (404) — porque as
+  // duas causas eram opostas e tinham que responder diferente (achado da
+  // revisão do CHECKOUT-050, #194).
+  assertEquals(achados, 17);
 });
 
 // CHECKOUT-050 (#194), achado por mutação: o teste acima só casa o helper
