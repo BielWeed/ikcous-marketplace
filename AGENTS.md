@@ -125,8 +125,11 @@ npm run size
 
 Duas leituras que enganam:
 
-- **`eslint` tem 553 warnings pré-existentes e 0 erro.** Warning não reprova; **erro novo
-  reprova**, porque o teto do `.lint-baseline.json` está em 0.
+- **`eslint` tem 553 warnings pré-existentes e 0 erro — os dois são tetos, e os dois reprovam se
+  subirem.** `scripts/lint-ratchet.mjs` reprova (`process.exit(1)`) qualquer contagem, erro ou
+  warning, que suba acima do teto de `.lint-baseline.json`. Warning **pré-existente** (dentro do
+  teto de 553) não reprova; warning **novo** reprova igual a erro novo (teto 0). "Warning não
+  reprova" só vale para o que já estava contado no teto, não para warning que seu diff introduz.
 - **`lint:ratchet` acusa Biome acima do teto no Windows por causa de CRLF.** O próprio script
   avisa que Biome só é cobrado no CI (Linux). Não é dívida.
 

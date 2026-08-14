@@ -88,8 +88,15 @@ Duas armadilhas medidas neste repositório:
 - **Biome no `lint:ratchet` mente no Windows.** Ele conta erro de CRLF que não existe no Linux do
   CI. Se o relatório disser `biome errors subiu`, **não é dívida sua** — o próprio script imprime
   "não cobrado fora do CI". O que você tem que manter em zero é `eslint errors`.
-- **`eslint` devolve 553 warnings pré-existentes.** Warning não reprova. Erro reprova, e o teto do
-  `.lint-baseline.json` está em 0.
+- **`eslint` devolve 553 warnings pré-existentes e 0 erro — os dois são tetos, e os dois reprovam
+  se subirem.** `scripts/lint-ratchet.mjs` sai com `process.exit(1)` para **qualquer** contagem
+  acima do teto de `.lint-baseline.json`; não há tratamento especial para warning. O que o teto de
+  553 acomoda é a dívida **pré-existente** — warning que já existia não reprova, porque já está
+  contado. **Warning novo reprova igual a erro novo.** Não suba o teto para acomodar o seu diff:
+  corrija o que você introduziu.
+- **Se o seu diff toca `supabase/functions/`, você TEM de rodar `lint:ratchet`** — o eslint é o
+  único dos sete comandos que olha essa pasta. `typecheck`, `build` e `size` não enxergam
+  `supabase/`, então uma suíte de Deno verde não prova nada sobre lint ali.
 
 ## Limites — e o que neste projeto é perigoso
 
