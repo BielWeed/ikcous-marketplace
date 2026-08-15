@@ -144,47 +144,43 @@ export function montarCorpoCartao(args: {
 }
 
 /**
- * TABELA ÚNICA status+status_detail → destino, para os DOIS consumidores que
- * partem do mesmo par da Orders API: `mapearStatusOrder` (abaixo, →
- * `payment_status` deste banco) e `traduzirStatusOrderParaClassico`
- * (`criar-pagamento/index.ts`, → vocabulário CLÁSSICO que o front já lê).
+ * TABELA ÚNICA status+status_detail → `payment_status` deste banco. Único
+ * consumidor hoje: `mapearStatusOrder` (abaixo). Até CHECKOUT-080 também
+ * alimentava `traduzirStatusOrderParaClassico` (`criar-pagamento/index.ts`),
+ * que traduzia para o vocabulário CLÁSSICO do MP que o front lia — essa
+ * segunda tradução foi apagada porque `criar-pagamento` passou a emitir o
+ * MESMO `payment_status` deste banco para o front, fechando a divergência de
+ * vocabulário entre backend e tela (issue CHECKOUT-080, #213).
  *
- * Achado da revisão do PR (Tarefa 2, CHECKOUT-070): antes desta tabela os
- * dois mapas viviam em ARQUIVOS DIFERENTES, cada um com o próprio switch
- * sobre o mesmo par — e já tinham divergido em 6 pares (estornos,
- * chargeback, `expired`, que só existiam no mapa do banco). É o defeito #53
- * deste repositório (a mesma regra escrita em mais de um lugar) se repetindo
- * dentro da MESMA função de negócio: quem adicionasse um par novo num dos
- * dois esqueceria do outro. Uma tabela só, dois leitores finos dela.
- *
- * `front` fica AUSENTE (chave nem existe no objeto) para os pares que o
- * vocabulário clássico do front não tem como representar (estornos,
- * chargeback, `expired`) — de propósito: `traduzirStatusOrderParaClassico`
- * trata ausência como "combinação desconhecida" e cai no próprio default
- * (nunca um palpite), exatamente o que o switch antigo já fazia ao não
- * listar esses casos.
+ * A tabela continua ÚNICA mesmo com um consumidor só: é o achado que
+ * sobrevive à mudança acima. Achado da revisão do PR (Tarefa 2,
+ * CHECKOUT-070): antes desta tabela existir, os dois mapas (o deste arquivo
+ * e o que hoje foi removido de `criar-pagamento/index.ts`) viviam em
+ * ARQUIVOS DIFERENTES, cada um com o próprio switch sobre o mesmo par — e já
+ * tinham divergido em 6 pares (estornos, chargeback, `expired`, que só
+ * existiam no mapa do banco). É o defeito #53 deste repositório (a mesma
+ * regra escrita em mais de um lugar) se repetindo dentro da MESMA função de
+ * negócio. Um segundo consumidor pode voltar a existir amanhã; a tabela não
+ * volta a ser reescrita por lugar quando isso acontecer.
  */
-export const MAPA_STATUS_ORDER: Record<
-  string,
-  { banco: string; front?: string }
-> = {
-  "processed:accredited": { banco: "pago", front: "approved" },
-  "created:created": { banco: "aguardando", front: "pending" },
-  "processing:in_process": { banco: "aguardando", front: "pending" },
-  "action_required:waiting_payment": { banco: "aguardando", front: "pending" },
-  "action_required:waiting_capture": { banco: "aguardando", front: "pending" },
+export const MAPA_STATUS_ORDER: Record<string, string> = {
+  "processed:accredited": "pago",
+  "created:created": "aguardando",
+  "processing:in_process": "aguardando",
+  "action_required:waiting_payment": "aguardando",
+  "action_required:waiting_capture": "aguardando",
   // waiting_transfer é o estado do PIX recém-criado — o mais comum em produção.
-  "action_required:waiting_transfer": { banco: "aguardando", front: "pending" },
-  "processed:partially_refunded": { banco: "estornado" },
-  "refunded:refunded": { banco: "estornado" },
-  "charged_back:in_process": { banco: "estornado" },
-  "charged_back:settled": { banco: "estornado" },
-  "charged_back:reimbursed": { banco: "estornado" },
+  "action_required:waiting_transfer": "aguardando",
+  "processed:partially_refunded": "estornado",
+  "refunded:refunded": "estornado",
+  "charged_back:in_process": "estornado",
+  "charged_back:settled": "estornado",
+  "charged_back:reimbursed": "estornado",
   // Mesmo rótulo que o mapearStatus clássico dá para 'cancelled': este banco
   // não tem um valor 'cancelado' separado de 'recusado'.
-  "canceled:canceled": { banco: "recusado", front: "cancelled" },
-  "failed:failed": { banco: "recusado", front: "rejected" },
-  "expired:expired": { banco: "expirado" },
+  "canceled:canceled": "recusado",
+  "failed:failed": "recusado",
+  "expired:expired": "expirado",
 };
 
 /**
@@ -211,7 +207,7 @@ export function mapearStatusOrder(
   statusDetail: string,
 ): string | null {
   if (typeof status !== "string" || typeof statusDetail !== "string") return null;
-  return MAPA_STATUS_ORDER[`${status}:${statusDetail}`]?.banco ?? null;
+  return MAPA_STATUS_ORDER[`${status}:${statusDetail}`] ?? null;
 }
 
 /**

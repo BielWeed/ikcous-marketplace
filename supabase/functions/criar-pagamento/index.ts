@@ -57,7 +57,8 @@ import {
   extrairDataExpiracaoOrder,
   extrairQrCode,
   idEhClassico,
-  MAPA_STATUS_ORDER,
+  mapearStatus,
+  mapearStatusOrder,
   minutosDaExpiracaoPix,
   montarCorpoCartao,
   montarCorpoPixOrders,
@@ -211,49 +212,6 @@ export function subDoToken(authorization: string | null): string | null {
   } catch {
     return null;
   }
-}
-
-/**
- * Traduz status+status_detail da Orders API para o vocabulário CLÁSSICO de
- * status de pagamento do MP ("pending", "approved", "rejected",
- * "cancelled"…) — NÃO para o `payment_status` do nosso banco (essa tradução
- * já existe em `mapearStatusOrder`, `_shared/mercadopago.ts`, e serve a outro
- * consumidor). Leitor fino de `MAPA_STATUS_ORDER` (`_shared/mercadopago.ts`)
- * — QUALIDADE 1 da revisão do PR: antes desta tabela, esta função e
- * `mapearStatusOrder` viviam em arquivos diferentes com o próprio switch cada
- * uma sobre o mesmo par, e já tinham divergido em 6 pares. Uma tabela só,
- * dois leitores.
- *
- * POR QUE ISTO EXISTE: o front (PagamentoOnline.tsx:171-188) já sabe ler
- * `r.status` — mas contra o vocabulário CLÁSSICO ("rejected"/"cancelled" são
- * terminais; "pending"/"in_process"/"approved"/"authorized" são conhecidos),
- * porque essa checagem nasceu com o caminho clássico e migrar o front está
- * fora do escopo desta tarefa (Tarefa 2, CHECKOUT-070 — só a edge function).
- * Sem esta tradução, TODA order PIX nova chegaria com status
- * "action_required" — que não bate em NENHUM dos dois grupos que o front
- * conhece — e o front trataria toda cobrança recém-criada como "Não foi
- * possível confirmar o pagamento.", terminal: exatamente o problema que esta
- * migração existe para resolver, só que reintroduzido de um jeito novo.
- *
- * Combinação desconhecida devolve o par cru "status:status_detail" por
- * padrão — nunca um dos dois grupos conhecidos por engano — para o front
- * tratar como "status novo do MP" (mesma regra do `mapearStatusOrder`: nunca
- * um palpite). `opts.desconhecidoComo` deixa o CHAMADOR pedir um default
- * diferente — usado só pelo ramo de CRIAÇÃO (ver comentário lá).
- */
-export function traduzirStatusOrderParaClassico(
-  status: string,
-  statusDetail: string,
-  opts?: { desconhecidoComo?: string },
-): string {
-  const entrada = MAPA_STATUS_ORDER[`${status}:${statusDetail}`];
-  if (entrada?.front) return entrada.front;
-  // BLOQUEIO 2 da revisão (CHECKOUT-070): `opts.desconhecidoComo` existe só
-  // para o ramo de CRIAÇÃO poder pedir 'pending' em vez do par cru — ver o
-  // comentário grande no chamador, mais abaixo, sobre por que devolver o par
-  // cru ali é o pior desfecho possível para uma cobrança que acabou de
-  // nascer com 201.
-  return opts?.desconhecidoComo ?? `${status}:${statusDetail}`;
 }
 
 /**
@@ -414,9 +372,18 @@ async function handler(
       return json(
         {
           paymentId: classico.id,
-          // Já vem no vocabulário CLÁSSICO — consultarPagamento fala com o
-          // endpoint clássico, que nunca precisou de tradução.
-          status: classico.status,
+          // CHECKOUT-080 (#213): antes desta tarefa isto devolvia
+          // `classico.status` CRU, sem tradução nenhuma — o front agora só
+          // conhece o conjunto fechado do banco ('aguardando'/'pago'/
+          // 'recusado'/'expirado'/'estornado'), então um pedido com cobrança
+          // LEGADA (id clássico, numérico) cairia em terminal para todo
+          // status que não fosse cru-igual a um valor do banco por
+          // coincidência de nome. `mapearStatus` é o MESMO tradutor que
+          // `webhook-mercadopago`/`reconciliar-pagamentos` já usam para o
+          // vocabulário clássico — `?? classico.status` é só a rede de
+          // segurança para um status que nem esse mapa conhece (nunca um
+          // palpite: o front trata como desconhecido e recusa fechado).
+          statusPagamento: mapearStatus(classico.status) ?? classico.status,
           expiraEm: pedido.expires_at,
           qrCode: classico.qrCode,
           qrCodeBase64: classico.qrCodeBase64,
@@ -441,14 +408,21 @@ async function handler(
     return json(
       {
         paymentId: extraido?.orderId ?? idGatewayReconsulta,
-        // Traduzido para o vocabulário CLÁSSICO que o front já sabe ler
-        // (ver traduzirStatusOrderParaClassico) — igual ao ramo de criação,
+        // CHECKOUT-080 (#213): traduzido para o conjunto fechado que este
+        // banco já usa ('aguardando'/'pago'/'recusado'/'expirado'/
+        // 'estornado' — mapearStatusOrder, `_shared/mercadopago.ts`), não
+        // mais para o vocabulário clássico do MP. Igual ao ramo de criação,
         // abaixo. Se a cobrança existente foi recusada, o cliente vê
-        // 'rejected' e a Task 5 decide o que mostrar.
-        status: traduzirStatusOrderParaClassico(
-          String(statusObjeto.status ?? ""),
-          String(statusObjeto.status_detail ?? ""),
-        ),
+        // 'recusado' e PagamentoOnline.tsx decide o que mostrar. Par
+        // desconhecido devolve o par CRU "status:status_detail" por
+        // padrão — igual a hoje — o que NÃO bate em nenhum valor do
+        // conjunto fechado, e o front trata como terminal: é o desfecho
+        // certo para um status que o MP inventou depois desta migração.
+        statusPagamento:
+          mapearStatusOrder(
+            String(statusObjeto.status ?? ""),
+            String(statusObjeto.status_detail ?? ""),
+          ) ?? `${String(statusObjeto.status ?? "")}:${String(statusObjeto.status_detail ?? "")}`,
         // O prazo sai da LINHA DO BANCO, igual ao ramo de criação.
         expiraEm: pedido.expires_at,
         // AUSÊNCIA (order legível, sem QR ainda) não é ERRO — extrairQrCode
@@ -593,23 +567,23 @@ async function handler(
     // consultarOrder, e o comentário de extrairQrCode em
     // _shared/mercadopago.ts).
     //
-    // BLOQUEIO 2 da revisão (CHECKOUT-070): `desconhecidoComo: "pending"`
-    // SÓ neste ramo (o de reconsulta continua com o default cru). O MP
-    // acabou de responder 201 — a cobrança EXISTE e tem QR. O default cru
-    // desta função (o par "status:status_detail") não bate em nenhum dos
-    // grupos que o front conhece, e PagamentoOnline.tsx trata QUALQUER
+    // BLOQUEIO 2 da revisão (CHECKOUT-070), vocabulário atualizado na
+    // CHECKOUT-080 (#213): default `"aguardando"` SÓ neste ramo (o de
+    // reconsulta continua com o default cru, ver acima). O MP acabou de
+    // responder 201 — a cobrança EXISTE e tem QR. O default cru deste
+    // arquivo (o par "status:status_detail") não bate em nenhum valor do
+    // conjunto fechado que PagamentoOnline.tsx conhece, e ela trata QUALQUER
     // status desconhecido como terminal ("Não foi possível confirmar o
     // pagamento."). Devolver isso aqui prenderia o cliente com um QR válido
     // na mão e nenhum jeito de tentar de novo — exatamente o problema que
-    // esta migração existe para resolver, reintroduzido. 'pending' é o
+    // esta migração existe para resolver, reintroduzido. 'aguardando' é o
     // default honesto: o pedido fica 'aguardando' no banco de qualquer
     // jeito, e quem decide a verdade depois é o webhook/reconciliação
     // (Tarefas 3-4), não esta resposta.
-    statusCru = traduzirStatusOrderParaClassico(
+    statusCru = mapearStatusOrder(
       String((r.order as Record<string, unknown>).status ?? ""),
       String((r.order as Record<string, unknown>).status_detail ?? ""),
-      { desconhecidoComo: "pending" },
-    );
+    ) ?? "aguardando";
     qrCode = extraido.qrCode ?? undefined;
     qrCodeBase64 = extraido.qrCodeBase64 ?? undefined;
     ticketUrl = extraido.ticketUrl ?? undefined;
@@ -685,7 +659,20 @@ async function handler(
     if (!r.ok) return json({ error: r.erro }, 502);
 
     idGateway = r.id;
-    statusCru = r.status;
+    // Achado da revisão da CHECKOUT-080 (#213): antes desta correção este
+    // ramo atribuía `r.status` CRU (vocabulário clássico do MP) direto a
+    // `statusCru` — que vira `statusPagamento` na resposta lá embaixo. O
+    // ramo é INALCANÇÁVEL hoje (`body.metodo !== "pix"` recusa com 400 antes
+    // da leitura do pedido, então `else` nunca executa em produção), mas
+    // fica mantido de propósito para quando o cartão for religado (Fase
+    // 3.5) — e nesse dia um "approved" cru não bateria em nenhum valor do
+    // conjunto fechado que PagamentoOnline.tsx conhece, virando terminal
+    // para um cartão que o MP acabou de aprovar e cobrar. `mapearStatus` é o
+    // MESMO tradutor já aplicado ao ramo clássico irmão (reconsulta, acima)
+    // — `?? r.status` é só a rede de segurança para um status que nem esse
+    // mapa conhece (nunca um palpite: o front trata como desconhecido e
+    // recusa fechado).
+    statusCru = mapearStatus(r.status) ?? r.status;
     qrCode = r.qrCode;
     qrCodeBase64 = r.qrCodeBase64;
     ticketUrl = r.ticketUrl;
@@ -753,7 +740,7 @@ async function handler(
   return json(
     {
       paymentId: idGateway,
-      status: statusCru,
+      statusPagamento: statusCru,
       // O prazo sai da LINHA GRAVADA pelo UPDATE acima (`gravado.expires_at`),
       // NUNCA de `pedido.expires_at` — `pedido` foi lido ANTES do UPDATE, e o
       // realinhamento (decisão do dono, 14/08/2026) pode ter mudado o prazo
