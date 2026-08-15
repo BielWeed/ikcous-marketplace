@@ -263,6 +263,53 @@ supabase functions deploy reconciliar-pagamentos --no-verify-jwt --project-ref c
 
 Trocar isso é o erro que já derrubou o OTP uma vez (#162).
 
+### 5.3.1 A ordem de deploy entre `criar-pagamento` e o front (CHECKOUT-080, #213)
+
+A partir da CHECKOUT-080, `criar-pagamento` fala o vocabulário FECHADO do banco no campo
+`statusPagamento` ('aguardando'/'pago'/'recusado'/'expirado'/'estornado') — o campo `status`
+(vocabulário cru do Mercado Pago) que a versão anterior devolvia **deixou de existir na resposta**.
+A function e o front sobem por pipelines diferentes (Supabase CLI x Vercel), então há uma janela
+em que um está na versão nova e o outro na antiga.
+
+**Medido nesta correção, e não como foi suposto ao abrir a tarefa:** as duas direções da janela
+falham FECHADO, e da MESMA forma — não há uma ordem que "evita" a incompatibilidade, porque nas
+duas o campo que o lado desatualizado espera vem `undefined`:
+
+- **Function nova + front antigo.** O front antigo lê `r.status`, que a function nova não manda
+  mais — `undefined` não bate em nenhum valor do vocabulário clássico que o front antigo conhece
+  (`"rejected"`/`"cancelled"`/`"pending"`/`"in_process"`/`"approved"`/`"authorized"`), e ele cai no
+  `throw new ErroPagamentoTerminal("Não foi possível confirmar o pagamento.")` — a mesma rede de
+  segurança do CHECKOUT-080, já existente antes desta tarefa.
+- **Front novo + function antiga.** O front novo lê `r.statusPagamento`, que a function antiga
+  nunca mandou (ela só tinha `status`) — `undefined` de novo, e o front novo cai na MESMA rede de
+  segurança (`statusConhecido` falso, nenhum dos três terminais nomeados bate, vira
+  `"Não foi possível confirmar o pagamento."`), verificada em `tests/front/pagamento-online.test.tsx`
+  ("statusPagamento AUSENTE").
+
+Ou seja: **a premissa de que "o front velho ignora o campo novo e continua lendo `status`" está
+errada** — a function nova não manda mais `status`, então o front velho não tem o que ler, e
+também cai em erro terminal. O resultado final (falha fechada, nada cobrado sem registro, cliente
+vê a mesma mensagem) é o mesmo dos dois lados; a ordem de deploy não encurta essa janela, porque
+as duas direções são igualmente seguras — só mudam qual metade do par (front ou function) fica
+momentaneamente "desatualizada".
+
+**Ainda assim, deploye `criar-pagamento` antes do front**, por convenção (a API sobe antes de quem
+a consome) e porque é a ordem que os outros passos deste documento já seguem (§5.3) — não porque
+ela feche uma janela que a ordem inversa deixaria aberta. Durante a janela, seja qual for a ordem,
+o cliente que tentar pagar vê "Não foi possível confirmar o pagamento." e o pedido continua
+'aguardando' até expirar sozinho em 30 minutos — nenhum pagamento é perdido, nenhum pedido fica
+marcado como pago sem o webhook/reconciliação terem confirmado.
+
+**Mesmo assim, faça os dois deploys em sequência, na mesma sessão, e prefira horário de baixo
+movimento.** "Falha fechada" não quer dizer "sem custo": `criar_pedido_seguro` decrementa o estoque
+já na CRIAÇÃO do pedido, e ele só volta quando o pg_cron chama `devolver_estoque` — então cada
+tentativa frustrada durante a janela segura aquele item por até 30 minutos. Nenhum pagamento se
+perde; o inventário é que fica preso enquanto a janela durar.
+
+**Isto vale para CADA loja clonada deste molde**, em todo upgrade que cruze uma versão de
+`criar-pagamento` que mude o vocabulário do campo `statusPagamento`/`status` — não só nesta
+migração específica.
+
 ### 5.4 O teste de ponta a ponta — e como o PIX de teste é pago
 
 Esta é a parte que o plano não descrevia.

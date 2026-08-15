@@ -105,6 +105,44 @@ async function syncOfflineOrderUpdates(): Promise<boolean> {
 let cachedAdminOrders: Order[] | null = null;
 let cachedAdminTotalOrders = 0;
 
+/**
+ * CHECKOUT-080 (#213): o conjunto fechado que `criar-pagamento` (edge
+ * function) emite no campo `statusPagamento` — o MESMO `payment_status` que
+ * a coluna `marketplace_orders.payment_status` já usa (CHECK constraint
+ * marketplace_orders_payment_status_check). `pago_apos_expirar` fica de
+ * fora de propósito: só a RPC `confirmar_pagamento` produz esse valor,
+ * olhando o estado ATUAL do pedido no banco — `criar-pagamento` não tem
+ * como emitir isso na resposta de uma criação/reconsulta.
+ *
+ * ESCOLHA DE TIPAGEM (relatório da CHECKOUT-080): o campo do retorno de
+ * `criarPagamento`, abaixo, é `statusPagamento: string`, NÃO
+ * `StatusPagamentoConhecido` — mesmo esta união existindo. O ramo de
+ * RECONSULTA da Orders API (`criar-pagamento/index.ts`, par desconhecido)
+ * devolve o par CRU "status:status_detail" quando o MP manda uma
+ * combinação que `mapearStatusOrder` não reconhece; o ramo clássico
+ * devolve o `status` cru do MP quando `mapearStatus` também não reconhece.
+ * Tipar o campo como a união fechada seria dizer ao TypeScript algo que o
+ * runtime não garante — e um `as StatusPagamentoConhecido` no meio do
+ * caminho só esconderia a mentira, não a resolveria. `string` deixa
+ * PagamentoOnline.tsx comparar `statusPagamento` contra os literais deste
+ * conjunto (com "valor desconhecido = terminal" como rede de segurança),
+ * sem o TypeScript prometer algo que a função pode não entregar.
+ *
+ * Achado da revisão da CHECKOUT-080: esta união teve, por uma rodada, um
+ * type guard de pertencimento (`ehStatusPagamentoConhecido`) que NINGUÉM
+ * chamava — e cuja semântica (`"recusado"` é "conhecido") era o OPOSTO da
+ * checagem que `PagamentoOnline.tsx` faz de verdade (lá "conhecido" quer
+ * dizer "pode seguir", e `"recusado"` é justamente um dos terminais). Foi
+ * apagado por isso: superfície morta que mente sobre o próprio nome é pior
+ * que não existir.
+ */
+export type StatusPagamentoConhecido =
+  | "aguardando"
+  | "pago"
+  | "recusado"
+  | "expirado"
+  | "estornado";
+
 export function useOrders(
   enabled = true,
   isAdmin = false,
@@ -1021,7 +1059,16 @@ export function useOrders(
       }
       return data as {
         paymentId: string;
-        status: string;
+        // CHECKOUT-080 (#213): renomeado de `status` — o campo agora fala o
+        // vocabulário FECHADO do banco ('aguardando'/'pago'/'recusado'/
+        // 'expirado'/'estornado'), não mais o vocabulário clássico do MP, e
+        // o nome novo torna impossível confundir com o `status` de PEDIDO
+        // (`OrderStatus`, valores diferentes) que já existe neste mesmo
+        // arquivo. `string`, não `StatusPagamentoConhecido` — ver o
+        // comentário grande de `StatusPagamentoConhecido`, acima: a edge
+        // function pode devolver um par cru para status que ela mesma não
+        // reconhece, e o tipo não pode prometer o que o runtime não garante.
+        statusPagamento: string;
         expiraEm: string;
         qrCode?: string;
         qrCodeBase64?: string;

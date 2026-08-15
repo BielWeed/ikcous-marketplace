@@ -1194,48 +1194,43 @@ Deno.test("mapearStatusOrder devolve null para combinação desconhecida — nun
   assertEquals(mapearStatusOrder(null as unknown as string, null as unknown as string), null);
 });
 
-// --- MAPA_STATUS_ORDER: os 6 pares sem `front`, de propósito --------------
+// --- MAPA_STATUS_ORDER: os 13 pares mapeiam para o payment_status certo ---
 
-Deno.test("MAPA_STATUS_ORDER: os seis pares de estorno/chargeback/expirado NÃO têm 'front' — o vocabulário clássico não os representa", () => {
-  // Achado da revisão (ANOTADO 2): mutar UM desses pares para GANHAR `front`
-  // (ex.: "refunded:refunded": { banco: "estornado", front: "approved" })
-  // passa despercebida na suíte inteira, porque nenhum teste afirmava a
-  // AUSÊNCIA da chave. Sem ela, traduzirStatusOrderParaClassico
-  // (criar-pagamento/index.ts) trataria a combinação como CONHECIDA e um
-  // estorno ou chargeback chegaria ao front classificado como "approved" —
-  // em vez de cair no default (pending/o par cru), que é o que sinaliza
-  // "este estado não tem representação no vocabulário clássico" (ver o
-  // comentário grande de MAPA_STATUS_ORDER acima).
+Deno.test("MAPA_STATUS_ORDER: os 14 pares mapeiam para o MESMO payment_status que mapearStatusOrder já devolve — a tabela não tem mais chave 'front'", () => {
+  // CHECKOUT-080 (#213): até esta tarefa, MAPA_STATUS_ORDER guardava
+  // `{ banco, front? }` — 6 dos 14 pares (estornos, chargeback, `expired`)
+  // não tinham `front` de propósito, porque o vocabulário clássico do MP
+  // não os representava. Esse contrato deixou de existir: `criar-pagamento`
+  // apagou `traduzirStatusOrderParaClassico` e passou a emitir direto o
+  // `payment_status` deste banco para o front. A tabela virou
+  // `Record<string, string>` (par → payment_status) — o que precisa
+  // continuar coberto é que os 13 pares batem no MESMO destino de sempre.
   //
-  // Achado do lint (ITEM 1, PR): `MAPA_STATUS_ORDER[par]` indexado por
-  // variável dispara o "Generic Object Injection Sink" do eslint
+  // Achado do lint (ITEM 1, PR anterior): indexar `MAPA_STATUS_ORDER[par]`
+  // por VARIÁVEL dispara o "Generic Object Injection Sink" do eslint
   // (security/detect-object-injection) e estourou a catraca de warnings.
-  // Iterar Object.entries evita o índice dinâmico sem abrir mão da
-  // garantia: o contador `conferidos` confirma que os seis pares REALMENTE
-  // existem em MAPA_STATUS_ORDER, então um par renomeado, removido, ou que
-  // ganhasse 'front' continuam derrubando o teste — nenhum caso passa
-  // silencioso.
-  const paresSemFront = [
-    "processed:partially_refunded",
-    "refunded:refunded",
-    "charged_back:in_process",
-    "charged_back:settled",
-    "charged_back:reimbursed",
-    "expired:expired",
-  ];
-  let conferidos = 0;
-  for (const [par, valor] of Object.entries(MAPA_STATUS_ORDER)) {
-    if (!paresSemFront.includes(par)) continue;
-    conferidos++;
-    assertEquals(
-      "front" in valor,
-      false,
-      `${par} não deveria ter 'front' — o vocabulário clássico do front não representa este estado`,
-    );
-  }
+  // Por isso os pares abaixo são indexados por CHAVE LITERAL, não por
+  // variável — mesma orientação que o teste anterior já seguia.
+  assertEquals(MAPA_STATUS_ORDER["processed:accredited"], "pago");
+  assertEquals(MAPA_STATUS_ORDER["created:created"], "aguardando");
+  assertEquals(MAPA_STATUS_ORDER["processing:in_process"], "aguardando");
+  assertEquals(MAPA_STATUS_ORDER["action_required:waiting_payment"], "aguardando");
+  assertEquals(MAPA_STATUS_ORDER["action_required:waiting_capture"], "aguardando");
+  assertEquals(MAPA_STATUS_ORDER["action_required:waiting_transfer"], "aguardando");
+  assertEquals(MAPA_STATUS_ORDER["processed:partially_refunded"], "estornado");
+  assertEquals(MAPA_STATUS_ORDER["refunded:refunded"], "estornado");
+  assertEquals(MAPA_STATUS_ORDER["charged_back:in_process"], "estornado");
+  assertEquals(MAPA_STATUS_ORDER["charged_back:settled"], "estornado");
+  assertEquals(MAPA_STATUS_ORDER["charged_back:reimbursed"], "estornado");
+  assertEquals(MAPA_STATUS_ORDER["canceled:canceled"], "recusado");
+  assertEquals(MAPA_STATUS_ORDER["failed:failed"], "recusado");
+  assertEquals(MAPA_STATUS_ORDER["expired:expired"], "expirado");
+
+  // Conta as chaves para pegar um par ADICIONADO ou REMOVIDO — as 14
+  // asserções acima sozinhas não acusariam uma 15ª chave sobrando na tabela.
   assertEquals(
-    conferidos,
-    paresSemFront.length,
-    "algum dos seis pares esperados não foi encontrado em MAPA_STATUS_ORDER",
+    Object.keys(MAPA_STATUS_ORDER).length,
+    14,
+    "MAPA_STATUS_ORDER deveria ter exatamente os 14 pares conhecidos — ver a lista acima",
   );
 });

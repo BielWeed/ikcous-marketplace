@@ -17,7 +17,6 @@ import {
   pareceUuid,
   podeCobrar,
   subDoToken,
-  traduzirStatusOrderParaClassico,
 } from "./index.ts";
 
 const UUID = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
@@ -758,12 +757,14 @@ Deno.test("handler: pedido com cobrança existente reconsulta a ORDER no MP (GET
 
   assertEquals(resposta.status, 200);
   assertEquals(corpo.paymentId, "ORD789");
-  // BLOQUEIO 2 da revisão: a revisão mutou a fiação (trocou as duas chamadas
-  // de traduzirStatusOrderParaClassico pelo status cru) e a suíte ficou 108
-  // passed | 0 failed — nenhum teste do handler afirmava `corpo.status`. Sem
-  // isto, "action_required:waiting_transfer" cru chega ao front, que não
-  // reconhece nenhum dos dois grupos que sabe ler e trata como terminal.
-  assertEquals(corpo.status, "pending");
+  // BLOQUEIO 2 da revisão original: a revisão mutou a fiação (trocou as duas
+  // chamadas de tradução pelo status cru) e a suíte ficou 108 passed | 0
+  // failed — nenhum teste do handler afirmava o campo de status. Sem isto,
+  // "action_required:waiting_transfer" cru chega ao front, que não reconhece
+  // nenhum valor do conjunto fechado e trata como terminal. CHECKOUT-080
+  // (#213): o campo é `statusPagamento`, e o valor é o `payment_status` que
+  // este banco já usa ('aguardando'), não mais o vocabulário clássico do MP.
+  assertEquals(corpo.statusPagamento, "aguardando");
   assertEquals(corpo.qrCode, "QRCODE-DA-RECONSULTA");
   assertEquals(corpo.qrCodeBase64, "QRBASE64-DA-RECONSULTA");
   assertEquals(corpo.ticketUrl, "https://www.mercadopago.com.br/sandbox/payments/789/ticket");
@@ -862,7 +863,15 @@ Deno.test("handler: reconsulta com id LEGADO (clássico, numérico) vai DIRETO p
 
   assertEquals(resposta.status, 200);
   assertEquals(corpo.paymentId, "112233445566");
-  assertEquals(corpo.status, "pending");
+  // CHECKOUT-080 (#213): antes desta tarefa isto era `corpo.status` CRU
+  // ("pending"), sem tradução — o mesmo texto que o MP mandou. Agora o
+  // ramo clássico também emite o conjunto fechado do banco: `mapearStatus`
+  // ("pending" → "aguardando"), o MESMO tradutor que webhook-mercadopago e
+  // reconciliar-pagamentos já usam para este vocabulário. Sem isto, um
+  // cliente com cobrança LEGADA (criada antes da migração para a Orders
+  // API) veria um valor que PagamentoOnline.tsx não reconhece e cairia em
+  // terminal, mesmo com um QR válido na mão.
+  assertEquals(corpo.statusPagamento, "aguardando");
   assertEquals(corpo.qrCode, "QRCODE-CLASSICO");
   assertEquals(corpo.qrCodeBase64, "QRBASE64-CLASSICO");
   assertEquals(corpo.ticketUrl, "https://www.mercadopago.com.br/payments/112233445566/ticket");
@@ -870,6 +879,59 @@ Deno.test("handler: reconsulta com id LEGADO (clássico, numérico) vai DIRETO p
   // Orders API antes.
   assertEquals(urlsChamadas.length, 1);
   assertEquals(urlsChamadas[0].includes("/v1/payments/112233445566"), true);
+});
+
+Deno.test("handler: reconsulta LEGADA traduz 'approved' para 'pago' — prova que o ramo clássico usa mapearStatus, não devolve o status cru", async () => {
+  // CHECKOUT-080 (#213), teste novo: o teste acima já prova que 'pending'
+  // vira 'aguardando'; este prova um segundo valor conhecido (o caminho mais
+  // importante — cobrança JÁ PAGA) para não deixar a tradução do ramo
+  // clássico coberta por coincidência (mapearStatus poderia, em tese, ter
+  // sido escrito para devolver 'pending' cru sem que o teste anterior
+  // acusasse).
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ gateway_payment_id: "998877665544" });
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const fetchImpl = async (_url: string, _init?: RequestInit) =>
+    new Response(
+      JSON.stringify({ id: 998877665544, status: "approved" }),
+      { status: 200 },
+    );
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "pago");
+});
+
+Deno.test("handler: reconsulta LEGADA com status que mapearStatus não conhece devolve o valor CRU — nunca um palpite", async () => {
+  // CHECKOUT-080 (#213), teste novo: `mapearStatus` devolve `null` para
+  // status que não conhece (ver _shared/mercadopago.ts) — o ramo clássico
+  // usa `?? classico.status` como rede de segurança, igual ao comportamento
+  // de hoje para esse caso. O front trata como desconhecido e recusa
+  // fechado (PagamentoOnline.tsx), então devolver o valor cru aqui não é
+  // regressão: é o mesmo "nunca um palpite" que o resto deste arquivo já
+  // segue.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ gateway_payment_id: "998877665544" });
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const fetchImpl = async (_url: string, _init?: RequestInit) =>
+    new Response(
+      JSON.stringify({ id: 998877665544, status: "um_status_classico_novo" }),
+      { status: 200 },
+    );
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "um_status_classico_novo");
 });
 
 Deno.test("handler: pedido sem cobrança existente cria uma nova e grava gateway_payment_id", async () => {
@@ -961,22 +1023,51 @@ Deno.test("handler: PIX devolve QR, imagem e ticket_url no formato que o front j
   assertEquals(corpo.paymentId, "ORD999");
   // BLOQUEIO 2 da revisão: mesmo motivo do teste de reconsulta acima — sem
   // esta asserção, nada prova que o ramo de CRIAÇÃO liga a tradução.
-  assertEquals(corpo.status, "pending");
+  // CHECKOUT-080 (#213): o campo é `statusPagamento`, e o valor é o
+  // `payment_status` deste banco ('aguardando'), não mais o vocabulário
+  // clássico do MP.
+  assertEquals(corpo.statusPagamento, "aguardando");
   assertEquals(corpo.qrCode, "QRCODE-PADRAO");
   assertEquals(corpo.qrCodeBase64, "QRBASE64-PADRAO");
   assertEquals(corpo.ticketUrl, "https://www.mercadopago.com.br/sandbox/payments/999/ticket");
 });
 
-Deno.test("handler: PIX com status desconhecido no ramo de CRIAÇÃO vira 'pending', nunca o par cru — cliente não pode ficar sem 'Tentar de novo' com um QR válido na mão", async () => {
-  // Achado da revisão (BLOQUEIO 2): o default de traduzirStatusOrderParaClassico
-  // (o par cru "status:status_detail") faz o front tratar QUALQUER combinação
-  // que não reconheça como terminal (PagamentoOnline.tsx:189-196). No ramo de
-  // RECONSULTA isso é aceitável (a cobrança já existe há um tempo, pode ter
-  // sido recusada de um jeito novo). No ramo de CRIAÇÃO acabamos de receber
-  // 201 com QR — devolver algo que o front trata como terminal impede o
-  // cliente de pagar uma cobrança que EXISTE. O padrão honesto é 'pending':
-  // o pedido fica 'aguardando' no banco de qualquer jeito, e quem decide a
-  // verdade depois é o webhook/reconciliação, não a tela.
+Deno.test("handler: PIX com par conhecido e recusado no ramo de CRIAÇÃO devolve 'recusado', não o default de 'aguardando'", async () => {
+  // CHECKOUT-080 (#213), teste novo: o default 'aguardando' do ramo de
+  // CRIAÇÃO (ver comentário grande no chamador) só se aplica ao par
+  // DESCONHECIDO — um par CONHECIDO (failed:failed) tem que continuar
+  // batendo em mapearStatusOrder normalmente, nunca caindo no default por
+  // engano.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase();
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const fetchImpl = async (_url: string, _init?: RequestInit) =>
+    new Response(
+      JSON.stringify({ id: "ORD999", status: "failed", status_detail: "failed" }),
+      { status: 201 },
+    );
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "recusado");
+});
+
+Deno.test("handler: PIX com status desconhecido no ramo de CRIAÇÃO vira 'aguardando', nunca o par cru — cliente não pode ficar sem 'Tentar de novo' com um QR válido na mão", async () => {
+  // Achado da revisão (BLOQUEIO 2): o default cru (o par "status:status_
+  // detail") faz o front tratar QUALQUER combinação que não reconheça como
+  // terminal (PagamentoOnline.tsx). No ramo de RECONSULTA isso é aceitável
+  // (a cobrança já existe há um tempo, pode ter sido recusada de um jeito
+  // novo). No ramo de CRIAÇÃO acabamos de receber 201 com QR — devolver
+  // algo que o front trata como terminal impede o cliente de pagar uma
+  // cobrança que EXISTE. CHECKOUT-080 (#213): o padrão honesto é
+  // 'aguardando' — o MESMO valor que a coluna payment_status já recebe no
+  // banco para este pedido — e quem decide a verdade depois é o
+  // webhook/reconciliação, não a tela.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   const pedido = pedidoBase();
   const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
@@ -997,7 +1088,7 @@ Deno.test("handler: PIX com status desconhecido no ramo de CRIAÇÃO vira 'pendi
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
-  assertEquals(corpo.status, "pending");
+  assertEquals(corpo.statusPagamento, "aguardando");
 });
 
 Deno.test("handler: PIX sem QR na resposta da Orders API devolve 200 com qrCode ausente — não vira erro genérico (ausência ≠ erro)", async () => {
@@ -1513,65 +1604,54 @@ Deno.test("handler: MP_SANDBOX_PAYER_EMAIL presente avisa por log qual e-mail es
   assertEquals(juntos.includes("cliente-real@exemplo.com"), false);
 });
 
-// --- traduzirStatusOrderParaClassico: o front lê `r.status` contra o
-// vocabulário CLÁSSICO do MP (PagamentoOnline.tsx:171-188: "rejected" /
-// "cancelled" são terminais; "pending"/"in_process"/"approved"/"authorized"
-// são conhecidos) — não contra o vocabulário da Orders API
-// ("action_required"/"processed"...) nem contra o payment_status do nosso
-// banco (mapearStatusOrder, _shared/mercadopago.ts, é outra tradução, para
-// outro consumidor). Sem esta função, TODA order nova chegaria como
-// "action_required" — que não bate em NENHUM dos dois grupos do front — e o
-// checkout pararia de funcionar de novo, o problema que esta migração existe
-// para resolver.
+// --- CHECKOUT-080 (#213): `traduzirStatusOrderParaClassico` foi apagada —
+// o front lia `r.status` contra o vocabulário CLÁSSICO do MP ("rejected"/
+// "cancelled" terminais; "pending"/"in_process"/"approved"/"authorized"
+// conhecidos), e essa tradução só existia porque migrar o front era escopo
+// de outra tarefa. Agora `criar-pagamento` emite direto o `payment_status`
+// que este banco já usa ('aguardando'/'pago'/'recusado'/'expirado'/
+// 'estornado', o MESMO conjunto que webhook-mercadopago e
+// reconciliar-pagamentos já gravam), no campo `statusPagamento`. A intenção
+// dos testes que existiam aqui (waiting_transfer vira um valor que o front
+// reconhece; default customizado só para quem acabou de receber 201; par
+// desconhecido nunca vira um valor conhecido por engano) sobrevive, só que
+// coberta em outros dois lugares agora:
+//   - a tabela pura (par → payment_status), incluindo os 13 pares e o
+//     `null` para desconhecido, em mercadopago_test.ts ("mapearStatusOrder");
+//   - a fiação por RAMO (qual default cada um usa), nos testes de `handler`
+//     logo acima ("reconsulta LEGADA traduz 'approved'...", "PIX com par
+//     conhecido e recusado no ramo de CRIAÇÃO...", "PIX com status
+//     desconhecido no ramo de CRIAÇÃO vira 'aguardando'...") e no teste
+//     abaixo, que fecha a combinação que faltava: par DESCONHECIDO no ramo
+//     de RECONSULTA.
 
-Deno.test("traduzirStatusOrderParaClassico: waiting_transfer (o estado do PIX recém-criado) vira 'pending', que o front já reconhece como conhecido", () => {
-  assertEquals(
-    traduzirStatusOrderParaClassico("action_required", "waiting_transfer"),
-    "pending",
-  );
-});
+Deno.test("handler: reconsulta (Orders) com par DESCONHECIDO devolve o par CRU 'status:status_detail' — diferente do default 'aguardando' do ramo de CRIAÇÃO", async () => {
+  // Contraste deliberado com "PIX com status desconhecido no ramo de
+  // CRIAÇÃO vira 'aguardando'": aqui a cobrança JÁ EXISTE (gateway_payment_id
+  // preenchido) — não há QR novo em jogo, então o par cru (que o front
+  // trata como terminal) é o desfecho aceitável, igual ao comportamento
+  // de hoje.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ gateway_payment_id: "ORD444" });
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  const fetchImpl = async (_url: string, _init?: RequestInit) =>
+    new Response(
+      JSON.stringify({
+        id: "ORD444",
+        status: "um_status_novo",
+        status_detail: "um_detalhe_novo",
+      }),
+      { status: 200 },
+    );
 
-Deno.test("traduzirStatusOrderParaClassico: processed + accredited vira 'approved'", () => {
-  assertEquals(traduzirStatusOrderParaClassico("processed", "accredited"), "approved");
-});
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
 
-Deno.test("traduzirStatusOrderParaClassico: canceled + canceled vira 'cancelled' — o front trata como terminal", () => {
-  assertEquals(traduzirStatusOrderParaClassico("canceled", "canceled"), "cancelled");
-});
-
-Deno.test("traduzirStatusOrderParaClassico: failed + failed vira 'rejected' — o front trata como terminal", () => {
-  assertEquals(traduzirStatusOrderParaClassico("failed", "failed"), "rejected");
-});
-
-Deno.test("traduzirStatusOrderParaClassico: combinação desconhecida não vira um dos dois grupos conhecidos pelo front, de propósito", () => {
-  const r = traduzirStatusOrderParaClassico("um_status_novo", "um_detalhe_novo");
-  const statusConhecidosDoFront = [
-    "pending",
-    "in_process",
-    "approved",
-    "authorized",
-    "rejected",
-    "cancelled",
-  ];
-  assertEquals(statusConhecidosDoFront.includes(r), false);
-});
-
-Deno.test("traduzirStatusOrderParaClassico: combinação desconhecida aceita um default customizado via opts.desconhecidoComo", () => {
-  // BLOQUEIO 2 da revisão: o ramo de CRIAÇÃO usa isto para nunca devolver o
-  // par cru (que o front trata como terminal) para uma cobrança que acabou
-  // de nascer com 201 — ver o teste do handler logo acima.
-  assertEquals(
-    traduzirStatusOrderParaClassico("um_status_novo", "um_detalhe_novo", {
-      desconhecidoComo: "pending",
-    }),
-    "pending",
-  );
-  // Sem opts, continua devolvendo o par cru — não muda o comportamento já
-  // provado no teste acima para quem não passa nada.
-  assertEquals(
-    traduzirStatusOrderParaClassico("um_status_novo", "um_detalhe_novo"),
-    "um_status_novo:um_detalhe_novo",
-  );
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "um_status_novo:um_detalhe_novo");
 });
 
 Deno.test("handler: pedido expirado com cobrança existente recusa, não reconsulta", async () => {
