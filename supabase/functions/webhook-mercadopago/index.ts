@@ -60,12 +60,12 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
 import {
+  avaliarAssinatura,
   consultarOrder,
   consultarPagamento,
   idEhClassico,
   mapearStatus,
   mapearStatusOrder,
-  validarAssinatura,
 } from "../_shared/mercadopago.ts";
 import {
   carregarChavesVapid,
@@ -247,11 +247,32 @@ async function handler(
   }
   const dataIdStr = String(dataId);
 
+  // O `data.id` da QUERY STRING é uma fonte A MAIS de candidato de
+  // assinatura (ver `avaliarAssinatura`/`construirCandidatosManifesto` em
+  // `_shared/mercadopago.ts`): a doc do MP monta o manifesto sobre o valor
+  // da query, não do corpo. Hoje os dois costumam coincidir, mas usar só o
+  // do corpo e torcer para bater é o MESMO defeito do casing por outra
+  // porta. NÃO usado para decidir rota nem para consultar o MP — isso
+  // continua sendo sempre `dataIdStr` (do corpo), como já era.
+  const dataIdQuery = new URL(req.url).searchParams.get("data.id");
+
+  // Log de ENTRADA, antes de qualquer validação: distingue "chegou e
+  // recusamos" (assinatura inválida) de "nunca chegou" (o MP não notificou).
+  // É o log que teria provado esta causa sem precisar reproduzir o bug.
+  const tsDoHeader = req.headers.get("x-signature")?.match(/(?:^|,)\s*ts=([^,]*)/)?.[1] ?? null;
+  console.log("webhook-mercadopago: notificação recebida", {
+    dataIdCorpo: dataIdStr,
+    dataIdQuery,
+    temXRequestId: req.headers.get("x-request-id") !== null,
+    ts: tsDoHeader,
+  });
+
   // A ÚNICA autenticação: sem ela, quem descobrir a URL forja um "aprovado".
-  const assinaturaOk = await validarAssinatura({
+  const avaliacao = await avaliarAssinatura({
     xSignature: req.headers.get("x-signature"),
     xRequestId: req.headers.get("x-request-id"),
     dataId: dataIdStr,
+    dataIdQuery,
     segredo: Deno.env.get("MP_WEBHOOK_SECRET") ?? "",
     // Number.POSITIVE_INFINITY: a janela de `ts` fica DESLIGADA nesta
     // função. Corrigido em 09/08/2026 (rodada de conserto 1) — a versão
@@ -272,10 +293,29 @@ async function handler(
     // do MP entrega essa checagem desligada por padrão.
     toleranciaSegundos: Number.POSITIVE_INFINITY,
   });
-  if (!assinaturaOk) {
-    console.warn("webhook-mercadopago: assinatura inválida", dataIdStr);
+  if (!avaliacao.valido) {
+    // Log de FALHA: dataId (corpo e query), x-request-id, ts, o v1 recebido
+    // e os primeiros 16 hex de CADA candidato calculado — o que transforma
+    // suspeita em causa provada quando o MP reenviar a notificação real.
+    // NUNCA loga `MP_WEBHOOK_SECRET` — o HMAC é one-way e os identificadores
+    // aqui não são dado de cliente (sem e-mail, sem valor, sem endereço).
+    const v1Recebido = req.headers.get("x-signature")?.match(/(?:^|,)\s*v1=([^,]*)/)?.[1] ?? null;
+    console.warn("webhook-mercadopago: assinatura inválida", {
+      dataIdCorpo: dataIdStr,
+      dataIdQuery,
+      xRequestId: req.headers.get("x-request-id"),
+      ts: tsDoHeader,
+      v1Recebido,
+      candidatos: avaliacao.candidatos,
+    });
     return json({ error: "Assinatura inválida." }, 401);
   }
+  // Log de SUCESSO: qual candidato casou — é esta linha que prova a causa
+  // por inversão quando o MP reenviar a notificação real (a versão anterior
+  // desta função só aceitava "corpo-original" e recusava 100% das
+  // notificações reais da Orders API; ver o comentário de
+  // `avaliarAssinatura` em `_shared/mercadopago.ts`).
+  console.log(`webhook-mercadopago: assinatura válida — manifesto: ${avaliacao.candidatoCasou}`, dataIdStr);
 
   // Depois da migração para a Orders API (CHECKOUT-070, Tarefas 1-2), a
   // confirmação de PIX chega com `type: "order"`, não mais `type: "payment"`

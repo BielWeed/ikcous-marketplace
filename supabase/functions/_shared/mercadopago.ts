@@ -770,7 +770,59 @@ async function interpretarRespostaDePagamento(
 }
 
 /**
- * Valida o x-signature do webhook do Mercado Pago.
+ * Um manifesto candidato de assinatura: o texto exato que vira HMAC, e o
+ * rótulo que identifica de onde saiu o `data.id` e em qual grafia — é esse
+ * rótulo que a chamadora (`webhook-mercadopago`) loga para provar, por
+ * inversão, qual candidato casou (ou nenhum) quando o MP reenviar.
+ */
+export type CandidatoManifesto = { rotulo: string; manifesto: string };
+
+/**
+ * Monta os manifestos candidatos da assinatura, já DEDUPLICADOS pelo TEXTO
+ * do manifesto — não só pelo `dataId`: um id numérico (ex.: "999") tem a
+ * mesma forma em maiúsculas e minúsculas, então "corpo-original" e
+ * "corpo-minusculo" produziriam o MESMO manifesto, e aqui sai só um. Duas
+ * fontes (corpo e query) x duas grafias (original e minúscula) dão até
+ * quatro rótulos brutos; o `Map` por manifesto garante um HMAC por STRING
+ * única — nunca dois cálculos para o mesmo texto.
+ *
+ * Extraída como função pura e síncrona (sem HMAC aqui dentro) para o teste
+ * de deduplicação não depender de `crypto.subtle` nem de `await`.
+ */
+export function construirCandidatosManifesto(args: {
+  dataId: string;
+  dataIdQuery?: string | null;
+  xRequestId: string | null;
+  ts: string;
+}): CandidatoManifesto[] {
+  const { xRequestId, ts } = args;
+  const montar = (id: string): string =>
+    xRequestId ? `id:${id};request-id:${xRequestId};ts:${ts};` : `id:${id};ts:${ts};`;
+
+  const brutos: CandidatoManifesto[] = [
+    { rotulo: "corpo-original", manifesto: montar(args.dataId) },
+    { rotulo: "corpo-minusculo", manifesto: montar(args.dataId.toLowerCase()) },
+  ];
+  if (args.dataIdQuery) {
+    brutos.push(
+      { rotulo: "query-original", manifesto: montar(args.dataIdQuery) },
+      { rotulo: "query-minusculo", manifesto: montar(args.dataIdQuery.toLowerCase()) },
+    );
+  }
+
+  const vistos = new Set<string>();
+  const candidatos: CandidatoManifesto[] = [];
+  for (const candidato of brutos) {
+    if (vistos.has(candidato.manifesto)) continue;
+    vistos.add(candidato.manifesto);
+    candidatos.push(candidato);
+  }
+  return candidatos;
+}
+
+/**
+ * Valida o x-signature do webhook do Mercado Pago, e devolve o diagnóstico
+ * completo (não só o booleano) para quem chama poder logar.
  *
  * E' a UNICA autenticacao que a webhook-mercadopago tem: ela roda com
  * verify_jwt = false porque o MP nao manda JWT. Sem isto, quem descobrir a URL
@@ -782,16 +834,56 @@ async function interpretarRespostaDePagamento(
  * request-id OMITIDO quando o header nao veio, igual ao SDK oficial — e o
  * hash e HMAC-SHA256 do manifesto, comparado ao `v1` em hex.
  *
+ * POR QUE DUAS GRAFIAS, E NÃO UMA (medido em produção 16/08/2026 — um PIX de
+ * R$ 1,00 pago às 18:12 UTC ficou "aguardando" para sempre porque as duas
+ * fontes abaixo se contradizem e este código confiava só numa):
+ *
+ *   - A DOC OFICIAL (checkout-api-orders/notifications, pt-BR/es-MX/en)
+ *     manda passar `data.id` para minúsculas antes do manifesto, com nota
+ *     explícita para ULID de Order. Ela TAMBÉM erra a unidade do `ts`
+ *     (diz milissegundos; o MP manda segundos — issue #458 do
+ *     mercadopago/sdk-nodejs, confirmada).
+ *   - O SDK OFICIAL (Node) nasceu com `.toLowerCase()` (PR #423, maio/2026)
+ *     e teve essa linha REMOVIDA no PR #439, de um contribuidor externo,
+ *     aberto nos 7 SDKs em 34 segundos — a "evidência" do PR foi assinar
+ *     com a regra nova e verificar com a regra nova (raciocínio circular),
+ *     e o diff mexeu no helper de teste (`computeHash`) junto com a
+ *     implementação. ZERO evidência de tráfego real; um comentário anterior
+ *     desta função afirmava o contrário ("o SDK ganha porque foi corrigido
+ *     por observação de tráfego real") e essa afirmação foi verificada e é
+ *     FALSA.
+ *
+ * Com `data.id` numérico as duas regras produzem HMAC IDÊNTICO — por isso o
+ * simulador do painel do MP nunca detectou a divergência — e só divergem
+ * para o ULID ("ORD…") da Orders API, exatamente o caso que quebrou em
+ * produção. Aceitar as duas grafias em vez de apostar em qualquer uma
+ * custa ZERO em segurança: os dois candidatos exigem o MESMO
+ * `MP_WEBHOOK_SECRET`, e quem amarra o pedido não é o `data.id` — é o
+ * `external_reference` que volta da consulta AUTENTICADA ao MP (invariante
+ * nº 1, documentada em `webhook-mercadopago/index.ts:16-24`).
+ *
+ * Também inclui o `data.id` da QUERY STRING como fonte adicional de
+ * candidatos (nas duas grafias): a doc define o manifesto sobre o valor da
+ * query, não do corpo, e prevê o caso de divergência entre os dois
+ * ("if any of the values are not present... remove them from the
+ * manifest"). Depender da coincidência entre corpo e query é o mesmo
+ * defeito do casing, por outra porta.
+ *
  * Pura e com `agora` injetavel para o teste nao depender do relogio.
  */
-export async function validarAssinatura(args: {
+export async function avaliarAssinatura(args: {
   xSignature: string | null;
   xRequestId: string | null;
   dataId: string;
+  dataIdQuery?: string | null;
   segredo: string;
   agora?: number;
   toleranciaSegundos?: number;
-}): Promise<boolean> {
+}): Promise<{
+  valido: boolean;
+  candidatoCasou: string | null;
+  candidatos: Array<{ rotulo: string; hashPrefixo: string }>;
+}> {
   const { xSignature, xRequestId, dataId, segredo } = args;
   const agora = args.agora ?? Date.now();
   // 300s É O DEFAULT DO PARÂMETRO, NÃO O QUE RODA EM PRODUÇÃO: o único
@@ -808,7 +900,9 @@ export async function validarAssinatura(args: {
   // queira provar a expiração em si).
   const tolerancia = args.toleranciaSegundos ?? 300;
 
-  if (!xSignature || !segredo || !dataId) return false;
+  const semCandidatos = { valido: false, candidatoCasou: null, candidatos: [] };
+
+  if (!xSignature || !segredo || !dataId) return semCandidatos;
 
   let ts = "";
   let v1 = "";
@@ -818,33 +912,22 @@ export async function validarAssinatura(args: {
     if (chave?.trim() === "ts") ts = valor;
     if (chave?.trim() === "v1") v1 = valor;
   }
-  if (!ts || !v1) return false;
+  if (!ts || !v1) return semCandidatos;
 
   // `ts` fora da janela: só importa para um chamador que passe uma
   // `toleranciaSegundos` finita — a webhook-mercadopago, o único chamador de
   // produção, desliga isto (ver comentário acima de `tolerancia`).
   const tsNumero = Number(ts);
-  if (!Number.isFinite(tsNumero)) return false;
+  if (!Number.isFinite(tsNumero)) return semCandidatos;
   const idadeSegundos = Math.abs(agora / 1000 - tsNumero);
-  if (idadeSegundos > tolerancia) return false;
+  if (idadeSegundos > tolerancia) return semCandidatos;
 
-  // O segmento de request-id so entra quando o header veio — igual ao
-  // buildManifest do SDK oficial (`if (requestId) parts.push(...)`).
-  //
-  // `dataId` vai COM O CASING ORIGINAL. A documentacao do MP pede minusculas
-  // ("ensuring data.id_url is in lowercase") e ESTA ERRADA: o SDK oficial
-  // REMOVEU o .toLowerCase() de proposito (PR mercadopago/sdk-nodejs#439),
-  // porque o MP assina com o casing original e qualquer id com maiuscula
-  // falhava com SignatureMismatch. Medido em 09/08/2026: com .toLowerCase(),
-  // um dataId "ABC12" assinado como o MP assina e' RECUSADO.
-  //
-  // Nao e' a unica coisa que essa pagina da doc erra: ela tambem diz que o
-  // `ts` vem em milissegundos, e vem em SEGUNDOS (issue #458 do mesmo SDK).
-  // Quando doc e SDK divergirem aqui, o SDK ganha — ele foi corrigido por
-  // observacao de trafego real, a doc nao.
-  const manifesto = xRequestId
-    ? `id:${dataId};request-id:${xRequestId};ts:${ts};`
-    : `id:${dataId};ts:${ts};`;
+  const candidatosManifesto = construirCandidatosManifesto({
+    dataId,
+    dataIdQuery: args.dataIdQuery,
+    xRequestId,
+    ts,
+  });
 
   const chave = await crypto.subtle.importKey(
     "raw",
@@ -853,21 +936,65 @@ export async function validarAssinatura(args: {
     false,
     ["sign"],
   );
-  const assinado = await crypto.subtle.sign(
-    "HMAC",
-    chave,
-    new TextEncoder().encode(manifesto),
-  );
-  const esperado = Array.from(new Uint8Array(assinado))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 
-  // Comparacao de tempo constante: `===` em string vaza, pelo tempo de
-  // resposta, quantos caracteres do prefixo o atacante ja acertou.
-  if (esperado.length !== v1.length) return false;
-  let diferenca = 0;
-  for (let i = 0; i < esperado.length; i++) {
-    diferenca |= esperado.charCodeAt(i) ^ v1.charCodeAt(i);
+  // Cada candidato calcula o HMAC e compara em tempo constante, e o LAÇO
+  // INTEIRO roda sem early-return: nada de `.some()`/`.find()` parando no
+  // primeiro acerto, porque isso faria o tempo total depender de QUAL
+  // candidato bateu — o mesmo vazamento que a comparação char-a-char abaixo
+  // já evita dentro de cada candidato. `casou`/`rotuloCasou` só GUARDAM o
+  // resultado; não interrompem o laço.
+  let casou = false;
+  let rotuloCasou: string | null = null;
+  const diagnostico: Array<{ rotulo: string; hashPrefixo: string }> = [];
+
+  for (const candidato of candidatosManifesto) {
+    const assinado = await crypto.subtle.sign(
+      "HMAC",
+      chave,
+      new TextEncoder().encode(candidato.manifesto),
+    );
+    const hex = Array.from(new Uint8Array(assinado))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    diagnostico.push({ rotulo: candidato.rotulo, hashPrefixo: hex.slice(0, 16) });
+
+    // Comparacao de tempo constante: `===` em string vaza, pelo tempo de
+    // resposta, quantos caracteres do prefixo o atacante ja acertou. O
+    // comprimento diferente já responde `false` sem entrar no laço — não é
+    // segredo, é o mesmo hex.length de sempre (SHA-256 = 64 chars).
+    let bateuEste = hex.length === v1.length;
+    if (bateuEste) {
+      let diferenca = 0;
+      for (let i = 0; i < hex.length; i++) {
+        diferenca |= hex.charCodeAt(i) ^ v1.charCodeAt(i);
+      }
+      bateuEste = diferenca === 0;
+    }
+
+    if (bateuEste && !casou) {
+      casou = true;
+      rotuloCasou = candidato.rotulo;
+    }
   }
-  return diferenca === 0;
+
+  return { valido: casou, candidatoCasou: rotuloCasou, candidatos: diagnostico };
+}
+
+/**
+ * Fachada booleana de `avaliarAssinatura`, para quem só precisa do
+ * sim/não (é o contrato que os testes de `mercadopago_assinatura_test.ts`
+ * já exercitam). `webhook-mercadopago` usa `avaliarAssinatura` diretamente,
+ * porque precisa do diagnóstico para logar.
+ */
+export async function validarAssinatura(args: {
+  xSignature: string | null;
+  xRequestId: string | null;
+  dataId: string;
+  dataIdQuery?: string | null;
+  segredo: string;
+  agora?: number;
+  toleranciaSegundos?: number;
+}): Promise<boolean> {
+  const resultado = await avaliarAssinatura(args);
+  return resultado.valido;
 }

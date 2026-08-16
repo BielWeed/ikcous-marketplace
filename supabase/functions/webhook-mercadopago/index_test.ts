@@ -741,6 +741,86 @@ Deno.test("type irrelevante da lista oficial (point_integration_wh) -> 200, desc
   assertEquals(registro.chamadasRpc.length, 0);
 });
 
+// --- data.id da QUERY STRING entra como candidato de assinatura -----------
+//
+// Até aqui (`requisicaoAssinada`/`requisicao`) TODA requisição de teste é
+// montada sem `?`, então o caminho da query nunca foi exercitado. A doc do
+// MP monta o manifesto sobre `req.query['data.id']`, não sobre o corpo —
+// este teste prova que o candidato da query é REALMENTE usado, não só
+// aceito por coincidir com o do corpo: o corpo chega com o id em
+// MINÚSCULAS (não bate com o que foi assinado nem no casing original nem
+// no minúsculo — os dois colapsam na mesma string), e só o `data.id` da
+// QUERY, em maiúsculas, é o que o MP realmente assinou.
+
+Deno.test("data.id da query string valida quando o corpo sozinho (nas duas grafias) NÃO bateria", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+
+  const ts = Math.floor(Date.now() / 1000);
+  const requestId = "req-123";
+  // O MP assina com o data.id da QUERY (maiúsculo, o ULID canônico).
+  const v1 = await assinar(ID_ORDER_TESTE, ts, requestId, SEGREDO);
+  // O corpo chega com o MESMO id em minúsculas — corpo-original e
+  // corpo-minusculo colapsam na mesma string (já é minúsculo) e NENHUM dos
+  // dois bate com o hash assinado sobre o id maiúsculo.
+  const dataIdCorpo = ID_ORDER_TESTE.toLowerCase();
+  const req = new Request(
+    `http://localhost/webhook-mercadopago?data.id=${ID_ORDER_TESTE}&type=order`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-signature": `ts=${ts},v1=${v1}`,
+        "x-request-id": requestId,
+      },
+      body: JSON.stringify({ type: "order", data: { id: dataIdCorpo } }),
+    },
+  );
+  const fetchImpl = fetchConsulta(200, {
+    id: dataIdCorpo,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, dataIdCorpo);
+  assertEquals(chamadasPush.length, 1);
+});
+
+Deno.test("sem data.id na query, só o do corpo — não-regressão do caminho já coberto", async () => {
+  // Garante que a adição da query não É OBRIGATÓRIA: uma notificação sem
+  // `?data.id=` (ou com a URL que os outros testes já usam) continua
+  // validando pelo corpo sozinho, como sempre validou.
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: 999,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(chamadasPush.length, 1);
+});
+
 Deno.test("RPC devolve 'divergente' ou 'inexistente' -> 200 e console.error acusa, com orderId/paymentId/resultado", async () => {
   for (const resultado of ["divergente", "inexistente"]) {
     const registro = { chamadasRpc: [] };

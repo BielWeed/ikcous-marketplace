@@ -6,7 +6,7 @@
  * descobrir a URL forja um "aprovado" e leva produto de graca.
  */
 import { assert, assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { validarAssinatura } from "./mercadopago.ts";
+import { construirCandidatosManifesto, validarAssinatura } from "./mercadopago.ts";
 
 const SEGREDO = "segredo-de-teste";
 const TS = 1700000000;
@@ -122,4 +122,93 @@ Deno.test("recusa header ausente ou malformado", async () => {
     });
     assertEquals(ok, false, `deveria recusar: ${JSON.stringify(xSignature)}`);
   }
+});
+
+// --- Doc oficial x SDK divergem no casing do data.id (medido 16/08/2026) ---
+//
+// Com `data.id` NUMÉRICO as duas regras (casing original e minúsculas)
+// produzem HMAC IDÊNTICO — por isso o simulador do painel do MP nunca
+// detectou a divergência. Com um `data.id` "ORD…" (ULID da Orders API) elas
+// divergem, e a produção mediu 16/08/2026: o MP assinou em MINÚSCULAS
+// (`ord01m05wbhxhm88rmbj1w0sb9wxf`), este código só aceitava o casing
+// ORIGINAL, e recusou com 401 100% das notificações reais — um PIX de R$
+// 1,00 pago ficou "aguardando" para sempre.
+//
+// Os dois vetores abaixo são hex LITERAL, calculados no Node
+// (`crypto.createHmac`) fora desta implementação — gerar o vetor com o
+// próprio código testado não prova nada (foi exatamente esse o defeito da
+// suíte antes desta correção: `assinar()` em index_test.ts reconstrói o
+// manifesto igual à implementação, então até um teste com id maiúsculo era
+// tautológico).
+
+Deno.test("aceita a grafia MINÚSCULA do dataId — o MP assina 'ORD…' em minúsculas na Orders API", async () => {
+  // Vetor gerado no Node sobre `id:ord01m05wbhxhm88rmbj1w0sb9wxf;request-id:abc-123;ts:1700000000;`
+  // (data.id em minúsculas), com o dataId ORIGINAL (todo maiúsculo, como
+  // chega no corpo do webhook) passado para `validarAssinatura`.
+  const ID_ORD_REAL = "ORD01M05WBHXHM88RMBJ1W0SB9WXF";
+  const V1_MINUSCULO =
+    "a293250b399efcd4adf8f6393d9ef7072d7b3e02e462127fda0f2e3c513ef24e";
+  const ok = await validarAssinatura({
+    xSignature: `ts=${TS},v1=${V1_MINUSCULO}`,
+    xRequestId: REQUEST_ID,
+    dataId: ID_ORD_REAL,
+    segredo: SEGREDO,
+    agora: agoraOk,
+  });
+  assert(ok, "deveria aceitar quando o MP assinou o data.id em minúsculas");
+});
+
+Deno.test("aceita a grafia MINÚSCULA com dataId de caixa MISTA (não só maiúscula)", async () => {
+  // Com um id TODO maiúsculo (teste anterior), uma mutação `.toUpperCase()`
+  // no lugar da normalização certa seria NO-OP e passaria disfarçada — o
+  // teste só provaria metade do contrato. Caixa mista ("OrD01AbC") faz
+  // QUALQUER normalização diferente de minúsculas genuínas derrubar o teste.
+  //
+  // Vetor gerado no Node sobre `id:ord01abc;request-id:abc-123;ts:1700000000;`.
+  const ID_MISTO = "OrD01AbC";
+  const V1_MISTO_MINUSCULO =
+    "a8434918fa1207b804734d6351e9dde31e291650f705f1d64ccb03972e939d04";
+  const ok = await validarAssinatura({
+    xSignature: `ts=${TS},v1=${V1_MISTO_MINUSCULO}`,
+    xRequestId: REQUEST_ID,
+    dataId: ID_MISTO,
+    segredo: SEGREDO,
+    agora: agoraOk,
+  });
+  assert(ok, "deveria aceitar o dataId de caixa mista pela grafia minúscula");
+});
+
+// --- construirCandidatosManifesto: a deduplicação (item 5 do plano) --------
+
+Deno.test("dataId numérico produz UM ÚNICO candidato de manifesto (original e minúsculo colapsam)", () => {
+  const candidatos = construirCandidatosManifesto({
+    dataId: "999",
+    dataIdQuery: null,
+    xRequestId: REQUEST_ID,
+    ts: String(TS),
+  });
+  assertEquals(candidatos.length, 1);
+  assertEquals(candidatos[0].manifesto, `id:999;request-id:${REQUEST_ID};ts:${TS};`);
+});
+
+Deno.test("dataId numérico igual no corpo e na query também produz UM ÚNICO candidato", () => {
+  const candidatos = construirCandidatosManifesto({
+    dataId: "999",
+    dataIdQuery: "999",
+    xRequestId: REQUEST_ID,
+    ts: String(TS),
+  });
+  assertEquals(candidatos.length, 1);
+});
+
+Deno.test("dataId 'ORD…' produz DOIS candidatos (original e minúsculo divergem)", () => {
+  const candidatos = construirCandidatosManifesto({
+    dataId: "ORD01M05WBHXHM88RMBJ1W0SB9WXF",
+    dataIdQuery: null,
+    xRequestId: REQUEST_ID,
+    ts: String(TS),
+  });
+  assertEquals(candidatos.length, 2);
+  const rotulos = candidatos.map((c) => c.rotulo).sort();
+  assertEquals(rotulos, ["corpo-minusculo", "corpo-original"]);
 });
