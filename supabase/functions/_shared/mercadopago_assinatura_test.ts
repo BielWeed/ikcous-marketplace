@@ -179,11 +179,14 @@ Deno.test("aceita a grafia MINÚSCULA com dataId de caixa MISTA (não só maiús
 });
 
 // --- construirCandidatosManifesto: a deduplicação (item 5 do plano) --------
+//
+// Só duas fontes possíveis desde 16/08/2026 (achado BLOQUEANTE de revisão
+// removeu a query string): "corpo-original" e "corpo-minusculo", os dois
+// derivados do MESMO `data.id` do corpo.
 
 Deno.test("dataId numérico produz UM ÚNICO candidato de manifesto (original e minúsculo colapsam)", () => {
   const candidatos = construirCandidatosManifesto({
     dataId: "999",
-    dataIdQuery: null,
     xRequestId: REQUEST_ID,
     ts: String(TS),
   });
@@ -191,20 +194,9 @@ Deno.test("dataId numérico produz UM ÚNICO candidato de manifesto (original e 
   assertEquals(candidatos[0].manifesto, `id:999;request-id:${REQUEST_ID};ts:${TS};`);
 });
 
-Deno.test("dataId numérico igual no corpo e na query também produz UM ÚNICO candidato", () => {
-  const candidatos = construirCandidatosManifesto({
-    dataId: "999",
-    dataIdQuery: "999",
-    xRequestId: REQUEST_ID,
-    ts: String(TS),
-  });
-  assertEquals(candidatos.length, 1);
-});
-
 Deno.test("dataId 'ORD…' produz DOIS candidatos (original e minúsculo divergem)", () => {
   const candidatos = construirCandidatosManifesto({
     dataId: "ORD01M05WBHXHM88RMBJ1W0SB9WXF",
-    dataIdQuery: null,
     xRequestId: REQUEST_ID,
     ts: String(TS),
   });

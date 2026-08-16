@@ -781,17 +781,21 @@ export type CandidatoManifesto = { rotulo: string; manifesto: string };
  * Monta os manifestos candidatos da assinatura, já DEDUPLICADOS pelo TEXTO
  * do manifesto — não só pelo `dataId`: um id numérico (ex.: "999") tem a
  * mesma forma em maiúsculas e minúsculas, então "corpo-original" e
- * "corpo-minusculo" produziriam o MESMO manifesto, e aqui sai só um. Duas
- * fontes (corpo e query) x duas grafias (original e minúscula) dão até
- * quatro rótulos brutos; o `Map` por manifesto garante um HMAC por STRING
- * única — nunca dois cálculos para o mesmo texto.
+ * "corpo-minusculo" produziriam o MESMO manifesto, e aqui sai só um.
+ *
+ * As DUAS grafias saem sempre do `data.id` do CORPO — nunca da query string
+ * (removida em 16/08/2026, achado BLOQUEANTE de revisão: a query é
+ * controlada pelo mesmo atacante que controla o corpo, e todo o
+ * processamento downstream — rota, consulta ao MP, RPC — usa o id do CORPO;
+ * aceitar a query como fonte de manifesto autenticava um campo e usava
+ * outro). A `Map` por manifesto garante um HMAC por STRING única — nunca
+ * dois cálculos para o mesmo texto.
  *
  * Extraída como função pura e síncrona (sem HMAC aqui dentro) para o teste
  * de deduplicação não depender de `crypto.subtle` nem de `await`.
  */
 export function construirCandidatosManifesto(args: {
   dataId: string;
-  dataIdQuery?: string | null;
   xRequestId: string | null;
   ts: string;
 }): CandidatoManifesto[] {
@@ -803,12 +807,6 @@ export function construirCandidatosManifesto(args: {
     { rotulo: "corpo-original", manifesto: montar(args.dataId) },
     { rotulo: "corpo-minusculo", manifesto: montar(args.dataId.toLowerCase()) },
   ];
-  if (args.dataIdQuery) {
-    brutos.push(
-      { rotulo: "query-original", manifesto: montar(args.dataIdQuery) },
-      { rotulo: "query-minusculo", manifesto: montar(args.dataIdQuery.toLowerCase()) },
-    );
-  }
 
   const vistos = new Set<string>();
   const candidatos: CandidatoManifesto[] = [];
@@ -862,12 +860,16 @@ export function construirCandidatosManifesto(args: {
  * `external_reference` que volta da consulta AUTENTICADA ao MP (invariante
  * nº 1, documentada em `webhook-mercadopago/index.ts:16-24`).
  *
- * Também inclui o `data.id` da QUERY STRING como fonte adicional de
- * candidatos (nas duas grafias): a doc define o manifesto sobre o valor da
- * query, não do corpo, e prevê o caso de divergência entre os dois
- * ("if any of the values are not present... remove them from the
- * manifest"). Depender da coincidência entre corpo e query é o mesmo
- * defeito do casing, por outra porta.
+ * NÃO inclui o `data.id` da QUERY STRING (removido em 16/08/2026, achado
+ * BLOQUEANTE de revisão). A doc do MP monta o manifesto sobre o valor da
+ * query, não do corpo, mas a query é um campo que o ATACANTE também
+ * controla — e todo o processamento downstream (rota, consulta ao MP, RPC
+ * `confirmar_pagamento`) usa o `data.id` do CORPO, nunca o da query. Aceitar
+ * a query como fonte extra de candidato permitia satisfazer a assinatura com
+ * um id e processar outro: a assinatura tem de amarrar EXATAMENTE o id que o
+ * handler vai usar, senão ela autentica um campo e o código usa outro — a
+ * prova disso é que a suíte de teste tinha um caso desenhado para barrar
+ * corpo adulterado e ele continuava verde porque não passava id pela query.
  *
  * Pura e com `agora` injetavel para o teste nao depender do relogio.
  */
@@ -875,14 +877,13 @@ export async function avaliarAssinatura(args: {
   xSignature: string | null;
   xRequestId: string | null;
   dataId: string;
-  dataIdQuery?: string | null;
   segredo: string;
   agora?: number;
   toleranciaSegundos?: number;
 }): Promise<{
   valido: boolean;
   candidatoCasou: string | null;
-  candidatos: Array<{ rotulo: string; hashPrefixo: string }>;
+  candidatos: string[];
 }> {
   const { xSignature, xRequestId, dataId, segredo } = args;
   const agora = args.agora ?? Date.now();
@@ -924,7 +925,6 @@ export async function avaliarAssinatura(args: {
 
   const candidatosManifesto = construirCandidatosManifesto({
     dataId,
-    dataIdQuery: args.dataIdQuery,
     xRequestId,
     ts,
   });
@@ -945,7 +945,14 @@ export async function avaliarAssinatura(args: {
   // resultado; não interrompem o laço.
   let casou = false;
   let rotuloCasou: string | null = null;
-  const diagnostico: Array<{ rotulo: string; hashPrefixo: string }> = [];
+  // Só os RÓTULOS dos candidatos tentados — sem hash nem prefixo dele. Um
+  // prefixo de 16 hex por candidato, junto com o resto do manifesto (id,
+  // request-id, ts, todos previsíveis), monta um oráculo de verificação
+  // offline do `MP_WEBHOOK_SECRET` (achado de revisão, 16/08/2026):
+  // inviável na prática pela entropia do segredo, mas sem motivo para expor
+  // e sem plano de remoção. O rótulo sozinho já entrega o diagnóstico que
+  // importa ("tentamos corpo-original e corpo-minusculo, nenhum casou").
+  const diagnostico: string[] = [];
 
   for (const candidato of candidatosManifesto) {
     const assinado = await crypto.subtle.sign(
@@ -956,7 +963,7 @@ export async function avaliarAssinatura(args: {
     const hex = Array.from(new Uint8Array(assinado))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
-    diagnostico.push({ rotulo: candidato.rotulo, hashPrefixo: hex.slice(0, 16) });
+    diagnostico.push(candidato.rotulo);
 
     // Comparacao de tempo constante: `===` em string vaza, pelo tempo de
     // resposta, quantos caracteres do prefixo o atacante ja acertou. O
@@ -990,7 +997,6 @@ export async function validarAssinatura(args: {
   xSignature: string | null;
   xRequestId: string | null;
   dataId: string;
-  dataIdQuery?: string | null;
   segredo: string;
   agora?: number;
   toleranciaSegundos?: number;

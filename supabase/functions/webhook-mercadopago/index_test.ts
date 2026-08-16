@@ -22,22 +22,32 @@ Deno.env.set("MP_WEBHOOK_SECRET", SEGREDO);
 Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
 
 /**
- * Assina um payload com o MESMO algoritmo de `validarAssinatura`
- * (mercadopago.ts:260-332): HMAC-SHA256 do manifesto
- * `id:<dataId>;request-id:<xRequestId>;ts:<ts>;`, com o segmento
- * `request-id` omitido quando não veio. Gerar a assinatura de verdade aqui —
- * em vez de um hex fixo — evita reescrever este arquivo toda vez que um teste
- * precisar de um `dataId` diferente.
+ * Assina um payload pela REGRA do manifesto do Mercado Pago, escrita aqui de
+ * forma INDEPENDENTE da implementação (não importa nada de `mercadopago.ts`
+ * além do que os testes precisam validar por fora): HMAC-SHA256 do manifesto
+ * `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`, com o segmento
+ * `request-id` OMITIDO quando o header não veio.
+ *
+ * `grafia` escolhe se o `data.id` entra no manifesto exatamente como foi
+ * passado (`"original"`, o padrão) ou em minúsculas (`"minuscula"`) — as
+ * DUAS únicas regras que `construirCandidatosManifesto` aceita desde
+ * 16/08/2026 (achado BLOQUEANTE de revisão removeu a query string como
+ * terceira fonte). Existir essa escolha aqui, e não só um espelho fixo do
+ * casing original, é o que permite um teste assinar por uma grafia e montar
+ * um corpo com OUTRA — sem isso a suíte só provava "id igual valida", nunca
+ * "id diferente (ainda que só na fonte) é recusado".
  */
 async function assinar(
   dataId: string,
   ts: number,
   xRequestId: string | null,
   segredo: string,
+  grafia: "original" | "minuscula" = "original",
 ): Promise<string> {
+  const idNoManifesto = grafia === "minuscula" ? dataId.toLowerCase() : dataId;
   const manifesto = xRequestId
-    ? `id:${dataId};request-id:${xRequestId};ts:${ts};`
-    : `id:${dataId};ts:${ts};`;
+    ? `id:${idNoManifesto};request-id:${xRequestId};ts:${ts};`
+    : `id:${idNoManifesto};ts:${ts};`;
   const chave = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(segredo),
@@ -741,32 +751,36 @@ Deno.test("type irrelevante da lista oficial (point_integration_wh) -> 200, desc
   assertEquals(registro.chamadasRpc.length, 0);
 });
 
-// --- data.id da QUERY STRING entra como candidato de assinatura -----------
+// --- a QUERY STRING NÃO é fonte de manifesto (achado BLOQUEANTE de revisão,
+// 16/08/2026) ---------------------------------------------------------------
 //
-// Até aqui (`requisicaoAssinada`/`requisicao`) TODA requisição de teste é
-// montada sem `?`, então o caminho da query nunca foi exercitado. A doc do
-// MP monta o manifesto sobre `req.query['data.id']`, não sobre o corpo —
-// este teste prova que o candidato da query é REALMENTE usado, não só
-// aceito por coincidir com o do corpo: o corpo chega com o id em
-// MINÚSCULAS (não bate com o que foi assinado nem no casing original nem
-// no minúsculo — os dois colapsam na mesma string), e só o `data.id` da
-// QUERY, em maiúsculas, é o que o MP realmente assinou.
+// A versão anterior deste commit aceitava também o `data.id` da QUERY como
+// candidato de assinatura. O defeito: a assinatura passava a poder ser
+// satisfeita pelo id da QUERY, enquanto TODO o processamento downstream
+// (rota, consulta ao MP, RPC `confirmar_pagamento`) usa o id do CORPO — e o
+// atacante controla os dois. O teste abaixo é o que faltava para pegar
+// exatamente isso: teria FALHADO (200, RPC chamada com o id errado) antes
+// desta correção, e passa (401, RPC nunca chamada) depois.
 
-Deno.test("data.id da query string valida quando o corpo sozinho (nas duas grafias) NÃO bateria", async () => {
+Deno.test("assinatura sobre o id da QUERY com corpo divergente -> 401, RPC NUNCA chamada (a query não é fonte de manifesto)", async () => {
   const registro = { chamadasRpc: [] };
   const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
   const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
 
   const ts = Math.floor(Date.now() / 1000);
   const requestId = "req-123";
-  // O MP assina com o data.id da QUERY (maiúsculo, o ULID canônico).
-  const v1 = await assinar(ID_ORDER_TESTE, ts, requestId, SEGREDO);
-  // O corpo chega com o MESMO id em minúsculas — corpo-original e
-  // corpo-minusculo colapsam na mesma string (já é minúsculo) e NENHUM dos
-  // dois bate com o hash assinado sobre o id maiúsculo.
-  const dataIdCorpo = ID_ORDER_TESTE.toLowerCase();
+  const ID_ASSINADO = ID_ORDER_TESTE; // o que o x-signature amarra (via query)
+  const ID_CORPO_ADULTERADO = "ORDTST01OUTRAORDEMQUALQUER000001"; // o que o handler processaria
+  // Assina sobre ID_ASSINADO — é o valor que iria na query, exatamente como
+  // o probe da revisão fez.
+  const v1 = await assinar(ID_ASSINADO, ts, requestId, SEGREDO);
+  let chamouFetch = false;
+  const fetchImpl = async (_url: string, _init?: RequestInit) => {
+    chamouFetch = true;
+    return new Response("{}", { status: 200 });
+  };
   const req = new Request(
-    `http://localhost/webhook-mercadopago?data.id=${ID_ORDER_TESTE}&type=order`,
+    `http://localhost/webhook-mercadopago?data.id=${ID_ASSINADO}&type=order`,
     {
       method: "POST",
       headers: {
@@ -774,14 +788,39 @@ Deno.test("data.id da query string valida quando o corpo sozinho (nas duas grafi
         "x-signature": `ts=${ts},v1=${v1}`,
         "x-request-id": requestId,
       },
-      body: JSON.stringify({ type: "order", data: { id: dataIdCorpo } }),
+      body: JSON.stringify({ type: "order", data: { id: ID_CORPO_ADULTERADO } }),
     },
   );
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 401);
+  assertEquals(chamouFetch, false, "não deveria ter consultado o MP com o id adulterado");
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("data.id da query com valor DIFERENTE do corpo não atrapalha o caminho normal — a query é inerte", async () => {
+  // A query pode chegar com qualquer coisa (inclusive um `data.id` que não
+  // bate com nada) sem afetar a validação: quem decide é só o corpo.
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const ts = Math.floor(Date.now() / 1000);
+  const requestId = "req-123";
+  const v1 = await assinar("999", ts, requestId, SEGREDO);
+  const req = new Request("http://localhost/webhook-mercadopago?data.id=lixo-qualquer", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-signature": `ts=${ts},v1=${v1}`,
+      "x-request-id": requestId,
+    },
+    body: JSON.stringify({ data: { id: "999" } }),
+  });
   const fetchImpl = fetchConsulta(200, {
-    id: dataIdCorpo,
+    id: 999,
+    status: "approved",
     external_reference: UUID_PEDIDO,
-    status: "processed",
-    status_detail: "accredited",
   });
   const chamadasPush: unknown[] = [];
   const enviarPush = async (args: unknown) => {
@@ -792,22 +831,34 @@ Deno.test("data.id da query string valida quando o corpo sozinho (nas duas grafi
 
   assertEquals(resposta.status, 200);
   assertEquals(registro.chamadasRpc.length, 1);
-  assertEquals(registro.chamadasRpc[0].args.p_payment_id, dataIdCorpo);
   assertEquals(chamadasPush.length, 1);
 });
 
-Deno.test("sem data.id na query, só o do corpo — não-regressão do caminho já coberto", async () => {
-  // Garante que a adição da query não É OBRIGATÓRIA: uma notificação sem
-  // `?data.id=` (ou com a URL que os outros testes já usam) continua
-  // validando pelo corpo sozinho, como sempre validou.
+Deno.test("grafia minuscula do helper assinar valida via candidato corpo-minusculo (id ORD… caixa mista)", async () => {
+  // Não-regressão do helper novo: `grafia: "minuscula"` precisa produzir um
+  // v1 que a implementação aceita pelo candidato "corpo-minusculo" — sem
+  // isto, a opção nova do helper nunca seria exercitada por nenhum teste.
   const registro = { chamadasRpc: [] };
   const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
   const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
-  const req = await requisicaoAssinada("999");
+  const ID_MISTO = "OrD01TsTAbC";
+  const ts = Math.floor(Date.now() / 1000);
+  const requestId = "req-123";
+  const v1 = await assinar(ID_MISTO, ts, requestId, SEGREDO, "minuscula");
+  const req = new Request("http://localhost/webhook-mercadopago", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-signature": `ts=${ts},v1=${v1}`,
+      "x-request-id": requestId,
+    },
+    body: JSON.stringify({ type: "order", data: { id: ID_MISTO } }),
+  });
   const fetchImpl = fetchConsulta(200, {
-    id: 999,
-    status: "approved",
+    id: ID_MISTO,
     external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
   });
   const chamadasPush: unknown[] = [];
   const enviarPush = async (args: unknown) => {
