@@ -204,3 +204,56 @@ Deno.test("dataId 'ORD…' produz DOIS candidatos (original e minúsculo diverge
   const rotulos = candidatos.map((c) => c.rotulo).sort();
   assertEquals(rotulos, ["corpo-minusculo", "corpo-original"]);
 });
+
+// --- A FRONTEIRA: o conjunto aceito nao pode CRESCER ----------------------
+//
+// Achado de revisao (16/08/2026). Os testes acima prendem "estes dois
+// candidatos sao aceitos" e nunca "e mais nenhum" — um terceiro entra sem
+// derrubar nada. E' exatamente o modo de falha que produziu esta branch: o
+// commit e2e22bd alargou o conjunto de 1 para 4 manifestos aceitos e a suite
+// ficou VERDE; quem pegou foi revisao humana, nao teste.
+//
+// O caso tem de ser de CAIXA MISTA. Com um ULID ja maiusculo
+// ("ORD01M05…"), um candidato `.toUpperCase()` colapsa na deduplicacao e o
+// teste acima passaria mesmo com ele adicionado — medido na revisao. So com
+// "OrD01AbC" as tres grafias sao strings distintas, e a fronteira aparece.
+const ID_MISTO = "OrD01AbC";
+
+Deno.test("dataId de caixa MISTA produz EXATAMENTE dois candidatos — o conjunto nao pode crescer", () => {
+  const candidatos = construirCandidatosManifesto({
+    dataId: ID_MISTO,
+    xRequestId: REQUEST_ID,
+    ts: String(TS),
+  });
+  // Trava o conjunto INTEIRO — rotulo e texto — nao so o tamanho: um
+  // candidato novo derruba isto, um candidato renomeado tambem.
+  assertEquals(
+    candidatos.map((c) => `${c.rotulo}=${c.manifesto}`).sort(),
+    [
+      `corpo-minusculo=id:${ID_MISTO.toLowerCase()};request-id:${REQUEST_ID};ts:${TS};`,
+      `corpo-original=id:${ID_MISTO};request-id:${REQUEST_ID};ts:${TS};`,
+    ],
+  );
+});
+
+// Gerado pelo crypto do Node em 16/08/2026, FORA da implementacao, com o
+// manifesto `id:ORD01ABC;request-id:abc-123;ts:1700000000;` — a grafia
+// MAIUSCULA de ID_MISTO. Nenhuma das duas grafias aceitas produz este hex.
+const V1_MAIUSCULO =
+  "dd38168260917dfd3ff916471541ff11b882f6e3925f1ef7b37cebd8f001faed";
+
+Deno.test("RECUSA assinatura calculada sobre a grafia MAIUSCULA — so corpo-original e corpo-minusculo valem", async () => {
+  const ok = await validarAssinatura({
+    xSignature: `ts=${TS},v1=${V1_MAIUSCULO}`,
+    xRequestId: REQUEST_ID,
+    dataId: ID_MISTO,
+    segredo: SEGREDO,
+    agora: agoraOk,
+  });
+  // Este e' o caso NEGATIVO que encosta na fronteira: a assinatura e'
+  // legitima (mesmo segredo, mesmo ts, mesmo id — so a grafia difere), e
+  // ainda assim tem de ser recusada. Adicionar um candidato `.toUpperCase()`
+  // faz este teste cair; e' a trava contra a proxima edicao alargar a
+  // superficie de autenticacao em silencio.
+  assertEquals(ok, false);
+});
