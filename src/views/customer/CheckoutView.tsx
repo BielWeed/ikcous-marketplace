@@ -45,6 +45,24 @@ import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
 
+// Teto de segurança da verificação periódica da tela do PIX (ver o useEffect
+// de polling, no corpo do componente). NÃO é o critério normal de parada —
+// esse é o `payment_status` terminal do pedido. Isto é só para não
+// consultar para sempre um pedido que ninguém vai pagar depois que a
+// reserva expira.
+//
+// Achado BLOQUEANTE da revisão (16/08/2026): a versão anterior parava o
+// polling pelo RELÓGIO puro (`expires_at <= Date.now()`), mas os status que
+// a tela espera (`pago`, `pago_apos_expirar`) só são gravados DEPOIS do
+// relógio vencer — a varredura do prazo roda a cada 5 minutos
+// (`supabase/migrations/20260807000001_agenda_expiracao.sql:12`,
+// `*/5 * * * *`) e o webhook do Mercado Pago levou ~90s no incidente real
+// de 16/08/2026 que motivou esta correção. 30 min dão folga generosa sobre
+// esse pior caso medido. NÃO reduza este número sem entender por que ele
+// existe — foi exatamente um critério de parada cedo demais que causou o
+// defeito original (CHECKOUT-090).
+const TETO_POLLING_APOS_EXPIRACAO_MS = 30 * 60 * 1000;
+
 interface CheckoutFormValues {
   name: string;
   whatsapp: string;
@@ -465,8 +483,14 @@ export function CheckoutView({
   // timer de aba em segundo plano. Fica de fora quando a aba está em segundo
   // plano — desperdício que multiplica por cliente parado — e para sozinho
   // quando o pedido é confirmado (efeito não recria o intervalo, e a limpeza
-  // do anterior já rodou), quando o componente desmonta (mesma limpeza) ou
-  // quando o prazo da reserva vence.
+  // do anterior já rodou), quando o componente desmonta (mesma limpeza), ou
+  // quando o `payment_status` chega a um dos quatro status TERMINAIS
+  // ('pago', 'pago_apos_expirar', 'recusado', 'estornado' — ver
+  // `verificarPagamento`, abaixo). NÃO para pelo relógio: ver o comentário
+  // de `TETO_POLLING_APOS_EXPIRACAO_MS`, no topo do arquivo, sobre o achado
+  // BLOQUEANTE que fez o critério de parada trocar de "prazo vencido" para
+  // "estado terminal" — 'expirado' continua sendo consultado normalmente,
+  // porque é o único caminho até 'pago_apos_expirar'.
   //
   // ESCOPO (decidido na tarefa): só cliente LOGADO. `marketplace_orders_
   // select_policy` só concede SELECT a `authenticated` — pedido de convidado
@@ -508,12 +532,28 @@ export function CheckoutView({
         return;
       }
 
+      // Os outros dois status terminais não têm tela própria aqui — só
+      // param de consultar (a constraint do banco não modela caminho de
+      // volta a partir deles, ver
+      // `supabase/migrations/20260807000000_reserva_com_expiracao.sql:17`).
+      if (
+        data.payment_status === "recusado" ||
+        data.payment_status === "estornado"
+      ) {
+        parado = true;
+        clearInterval(intervalId);
+        return;
+      }
+
+      // Teto de segurança — NUNCA pelo `expires_at` puro (ver o comentário
+      // de `TETO_POLLING_APOS_EXPIRACAO_MS`, no topo do arquivo). 'expirado'
+      // continua sendo consultado normalmente até aqui: é o único status
+      // que ainda pode virar 'pago_apos_expirar'.
       if (
         data.expires_at &&
-        new Date(data.expires_at).getTime() <= Date.now()
+        Date.now() - new Date(data.expires_at).getTime() >=
+          TETO_POLLING_APOS_EXPIRACAO_MS
       ) {
-        // Prazo vencido: o pg_cron vai cancelar (ou já cancelou) — sem
-        // sentido continuar consultando.
         parado = true;
         clearInterval(intervalId);
       }

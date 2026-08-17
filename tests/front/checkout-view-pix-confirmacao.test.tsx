@@ -163,7 +163,19 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 // periódica usa. `mockRespostaPoll` é mutável por teste; `fromSpy` conta
 // quantas vezes a consulta saiu (prova de "não dispara em segundo plano" e
 // de "para depois de confirmar").
+//
+// Achado ANOTADO da revisão (16/08/2026): antes deste dublê IGNORAVA os
+// argumentos de `select()` e `eq()` — trocar `.eq("id", orderId)` por
+// `.eq("id", "qualquer-coisa")` no código deixava a suíte inteira verde,
+// porque `single()` sempre devolvia `mockRespostaPoll` não importa o que
+// fosse pedido. Agora `selectSpy`/`eqSpy` gravam os argumentos de verdade
+// (afirmados no teste "consulta as colunas certas...", abaixo) e `single()`
+// só devolve `mockRespostaPoll` quando o `id` pedido é o do pedido em tela
+// ("ped-999") — consultar por outro id volta vazio, com erro, igual um
+// `.single()` de verdade contra uma linha que não existe.
 const fromSpy = vi.fn();
+const selectSpy = vi.fn();
+const eqSpy = vi.fn();
 let mockRespostaPoll: {
   data: { payment_status: string | null; expires_at: string | null } | null;
   error: { message: string } | null;
@@ -174,11 +186,23 @@ vi.mock("@/lib/supabase", () => ({
     from: (tabela: string) => {
       fromSpy(tabela);
       return {
-        select: () => ({
-          eq: () => ({
-            single: () => Promise.resolve(mockRespostaPoll),
-          }),
-        }),
+        select: (colunas: string) => {
+          selectSpy(colunas);
+          return {
+            eq: (coluna: string, valor: string) => {
+              eqSpy(coluna, valor);
+              return {
+                single: () =>
+                  coluna === "id" && valor === "ped-999"
+                    ? Promise.resolve(mockRespostaPoll)
+                    : Promise.resolve({
+                        data: null,
+                        error: { message: "not found" },
+                      }),
+              };
+            },
+          };
+        },
       };
     },
   },
@@ -237,6 +261,8 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     confettiMock.mockClear();
     onNavigate.mockClear();
     fromSpy.mockClear();
+    selectSpy.mockClear();
+    eqSpy.mockClear();
     onRealtimeEventCapturado = null;
     useOrdersArgsCapturados = [undefined, undefined];
     mockUser = { id: "user-1" };
@@ -648,5 +674,159 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     expect(hospedeiro.textContent).not.toContain(
       "Se o pagamento não sair em 30 minutos",
     );
+  });
+
+  // Achado BLOQUEANTE da revisão (16/08/2026): o guard antigo parava o
+  // polling assim que `expires_at <= Date.now()` — mas os dois status que a
+  // tela espera só são gravados DEPOIS do relógio vencer (a varredura roda
+  // a cada 5 min, o webhook do MP levou ~90s no incidente real). Os quatro
+  // testes abaixo usam `expires_at` NO PASSADO desde a primeira consulta —
+  // exatamente o cenário em que o guard antigo matava o polling antes do
+  // valor aparecer.
+  it("com expires_at já vencido, o polling NÃO para pelo relógio — confirma o pagamento quando ele chega", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    const agora = Date.now();
+    const expiresAtVencido = new Date(agora - 60_000).toISOString();
+
+    fromSpy.mockClear();
+    mockRespostaPoll = {
+      data: { payment_status: "aguardando", expires_at: expiresAtVencido },
+      error: null,
+    };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(fromSpy).toHaveBeenCalledWith("marketplace_orders");
+    expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado");
+
+    mockRespostaPoll = {
+      data: { payment_status: "pago", expires_at: expiresAtVencido },
+      error: null,
+    };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+
+    expect(hospedeiro.textContent).toContain("Pagamento Confirmado");
+  });
+
+  it("com expires_at já vencido, 'expirado' não para o polling — mostra a tela de fora do prazo quando pago_apos_expirar chega", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    const agora = Date.now();
+    const expiresAtVencido = new Date(agora - 60_000).toISOString();
+
+    mockRespostaPoll = {
+      data: { payment_status: "expirado", expires_at: expiresAtVencido },
+      error: null,
+    };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    // 'expirado' não é terminal — a tela continua esperando, sem trocar de
+    // estado (é exatamente o que a varredura pode gravar antes do
+    // pagamento chegar).
+    expect(hospedeiro.textContent).not.toContain("prazo de reserva venceu");
+    expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado");
+
+    mockRespostaPoll = {
+      data: {
+        payment_status: "pago_apos_expirar",
+        expires_at: expiresAtVencido,
+      },
+      error: null,
+    };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+
+    expect(hospedeiro.textContent).toContain("prazo de reserva venceu");
+  });
+
+  it.each(["recusado", "estornado"])(
+    "payment_status '%s' para a verificação periódica — não fica consultando para sempre",
+    async (status) => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+      fromSpy.mockClear();
+      mockRespostaPoll = {
+        data: { payment_status: status, expires_at: null },
+        error: null,
+      };
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(fromSpy).toHaveBeenCalledTimes(1);
+
+      fromSpy.mockClear();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+
+      expect(fromSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("o teto de 30 minutos após expires_at para o polling — passado esse teto, nada mais é consultado", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    const agora = Date.now();
+
+    // Ainda DENTRO do teto (29 min vencido, < 30 min de folga): continua
+    // consultando normalmente. Sem esta metade, um mutante que remove o
+    // teto inteiro (parando em qualquer `expires_at` vencido, igual ao
+    // guard antigo) passaria despercebido por este teste.
+    fromSpy.mockClear();
+    mockRespostaPoll = {
+      data: {
+        payment_status: "aguardando",
+        expires_at: new Date(agora - 29 * 60_000).toISOString(),
+      },
+      error: null,
+    };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(fromSpy).toHaveBeenCalledWith("marketplace_orders");
+
+    // Passa do teto (31 min vencido): o próximo tick descobre e para.
+    fromSpy.mockClear();
+    mockRespostaPoll = {
+      data: {
+        payment_status: "aguardando",
+        expires_at: new Date(agora - 31 * 60_000).toISOString(),
+      },
+      error: null,
+    };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(fromSpy).toHaveBeenCalledTimes(1);
+
+    fromSpy.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(fromSpy).not.toHaveBeenCalled();
+  });
+
+  it("a verificação periódica consulta pelas colunas certas e pelo id do pedido em tela", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    selectSpy.mockClear();
+    eqSpy.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+
+    expect(selectSpy).toHaveBeenCalledWith("payment_status, expires_at");
+    expect(eqSpy).toHaveBeenCalledWith("id", "ped-999");
   });
 });
