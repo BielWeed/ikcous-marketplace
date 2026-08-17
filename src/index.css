@@ -526,19 +526,10 @@
     }
   }
 
-  @keyframes marquee-x {
-    0% {
-      transform: translateX(0);
-    }
-
-    100% {
-      transform: translateX(-100%);
-    }
-  }
-
-  .animate-marquee-x {
-    animation: marquee-x 15s linear infinite;
-  }
+  /* O letreiro de busca (`marquee-x`) foi removido em 17/08/2026: o texto
+     nunca cabia na janela recortada de 123px e rolava em laço infinito sem
+     forma de pausar (WCAG 2.2.2). O placeholder virou texto parado no
+     atributo `placeholder` do input, em SearchBar.tsx. */
 
   .animate-shimmer {
     animation: shimmer 2s infinite linear;

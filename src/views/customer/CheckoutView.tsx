@@ -28,6 +28,7 @@ import {
   ArrowLeft,
   Banknote,
   Check,
+  ChevronDown,
   CreditCard,
   FileText,
   Loader2,
@@ -390,6 +391,18 @@ export function CheckoutView({
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const hasPushedAddressModalState = useRef(false);
+  // Painel de resumo do pedido (aberto ao tocar no bloco do total, na barra
+  // fixa do rodapé) — mesmo padrão do modal de endereço logo abaixo: um
+  // estado de UI simples e um `history.pushState` próprio, para o voltar do
+  // Android fechar o painel em vez de sair da tela de checkout.
+  const [isSummaryPanelOpen, setIsSummaryPanelOpen] = useState(false);
+  const hasPushedSummaryPanelState = useRef(false);
+  // Achado 8 da revisão (17/08/2026): o painel precisa devolver o foco ao
+  // botão que o abriu quando fecha (teclado) — `wasOpenRef` evita focar o
+  // gatilho já na montagem (isSummaryPanelOpen começa `false`).
+  const summaryPanelRef = useRef<HTMLDivElement>(null);
+  const summaryPanelTriggerRef = useRef<HTMLButtonElement>(null);
+  const summaryPanelWasOpenRef = useRef(false);
 
   // Solo-ninja: Reset scroll when internal views change (address form or success)
   useEffect(() => {
@@ -417,6 +430,22 @@ export function CheckoutView({
     }
   }, [isAddressModalOpen]);
 
+  // Mesmo mecanismo acima, para o painel de resumo do pedido — sem isto o
+  // voltar do Android sairia da tela de checkout (apagando o que o cliente
+  // já digitou) em vez de só fechar o painel.
+  useEffect(() => {
+    if (isSummaryPanelOpen && !hasPushedSummaryPanelState.current) {
+      globalThis.history.pushState(
+        { modal: "checkout-summary" },
+        "",
+        globalThis.location.pathname,
+      );
+      hasPushedSummaryPanelState.current = true;
+    } else if (!isSummaryPanelOpen) {
+      hasPushedSummaryPanelState.current = false;
+    }
+  }, [isSummaryPanelOpen]);
+
   // Handle back button override for address modal
   useEffect(() => {
     if (isAddressModalOpen) {
@@ -424,6 +453,8 @@ export function CheckoutView({
         setIsAddressModalOpen(false);
         setEditingAddressId(null);
       });
+    } else if (isSummaryPanelOpen) {
+      onSetBackOverride(() => () => setIsSummaryPanelOpen(false));
     } else if (showSuccess || aguardandoPagamento) {
       // Sucesso ou aguardando pagamento: o pedido já foi criado e o carrinho
       // já foi limpo — não existe formulário para o botão voltar recuperar.
@@ -437,11 +468,40 @@ export function CheckoutView({
     return () => onSetBackOverride(null);
   }, [
     isAddressModalOpen,
+    isSummaryPanelOpen,
     showSuccess,
     aguardandoPagamento,
     onSetBackOverride,
     onNavigate,
   ]);
+
+  // Achado 8 da revisão (17/08/2026): o painel era `role="dialog"` sem
+  // Escape. Mesmo caminho da setinha e do fundo (achado 5): `history.back()`
+  // consome a entrada empurrada acima e deixa o `popstate` fechar o painel.
+  useEffect(() => {
+    if (!isSummaryPanelOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        globalThis.history.back();
+      }
+    };
+    globalThis.addEventListener("keydown", handleKeyDown);
+    return () => globalThis.removeEventListener("keydown", handleKeyDown);
+  }, [isSummaryPanelOpen]);
+
+  // Achado 8 da revisão: mover o foco para dentro do painel ao abrir, e
+  // devolvê-lo ao botão do total ao fechar — sem isto quem navega por
+  // teclado ficava preso no formulário atrás do fundo. `wasOpenRef` evita
+  // "devolver" o foco na montagem, quando o painel nunca esteve aberto.
+  useEffect(() => {
+    if (isSummaryPanelOpen) {
+      summaryPanelWasOpenRef.current = true;
+      summaryPanelRef.current?.focus();
+    } else if (summaryPanelWasOpenRef.current) {
+      summaryPanelWasOpenRef.current = false;
+      summaryPanelTriggerRef.current?.focus();
+    }
+  }, [isSummaryPanelOpen]);
 
   // Guest checkout enabled - no redirect
   useEffect(() => {
@@ -674,6 +734,29 @@ export function CheckoutView({
   const discount = appliedCoupon?.discount || 0;
   const finalTotal = total - discount;
 
+  // Linha de cima da barra do total: o que está sendo comprado. Defeito
+  // medido (17/08/2026): três das quatro formas de pagamento são "na
+  // entrega" e o cliente não descobre em lugar nenhum do app o que está no
+  // carrinho sem sair da tela — e sair apaga o endereço digitado.
+  const itemsLabel =
+    cart.length === 1
+      ? `${cart[0].quantity}× ${cart[0].product.name}`
+      : cart.length > 1
+        ? `${cart.reduce((soma, item) => soma + item.quantity, 0)} itens no pedido`
+        : "";
+
+  // Linha de baixo: o Gabriel confirmou (17/08/2026) que a entrega está
+  // dentro do valor cobrado — "Inclui" é o texto correto, não uma ressalva.
+  // Achado 6 da revisão: com o carrinho vazio não existe entrega nenhuma
+  // para incluir — "Entrega grátis inclusa" sem nada para entregar é uma
+  // afirmação falsa (o R$ 0,00 é pré-existente e não muda aqui).
+  const entregaLabel =
+    cart.length === 0
+      ? ""
+      : shipping > 0
+        ? `Inclui R$ ${shipping.toFixed(2).replace(".", ",")} de entrega`
+        : "Entrega grátis inclusa";
+
   const isValid = form.formState.isValid;
 
   const handleRemoveCoupon = () => {
@@ -806,6 +889,13 @@ export function CheckoutView({
 
       // 🤖 Automação Solo-Ninja: O disparo agora é 100% via Backend (Edge Function + Webhook)
       onClearCart();
+      // Achado 4 da revisão (17/08/2026): sem isto `isSummaryPanelOpen`
+      // continuava `true` na tela seguinte (sucesso ou aguardando
+      // pagamento) — o painel deixa de fazer sentido aqui, junto com o
+      // carrinho que acabou de ser limpo, e o primeiro "voltar" naquela
+      // tela fechava um painel invisível em vez de agir pelo ramo de
+      // `showSuccess || aguardandoPagamento`.
+      setIsSummaryPanelOpen(false);
 
       if (ehOnline) {
         // NÃO mostra sucesso e NÃO solta confete: o pedido só está reservado,
@@ -1635,15 +1725,42 @@ export function CheckoutView({
         </div>
       </div>
 
-      {/* Spacer to prevent overlap by the sticky footer and bottom nav */}
+      {/* Spacer to prevent overlap by the sticky footer and bottom nav.
+          A barra cresceu (item comprado + entrega, além do total que já
+          existia) — os dois valores abaixo foram REMEDIDOS no navegador em
+          17/08/2026, depois da mudança, não herdados do valor antigo:
+
+          Desktop (1280px): `outer.top` da barra fixa (md:bottom-[104px])
+          menos o fim do card "Aviso de Região", no scroll máximo, com o
+          espaçador antigo de 140px, deu GAP = -55,875px (card já escondido
+          atrás da barra, mesmo SEM cupom — a barra de 3 linhas por si só já
+          quebrava o espaçador de 1 linha). Cupom aplicado não piora aqui: a
+          coluna do total mede ~150,6px no desktop (NÃO os 448px do `max-w-md`,
+          que são a linha inteira — este número estava errado na primeira versão
+          deste comentário), e isso basta para o selo "(-R$ X OFF)" ficar na
+          mesma linha do valor: medido, a barra vai de 92 para 92,5px e o GAP só
+          cai 0,5px. Novo valor:
+          140 + 55,875 (fecha o buraco) + 24 (folga) ≈ 220px.
+
+          Mobile (375px): mesmo cálculo, mas aqui o cupom PIORA — a coluna do
+          total tem só ~134px (o botão "Finalizar Pedido" toma o resto), e
+          "R$ 19,00" + "(-R$ 2,00 OFF)" juntos exigem ~146,6px, então o selo
+          quebra para uma 2ª linha (`flex-wrap` já existia nessa linha, não é
+          mudança desta tarefa). Com o espaçador antigo de 160px, o pior caso
+          (cupom aplicado) deu GAP = -15,5px. Novo valor: 160 + 15,5 (fecha o
+          buraco) + 24 (folga) ≈ 200px — cobre também o caso sem cupom, que já
+          folgava (+44px com o valor novo).
+
+          Se a barra crescer de novo (nova linha, mais um selo), remedir do
+          mesmo jeito antes de só somar um número por adivinhação. */}
       <div
         className="hidden md:block"
-        style={{ height: "140px" }}
+        style={{ height: "220px" }}
         aria-hidden="true"
       />
       <div
         className="block md:hidden"
-        style={{ height: "calc(160px + var(--safe-area-bottom, 0px))" }}
+        style={{ height: "calc(200px + var(--safe-area-bottom, 0px))" }}
         aria-hidden="true"
       />
 
@@ -1651,82 +1768,298 @@ export function CheckoutView({
       {typeof document !== "undefined" &&
         document.body &&
         createPortal(
-          <AnimatePresence>
-            {isPresent && isReady && (
-              // POSICIONAMENTO NO DIV DE FORA, ANIMAÇÃO NO motion.div DE
-              // DENTRO — é como o carrinho (CartFooterSummary) e os favoritos
-              // (FavoritesView) fazem, e a separação não é estética: o
-              // framer-motion escreve `transform: translateY(...)` inline no
-              // elemento que anima, e isso SOBRESCREVE o `md:-translate-x-1/2`
-              // do Tailwind. Com as duas coisas no mesmo elemento (como estava
-              // aqui), a centralização de md morria em silêncio: medido em
-              // 17/08/2026 numa janela de 1280px, a barra ficava em 640–1088px
-              // em vez de 416–864px — meia tela à direita do formulário.
-              //
-              // `bottom-docked-navigation` cola a barra na navegação inferior,
-              // como o carrinho, o produto e os favoritos já faziam. Esta barra
-              // usava uma `bottom-safe-navigation` — a mesma conta mais 12px —
-              // e era o único uso dela no app: aqueles 12px não eram respiro,
-              // eram uma fresta por onde o formulário rolando aparecia entre as
-              // duas barras (medido no mesmo dia: barra terminando em 736px,
-              // navegação começando em 747px, com um campo cinza à mostra no
-              // meio). A classe foi removida de `src/index.css` junto com este
-              // uso, para ninguém reabrir a fresta escolhendo o nome que soa
-              // mais seguro.
-              <div className="bottom-docked-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2">
+          <>
+            {/* Fundo que fecha o painel de resumo ao toque fora — portal
+                próprio, z-index abaixo do container da barra (z-[110], que
+                hospeda o painel) para nunca cobrir a barra em si. */}
+            <AnimatePresence>
+              {isSummaryPanelOpen && (
                 <motion.div
-                  initial={{ y: "100%", opacity: 0.5 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: "100%", opacity: 0 }}
-                  transition={{ duration: 0.25, ease: "easeOut" }}
-                  className="w-full rounded-t-2xl border-t border-zinc-100 bg-white/95 p-3 px-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl md:rounded-b-none md:rounded-t-2xl md:border-x md:border-b-0 md:border-t md:border-zinc-200/60"
-                >
-                  {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
-                      ficarem na mesma coluna dos cards do formulário. */}
-                  <div className="mx-auto flex max-w-md items-center justify-between gap-4">
-                    <div className="flex min-w-0 flex-col">
-                      <span className="mb-1 text-[9px] font-bold uppercase leading-none tracking-wider text-zinc-400">
-                        Total a Pagar
-                      </span>
-                      <div className="flex flex-wrap items-baseline gap-1.5">
-                        <span className="text-lg font-black leading-none tracking-tight text-zinc-900">
-                          R$ {finalTotal.toFixed(2).replace(".", ",")}
-                        </span>
-                        {discount > 0 && (
-                          <span className="text-[9px] font-bold uppercase text-red-500">
-                            (-R$ {discount.toFixed(2).replace(".", ",")} OFF)
+                  key="checkout-summary-backdrop"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="fixed inset-0 z-[105] bg-black/40"
+                  // Achado 5 da revisão (17/08/2026): fechar direto pelo
+                  // estado deixava a entrada do `pushState` (linhas
+                  // 430-441) órfã na pilha do histórico — o próximo "voltar"
+                  // não fazia nada visível. `history.back()` consome a
+                  // entrada e deixa o `popstate` (App.tsx) fechar o painel
+                  // pelo `onSetBackOverride` já registrado — mesmo padrão de
+                  // `onCancel={() => globalThis.history.back()}` (linha ~1116).
+                  onClick={() => globalThis.history.back()}
+                  aria-hidden="true"
+                />
+              )}
+            </AnimatePresence>
+            <AnimatePresence>
+              {isPresent && isReady && (
+                // POSICIONAMENTO NO DIV DE FORA, ANIMAÇÃO NO motion.div DE
+                // DENTRO — é como o carrinho (CartFooterSummary) e os favoritos
+                // (FavoritesView) fazem, e a separação não é estética: o
+                // framer-motion escreve `transform: translateY(...)` inline no
+                // elemento que anima, e isso SOBRESCREVE o `md:-translate-x-1/2`
+                // do Tailwind. Com as duas coisas no mesmo elemento (como estava
+                // aqui), a centralização de md morria em silêncio: medido em
+                // 17/08/2026 numa janela de 1280px, a barra ficava em 640–1088px
+                // em vez de 416–864px — meia tela à direita do formulário.
+                //
+                // `bottom-docked-navigation` cola a barra na navegação inferior,
+                // como o carrinho, o produto e os favoritos já faziam. Esta barra
+                // usava uma `bottom-safe-navigation` — a mesma conta mais 12px —
+                // e era o único uso dela no app: aqueles 12px não eram respiro,
+                // eram uma fresta por onde o formulário rolando aparecia entre as
+                // duas barras (medido no mesmo dia: barra terminando em 736px,
+                // navegação começando em 747px, com um campo cinza à mostra no
+                // meio). A classe foi removida de `src/index.css` junto com este
+                // uso, para ninguém reabrir a fresta escolhendo o nome que soa
+                // mais seguro.
+                <div className="bottom-docked-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2">
+                  {/* Painel de resumo — sobe ACIMA da barra porque é o
+                      irmão anterior dela dentro deste mesmo container
+                      `fixed`/`bottom-docked-navigation`: cresce para cima em
+                      vez de deslocar a barra, sem tocar no `motion.div` da
+                      barra logo abaixo.
+
+                      LIMITE CONHECIDO, MEDIDO E DEIXADO DE PROPÓSITO
+                      (17/08/2026): a saída deste painel é animada, e
+                      `AnimatePresence` só desmonta o nó quando a animação de
+                      saída TERMINA. Ela depende de `requestAnimationFrame`, que
+                      não dispara em aba oculta — medido 6 de 6 vezes: o estado
+                      React já fechou (`aria-expanded` volta a "false", o
+                      `backOverride` volta a null) e o nó continua no DOM por
+                      tempo indeterminado. Quando a aba volta a ficar visível os
+                      quadros voltam e o nó sai.
+                      E não é só "um nó invisível": medido, o que fica é o FUNDO
+                      em tela cheia com `opacity: 0` e `pointer-events: auto`
+                      cobrindo o viewport inteiro — ou seja, um engolidor de
+                      cliques invisível. Enquanto ele está lá, o formulário não
+                      recebe toque; só a barra (z-110) e a navegação (z-120)
+                      passam por cima.
+                      Por que NÃO consertar mesmo assim: a janela de exposição é
+                      exatamente a aba oculta, onde o cliente não está tocando em
+                      nada, e ela fecha sozinha quando a aba volta a ficar
+                      visível (o `rAF` pendente do framer retoma — é
+                      especificação, não sorte). A única correção possível mexe
+                      na `AnimatePresence` desta barra, a mesma peça que quebrou
+                      DUAS vezes hoje (centralização morta pelo `transform`
+                      inline do framer-motion, e fresta de 12px entre barra e
+                      navegação). Trocar uma barra que funciona por isso é o
+                      negócio errado — mas quem reabrir esta decisão precisa
+                      saber que o preço é engolir clique, não só sujar o DOM.
+                      Se um dia isso precisar de conserto de verdade, a saída é
+                      não depender da animação para remover o nó — nunca
+                      reescrever o esqueleto de posicionamento. */}
+                  <AnimatePresence>
+                    {isSummaryPanelOpen && (
+                      <motion.div
+                        key="checkout-summary-panel"
+                        initial={{ y: 12, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: 12, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        ref={summaryPanelRef}
+                        // `role="dialog"` SEM `aria-modal`, de propósito.
+                        // `aria-modal="true"` manda o leitor de tela esconder
+                        // tudo que está fora daqui — e não é verdade: medido em
+                        // 17/08/2026, o fundo escuro (z-105) cobre o formulário
+                        // mas NÃO cobre a barra (z-110) nem a navegação inferior
+                        // (z-120), que seguem clicáveis por toque. Afirmar modal
+                        // esconderia do leitor de tela justamente o "Finalizar
+                        // Pedido" que continua funcionando.
+                        // O que este painel é de fato: um disclosure — o gatilho
+                        // carrega `aria-expanded` e a dica "toque para ver os
+                        // itens". A outra saída seria subir o fundo acima da
+                        // barra, e isso mexe no empilhamento que já quebrou duas
+                        // vezes hoje.
+                        role="dialog"
+                        aria-label="Resumo do pedido"
+                        tabIndex={-1}
+                        className="mx-auto mb-2 max-h-[45vh] w-full max-w-md overflow-y-auto rounded-2xl border border-zinc-100 bg-white p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] outline-none"
+                      >
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                            Resumo do Pedido
+                          </span>
+                          <button
+                            type="button"
+                            // Mesmo motivo do fundo: consumir a entrada do
+                            // histórico via `history.back()`, não fechar
+                            // direto pelo estado.
+                            onClick={() => globalThis.history.back()}
+                            aria-label="Fechar resumo do pedido"
+                            className="flex size-7 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-50 hover:text-zinc-600"
+                          >
+                            <ChevronDown className="size-4" />
+                          </button>
+                        </div>
+
+                        {/* Sem botão de editar e sem link para o carrinho —
+                            voltar ao carrinho apaga o endereço já digitado
+                            (ver AGENTS.md/comentários do checkout), e este
+                            painel existe justamente para conferir sem sair
+                            da tela. */}
+                        <ul className="space-y-3">
+                          {cart.map((item) => {
+                            // Mesma fórmula de CartContext.tsx (cartTotal) —
+                            // não uma conta nova: preço da variante quando
+                            // houver, senão o preço do produto.
+                            const precoUnitario = item.variantId
+                              ? item.product.variants?.find(
+                                  (v) => v.id === item.variantId,
+                                )?.priceOverride || item.product.price
+                              : item.product.price;
+
+                            return (
+                              <li
+                                key={`${item.product.id}-${item.variantId ?? ""}`}
+                                className="flex items-center gap-3"
+                              >
+                                <img
+                                  src={item.product.images?.[0]}
+                                  alt=""
+                                  className="size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium text-zinc-800">
+                                    {item.product.name}
+                                  </p>
+                                  {item.variantNames && (
+                                    <p className="truncate text-[11px] text-zinc-400">
+                                      {item.variantNames}
+                                    </p>
+                                  )}
+                                </div>
+                                <span className="shrink-0 text-xs font-semibold text-zinc-600">
+                                  {item.quantity} × R${" "}
+                                  {precoUnitario.toFixed(2).replace(".", ",")}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+
+                        <div className="mt-4 space-y-1.5 border-t border-zinc-100 pt-3 text-xs">
+                          <div className="flex items-center justify-between text-zinc-500">
+                            <span>Subtotal</span>
+                            <span>
+                              R$ {subtotal.toFixed(2).replace(".", ",")}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-500">
+                            <span>Entrega</span>
+                            <span>
+                              {shipping > 0
+                                ? `R$ ${shipping.toFixed(2).replace(".", ",")}`
+                                : "Grátis"}
+                            </span>
+                          </div>
+                          {discount > 0 && (
+                            <div className="flex items-center justify-between text-red-500">
+                              <span>Desconto</span>
+                              <span>
+                                -R$ {discount.toFixed(2).replace(".", ",")}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between pt-1 text-sm font-black text-zinc-900">
+                            <span>Total</span>
+                            <span>
+                              R$ {finalTotal.toFixed(2).replace(".", ",")}
+                            </span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <motion.div
+                    initial={{ y: "100%", opacity: 0.5 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: "100%", opacity: 0 }}
+                    transition={{ duration: 0.25, ease: "easeOut" }}
+                    className="w-full rounded-t-2xl border-t border-zinc-100 bg-white/95 p-3 px-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl md:rounded-b-none md:rounded-t-2xl md:border-x md:border-b-0 md:border-t md:border-zinc-200/60"
+                  >
+                    {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
+                        ficarem na mesma coluna dos cards do formulário. */}
+                    <div className="mx-auto flex max-w-md items-center justify-between gap-4">
+                      <button
+                        type="button"
+                        ref={summaryPanelTriggerRef}
+                        onClick={() => {
+                          haptic.light();
+                          setIsSummaryPanelOpen((open) => !open);
+                        }}
+                        // Carrinho vazio não tem o que listar. `disabled` em vez
+                        // de um `return` no clique: o `return` fazia o botão
+                        // parar de funcionar sem PARECER parado — continuava
+                        // focável, com cursor de mão, e anunciado ao leitor de
+                        // tela como "recolhido", coisa que nunca expandiria.
+                        // Cenário real e alcançável: finalizar um pedido e
+                        // recarregar a página (a URL segue /checkout, o carrinho
+                        // já foi limpo). O "Finalizar Pedido" ao lado já se
+                        // explica assim.
+                        disabled={cart.length === 0}
+                        aria-expanded={isSummaryPanelOpen}
+                        className="flex min-w-0 flex-col text-left"
+                      >
+                        {itemsLabel && (
+                          <span className="mb-0.5 block truncate text-[10px] font-medium text-zinc-400">
+                            {itemsLabel}
                           </span>
                         )}
-                      </div>
-                    </div>
+                        <span className="mb-1 text-[9px] font-bold uppercase leading-none tracking-wider text-zinc-400">
+                          Total a Pagar
+                        </span>
+                        <div className="flex flex-wrap items-baseline gap-1.5">
+                          <span className="text-lg font-black leading-none tracking-tight text-zinc-900">
+                            R$ {finalTotal.toFixed(2).replace(".", ",")}
+                          </span>
+                          {discount > 0 && (
+                            <span className="text-[9px] font-bold uppercase text-red-500">
+                              (-R$ {discount.toFixed(2).replace(".", ",")} OFF)
+                            </span>
+                          )}
+                        </div>
+                        {entregaLabel && (
+                          <span className="mt-1 block truncate text-[10px] font-medium text-zinc-400">
+                            {entregaLabel}
+                          </span>
+                        )}
+                        {cart.length > 0 && (
+                          <span className="sr-only">, toque para ver os itens</span>
+                        )}
+                      </button>
 
-                    <button
-                      onClick={() => {
-                        haptic.medium();
-                        handleSubmitEvent();
-                      }}
-                      disabled={!isValid || isSubmitting}
-                      className={cn(
-                        "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
-                        !isValid || isSubmitting
-                          ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
-                          : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
-                      )}
-                    >
-                      {isSubmitting ? (
-                        <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-                      ) : (
-                        <>
-                          <span>Finalizar Pedido</span>
-                          <ArrowLeft className="size-4 rotate-180" />
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </motion.div>
-              </div>
-            )}
-          </AnimatePresence>,
+                      <button
+                        onClick={() => {
+                          haptic.medium();
+                          handleSubmitEvent();
+                        }}
+                        disabled={!isValid || isSubmitting}
+                        className={cn(
+                          "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
+                          !isValid || isSubmitting
+                            ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
+                            : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
+                        )}
+                      >
+                        {isSubmitting ? (
+                          <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                        ) : (
+                          <>
+                            <span>Finalizar Pedido</span>
+                            <ArrowLeft className="size-4 rotate-180" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+          </>,
           document.body,
         )}
     </div>

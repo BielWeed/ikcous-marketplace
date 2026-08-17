@@ -260,7 +260,7 @@ export const Header = memo(function Header({
               value={searchQuery}
               onChange={onSearch}
               onProductClick={(id) => onNavigate("product-detail", id)}
-              placeholder="O que busca hoje?"
+              placeholder="Buscar produtos"
               className="w-full"
             />
           </motion.div>

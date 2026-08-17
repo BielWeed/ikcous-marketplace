@@ -20,6 +20,11 @@ const cartItemSchema = z.object({
   product: z.any(),
   quantity: z.number().int().positive().max(MAX_ITEM_QUANTITY),
   variantId: z.string().optional().nullable(),
+  // Achado da revisão (17/08/2026): sem esta chave o Zod descarta
+  // `variantNames` na hidratação (`safeParse` + `result.data`), e a
+  // variação escolhida some do painel de resumo e da nota do pedido em
+  // CheckoutView.tsx depois de uma recarga de página.
+  variantNames: z.string().optional(),
   lastModifiedAt: z.number().optional(),
 });
 

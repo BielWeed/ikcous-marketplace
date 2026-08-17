@@ -2662,7 +2662,11 @@ const AppContent = () => {
             }
             onBack={handleBack}
             onOpenNotifications={handleOpenNotifications}
-            hideSearch={["address-form"].includes(currentView)}
+            // "checkout" some daqui: a busca navega para product-detail
+            // (alçapão) e o formulário do checkout convidado só persiste o
+            // CEP — sair da tela apaga nome, WhatsApp, rua, número e
+            // complemento já digitados.
+            hideSearch={["address-form", "checkout"].includes(currentView)}
             searchQuery={searchQuery}
             onSearch={setSearchQuery}
             scrollProgress={scrollProgress}
