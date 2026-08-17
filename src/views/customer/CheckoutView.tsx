@@ -609,8 +609,20 @@ export function CheckoutView({
       // vira `true` depois que `verificarPagamento` já consumiu a resposta
       // deste tick — o teto continua parando no mesmo tick de antes, só que
       // sem descartar o resultado que o motivou.
+      //
+      // `tickDesteCiclo` congela o contador ANTES da chamada, e o `.finally()`
+      // compara ele — não o `ticks` compartilhado (achado da 5ª revisão). Sob
+      // latência de consulta MAIOR que o intervalo de 10 s, o `ticks` mutável
+      // reintroduziria o mesmo defeito com janela pequena: o tick 359 dispara
+      // a consulta A, 10 s depois o tick 360 incrementa `ticks` e dispara a
+      // consulta B, A resolve e seu `finally` lê `ticks === 360` e grava
+      // `parado = true` — e B chega com 'pago' para ser descartada. Com o
+      // valor congelado, cada corte pertence à sua própria chamada. Não se
+      // perde robustez: os ticks seguintes também satisfazem a condição, então
+      // uma consulta pendurada não impede o corte.
+      const tickDesteCiclo = ticks;
       verificarPagamento().finally(() => {
-        if (ticks >= TETO_TICKS_VERIFICACAO_PAGAMENTO) {
+        if (tickDesteCiclo >= TETO_TICKS_VERIFICACAO_PAGAMENTO) {
           parado = true;
           clearInterval(intervalId);
         }

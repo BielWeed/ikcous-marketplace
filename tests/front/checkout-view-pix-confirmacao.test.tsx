@@ -878,6 +878,51 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     expect(fromSpy).not.toHaveBeenCalled();
   });
 
+  // O PAR do teste acima, e ele é obrigatório — achado da 5ª revisão
+  // (16/08/2026). Aquele teste prova que o resultado do último tick é USADO,
+  // e para isso o tick 360 precisa responder 'pago'. Só que confirmar a tela
+  // derruba o polling SOZINHA: `setStatusPagamentoPix("confirmado")` muda uma
+  // dependência do efeito, a limpeza roda e o efeito volta pelo early-return.
+  // Ou seja, o `not.toHaveBeenCalled()` do final daquele teste passa mesmo com
+  // o teto REMOVIDO — a mesma cadeia que o teste de 'recusado'/'estornado' já
+  // usa sem teto nenhum envolvido.
+  //
+  // As duas provas são mutuamente exclusivas por construção: depois de
+  // confirmar não há mais o que observar. Por isso este teste chega ao teto
+  // com a resposta ainda 'aguardando' — a tela NÃO confirma, então a única
+  // coisa capaz de parar o polling é o teto. Sem ele, o repositório não tem
+  // nenhum teste que prove o teto (grep por `teto|360|TETO` em tests/ só bate
+  // neste arquivo), e o próximo que mexer no efeito perde a rede contra
+  // polling perpétuo: uma consulta a cada 10 s, para sempre, por aba de
+  // checkout abandonada.
+  it("o teto de 360 ticks para o polling mesmo SEM confirmação — sem este par, apagar o teto inteiro deixaria a suíte verde", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    fromSpy.mockClear();
+    // 'aguardando' do começo ao fim: a tela nunca confirma, nenhum estado
+    // terminal é alcançado, e nada além do teto pode interromper o efeito.
+    mockRespostaPoll = {
+      data: { payment_status: "aguardando", expires_at: null },
+      error: null,
+    };
+
+    // Ticks 1 a 360 — o último atinge o teto.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(360 * 10_000);
+    });
+    expect(fromSpy).toHaveBeenCalledTimes(360);
+    expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado");
+
+    // Muito além do teto, ainda 'aguardando': se o teto tivesse sido apagado,
+    // estas seriam 30 consultas novas.
+    fromSpy.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300 * 1_000);
+    });
+    expect(fromSpy).not.toHaveBeenCalled();
+  });
+
   it("a verificação periódica consulta pelas colunas certas e pelo id do pedido em tela", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);

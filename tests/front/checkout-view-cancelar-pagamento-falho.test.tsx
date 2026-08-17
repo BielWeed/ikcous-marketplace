@@ -667,9 +667,18 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
         "Cancelar pedido e voltar ao carrinho",
       ),
     ).toBeUndefined();
-    // BLOQUEIO 3 (#197): tela morta vira tela que explica — os 30 min do
-    // pg_cron e a alternativa (entrar na conta).
-    expect(hospedeiro.textContent).toContain("30 minutos");
-    expect(hospedeiro.textContent).toContain("conta");
+    // BLOQUEIO 3 (#197): tela morta vira tela que explica — que não dá para
+    // cancelar por aqui, e a alternativa (entrar na conta).
+    //
+    // NÃO afirmar "30 minutos" aqui: achado da 5ª revisão (16/08/2026) — esse
+    // trecho também está no cabeçalho da tela de espera, que renderiza SEMPRE,
+    // fora do ramo `user ? botão : parágrafo`. A asserção passava mesmo com o
+    // parágrafo do convidado apagado por completo, e o comentário anterior
+    // afirmava uma prova que ela não fazia. Os dois trechos abaixo são
+    // exclusivos deste parágrafo.
+    expect(hospedeiro.textContent).toContain(
+      "não é possível cancelar por aqui",
+    );
+    expect(hospedeiro.textContent).toContain("entre na sua conta");
   });
 });
