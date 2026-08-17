@@ -31,6 +31,7 @@ import {
   CreditCard,
   FileText,
   Loader2,
+  Lock,
   MapPin,
   Phone,
   Plus,
@@ -45,23 +46,40 @@ import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
 
-// Teto de segurança da verificação periódica da tela do PIX (ver o useEffect
-// de polling, no corpo do componente). NÃO é o critério normal de parada —
-// esse é o `payment_status` terminal do pedido. Isto é só para não
-// consultar para sempre um pedido que ninguém vai pagar depois que a
-// reserva expira.
+// Intervalo da verificação periódica da tela do PIX (ver o useEffect de
+// polling, no corpo do componente) — extraído para constante porque o teto
+// de segurança abaixo é derivado DELE (contagem de ticks, não de relógio).
+const INTERVALO_VERIFICACAO_PAGAMENTO_MS = 10_000;
+
+// Teto de segurança da verificação periódica da tela do PIX. NÃO é o
+// critério normal de parada — esse é o `payment_status` terminal do pedido
+// (ver `verificarPagamento`, no useEffect). Isto é só para não consultar
+// para sempre um pedido que ninguém vai pagar depois que a reserva expira.
 //
-// Achado BLOQUEANTE da revisão (16/08/2026): a versão anterior parava o
-// polling pelo RELÓGIO puro (`expires_at <= Date.now()`), mas os status que
-// a tela espera (`pago`, `pago_apos_expirar`) só são gravados DEPOIS do
-// relógio vencer — a varredura do prazo roda a cada 5 minutos
+// De onde vem o número: a varredura do prazo roda a cada 5 minutos
 // (`supabase/migrations/20260807000001_agenda_expiracao.sql:12`,
 // `*/5 * * * *`) e o webhook do Mercado Pago levou ~90s no incidente real
-// de 16/08/2026 que motivou esta correção. 30 min dão folga generosa sobre
-// esse pior caso medido. NÃO reduza este número sem entender por que ele
-// existe — foi exatamente um critério de parada cedo demais que causou o
-// defeito original (CHECKOUT-090).
-const TETO_POLLING_APOS_EXPIRACAO_MS = 30 * 60 * 1000;
+// de 16/08/2026 que motivou a correção original (CHECKOUT-090) — 60 min de
+// vida (a partir de quando esta tela monta, perto de quando expires_at é
+// carimbado) dão folga generosa sobre esse pior caso medido. NÃO reduza
+// este número sem entender por que ele existe.
+//
+// Por que é CONTAGEM DE TICKS, e não relógio (2ª correção, achado
+// BLOQUEANTE da revisão de 16/08/2026 — a MESMA classe de defeito
+// reaparecendo por outra porta): a 1ª correção trocou "prazo vencido"
+// (`expires_at <= Date.now()`) por "estado terminal", mas manteve um teto
+// de segurança que comparava `Date.now()` do NAVEGADOR do cliente com
+// `expires_at`, um instante gravado pelo SERVIDOR. Num aparelho com o
+// relógio adiantado em δ, a parada acontece em `expires_at + 30min − δ` —
+// com δ maior que ~28 min (nada incomum: fuso mal configurado, relógio de
+// hardware sem NTP), o polling morre ANTES do webhook conseguir gravar, e o
+// cliente que pagou fica preso na tela do QR. Contar TICKS do próprio
+// `setInterval` mede o mesmo relógio nas DUAS pontas — não há nada do
+// servidor para comparar, então não há divergência de relógio para
+// explorar. `expires_at` continua sendo lido na consulta (é o único caminho
+// até `pago_apos_expirar`), só deixou de decidir quando parar.
+const TETO_TICKS_VERIFICACAO_PAGAMENTO =
+  (60 * 60 * 1000) / INTERVALO_VERIFICACAO_PAGAMENTO_MS; // 60 min / 10s = 360 ticks
 
 interface CheckoutFormValues {
   name: string;
@@ -432,6 +450,23 @@ export function CheckoutView({
     }
   }, [user, authLoading]);
 
+  // Pagamento online exige conta (decisão do Gabriel, 16/08/2026) — sem isto,
+  // um cliente que selecionou "Pagar agora com PIX" e teve a SESSÃO expirar
+  // com a tela ainda aberta (ex.: token vencendo enquanto ele preenchia o
+  // formulário) ficaria com `paymentMethod` preso em "online" mesmo sem
+  // `user`, e `handleSubmitEvent` tentaria criar um pedido que o backend
+  // (`criar-pagamento`, guard `PAGAMENTO_ONLINE_EXIGE_CONTA`) recusaria de
+  // qualquer jeito — só que depois de já ter criado o PEDIDO (a recusa é na
+  // função que gera a cobrança, uma chamada depois). `!authLoading`: não
+  // mexe enquanto o hook de auth ainda está resolvendo a sessão inicial —
+  // nesse intervalo `user` é `undefined`, não uma sessão que caiu de
+  // verdade.
+  useEffect(() => {
+    if (!authLoading && !user && paymentMethod === "online") {
+      setPaymentMethod("pix");
+    }
+  }, [authLoading, user, paymentMethod]);
+
   useEffect(() => {
     if (profile) {
       form.setValue("name", profile.full_name || "", { shouldValidate: true });
@@ -476,21 +511,21 @@ export function CheckoutView({
   // useEffect quem descobre a confirmação, não o realtime.
   //
   // Por isso, além de reler o BANCO (nunca a edge function `criar-pagamento`,
-  // que bate na API do Mercado Pago a cada chamada) a cada 10s, o listener de
-  // `visibilitychange` abaixo dispara a verificação IMEDIATAMENTE quando a
-  // aba volta a ficar visível — sem ele o cliente esperaria o próximo tick de
-  // até 10s, ou bem mais, porque o navegador aplica "intensive throttling" a
-  // timer de aba em segundo plano. Fica de fora quando a aba está em segundo
-  // plano — desperdício que multiplica por cliente parado — e para sozinho
-  // quando o pedido é confirmado (efeito não recria o intervalo, e a limpeza
-  // do anterior já rodou), quando o componente desmonta (mesma limpeza), ou
-  // quando o `payment_status` chega a um dos quatro status TERMINAIS
-  // ('pago', 'pago_apos_expirar', 'recusado', 'estornado' — ver
-  // `verificarPagamento`, abaixo). NÃO para pelo relógio: ver o comentário
-  // de `TETO_POLLING_APOS_EXPIRACAO_MS`, no topo do arquivo, sobre o achado
-  // BLOQUEANTE que fez o critério de parada trocar de "prazo vencido" para
-  // "estado terminal" — 'expirado' continua sendo consultado normalmente,
-  // porque é o único caminho até 'pago_apos_expirar'.
+  // que bate na API do Mercado Pago a cada chamada) a cada
+  // INTERVALO_VERIFICACAO_PAGAMENTO_MS, o listener de `visibilitychange`
+  // abaixo dispara a verificação IMEDIATAMENTE quando a aba volta a ficar
+  // visível — sem ele o cliente esperaria o próximo tick de até 10s, ou bem
+  // mais, porque o navegador aplica "intensive throttling" a timer de aba em
+  // segundo plano. Fica de fora quando a aba está em segundo plano —
+  // desperdício que multiplica por cliente parado — e para sozinho quando o
+  // pedido é confirmado (efeito não recria o intervalo, e a limpeza do
+  // anterior já rodou), quando o componente desmonta (mesma limpeza), quando
+  // o `payment_status` chega a um dos quatro status TERMINAIS ('pago',
+  // 'pago_apos_expirar', 'recusado', 'estornado' — ver `verificarPagamento`,
+  // abaixo), ou quando o teto de TICKS (não de relógio — ver o comentário
+  // grande de `TETO_TICKS_VERIFICACAO_PAGAMENTO`, no topo do arquivo) é
+  // atingido. 'expirado' continua sendo consultado normalmente, porque é o
+  // único caminho até 'pago_apos_expirar'.
   //
   // ESCOPO (decidido na tarefa): só cliente LOGADO. `marketplace_orders_
   // select_policy` só concede SELECT a `authenticated` — pedido de convidado
@@ -503,6 +538,12 @@ export function CheckoutView({
       return;
 
     let parado = false;
+    // Conta ticks do INTERVALO, não invocações de verificarPagamento — a
+    // chamada extra do visibilitychange (abaixo) não é uma passagem do
+    // relógio programado, é uma verificação avulsa disparada por um evento
+    // do usuário. Contar as duas juntas faria quem alterna de aba com
+    // frequência esgotar o teto bem antes dos 60 min reais de vida.
+    let ticks = 0;
 
     const verificarPagamento = async () => {
       if (parado) return;
@@ -545,21 +586,25 @@ export function CheckoutView({
         return;
       }
 
-      // Teto de segurança — NUNCA pelo `expires_at` puro (ver o comentário
-      // de `TETO_POLLING_APOS_EXPIRACAO_MS`, no topo do arquivo). 'expirado'
-      // continua sendo consultado normalmente até aqui: é o único status
-      // que ainda pode virar 'pago_apos_expirar'.
-      if (
-        data.expires_at &&
-        Date.now() - new Date(data.expires_at).getTime() >=
-          TETO_POLLING_APOS_EXPIRACAO_MS
-      ) {
+      // `data.expires_at` continua sendo LIDO (é o único caminho até
+      // 'pago_apos_expirar'), mas não decide mais quando parar — ver o
+      // comentário grande de `TETO_TICKS_VERIFICACAO_PAGAMENTO`, no topo do
+      // arquivo, sobre por que comparar com o relógio do cliente é o mesmo
+      // defeito por outra porta.
+    };
+
+    const intervalId = setInterval(() => {
+      ticks += 1;
+      verificarPagamento();
+      // Teto de segurança por TICKS, nunca por `expires_at`/`Date.now()`
+      // (ver o comentário grande de `TETO_TICKS_VERIFICACAO_PAGAMENTO`, no
+      // topo do arquivo). Roda DEPOIS de disparar a última verificação —
+      // ela ainda tem a chance de confirmar antes do `clearInterval`.
+      if (ticks >= TETO_TICKS_VERIFICACAO_PAGAMENTO) {
         parado = true;
         clearInterval(intervalId);
       }
-    };
-
-    const intervalId = setInterval(verificarPagamento, 10_000);
+    }, INTERVALO_VERIFICACAO_PAGAMENTO_MS);
 
     // Achado 3 da revisão: dispara a verificação NA HORA em que a aba volta
     // a ficar visível, em vez de esperar o próximo tick do intervalo acima.
@@ -1362,6 +1407,10 @@ export function CheckoutView({
                       label: "Pagar agora com PIX",
                       icon: CreditCard,
                       color: "text-violet-500 bg-violet-50",
+                      // Pagamento online exige conta (decisão do Gabriel,
+                      // 16/08/2026) — só esta opção carrega a exigência; as
+                      // outras (entrega) continuam abertas a convidado.
+                      requerConta: true,
                     },
                   ]
                 : []),
@@ -1370,47 +1419,81 @@ export function CheckoutView({
                 label: "Pix na Entrega",
                 icon: Smartphone,
                 color: "text-emerald-500 bg-emerald-50",
+                requerConta: false,
               },
               {
                 value: "card" as PaymentMethod,
                 label: "Cartão na Entrega",
                 icon: CreditCard,
                 color: "text-blue-500 bg-blue-50",
+                requerConta: false,
               },
               {
                 value: "cash" as PaymentMethod,
                 label: "Dinheiro na Entrega",
                 icon: Banknote,
                 color: "text-amber-500 bg-amber-50",
+                requerConta: false,
               },
             ].map((option) => {
               const Icon = option.icon;
               const isSelected = paymentMethod === option.value;
+              // Bloqueada só pela FALTA DE CONTA, nunca só por
+              // `requerConta` — um cliente logado escolhe "Pagar agora com
+              // PIX" normalmente. NÃO esconde a opção: some sem explicação
+              // faria o convidado achar que a loja não aceita PIX pelo
+              // site. Mostra com aparência de indisponível, e o clique vira
+              // o caminho para resolver (entrar/criar conta), em vez de
+              // selecionar o método.
+              const bloqueadaPorFaltaDeConta = option.requerConta && !user;
               return (
                 <button
                   key={option.value}
-                  onClick={() => setPaymentMethod(option.value)}
+                  onClick={() => {
+                    if (bloqueadaPorFaltaDeConta) {
+                      haptic.light();
+                      onNavigate("auth");
+                      return;
+                    }
+                    setPaymentMethod(option.value);
+                  }}
+                  aria-disabled={bloqueadaPorFaltaDeConta}
                   className={`flex w-full items-center gap-4 rounded-2xl border-2 p-3.5 shadow-sm transition-all duration-300 active:scale-[0.99] ${
-                    isSelected
-                      ? "z-10 border-zinc-900 bg-white shadow-md"
-                      : "border-zinc-50 bg-zinc-50/50 hover:border-zinc-100 hover:bg-white"
+                    bloqueadaPorFaltaDeConta
+                      ? "border-zinc-50 bg-zinc-50/40 opacity-70"
+                      : isSelected
+                        ? "z-10 border-zinc-900 bg-white shadow-md"
+                        : "border-zinc-50 bg-zinc-50/50 hover:border-zinc-100 hover:bg-white"
                   }`}
                 >
                   <div
-                    className={`flex size-10 items-center justify-center rounded-xl ${option.color} transition-all duration-300 ${isSelected ? "scale-105" : ""}`}
+                    className={`flex size-10 items-center justify-center rounded-xl ${option.color} transition-all duration-300 ${isSelected && !bloqueadaPorFaltaDeConta ? "scale-105" : ""}`}
                   >
                     <Icon className="size-5" />
                   </div>
-                  <span
-                    className={`text-xs font-bold uppercase tracking-wider ${isSelected ? "text-zinc-900" : "text-zinc-400"}`}
-                  >
-                    {option.label}
-                  </span>
-                  <div
-                    className={`ml-auto flex size-5 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
-                  >
-                    {isSelected && <Check className="size-3 text-white" />}
+                  <div className="flex min-w-0 flex-col items-start gap-1 text-left">
+                    <span
+                      className={`text-xs font-bold uppercase tracking-wider ${isSelected && !bloqueadaPorFaltaDeConta ? "text-zinc-900" : "text-zinc-400"}`}
+                    >
+                      {option.label}
+                    </span>
+                    {bloqueadaPorFaltaDeConta && (
+                      <span className="text-[9px] font-medium normal-case leading-snug tracking-normal text-zinc-400">
+                        Pagar pelo site exige conta, para você acompanhar o
+                        pedido e receber a confirmação. Toque para entrar ou
+                        criar a sua.
+                      </span>
+                    )}
                   </div>
+                  {bloqueadaPorFaltaDeConta ? (
+                    <Lock className="ml-auto size-4 shrink-0 text-zinc-300" />
+                  ) : (
+                    <div
+                      className={`ml-auto flex size-5 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
+                    >
+                      {isSelected && <Check className="size-3 text-white" />}
+                    </div>
+                  )}
                 </button>
               );
             })}

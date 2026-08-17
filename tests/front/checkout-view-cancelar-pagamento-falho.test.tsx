@@ -615,27 +615,15 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
     );
   });
 
-  it("convidado (sem sessão): o botão de saída NÃO aparece, mas a tela explica o que vai acontecer — update_order_status_atomic recusaria a chamada (PEDIDO-010, #115)", async () => {
-    mockUser = null;
-    const { CheckoutView } = await import("@/views/customer/CheckoutView");
-    await chegarNaTelaDeAguardarPagamento(CheckoutView);
-
-    await act(async () => {
-      pagamentoOnlineOnErro[0](
-        "Este pagamento foi recusado e não pode ser tentado novamente.",
-        "terminal",
-      );
-    });
-
-    expect(
-      localizarBotaoPorTexto(
-        hospedeiro,
-        "Cancelar pedido e voltar ao carrinho",
-      ),
-    ).toBeUndefined();
-    // BLOQUEIO 3 (#197): tela morta vira tela que explica — os 30 min do
-    // pg_cron e a alternativa (entrar na conta).
-    expect(hospedeiro.textContent).toContain("30 minutos");
-    expect(hospedeiro.textContent).toContain("conta");
-  });
+  // Substituído (16/08/2026, pagamento online exige conta — decisão do
+  // Gabriel): este teste chamava `chegarNaTelaDeAguardarPagamento` como
+  // CONVIDADO, o que deixou de ser alcançável pela UI — sem sessão, o
+  // clique em "Pagar agora com PIX" navega para "auth" em vez de
+  // selecionar o método (ver `tests/front/checkout-view-flag-on.test.tsx`,
+  // "convidado: clicar em 'Pagar agora com PIX' NÃO seleciona o método"), e
+  // o convidado nunca cria uma cobrança online para começar a ter que
+  // cancelar. O ramo `user ? <botão cancelar> : <texto explicando>` deste
+  // arquivo (CheckoutView.tsx) fica como defesa em profundidade — RLS e o
+  // guard novo do backend (`criar-pagamento`, `PAGAMENTO_ONLINE_EXIGE_
+  // CONTA`) já impedem o convidado de chegar aqui pela via normal.
 });

@@ -48,9 +48,28 @@ vi.mock("@/contexts/StoreContext", () => ({
   }),
 }));
 
+// Endereço salvo do cliente logado (`is_default: true` autosseleciona sem
+// clique extra — mesmo comportamento que `checkout-view-pix-confirmacao.
+// test.tsx` já usa). Convidado não lê este mock (a seção de endereços
+// salvos só renderiza com `user`), então mantê-lo sempre presente é
+// inofensivo para os testes de convidado.
 vi.mock("@/hooks/useAddresses", () => ({
   useAddresses: () => ({
-    addresses: [],
+    addresses: [
+      {
+        id: "addr-1",
+        user_id: "user-1",
+        name: "Casa",
+        recipient_name: "Cliente Teste",
+        cep: "38500-000",
+        street: "Rua Teste",
+        number: "100",
+        neighborhood: "Centro",
+        city: "Monte Carmelo",
+        state: "MG",
+        is_default: true,
+      },
+    ],
     fetchAddresses: vi.fn(),
     addAddress: vi.fn(),
     updateAddress: vi.fn(),
@@ -58,8 +77,15 @@ vi.mock("@/hooks/useAddresses", () => ({
   }),
 }));
 
+// Mutável (16/08/2026, pagamento online exige conta): a maioria dos testes
+// deste arquivo passou a rodar como cliente LOGADO por padrão — pagar
+// online só é alcançável assim agora — e os testes que provam a regra do
+// convidado (bloqueio da opção "Pagar agora com PIX", outras formas de
+// pagamento continuando abertas) sobrescrevem para `null` antes de montar.
+let mockUser: { id: string } | null = { id: "user-1" };
+
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: null, profile: null, loading: false }),
+  useAuth: () => ({ user: mockUser, profile: null, loading: false }),
 }));
 
 // Carrinho de R$100 + R$20 de frete — exatamente o cenário do bloqueador. O
@@ -189,8 +215,10 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
     createOrder.mockClear();
     clearCart.mockClear();
     confettiMock.mockClear();
+    onNavigate.mockClear();
     pagamentoOnlineProps.length = 0;
     pagamentoOnlineOnErro.length = 0;
+    mockUser = { id: "user-1" };
     mockCart = [
       {
         product: {
@@ -236,7 +264,15 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
     vi.restoreAllMocks();
   });
 
-  it("escolhe 'Pagar agora', chama createOrder com comPagamentoOnline:true, não solta confete, mostra a tela de aguardar e entrega o valor CONGELADO (não 0) ao PagamentoOnline", async () => {
+  // Cliente LOGADO (mockUser padrão do beforeEach) — pagamento online exige
+  // conta (decisão do Gabriel, 16/08/2026): este teste era de CONVIDADO até
+  // esta tarefa, e é exatamente o caso que passa a ser impossível pela UI
+  // (o botão de "Pagar agora com PIX" navega para "auth" em vez de
+  // selecionar, sem sessão — ver os testes dedicados de bloqueio, abaixo).
+  // O que este teste prova (createOrder com comPagamentoOnline:true, sem
+  // confete, valor CONGELADO) continua valendo — só que agora pelo caminho
+  // que a regra nova deixou aberto: cliente com conta.
+  it("cliente logado escolhe 'Pagar agora', chama createOrder com comPagamentoOnline:true, não solta confete, mostra a tela de aguardar e entrega o valor CONGELADO (não 0) ao PagamentoOnline", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
 
     await act(async () => {
@@ -262,9 +298,8 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
       botaoOnline!.click();
       digitar("checkout-name", "Cliente Teste");
       digitar("checkout-tel", "34999999999");
-      digitar("guest-street", "Rua Teste");
-      digitar("guest-number", "100");
-      digitar("guest-neighborhood", "Centro");
+      // Sem campos de endereço de convidado: cliente logado usa o endereço
+      // salvo (addr-1, is_default), autosselecionado sem clique.
       await esperarMicrotarefas();
       await esperarMicrotarefas();
     });
@@ -330,9 +365,6 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
       botaoOnline.click();
       digitar("checkout-name", "Cliente Teste");
       digitar("checkout-tel", "34999999999");
-      digitar("guest-street", "Rua Teste");
-      digitar("guest-number", "100");
-      digitar("guest-neighborhood", "Centro");
       await esperarMicrotarefas();
       await esperarMicrotarefas();
     });
@@ -446,5 +478,104 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
     expect(
       localizarBotaoPorTexto(hospedeiro, "Tentar de novo"),
     ).toBeUndefined();
+  });
+
+  // --- Pagamento online exige conta (decisão do Gabriel, 16/08/2026) ------
+  //
+  // Item 1 do relatório da tarefa: convidado não consegue SELECIONAR "Pagar
+  // agora com PIX", e vê a explicação e o caminho para entrar. O clique não
+  // é um no-op silencioso — vira navegação para a tela de login/cadastro,
+  // com o carrinho intacto (persistido em localStorage por CartContext,
+  // sobrevive à troca de tela sem nada novo aqui).
+  it("convidado: clicar em 'Pagar agora com PIX' NÃO seleciona o método — mostra a explicação e navega para 'auth'", async () => {
+    mockUser = null;
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+
+    // Aparência de indisponível + explicação — NÃO some da tela sem dizer
+    // por quê (a tarefa proíbe só esconder a opção).
+    const botaoOnline = localizarBotaoPorTexto(
+      hospedeiro,
+      "Pagar agora com PIX",
+    );
+    expect(botaoOnline).toBeDefined();
+    expect(botaoOnline!.textContent).toContain("exige conta");
+
+    await act(async () => {
+      botaoOnline!.click();
+    });
+
+    // Navegou para o login/cadastro — e NÃO selecionou "online" como método
+    // (a prova de que não selecionou vem no próximo teste, que teria que
+    // preencher os campos de convidado se "online" tivesse sido escolhido
+    // por engano).
+    expect(onNavigate).toHaveBeenCalledWith("auth");
+  });
+
+  // Item 3 do relatório da tarefa — o que impede a regra de virar drástica:
+  // convidado continua finalizando pedido normalmente pelas formas de
+  // pagamento na entrega, exatamente como antes desta tarefa.
+  it("convidado: as outras formas de pagamento (na entrega) continuam disponíveis e selecionáveis", async () => {
+    mockUser = null;
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+
+    const botaoCartao = localizarBotaoPorTexto(
+      hospedeiro,
+      "Cartão na Entrega",
+    )!;
+    expect(botaoCartao).toBeDefined();
+
+    await act(async () => {
+      botaoCartao.click();
+      digitar("checkout-name", "Cliente Teste");
+      digitar("checkout-tel", "34999999999");
+      digitar("guest-street", "Rua Teste");
+      digitar("guest-number", "100");
+      digitar("guest-neighborhood", "Centro");
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 420));
+    });
+
+    const botaoFinalizar = localizarBotaoPorTexto(
+      document.body,
+      "Finalizar Pedido",
+    );
+    expect(botaoFinalizar).toBeDefined();
+    expect(botaoFinalizar!.disabled).toBe(false);
+
+    await act(async () => {
+      botaoFinalizar!.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder).toHaveBeenCalledWith(expect.anything(), {
+      comPagamentoOnline: false,
+    });
+    // Caminho de sucesso de sempre — nunca a tela de "Finalize o pagamento",
+    // que só existe para a cobrança online.
+    expect(hospedeiro.textContent).not.toContain("Finalize o pagamento");
   });
 });

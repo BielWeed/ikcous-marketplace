@@ -21,6 +21,15 @@ import {
 
 const UUID = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
 const AGORA = new Date("2026-08-06T12:00:00.000Z");
+// Dono padrão dos pedidos usados pelos testes do ramo de CRIAÇÃO — desde a
+// regra "pagamento online exige conta" (16/08/2026, ver o guard novo em
+// index.ts), `user_id: null` (convidado) é RECUSADO antes de chegar no MP, e
+// os testes que verificam o comportamento do ramo "criar" (corpo mandado ao
+// MP, gravação de gateway_payment_id, tradução de status etc.) precisam de
+// um pedido com dono para não bater nesse guard por acidente. `pedidoBase()`
+// continua com `user_id: null` por padrão — só estes testes passam o
+// override, junto de `montarToken(DONO_LOGADO)` na requisição.
+const DONO_LOGADO = "5f5f5f5f-6666-7777-8888-999900001111";
 
 // Payload {"sub":"3f2a1b8c-...","nome":"José Ítalo Ução","cidade":"Zoé Núñez"}
 // codificado em base64url. Escolhido porque nomes brasileiros acentuados
@@ -492,29 +501,87 @@ Deno.test("handler: pedido inexistente devolve 404 terminal, não erro genérico
   assertEquals(corpo.terminal, true);
 });
 
-Deno.test("handler: pedido de convidado passa sem sessão e devolve 200", async () => {
+Deno.test("handler: pedido de convidado SEM cobrança existente é RECUSADO — pagamento online exige conta (decisão do Gabriel, 16/08/2026)", async () => {
+  // Antes desta regra este teste chamava "...devolve 200" — o convidado
+  // criava a cobrança normalmente. Agora ele nunca chega no Mercado Pago: a
+  // RLS de marketplace_orders é `TO authenticated` com `auth.uid() =
+  // user_id`, e um pedido com user_id NULL nunca aparece pro próprio
+  // comprador, nem depois de pago. `código` distinto de qualquer outra
+  // recusa 4xx desta function — quem depurar um 403 sabe, sem abrir o
+  // código, que foi esta regra, não outra.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase(); // user_id: null (convidado)
   const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
   const fetchImpl = fetchFalsoMP({});
+  let chamouFetch = false;
+  const fetchEspiao: typeof fetchImpl = async (...args) => {
+    chamouFetch = true;
+    return fetchImpl(...args);
+  };
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+    supabase,
+    fetchImpl: fetchEspiao,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 403);
+  assertEquals(corpo.code, "PAGAMENTO_ONLINE_EXIGE_CONTA");
+  assertEquals(corpo.terminal, true);
+  // A prova que importa além do status: nada foi cobrado. Sem isto, uma
+  // versão do guard que checasse DEPOIS de chamar o MP passaria batida —
+  // cobraria de verdade e só recusaria a resposta.
+  assertEquals(chamouFetch, false);
+});
+
+Deno.test("handler: pedido de convidado COM cobrança existente continua reconsultando normalmente — o guard só bloqueia CRIAÇÃO", async () => {
+  // Janela de atualização (obrigatória pela tarefa): um convidado que já
+  // tinha o QR na tela ANTES desta regra entrar não pode perder acesso a um
+  // PIX que ele pode já ter pago só porque a página recarregou DEPOIS da
+  // atualização. O guard novo fica ATRÁS do `if (decisao.acao ===
+  // "reconsultar")` em index.ts — nunca na frente dele.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ gateway_payment_id: "ORD789" }); // user_id: null
+  const registro = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const fetchImpl = fetchFalsoConsulta({
+    id: "ORD789",
+    status: "action_required",
+    status_detail: "waiting_transfer",
+    transactions: {
+      payments: [
+        {
+          id: "PAY789",
+          payment_method: { qr_code: "QRCODE-DA-RECONSULTA-CONVIDADO" },
+        },
+      ],
+    },
+  });
 
   const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
     supabase,
     fetchImpl,
   });
+  const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
+  assertEquals(corpo.qrCode, "QRCODE-DA-RECONSULTA-CONVIDADO");
+  // Nenhum UPDATE: reconsulta nunca grava, igual ao ramo de dono logado.
+  assertEquals(registro.chamadasUpdate, 0);
 });
 
 Deno.test("handler: o corpo enviado ao Mercado Pago leva external_reference", async () => {
   // Garantido pelo caminho REAL do handler, não só pelos testes da Task 1.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
   const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
   const capturado: { corpo?: Record<string, unknown> } = {};
   const fetchImpl = fetchFalsoMP(capturado);
 
-  await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+  await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl,
+  });
 
   assertEquals(capturado.corpo?.external_reference, UUID);
 });
@@ -524,17 +591,20 @@ Deno.test("handler: PIX leva o documento do pagador quando o front manda — A-2
   // montarCorpoPix (a que faltava o parâmetro). Este teste prova a fiação
   // INTEIRA, não só montarCorpoPix isolado (coberto em mercadopago_test.ts).
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
   const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
   const capturado: { corpo?: Record<string, unknown> } = {};
   const fetchImpl = fetchFalsoMP(capturado);
 
   await handler(
-    requisicao({
-      orderId: UUID,
-      metodo: "pix",
-      documento: { type: "CPF", number: "12345678909" },
-    }),
+    requisicao(
+      {
+        orderId: UUID,
+        metodo: "pix",
+        documento: { type: "CPF", number: "12345678909" },
+      },
+      montarToken(DONO_LOGADO),
+    ),
     { supabase, fetchImpl },
   );
 
@@ -555,28 +625,31 @@ Deno.test("handler: o corpo Orders enviado ao MP NÃO leva notification_url — 
   // deixar a suíte com uma expectativa que a migração já tornou falsa.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   Deno.env.set("SUPABASE_URL", "https://xyz.supabase.co");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
   const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
   const capturado: { corpo?: Record<string, unknown> } = {};
   const fetchImpl = fetchFalsoMP(capturado);
 
-  await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+  await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl,
+  });
 
   assertEquals(capturado.corpo?.notification_url, undefined);
 });
 
 Deno.test("handler: pedido expirado pelo pg_cron no meio da corrida NÃO devolve 200, e a mensagem é a de prazo", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
   // A releitura pós-UPDATE-falho mostra o que o pg_cron já gravou: 'expirado'.
   const releitura = { payment_status: "expirado", gateway_payment_id: null };
   const supabase = clienteFalso({ pedido, gravado: null, releitura });
   const fetchImpl = fetchFalsoMP({});
 
-  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase,
-    fetchImpl,
-  });
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
   const corpo = await resposta.json();
 
   assertEquals(resposta.status !== 200, true);
@@ -595,17 +668,17 @@ Deno.test("handler: pedido expirado pelo pg_cron no meio da corrida NÃO devolve
 // isso SEM o campo `terminal`.
 Deno.test("handler: corrida sem causa gravada (releitura não explica) devolve terminal ausente — continua recuperável", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
   // Nem 'expirado', nem gateway_payment_id gravado: a releitura não explica
   // por que o UPDATE não achou linha (ex.: ela também falhou).
   const releitura = { payment_status: "aguardando", gateway_payment_id: null };
   const supabase = clienteFalso({ pedido, gravado: null, releitura });
   const fetchImpl = fetchFalsoMP({});
 
-  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase,
-    fetchImpl,
-  });
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 409);
@@ -615,17 +688,17 @@ Deno.test("handler: corrida sem causa gravada (releitura não explica) devolve t
 
 Deno.test("handler: duas chamadas concorrentes — a que perde o UPDATE NÃO devolve 200, e a mensagem é a de cobrança já gerada", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
   // A releitura mostra que a OUTRA chamada já gravou gateway_payment_id
   // enquanto esta ainda estava esperando o Mercado Pago responder.
   const releitura = { payment_status: "aguardando", gateway_payment_id: "outro-pagamento" };
   const supabase = clienteFalso({ pedido, gravado: null, releitura });
   const fetchImpl = fetchFalsoMP({});
 
-  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase,
-    fetchImpl,
-  });
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
   const corpo = await resposta.json();
 
   assertEquals(resposta.status !== 200, true);
@@ -940,17 +1013,17 @@ Deno.test("handler: pedido sem cobrança existente cria uma nova e grava gateway
   // teste (chamadasUpdate === 1) cairia, mesmo que o teste de status 200
   // sozinho não pegasse isso.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
   const registro: { chamadasUpdate: number; filtrosUpdate?: Array<[string, unknown]> } = {
     chamadasUpdate: 0,
   };
   const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
   const fetchImpl = fetchFalsoMP({});
 
-  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase,
-    fetchImpl,
-  });
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
 
   assertEquals(resposta.status, 200);
   assertEquals(registro.chamadasUpdate, 1);
@@ -970,12 +1043,15 @@ Deno.test("handler: pedido sem cobrança existente cria uma nova e grava gateway
 
 Deno.test("handler: PIX monta o corpo Orders — total_amount string, expiração PT30M e processing_mode automatic", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase({ total: 149.9 });
+  const pedido = pedidoBase({ total: 149.9, user_id: DONO_LOGADO });
   const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
   const capturado: { corpo?: Record<string, unknown> } = {};
   const fetchImpl = fetchFalsoMP(capturado);
 
-  await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+  await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl,
+  });
 
   assertEquals(capturado.corpo?.type, "online");
   assertEquals(capturado.corpo?.processing_mode, "automatic");
@@ -993,7 +1069,7 @@ Deno.test("handler: PIX grava gateway_payment_id com o id da ORDER (prefixo ORD)
   // order (GET /v1/orders/{id}). Gravar o paymentId aqui faria
   // confirmar_pagamento nunca casar o id que o webhook manda.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
   const registro: {
     chamadasUpdate: number;
     filtrosUpdate?: Array<[string, unknown]>;
@@ -1002,21 +1078,24 @@ Deno.test("handler: PIX grava gateway_payment_id com o id da ORDER (prefixo ORD)
   const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
   const fetchImpl = fetchFalsoMP({});
 
-  await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+  await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl,
+  });
 
   assertEquals(registro.valoresUpdate?.gateway_payment_id, "ORD999");
 });
 
 Deno.test("handler: PIX devolve QR, imagem e ticket_url no formato que o front já espera (qrCode, qrCodeBase64, ticketUrl)", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
   const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
   const fetchImpl = fetchFalsoMP({});
 
-  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase,
-    fetchImpl,
-  });
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
@@ -1039,7 +1118,7 @@ Deno.test("handler: PIX com par conhecido e recusado no ramo de CRIAÇÃO devolv
   // batendo em mapearStatusOrder normalmente, nunca caindo no default por
   // engano.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
   const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
   const fetchImpl = async (_url: string, _init?: RequestInit) =>
     new Response(
@@ -1047,10 +1126,10 @@ Deno.test("handler: PIX com par conhecido e recusado no ramo de CRIAÇÃO devolv
       { status: 201 },
     );
 
-  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase,
-    fetchImpl,
-  });
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
@@ -1069,7 +1148,7 @@ Deno.test("handler: PIX com status desconhecido no ramo de CRIAÇÃO vira 'aguar
   // banco para este pedido — e quem decide a verdade depois é o
   // webhook/reconciliação, não a tela.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
   const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
   const fetchImpl = async (_url: string, _init?: RequestInit) =>
     new Response(
@@ -1081,10 +1160,10 @@ Deno.test("handler: PIX com status desconhecido no ramo de CRIAÇÃO vira 'aguar
       { status: 201 },
     );
 
-  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase,
-    fetchImpl,
-  });
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
@@ -1097,7 +1176,7 @@ Deno.test("handler: PIX sem QR na resposta da Orders API devolve 200 com qrCode 
   // qrCode/qrCodeBase64 ausentes — igual ao caminho clássico, que também
   // nunca validava a presença do QR aqui.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
   const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
   const fetchImpl = async (_url: string, _init?: RequestInit) =>
     new Response(
@@ -1105,10 +1184,10 @@ Deno.test("handler: PIX sem QR na resposta da Orders API devolve 200 com qrCode 
       { status: 201 },
     );
 
-  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase,
-    fetchImpl,
-  });
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
@@ -1161,7 +1240,7 @@ Deno.test("handler: PIX com date_of_expiration na janela sã REALINHA expires_at
   // `pedido.expires_at` (2099, bem longe do vencimento real do QR) mentiria
   // se a resposta usasse essa variável em memória em vez do que foi gravado.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase(); // expires_at: "2099-01-01T00:00:00.000Z"
+  const pedido = pedidoBase({ user_id: DONO_LOGADO }); // expires_at: "2099-01-01T00:00:00.000Z"
   const dataExpiracaoNova = new Date(Date.now() + 20 * 60 * 1000).toISOString();
   const registro: {
     chamadasUpdate: number;
@@ -1193,10 +1272,10 @@ Deno.test("handler: PIX com date_of_expiration na janela sã REALINHA expires_at
       { status: 201 },
     );
 
-  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase,
-    fetchImpl,
-  });
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
@@ -1215,7 +1294,7 @@ Deno.test("handler: PIX sem date_of_expiration não mexe em expires_at — compo
   // date_of_expiration — aí sim a coluna é escrita. Sem o Bloco 2, o Bloco 1
   // não prova nada sobre o comportamento do código, só sobre o fixture.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase(); // expires_at: "2099-01-01T00:00:00.000Z"
+  const pedido = pedidoBase({ user_id: DONO_LOGADO }); // expires_at: "2099-01-01T00:00:00.000Z"
 
   // --- Bloco 1: SEM date_of_expiration — comportamento de hoje, sem erro.
   const registroSemCampo: {
@@ -1229,10 +1308,13 @@ Deno.test("handler: PIX sem date_of_expiration não mexe em expires_at — compo
     gravado: { id: UUID, expires_at: pedido.expires_at },
     registro: registroSemCampo,
   });
-  const respostaSemCampo = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase: supabaseSemCampo,
-    fetchImpl: fetchFalsoComExpiracao(), // resposta padrão, sem date_of_expiration
-  });
+  const respostaSemCampo = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    {
+      supabase: supabaseSemCampo,
+      fetchImpl: fetchFalsoComExpiracao(), // resposta padrão, sem date_of_expiration
+    },
+  );
   const corpoSemCampo = await respostaSemCampo.json();
 
   assertEquals(respostaSemCampo.status, 200);
@@ -1250,10 +1332,13 @@ Deno.test("handler: PIX sem date_of_expiration não mexe em expires_at — compo
     gravado: { id: UUID, expires_at: dataDentroDaJanela },
     registro: registroComCampo,
   });
-  const respostaComCampo = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase: supabaseComCampo,
-    fetchImpl: fetchFalsoComExpiracao(dataDentroDaJanela),
-  });
+  const respostaComCampo = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    {
+      supabase: supabaseComCampo,
+      fetchImpl: fetchFalsoComExpiracao(dataDentroDaJanela),
+    },
+  );
   const corpoComCampo = await respostaComCampo.json();
 
   assertEquals(respostaComCampo.status, 200);
@@ -1270,7 +1355,7 @@ Deno.test("handler: PIX com date_of_expiration fora da janela sã (24h à frente
   // DENTRO da janela sã — prova que o Bloco 1 recusa pela DATA, não porque a
   // escrita esteja quebrada ou ausente.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase(); // expires_at: "2099-01-01T00:00:00.000Z"
+  const pedido = pedidoBase({ user_id: DONO_LOGADO }); // expires_at: "2099-01-01T00:00:00.000Z"
   const dataForaDaJanela = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
   // --- Bloco 1: FORA da janela sã (24h à frente — o default do MP quando
@@ -1292,10 +1377,13 @@ Deno.test("handler: PIX com date_of_expiration fora da janela sã (24h à frente
   };
   let respostaFora: Response;
   try {
-    respostaFora = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-      supabase: supabaseFora,
-      fetchImpl: fetchFalsoComExpiracao(dataForaDaJanela),
-    });
+    respostaFora = await handler(
+      requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+      {
+        supabase: supabaseFora,
+        fetchImpl: fetchFalsoComExpiracao(dataForaDaJanela),
+      },
+    );
   } finally {
     console.warn = originalWarn;
   }
@@ -1318,10 +1406,13 @@ Deno.test("handler: PIX com date_of_expiration fora da janela sã (24h à frente
     gravado: { id: UUID, expires_at: dataDentroDaJanela },
     registro: registroDentro,
   });
-  const respostaDentro = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase: supabaseDentro,
-    fetchImpl: fetchFalsoComExpiracao(dataDentroDaJanela),
-  });
+  const respostaDentro = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    {
+      supabase: supabaseDentro,
+      fetchImpl: fetchFalsoComExpiracao(dataDentroDaJanela),
+    },
+  );
   const corpoDentro = await respostaDentro.json();
 
   assertEquals(respostaDentro.status, 200);
@@ -1341,7 +1432,7 @@ Deno.test("handler: PIX com date_of_expiration fora da janela sã (24h à frente
 // versão corrigida deriva do mesmo valor mandado ao MP.
 Deno.test("handler: quando o prazo do PIX mandado ao MP muda (deps.expiracaoPix), a janela sã do realinhamento acompanha — não fica presa em 30 minutos", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase(); // expires_at: "2099-01-01T00:00:00.000Z"
+  const pedido = pedidoBase({ user_id: DONO_LOGADO }); // expires_at: "2099-01-01T00:00:00.000Z"
   const dataExpiracaoNova = new Date(Date.now() + 40 * 60 * 1000).toISOString();
   const registro: {
     chamadasUpdate: number;
@@ -1372,11 +1463,10 @@ Deno.test("handler: quando o prazo do PIX mandado ao MP muda (deps.expiracaoPix)
       { status: 201 },
     );
 
-  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase,
-    fetchImpl,
-    expiracaoPix: "PT45M",
-  });
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl, expiracaoPix: "PT45M" },
+  );
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
@@ -1449,7 +1539,7 @@ Deno.test("handler: o throw de montarCorpoPixOrders (expiração fora da faixa) 
   // como este teste alcançar o catch sem depender de um bug de verdade no
   // arquivo.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const pedido = pedidoBase();
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
   const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
   let chamouFetch = false;
   const fetchImpl = async (_url: string, _init?: RequestInit) => {
@@ -1457,11 +1547,14 @@ Deno.test("handler: o throw de montarCorpoPixOrders (expiração fora da faixa) 
     return new Response(JSON.stringify({ id: "ORD1" }), { status: 201 });
   };
 
-  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
-    supabase,
-    fetchImpl,
-    expiracaoPix: "PT5M", // abaixo do mínimo de 30 — força o throw
-  });
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    {
+      supabase,
+      fetchImpl,
+      expiracaoPix: "PT5M", // abaixo do mínimo de 30 — força o throw
+    },
+  );
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 502);
@@ -1485,12 +1578,15 @@ Deno.test("handler: MP_SANDBOX_PAYER_EMAIL presente troca o e-mail do pagador e 
   Deno.env.set("MP_ACCESS_TOKEN", "APP_USR-1234567890");
   Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "sandbox-pix@testuser.com");
   try {
-    const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" } });
+    const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" }, user_id: DONO_LOGADO });
     const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
     const capturado: { corpo?: Record<string, unknown> } = {};
     const fetchImpl = fetchFalsoMP(capturado);
 
-    await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+    await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl,
+    });
 
     const payer = capturado.corpo?.payer as Record<string, unknown>;
     assertEquals(payer.email, "sandbox-pix@testuser.com");
@@ -1505,12 +1601,15 @@ Deno.test("handler: MP_SANDBOX_PAYER_EMAIL presente troca o e-mail do pagador e 
 Deno.test("handler: MP_SANDBOX_PAYER_EMAIL ausente mantém o e-mail real do cliente e não define first_name", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "APP_USR-1234567890");
   Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
-  const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" } });
+  const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" }, user_id: DONO_LOGADO });
   const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
   const capturado: { corpo?: Record<string, unknown> } = {};
   const fetchImpl = fetchFalsoMP(capturado);
 
-  await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+  await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl,
+    });
 
   const payer = capturado.corpo?.payer as Record<string, unknown>;
   assertEquals(payer.email, "cliente-real@exemplo.com");
@@ -1530,12 +1629,15 @@ Deno.test("handler: MP_SANDBOX_PAYER_EMAIL definida e VAZIA se comporta como aus
   Deno.env.set("MP_ACCESS_TOKEN", "APP_USR-1234567890");
   Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "");
   try {
-    const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" } });
+    const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" }, user_id: DONO_LOGADO });
     const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
     const capturado: { corpo?: Record<string, unknown> } = {};
     const fetchImpl = fetchFalsoMP(capturado);
 
-    await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+    await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl,
+    });
 
     const payer = capturado.corpo?.payer as Record<string, unknown>;
     assertEquals(payer.email, "cliente-real@exemplo.com");
@@ -1556,12 +1658,15 @@ Deno.test("handler: MP_SANDBOX_PAYER_EMAIL definida só com espaços/tab se comp
   Deno.env.set("MP_ACCESS_TOKEN", "APP_USR-1234567890");
   Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "   ");
   try {
-    const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" } });
+    const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" }, user_id: DONO_LOGADO });
     const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
     const capturado: { corpo?: Record<string, unknown> } = {};
     const fetchImpl = fetchFalsoMP(capturado);
 
-    await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+    await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl,
+    });
 
     const payer = capturado.corpo?.payer as Record<string, unknown>;
     assertEquals(payer.email, "cliente-real@exemplo.com");
@@ -1578,7 +1683,7 @@ Deno.test("handler: MP_SANDBOX_PAYER_EMAIL presente avisa por log qual e-mail es
   // linha de log. Nada quebrava alto; só ficava errado.
   Deno.env.set("MP_ACCESS_TOKEN", "APP_USR-1234567890");
   Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "qa-interno@ikcous.com.br");
-  const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" } });
+  const pedido = pedidoBase({ customer_data: { email: "cliente-real@exemplo.com" }, user_id: DONO_LOGADO });
   const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
   const fetchImpl = fetchFalsoMP({});
 
@@ -1588,7 +1693,10 @@ Deno.test("handler: MP_SANDBOX_PAYER_EMAIL presente avisa por log qual e-mail es
     avisos.push(args);
   };
   try {
-    await handler(requisicao({ orderId: UUID, metodo: "pix" }), { supabase, fetchImpl });
+    await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl,
+    });
   } finally {
     console.warn = originalWarn;
     Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
@@ -1917,6 +2025,13 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // muda só quando um ponto de retorno é acrescentado ou removido de
   // propósito — o que É a enumeração pedida, não um acidente de estilo.
   //
+  // 18, não mais 17: pagamento online exige conta (decisão do Gabriel,
+  // 16/08/2026) acrescentou um ponto de retorno novo — `if (pedido.user_id
+  // === null) return json({ error: ..., code: "PAGAMENTO_ONLINE_EXIGE_
+  // CONTA", terminal: true }, 403);`, entre o ramo "reconsultar" e o ramo
+  // "criar". Já leva `terminal: true` no literal — não precisou entrar na
+  // lista de recuperáveis conhecidas.
+  //
   // 17, não mais 16: BLOQUEIO 3 da revisão (CHECKOUT-070) acrescentou o
   // fallback para o endpoint clássico dentro do ramo "reconsultar" — um
   // `if (!classico.ok) return json({ error: classico.erro }, 502);` novo,
@@ -1935,7 +2050,7 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // virou dois — falha de LEITURA (503) e "não existe" (404) — porque as
   // duas causas eram opostas e tinham que responder diferente (achado da
   // revisão do CHECKOUT-050, #194).
-  assertEquals(achados, 17);
+  assertEquals(achados, 18);
 });
 
 // CHECKOUT-050 (#194), achado por mutação: o teste acima só casa o helper

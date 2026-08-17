@@ -436,6 +436,33 @@ async function handler(
     );
   }
 
+  // Pagamento online exige conta — decisão do Gabriel, 16/08/2026: quem paga
+  // pelo site precisa acompanhar o pedido e receber a confirmação, e a RLS
+  // de `marketplace_orders` é `TO authenticated` com `auth.uid() = user_id`
+  // — um pedido de convidado (`user_id` NULL) nunca aparece pro próprio
+  // comprador, nem depois de pago (medido em 16/08/2026 com um PIX real). A
+  // trava no front (CheckoutView) já impede escolher "Pagar agora com PIX"
+  // sem sessão, mas `verify_jwt` não identifica cliente (ver o comentário do
+  // topo deste arquivo) — a chave anon passa por aqui igual à de um cliente
+  // logado, e esta é a trava que vale de verdade.
+  //
+  // SÓ bloqueia CRIAÇÃO — nunca a RECONSULTA: o `if (decisao.acao ===
+  // "reconsultar")` acima já devolveu antes de chegar aqui. Sem essa ordem,
+  // um convidado com o QR na tela ANTES desta mudança que recarregasse a
+  // página DEPOIS dela perderia acesso a um PIX que já pode ter pago — o
+  // dinheiro entraria e nem o cliente nem a loja teriam como saber pela tela.
+  if (pedido.user_id === null) {
+    return json(
+      {
+        error:
+          "Pagar pelo site exige conta. Entre ou crie uma conta para continuar.",
+        code: "PAGAMENTO_ONLINE_EXIGE_CONTA",
+        terminal: true,
+      },
+      403,
+    );
+  }
+
   // decisao.acao === "criar" a partir daqui.
   const email =
     (body.email as string) ??
