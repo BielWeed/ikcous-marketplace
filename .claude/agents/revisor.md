@@ -67,8 +67,13 @@ confiável do próprio trabalho.
 
 Duas leituras que você precisa fazer certo:
 
-- `eslint` devolve **553 warnings pré-existentes** e 0 erro. Warning não é achado seu; erro novo é
-  BLOQUEIA, porque o teto do `.lint-baseline.json` está em 0.
+- `eslint` devolve **553 warnings pré-existentes e 0 erro — os dois são tetos, e os dois reprovam
+  se subirem.** `scripts/lint-ratchet.mjs` sai com `process.exit(1)` para **qualquer** contagem
+  acima do teto de `.lint-baseline.json`. Warning pré-existente não é achado seu — já está contado.
+  **Warning novo é BLOQUEIA**, igual a erro novo: ele reprova o CI.
+- Se o diff toca `supabase/functions/`, **rode `lint:ratchet`** — o eslint é o único dos sete
+  comandos que olha essa pasta (`typecheck`, `build` e `size` não enxergam `supabase/`). Um diff
+  ali com suíte de Deno verde pode reprovar o CI sem que nada mais acuse.
 - `lint:ratchet` acusa **biome errors acima do teto no Windows por causa de CRLF**. O próprio
   script imprime "não cobrado fora do CI". Não relate isso como dívida — é ruído de ambiente. O
   que importa na saída dele é a linha `eslint errors`.

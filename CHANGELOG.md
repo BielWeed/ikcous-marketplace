@@ -7,6 +7,66 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.3.0] — 2026-08-17
+
+Release de funcionalidade: a **cobrança PIX pelo site** entra no código (desligada em Production) e
+a **tela de finalizar** foi consertada e passou a dizer o que o cliente está comprando. Dezesseis
+entregas acumuladas desde a 1.2.0.
+
+**A loja continua sem cobrar pelo site.** A flag `VITE_PAGAMENTO_ONLINE` segue **sem existir em
+Production** (conferido em 17/08/2026 com `vercel env ls production`: só `VITE_MAINTENANCE_MODE`,
+`RESEND_API_KEY`, `VITE_VAPID_PUBLIC_KEY`, `VITE_SUPABASE_ANON_KEY` e `VITE_SUPABASE_URL`). Como a
+flag só liga com a string exata `"true"`, todo o caminho de cobrança online sobe **inerte**: o
+cliente continua vendo apenas pagamento na entrega.
+
+### O que muda para quem COMPRA
+
+- **A tela de finalizar agora diz o que você está comprando, e o que está no preço.** A barra do
+  rodapé mostra o item (ou "N itens no pedido"), o total, e **"Inclui R$ X,XX de entrega"** — ou
+  "Entrega grátis inclusa". Um toque no total abre a conta inteira: cada item com preço unitário,
+  subtotal, entrega, desconto e total. Antes, quem ia pagar na porta (três das quatro formas de
+  pagamento são na entrega) não descobria em lugar nenhum do app quanto separar nem se a entrega
+  estava inclusa — e conferir o pedido custava o endereço já digitado, porque sair da tela apaga o
+  formulário.
+- **Os campos de endereço pararam de sair desalinhados.** "Número" ficava colado em "Cidade" e
+  "Estado" sobrava sozinho numa linha. Agora é `CEP | Número · Rua · Bairro · Cidade | Estado ·
+  Complemento`, cada campo com a largura do que entra nele — nomes longos de rua e bairro cabem.
+- **A barra do total encaixou na navegação.** Havia uma fresta de 11px por onde o formulário
+  aparecia rolando entre as duas barras. Em tela larga, a barra ficava meia tela deslocada para a
+  direita e o formulário esticava de ponta a ponta.
+- **Os meios de pagamento ficaram legíveis.** Os nomes tinham contraste de 2,56:1 (o mínimo é 4,5)
+  e pareciam desativados. O aviso de que pagar pelo site exige conta vinha em letra de 9px com
+  transparência por cima — perto de 1,9:1, justamente o texto que precisa ser lido.
+- **O letreiro da busca saiu.** O texto rolava em laço infinito numa janela de 123px sendo que ele
+  mede ~130px: nunca cabia inteiro, e não havia como pausar. Virou um texto parado e legível,
+  "Buscar produtos".
+- **A busca não aparece mais na tela de finalizar.** Tocar num resultado ali trocava de tela e
+  apagava nome, WhatsApp, rua, número e complemento já digitados.
+- **A variação escolhida do produto para de desaparecer.** O carrinho salvo no aparelho descartava
+  o campo da variação ("Tamanho M") — depois de uma recarga, ela sumia da tela **e da nota que o
+  vendedor recebe**.
+
+### O que muda para quem VENDE
+
+- **A nota do pedido volta a trazer a variação escolhida** pelo cliente (mesma correção acima).
+- **Cobrança PIX pelo site, pronta e desligada:** migração para a Orders API do Mercado Pago,
+  reserva de estoque alinhada ao vencimento do QR, aviso na tela quando o pagamento é confirmado,
+  link "Pagar pelo Mercado Pago", saída para o cliente cujo pagamento falhou, e a exigência de
+  conta para pagar pelo site. Nada disso está ativo em Production.
+- **As três edge functions de pagamento** (`criar-pagamento`, `webhook-mercadopago`,
+  `reconciliar-pagamentos`) mudaram neste ciclo e **sobem à mão**, não pela Vercel. Como o caminho
+  de cobrança online está desligado em Production, o front publicado não as chama.
+
+### Verificação desta release
+
+`typecheck` limpo · **239 testes de front em 38 arquivos**, verdes em 8 rodadas seguidas ·
+`test:edge` 237 · `test:unit` 17 · `build` ok · `lint:links` 177 links · `size` 521,47 kB de
+800 kB · `lint:ratchet` eslint 0 erros e 553 warnings, no teto. CI inteiro verde no PR #222,
+incluindo a catraca de lint em Linux (1m13s).
+
+Biome foi medido **como o CI mede** (cópias dos arquivos em LF, config sem o bloco `vcs`): 4 erros
+antes do diff, 4 depois — nenhum novo. O número local (187) é o falso positivo de CRLF no Windows.
+
 ## [1.2.0] — 2026-08-13
 
 Release de correção: **dez defeitos**, quatro deles achados só porque a correção de outro defeito

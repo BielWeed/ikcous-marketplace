@@ -1,5 +1,6 @@
 import { StarRating } from "@/components/ui/custom/StarRating";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useStore } from "@/contexts/StoreContext";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
 import { getPredefinedCoverSvg } from "@/utils/covers";
@@ -86,6 +87,9 @@ const itemVariants = {
 } as const;
 
 export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
+  // ADMIN-091 (#202): esconde a nota das avaliações alheias exibidas aqui
+  // quando `enableReviews` está desligado.
+  const { config } = useStore();
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [reviews, setReviews] = useState<UserReview[]>([]);
   const [questions, setQuestions] = useState<UserQuestion[]>([]);
@@ -419,11 +423,18 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                         {/* Review Body */}
                         <div className="space-y-1.5 pl-0.5">
                           <div className="flex items-center justify-between">
-                            <StarRating
-                              rating={rev.rating}
-                              size={11}
-                              readonly
-                            />
+                            {/* ADMIN-091 (#202): só a nota some com o
+                                interruptor desligado -- o comentário
+                                continua, não é dado de avaliação (nota). Com
+                                `justify-between` e um filho só, o timestamp
+                                alinha no início sozinho, sem buraco. */}
+                            {config.enableReviews && (
+                              <StarRating
+                                rating={rev.rating}
+                                size={11}
+                                readonly
+                              />
+                            )}
                             <span className="text-[9px] font-medium uppercase tracking-wider text-zinc-400">
                               {formatDistanceToNow(new Date(rev.created_at), {
                                 addSuffix: true,

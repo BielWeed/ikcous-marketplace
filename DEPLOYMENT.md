@@ -188,8 +188,18 @@ sem dizer **como o PIX de teste é pago** — que é a única parte não óbvia 
    funciona** — comece por aqui.
 2. Uma **aplicação** criada em <https://www.mercadopago.com.br/developers/panel> →
    *Suas integrações*.
-3. As **credenciais de TESTE** dessa aplicação: *Public Key* e *Access Token*. As duas começam
-   com `TEST-`. Se não começarem, são as de produção — não use nesta fase.
+3. As **credenciais de TESTE** dessa aplicação, na aba **"Credenciais de teste"** do painel —
+   *Public Key* e *Access Token*. **Nenhuma das duas é discriminável pelo prefixo na Orders
+   API**: medido nesta sessão, a aplicação criada escolhendo "API de Orders" entrega uma Public
+   Key de teste com prefixo `APP_USR-` (ex.: `APP_USR-80eca126-8b37-4667-bbd0-49715e5532fd`) e um
+   Access Token de teste também com prefixo `APP_USR` (75 caracteres) — os dois iguais aos de
+   produção no formato. A doc oficial da Orders API confirma: o prefixo do Access Token de teste
+   varia conforme a solução, e nenhuma página promete prefixo `TEST-` para a Public Key de teste.
+   Foi essa não-discriminância que derrubou a heurística `startsWith("TEST-")` que
+   `criar-pagamento` chegou a usar para decidir ambiente (CHECKOUT-070); ambiente virou
+   configuração explícita (`MP_SANDBOX_PAYER_EMAIL`, ver 5.2), não dedução do formato da
+   credencial. O que garante que você pegou as credenciais de teste é estar na aba certa do
+   painel, não o texto delas.
 4. A **assinatura secreta** do webhook, que aparece em *Detalhes da aplicação → Notificações*
    ao cadastrar a URL de notificação.
 
@@ -199,9 +209,15 @@ A URL a cadastrar é:
 https://cafkrminfnokvgjqtkle.supabase.co/functions/v1/webhook-mercadopago
 ```
 
-O código manda `notification_url` dentro de cada cobrança, então o cadastro no painel é
-redundante para o roteamento. **Mas a assinatura secreta só existe se a aplicação tiver webhook
-configurado** — por isso o passo continua obrigatório.
+**Isto mudou com a migração para a Orders API.** Com `montarCorpoPix` (clássico) o código mandava
+`notification_url` dentro de cada cobrança, e o cadastro no painel era redundante para o
+roteamento. `montarCorpoPixOrders` **não tem esse parâmetro** — a Orders API não aceita o campo
+(o teste `criar-pagamento/index_test.ts:430` trava a ausência) — então **o cadastro da URL no
+painel passou a ser a única rota de notificação**. Sem ele, o pagamento só é alcançado pela
+reconciliação (§5.6), que roda de 10 em 10 minutos e é rede de segurança, não caminho principal:
+um cliente pode pagar o PIX e o pedido ficar sem confirmar até 10 minutos, ou expirar antes disso
+e devolver o estoque. A consequência operacional disso para cada loja clonada — garantir que o
+cadastro aconteça — é a issue #212, não resolvida aqui.
 
 ### 5.2 Onde cada valor vive
 
@@ -210,9 +226,10 @@ front).
 
 | variável | onde | observação |
 | --- | --- | --- |
-| `VITE_MP_PUBLIC_KEY` | Vercel → Environment Variables → **só Preview** | `TEST-…`; vai para o bundle, é pública por natureza |
+| `VITE_MP_PUBLIC_KEY` | Vercel → Environment Variables → **só Preview** | o prefixo não indica ambiente (ver 5.1); pegue-a na aba "Credenciais de teste" do painel. Vai para o bundle, é pública por natureza |
 | `VITE_PAGAMENTO_ONLINE` | Vercel → **só Preview** | exatamente a string `true`; qualquer outro valor mantém o checkout antigo |
-| `MP_ACCESS_TOKEN` | Supabase → Edge Functions → Secrets | `TEST-…`; **nunca** com prefixo `VITE_`, senão vaza no bundle |
+| `MP_ACCESS_TOKEN` | Supabase → Edge Functions → Secrets | o prefixo NÃO indica ambiente na Orders API (teste e produção começam com `APP_USR`, ver 5.1) — pegue-o na aba "Credenciais de teste" do painel; **nunca** com prefixo `VITE_`, senão vaza no bundle |
+| `MP_SANDBOX_PAYER_EMAIL` | Supabase → Edge Functions → Secrets | **opcional**, só faz sentido em ambiente de TESTE. Presente (e não vazia), `criar-pagamento` troca o e-mail do pagador do PIX por este valor e liga `payer.first_name = "APRO"` — o valor mágico que a doc de teste de PIX do MP exige para a order simular o fluxo completo. Desde 13/08/2026 uma string vazia já se comporta como ausente (achado de revisão: CHECKOUT-070), mas a forma CERTA de desligar o sandbox continua sendo **apagar o secret**, não deixar o campo em branco — é a única sem margem para engano |
 | `MP_WEBHOOK_SECRET` | Supabase → Secrets | a assinatura secreta do 5.1 |
 | `RECONCILIACAO_SECRET` | Supabase → Secrets | **tem de bater** com o segredo homônimo no Vault |
 
@@ -246,6 +263,53 @@ supabase functions deploy reconciliar-pagamentos --no-verify-jwt --project-ref c
 
 Trocar isso é o erro que já derrubou o OTP uma vez (#162).
 
+### 5.3.1 A ordem de deploy entre `criar-pagamento` e o front (CHECKOUT-080, #213)
+
+A partir da CHECKOUT-080, `criar-pagamento` fala o vocabulário FECHADO do banco no campo
+`statusPagamento` ('aguardando'/'pago'/'recusado'/'expirado'/'estornado') — o campo `status`
+(vocabulário cru do Mercado Pago) que a versão anterior devolvia **deixou de existir na resposta**.
+A function e o front sobem por pipelines diferentes (Supabase CLI x Vercel), então há uma janela
+em que um está na versão nova e o outro na antiga.
+
+**Medido nesta correção, e não como foi suposto ao abrir a tarefa:** as duas direções da janela
+falham FECHADO, e da MESMA forma — não há uma ordem que "evita" a incompatibilidade, porque nas
+duas o campo que o lado desatualizado espera vem `undefined`:
+
+- **Function nova + front antigo.** O front antigo lê `r.status`, que a function nova não manda
+  mais — `undefined` não bate em nenhum valor do vocabulário clássico que o front antigo conhece
+  (`"rejected"`/`"cancelled"`/`"pending"`/`"in_process"`/`"approved"`/`"authorized"`), e ele cai no
+  `throw new ErroPagamentoTerminal("Não foi possível confirmar o pagamento.")` — a mesma rede de
+  segurança do CHECKOUT-080, já existente antes desta tarefa.
+- **Front novo + function antiga.** O front novo lê `r.statusPagamento`, que a function antiga
+  nunca mandou (ela só tinha `status`) — `undefined` de novo, e o front novo cai na MESMA rede de
+  segurança (`statusConhecido` falso, nenhum dos três terminais nomeados bate, vira
+  `"Não foi possível confirmar o pagamento."`), verificada em `tests/front/pagamento-online.test.tsx`
+  ("statusPagamento AUSENTE").
+
+Ou seja: **a premissa de que "o front velho ignora o campo novo e continua lendo `status`" está
+errada** — a function nova não manda mais `status`, então o front velho não tem o que ler, e
+também cai em erro terminal. O resultado final (falha fechada, nada cobrado sem registro, cliente
+vê a mesma mensagem) é o mesmo dos dois lados; a ordem de deploy não encurta essa janela, porque
+as duas direções são igualmente seguras — só mudam qual metade do par (front ou function) fica
+momentaneamente "desatualizada".
+
+**Ainda assim, deploye `criar-pagamento` antes do front**, por convenção (a API sobe antes de quem
+a consome) e porque é a ordem que os outros passos deste documento já seguem (§5.3) — não porque
+ela feche uma janela que a ordem inversa deixaria aberta. Durante a janela, seja qual for a ordem,
+o cliente que tentar pagar vê "Não foi possível confirmar o pagamento." e o pedido continua
+'aguardando' até expirar sozinho em 30 minutos — nenhum pagamento é perdido, nenhum pedido fica
+marcado como pago sem o webhook/reconciliação terem confirmado.
+
+**Mesmo assim, faça os dois deploys em sequência, na mesma sessão, e prefira horário de baixo
+movimento.** "Falha fechada" não quer dizer "sem custo": `criar_pedido_seguro` decrementa o estoque
+já na CRIAÇÃO do pedido, e ele só volta quando o pg_cron chama `devolver_estoque` — então cada
+tentativa frustrada durante a janela segura aquele item por até 30 minutos. Nenhum pagamento se
+perde; o inventário é que fica preso enquanto a janela durar.
+
+**Isto vale para CADA loja clonada deste molde**, em todo upgrade que cruze uma versão de
+`criar-pagamento` que mude o vocabulário do campo `statusPagamento`/`status` — não só nesta
+migração específica.
+
 ### 5.4 O teste de ponta a ponta — e como o PIX de teste é pago
 
 Esta é a parte que o plano não descrevia.
@@ -255,16 +319,16 @@ Mercado Pago devolve junto com o QR: em modo de teste ele aponta para o domínio
 `mercadopago.com.br/sandbox/…`, que é a página onde o pagamento de teste se conclui.
 
 O código **já carrega esse valor até o front**: `_shared/mercadopago.ts` extrai
-`point_of_interaction.transaction_data.ticket_url`, e `criar-pagamento` devolve como
-`ticketUrl` nos dois ramos (criação e reconsulta). O que **não** acontece é o componente
-renderizar esse link — `PagamentoOnline.tsx` usa só `qrCode` e `qrCodeBase64`.
+`point_of_interaction.transaction_data.ticket_url`, `criar-pagamento` devolve como `ticketUrl`
+nos dois ramos (criação e reconsulta), e `PagamentoOnline.tsx` já renderiza esse link — o texto
+**"Pagar pelo Mercado Pago"**, logo abaixo do botão "Copiar código PIX" e acima do "Vence às".
 
-Então, para o teste, pegue o `ticketUrl` da resposta da rede:
+Então, para o teste, é só clicar nele:
 
 1. Abra o Preview com a flag ligada e monte um pedido.
-2. Com o DevTools aberto na aba Rede, escolha PIX e finalize.
-3. Na resposta de `criar-pagamento`, copie o campo `ticketUrl`.
-4. Abra essa URL e conclua o pagamento de teste.
+2. Escolha PIX e finalize.
+3. Na tela do PIX, clique em **"Pagar pelo Mercado Pago"**.
+4. Conclua o pagamento de teste na página que abrir.
 
 **Higiene, não contenção:** o Supabase deste repositório é de desenvolvimento (ver *Onde o risco
 realmente mora*, no `CLAUDE.md`). Ainda assim, use um produto de teste com nome óbvio e estoque

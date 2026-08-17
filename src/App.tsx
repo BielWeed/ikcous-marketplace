@@ -46,6 +46,7 @@ const UserProfileView = lazyWithPreload(() =>
   })),
 );
 
+import { destinoPosLogin } from "@/lib/destinoPosLogin";
 import { supabase } from "@/lib/supabase";
 // --- LAZY LOADED ADMIN VIEWS ---
 import { cn } from "@/lib/utils";
@@ -582,28 +583,39 @@ const AppContent = () => {
   const isInitialMountRef = useRef(true);
   const isInitialAuthCheckedRef = useRef(false);
 
+  // Este efeito faz mais que copiar para o ref (também zera
+  // `isHeaderDocked`), então fica como `useEffect` — não é candidato à
+  // troca para `useLayoutEffect` que os efeitos puramente-espelho abaixo
+  // receberam (ver Peça 2 do plano).
   useEffect(() => {
     currentViewRef.current = currentView;
     setIsHeaderDocked(false);
   }, [currentView]);
 
-  useEffect(() => {
+  // Efeitos puramente-espelho (só copiam um valor para um ref, nada de
+  // setState/DOM/timer): `useLayoutEffect` roda no commit, antes de
+  // qualquer efeito passivo de qualquer filho — inclusive o `useEffect` de
+  // `AuthView.tsx` que reage a `user` sair de `null` e chama `onSuccess`.
+  // Sem isso, `userRef.current` podia estar defasado quando esse filho
+  // disparava primeiro (efeito de filho roda antes de efeito de pai em
+  // React), e `handleAuthSuccess` decidia com dado velho.
+  useLayoutEffect(() => {
     selectedProductIdRef.current = selectedProductId;
   }, [selectedProductId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     userRef.current = user;
   }, [user]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     authLoadingRef.current = authLoading;
   }, [authLoading]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     isAdminRef.current = isAdmin;
   }, [isAdmin]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     adminStatusRef.current = adminStatus;
   }, [adminStatus]);
 
@@ -741,6 +753,11 @@ const AppContent = () => {
       }
 
       let targetView = view;
+      // Esta lista de views redirecionáveis existe em MAIS DOIS lugares,
+      // sem nada amarrando os três: `src/lib/destinoPosLogin.ts`
+      // (VIEWS_REDIRECIONAVEIS) e mais abaixo neste mesmo arquivo, na
+      // sincronização de rota via `popstate`. Adicionar uma quarta view
+      // aqui e esquecer as outras duas falha em silêncio.
       if (
         (view === "profile" ||
           view === "account-settings" ||
@@ -902,11 +919,19 @@ const AppContent = () => {
         const currentPathAndSearch =
           globalThis.location.pathname + globalThis.location.search;
         if (currentPathAndSearch !== path) {
-          globalThis.history.pushState(
-            { view: targetView, id, from: fromView },
-            "",
-            path,
-          );
+          // Quando handleNavigate redireciona para o login por falta de
+          // conta (view !== targetView), guarda a view que a pessoa pediu
+          // de verdade — é o que permite handleAuthSuccess mandá-la para lá
+          // depois de entrar, em vez de sempre cair no perfil.
+          const state: Record<string, unknown> = {
+            view: targetView,
+            id,
+            from: fromView,
+          };
+          if (targetView === "auth" && targetView !== view) {
+            state.requested = view;
+          }
+          globalThis.history.pushState(state, "", path);
         }
       };
 
@@ -1016,8 +1041,11 @@ const AppContent = () => {
     [favorites],
   );
 
-  // Sync ref with state to avoid listener closure issues
-  useEffect(() => {
+  // Sync ref with state to avoid listener closure issues.
+  // `useLayoutEffect` pela mesma razão dos efeitos-espelho acima (Peça 2):
+  // roda no commit, antes de qualquer efeito passivo de filho que possa
+  // ler `backOverrideRef.current` num evento disparado logo em seguida.
+  useLayoutEffect(() => {
     backOverrideRef.current = backOverride;
   }, [backOverride]);
 
@@ -1172,7 +1200,18 @@ const AppContent = () => {
   }, [handleNavigate]);
 
   const handleAuthSuccess = useCallback(() => {
-    handleNavigate("profile");
+    // `AuthView` chama isto duas vezes no mesmo login bem-sucedido. Entre a
+    // chamada #1 e a #2, `handleNavigate` já pode ter navegado e já
+    // sobrescrito `history.state` com o `pushState` do DESTINO — não mais o
+    // do login. `destinoPosLogin` detecta isso e devolve `null`; aqui, só
+    // navegamos quando ela devolve uma view de verdade. Nenhuma trava de
+    // idempotência própria é necessária: se a chamada #1 tiver sido engolida
+    // (transição travada, guarda com ref defasado), `history.state` continua
+    // sendo o do login e a chamada #2 refaz o trabalho sozinha.
+    const destino = destinoPosLogin(globalThis.history.state);
+    if (destino !== null) {
+      handleNavigate(destino);
+    }
   }, [handleNavigate]);
 
   const handleAdminLoginSuccess = useCallback(() => {
@@ -1401,7 +1440,12 @@ const AppContent = () => {
   }, [isPasswordRecovery]);
 
   useEffect(() => {
-    const syncWithUrl = () => {
+    // `origem` distingue as duas chamadas abaixo: "efeito" (o efeito reage
+    // a uma mudança de dependência) e "popstate" (o handler de Voltar do
+    // navegador, mais abaixo). O padrão é "efeito" de propósito — reproduz
+    // o comportamento de antes de este parâmetro existir, para qualquer
+    // chamada futura que não o informe.
+    const syncWithUrl = (origem: "popstate" | "efeito" = "efeito") => {
       saveCurrentScroll();
       let path = globalThis.location.pathname.slice(1) || "home";
       // Normalize path (remove trailing slashes)
@@ -1535,6 +1579,9 @@ const AppContent = () => {
           }
         }
 
+        // Mesma lista redirecionável de `handleNavigate` (acima neste
+        // arquivo) e de `src/lib/destinoPosLogin.ts`
+        // (VIEWS_REDIRECIONAVEIS) — sem nada amarrando os três.
         if (
           (targetView === "profile" ||
             targetView === "account-settings" ||
@@ -1568,6 +1615,45 @@ const AppContent = () => {
           targetView = "admin";
           if (globalThis.location.pathname !== "/admin") {
             globalThis.history.replaceState({ view: "admin" }, "", "/admin");
+          }
+        }
+
+        // Simétrica à guarda de "profile"/"account-settings"/"address-form"
+        // acima: quem já tem sessão não fica preso na tela de login ao
+        // voltar pelo histórico até `/auth` (ex.: apertar "Voltar" do
+        // navegador depois de logar). `isPasswordRecovery` é a exceção —
+        // o fluxo de redefinição de senha PRECISA entrar em `/auth` mesmo
+        // logado (é o próprio useEffect de `isPasswordRecovery`, logo
+        // acima neste componente, que força `setCurrentView("auth")`).
+        //
+        // A checagem de `isTransitioningRef.current` só se aplica à origem
+        // "efeito": evita que esta guarda dispare enquanto uma navegação de
+        // `handleAuthSuccess`/`handleNavigate` já está em voo — o
+        // `pushState` do destino fica adiado atrás do prefetch do chunk
+        // (mais abaixo neste arquivo), então a URL ainda pode ser `/auth`
+        // mesmo com a navegação real já decidida.
+        //
+        // Na origem "popstate" essa checagem é ignorada de propósito: é o
+        // próprio `handlePopState`, mais abaixo neste arquivo, quem acabou
+        // de ligar `isTransitioningRef.current` para a navegação de Voltar
+        // que ele mesmo está processando agora — nesse momento o ref é
+        // *sempre* `true`, então exigi-lo aqui tornaria a guarda
+        // insatisfazível bem no caminho que ela existe para cobrir (apertar
+        // Voltar do navegador até cair em `/auth` já logado).
+        if (
+          targetView === "auth" &&
+          !authLoading &&
+          user &&
+          !isPasswordRecovery &&
+          (origem === "popstate" || !isTransitioningRef.current)
+        ) {
+          targetView = "profile";
+          if (globalThis.location.pathname !== "/profile") {
+            globalThis.history.replaceState(
+              { view: "profile" },
+              "",
+              "/profile",
+            );
           }
         }
 
@@ -1712,7 +1798,7 @@ const AppContent = () => {
       }
     };
 
-    syncWithUrl();
+    syncWithUrl("efeito");
     const handlePopState = (e: PopStateEvent) => {
       if (isAdminDirtyRef.current) {
         console.warn("[App] Popstate blocked by unsaved changes.");
@@ -1804,7 +1890,7 @@ const AppContent = () => {
       }
 
       // 3. Sync state with current URL
-      syncWithUrl();
+      syncWithUrl("popstate");
 
       // Reset to forward for next transitions
       setTimeout(() => {
@@ -1824,6 +1910,7 @@ const AppContent = () => {
     user,
     isAdmin,
     adminStatus,
+    isPasswordRecovery,
     startTransition,
     isTransitionSupported,
     selectedProductId,
@@ -2575,7 +2662,11 @@ const AppContent = () => {
             }
             onBack={handleBack}
             onOpenNotifications={handleOpenNotifications}
-            hideSearch={["address-form"].includes(currentView)}
+            // "checkout" some daqui: a busca navega para product-detail
+            // (alçapão) e o formulário do checkout convidado só persiste o
+            // CEP — sair da tela apaga nome, WhatsApp, rua, número e
+            // complemento já digitados.
+            hideSearch={["address-form", "checkout"].includes(currentView)}
             searchQuery={searchQuery}
             onSearch={setSearchQuery}
             scrollProgress={scrollProgress}

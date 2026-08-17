@@ -13,8 +13,10 @@ import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useOrders } from "@/hooks/useOrders";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
+import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { Address, CartItem, Customer, PaymentMethod, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -26,9 +28,11 @@ import {
   ArrowLeft,
   Banknote,
   Check,
+  ChevronDown,
   CreditCard,
   FileText,
   Loader2,
+  Lock,
   MapPin,
   Phone,
   Plus,
@@ -42,6 +46,41 @@ import { createPortal } from "react-dom";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
+
+// Intervalo da verificação periódica da tela do PIX (ver o useEffect de
+// polling, no corpo do componente) — extraído para constante porque o teto
+// de segurança abaixo é derivado DELE (contagem de ticks, não de relógio).
+const INTERVALO_VERIFICACAO_PAGAMENTO_MS = 10_000;
+
+// Teto de segurança da verificação periódica da tela do PIX. NÃO é o
+// critério normal de parada — esse é o `payment_status` terminal do pedido
+// (ver `verificarPagamento`, no useEffect). Isto é só para não consultar
+// para sempre um pedido que ninguém vai pagar depois que a reserva expira.
+//
+// De onde vem o número: a varredura do prazo roda a cada 5 minutos
+// (`supabase/migrations/20260807000001_agenda_expiracao.sql:12`,
+// `*/5 * * * *`) e o webhook do Mercado Pago levou ~90s no incidente real
+// de 16/08/2026 que motivou a correção original (CHECKOUT-090) — 60 min de
+// vida (a partir de quando esta tela monta, perto de quando expires_at é
+// carimbado) dão folga generosa sobre esse pior caso medido. NÃO reduza
+// este número sem entender por que ele existe.
+//
+// Por que é CONTAGEM DE TICKS, e não relógio (2ª correção, achado
+// BLOQUEANTE da revisão de 16/08/2026 — a MESMA classe de defeito
+// reaparecendo por outra porta): a 1ª correção trocou "prazo vencido"
+// (`expires_at <= Date.now()`) por "estado terminal", mas manteve um teto
+// de segurança que comparava `Date.now()` do NAVEGADOR do cliente com
+// `expires_at`, um instante gravado pelo SERVIDOR. Num aparelho com o
+// relógio adiantado em δ, a parada acontece em `expires_at + 30min − δ` —
+// com δ maior que ~28 min (nada incomum: fuso mal configurado, relógio de
+// hardware sem NTP), o polling morre ANTES do webhook conseguir gravar, e o
+// cliente que pagou fica preso na tela do QR. Contar TICKS do próprio
+// `setInterval` mede o mesmo relógio nas DUAS pontas — não há nada do
+// servidor para comparar, então não há divergência de relógio para
+// explorar. `expires_at` continua sendo lido na consulta (é o único caminho
+// até `pago_apos_expirar`), só deixou de decidir quando parar.
+const TETO_TICKS_VERIFICACAO_PAGAMENTO =
+  (60 * 60 * 1000) / INTERVALO_VERIFICACAO_PAGAMENTO_MS; // 60 min / 10s = 360 ticks
 
 interface CheckoutFormValues {
   name: string;
@@ -82,6 +121,7 @@ export function CheckoutView({
     cartTotal: ctxSubtotal,
     shippingFee: ctxShipping,
     clearCart: ctxClearCart,
+    addToCart,
     selectedShippingOption,
     shippingCep,
   } = useCart();
@@ -91,9 +131,43 @@ export function CheckoutView({
   const shipping = propShipping ?? ctxShipping;
   const total = propTotal ?? ctxSubtotal + ctxShipping;
   const onClearCart = propOnClearCart ?? ctxClearCart;
-  const { createOrder } = useOrders(false, true);
+  // CHECKOUT-090: realtime ligado (antes `useOrders(false, true)` desligava
+  // o efeito inteiro na primeira linha de useOrders.ts — nenhuma assinatura
+  // era criada, e a tela do PIX nunca soube que o pedido tinha sido pago) e
+  // `isAdmin` corrigido para `false` — esta é a tela do CLIENTE, e o valor
+  // antigo (`true`) só era inofensivo porque `enabled=false` desligava tudo
+  // antes de chegar a importar. `createOrder` não lê `isAdmin` em nenhum
+  // ramo (useOrders.ts); `updateOrderStatus` passa a validar de verdade
+  // (só cancela pedido `pending`), mas o único uso daqui
+  // (handleCancelarPedidoESairDoPagamento) já embrulha a chamada num
+  // try/catch que relê o pedido depois — uma recusa cliente-side cai no
+  // mesmo caminho que uma recusa da RPC.
+  //
+  // `onRealtimeEvent` recebe o payload CRU do Postgres (não o `Order`
+  // mapeado) — é o único lugar que carrega `payment_status`: o
+  // `handleRealtimeUpdate` interno de useOrders.ts só copia `status` e
+  // `trackingCode` para o array `orders`, nunca `payment_status`. Fecha
+  // sobre `orderId`/`setStatusPagamentoPix`, declarados mais abaixo no
+  // corpo do componente — seguro porque este callback só é INVOCADO de
+  // forma assíncrona, depois que o componente já terminou de renderizar (e
+  // as duas ligações já existem), nunca durante a construção da função.
+  const { createOrder, updateOrderStatus } = useOrders(true, false, {
+    onRealtimeEvent: (payload: any) => {
+      if (payload?.eventType !== "UPDATE") return;
+      const pedidoAtualizado = payload.new;
+      if (!pedidoAtualizado || pedidoAtualizado.id !== orderId) return;
+      if (pedidoAtualizado.payment_status === "pago") {
+        setStatusPagamentoPix("confirmado");
+      } else if (pedidoAtualizado.payment_status === "pago_apos_expirar") {
+        setStatusPagamentoPix("fora-do-prazo");
+      }
+    },
+  });
   const { validateCoupon } = useCoupons();
   const { user, profile, loading: authLoading } = useAuth();
+  // CHECKOUT-070 (#197): sinal de rede para o cancelamento do pagamento
+  // falho — mesmo hook já usado por ShippingCalculator, sem mecanismo novo.
+  const isOffline = useOnlineStatus();
   const {
     addresses,
     fetchAddresses,
@@ -246,6 +320,39 @@ export function CheckoutView({
   // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
   // function, dentro do PagamentoOnline (ver comentário lá).
   const [aguardandoPagamento, setAguardandoPagamento] = useState(false);
+  // CHECKOUT-090: estado de três valores, não dois booleanos independentes
+  // — dois booleanos podem divergir (os dois `true` ao mesmo tempo, ou os
+  // dois `false` quando um dos dois status chegou), e essa divergência é
+  // exatamente o defeito que esta tarefa existe para impedir. `null` é o
+  // QR ainda valendo; os outros dois são finais, sem caminho de volta a
+  // `null` nem um para o outro.
+  //
+  // 'confirmado' é o `payment_status === 'pago'` de sempre.
+  //
+  // 'fora-do-prazo' é `payment_status === 'pago_apos_expirar'`. Achado 1 da
+  // revisão (16/08/2026): esse status NÃO é pagamento legítimo do ponto de
+  // vista do pedido — é o que a varredura do prazo grava quando o
+  // pagamento chega DEPOIS da reserva vencer, e nesse caminho o pedido já
+  // foi marcado `status='cancelled'` e o estoque já foi devolvido ANTES
+  // (supabase/migrations/20260807000000_reserva_com_expiracao.sql:113-116).
+  // A spec do webhook confirma que esse status "não toca estoque nem
+  // status" (docs/superpowers/specs/2026-08-07-fase-3-webhook-design.md:79)
+  // e a decisão do Gabriel (mesma spec, linha 136, e reafirmada em
+  // 16/08/2026 para o texto desta tela) é que ninguém automático reativa o
+  // pedido: ele decide caso a caso, pelo painel, depois do push "Pagamento
+  // fora do fluxo" que o webhook manda ao lojista. Mostrar "a loja já está
+  // preparando seu pedido" aqui seria mentir sobre um pedido cancelado — a
+  // tela própria deste estado (PagamentoForaDoPrazoView, abaixo) diz que o
+  // dinheiro entrou, que o prazo venceu e que a loja entra em contato para
+  // confirmar ou devolver o valor, sem prometer entrega.
+  //
+  // Confirmado por dois caminhos independentes — o evento de realtime
+  // (onRealtimeEvent, acima) e a verificação periódica (useEffect abaixo,
+  // rede de segurança contra WebSocket caído) — e nenhum dos dois estados
+  // finais tem caminho de volta a `null`.
+  const [statusPagamentoPix, setStatusPagamentoPix] = useState<
+    "confirmado" | "fora-do-prazo" | null
+  >(null);
   // CHECKOUT-050: falha da criação da cobrança precisa ficar NA TELA — um
   // toast (2500ms, sonner.tsx) some antes do cliente sair de olhar o botão
   // "Pagar", no rodapé, para o topo. `categoria` decide se existe "Tentar de
@@ -256,11 +363,23 @@ export function CheckoutView({
     mensagem: string;
     categoria: CategoriaErroPagamento;
   } | null>(null);
+  // CHECKOUT-070 (#197): saída para pagamento falho. `isCancelandoPedido`
+  // trava o botão contra clique repetido (cancelar duas vezes bateria na
+  // guarda de status da RPC, mas evitar a segunda viagem de rede evita até
+  // o erro). `erroCancelamento` é o mesmo padrão de `erroPagamento`: banner
+  // fixo na tela, não toast — um toast (2500ms) some antes do cliente ler.
+  const [isCancelandoPedido, setIsCancelandoPedido] = useState(false);
+  const isCancelandoPedidoRef = useRef(false);
+  const [erroCancelamento, setErroCancelamento] = useState<string | null>(null);
   // Congelado no momento do submit, como orderId — sem isso, o onClearCart()
   // duas linhas abaixo zera o carrinho, cartTotal/shippingFee caem para 0
   // (ou ficam negativos com cupom aplicado) e o Brick nasce cobrando um
   // valor que não bate com o total já gravado no pedido.
   const [valorDoPedido, setValorDoPedido] = useState(0);
+  // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
+  // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
+  // ref (não estado) porque nada aqui precisa re-renderizar a tela.
+  const itensDoPedidoParaRestaurarRef = useRef<CartItem[]>([]);
   const [appliedCoupon, setAppliedCoupon] = useState<{
     code: string;
     discount: number;
@@ -272,6 +391,18 @@ export function CheckoutView({
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const hasPushedAddressModalState = useRef(false);
+  // Painel de resumo do pedido (aberto ao tocar no bloco do total, na barra
+  // fixa do rodapé) — mesmo padrão do modal de endereço logo abaixo: um
+  // estado de UI simples e um `history.pushState` próprio, para o voltar do
+  // Android fechar o painel em vez de sair da tela de checkout.
+  const [isSummaryPanelOpen, setIsSummaryPanelOpen] = useState(false);
+  const hasPushedSummaryPanelState = useRef(false);
+  // Achado 8 da revisão (17/08/2026): o painel precisa devolver o foco ao
+  // botão que o abriu quando fecha (teclado) — `wasOpenRef` evita focar o
+  // gatilho já na montagem (isSummaryPanelOpen começa `false`).
+  const summaryPanelRef = useRef<HTMLDivElement>(null);
+  const summaryPanelTriggerRef = useRef<HTMLButtonElement>(null);
+  const summaryPanelWasOpenRef = useRef(false);
 
   // Solo-ninja: Reset scroll when internal views change (address form or success)
   useEffect(() => {
@@ -299,6 +430,22 @@ export function CheckoutView({
     }
   }, [isAddressModalOpen]);
 
+  // Mesmo mecanismo acima, para o painel de resumo do pedido — sem isto o
+  // voltar do Android sairia da tela de checkout (apagando o que o cliente
+  // já digitou) em vez de só fechar o painel.
+  useEffect(() => {
+    if (isSummaryPanelOpen && !hasPushedSummaryPanelState.current) {
+      globalThis.history.pushState(
+        { modal: "checkout-summary" },
+        "",
+        globalThis.location.pathname,
+      );
+      hasPushedSummaryPanelState.current = true;
+    } else if (!isSummaryPanelOpen) {
+      hasPushedSummaryPanelState.current = false;
+    }
+  }, [isSummaryPanelOpen]);
+
   // Handle back button override for address modal
   useEffect(() => {
     if (isAddressModalOpen) {
@@ -306,6 +453,8 @@ export function CheckoutView({
         setIsAddressModalOpen(false);
         setEditingAddressId(null);
       });
+    } else if (isSummaryPanelOpen) {
+      onSetBackOverride(() => () => setIsSummaryPanelOpen(false));
     } else if (showSuccess || aguardandoPagamento) {
       // Sucesso ou aguardando pagamento: o pedido já foi criado e o carrinho
       // já foi limpo — não existe formulário para o botão voltar recuperar.
@@ -319,11 +468,40 @@ export function CheckoutView({
     return () => onSetBackOverride(null);
   }, [
     isAddressModalOpen,
+    isSummaryPanelOpen,
     showSuccess,
     aguardandoPagamento,
     onSetBackOverride,
     onNavigate,
   ]);
+
+  // Achado 8 da revisão (17/08/2026): o painel era `role="dialog"` sem
+  // Escape. Mesmo caminho da setinha e do fundo (achado 5): `history.back()`
+  // consome a entrada empurrada acima e deixa o `popstate` fechar o painel.
+  useEffect(() => {
+    if (!isSummaryPanelOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        globalThis.history.back();
+      }
+    };
+    globalThis.addEventListener("keydown", handleKeyDown);
+    return () => globalThis.removeEventListener("keydown", handleKeyDown);
+  }, [isSummaryPanelOpen]);
+
+  // Achado 8 da revisão: mover o foco para dentro do painel ao abrir, e
+  // devolvê-lo ao botão do total ao fechar — sem isto quem navega por
+  // teclado ficava preso no formulário atrás do fundo. `wasOpenRef` evita
+  // "devolver" o foco na montagem, quando o painel nunca esteve aberto.
+  useEffect(() => {
+    if (isSummaryPanelOpen) {
+      summaryPanelWasOpenRef.current = true;
+      summaryPanelRef.current?.focus();
+    } else if (summaryPanelWasOpenRef.current) {
+      summaryPanelWasOpenRef.current = false;
+      summaryPanelTriggerRef.current?.focus();
+    }
+  }, [isSummaryPanelOpen]);
 
   // Guest checkout enabled - no redirect
   useEffect(() => {
@@ -331,6 +509,23 @@ export function CheckoutView({
       console.log("[CheckoutView] Guest mode active.");
     }
   }, [user, authLoading]);
+
+  // Pagamento online exige conta (decisão do Gabriel, 16/08/2026) — sem isto,
+  // um cliente que selecionou "Pagar agora com PIX" e teve a SESSÃO expirar
+  // com a tela ainda aberta (ex.: token vencendo enquanto ele preenchia o
+  // formulário) ficaria com `paymentMethod` preso em "online" mesmo sem
+  // `user`, e `handleSubmitEvent` tentaria criar um pedido que o backend
+  // (`criar-pagamento`, guard `PAGAMENTO_ONLINE_EXIGE_CONTA`) recusaria de
+  // qualquer jeito — só que depois de já ter criado o PEDIDO (a recusa é na
+  // função que gera a cobrança, uma chamada depois). `!authLoading`: não
+  // mexe enquanto o hook de auth ainda está resolvendo a sessão inicial —
+  // nesse intervalo `user` é `undefined`, não uma sessão que caiu de
+  // verdade.
+  useEffect(() => {
+    if (!authLoading && !user && paymentMethod === "online") {
+      setPaymentMethod("pix");
+    }
+  }, [authLoading, user, paymentMethod]);
 
   useEffect(() => {
     if (profile) {
@@ -363,6 +558,167 @@ export function CheckoutView({
     }
   }, [addresses, selectedAddressId, handleSelectAddress]);
 
+  // CHECKOUT-090: verificação periódica do pagamento. Nasceu como "rede de
+  // segurança" contra o WebSocket do realtime cair sem avisar, mas o achado
+  // 3 da revisão (16/08/2026) mostrou que no celular ela é o mecanismo
+  // PRINCIPAL, não a rede de segurança: esconder a aba por ~3s já derruba a
+  // liderança do realtime (useLeaderElection.ts: debounce de 300ms +
+  // resignLeadership) e ~4s depois disso o canal compartilhado é removido
+  // (useOrders.ts: refCount-- -> removeChannel após o debounce de 4s) — o
+  // `postgres_changes` do Supabase NÃO tem replay, então o UPDATE que chegar
+  // nesse intervalo (~3,3s a ~7,3s sem cobertura) está perdido para sempre.
+  // No fluxo DOMINANTE (abrir o app do banco, pagar, voltar para cá) é este
+  // useEffect quem descobre a confirmação, não o realtime.
+  //
+  // Por isso, além de reler o BANCO (nunca a edge function `criar-pagamento`,
+  // que bate na API do Mercado Pago a cada chamada) a cada
+  // INTERVALO_VERIFICACAO_PAGAMENTO_MS, o listener de `visibilitychange`
+  // abaixo dispara a verificação IMEDIATAMENTE quando a aba volta a ficar
+  // visível — sem ele o cliente esperaria o próximo tick de até 10s, ou bem
+  // mais, porque o navegador aplica "intensive throttling" a timer de aba em
+  // segundo plano. Fica de fora quando a aba está em segundo plano —
+  // desperdício que multiplica por cliente parado — e para sozinho quando o
+  // pedido é confirmado (efeito não recria o intervalo, e a limpeza do
+  // anterior já rodou), quando o componente desmonta (mesma limpeza), quando
+  // o `payment_status` chega a um dos quatro status TERMINAIS ('pago',
+  // 'pago_apos_expirar', 'recusado', 'estornado' — ver `verificarPagamento`,
+  // abaixo), ou quando o teto de TICKS (não de relógio — ver o comentário
+  // grande de `TETO_TICKS_VERIFICACAO_PAGAMENTO`, no topo do arquivo) é
+  // atingido. 'expirado' continua sendo consultado normalmente, porque é o
+  // único caminho até 'pago_apos_expirar'.
+  //
+  // ESCOPO (decidido na tarefa): só cliente LOGADO. `marketplace_orders_
+  // select_policy` só concede SELECT a `authenticated` — pedido de convidado
+  // tem `user_id` NULL e `anon` não tem política nenhuma, então a consulta
+  // abaixo voltaria vazia (RLS) mesmo sem este `!user`. A checagem explícita
+  // evita gastar uma consulta por 10s sabendo de antemão que ela nunca pode
+  // confirmar nada, e documenta a decisão em vez de depender do RLS calado.
+  useEffect(() => {
+    if (!aguardandoPagamento || !orderId || statusPagamentoPix || !user?.id)
+      return;
+
+    let parado = false;
+    // Conta ticks do INTERVALO, não invocações de verificarPagamento — a
+    // chamada extra do visibilitychange (abaixo) não é uma passagem do
+    // relógio programado, é uma verificação avulsa disparada por um evento
+    // do usuário. Contar as duas juntas faria quem alterna de aba com
+    // frequência esgotar o teto bem antes dos 60 min reais de vida.
+    let ticks = 0;
+
+    const verificarPagamento = async () => {
+      if (parado) return;
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("marketplace_orders")
+        .select("payment_status, expires_at")
+        .eq("id", orderId)
+        .single();
+
+      if (parado || error || !data) return;
+
+      // Ver o comentário do estado `statusPagamentoPix`, acima: os dois
+      // status são finais e mutuamente exclusivos.
+      if (data.payment_status === "pago") {
+        setStatusPagamentoPix("confirmado");
+        return;
+      }
+      if (data.payment_status === "pago_apos_expirar") {
+        setStatusPagamentoPix("fora-do-prazo");
+        return;
+      }
+
+      // Os outros dois status terminais não têm tela própria aqui — só
+      // param de consultar (a constraint do banco não modela caminho de
+      // volta a partir deles, ver
+      // `supabase/migrations/20260807000000_reserva_com_expiracao.sql:17`).
+      if (
+        data.payment_status === "recusado" ||
+        data.payment_status === "estornado"
+      ) {
+        parado = true;
+        clearInterval(intervalId);
+        return;
+      }
+
+      // `data.expires_at` continua sendo LIDO (é o único caminho até
+      // 'pago_apos_expirar'), mas não decide mais quando parar — ver o
+      // comentário grande de `TETO_TICKS_VERIFICACAO_PAGAMENTO`, no topo do
+      // arquivo, sobre por que comparar com o relógio do cliente é o mesmo
+      // defeito por outra porta.
+    };
+
+    const intervalId = setInterval(() => {
+      ticks += 1;
+      // Teto de segurança por TICKS, nunca por `expires_at`/`Date.now()`
+      // (ver o comentário grande de `TETO_TICKS_VERIFICACAO_PAGAMENTO`, no
+      // topo do arquivo). REGRESSÃO corrigida na 3ª revisão (16/08/2026):
+      // gravar `parado = true` de forma SÍNCRONA aqui, logo após disparar
+      // `verificarPagamento()`, acontecia ANTES da consulta ao Supabase
+      // resolver — `verificarPagamento` suspende no primeiro `await`, e
+      // `await` sempre cede pelo menos um microtask antes de voltar. Como o
+      // guard de `verificarPagamento` é `if (parado || error || !data)
+      // return;`, a resposta do último tick era descartada em 100% dos
+      // casos, mesmo quando ela trazia `payment_status: 'pago'`. Anexar o
+      // corte ao `.finally()` da PRÓPRIA chamada garante que `parado` só
+      // vira `true` depois que `verificarPagamento` já consumiu a resposta
+      // deste tick — o teto continua parando no mesmo tick de antes, só que
+      // sem descartar o resultado que o motivou.
+      //
+      // `tickDesteCiclo` congela o contador ANTES da chamada, e o `.finally()`
+      // compara ele — não o `ticks` compartilhado (achado da 5ª revisão). Sob
+      // latência de consulta MAIOR que o intervalo de 10 s, o `ticks` mutável
+      // reintroduziria o mesmo defeito com janela pequena: o tick 359 dispara
+      // a consulta A, 10 s depois o tick 360 incrementa `ticks` e dispara a
+      // consulta B, A resolve e seu `finally` lê `ticks === 360` e grava
+      // `parado = true` — e B chega com 'pago' para ser descartada. Com o
+      // valor congelado, cada corte pertence à sua própria chamada. Não se
+      // perde robustez: os ticks seguintes também satisfazem a condição, então
+      // uma consulta pendurada não impede o corte.
+      const tickDesteCiclo = ticks;
+      verificarPagamento().finally(() => {
+        if (tickDesteCiclo >= TETO_TICKS_VERIFICACAO_PAGAMENTO) {
+          parado = true;
+          clearInterval(intervalId);
+        }
+      });
+    }, INTERVALO_VERIFICACAO_PAGAMENTO_MS);
+
+    // Achado 3 da revisão: dispara a verificação NA HORA em que a aba volta
+    // a ficar visível, em vez de esperar o próximo tick do intervalo acima.
+    // `verificarPagamento` já se protege sozinha (checa `document.
+    // visibilityState` e `parado` no topo), então só precisa ser chamada —
+    // as mesmas guardas de parada valem aqui.
+    const aoVoltarAFicarVisivel = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible"
+      ) {
+        verificarPagamento();
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", aoVoltarAFicarVisivel);
+    }
+
+    return () => {
+      parado = true;
+      clearInterval(intervalId);
+      if (typeof document !== "undefined") {
+        document.removeEventListener(
+          "visibilitychange",
+          aoVoltarAFicarVisivel,
+        );
+      }
+    };
+  }, [aguardandoPagamento, orderId, statusPagamentoPix, user?.id]);
+
   if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white">
@@ -377,6 +733,29 @@ export function CheckoutView({
   // Values are now passed from props to ensure consistency
   const discount = appliedCoupon?.discount || 0;
   const finalTotal = total - discount;
+
+  // Linha de cima da barra do total: o que está sendo comprado. Defeito
+  // medido (17/08/2026): três das quatro formas de pagamento são "na
+  // entrega" e o cliente não descobre em lugar nenhum do app o que está no
+  // carrinho sem sair da tela — e sair apaga o endereço digitado.
+  const itemsLabel =
+    cart.length === 1
+      ? `${cart[0].quantity}× ${cart[0].product.name}`
+      : cart.length > 1
+        ? `${cart.reduce((soma, item) => soma + item.quantity, 0)} itens no pedido`
+        : "";
+
+  // Linha de baixo: o Gabriel confirmou (17/08/2026) que a entrega está
+  // dentro do valor cobrado — "Inclui" é o texto correto, não uma ressalva.
+  // Achado 6 da revisão: com o carrinho vazio não existe entrega nenhuma
+  // para incluir — "Entrega grátis inclusa" sem nada para entregar é uma
+  // afirmação falsa (o R$ 0,00 é pré-existente e não muda aqui).
+  const entregaLabel =
+    cart.length === 0
+      ? ""
+      : shipping > 0
+        ? `Inclui R$ ${shipping.toFixed(2).replace(".", ",")} de entrega`
+        : "Entrega grátis inclusa";
 
   const isValid = form.formState.isValid;
 
@@ -503,9 +882,20 @@ export function CheckoutView({
       });
       setOrderId(order.id);
       setValorDoPedido(finalTotal);
+      // Snapshot ANTES do onClearCart() da linha seguinte — depois dele
+      // `cart` (propCart ?? ctxCart) já está vazio. CHECKOUT-070 (#197)
+      // usa isto para devolver os itens se o pagamento online falhar.
+      itensDoPedidoParaRestaurarRef.current = cart;
 
       // 🤖 Automação Solo-Ninja: O disparo agora é 100% via Backend (Edge Function + Webhook)
       onClearCart();
+      // Achado 4 da revisão (17/08/2026): sem isto `isSummaryPanelOpen`
+      // continuava `true` na tela seguinte (sucesso ou aguardando
+      // pagamento) — o painel deixa de fazer sentido aqui, junto com o
+      // carrinho que acabou de ser limpo, e o primeiro "voltar" naquela
+      // tela fechava um painel invisível em vez de agir pelo ramo de
+      // `showSuccess || aguardandoPagamento`.
+      setIsSummaryPanelOpen(false);
 
       if (ehOnline) {
         // NÃO mostra sucesso e NÃO solta confete: o pedido só está reservado,
@@ -539,9 +929,123 @@ export function CheckoutView({
     }
   };
 
+  // CHECKOUT-070 (#197): saída para quem teve o pagamento online recusado —
+  // cancela o pedido (devolve estoque) e devolve o cliente ao carrinho para
+  // ele concluir escolhendo "pagar na entrega". Só existe para sessão
+  // autenticada: `update_order_status_atomic` recusa qualquer chamador sem
+  // `auth.uid()` desde o PEDIDO-010 (#115) — pedido de convidado não tem
+  // sessão para passar nessa guarda, e isso não é contornado aqui (ver botão
+  // condicionado a `user` abaixo, e o relatório desta task).
+  //
+  // Achados 1 e 2 da revisão: nunca confiar no retorno de updateOrderStatus
+  // para decidir "foi cancelado". O ramo offline de useOrders empilha a
+  // mudança e RESOLVE sem lançar (ele foi escrito para o admin); e a
+  // mensagem de guarda "Apenas pedidos pendentes..." é a MESMA (P0001) tanto
+  // para "o pg_cron já cancelou" quanto para "o lojista adiantou para
+  // processing" — casos opostos. Por isso o handler relê o status real do
+  // pedido depois de chamar a RPC (RLS do dono permite) e só navega quando a
+  // releitura confirma 'cancelled'. Qualquer outra coisa é falha segura.
+  const handleCancelarPedidoESairDoPagamento = async () => {
+    // Proteção contra clique duplo. Precisa ser REF, não o estado
+    // `isCancelandoPedido`: dois cliques síncronos (dois `dispatchEvent` na
+    // mesma tarefa, antes de qualquer re-render) leriam o mesmo `false`
+    // fechado no closure de cada chamada — o React 18 agrupa os dois
+    // `setIsCancelandoPedido(true)` num único commit, então checar o ESTADO
+    // aqui não pegaria o segundo clique a tempo. Mutação de ref é síncrona.
+    if (isCancelandoPedidoRef.current) return;
+    isCancelandoPedidoRef.current = true;
+
+    setIsCancelandoPedido(true);
+    setErroCancelamento(null);
+    try {
+      if (isOffline) {
+        // Sem rede o ramo offline de useOrders só empilha e resolve — não
+        // vale nem tentar a RPC. Mensagem específica em vez do genérico.
+        setErroCancelamento(
+          "Sem conexão com a internet. Conecte-se e tente cancelar de novo — o pedido continua reservado.",
+        );
+        return;
+      }
+
+      try {
+        // MESMA rpc que a reconciliação da #180 (PR #198) já ensinou a
+        // gravar payment_status — não existe, e não deve existir, outro
+        // caminho de cancelamento neste front. `silent=true`: o toast de
+        // 2500ms do useOrders someria antes do cliente ler; o erro fica no
+        // banner fixo abaixo, como erroCancelamento.
+        await updateOrderStatus(orderId, "cancelled", undefined, true);
+      } catch (erroRpc) {
+        // Não decide aqui: a RPC pode recusar com a MESMA mensagem P0001
+        // por dois motivos opostos (pg_cron já cancelou vs. lojista
+        // adiantou). Quem decide é a releitura logo abaixo.
+        console.error("Erro ao chamar RPC de cancelamento:", erroRpc);
+      }
+
+      const { data, error: erroLeitura } = await supabase
+        .from("marketplace_orders")
+        .select("status")
+        .eq("id", orderId)
+        .single();
+
+      const statusFinal = data?.status;
+      if (erroLeitura || statusFinal !== "cancelled") {
+        console.error("Cancelamento não confirmado:", erroLeitura);
+        // Precedente ADMIN-010 (#94): só não segue em frente quando a
+        // gravação não é confirmada — nunca leva o cliente ao carrinho como
+        // se o cancelamento tivesse dado certo.
+        setErroCancelamento(
+          statusFinal && statusFinal !== "pending"
+            ? "Este pedido não está mais pendente — o lojista já deve ter começado a prepará-lo. Fale com a loja se ainda quiser cancelar."
+            : "Não foi possível confirmar o cancelamento. Tente novamente.",
+        );
+        return;
+      }
+
+      for (const item of itensDoPedidoParaRestaurarRef.current) {
+        addToCart(
+          item.product,
+          item.quantity,
+          item.variantId,
+          item.variantNames,
+        );
+      }
+      onNavigate("cart");
+    } finally {
+      isCancelandoPedidoRef.current = false;
+      setIsCancelandoPedido(false);
+    }
+  };
+
   if (aguardandoPagamento && orderId) {
+    // CHECKOUT-090: pagamento confirmado — troca o QR (e o aviso de reserva
+    // de 30 minutos, que é justamente a frase que faz o cliente achar que
+    // falhou) pela confirmação. Ramos separados, ANTES do JSX do QR: os três
+    // (QR, confirmado, fora do prazo) nunca podem coexistir na tela.
+    if (statusPagamentoPix === "confirmado") {
+      return (
+        <PagamentoConfirmadoView
+          orderId={orderId}
+          valor={valorDoPedido}
+          onNavigate={onNavigate}
+        />
+      );
+    }
+
+    if (statusPagamentoPix === "fora-do-prazo") {
+      return (
+        <PagamentoForaDoPrazoView
+          orderId={orderId}
+          valor={valorDoPedido}
+          onNavigate={onNavigate}
+        />
+      );
+    }
+
     return (
-      <div className="min-h-dvh space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      // Mesma coluna do formulário (`mx-auto max-w-md`): sem ela, o cliente
+      // saía de uma tela de 448px de largura e caía numa que esticava o texto
+      // "Seu pedido está reservado…" de ponta a ponta em tela larga.
+      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         <h1 className="text-lg font-bold text-zinc-900">
           Finalize o pagamento
         </h1>
@@ -559,11 +1063,59 @@ export function CheckoutView({
             </div>
             {erroPagamento.categoria === "recuperavel" && (
               <Button
-                onClick={() => setErroPagamento(null)}
+                onClick={() => {
+                  setErroPagamento(null);
+                  // Achado da 2ª revisão do #197: sem isto, um cancelamento
+                  // que falhou deixa a mensagem dele pendurada — "Tentar de
+                  // novo" limpava só o erro de pagamento, e no erro seguinte
+                  // a caixa vermelha reaparecia com um aviso de cancelamento
+                  // que já não vale mais.
+                  setErroCancelamento(null);
+                }}
                 className="w-full rounded-xl bg-red-600 text-white hover:bg-red-600/90"
               >
                 Tentar de novo
               </Button>
+            )}
+            {/* CHECKOUT-070 (#197): visível nos dois casos — no terminal é a
+                única ação; no recuperável fica em segundo plano (variant
+                "outline"), sem roubar o destaque de "Tentar de novo". Só
+                para sessão autenticada (ver comentário do handler acima). */}
+            {user ? (
+              <Button
+                onClick={handleCancelarPedidoESairDoPagamento}
+                disabled={isCancelandoPedido}
+                variant={
+                  erroPagamento.categoria === "terminal" ? "default" : "outline"
+                }
+                className={cn(
+                  "w-full rounded-xl gap-2",
+                  erroPagamento.categoria === "terminal" &&
+                    "bg-zinc-900 text-white hover:bg-zinc-900/90",
+                )}
+              >
+                {isCancelandoPedido && (
+                  <Loader2 className="size-4 animate-spin" />
+                )}
+                Cancelar pedido e voltar ao carrinho
+              </Button>
+            ) : (
+              // Achado 3 da revisão do #197: sem sessão, `update_order_status_atomic`
+              // recusaria a chamada (PEDIDO-010, #115) — não dá para
+              // esconder o botão e não dizer nada. O convidado precisa
+              // saber que o pedido se resolve sozinho e que entrar na
+              // conta é a única forma de cancelar antes disso.
+              <p className="text-xs text-zinc-500">
+                Como você não está com a conta aberta, não é possível cancelar
+                por aqui. Se o pagamento não sair em 30 minutos, o pedido é
+                cancelado automaticamente e os itens voltam para o estoque. Para
+                cancelar agora, entre na sua conta.
+              </p>
+            )}
+            {erroCancelamento && (
+              <p className="text-xs font-medium text-red-700">
+                {erroCancelamento}
+              </p>
             )}
           </div>
         ) : (
@@ -614,7 +1166,15 @@ export function CheckoutView({
 
   return (
     <div className="pb-customer-summary min-h-dvh bg-gray-50/10 pt-2">
-      <div className="space-y-4 px-3.5">
+      {/* `mx-auto max-w-md` é a largura de conteúdo do resto do app (ver
+          AccountSettingsView, ProfileView, UserProfileView, AddressFormView e
+          a AddressSelectionView deste mesmo arquivo) e é a mesma que a barra
+          fixa do total já promete (`md:max-w-md`). Sem ela, medido em
+          17/08/2026 numa janela de 1280px, os cards do checkout iam a 1252px
+          de largura enquanto a barra do total ficava com 448px centralizada —
+          formulário esticado de ponta a ponta e desalinhado com o próprio
+          rodapé. */}
+      <div className="mx-auto w-full max-w-md space-y-4 px-3.5">
         {/* Customer Info */}
         <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
           <div className="flex items-center gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3">
@@ -698,8 +1258,39 @@ export function CheckoutView({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2 md:col-span-1">
+                {/* GRADE DE 6 COLUNAS, e o número 6 é o conserto.
+                    Com `grid-cols-2` cada campo só podia ser metade (151px em
+                    375px de tela) ou linha inteira (313px) — e nenhuma dessas
+                    duas medidas serve para Cidade (nome médio) nem para Estado
+                    (duas letras). Foi essa premissa que fez a grade ser
+                    rearranjada três vezes em 17/08/2026, empurrando o aperto de
+                    um campo para o vizinho a cada tentativa: primeiro `Estado`
+                    órfão, depois o `Bairro` espremido em 151px, depois a
+                    `Cidade` cortando em 151px.
+                    Com 6 colunas cada campo recebe a largura do que entra nele,
+                    e as linhas continuam fechando (3+3 · 6 · 6 · 4+2 · 6):
+                    `CEP | Número` (os dois de tamanho curto e fixo, e os dois
+                    únicos que o cliente digita à mão) · Rua · Bairro ·
+                    `Cidade | Estado` (o par clássico; no atendimento local os
+                    dois vêm preenchidos e travados) · Complemento.
+                    Medido depois da mudança, em 375px: CEP 151px · Número 151px
+                    · Rua 313px · Bairro 313px · Cidade 205px · Estado 96px ·
+                    Complemento 313px.
+                    Ao mexer aqui: some os spans de cada linha (tem de dar 6) E
+                    confira no navegador se o texto mais longo de cada campo
+                    cabe — `input.scrollWidth <= input.clientWidth`.
+                    O que ISTO não resolve, e não é a grade: nome de rua muito
+                    longo ("Avenida Presidente Juscelino Kubitschek de Oliveira")
+                    corta mesmo com os 313px da linha inteira, porque 375px de
+                    tela não dão mais que isso. Se isso virar problema, o
+                    tratamento é outro (rótulo flutuante, quebra em duas linhas),
+                    nunca uma quarta contagem de colunas. */}
+                <div className="grid grid-cols-6 gap-3">
+                  {/* Sem variante `md:` em nenhum campo daqui: o container do
+                      checkout tem `max-w-md` em toda largura, então não existe
+                      mais o alargamento que o `md:` compensava — ele só
+                      apertaria. */}
+                  <div className="col-span-3">
                     <label
                       htmlFor="guest-cep"
                       className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
@@ -748,45 +1339,7 @@ export function CheckoutView({
                       </p>
                     )}
                   </div>
-                  <div className="col-span-2 md:col-span-1">
-                    <label
-                      htmlFor="guest-neighborhood"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                    >
-                      Bairro
-                    </label>
-                    <input
-                      id="guest-neighborhood"
-                      {...form.register("neighborhood")}
-                      placeholder="Seu bairro"
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                    />
-                    {form.formState.errors.neighborhood && (
-                      <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
-                        {form.formState.errors.neighborhood.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-2 md:col-span-1">
-                    <label
-                      htmlFor="guest-street"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                    >
-                      Rua
-                    </label>
-                    <input
-                      id="guest-street"
-                      {...form.register("street")}
-                      placeholder="Nome da rua"
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                    />
-                    {form.formState.errors.street && (
-                      <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
-                        {form.formState.errors.street.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-1 md:col-span-1">
+                  <div className="col-span-3">
                     <label
                       htmlFor="guest-number"
                       className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
@@ -805,7 +1358,45 @@ export function CheckoutView({
                       </p>
                     )}
                   </div>
-                  <div className="col-span-1 md:col-span-1">
+                  <div className="col-span-6">
+                    <label
+                      htmlFor="guest-street"
+                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                    >
+                      Rua
+                    </label>
+                    <input
+                      id="guest-street"
+                      {...form.register("street")}
+                      placeholder="Nome da rua"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                    />
+                    {form.formState.errors.street && (
+                      <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                        {form.formState.errors.street.message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="col-span-6">
+                    <label
+                      htmlFor="guest-neighborhood"
+                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                    >
+                      Bairro
+                    </label>
+                    <input
+                      id="guest-neighborhood"
+                      {...form.register("neighborhood")}
+                      placeholder="Seu bairro"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                    />
+                    {form.formState.errors.neighborhood && (
+                      <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                        {form.formState.errors.neighborhood.message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="col-span-4">
                     <label
                       htmlFor="guest-city"
                       className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
@@ -832,7 +1423,7 @@ export function CheckoutView({
                       )}
                     />
                   </div>
-                  <div className="col-span-1 md:col-span-1">
+                  <div className="col-span-2">
                     <label
                       htmlFor="guest-state"
                       className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
@@ -858,7 +1449,7 @@ export function CheckoutView({
                       )}
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div className="col-span-6">
                     <label
                       htmlFor="guest-complement"
                       className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
@@ -971,6 +1562,10 @@ export function CheckoutView({
                       label: "Pagar agora com PIX",
                       icon: CreditCard,
                       color: "text-violet-500 bg-violet-50",
+                      // Pagamento online exige conta (decisão do Gabriel,
+                      // 16/08/2026) — só esta opção carrega a exigência; as
+                      // outras (entrega) continuam abertas a convidado.
+                      requerConta: true,
                     },
                   ]
                 : []),
@@ -979,47 +1574,98 @@ export function CheckoutView({
                 label: "Pix na Entrega",
                 icon: Smartphone,
                 color: "text-emerald-500 bg-emerald-50",
+                requerConta: false,
               },
               {
                 value: "card" as PaymentMethod,
                 label: "Cartão na Entrega",
                 icon: CreditCard,
                 color: "text-blue-500 bg-blue-50",
+                requerConta: false,
               },
               {
                 value: "cash" as PaymentMethod,
                 label: "Dinheiro na Entrega",
                 icon: Banknote,
                 color: "text-amber-500 bg-amber-50",
+                requerConta: false,
               },
             ].map((option) => {
               const Icon = option.icon;
               const isSelected = paymentMethod === option.value;
+              // Bloqueada só pela FALTA DE CONTA, nunca só por
+              // `requerConta` — um cliente logado escolhe "Pagar agora com
+              // PIX" normalmente. NÃO esconde a opção: some sem explicação
+              // faria o convidado achar que a loja não aceita PIX pelo
+              // site. Mostra com aparência de indisponível, e o clique vira
+              // o caminho para resolver (entrar/criar conta), em vez de
+              // selecionar o método.
+              const bloqueadaPorFaltaDeConta = option.requerConta && !user;
               return (
                 <button
                   key={option.value}
-                  onClick={() => setPaymentMethod(option.value)}
+                  onClick={() => {
+                    if (bloqueadaPorFaltaDeConta) {
+                      haptic.light();
+                      onNavigate("auth");
+                      return;
+                    }
+                    setPaymentMethod(option.value);
+                  }}
+                  // Sem `opacity-70` na opção bloqueada: ela multiplicava
+                  // cores JÁ claras e derrubava o texto para ~1,9:1 de
+                  // contraste (medido em 17/08/2026), abaixo do 4,5:1 que
+                  // texto pequeno exige — e este é justamente o único item da
+                  // lista que precisa ser LIDO, porque explica o que fazer.
+                  // Quem diz "indisponível" aqui é o fundo cinza, o cadeado e
+                  // a cor do rótulo, não a transparência.
                   className={`flex w-full items-center gap-4 rounded-2xl border-2 p-3.5 shadow-sm transition-all duration-300 active:scale-[0.99] ${
-                    isSelected
-                      ? "z-10 border-zinc-900 bg-white shadow-md"
-                      : "border-zinc-50 bg-zinc-50/50 hover:border-zinc-100 hover:bg-white"
+                    bloqueadaPorFaltaDeConta
+                      ? "border-zinc-100 bg-zinc-50/60"
+                      : isSelected
+                        ? "z-10 border-zinc-900 bg-white shadow-md"
+                        : "border-zinc-50 bg-zinc-50/50 hover:border-zinc-100 hover:bg-white"
                   }`}
                 >
                   <div
-                    className={`flex size-10 items-center justify-center rounded-xl ${option.color} transition-all duration-300 ${isSelected ? "scale-105" : ""}`}
+                    className={`flex size-10 items-center justify-center rounded-xl ${option.color} transition-all duration-300 ${isSelected && !bloqueadaPorFaltaDeConta ? "scale-105" : ""}`}
                   >
                     <Icon className="size-5" />
                   </div>
-                  <span
-                    className={`text-xs font-bold uppercase tracking-wider ${isSelected ? "text-zinc-900" : "text-zinc-400"}`}
-                  >
-                    {option.label}
-                  </span>
-                  <div
-                    className={`ml-auto flex size-5 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
-                  >
-                    {isSelected && <Check className="size-3 text-white" />}
+                  <div className="flex min-w-0 flex-col items-start gap-1 text-left">
+                    {/* `zinc-400` sobre branco dá 2,56:1 — os três meios de
+                        pagamento não escolhidos ficavam ilegíveis, com cara de
+                        desabilitados. `zinc-600` (7:1) mantém a hierarquia
+                        (escolhido continua sendo o mais escuro) sem apagar as
+                        outras opções. */}
+                    <span
+                      className={`text-xs font-bold uppercase tracking-wider ${
+                        bloqueadaPorFaltaDeConta
+                          ? "text-zinc-500"
+                          : isSelected
+                            ? "text-zinc-900"
+                            : "text-zinc-600"
+                      }`}
+                    >
+                      {option.label}
+                    </span>
+                    {bloqueadaPorFaltaDeConta && (
+                      <span className="text-[11px] font-medium normal-case leading-snug tracking-normal text-zinc-500">
+                        Pagar pelo site exige conta, para você acompanhar o
+                        pedido e receber a confirmação. Toque para entrar ou
+                        criar a sua.
+                      </span>
+                    )}
                   </div>
+                  {bloqueadaPorFaltaDeConta ? (
+                    <Lock className="ml-auto size-4 shrink-0 text-zinc-500" />
+                  ) : (
+                    <div
+                      className={`ml-auto flex size-5 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
+                    >
+                      {isSelected && <Check className="size-3 text-white" />}
+                    </div>
+                  )}
                 </button>
               );
             })}
@@ -1079,15 +1725,42 @@ export function CheckoutView({
         </div>
       </div>
 
-      {/* Spacer to prevent overlap by the sticky footer and bottom nav */}
+      {/* Spacer to prevent overlap by the sticky footer and bottom nav.
+          A barra cresceu (item comprado + entrega, além do total que já
+          existia) — os dois valores abaixo foram REMEDIDOS no navegador em
+          17/08/2026, depois da mudança, não herdados do valor antigo:
+
+          Desktop (1280px): `outer.top` da barra fixa (md:bottom-[104px])
+          menos o fim do card "Aviso de Região", no scroll máximo, com o
+          espaçador antigo de 140px, deu GAP = -55,875px (card já escondido
+          atrás da barra, mesmo SEM cupom — a barra de 3 linhas por si só já
+          quebrava o espaçador de 1 linha). Cupom aplicado não piora aqui: a
+          coluna do total mede ~150,6px no desktop (NÃO os 448px do `max-w-md`,
+          que são a linha inteira — este número estava errado na primeira versão
+          deste comentário), e isso basta para o selo "(-R$ X OFF)" ficar na
+          mesma linha do valor: medido, a barra vai de 92 para 92,5px e o GAP só
+          cai 0,5px. Novo valor:
+          140 + 55,875 (fecha o buraco) + 24 (folga) ≈ 220px.
+
+          Mobile (375px): mesmo cálculo, mas aqui o cupom PIORA — a coluna do
+          total tem só ~134px (o botão "Finalizar Pedido" toma o resto), e
+          "R$ 19,00" + "(-R$ 2,00 OFF)" juntos exigem ~146,6px, então o selo
+          quebra para uma 2ª linha (`flex-wrap` já existia nessa linha, não é
+          mudança desta tarefa). Com o espaçador antigo de 160px, o pior caso
+          (cupom aplicado) deu GAP = -15,5px. Novo valor: 160 + 15,5 (fecha o
+          buraco) + 24 (folga) ≈ 200px — cobre também o caso sem cupom, que já
+          folgava (+44px com o valor novo).
+
+          Se a barra crescer de novo (nova linha, mais um selo), remedir do
+          mesmo jeito antes de só somar um número por adivinhação. */}
       <div
         className="hidden md:block"
-        style={{ height: "140px" }}
+        style={{ height: "220px" }}
         aria-hidden="true"
       />
       <div
         className="block md:hidden"
-        style={{ height: "calc(160px + var(--safe-area-bottom, 0px))" }}
+        style={{ height: "calc(200px + var(--safe-area-bottom, 0px))" }}
         aria-hidden="true"
       />
 
@@ -1095,58 +1768,298 @@ export function CheckoutView({
       {typeof document !== "undefined" &&
         document.body &&
         createPortal(
-          <AnimatePresence>
-            {isPresent && isReady && (
-              <motion.div
-                initial={{ y: "100%", opacity: 0.5 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: "100%", opacity: 0 }}
-                transition={{ duration: 0.25, ease: "easeOut" }}
-                className="bottom-safe-navigation fixed inset-x-0 z-[110] rounded-t-2xl border-t border-zinc-100 bg-white/95 p-3 px-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-b-none md:rounded-t-2xl md:border-x md:border-b-0 md:border-t md:border-zinc-200/60"
-              >
-                <div className="mx-auto flex max-w-screen-md items-center justify-between gap-4">
-                  <div className="flex min-w-0 flex-col">
-                    <span className="mb-1 text-[9px] font-bold uppercase leading-none tracking-wider text-zinc-400">
-                      Total a Pagar
-                    </span>
-                    <div className="flex flex-wrap items-baseline gap-1.5">
-                      <span className="text-lg font-black leading-none tracking-tight text-zinc-900">
-                        R$ {finalTotal.toFixed(2).replace(".", ",")}
-                      </span>
-                      {discount > 0 && (
-                        <span className="text-[9px] font-bold uppercase text-red-500">
-                          (-R$ {discount.toFixed(2).replace(".", ",")} OFF)
-                        </span>
-                      )}
-                    </div>
-                  </div>
+          <>
+            {/* Fundo que fecha o painel de resumo ao toque fora — portal
+                próprio, z-index abaixo do container da barra (z-[110], que
+                hospeda o painel) para nunca cobrir a barra em si. */}
+            <AnimatePresence>
+              {isSummaryPanelOpen && (
+                <motion.div
+                  key="checkout-summary-backdrop"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="fixed inset-0 z-[105] bg-black/40"
+                  // Achado 5 da revisão (17/08/2026): fechar direto pelo
+                  // estado deixava a entrada do `pushState` (linhas
+                  // 430-441) órfã na pilha do histórico — o próximo "voltar"
+                  // não fazia nada visível. `history.back()` consome a
+                  // entrada e deixa o `popstate` (App.tsx) fechar o painel
+                  // pelo `onSetBackOverride` já registrado — mesmo padrão de
+                  // `onCancel={() => globalThis.history.back()}` (linha ~1116).
+                  onClick={() => globalThis.history.back()}
+                  aria-hidden="true"
+                />
+              )}
+            </AnimatePresence>
+            <AnimatePresence>
+              {isPresent && isReady && (
+                // POSICIONAMENTO NO DIV DE FORA, ANIMAÇÃO NO motion.div DE
+                // DENTRO — é como o carrinho (CartFooterSummary) e os favoritos
+                // (FavoritesView) fazem, e a separação não é estética: o
+                // framer-motion escreve `transform: translateY(...)` inline no
+                // elemento que anima, e isso SOBRESCREVE o `md:-translate-x-1/2`
+                // do Tailwind. Com as duas coisas no mesmo elemento (como estava
+                // aqui), a centralização de md morria em silêncio: medido em
+                // 17/08/2026 numa janela de 1280px, a barra ficava em 640–1088px
+                // em vez de 416–864px — meia tela à direita do formulário.
+                //
+                // `bottom-docked-navigation` cola a barra na navegação inferior,
+                // como o carrinho, o produto e os favoritos já faziam. Esta barra
+                // usava uma `bottom-safe-navigation` — a mesma conta mais 12px —
+                // e era o único uso dela no app: aqueles 12px não eram respiro,
+                // eram uma fresta por onde o formulário rolando aparecia entre as
+                // duas barras (medido no mesmo dia: barra terminando em 736px,
+                // navegação começando em 747px, com um campo cinza à mostra no
+                // meio). A classe foi removida de `src/index.css` junto com este
+                // uso, para ninguém reabrir a fresta escolhendo o nome que soa
+                // mais seguro.
+                <div className="bottom-docked-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2">
+                  {/* Painel de resumo — sobe ACIMA da barra porque é o
+                      irmão anterior dela dentro deste mesmo container
+                      `fixed`/`bottom-docked-navigation`: cresce para cima em
+                      vez de deslocar a barra, sem tocar no `motion.div` da
+                      barra logo abaixo.
 
-                  <button
-                    onClick={() => {
-                      haptic.medium();
-                      handleSubmitEvent();
-                    }}
-                    disabled={!isValid || isSubmitting}
-                    className={cn(
-                      "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
-                      !isValid || isSubmitting
-                        ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
-                        : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
+                      LIMITE CONHECIDO, MEDIDO E DEIXADO DE PROPÓSITO
+                      (17/08/2026): a saída deste painel é animada, e
+                      `AnimatePresence` só desmonta o nó quando a animação de
+                      saída TERMINA. Ela depende de `requestAnimationFrame`, que
+                      não dispara em aba oculta — medido 6 de 6 vezes: o estado
+                      React já fechou (`aria-expanded` volta a "false", o
+                      `backOverride` volta a null) e o nó continua no DOM por
+                      tempo indeterminado. Quando a aba volta a ficar visível os
+                      quadros voltam e o nó sai.
+                      E não é só "um nó invisível": medido, o que fica é o FUNDO
+                      em tela cheia com `opacity: 0` e `pointer-events: auto`
+                      cobrindo o viewport inteiro — ou seja, um engolidor de
+                      cliques invisível. Enquanto ele está lá, o formulário não
+                      recebe toque; só a barra (z-110) e a navegação (z-120)
+                      passam por cima.
+                      Por que NÃO consertar mesmo assim: a janela de exposição é
+                      exatamente a aba oculta, onde o cliente não está tocando em
+                      nada, e ela fecha sozinha quando a aba volta a ficar
+                      visível (o `rAF` pendente do framer retoma — é
+                      especificação, não sorte). A única correção possível mexe
+                      na `AnimatePresence` desta barra, a mesma peça que quebrou
+                      DUAS vezes hoje (centralização morta pelo `transform`
+                      inline do framer-motion, e fresta de 12px entre barra e
+                      navegação). Trocar uma barra que funciona por isso é o
+                      negócio errado — mas quem reabrir esta decisão precisa
+                      saber que o preço é engolir clique, não só sujar o DOM.
+                      Se um dia isso precisar de conserto de verdade, a saída é
+                      não depender da animação para remover o nó — nunca
+                      reescrever o esqueleto de posicionamento. */}
+                  <AnimatePresence>
+                    {isSummaryPanelOpen && (
+                      <motion.div
+                        key="checkout-summary-panel"
+                        initial={{ y: 12, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: 12, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        ref={summaryPanelRef}
+                        // `role="dialog"` SEM `aria-modal`, de propósito.
+                        // `aria-modal="true"` manda o leitor de tela esconder
+                        // tudo que está fora daqui — e não é verdade: medido em
+                        // 17/08/2026, o fundo escuro (z-105) cobre o formulário
+                        // mas NÃO cobre a barra (z-110) nem a navegação inferior
+                        // (z-120), que seguem clicáveis por toque. Afirmar modal
+                        // esconderia do leitor de tela justamente o "Finalizar
+                        // Pedido" que continua funcionando.
+                        // O que este painel é de fato: um disclosure — o gatilho
+                        // carrega `aria-expanded` e a dica "toque para ver os
+                        // itens". A outra saída seria subir o fundo acima da
+                        // barra, e isso mexe no empilhamento que já quebrou duas
+                        // vezes hoje.
+                        role="dialog"
+                        aria-label="Resumo do pedido"
+                        tabIndex={-1}
+                        className="mx-auto mb-2 max-h-[45vh] w-full max-w-md overflow-y-auto rounded-2xl border border-zinc-100 bg-white p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] outline-none"
+                      >
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                            Resumo do Pedido
+                          </span>
+                          <button
+                            type="button"
+                            // Mesmo motivo do fundo: consumir a entrada do
+                            // histórico via `history.back()`, não fechar
+                            // direto pelo estado.
+                            onClick={() => globalThis.history.back()}
+                            aria-label="Fechar resumo do pedido"
+                            className="flex size-7 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-50 hover:text-zinc-600"
+                          >
+                            <ChevronDown className="size-4" />
+                          </button>
+                        </div>
+
+                        {/* Sem botão de editar e sem link para o carrinho —
+                            voltar ao carrinho apaga o endereço já digitado
+                            (ver AGENTS.md/comentários do checkout), e este
+                            painel existe justamente para conferir sem sair
+                            da tela. */}
+                        <ul className="space-y-3">
+                          {cart.map((item) => {
+                            // Mesma fórmula de CartContext.tsx (cartTotal) —
+                            // não uma conta nova: preço da variante quando
+                            // houver, senão o preço do produto.
+                            const precoUnitario = item.variantId
+                              ? item.product.variants?.find(
+                                  (v) => v.id === item.variantId,
+                                )?.priceOverride || item.product.price
+                              : item.product.price;
+
+                            return (
+                              <li
+                                key={`${item.product.id}-${item.variantId ?? ""}`}
+                                className="flex items-center gap-3"
+                              >
+                                <img
+                                  src={item.product.images?.[0]}
+                                  alt=""
+                                  className="size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium text-zinc-800">
+                                    {item.product.name}
+                                  </p>
+                                  {item.variantNames && (
+                                    <p className="truncate text-[11px] text-zinc-400">
+                                      {item.variantNames}
+                                    </p>
+                                  )}
+                                </div>
+                                <span className="shrink-0 text-xs font-semibold text-zinc-600">
+                                  {item.quantity} × R${" "}
+                                  {precoUnitario.toFixed(2).replace(".", ",")}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+
+                        <div className="mt-4 space-y-1.5 border-t border-zinc-100 pt-3 text-xs">
+                          <div className="flex items-center justify-between text-zinc-500">
+                            <span>Subtotal</span>
+                            <span>
+                              R$ {subtotal.toFixed(2).replace(".", ",")}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-500">
+                            <span>Entrega</span>
+                            <span>
+                              {shipping > 0
+                                ? `R$ ${shipping.toFixed(2).replace(".", ",")}`
+                                : "Grátis"}
+                            </span>
+                          </div>
+                          {discount > 0 && (
+                            <div className="flex items-center justify-between text-red-500">
+                              <span>Desconto</span>
+                              <span>
+                                -R$ {discount.toFixed(2).replace(".", ",")}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between pt-1 text-sm font-black text-zinc-900">
+                            <span>Total</span>
+                            <span>
+                              R$ {finalTotal.toFixed(2).replace(".", ",")}
+                            </span>
+                          </div>
+                        </div>
+                      </motion.div>
                     )}
+                  </AnimatePresence>
+
+                  <motion.div
+                    initial={{ y: "100%", opacity: 0.5 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: "100%", opacity: 0 }}
+                    transition={{ duration: 0.25, ease: "easeOut" }}
+                    className="w-full rounded-t-2xl border-t border-zinc-100 bg-white/95 p-3 px-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl md:rounded-b-none md:rounded-t-2xl md:border-x md:border-b-0 md:border-t md:border-zinc-200/60"
                   >
-                    {isSubmitting ? (
-                      <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-                    ) : (
-                      <>
-                        <span>Finalizar Pedido</span>
-                        <ArrowLeft className="size-4 rotate-180" />
-                      </>
-                    )}
-                  </button>
+                    {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
+                        ficarem na mesma coluna dos cards do formulário. */}
+                    <div className="mx-auto flex max-w-md items-center justify-between gap-4">
+                      <button
+                        type="button"
+                        ref={summaryPanelTriggerRef}
+                        onClick={() => {
+                          haptic.light();
+                          setIsSummaryPanelOpen((open) => !open);
+                        }}
+                        // Carrinho vazio não tem o que listar. `disabled` em vez
+                        // de um `return` no clique: o `return` fazia o botão
+                        // parar de funcionar sem PARECER parado — continuava
+                        // focável, com cursor de mão, e anunciado ao leitor de
+                        // tela como "recolhido", coisa que nunca expandiria.
+                        // Cenário real e alcançável: finalizar um pedido e
+                        // recarregar a página (a URL segue /checkout, o carrinho
+                        // já foi limpo). O "Finalizar Pedido" ao lado já se
+                        // explica assim.
+                        disabled={cart.length === 0}
+                        aria-expanded={isSummaryPanelOpen}
+                        className="flex min-w-0 flex-col text-left"
+                      >
+                        {itemsLabel && (
+                          <span className="mb-0.5 block truncate text-[10px] font-medium text-zinc-400">
+                            {itemsLabel}
+                          </span>
+                        )}
+                        <span className="mb-1 text-[9px] font-bold uppercase leading-none tracking-wider text-zinc-400">
+                          Total a Pagar
+                        </span>
+                        <div className="flex flex-wrap items-baseline gap-1.5">
+                          <span className="text-lg font-black leading-none tracking-tight text-zinc-900">
+                            R$ {finalTotal.toFixed(2).replace(".", ",")}
+                          </span>
+                          {discount > 0 && (
+                            <span className="text-[9px] font-bold uppercase text-red-500">
+                              (-R$ {discount.toFixed(2).replace(".", ",")} OFF)
+                            </span>
+                          )}
+                        </div>
+                        {entregaLabel && (
+                          <span className="mt-1 block truncate text-[10px] font-medium text-zinc-400">
+                            {entregaLabel}
+                          </span>
+                        )}
+                        {cart.length > 0 && (
+                          <span className="sr-only">, toque para ver os itens</span>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          haptic.medium();
+                          handleSubmitEvent();
+                        }}
+                        disabled={!isValid || isSubmitting}
+                        className={cn(
+                          "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
+                          !isValid || isSubmitting
+                            ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
+                            : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
+                        )}
+                      >
+                        {isSubmitting ? (
+                          <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                        ) : (
+                          <>
+                            <span>Finalizar Pedido</span>
+                            <ArrowLeft className="size-4 rotate-180" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </motion.div>
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>,
+              )}
+            </AnimatePresence>
+          </>,
           document.body,
         )}
     </div>
@@ -1216,6 +2129,177 @@ function SuccessView({
           className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
         >
           Ver Meus Pedidos
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// CHECKOUT-090: tela de PIX confirmado. Mesmo padrão visual do SuccessView
+// (ícone de check em círculo esmeralda, hierarquia de texto, dois botões de
+// saída) — sem redesenho. Diferente do SuccessView (pedido pago na entrega,
+// nada a confirmar), aqui existiu de fato um pagamento online recebido, daí
+// o valor pago em destaque.
+interface PagamentoConfirmadoViewProps {
+  orderId: string;
+  valor: number;
+  onNavigate: (view: View, productId?: string) => void;
+}
+
+function PagamentoConfirmadoView({
+  orderId,
+  valor,
+  onNavigate,
+}: Readonly<PagamentoConfirmadoViewProps>) {
+  return (
+    <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center">
+      <div className="group relative mb-12">
+        <div className="absolute inset-0 scale-[2.5] rounded-2xl bg-emerald-100 opacity-30 blur-3xl transition-opacity duration-1000 group-hover:opacity-50" />
+        <div className="relative flex size-32 items-center justify-center rounded-2xl border-4 border-white bg-emerald-50 shadow-2xl transition-transform duration-700 group-hover:scale-110">
+          <Check className="size-14 text-emerald-500" />
+        </div>
+        <div className="absolute -right-4 -top-4 size-8 animate-pulse rounded-full bg-amber-400 blur-xl" />
+        <div className="absolute -bottom-2 -left-2 size-6 animate-pulse rounded-full bg-primary/30 blur-lg delay-500" />
+      </div>
+
+      <h2 className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4">
+        Pagamento Confirmado!
+      </h2>
+
+      <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
+        <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
+          Pedido:{" "}
+          <span className="text-zinc-900">
+            #{orderId.slice(-6).toUpperCase()}
+          </span>
+        </p>
+        <p className="text-lg font-black text-emerald-600">
+          R$ {valor.toFixed(2).replace(".", ",")} recebido
+        </p>
+        <div className="mx-auto max-w-[300px]">
+          <p className="text-sm font-medium leading-relaxed text-zinc-500">
+            Seu pagamento foi confirmado e a loja já está preparando seu
+            pedido.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
+        <button
+          onClick={() => onNavigate("profile")}
+          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
+        >
+          Ver Meus Pedidos
+        </button>
+        <button
+          onClick={() => onNavigate("home")}
+          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+        >
+          Retornar à Vitrine
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// CHECKOUT-090: tela do pagamento recebido DEPOIS que o prazo de reserva
+// venceu. Decisão de produto do Gabriel (16/08/2026, tomada explicitamente
+// com ele — texto abaixo NÃO é redação livre): "Recebemos seu pagamento,
+// mas o prazo de reserva venceu. A loja vai te contatar em breve para
+// confirmar ou devolver o valor." Honesto, não promete o que talvez não
+// possa cumprir, e evita que a pessoa pague de novo achando que falhou.
+//
+// Por trás: `payment_status = 'pago_apos_expirar'` significa que a
+// varredura do prazo já marcou `status='cancelled'` e já devolveu o
+// estoque (20260807000000_reserva_com_expiracao.sql:113-116) — a
+// mercadoria pode já ter sido vendida a outra pessoa. Um humano decide
+// caso a caso (spec do webhook, linha 136): reativa se ainda tiver a
+// mercadoria, ou estorna pelo painel do MP se não tiver. Por isso esta
+// tela NUNCA promete entrega, preparo, envio ou prazo — só que o dinheiro
+// chegou e que alguém vai falar com o cliente. Visual deliberadamente
+// distinto do sucesso (âmbar, não esmeralda; ícone de alerta, não de
+// check): isto não é uma comemoração.
+interface PagamentoForaDoPrazoViewProps {
+  orderId: string;
+  valor: number;
+  onNavigate: (view: View, productId?: string) => void;
+}
+
+function PagamentoForaDoPrazoView({
+  orderId,
+  valor,
+  onNavigate,
+}: Readonly<PagamentoForaDoPrazoViewProps>) {
+  const { config } = useStore();
+
+  // Mesmo mecanismo de contato já usado em OrderDetailsView, ProductView e
+  // ProfileView (wa.me com DDI 55 prefixado para número de 10 ou 11
+  // dígitos) — não um novo. `numeroLimpo` vazio (config.whatsappNumber não
+  // configurado) desliga o botão em vez de abrir um link quebrado.
+  const numeroLimpo = (config.whatsappNumber || "").replace(/\D/g, "");
+
+  const handleFalarComALoja = () => {
+    if (!numeroLimpo) return;
+    let phone = numeroLimpo;
+    if (phone.length === 11 || phone.length === 10) {
+      phone = `55${phone}`;
+    }
+    const mensagem = `Olá! Paguei o pedido #${orderId.slice(-6).toUpperCase()}, mas o prazo de reserva venceu. Podem me ajudar?`;
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
+    globalThis.open(url, "_blank");
+  };
+
+  return (
+    <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center">
+      <div className="group relative mb-12">
+        <div className="absolute inset-0 scale-[2.5] rounded-2xl bg-amber-100 opacity-30 blur-3xl transition-opacity duration-1000 group-hover:opacity-50" />
+        <div className="relative flex size-32 items-center justify-center rounded-2xl border-4 border-white bg-amber-50 shadow-2xl transition-transform duration-700 group-hover:scale-110">
+          <AlertCircle className="size-14 text-amber-500" />
+        </div>
+      </div>
+
+      <h2 className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4">
+        Pagamento Recebido
+      </h2>
+
+      <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
+        <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
+          Pedido:{" "}
+          <span className="text-zinc-900">
+            #{orderId.slice(-6).toUpperCase()}
+          </span>
+        </p>
+        <p className="text-lg font-black text-amber-600">
+          R$ {valor.toFixed(2).replace(".", ",")} recebido
+        </p>
+        <div className="mx-auto max-w-[300px]">
+          <p className="text-sm font-medium leading-relaxed text-zinc-500">
+            Recebemos seu pagamento, mas o prazo de reserva venceu. A loja vai
+            te contatar em breve para confirmar ou devolver o valor.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
+        {numeroLimpo && (
+          <button
+            onClick={handleFalarComALoja}
+            className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-amber-500 text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-black/10 transition-all hover:bg-amber-500/90 active:scale-95"
+          >
+            Falar com a Loja
+          </button>
+        )}
+        <button
+          onClick={() => onNavigate("profile")}
+          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+        >
+          Ver Meus Pedidos
+        </button>
+        <button
+          onClick={() => onNavigate("home")}
+          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+        >
+          Retornar à Vitrine
         </button>
       </div>
     </div>

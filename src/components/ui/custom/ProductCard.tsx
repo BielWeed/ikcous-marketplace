@@ -28,6 +28,24 @@ interface ProductCardProps {
   priority?: boolean;
   isEligibleForFreeShipping?: boolean;
   selectedProductId?: string;
+  /**
+   * ADMIN-091 (#202): espelha `config.enableReviews` do StoreContext. Vem
+   * por prop, não por `useStore()` direto aqui dentro, porque ProductCard é
+   * renderizado aos dezenas numa grade (ProductList, SearchView,
+   * FavoritesView, ProductCarousel) -- cada um desses já chama `useStore()`
+   * uma vez só e repassa `isEligibleForFreeShipping` do mesmo jeito. Ler o
+   * contexto em cada card assinaria a árvore inteira do StoreContext (que
+   * muda a cada `fetchProducts`) em cada instância, mesmo protegida por
+   * `memo`, porque `useContext` força re-render independente de memo.
+   * **Obrigatório de propósito, sem default.** A primeira versão desta
+   * correção usava `showRating = true`, e foi exatamente isso que deixou
+   * `ProductView` (produtos relacionados, no rodapé) continuar publicando a
+   * nota com o interruptor desligado: quem esquece de passar o prop cai no
+   * lado que a issue quer esconder, sem erro nenhum. Sendo obrigatório, o
+   * `npm run typecheck` recusa qualquer chamador novo que esqueça — a
+   * completude passa a ser provada pelo compilador, não por revisão.
+   */
+  showRating: boolean;
 }
 
 // Global trackers for view transitions to prevent duplicate view-transition-names
@@ -45,6 +63,7 @@ export const ProductCard = memo(function ProductCard({
   priority = false,
   isEligibleForFreeShipping = false,
   selectedProductId,
+  showRating,
 }: Readonly<ProductCardProps>) {
   const instanceId = useId();
   const { prefetchImage } = usePrefetchOnHover();
@@ -207,11 +226,24 @@ export const ProductCard = memo(function ProductCard({
             {product.name}
           </h3>
           <div className="flex flex-wrap items-center gap-2 pt-0.5">
-            <StarRating rating={product.rating || 5} size={11} />
-            <div className="flex items-center gap-1 text-[9px] font-bold">
+            {showRating && <StarRating rating={product.rating || 5} size={11} />}
+            {/*
+              ADMIN-091 (#202): com `showRating=false` a linha fica só com o
+              indicador de estoque. Em vez de deixar a linha "pobre" (o que
+              o plano pediu para evitar), ele ganha mais destaque -- ponto
+              maior e texto um degrau maior -- reaproveitando um sinal que o
+              card já tinha, em vez de inventar um selo novo.
+            */}
+            <div
+              className={cn(
+                "flex items-center gap-1 font-bold",
+                showRating ? "text-[9px]" : "text-[10px]",
+              )}
+            >
               <span
                 className={cn(
-                  "w-1 h-1 rounded-full animate-pulse",
+                  "rounded-full animate-pulse",
+                  showRating ? "w-1 h-1" : "w-1.5 h-1.5",
                   product.stock <= 0
                     ? "bg-zinc-400"
                     : product.stock <= 5

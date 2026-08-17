@@ -117,8 +117,13 @@ entra no fluxo. Esta tabela é para a faixa do meio.
 
 Duas leituras que enganam:
 
-- **`eslint` tem 553 warnings pré-existentes e 0 erro.** Warning não reprova; **erro novo
-  reprova**, porque o teto do `.lint-baseline.json` está em 0.
+- **`eslint` tem 553 warnings pré-existentes e 0 erro — os dois são tetos, e os dois reprovam se
+  subirem.** `scripts/lint-ratchet.mjs` marca `subiu = true` (e sai com `process.exit(1)`) para
+  **qualquer** contagem — erro ou warning — que fique acima do teto de `.lint-baseline.json`; não
+  há tratamento especial para warning. O que o teto de 553 acomoda é a dívida **pré-existente**:
+  warning que já existia antes do seu diff não reprova, porque já está contado no teto. Warning
+  **novo** — que faz a contagem passar de 553 — reprova exatamente como erro novo (teto 0). Não
+  leia "warning não reprova" como "warning nunca reprova": é "warning dentro do teto não reprova".
 - **`lint:ratchet` acusa Biome acima do teto no Windows por causa de CRLF.** Não é dívida — o
   próprio script avisa que Biome só é cobrado no CI (Linux).
 
@@ -136,7 +141,10 @@ era pago três vezes, por um diff que às vezes tinha duas linhas.
 Por isso, ao montar o prompt de um subagente:
 
 - **Diff toca `src/`, `supabase/functions/` ou `tests/`:** peça os sete comandos. É o caso
-  normal e não se negocia.
+  normal e não se negocia. Para `supabase/functions/` em particular, `lint:ratchet` (via eslint)
+  é o **único** dos sete que olha essa pasta — `typecheck` e `build` seguem só `tsconfig.app.json`/
+  `tsconfig.node.json` (que não incluem `supabase/`), e `size` só mede `dist/assets/*`. Quem
+  entrega diff ali e pula o `lint:ratchet` não tem NENHUM dos outros seis cobrindo o que mudou.
 - **Diff toca só `scripts/`, comentário, migration ou documentação:** nomeie os comandos que
   fazem sentido e diga explicitamente para **não** rodar o resto — a sessão roda o que faltar.
   Foi assim que uma re-revisão voltou em 5 min em vez de 80.

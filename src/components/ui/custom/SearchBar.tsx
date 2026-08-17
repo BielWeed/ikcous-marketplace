@@ -22,7 +22,10 @@ export function SearchBar({
   value,
   onChange,
   onProductClick,
-  placeholder = "Buscar produtos...",
+  // Igual ao que o Header passa, de propósito: um default divergente ("Buscar
+  // produtos...", com reticências) faz quem lê só a assinatura acreditar num
+  // texto que a tela não mostra.
+  placeholder = "Buscar produtos",
   className = "",
 }: SearchBarProps) {
   const [localValue, setLocalValue] = useState(value);
@@ -231,20 +234,6 @@ export function SearchBar({
           )}
         />
 
-        {/* Animated Mobile Placeholder */}
-        {!localValue && !showDropdown && (
-          <div className="pointer-events-none absolute inset-y-0 left-12 right-10 z-[25] flex select-none items-center overflow-hidden">
-            <div className="animate-marquee-x flex gap-12 whitespace-nowrap">
-              <span className="text-sm font-medium text-zinc-400">
-                {placeholder}
-              </span>
-              <span className="text-sm font-medium text-zinc-400 sm:hidden">
-                {placeholder}
-              </span>
-            </div>
-          </div>
-        )}
-
         <Input
           ref={inputRef}
           id="global-search"
@@ -261,8 +250,8 @@ export function SearchBar({
           onKeyDown={handleKeyDown}
           aria-label="Buscar produtos"
           title="Buscar produtos"
-          className="relative pl-12 pr-10 border-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 h-full text-sm font-bold tracking-tight text-zinc-900 placeholder:text-zinc-400 rounded-full z-20 bg-transparent focus:outline-none focus:ring-0 focus-visible:outline-none"
-          placeholder=""
+          className="relative pl-12 pr-10 border-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 h-full text-sm font-bold tracking-tight text-zinc-900 placeholder:font-medium placeholder:text-zinc-500 rounded-full z-20 bg-transparent focus:outline-none focus:ring-0 focus-visible:outline-none"
+          placeholder={placeholder}
           autoComplete="off"
         />
 

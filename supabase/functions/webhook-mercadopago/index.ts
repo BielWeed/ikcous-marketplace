@@ -7,7 +7,7 @@
  * O QUE PROTEGE ESTA FUNÇÃO
  *
  * Roda com `verify_jwt = false` (config.toml) porque o MP não manda JWT.
- * Quem autentica é o `x-signature`, validado por `validarAssinatura` — sem
+ * Quem autentica é o `x-signature`, validado por `avaliarAssinatura` — sem
  * ele, qualquer um que descubra a URL forja um "aprovado" e leva produto de
  * graça. É por isso que a checagem de assinatura vem ANTES de qualquer
  * leitura de corpo além do `data.id` (que a própria assinatura depende
@@ -15,13 +15,17 @@
  *
  * POR QUE O `p_order_id` VEM DA RESPOSTA DO MP, NÃO DO CORPO DO WEBHOOK
  *
- * O corpo só é autenticado pelo `x-signature`, que amarra o `data.id` — não
- * amarra nenhum outro campo. Um corpo forjado com a MESMA assinatura de um
- * pagamento real não existe (a assinatura barra isso), mas o corpo em si
- * nunca carrega o pedido: quem sabe a qual pedido um pagamento pertence é o
- * `external_reference` que `criarPagamento`/`consultarPagamento` leem de
- * volta da API do MP, autenticada pelo `MP_ACCESS_TOKEN`. Por isso o pedido
- * sai de `consulta.externalReference`, nunca de `body`.
+ * O corpo só é autenticado pelo `x-signature`, que amarra o `data.id` do
+ * CORPO — não amarra nenhum outro campo, e não amarra a query string (a
+ * assinatura NÃO aceita mais o `data.id` da query como fonte de manifesto
+ * desde 16/08/2026: era um campo que o mesmo atacante também controla,
+ * enquanto todo o processamento abaixo usa sempre o do corpo). Um corpo
+ * forjado com a MESMA assinatura de um pagamento real não existe (a
+ * assinatura barra isso), mas o corpo em si nunca carrega o pedido: quem
+ * sabe a qual pedido um pagamento pertence é o `external_reference` que
+ * `criarPagamento`/`consultarPagamento` leem de volta da API do MP,
+ * autenticada pelo `MP_ACCESS_TOKEN`. Por isso o pedido sai de
+ * `consulta.externalReference`, nunca de `body`.
  *
  * `pareceUuid` nesse valor é a segunda trava: sem forma de UUID (ausente,
  * vazio, ou pagamento criado por fora deste sistema), o Postgres recusaria o
@@ -45,11 +49,28 @@
  * veio aprovada pelo MP, mas não bate com nenhum pedido — dinheiro que pode
  * ter entrado sem registro. Por isso não disparam push (não haveria pedido
  * certo para avisar), mas são logados como erro, não silenciados.
+ *
+ * MIGRAÇÃO PARA A ORDERS API (CHECKOUT-070, Tarefa 3 de 4)
+ *
+ * `criar-pagamento` (Tarefa 2) já cria a cobrança PIX via `POST /v1/orders`
+ * em vez do endpoint clássico (`POST /v1/payments`, que devolve 500 para
+ * `payment_method_id: "pix"` desde agosto/2026). O MP notifica essa cobrança
+ * com `type: "order"`, não `type: "payment"` — este handler agora reconhece
+ * as duas notificações (ver `rota`, mais abaixo) para não descartar com 200
+ * OK um pedido que acabou de ser pago. `reconciliar-pagamentos` (Tarefa 4)
+ * segue por outro agente, em paralelo.
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
-import { consultarPagamento, mapearStatus, validarAssinatura } from "../_shared/mercadopago.ts";
+import {
+  avaliarAssinatura,
+  consultarOrder,
+  consultarPagamento,
+  idEhClassico,
+  mapearStatus,
+  mapearStatusOrder,
+} from "../_shared/mercadopago.ts";
 import {
   carregarChavesVapid,
   corsHeaders,
@@ -59,6 +80,37 @@ import {
 } from "../_shared/webpush.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Tópicos (`type`) do MP conhecidos e IRRELEVANTES para pagamento — levantados
+// na doc oficial (não da memória) em 14/08/2026:
+// https://www.mercadopago.com.br/developers/en/docs/your-integrations/notifications/webhooks
+// (tabela de tópicos do painel) + https://www.mercadopago.com.mx/developers/en/docs/checkout-api-orders/notifications
+// (confirma `type: "order"` como o nome real no corpo, não "orders").
+// "merchant_order" (sem prefixo/sufixo) é o nome clássico/IPN do mesmo
+// tópico que a doc atual lista como "topic_merchant_order_wh" — mantido
+// porque é o que este handler já recebia em produção antes desta correção.
+//
+// Lista de propósito CURTA (ressalva de revisão, CHECKOUT-070 Tarefa 3): o
+// modo de falha de um tópico irrelevante que ficou de fora é seguro e barato
+// — cai no desempate por forma do id, o id é numérico, vai para
+// `GET /v1/payments/{id}`, o MP devolve 404, e o handler já responde 200
+// "pagamento não encontrado" (:305-307). Custa uma linha de log. Colocar
+// aqui um tópico que ÀS VEZES é pagamento custaria o dinheiro da loja — por
+// isso a lista só entra com o que a doc afirma, com certeza, ser outra coisa.
+const TOPICOS_IRRELEVANTES = new Set([
+  "merchant_order",
+  "topic_merchant_order_wh",
+  "subscription_authorized_payment",
+  "subscription_preapproval",
+  "subscription_preapproval_plan",
+  "mp-connect",
+  "wallet_connect",
+  "stop_delivery_op_wh",
+  "topic_claims_integration_wh",
+  "topic_card_id_wh",
+  "topic_chargebacks_wh",
+  "point_integration_wh",
+]);
 
 // Copiadas de notify-new-order/index.ts (:66, :73) e o formatarBRL local
 // dali (:93) — de propósito, e não importadas de lá: aquele módulo chama
@@ -199,8 +251,29 @@ async function handler(
   }
   const dataIdStr = String(dataId);
 
+  // Log de ENTRADA, antes de qualquer validação: distingue "chegou e
+  // recusamos" (assinatura inválida) de "nunca chegou" (o MP não notificou).
+  // É o log que teria provado esta causa sem precisar reproduzir o bug.
+  //
+  // `dataIdCorpo` é TRUNCADO: este log roda ANTES de qualquer autenticação,
+  // então quem descobrir a URL escreve conteúdo próprio aqui em volume
+  // arbitrário se o valor não tiver limite (achado de revisão, 16/08/2026).
+  // 64 caracteres sobra folga sobre o maior `data.id` legítimo do MP (ULID
+  // de Order, 29 caracteres; id de payment clássico é numérico, menor ainda).
+  const LIMITE_LOG_DATA_ID = 64;
+  const tsDoHeader = req.headers.get("x-signature")?.match(/(?:^|,)\s*ts=([^,]*)/)?.[1] ?? null;
+  console.log("webhook-mercadopago: notificação recebida", {
+    dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
+    temXRequestId: req.headers.get("x-request-id") !== null,
+    ts: tsDoHeader,
+  });
+
   // A ÚNICA autenticação: sem ela, quem descobrir a URL forja um "aprovado".
-  const assinaturaOk = await validarAssinatura({
+  // Amarra SEMPRE o `data.id` do CORPO (nunca o da query string — ver o
+  // comentário de `avaliarAssinatura` em `_shared/mercadopago.ts`), porque é
+  // esse o valor que todo o processamento abaixo usa (rota, consulta ao MP,
+  // RPC `confirmar_pagamento`).
+  const avaliacao = await avaliarAssinatura({
     xSignature: req.headers.get("x-signature"),
     xRequestId: req.headers.get("x-request-id"),
     dataId: dataIdStr,
@@ -224,57 +297,182 @@ async function handler(
     // do MP entrega essa checagem desligada por padrão.
     toleranciaSegundos: Number.POSITIVE_INFINITY,
   });
-  if (!assinaturaOk) {
-    console.warn("webhook-mercadopago: assinatura inválida", dataIdStr);
+  if (!avaliacao.valido) {
+    // Log de FALHA: dataId (corpo, truncado), x-request-id, ts, o v1
+    // recebido e os RÓTULOS dos candidatos tentados (sem hash nenhum, nem
+    // prefixo dele — publicar hash calculado é um oráculo de verificação
+    // offline do `MP_WEBHOOK_SECRET`, achado de revisão de 16/08/2026) — o
+    // que transforma suspeita em causa provada quando o MP reenviar a
+    // notificação real. NUNCA loga `MP_WEBHOOK_SECRET`.
+    const v1Recebido = req.headers.get("x-signature")?.match(/(?:^|,)\s*v1=([^,]*)/)?.[1] ?? null;
+    console.warn("webhook-mercadopago: assinatura inválida", {
+      dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
+      xRequestId: req.headers.get("x-request-id"),
+      ts: tsDoHeader,
+      v1Recebido,
+      candidatos: avaliacao.candidatos,
+    });
     return json({ error: "Assinatura inválida." }, 401);
   }
+  // Log de SUCESSO: qual candidato casou — é esta linha que prova a causa
+  // por inversão quando o MP reenviar a notificação real (a versão anterior
+  // desta função só aceitava "corpo-original" e recusava 100% das
+  // notificações reais da Orders API; ver o comentário de
+  // `avaliarAssinatura` em `_shared/mercadopago.ts`).
+  console.log(`webhook-mercadopago: assinatura válida — manifesto: ${avaliacao.candidatoCasou}`, dataIdStr);
 
-  // Barato de filtrar, caro de deixar passar: uma notificação de
-  // merchant_order (ou qualquer type que não seja "payment") seria
-  // consultada como pagamento, o MP devolveria 404, e a função responderia
-  // 200 mesmo assim — inofensivo, mas cada uma dessas suja o log
-  // (`mercadopago: recusou 404`) sem nunca ter sido um pagamento de
-  // verdade. `type` ausente passa (notificações antigas/de teste podem não
-  // mandar o campo); só barra quando ele VEIO e diz outra coisa.
+  // Depois da migração para a Orders API (CHECKOUT-070, Tarefas 1-2), a
+  // confirmação de PIX chega com `type: "order"`, não mais `type: "payment"`
+  // — o filtro que existia aqui (descartar tudo que não fosse "payment")
+  // jogaria fora TODO pedido pago: "aguardando" para sempre. Três rotas:
+  //
+  // 1. `type === "payment"` → caminho CLÁSSICO, intacto (pedidos criados
+  //    antes do deploy ainda estão em voo e ainda notificam assim).
+  // 2. `type === "order"` → caminho novo (Orders API).
+  // 3. `type` ausente → decide pela FORMA do `data.id` (`idEhClassico`,
+  //    `_shared/mercadopago.ts` — extraída na Tarefa 4, CHECKOUT-070, para
+  //    `reconciliar-pagamentos`/`criar-pagamento` pararem de escrever a MESMA
+  //    regex pela terceira vez): só dígitos é sempre pagamento clássico (o id
+  //    de payment do MP é numérico); qualquer outra coisa (o ULID da order,
+  //    maiúsculo, prefixo "ORD"/"ORDTST" em teste) vai para o caminho de
+  //    order. Sem isto, "type ausente" cairia sempre no clássico — 404 do MP
+  //    (id de order não existe em /v1/payments/) → 200 "ignorado" →
+  //    pagamento perdido em silêncio.
+  //
+  // 4a. `type` presente e está na lista de CONHECIDOS irrelevantes
+  //     (TOPICOS_IRRELEVANTES, acima) → descarta com 200 sem tocar o MP:
+  //     barato de filtrar, caro de deixar passar (cada um consultado
+  //     sujaria o log com `mercadopago: recusou 404` sem nunca ter sido um
+  //     pagamento de verdade).
+  // 4b. `type` presente mas DESCONHECIDO (nem payment/order, nem da lista
+  //     acima) → NÃO descarta. Ninguém neste projeto jamais observou uma
+  //     notificação real da Orders API (issue #212: `notification_url` não
+  //     é aceito no corpo da Orders API, a entrega depende do cadastro no
+  //     painel do MP) — o literal exato que o MP manda para essa cobrança é
+  //     suposição, não medição. Se vier plural, prefixado, versionado, ou
+  //     qualquer variação de "order" que este código não previu, decide
+  //     pela FORMA do id, igual ao caso 3 (type ausente) — e loga com
+  //     console.error, não warn: tópico desconhecido é sinal de que o
+  //     contrato do MP mudou, não rotina.
   const tipoDoEvento = body?.type;
-  if (typeof tipoDoEvento === "string" && tipoDoEvento !== "payment") {
-    console.warn("webhook-mercadopago: type não é payment, ignorado sem consultar o MP", tipoDoEvento);
-    return json({ ok: true, ignorado: "type não é payment" }, 200);
+  let rota: "payment" | "order";
+  if (tipoDoEvento === "payment") {
+    rota = "payment";
+  } else if (tipoDoEvento === "order") {
+    rota = "order";
+  } else if (typeof tipoDoEvento === "string" && TOPICOS_IRRELEVANTES.has(tipoDoEvento)) {
+    console.warn(
+      "webhook-mercadopago: type está na lista de tópicos irrelevantes, ignorado sem consultar o MP",
+      tipoDoEvento,
+    );
+    return json({ ok: true, ignorado: "type não é payment nem order" }, 200);
+  } else if (typeof tipoDoEvento === "string") {
+    rota = idEhClassico(dataIdStr) ? "payment" : "order";
+    console.error(
+      `webhook-mercadopago: type "${tipoDoEvento}" desconhecido (nem payment/order, nem da lista de irrelevantes) — decidido pela forma do id -> rota "${rota}"`,
+      dataIdStr,
+    );
+  } else {
+    rota = idEhClassico(dataIdStr) ? "payment" : "order";
+    console.log(`webhook-mercadopago: type ausente, decidido pela forma do id -> rota "${rota}"`, dataIdStr);
   }
 
-  const consulta = await consultarPagamento({
-    token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
-    paymentId: dataIdStr,
-    fetchImpl: deps.fetchImpl,
-  });
+  // As duas rotas convergem nestas quatro variáveis antes do restante do
+  // handler (RPC, push, logs) — que não muda entre elas. `statusBrutoParaLog`
+  // (achado de revisão, CHECKOUT-070 Tarefa 4) existe só para o log de
+  // "status desconhecido" abaixo: sem ela, esse ramo — que existe
+  // justamente para descobrir status NOVO do MP — não dizia qual status
+  // tinha chegado.
+  let statusMapeado: string | null;
+  let externalReference: unknown;
+  let idParaRpc: string;
+  let statusBrutoParaLog: string;
 
-  if (!consulta.ok) {
-    // 404: "esse pagamento não existe" — reenviar não muda isso.
-    if (consulta.status === 404) {
-      return json({ ok: false, ignorado: "pagamento não encontrado" }, 200);
+  if (rota === "payment") {
+    const consulta = await consultarPagamento({
+      token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
+      paymentId: dataIdStr,
+      fetchImpl: deps.fetchImpl,
+    });
+
+    if (!consulta.ok) {
+      // 404: "esse pagamento não existe" — reenviar não muda isso.
+      if (consulta.status === 404) {
+        return json({ ok: false, ignorado: "pagamento não encontrado" }, 200);
+      }
+      // Todo o resto (inclusive 401 — token do MP errado é emergência
+      // operacional) mantém o evento vivo na fila do MP: 500 faz reenviar.
+      console.error("webhook-mercadopago: consultarPagamento falhou", consulta.status, consulta.erro);
+      return json({ error: consulta.erro }, 500);
     }
-    // Todo o resto (inclusive 401 — token do MP errado é emergência
-    // operacional) mantém o evento vivo na fila do MP: 500 faz reenviar.
-    console.error("webhook-mercadopago: consultarPagamento falhou", consulta.status, consulta.erro);
-    return json({ error: consulta.erro }, 500);
+
+    // Usa o status que o MP DEVOLVEU, nunca o do corpo do webhook.
+    statusMapeado = mapearStatus(consulta.status);
+    externalReference = consulta.externalReference;
+    idParaRpc = String(consulta.id);
+    statusBrutoParaLog = consulta.status;
+  } else {
+    const consulta = await consultarOrder({
+      token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
+      orderId: dataIdStr,
+      fetchImpl: deps.fetchImpl,
+    });
+
+    if (!consulta.ok) {
+      // 404: "essa order não existe" — reenviar não muda isso.
+      if (consulta.status === 404) {
+        return json({ ok: false, ignorado: "order não encontrada" }, 200);
+      }
+      console.error("webhook-mercadopago: consultarOrder falhou", consulta.status, consulta.erro);
+      return json({ error: consulta.erro }, 500);
+    }
+
+    const order = consulta.order as Record<string, unknown>;
+    // MEDIDO contra a API real em 14/08/2026: `status` e `status_detail`
+    // ficam na RAIZ da order. Existe um par igual dentro de
+    // `transactions.payments[0]` — NÃO ler de lá: a raiz é a verdade do
+    // pedido, `payments[0]` é um índice de array que vira escolha carregada
+    // no dia em que houver mais de um pagamento.
+    const statusRaiz = String(order.status ?? "");
+    const statusDetailRaiz = String(order.status_detail ?? "");
+    const statusBanco = mapearStatusOrder(statusRaiz, statusDetailRaiz);
+
+    // `confirmar_pagamento` (20260810000000_confirmar_pagamento_guarda_
+    // status.sql) não conhece 'expirado' — chamá-la com esse status cairia
+    // no RETURN 'ignorado' final, indistinguível no log de todos os outros
+    // caminhos de "ignorado" (status desconhecido, external_reference
+    // inválido...). Filtra ANTES da RPC, com rótulo e log próprios.
+    if (statusBanco === "expirado") {
+      console.warn("webhook-mercadopago: order expirada, ignorada sem chamar a RPC", dataIdStr);
+      return json({ ok: true, ignorado: "order expirada" }, 200);
+    }
+
+    statusMapeado = statusBanco;
+    // MEDIDO: `external_reference` também fica na RAIZ da order — mesma
+    // invariante que o caminho clássico já protege (o pedido NUNCA sai do
+    // corpo do webhook; sai da resposta autenticada do MP).
+    externalReference = order.external_reference;
+    // O id da ORDER (ULID maiúsculo, "ORD..." em produção, "ORDTST..." em
+    // teste) — `consultarOrder` já garante que `order.id` existe numa
+    // resposta ok.
+    idParaRpc = String(order.id);
+    statusBrutoParaLog = `${statusRaiz}:${statusDetailRaiz}`;
   }
 
-  // Usa o status que o MP DEVOLVEU, nunca o do corpo do webhook.
-  const statusMapeado = mapearStatus(consulta.status);
   if (statusMapeado === null) {
-    console.warn("webhook-mercadopago: status desconhecido do MP", consulta.status, dataIdStr);
-    return json({ ok: true, ignorado: "status desconhecido", status: consulta.status }, 200);
+    console.warn("webhook-mercadopago: status desconhecido do MP", dataIdStr, rota, statusBrutoParaLog);
+    return json({ ok: true, ignorado: "status desconhecido" }, 200);
   }
 
-  if (!pareceUuid(consulta.externalReference)) {
+  if (!pareceUuid(externalReference)) {
     console.warn(
       "webhook-mercadopago: external_reference sem forma de UUID",
-      consulta.externalReference,
+      externalReference,
       dataIdStr,
     );
     return json({ ok: true, ignorado: "external_reference inválido" }, 200);
   }
-  const orderId = consulta.externalReference as string;
+  const orderId = externalReference as string;
 
   const supabase =
     deps.supabase ??
@@ -287,7 +485,7 @@ async function handler(
   try {
     const { data, error: erroRpc } = await supabase.rpc("confirmar_pagamento", {
       p_order_id: orderId,
-      p_payment_id: consulta.id,
+      p_payment_id: idParaRpc,
       p_status: statusMapeado,
     });
     if (erroRpc) throw erroRpc;
@@ -358,7 +556,7 @@ async function handler(
     // do MP, então divergir é o caminho normal de um UPDATE que falhou.
     console.error(
       "webhook-mercadopago: confirmar_pagamento devolveu resultado inesperado — dinheiro pode ter entrado sem registro",
-      { orderId, paymentId: consulta.id, resultado },
+      { orderId, paymentId: idParaRpc, resultado },
     );
   }
 

@@ -164,6 +164,7 @@ export const ProductCarousel = React.memo(function ProductCarousel({
                 priority={index < 3}
                 isEligibleForFreeShipping={config.freeShippingMin > 0}
                 selectedProductId={selectedProductId}
+                showRating={config.enableReviews}
               />
             </div>
           ))}

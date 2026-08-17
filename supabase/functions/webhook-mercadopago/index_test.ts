@@ -22,22 +22,32 @@ Deno.env.set("MP_WEBHOOK_SECRET", SEGREDO);
 Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
 
 /**
- * Assina um payload com o MESMO algoritmo de `validarAssinatura`
- * (mercadopago.ts:260-332): HMAC-SHA256 do manifesto
- * `id:<dataId>;request-id:<xRequestId>;ts:<ts>;`, com o segmento
- * `request-id` omitido quando não veio. Gerar a assinatura de verdade aqui —
- * em vez de um hex fixo — evita reescrever este arquivo toda vez que um teste
- * precisar de um `dataId` diferente.
+ * Assina um payload pela REGRA do manifesto do Mercado Pago, escrita aqui de
+ * forma INDEPENDENTE da implementação (não importa nada de `mercadopago.ts`
+ * além do que os testes precisam validar por fora): HMAC-SHA256 do manifesto
+ * `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`, com o segmento
+ * `request-id` OMITIDO quando o header não veio.
+ *
+ * `grafia` escolhe se o `data.id` entra no manifesto exatamente como foi
+ * passado (`"original"`, o padrão) ou em minúsculas (`"minuscula"`) — as
+ * DUAS únicas regras que `construirCandidatosManifesto` aceita desde
+ * 16/08/2026 (achado BLOQUEANTE de revisão removeu a query string como
+ * terceira fonte). Existir essa escolha aqui, e não só um espelho fixo do
+ * casing original, é o que permite um teste assinar por uma grafia e montar
+ * um corpo com OUTRA — sem isso a suíte só provava "id igual valida", nunca
+ * "id diferente (ainda que só na fonte) é recusado".
  */
 async function assinar(
   dataId: string,
   ts: number,
   xRequestId: string | null,
   segredo: string,
+  grafia: "original" | "minuscula" = "original",
 ): Promise<string> {
+  const idNoManifesto = grafia === "minuscula" ? dataId.toLowerCase() : dataId;
   const manifesto = xRequestId
-    ? `id:${dataId};request-id:${xRequestId};ts:${ts};`
-    : `id:${dataId};ts:${ts};`;
+    ? `id:${idNoManifesto};request-id:${xRequestId};ts:${ts};`
+    : `id:${idNoManifesto};ts:${ts};`;
   const chave = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(segredo),
@@ -486,6 +496,382 @@ Deno.test("RPC devolve erro de banco -> 500, para o MP reenviar", async () => {
 // dois retornos com console.warn; este teste prende o mesmo tratamento
 // aqui, com console.error — é dinheiro que entrou sem registro, não um
 // reenvio inofensivo do MP encontrando um estado já tratado.
+// --- Tarefa 3 (CHECKOUT-070): notificação da Orders API (`type: "order"`) --
+//
+// Depois da migração para a Orders API (Tarefas 1-2), a confirmação de PIX
+// chega como `type: "order"`, não mais `type: "payment"`. Sem estes testes,
+// o filtro de :240-243 descarta com 200 OK todo pedido pago — "aguardando"
+// para sempre.
+
+/**
+ * Fetch que INSPECIONA a URL chamada, para provar qual endpoint o handler
+ * escolheu (`/v1/orders/{id}` vs `/v1/payments/{id}`) — sem isso, os testes
+ * de "type ausente" só provariam o retorno da RPC, não a ROTA escolhida.
+ */
+function fetchInspecionavel(mapa: {
+  pagamento?: { status: number; corpo: Record<string, unknown> };
+  order?: { status: number; corpo: Record<string, unknown> };
+}) {
+  const chamadas: string[] = [];
+  const fn = async (url: string, _init?: RequestInit) => {
+    chamadas.push(url);
+    if (url.includes("/v1/orders/")) {
+      const r = mapa.order ?? { status: 404, corpo: {} };
+      return new Response(JSON.stringify(r.corpo), { status: r.status });
+    }
+    const r = mapa.pagamento ?? { status: 404, corpo: {} };
+    return new Response(JSON.stringify(r.corpo), { status: r.status });
+  };
+  return { fn, chamadas };
+}
+
+const ID_ORDER_TESTE = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
+
+Deno.test("type 'order' aprovada -> RPC recebe p_order_id do external_reference (raiz) e p_payment_id do order.id, NUNCA de payments[0]", async () => {
+  // status/status_detail existem em DOIS lugares no corpo real: a raiz (a
+  // verdade do pedido) e dentro de transactions.payments[0] (índice de
+  // array, vira escolha carregada no dia em que houver mais de um
+  // pagamento). Aqui os dois DIVERGEM de propósito: se a implementação ler
+  // de payments[0] por engano, o status mapeado muda e o teste pega.
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+    transactions: {
+      payments: [{ id: "PAY01KZZXXXXXXXXXXXXXXXXXXXXX", status: "action_required", status_detail: "waiting_transfer" }],
+    },
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_order_id, UUID_PEDIDO);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_TESTE);
+  assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
+  assertEquals(chamadasPush.length, 1);
+});
+
+Deno.test("type 'order' com status 'expired:expired' -> 200 com rótulo próprio, RPC NÃO chamada", async () => {
+  // confirmar_pagamento (20260810000000_confirmar_pagamento_guarda_status.sql)
+  // não conhece 'expirado' — cairia no RETURN 'ignorado' final, indistinguível
+  // no log de todos os outros "ignorado". Por isso o filtro é ANTES da RPC,
+  // com rótulo e warn próprios.
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "expired",
+    status_detail: "expired",
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 0);
+  assertEquals(corpo.ignorado, "order expirada");
+});
+
+Deno.test("type 'payment' explícito continua no caminho clássico (não-regressão)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999", { corpoExtra: { type: "payment" } });
+  const fetchImpl = fetchConsulta(200, { id: 999, status: "approved", external_reference: UUID_PEDIDO });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, "999");
+  assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
+  assertEquals(chamadasPush.length, 1);
+});
+
+Deno.test("type ausente + id em forma de ULID -> caminho de ORDER (consulta /v1/orders/)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE); // sem `type`
+  const { fn: fetchImpl, chamadas } = fetchInspecionavel({
+    order: {
+      status: 200,
+      corpo: { id: ID_ORDER_TESTE, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
+    },
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.some((u) => u.includes("/v1/orders/")), true, "deveria ter consultado /v1/orders/");
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_TESTE);
+});
+
+Deno.test("type ausente + id numérico -> caminho CLÁSSICO (consulta /v1/payments/, não-regressão)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999"); // sem `type`
+  const { fn: fetchImpl, chamadas } = fetchInspecionavel({
+    pagamento: { status: 200, corpo: { id: 999, status: "approved", external_reference: UUID_PEDIDO } },
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.some((u) => u.includes("/v1/payments/")), true, "deveria ter consultado /v1/payments/");
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, "999");
+});
+
+Deno.test("type 'order' com external_reference sem forma de UUID -> 200, RPC não chamada", async () => {
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: "nao-e-uuid",
+    status: "processed",
+    status_detail: "accredited",
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("type 'order': MP devolve 404 ao consultar a order -> 200, não 500 — reenviar não ajuda", async () => {
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(404, { message: "Order not found" });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("type 'order': MP devolve 500 ao consultar a order -> 500, para o MP reenviar", async () => {
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(500, { message: "erro interno" });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 500);
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+// --- Tarefa 3, ressalva de revisão: `type` DESCONHECIDO não pode ser
+// descartado às cegas — ninguém neste projeto jamais observou uma
+// notificação real da Orders API, e um tópico fora da lista de irrelevantes
+// conhecidos precisa cair no desempate por forma do id (igual ao caso
+// `type` ausente), não no descarte. -------------------------------------
+
+Deno.test("type DESCONHECIDO + id em forma de order -> consulta a Orders API (não descarta) e loga console.error", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "orders.v2" } });
+  const { fn: fetchImpl, chamadas } = fetchInspecionavel({
+    order: {
+      status: 200,
+      corpo: { id: ID_ORDER_TESTE, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
+    },
+  });
+  const chamadasErro: unknown[][] = [];
+  const console_error = console.error;
+  console.error = (...args: unknown[]) => {
+    chamadasErro.push(args);
+  };
+  try {
+    const resposta = await handler(req, { supabase, fetchImpl });
+
+    assertEquals(resposta.status, 200);
+    assertEquals(chamadas.some((u) => u.includes("/v1/orders/")), true, "deveria ter consultado /v1/orders/");
+    assertEquals(registro.chamadasRpc.length, 1);
+    assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_TESTE);
+    assertEquals(chamadasErro.length, 1, "type desconhecido deveria logar console.error, não console.warn");
+  } finally {
+    console.error = console_error;
+  }
+});
+
+Deno.test("type DESCONHECIDO + id numérico -> caminho CLÁSSICO (consulta /v1/payments/)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999", { corpoExtra: { type: "order.updated" } });
+  const { fn: fetchImpl, chamadas } = fetchInspecionavel({
+    pagamento: { status: 200, corpo: { id: 999, status: "approved", external_reference: UUID_PEDIDO } },
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.some((u) => u.includes("/v1/payments/")), true, "deveria ter consultado /v1/payments/");
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, "999");
+});
+
+Deno.test("type irrelevante da lista oficial (point_integration_wh) -> 200, descartado sem NENHUMA chamada ao MP", async () => {
+  // Diferente do teste de merchant_order (acima): aqui a prova é sobre as
+  // URLs efetivamente chamadas pelo fetchImpl (`chamadas`), não só o corpo
+  // da resposta — provando que a lista de irrelevantes cobre outro tópico
+  // oficial além do já testado.
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({ rpcResultado: "pago", registro });
+  const req = await requisicaoAssinada("999", { corpoExtra: { type: "point_integration_wh" } });
+  const { fn: fetchImpl, chamadas } = fetchInspecionavel({});
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.length, 0, "não deveria ter chamado o MP");
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+// --- a QUERY STRING NÃO é fonte de manifesto (achado BLOQUEANTE de revisão,
+// 16/08/2026) ---------------------------------------------------------------
+//
+// A versão anterior deste commit aceitava também o `data.id` da QUERY como
+// candidato de assinatura. O defeito: a assinatura passava a poder ser
+// satisfeita pelo id da QUERY, enquanto TODO o processamento downstream
+// (rota, consulta ao MP, RPC `confirmar_pagamento`) usa o id do CORPO — e o
+// atacante controla os dois. O teste abaixo é o que faltava para pegar
+// exatamente isso: teria FALHADO (200, RPC chamada com o id errado) antes
+// desta correção, e passa (401, RPC nunca chamada) depois.
+
+Deno.test("assinatura sobre o id da QUERY com corpo divergente -> 401, RPC NUNCA chamada (a query não é fonte de manifesto)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+
+  const ts = Math.floor(Date.now() / 1000);
+  const requestId = "req-123";
+  const ID_ASSINADO = ID_ORDER_TESTE; // o que o x-signature amarra (via query)
+  const ID_CORPO_ADULTERADO = "ORDTST01OUTRAORDEMQUALQUER000001"; // o que o handler processaria
+  // Assina sobre ID_ASSINADO — é o valor que iria na query, exatamente como
+  // o probe da revisão fez.
+  const v1 = await assinar(ID_ASSINADO, ts, requestId, SEGREDO);
+  let chamouFetch = false;
+  const fetchImpl = async (_url: string, _init?: RequestInit) => {
+    chamouFetch = true;
+    return new Response("{}", { status: 200 });
+  };
+  const req = new Request(
+    `http://localhost/webhook-mercadopago?data.id=${ID_ASSINADO}&type=order`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-signature": `ts=${ts},v1=${v1}`,
+        "x-request-id": requestId,
+      },
+      body: JSON.stringify({ type: "order", data: { id: ID_CORPO_ADULTERADO } }),
+    },
+  );
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 401);
+  assertEquals(chamouFetch, false, "não deveria ter consultado o MP com o id adulterado");
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("data.id da query com valor DIFERENTE do corpo não atrapalha o caminho normal — a query é inerte", async () => {
+  // A query pode chegar com qualquer coisa (inclusive um `data.id` que não
+  // bate com nada) sem afetar a validação: quem decide é só o corpo.
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const ts = Math.floor(Date.now() / 1000);
+  const requestId = "req-123";
+  const v1 = await assinar("999", ts, requestId, SEGREDO);
+  const req = new Request("http://localhost/webhook-mercadopago?data.id=lixo-qualquer", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-signature": `ts=${ts},v1=${v1}`,
+      "x-request-id": requestId,
+    },
+    body: JSON.stringify({ data: { id: "999" } }),
+  });
+  const fetchImpl = fetchConsulta(200, {
+    id: 999,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(chamadasPush.length, 1);
+});
+
+Deno.test("grafia minuscula do helper assinar valida via candidato corpo-minusculo (id ORD… caixa mista)", async () => {
+  // Não-regressão do helper novo: `grafia: "minuscula"` precisa produzir um
+  // v1 que a implementação aceita pelo candidato "corpo-minusculo" — sem
+  // isto, a opção nova do helper nunca seria exercitada por nenhum teste.
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const ID_MISTO = "OrD01TsTAbC";
+  const ts = Math.floor(Date.now() / 1000);
+  const requestId = "req-123";
+  const v1 = await assinar(ID_MISTO, ts, requestId, SEGREDO, "minuscula");
+  const req = new Request("http://localhost/webhook-mercadopago", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-signature": `ts=${ts},v1=${v1}`,
+      "x-request-id": requestId,
+    },
+    body: JSON.stringify({ type: "order", data: { id: ID_MISTO } }),
+  });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_MISTO,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(chamadasPush.length, 1);
+});
+
 Deno.test("RPC devolve 'divergente' ou 'inexistente' -> 200 e console.error acusa, com orderId/paymentId/resultado", async () => {
   for (const resultado of ["divergente", "inexistente"]) {
     const registro = { chamadasRpc: [] };

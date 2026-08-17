@@ -146,6 +146,7 @@ export const ProductList = React.memo(function ProductList({
               priority={index < 4}
               isEligibleForFreeShipping={config.freeShippingMin > 0}
               selectedProductId={selectedProductId}
+              showRating={config.enableReviews}
             />
           </motion.div>
         ))}

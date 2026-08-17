@@ -112,6 +112,7 @@ export function montarBrick({
     qrCodeBase64?: string;
     qrCode?: string;
     expiraEm: string;
+    ticketUrl?: string;
   }) => void;
 }): () => void {
   let cancelado = false;
@@ -161,14 +162,17 @@ export function montarBrick({
                 documento: formData.payer?.identification,
               });
 
-              // A-1 da revisão final: recusa é resultado normal de um
-              // pagamento CRIADO (o MP responde 201), não erro HTTP —
-              // criarPagamento devolve `ok`. Sem olhar `r.status`, um
-              // cartão recusado não avisava nada, e a troca para PIX
-              // reconsultava a MESMA cobrança recusada sem QR. O `status`
-              // volta CRU do Mercado Pago — comparado contra os valores
-              // dele, nunca traduzido para o vocabulário do banco.
-              if (r.status === "rejected" || r.status === "cancelled") {
+              // A-1 da revisão final, vocabulário atualizado na CHECKOUT-080
+              // (#213): recusa é resultado normal de um pagamento CRIADO (o
+              // MP responde 201), não erro HTTP — criarPagamento devolve
+              // `ok`. Sem olhar `r.statusPagamento`, um cartão recusado não
+              // avisava nada, e a troca para PIX reconsultava a MESMA
+              // cobrança recusada sem QR. `statusPagamento` agora vem no
+              // vocabulário FECHADO do banco ('aguardando'/'pago'/
+              // 'recusado'/'expirado'/'estornado' — useOrders.ts,
+              // `StatusPagamentoConhecido`), não mais no vocabulário cru do
+              // MP: a edge function já traduziu.
+              if (r.statusPagamento === "recusado") {
                 // Nem "outro cartão" nem "pague com PIX" cabem aqui: cartão
                 // está desligado no Brick (só PIX, ver comentário acima), e
                 // `podeCobrar` (criar-pagamento/index.ts) manda para
@@ -176,20 +180,50 @@ export function montarBrick({
                 // gateway_payment_id — o que devolve o status da MESMA
                 // cobrança recusada, sem criar outra. Qualquer nova
                 // tentativa neste pedido bate na mesma recusa até expirar.
+                // 'recusado' cobre os dois desfechos que o vocabulário
+                // clássico separava em "rejected"/"cancelled" — este banco
+                // não tem um valor 'cancelado' distinto de 'recusado'
+                // (ver o comentário de MAPA_STATUS_ORDER em
+                // supabase/functions/_shared/mercadopago.ts).
                 throw new ErroPagamentoTerminal(
                   "Este pagamento foi recusado e não pode ser tentado novamente neste pedido. Faça um pedido novo ou fale com a loja.",
                 );
               }
-              const statusConhecido = [
-                "pending",
-                "in_process",
-                "approved",
-                "authorized",
-              ].includes(r.status);
+              if (r.statusPagamento === "expirado") {
+                // CHECKOUT-080 (#213): antes desta tarefa o vocabulário
+                // clássico não tinha como representar 'expired' — caía no
+                // default genérico abaixo. Com nome próprio, dá para dizer
+                // ao cliente o que aconteceu de fato: o QR deste PIX venceu
+                // no Mercado Pago (não necessariamente porque a reserva de
+                // 30 min do PEDIDO também venceu — os dois prazos podem
+                // divergir, ver expiracaoRealinhavel em
+                // criar-pagamento/index.ts). `reconsultar` devolve a MESMA
+                // order vencida para sempre: só um pedido novo gera um QR
+                // novo.
+                throw new ErroPagamentoTerminal(
+                  "O prazo deste PIX venceu antes do pagamento ser confirmado. Faça um pedido novo para gerar um QR code novo.",
+                );
+              }
+              if (r.statusPagamento === "estornado") {
+                // CHECKOUT-080 (#213): também sem representação no
+                // vocabulário clássico antes desta tarefa. Um estorno
+                // desfaz um pagamento que chegou a ser aprovado — não há
+                // "tentar de novo" que reverta isso para o MESMO pedido.
+                throw new ErroPagamentoTerminal(
+                  "Este pagamento foi estornado e não pode ser confirmado neste pedido. Faça um pedido novo ou fale com a loja.",
+                );
+              }
+              const statusConhecido =
+                r.statusPagamento === "aguardando" ||
+                r.statusPagamento === "pago";
               if (!statusConhecido) {
-                // Status novo do MP não pode virar sucesso silencioso — e,
-                // como o rejected/cancelled acima, reconsultar não muda o
-                // que o MP já respondeu.
+                // Rede de segurança OBRIGATÓRIA (item 4 da CHECKOUT-080,
+                // #213): status novo/desconhecido do MP não pode virar
+                // sucesso silencioso — e, como os três ramos terminais
+                // acima, reconsultar não muda o que o MP já respondeu. É
+                // esta checagem que pegou a classe inteira de defeito desta
+                // tarefa (o backend falando um vocabulário que o front não
+                // conhecia) — não pode ser afrouxada.
                 throw new ErroPagamentoTerminal(
                   "Não foi possível confirmar o pagamento.",
                 );
@@ -212,6 +246,7 @@ export function montarBrick({
                   qrCodeBase64: r.qrCodeBase64,
                   qrCode: r.qrCode,
                   expiraEm: r.expiraEm,
+                  ticketUrl: r.ticketUrl,
                 });
               }
             } catch (err: any) {
@@ -293,13 +328,21 @@ export function PagamentoOnline({
   valor: number;
   onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
 }) {
-  const { criarPagamento } = useOrders(false, true);
+  // Achado 4 da revisão do CHECKOUT-090 (16/08/2026): `isAdmin=false`, não
+  // `true` — este componente é do CLIENTE. Era inofensivo porque
+  // `enabled=false` desliga o efeito inteiro antes de `isAdmin` importar
+  // (useOrders.ts), mas era a mesma forma do bug que a tarefa corrigiu em
+  // CheckoutView. `enabled=false` continua CORRETO aqui: este componente só
+  // usa `criarPagamento` e não precisa de realtime — quem detecta a
+  // confirmação de pagamento é o CheckoutView, não ele.
+  const { criarPagamento } = useOrders(false, false);
   // `expiraEm` vem junto do PIX, da resposta da edge function — é o prazo que
   // está gravado na linha do pedido, o mesmo que o pg_cron vai ler.
   const [pix, setPix] = useState<{
     qrCodeBase64?: string;
     qrCode?: string;
     expiraEm: string;
+    ticketUrl?: string;
   } | null>(null);
 
   // Padrão de ref para callback em recurso imperativo. `onErro` é tipicamente
@@ -351,6 +394,16 @@ export function PagamentoOnline({
         >
           Copiar código PIX
         </button>
+        {pix.ticketUrl && (
+          <a
+            href={pix.ticketUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-center text-xs font-medium text-zinc-500 underline"
+          >
+            Pagar pelo Mercado Pago
+          </a>
+        )}
         <p className="text-center text-xs text-zinc-500">
           Vence às{" "}
           {new Date(pix.expiraEm).toLocaleTimeString("pt-BR", {
