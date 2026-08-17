@@ -237,15 +237,14 @@
     padding-top: var(--safe-area-top);
   }
 
-  .bottom-safe-navigation {
-    bottom: calc(
-      64px +
-      var(--safe-area-bottom, 0px) +
-      var(--visual-bottom-offset, 0px) +
-      12px
-    );
-  }
-
+  /* Havia aqui uma `.bottom-safe-navigation`: a mesma conta de
+     `.bottom-docked-navigation` mais 12px. Esses 12px não eram respiro — eram
+     uma fresta entre a barra e a navegação inferior, por onde o conteúdo
+     rolando aparecia (medido em 17/08/2026 na tela de finalizar, o único lugar
+     do app que usava a classe: barra terminando em 736px, navegação começando
+     em 747px). Removida junto com aquele uso. Não recrie: o nome sugeria ser a
+     opção mais segura das duas e era a errada — quem quer barra acima da
+     navegação usa `.bottom-docked-navigation`. */
   .bottom-docked-navigation {
     bottom: calc(
       64px +

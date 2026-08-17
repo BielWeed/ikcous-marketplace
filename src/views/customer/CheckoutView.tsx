@@ -952,7 +952,10 @@ export function CheckoutView({
     }
 
     return (
-      <div className="min-h-dvh space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      // Mesma coluna do formulário (`mx-auto max-w-md`): sem ela, o cliente
+      // saía de uma tela de 448px de largura e caía numa que esticava o texto
+      // "Seu pedido está reservado…" de ponta a ponta em tela larga.
+      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         <h1 className="text-lg font-bold text-zinc-900">
           Finalize o pagamento
         </h1>
@@ -1073,7 +1076,15 @@ export function CheckoutView({
 
   return (
     <div className="pb-customer-summary min-h-dvh bg-gray-50/10 pt-2">
-      <div className="space-y-4 px-3.5">
+      {/* `mx-auto max-w-md` é a largura de conteúdo do resto do app (ver
+          AccountSettingsView, ProfileView, UserProfileView, AddressFormView e
+          a AddressSelectionView deste mesmo arquivo) e é a mesma que a barra
+          fixa do total já promete (`md:max-w-md`). Sem ela, medido em
+          17/08/2026 numa janela de 1280px, os cards do checkout iam a 1252px
+          de largura enquanto a barra do total ficava com 448px centralizada —
+          formulário esticado de ponta a ponta e desalinhado com o próprio
+          rodapé. */}
+      <div className="mx-auto w-full max-w-md space-y-4 px-3.5">
         {/* Customer Info */}
         <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
           <div className="flex items-center gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3">
@@ -1157,8 +1168,29 @@ export function CheckoutView({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2 md:col-span-1">
+                {/* GRADE DE 6 COLUNAS, e o número 6 é o conserto.
+                    Com `grid-cols-2` cada campo só podia ser metade (151px em
+                    375px de tela) ou linha inteira (313px) — e nenhuma dessas
+                    duas medidas serve para Cidade (nome médio) nem para Estado
+                    (duas letras). Foi essa premissa que fez a grade ser
+                    rearranjada três vezes em 17/08/2026, empurrando o aperto de
+                    um campo para o vizinho a cada tentativa: primeiro `Estado`
+                    órfão, depois o `Bairro` espremido em 151px, depois a
+                    `Cidade` cortando em 151px.
+                    Com 6 colunas cada campo recebe a largura do que entra nele,
+                    e as linhas continuam fechando (3+3 · 6 · 6 · 4+2 · 6).
+                    Medido depois da mudança, em 375px: CEP 151px · Número 151px
+                    · Rua 313px · Bairro 313px · Cidade 204px · Estado 96px ·
+                    Complemento 313px.
+                    Ao mexer aqui: some os spans de cada linha (tem de dar 6) E
+                    confira no navegador se o texto mais longo de cada campo
+                    cabe — `input.scrollWidth <= input.clientWidth`. */}
+                <div className="grid grid-cols-6 gap-3">
+                  {/* Sem variante `md:` em nenhum campo daqui: o container do
+                      checkout tem `max-w-md` em toda largura, então não existe
+                      mais o alargamento que o `md:` compensava — ele só
+                      apertaria. */}
+                  <div className="col-span-3">
                     <label
                       htmlFor="guest-cep"
                       className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
@@ -1207,45 +1239,32 @@ export function CheckoutView({
                       </p>
                     )}
                   </div>
-                  <div className="col-span-2 md:col-span-1">
-                    <label
-                      htmlFor="guest-neighborhood"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                    >
-                      Bairro
-                    </label>
-                    <input
-                      id="guest-neighborhood"
-                      {...form.register("neighborhood")}
-                      placeholder="Seu bairro"
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                    />
-                    {form.formState.errors.neighborhood && (
-                      <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
-                        {form.formState.errors.neighborhood.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-2 md:col-span-1">
-                    <label
-                      htmlFor="guest-street"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                    >
-                      Rua
-                    </label>
-                    <input
-                      id="guest-street"
-                      {...form.register("street")}
-                      placeholder="Nome da rua"
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                    />
-                    {form.formState.errors.street && (
-                      <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
-                        {form.formState.errors.street.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-1 md:col-span-1">
+                  {/* A ORDEM E OS SPANS DESTES CAMPOS SÃO O LAYOUT, E O
+                      CRITÉRIO É O COMPRIMENTO DO QUE ENTRA EM CADA UM.
+                      A grade é `grid-cols-2` em toda largura, então campo de
+                      meia coluna precisa de par ao lado — senão sobra um campo
+                      sozinho na linha. Mas fechar a linha não basta: em 375px
+                      de tela, meia coluna dá 151px de campo, e aí só cabe
+                      conteúdo curto.
+                      O arranjo é: `CEP | Número` (os dois de tamanho fixo e
+                      curto, e por acaso os dois únicos que o cliente digita à
+                      mão) · Rua (linha inteira) · Bairro (linha inteira) ·
+                      `Cidade | Estado` (o par clássico, e no atendimento local
+                      os dois vêm preenchidos e travados) · Complemento (linha
+                      inteira).
+                      DUAS TENTATIVAS ERRADAS, para não repetir nenhuma:
+                      (1) CEP · Bairro · Rua · `Número|Cidade` · Estado — dois
+                      campos sem relação emparelhados e Estado órfão na linha
+                      seguinte;
+                      (2) CEP · Rua · `Número|Bairro` · `Cidade|Estado` — fecha
+                      todas as linhas, mas joga o Bairro para 151px: medido em
+                      17/08/2026, "Jardim Paulistano" já não cabia (151px de
+                      texto em 147px de campo) e o cliente via um pedaço rolado
+                      de um campo que ele não digitou, porque quem escreve ali é
+                      a busca do CEP.
+                      Ao mexer aqui: conte os pares E confira se o texto mais
+                      longo de cada campo cabe na largura que ele recebeu. */}
+                  <div className="col-span-3">
                     <label
                       htmlFor="guest-number"
                       className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
@@ -1264,7 +1283,45 @@ export function CheckoutView({
                       </p>
                     )}
                   </div>
-                  <div className="col-span-1 md:col-span-1">
+                  <div className="col-span-6">
+                    <label
+                      htmlFor="guest-street"
+                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                    >
+                      Rua
+                    </label>
+                    <input
+                      id="guest-street"
+                      {...form.register("street")}
+                      placeholder="Nome da rua"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                    />
+                    {form.formState.errors.street && (
+                      <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                        {form.formState.errors.street.message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="col-span-6">
+                    <label
+                      htmlFor="guest-neighborhood"
+                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                    >
+                      Bairro
+                    </label>
+                    <input
+                      id="guest-neighborhood"
+                      {...form.register("neighborhood")}
+                      placeholder="Seu bairro"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                    />
+                    {form.formState.errors.neighborhood && (
+                      <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                        {form.formState.errors.neighborhood.message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="col-span-4">
                     <label
                       htmlFor="guest-city"
                       className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
@@ -1291,7 +1348,7 @@ export function CheckoutView({
                       )}
                     />
                   </div>
-                  <div className="col-span-1 md:col-span-1">
+                  <div className="col-span-2">
                     <label
                       htmlFor="guest-state"
                       className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
@@ -1317,7 +1374,7 @@ export function CheckoutView({
                       )}
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div className="col-span-6">
                     <label
                       htmlFor="guest-complement"
                       className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
@@ -1480,9 +1537,16 @@ export function CheckoutView({
                     }
                     setPaymentMethod(option.value);
                   }}
+                  // Sem `opacity-70` na opção bloqueada: ela multiplicava
+                  // cores JÁ claras e derrubava o texto para ~1,9:1 de
+                  // contraste (medido em 17/08/2026), abaixo do 4,5:1 que
+                  // texto pequeno exige — e este é justamente o único item da
+                  // lista que precisa ser LIDO, porque explica o que fazer.
+                  // Quem diz "indisponível" aqui é o fundo cinza, o cadeado e
+                  // a cor do rótulo, não a transparência.
                   className={`flex w-full items-center gap-4 rounded-2xl border-2 p-3.5 shadow-sm transition-all duration-300 active:scale-[0.99] ${
                     bloqueadaPorFaltaDeConta
-                      ? "border-zinc-50 bg-zinc-50/40 opacity-70"
+                      ? "border-zinc-100 bg-zinc-50/60"
                       : isSelected
                         ? "z-10 border-zinc-900 bg-white shadow-md"
                         : "border-zinc-50 bg-zinc-50/50 hover:border-zinc-100 hover:bg-white"
@@ -1494,13 +1558,24 @@ export function CheckoutView({
                     <Icon className="size-5" />
                   </div>
                   <div className="flex min-w-0 flex-col items-start gap-1 text-left">
+                    {/* `zinc-400` sobre branco dá 2,56:1 — os três meios de
+                        pagamento não escolhidos ficavam ilegíveis, com cara de
+                        desabilitados. `zinc-600` (7:1) mantém a hierarquia
+                        (escolhido continua sendo o mais escuro) sem apagar as
+                        outras opções. */}
                     <span
-                      className={`text-xs font-bold uppercase tracking-wider ${isSelected && !bloqueadaPorFaltaDeConta ? "text-zinc-900" : "text-zinc-400"}`}
+                      className={`text-xs font-bold uppercase tracking-wider ${
+                        bloqueadaPorFaltaDeConta
+                          ? "text-zinc-500"
+                          : isSelected
+                            ? "text-zinc-900"
+                            : "text-zinc-600"
+                      }`}
                     >
                       {option.label}
                     </span>
                     {bloqueadaPorFaltaDeConta && (
-                      <span className="text-[9px] font-medium normal-case leading-snug tracking-normal text-zinc-400">
+                      <span className="text-[11px] font-medium normal-case leading-snug tracking-normal text-zinc-500">
                         Pagar pelo site exige conta, para você acompanhar o
                         pedido e receber a confirmação. Toque para entrar ou
                         criar a sua.
@@ -1508,7 +1583,7 @@ export function CheckoutView({
                     )}
                   </div>
                   {bloqueadaPorFaltaDeConta ? (
-                    <Lock className="ml-auto size-4 shrink-0 text-zinc-300" />
+                    <Lock className="ml-auto size-4 shrink-0 text-zinc-500" />
                   ) : (
                     <div
                       className={`ml-auto flex size-5 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ${isSelected ? "scale-105 border-primary bg-primary" : "border-zinc-200"}`}
@@ -1593,54 +1668,78 @@ export function CheckoutView({
         createPortal(
           <AnimatePresence>
             {isPresent && isReady && (
-              <motion.div
-                initial={{ y: "100%", opacity: 0.5 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: "100%", opacity: 0 }}
-                transition={{ duration: 0.25, ease: "easeOut" }}
-                className="bottom-safe-navigation fixed inset-x-0 z-[110] rounded-t-2xl border-t border-zinc-100 bg-white/95 p-3 px-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-b-none md:rounded-t-2xl md:border-x md:border-b-0 md:border-t md:border-zinc-200/60"
-              >
-                <div className="mx-auto flex max-w-screen-md items-center justify-between gap-4">
-                  <div className="flex min-w-0 flex-col">
-                    <span className="mb-1 text-[9px] font-bold uppercase leading-none tracking-wider text-zinc-400">
-                      Total a Pagar
-                    </span>
-                    <div className="flex flex-wrap items-baseline gap-1.5">
-                      <span className="text-lg font-black leading-none tracking-tight text-zinc-900">
-                        R$ {finalTotal.toFixed(2).replace(".", ",")}
+              // POSICIONAMENTO NO DIV DE FORA, ANIMAÇÃO NO motion.div DE
+              // DENTRO — é como o carrinho (CartFooterSummary) e os favoritos
+              // (FavoritesView) fazem, e a separação não é estética: o
+              // framer-motion escreve `transform: translateY(...)` inline no
+              // elemento que anima, e isso SOBRESCREVE o `md:-translate-x-1/2`
+              // do Tailwind. Com as duas coisas no mesmo elemento (como estava
+              // aqui), a centralização de md morria em silêncio: medido em
+              // 17/08/2026 numa janela de 1280px, a barra ficava em 640–1088px
+              // em vez de 416–864px — meia tela à direita do formulário.
+              //
+              // `bottom-docked-navigation` cola a barra na navegação inferior,
+              // como o carrinho, o produto e os favoritos já faziam. Esta barra
+              // usava uma `bottom-safe-navigation` — a mesma conta mais 12px —
+              // e era o único uso dela no app: aqueles 12px não eram respiro,
+              // eram uma fresta por onde o formulário rolando aparecia entre as
+              // duas barras (medido no mesmo dia: barra terminando em 736px,
+              // navegação começando em 747px, com um campo cinza à mostra no
+              // meio). A classe foi removida de `src/index.css` junto com este
+              // uso, para ninguém reabrir a fresta escolhendo o nome que soa
+              // mais seguro.
+              <div className="bottom-docked-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2">
+                <motion.div
+                  initial={{ y: "100%", opacity: 0.5 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: "100%", opacity: 0 }}
+                  transition={{ duration: 0.25, ease: "easeOut" }}
+                  className="w-full rounded-t-2xl border-t border-zinc-100 bg-white/95 p-3 px-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl md:rounded-b-none md:rounded-t-2xl md:border-x md:border-b-0 md:border-t md:border-zinc-200/60"
+                >
+                  {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
+                      ficarem na mesma coluna dos cards do formulário. */}
+                  <div className="mx-auto flex max-w-md items-center justify-between gap-4">
+                    <div className="flex min-w-0 flex-col">
+                      <span className="mb-1 text-[9px] font-bold uppercase leading-none tracking-wider text-zinc-400">
+                        Total a Pagar
                       </span>
-                      {discount > 0 && (
-                        <span className="text-[9px] font-bold uppercase text-red-500">
-                          (-R$ {discount.toFixed(2).replace(".", ",")} OFF)
+                      <div className="flex flex-wrap items-baseline gap-1.5">
+                        <span className="text-lg font-black leading-none tracking-tight text-zinc-900">
+                          R$ {finalTotal.toFixed(2).replace(".", ",")}
                         </span>
-                      )}
+                        {discount > 0 && (
+                          <span className="text-[9px] font-bold uppercase text-red-500">
+                            (-R$ {discount.toFixed(2).replace(".", ",")} OFF)
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  <button
-                    onClick={() => {
-                      haptic.medium();
-                      handleSubmitEvent();
-                    }}
-                    disabled={!isValid || isSubmitting}
-                    className={cn(
-                      "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
-                      !isValid || isSubmitting
-                        ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
-                        : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
-                    )}
-                  >
-                    {isSubmitting ? (
-                      <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-                    ) : (
-                      <>
-                        <span>Finalizar Pedido</span>
-                        <ArrowLeft className="size-4 rotate-180" />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </motion.div>
+                    <button
+                      onClick={() => {
+                        haptic.medium();
+                        handleSubmitEvent();
+                      }}
+                      disabled={!isValid || isSubmitting}
+                      className={cn(
+                        "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
+                        !isValid || isSubmitting
+                          ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
+                          : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
+                      )}
+                    >
+                      {isSubmitting ? (
+                        <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                      ) : (
+                        <>
+                          <span>Finalizar Pedido</span>
+                          <ArrowLeft className="size-4 rotate-180" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
             )}
           </AnimatePresence>,
           document.body,
