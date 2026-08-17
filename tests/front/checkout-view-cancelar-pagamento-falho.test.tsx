@@ -615,8 +615,19 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
     );
   });
 
-  it("convidado (sem sessão): o botão de saída NÃO aparece, mas a tela explica o que vai acontecer — update_order_status_atomic recusaria a chamada (PEDIDO-010, #115)", async () => {
-    mockUser = null;
+  // Reescrito (16/08/2026, pagamento online exige conta — decisão do
+  // Gabriel, achado da revisão): este teste chamava
+  // `chegarNaTelaDeAguardarPagamento` já como CONVIDADO — isso sim deixou
+  // de ser alcançável pela UI, porque sem sessão o clique em "Pagar agora
+  // com PIX" navega para "auth" em vez de selecionar o método (ver
+  // `tests/front/checkout-view-flag-on.test.tsx`, "convidado: clicar em
+  // 'Pagar agora com PIX' NÃO seleciona o método"). Mas isso só cobre quem
+  // TENTA ENTRAR sem conta — não cobre o cliente LOGADO cuja sessão CAI
+  // com a tela já aberta (token vencendo, refresh falhando):
+  // `aguardandoPagamento` é `useState` local, o componente não desmonta, e
+  // o próximo render lê `user === null` — exatamente o ramo `user ?
+  // <botão cancelar> : <texto explicando>` que este teste prova.
+  it("sessão cai (refresh do token falha) com a tela de erro do pagamento já aberta: o botão de cancelar SOME e o texto dos 30 min aparece — mesma tela, sem desmontar", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);
 
@@ -632,10 +643,42 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
         hospedeiro,
         "Cancelar pedido e voltar ao carrinho",
       ),
+    ).toBeDefined();
+
+    // Sessão cai DEPOIS de já estar na tela — não é o convidado entrando
+    // (isso a UI já bloqueia antes de chegar aqui, ver o comentário acima).
+    // `raiz.render` de novo com o MESMO tipo de componente re-renderiza
+    // (React reconcilia, não desmonta) — é assim que `useAuth()` lê o
+    // `mockUser` atualizado, como uma renderização disparada pelo
+    // AuthContext real faria quando `setUser(null)` roda.
+    mockUser = null;
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+
+    expect(
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Cancelar pedido e voltar ao carrinho",
+      ),
     ).toBeUndefined();
-    // BLOQUEIO 3 (#197): tela morta vira tela que explica — os 30 min do
-    // pg_cron e a alternativa (entrar na conta).
-    expect(hospedeiro.textContent).toContain("30 minutos");
-    expect(hospedeiro.textContent).toContain("conta");
+    // BLOQUEIO 3 (#197): tela morta vira tela que explica — que não dá para
+    // cancelar por aqui, e a alternativa (entrar na conta).
+    //
+    // NÃO afirmar "30 minutos" aqui: achado da 5ª revisão (16/08/2026) — esse
+    // trecho também está no cabeçalho da tela de espera, que renderiza SEMPRE,
+    // fora do ramo `user ? botão : parágrafo`. A asserção passava mesmo com o
+    // parágrafo do convidado apagado por completo, e o comentário anterior
+    // afirmava uma prova que ela não fazia. Os dois trechos abaixo são
+    // exclusivos deste parágrafo.
+    expect(hospedeiro.textContent).toContain(
+      "não é possível cancelar por aqui",
+    );
+    expect(hospedeiro.textContent).toContain("entre na sua conta");
   });
 });

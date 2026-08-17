@@ -632,28 +632,57 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     expect(hospedeiro.textContent).toContain("Pagamento Confirmado");
   });
 
-  it("convidado (sem sessão): nem o realtime nem a verificação periódica confirmam a tela — comportamento antigo preservado", async () => {
-    mockUser = null;
+  // Reescrito (16/08/2026, pagamento online exige conta — decisão do
+  // Gabriel, achado da revisão): este teste chamava
+  // `chegarNaTelaDeAguardarPagamento` já como CONVIDADO — isso sim deixou
+  // de ser alcançável pela UI, porque o clique em "Pagar agora com PIX"
+  // sem sessão navega para "auth" em vez de selecionar o método (ver
+  // `tests/front/checkout-view-flag-on.test.tsx`, "convidado: clicar em
+  // 'Pagar agora com PIX' NÃO seleciona o método"). Mas isso só cobre quem
+  // TENTA ENTRAR sem conta — não cobre o cliente LOGADO cuja sessão CAI
+  // com a tela já aberta e o polling já rodando: a guarda `!user?.id` do
+  // useEffect de polling (dep de `user?.id`, CheckoutView.tsx) reage à
+  // MUDANÇA limpando o intervalo anterior — é isso que este teste prova,
+  // não a barreira de entrada (já coberta em checkout-view-flag-on).
+  it("sessão cai (refresh do token falha) com a tela do PIX já aberta e o polling já rodando: o polling PARA — dep `user?.id` desmonta o intervalo", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    // Prova que o polling está de fato ativo ANTES da sessão cair — sem
+    // isto o teste não distingue "nunca ligou" de "desligou".
+    fromSpy.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(fromSpy).toHaveBeenCalledWith("marketplace_orders");
+
+    // Sessão cai com a tela ainda aberta — `aguardandoPagamento` é
+    // `useState` local, o componente não desmonta. `raiz.render` de novo
+    // com o MESMO tipo de componente re-renderiza (React reconcilia, não
+    // desmonta) e `useAuth()` lê o `mockUser` atualizado, como uma
+    // renderização disparada pelo AuthContext real faria quando
+    // `setUser(null)` roda.
+    mockUser = null;
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
 
     fromSpy.mockClear();
     mockRespostaPoll = {
       data: { payment_status: "pago", expires_at: null },
       error: null,
     };
-
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
 
-    // A verificação periódica desta tela é explicitamente gated por
-    // `user?.id` (RLS não dá caminho nenhum pelo banco para convidado —
-    // nem consulta, nem realtime). O realtime em si é responsabilidade do
-    // useOrders real (mocado aqui), não repetido neste teste.
     expect(fromSpy).not.toHaveBeenCalled();
     expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado");
-    expect(hospedeiro.textContent).toContain("reservado");
   });
 
   it("depois de confirmado, o aviso de reserva de 30 minutos SOME da tela", async () => {
@@ -771,48 +800,126 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     },
   );
 
-  it("o teto de 30 minutos após expires_at para o polling — passado esse teto, nada mais é consultado", async () => {
+  // Achado BLOQUEANTE da 2ª revisão (16/08/2026), reescrita OBRIGATÓRIA
+  // deste teste: a versão anterior comparava `expires_at` com uma folga fixa
+  // de relógio (29/31 min) — presa por construção na faixa que o próprio
+  // guard antigo usava. O guard NOVO não compara relógio nenhum: conta
+  // TICKS do `setInterval` (ver `TETO_TICKS_VERIFICACAO_PAGAMENTO`,
+  // CheckoutView.tsx). Este teste prova as duas metades: (1) um `expires_at`
+  // JÁ 40 min vencido DESDE O PRIMEIRO TICK — que sob o guard antigo teria
+  // parado o polling na primeira consulta (40 min > 30 min de folga) — não
+  // interrompe nada, porque `expires_at` deixou de decidir; (2) o polling
+  // ainda assim para depois de 360 ticks (60 min a 10s cada).
+  it("o teto de 360 ticks (60 min) para o polling — NÃO pelo relógio: expires_at vencido desde o início não interrompe antes da hora, e o resultado do ÚLTIMO tick é USADO, não só consultado", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);
 
     const agora = Date.now();
-
-    // Ainda DENTRO do teto (29 min vencido, < 30 min de folga): continua
-    // consultando normalmente. Sem esta metade, um mutante que remove o
-    // teto inteiro (parando em qualquer `expires_at` vencido, igual ao
-    // guard antigo) passaria despercebido por este teste.
     fromSpy.mockClear();
     mockRespostaPoll = {
       data: {
         payment_status: "aguardando",
-        expires_at: new Date(agora - 29 * 60_000).toISOString(),
+        // 40 min já vencido, ANTES do primeiro tick e mantido fixo — sob o
+        // guard antigo (relógio, 30 min de folga) isto teria parado o
+        // polling logo na primeira consulta. Este valor NUNCA muda ao
+        // longo do teste, de propósito: se algum dia alguém reintroduzir a
+        // comparação com o relógio, a suíte cai já nos primeiros ticks.
+        expires_at: new Date(agora - 40 * 60_000).toISOString(),
       },
       error: null,
     };
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
-    });
-    expect(fromSpy).toHaveBeenCalledWith("marketplace_orders");
 
-    // Passa do teto (31 min vencido): o próximo tick descobre e para.
+    // 100 ticks (1.000.000ms) — bem além do que o guard antigo teria
+    // tolerado (pararia no tick 1). Prova que expires_at vencido não
+    // decide mais nada.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100 * 10_000);
+    });
+    expect(fromSpy).toHaveBeenCalledTimes(100);
+
+    // Completa os ticks 101 a 359 — ainda DENTRO do teto de 360: continua
+    // consultando normalmente. Sem esta metade, um mutante que apagasse o
+    // teto por completo (nunca parar) passaria despercebido.
+    fromSpy.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(259 * 10_000);
+    });
+    expect(fromSpy).toHaveBeenCalledTimes(259);
+
+    // Tick 360 — atinge o teto, e o pagamento vira 'pago' EXATAMENTE neste
+    // tick (entre o 359 e o 360). Achado da 3ª revisão (16/08/2026): o
+    // código antigo gravava `parado = true` de forma SÍNCRONA logo após
+    // disparar `verificarPagamento()` — como essa função suspende no
+    // primeiro `await` (a consulta ao Supabase), o `parado = true` da linha
+    // seguinte executava ANTES da consulta resolver, e
+    // `if (parado || error || !data) return;` descartava a resposta em
+    // 100% dos casos, porque `await` sempre cede ao menos um microtask. O
+    // pedido pago no último tick nunca confirmava a tela. As duas
+    // asserções abaixo provam as duas metades: a consulta é FEITA (contagem
+    // de chamadas) e a resposta dela é USADA (texto confirmado na tela) —
+    // um teste que só afirmasse a primeira passa com o defeito presente.
     fromSpy.mockClear();
     mockRespostaPoll = {
-      data: {
-        payment_status: "aguardando",
-        expires_at: new Date(agora - 31 * 60_000).toISOString(),
-      },
+      data: { payment_status: "pago", expires_at: null },
       error: null,
     };
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);
     });
     expect(fromSpy).toHaveBeenCalledTimes(1);
+    expect(hospedeiro.textContent).toContain("Pagamento Confirmado");
 
+    // Passa bem além do teto: nenhuma consulta nova — já parou (e já
+    // confirmou).
     fromSpy.mockClear();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });
+    expect(fromSpy).not.toHaveBeenCalled();
+  });
 
+  // O PAR do teste acima, e ele é obrigatório — achado da 5ª revisão
+  // (16/08/2026). Aquele teste prova que o resultado do último tick é USADO,
+  // e para isso o tick 360 precisa responder 'pago'. Só que confirmar a tela
+  // derruba o polling SOZINHA: `setStatusPagamentoPix("confirmado")` muda uma
+  // dependência do efeito, a limpeza roda e o efeito volta pelo early-return.
+  // Ou seja, o `not.toHaveBeenCalled()` do final daquele teste passa mesmo com
+  // o teto REMOVIDO — a mesma cadeia que o teste de 'recusado'/'estornado' já
+  // usa sem teto nenhum envolvido.
+  //
+  // As duas provas são mutuamente exclusivas por construção: depois de
+  // confirmar não há mais o que observar. Por isso este teste chega ao teto
+  // com a resposta ainda 'aguardando' — a tela NÃO confirma, então a única
+  // coisa capaz de parar o polling é o teto. Sem ele, o repositório não tem
+  // nenhum teste que prove o teto (grep por `teto|360|TETO` em tests/ só bate
+  // neste arquivo), e o próximo que mexer no efeito perde a rede contra
+  // polling perpétuo: uma consulta a cada 10 s, para sempre, por aba de
+  // checkout abandonada.
+  it("o teto de 360 ticks para o polling mesmo SEM confirmação — sem este par, apagar o teto inteiro deixaria a suíte verde", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    fromSpy.mockClear();
+    // 'aguardando' do começo ao fim: a tela nunca confirma, nenhum estado
+    // terminal é alcançado, e nada além do teto pode interromper o efeito.
+    mockRespostaPoll = {
+      data: { payment_status: "aguardando", expires_at: null },
+      error: null,
+    };
+
+    // Ticks 1 a 360 — o último atinge o teto.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(360 * 10_000);
+    });
+    expect(fromSpy).toHaveBeenCalledTimes(360);
+    expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado");
+
+    // Muito além do teto, ainda 'aguardando': se o teto tivesse sido apagado,
+    // estas seriam 30 consultas novas.
+    fromSpy.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300 * 1_000);
+    });
     expect(fromSpy).not.toHaveBeenCalled();
   });
 
@@ -828,5 +935,37 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
 
     expect(selectSpy).toHaveBeenCalledWith("payment_status, expires_at");
     expect(eqSpy).toHaveBeenCalledWith("id", "ped-999");
+  });
+
+  // Nenhum teste desta suíte caía se o `document.removeEventListener` da
+  // limpeza do efeito de polling fosse apagado — o vazamento nunca quebra
+  // nada NA HORA, só acumula um listener por checkout aberto que nunca sai
+  // (visibilitychange, sem ser removido, dispara verificarPagamento contra
+  // um componente já desmontado a cada troca de aba, para sempre). Este
+  // teste captura o MESMO listener passado a `addEventListener` e prova que
+  // `removeEventListener` é chamado com essa MESMA referência ao desmontar
+  // — não com uma função nova (que pareceria limpar, mas deixaria o
+  // listener original vivo).
+  it("o listener de visibilitychange é removido ao desmontar — sem isso, cada checkout aberto vaza um listener no document", async () => {
+    const addSpy = vi.spyOn(document, "addEventListener");
+    const removeSpy = vi.spyOn(document, "removeEventListener");
+
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    const chamadaDeRegistro = addSpy.mock.calls.find(
+      ([evento]) => evento === "visibilitychange",
+    );
+    expect(chamadaDeRegistro).toBeDefined();
+    const listenerRegistrado = chamadaDeRegistro![1];
+
+    await act(async () => {
+      raiz.unmount();
+    });
+
+    expect(removeSpy).toHaveBeenCalledWith(
+      "visibilitychange",
+      listenerRegistrado,
+    );
   });
 });
