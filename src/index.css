@@ -237,15 +237,14 @@
     padding-top: var(--safe-area-top);
   }
 
-  .bottom-safe-navigation {
-    bottom: calc(
-      64px +
-      var(--safe-area-bottom, 0px) +
-      var(--visual-bottom-offset, 0px) +
-      12px
-    );
-  }
-
+  /* Havia aqui uma `.bottom-safe-navigation`: a mesma conta de
+     `.bottom-docked-navigation` mais 12px. Esses 12px não eram respiro — eram
+     uma fresta entre a barra e a navegação inferior, por onde o conteúdo
+     rolando aparecia (medido em 17/08/2026 na tela de finalizar, o único lugar
+     do app que usava a classe: barra terminando em 736px, navegação começando
+     em 747px). Removida junto com aquele uso. Não recrie: o nome sugeria ser a
+     opção mais segura das duas e era a errada — quem quer barra acima da
+     navegação usa `.bottom-docked-navigation`. */
   .bottom-docked-navigation {
     bottom: calc(
       64px +
@@ -527,19 +526,10 @@
     }
   }
 
-  @keyframes marquee-x {
-    0% {
-      transform: translateX(0);
-    }
-
-    100% {
-      transform: translateX(-100%);
-    }
-  }
-
-  .animate-marquee-x {
-    animation: marquee-x 15s linear infinite;
-  }
+  /* O letreiro de busca (`marquee-x`) foi removido em 17/08/2026: o texto
+     nunca cabia na janela recortada de 123px e rolava em laço infinito sem
+     forma de pausar (WCAG 2.2.2). O placeholder virou texto parado no
+     atributo `placeholder` do input, em SearchBar.tsx. */
 
   .animate-shimmer {
     animation: shimmer 2s infinite linear;
