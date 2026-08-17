@@ -508,6 +508,12 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
     );
     expect(botaoOnline).toBeDefined();
     expect(botaoOnline!.textContent).toContain("exige conta");
+    // Achado ANOTADO da revisão (16/08/2026): `aria-disabled={true}` num
+    // botão que É acionável (o clique navega para o login) faz o leitor de
+    // tela anunciar "não interaja" logo depois de anunciar "toque para
+    // entrar" — a aparência visual de indisponível não pode virar uma
+    // negação de interação para quem usa leitor de tela.
+    expect(botaoOnline!.getAttribute("aria-disabled")).toBeNull();
 
     await act(async () => {
       botaoOnline!.click();
@@ -577,5 +583,91 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
     // Caminho de sucesso de sempre — nunca a tela de "Finalize o pagamento",
     // que só existe para a cobrança online.
     expect(hospedeiro.textContent).not.toContain("Finalize o pagamento");
+  });
+
+  // Ressalva 2 da revisão (16/08/2026): nenhum arquivo de teste de checkout
+  // mudava `mockUser` DEPOIS de montar o componente — é a única forma de
+  // acionar o useEffect de CheckoutView.tsx:464-468, que existe
+  // exatamente para o caso oposto do teste acima: sessão que CAI enquanto
+  // "online" já está selecionado, ANTES de enviar o pedido. Sem esse
+  // efeito, `paymentMethod` ficaria preso em "online" sem `user`,
+  // `handleSubmitEvent` chamaria createOrder com comPagamentoOnline:true
+  // para um pedido sem `user_id` (RLS grava NULL), e só a edge function
+  // `criar-pagamento` recusaria — DEPOIS de o pedido já existir com estoque
+  // reservado por 30 min e nenhum botão de cancelar (guest não vê o botão
+  // de cancelamento nem chega perto do polling que confirmaria o pagamento
+  // dele).
+  it("sessão cai (refresh do token falha) com 'Pagar agora com PIX' já selecionado, ANTES do envio: o método volta para 'Pix na Entrega'", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+
+    const botaoOnline = localizarBotaoPorTexto(
+      hospedeiro,
+      "Pagar agora com PIX",
+    )!;
+    await act(async () => {
+      botaoOnline.click();
+    });
+    // Confirma que "online" ficou selecionado ANTES de a sessão cair — sem
+    // isso o teste não prova nada sobre reverter, só sobre nunca ter ido.
+    expect(botaoOnline.className).toContain("border-zinc-900");
+
+    // Sessão cai com a tela ainda aberta — `raiz.render` de novo com o
+    // MESMO tipo de componente re-renderiza (React reconcilia, não
+    // desmonta), então `useAuth()` é chamado de novo e lê o `mockUser`
+    // atualizado, exatamente como uma renderização disparada pelo
+    // AuthContext real faria.
+    mockUser = null;
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+
+    const botaoPix = localizarBotaoPorTexto(hospedeiro, "Pix na Entrega")!;
+    expect(botaoPix.className).toContain("border-zinc-900");
+
+    // Prova de ponta a ponta: preenche como convidado (agora sem sessão) e
+    // finaliza — se o efeito não tivesse revertido o método, isto chamaria
+    // createOrder com comPagamentoOnline:true.
+    await act(async () => {
+      digitar("checkout-name", "Cliente Teste");
+      digitar("checkout-tel", "34999999999");
+      digitar("guest-street", "Rua Teste");
+      digitar("guest-number", "100");
+      digitar("guest-neighborhood", "Centro");
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 420));
+    });
+
+    const botaoFinalizar = localizarBotaoPorTexto(
+      document.body,
+      "Finalizar Pedido",
+    )!;
+    await act(async () => {
+      botaoFinalizar.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder).toHaveBeenCalledWith(expect.anything(), {
+      comPagamentoOnline: false,
+    });
   });
 });

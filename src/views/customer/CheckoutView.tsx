@@ -595,15 +595,26 @@ export function CheckoutView({
 
     const intervalId = setInterval(() => {
       ticks += 1;
-      verificarPagamento();
       // Teto de segurança por TICKS, nunca por `expires_at`/`Date.now()`
       // (ver o comentário grande de `TETO_TICKS_VERIFICACAO_PAGAMENTO`, no
-      // topo do arquivo). Roda DEPOIS de disparar a última verificação —
-      // ela ainda tem a chance de confirmar antes do `clearInterval`.
-      if (ticks >= TETO_TICKS_VERIFICACAO_PAGAMENTO) {
-        parado = true;
-        clearInterval(intervalId);
-      }
+      // topo do arquivo). REGRESSÃO corrigida na 3ª revisão (16/08/2026):
+      // gravar `parado = true` de forma SÍNCRONA aqui, logo após disparar
+      // `verificarPagamento()`, acontecia ANTES da consulta ao Supabase
+      // resolver — `verificarPagamento` suspende no primeiro `await`, e
+      // `await` sempre cede pelo menos um microtask antes de voltar. Como o
+      // guard de `verificarPagamento` é `if (parado || error || !data)
+      // return;`, a resposta do último tick era descartada em 100% dos
+      // casos, mesmo quando ela trazia `payment_status: 'pago'`. Anexar o
+      // corte ao `.finally()` da PRÓPRIA chamada garante que `parado` só
+      // vira `true` depois que `verificarPagamento` já consumiu a resposta
+      // deste tick — o teto continua parando no mesmo tick de antes, só que
+      // sem descartar o resultado que o motivou.
+      verificarPagamento().finally(() => {
+        if (ticks >= TETO_TICKS_VERIFICACAO_PAGAMENTO) {
+          parado = true;
+          clearInterval(intervalId);
+        }
+      });
     }, INTERVALO_VERIFICACAO_PAGAMENTO_MS);
 
     // Achado 3 da revisão: dispara a verificação NA HORA em que a aba volta
@@ -1457,7 +1468,6 @@ export function CheckoutView({
                     }
                     setPaymentMethod(option.value);
                   }}
-                  aria-disabled={bloqueadaPorFaltaDeConta}
                   className={`flex w-full items-center gap-4 rounded-2xl border-2 p-3.5 shadow-sm transition-all duration-300 active:scale-[0.99] ${
                     bloqueadaPorFaltaDeConta
                       ? "border-zinc-50 bg-zinc-50/40 opacity-70"
