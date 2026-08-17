@@ -7,7 +7,7 @@
  * O QUE PROTEGE ESTA FUNÇÃO
  *
  * Roda com `verify_jwt = false` (config.toml) porque o MP não manda JWT.
- * Quem autentica é o `x-signature`, validado por `validarAssinatura` — sem
+ * Quem autentica é o `x-signature`, validado por `avaliarAssinatura` — sem
  * ele, qualquer um que descubra a URL forja um "aprovado" e leva produto de
  * graça. É por isso que a checagem de assinatura vem ANTES de qualquer
  * leitura de corpo além do `data.id` (que a própria assinatura depende
@@ -15,13 +15,17 @@
  *
  * POR QUE O `p_order_id` VEM DA RESPOSTA DO MP, NÃO DO CORPO DO WEBHOOK
  *
- * O corpo só é autenticado pelo `x-signature`, que amarra o `data.id` — não
- * amarra nenhum outro campo. Um corpo forjado com a MESMA assinatura de um
- * pagamento real não existe (a assinatura barra isso), mas o corpo em si
- * nunca carrega o pedido: quem sabe a qual pedido um pagamento pertence é o
- * `external_reference` que `criarPagamento`/`consultarPagamento` leem de
- * volta da API do MP, autenticada pelo `MP_ACCESS_TOKEN`. Por isso o pedido
- * sai de `consulta.externalReference`, nunca de `body`.
+ * O corpo só é autenticado pelo `x-signature`, que amarra o `data.id` do
+ * CORPO — não amarra nenhum outro campo, e não amarra a query string (a
+ * assinatura NÃO aceita mais o `data.id` da query como fonte de manifesto
+ * desde 16/08/2026: era um campo que o mesmo atacante também controla,
+ * enquanto todo o processamento abaixo usa sempre o do corpo). Um corpo
+ * forjado com a MESMA assinatura de um pagamento real não existe (a
+ * assinatura barra isso), mas o corpo em si nunca carrega o pedido: quem
+ * sabe a qual pedido um pagamento pertence é o `external_reference` que
+ * `criarPagamento`/`consultarPagamento` leem de volta da API do MP,
+ * autenticada pelo `MP_ACCESS_TOKEN`. Por isso o pedido sai de
+ * `consulta.externalReference`, nunca de `body`.
  *
  * `pareceUuid` nesse valor é a segunda trava: sem forma de UUID (ausente,
  * vazio, ou pagamento criado por fora deste sistema), o Postgres recusaria o
@@ -60,12 +64,12 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
 import {
+  avaliarAssinatura,
   consultarOrder,
   consultarPagamento,
   idEhClassico,
   mapearStatus,
   mapearStatusOrder,
-  validarAssinatura,
 } from "../_shared/mercadopago.ts";
 import {
   carregarChavesVapid,
@@ -247,8 +251,29 @@ async function handler(
   }
   const dataIdStr = String(dataId);
 
+  // Log de ENTRADA, antes de qualquer validação: distingue "chegou e
+  // recusamos" (assinatura inválida) de "nunca chegou" (o MP não notificou).
+  // É o log que teria provado esta causa sem precisar reproduzir o bug.
+  //
+  // `dataIdCorpo` é TRUNCADO: este log roda ANTES de qualquer autenticação,
+  // então quem descobrir a URL escreve conteúdo próprio aqui em volume
+  // arbitrário se o valor não tiver limite (achado de revisão, 16/08/2026).
+  // 64 caracteres sobra folga sobre o maior `data.id` legítimo do MP (ULID
+  // de Order, 29 caracteres; id de payment clássico é numérico, menor ainda).
+  const LIMITE_LOG_DATA_ID = 64;
+  const tsDoHeader = req.headers.get("x-signature")?.match(/(?:^|,)\s*ts=([^,]*)/)?.[1] ?? null;
+  console.log("webhook-mercadopago: notificação recebida", {
+    dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
+    temXRequestId: req.headers.get("x-request-id") !== null,
+    ts: tsDoHeader,
+  });
+
   // A ÚNICA autenticação: sem ela, quem descobrir a URL forja um "aprovado".
-  const assinaturaOk = await validarAssinatura({
+  // Amarra SEMPRE o `data.id` do CORPO (nunca o da query string — ver o
+  // comentário de `avaliarAssinatura` em `_shared/mercadopago.ts`), porque é
+  // esse o valor que todo o processamento abaixo usa (rota, consulta ao MP,
+  // RPC `confirmar_pagamento`).
+  const avaliacao = await avaliarAssinatura({
     xSignature: req.headers.get("x-signature"),
     xRequestId: req.headers.get("x-request-id"),
     dataId: dataIdStr,
@@ -272,10 +297,29 @@ async function handler(
     // do MP entrega essa checagem desligada por padrão.
     toleranciaSegundos: Number.POSITIVE_INFINITY,
   });
-  if (!assinaturaOk) {
-    console.warn("webhook-mercadopago: assinatura inválida", dataIdStr);
+  if (!avaliacao.valido) {
+    // Log de FALHA: dataId (corpo, truncado), x-request-id, ts, o v1
+    // recebido e os RÓTULOS dos candidatos tentados (sem hash nenhum, nem
+    // prefixo dele — publicar hash calculado é um oráculo de verificação
+    // offline do `MP_WEBHOOK_SECRET`, achado de revisão de 16/08/2026) — o
+    // que transforma suspeita em causa provada quando o MP reenviar a
+    // notificação real. NUNCA loga `MP_WEBHOOK_SECRET`.
+    const v1Recebido = req.headers.get("x-signature")?.match(/(?:^|,)\s*v1=([^,]*)/)?.[1] ?? null;
+    console.warn("webhook-mercadopago: assinatura inválida", {
+      dataIdCorpo: dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
+      xRequestId: req.headers.get("x-request-id"),
+      ts: tsDoHeader,
+      v1Recebido,
+      candidatos: avaliacao.candidatos,
+    });
     return json({ error: "Assinatura inválida." }, 401);
   }
+  // Log de SUCESSO: qual candidato casou — é esta linha que prova a causa
+  // por inversão quando o MP reenviar a notificação real (a versão anterior
+  // desta função só aceitava "corpo-original" e recusava 100% das
+  // notificações reais da Orders API; ver o comentário de
+  // `avaliarAssinatura` em `_shared/mercadopago.ts`).
+  console.log(`webhook-mercadopago: assinatura válida — manifesto: ${avaliacao.candidatoCasou}`, dataIdStr);
 
   // Depois da migração para a Orders API (CHECKOUT-070, Tarefas 1-2), a
   // confirmação de PIX chega com `type: "order"`, não mais `type: "payment"`
