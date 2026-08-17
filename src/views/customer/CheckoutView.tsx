@@ -1178,13 +1178,23 @@ export function CheckoutView({
                     órfão, depois o `Bairro` espremido em 151px, depois a
                     `Cidade` cortando em 151px.
                     Com 6 colunas cada campo recebe a largura do que entra nele,
-                    e as linhas continuam fechando (3+3 · 6 · 6 · 4+2 · 6).
+                    e as linhas continuam fechando (3+3 · 6 · 6 · 4+2 · 6):
+                    `CEP | Número` (os dois de tamanho curto e fixo, e os dois
+                    únicos que o cliente digita à mão) · Rua · Bairro ·
+                    `Cidade | Estado` (o par clássico; no atendimento local os
+                    dois vêm preenchidos e travados) · Complemento.
                     Medido depois da mudança, em 375px: CEP 151px · Número 151px
-                    · Rua 313px · Bairro 313px · Cidade 204px · Estado 96px ·
+                    · Rua 313px · Bairro 313px · Cidade 205px · Estado 96px ·
                     Complemento 313px.
                     Ao mexer aqui: some os spans de cada linha (tem de dar 6) E
                     confira no navegador se o texto mais longo de cada campo
-                    cabe — `input.scrollWidth <= input.clientWidth`. */}
+                    cabe — `input.scrollWidth <= input.clientWidth`.
+                    O que ISTO não resolve, e não é a grade: nome de rua muito
+                    longo ("Avenida Presidente Juscelino Kubitschek de Oliveira")
+                    corta mesmo com os 313px da linha inteira, porque 375px de
+                    tela não dão mais que isso. Se isso virar problema, o
+                    tratamento é outro (rótulo flutuante, quebra em duas linhas),
+                    nunca uma quarta contagem de colunas. */}
                 <div className="grid grid-cols-6 gap-3">
                   {/* Sem variante `md:` em nenhum campo daqui: o container do
                       checkout tem `max-w-md` em toda largura, então não existe
@@ -1239,31 +1249,6 @@ export function CheckoutView({
                       </p>
                     )}
                   </div>
-                  {/* A ORDEM E OS SPANS DESTES CAMPOS SÃO O LAYOUT, E O
-                      CRITÉRIO É O COMPRIMENTO DO QUE ENTRA EM CADA UM.
-                      A grade é `grid-cols-2` em toda largura, então campo de
-                      meia coluna precisa de par ao lado — senão sobra um campo
-                      sozinho na linha. Mas fechar a linha não basta: em 375px
-                      de tela, meia coluna dá 151px de campo, e aí só cabe
-                      conteúdo curto.
-                      O arranjo é: `CEP | Número` (os dois de tamanho fixo e
-                      curto, e por acaso os dois únicos que o cliente digita à
-                      mão) · Rua (linha inteira) · Bairro (linha inteira) ·
-                      `Cidade | Estado` (o par clássico, e no atendimento local
-                      os dois vêm preenchidos e travados) · Complemento (linha
-                      inteira).
-                      DUAS TENTATIVAS ERRADAS, para não repetir nenhuma:
-                      (1) CEP · Bairro · Rua · `Número|Cidade` · Estado — dois
-                      campos sem relação emparelhados e Estado órfão na linha
-                      seguinte;
-                      (2) CEP · Rua · `Número|Bairro` · `Cidade|Estado` — fecha
-                      todas as linhas, mas joga o Bairro para 151px: medido em
-                      17/08/2026, "Jardim Paulistano" já não cabia (151px de
-                      texto em 147px de campo) e o cliente via um pedaço rolado
-                      de um campo que ele não digitou, porque quem escreve ali é
-                      a busca do CEP.
-                      Ao mexer aqui: conte os pares E confira se o texto mais
-                      longo de cada campo cabe na largura que ele recebeu. */}
                   <div className="col-span-3">
                     <label
                       htmlFor="guest-number"

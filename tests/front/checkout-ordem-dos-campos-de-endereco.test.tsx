@@ -2,14 +2,15 @@
 //
 // Trava a ORDEM dos campos de endereço do checkout de convidado.
 //
-// POR QUE ISTO EXISTE: em 17/08/2026 a grade do endereço foi rearranjada duas
-// vezes seguidas. A grade é `grid-cols-2` fixa, então a ordem dos campos no
-// DOM **é** o layout — mudar a ordem muda quem fica ao lado de quem, e as duas
-// primeiras tentativas produziram defeito visível: a primeira emparelhou
-// `Número | Cidade` e deixou `Estado` sozinho na linha; a segunda emparelhou
-// `Número | Bairro` e espremeu o Bairro em 151px, onde "Jardim Paulistano" já
-// não cabe — num campo que o cliente não digita, porque quem escreve ali é a
-// busca do CEP.
+// POR QUE ISTO EXISTE: em 17/08/2026 a grade do endereço foi rearranjada TRÊS
+// vezes seguidas. A ordem dos campos no DOM **é** o layout — mudar a ordem muda
+// quem fica ao lado de quem —, e as duas primeiras tentativas produziram defeito
+// visível: a primeira emparelhou `Número | Cidade` e deixou `Estado` sozinho na
+// linha; a segunda emparelhou `Número | Bairro` e espremeu o Bairro em 151px,
+// onde "Jardim Paulistano" já não cabe — num campo que o cliente não digita,
+// porque quem escreve ali é a busca do CEP. A terceira trocou a premissa: a
+// grade passou de 2 para 6 colunas, para cada campo receber a largura do que
+// entra nele em vez de só "metade ou linha inteira".
 //
 // O QUE ELE NÃO FAZ: não afirma classe de CSS nem aparência. Asserção de
 // `className` quebra a cada refatoração de estilo sem proteger nada. O que
