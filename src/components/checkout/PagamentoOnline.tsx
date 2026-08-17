@@ -328,7 +328,14 @@ export function PagamentoOnline({
   valor: number;
   onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
 }) {
-  const { criarPagamento } = useOrders(false, true);
+  // Achado 4 da revisão do CHECKOUT-090 (16/08/2026): `isAdmin=false`, não
+  // `true` — este componente é do CLIENTE. Era inofensivo porque
+  // `enabled=false` desliga o efeito inteiro antes de `isAdmin` importar
+  // (useOrders.ts), mas era a mesma forma do bug que a tarefa corrigiu em
+  // CheckoutView. `enabled=false` continua CORRETO aqui: este componente só
+  // usa `criarPagamento` e não precisa de realtime — quem detecta a
+  // confirmação de pagamento é o CheckoutView, não ele.
+  const { criarPagamento } = useOrders(false, false);
   // `expiraEm` vem junto do PIX, da resposta da edge function — é o prazo que
   // está gravado na linha do pedido, o mesmo que o pg_cron vai ler.
   const [pix, setPix] = useState<{
