@@ -45,6 +45,24 @@ import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
 
+// Teto de segurança da verificação periódica da tela do PIX (ver o useEffect
+// de polling, no corpo do componente). NÃO é o critério normal de parada —
+// esse é o `payment_status` terminal do pedido. Isto é só para não
+// consultar para sempre um pedido que ninguém vai pagar depois que a
+// reserva expira.
+//
+// Achado BLOQUEANTE da revisão (16/08/2026): a versão anterior parava o
+// polling pelo RELÓGIO puro (`expires_at <= Date.now()`), mas os status que
+// a tela espera (`pago`, `pago_apos_expirar`) só são gravados DEPOIS do
+// relógio vencer — a varredura do prazo roda a cada 5 minutos
+// (`supabase/migrations/20260807000001_agenda_expiracao.sql:12`,
+// `*/5 * * * *`) e o webhook do Mercado Pago levou ~90s no incidente real
+// de 16/08/2026 que motivou esta correção. 30 min dão folga generosa sobre
+// esse pior caso medido. NÃO reduza este número sem entender por que ele
+// existe — foi exatamente um critério de parada cedo demais que causou o
+// defeito original (CHECKOUT-090).
+const TETO_POLLING_APOS_EXPIRACAO_MS = 30 * 60 * 1000;
+
 interface CheckoutFormValues {
   name: string;
   whatsapp: string;
@@ -94,7 +112,38 @@ export function CheckoutView({
   const shipping = propShipping ?? ctxShipping;
   const total = propTotal ?? ctxSubtotal + ctxShipping;
   const onClearCart = propOnClearCart ?? ctxClearCart;
-  const { createOrder, updateOrderStatus } = useOrders(false, true);
+  // CHECKOUT-090: realtime ligado (antes `useOrders(false, true)` desligava
+  // o efeito inteiro na primeira linha de useOrders.ts — nenhuma assinatura
+  // era criada, e a tela do PIX nunca soube que o pedido tinha sido pago) e
+  // `isAdmin` corrigido para `false` — esta é a tela do CLIENTE, e o valor
+  // antigo (`true`) só era inofensivo porque `enabled=false` desligava tudo
+  // antes de chegar a importar. `createOrder` não lê `isAdmin` em nenhum
+  // ramo (useOrders.ts); `updateOrderStatus` passa a validar de verdade
+  // (só cancela pedido `pending`), mas o único uso daqui
+  // (handleCancelarPedidoESairDoPagamento) já embrulha a chamada num
+  // try/catch que relê o pedido depois — uma recusa cliente-side cai no
+  // mesmo caminho que uma recusa da RPC.
+  //
+  // `onRealtimeEvent` recebe o payload CRU do Postgres (não o `Order`
+  // mapeado) — é o único lugar que carrega `payment_status`: o
+  // `handleRealtimeUpdate` interno de useOrders.ts só copia `status` e
+  // `trackingCode` para o array `orders`, nunca `payment_status`. Fecha
+  // sobre `orderId`/`setStatusPagamentoPix`, declarados mais abaixo no
+  // corpo do componente — seguro porque este callback só é INVOCADO de
+  // forma assíncrona, depois que o componente já terminou de renderizar (e
+  // as duas ligações já existem), nunca durante a construção da função.
+  const { createOrder, updateOrderStatus } = useOrders(true, false, {
+    onRealtimeEvent: (payload: any) => {
+      if (payload?.eventType !== "UPDATE") return;
+      const pedidoAtualizado = payload.new;
+      if (!pedidoAtualizado || pedidoAtualizado.id !== orderId) return;
+      if (pedidoAtualizado.payment_status === "pago") {
+        setStatusPagamentoPix("confirmado");
+      } else if (pedidoAtualizado.payment_status === "pago_apos_expirar") {
+        setStatusPagamentoPix("fora-do-prazo");
+      }
+    },
+  });
   const { validateCoupon } = useCoupons();
   const { user, profile, loading: authLoading } = useAuth();
   // CHECKOUT-070 (#197): sinal de rede para o cancelamento do pagamento
@@ -252,6 +301,39 @@ export function CheckoutView({
   // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
   // function, dentro do PagamentoOnline (ver comentário lá).
   const [aguardandoPagamento, setAguardandoPagamento] = useState(false);
+  // CHECKOUT-090: estado de três valores, não dois booleanos independentes
+  // — dois booleanos podem divergir (os dois `true` ao mesmo tempo, ou os
+  // dois `false` quando um dos dois status chegou), e essa divergência é
+  // exatamente o defeito que esta tarefa existe para impedir. `null` é o
+  // QR ainda valendo; os outros dois são finais, sem caminho de volta a
+  // `null` nem um para o outro.
+  //
+  // 'confirmado' é o `payment_status === 'pago'` de sempre.
+  //
+  // 'fora-do-prazo' é `payment_status === 'pago_apos_expirar'`. Achado 1 da
+  // revisão (16/08/2026): esse status NÃO é pagamento legítimo do ponto de
+  // vista do pedido — é o que a varredura do prazo grava quando o
+  // pagamento chega DEPOIS da reserva vencer, e nesse caminho o pedido já
+  // foi marcado `status='cancelled'` e o estoque já foi devolvido ANTES
+  // (supabase/migrations/20260807000000_reserva_com_expiracao.sql:113-116).
+  // A spec do webhook confirma que esse status "não toca estoque nem
+  // status" (docs/superpowers/specs/2026-08-07-fase-3-webhook-design.md:79)
+  // e a decisão do Gabriel (mesma spec, linha 136, e reafirmada em
+  // 16/08/2026 para o texto desta tela) é que ninguém automático reativa o
+  // pedido: ele decide caso a caso, pelo painel, depois do push "Pagamento
+  // fora do fluxo" que o webhook manda ao lojista. Mostrar "a loja já está
+  // preparando seu pedido" aqui seria mentir sobre um pedido cancelado — a
+  // tela própria deste estado (PagamentoForaDoPrazoView, abaixo) diz que o
+  // dinheiro entrou, que o prazo venceu e que a loja entra em contato para
+  // confirmar ou devolver o valor, sem prometer entrega.
+  //
+  // Confirmado por dois caminhos independentes — o evento de realtime
+  // (onRealtimeEvent, acima) e a verificação periódica (useEffect abaixo,
+  // rede de segurança contra WebSocket caído) — e nenhum dos dois estados
+  // finais tem caminho de volta a `null`.
+  const [statusPagamentoPix, setStatusPagamentoPix] = useState<
+    "confirmado" | "fora-do-prazo" | null
+  >(null);
   // CHECKOUT-050: falha da criação da cobrança precisa ficar NA TELA — um
   // toast (2500ms, sonner.tsx) some antes do cliente sair de olhar o botão
   // "Pagar", no rodapé, para o topo. `categoria` decide se existe "Tentar de
@@ -380,6 +462,134 @@ export function CheckoutView({
       handleSelectAddress(defaultAddr);
     }
   }, [addresses, selectedAddressId, handleSelectAddress]);
+
+  // CHECKOUT-090: verificação periódica do pagamento. Nasceu como "rede de
+  // segurança" contra o WebSocket do realtime cair sem avisar, mas o achado
+  // 3 da revisão (16/08/2026) mostrou que no celular ela é o mecanismo
+  // PRINCIPAL, não a rede de segurança: esconder a aba por ~3s já derruba a
+  // liderança do realtime (useLeaderElection.ts: debounce de 300ms +
+  // resignLeadership) e ~4s depois disso o canal compartilhado é removido
+  // (useOrders.ts: refCount-- -> removeChannel após o debounce de 4s) — o
+  // `postgres_changes` do Supabase NÃO tem replay, então o UPDATE que chegar
+  // nesse intervalo (~3,3s a ~7,3s sem cobertura) está perdido para sempre.
+  // No fluxo DOMINANTE (abrir o app do banco, pagar, voltar para cá) é este
+  // useEffect quem descobre a confirmação, não o realtime.
+  //
+  // Por isso, além de reler o BANCO (nunca a edge function `criar-pagamento`,
+  // que bate na API do Mercado Pago a cada chamada) a cada 10s, o listener de
+  // `visibilitychange` abaixo dispara a verificação IMEDIATAMENTE quando a
+  // aba volta a ficar visível — sem ele o cliente esperaria o próximo tick de
+  // até 10s, ou bem mais, porque o navegador aplica "intensive throttling" a
+  // timer de aba em segundo plano. Fica de fora quando a aba está em segundo
+  // plano — desperdício que multiplica por cliente parado — e para sozinho
+  // quando o pedido é confirmado (efeito não recria o intervalo, e a limpeza
+  // do anterior já rodou), quando o componente desmonta (mesma limpeza), ou
+  // quando o `payment_status` chega a um dos quatro status TERMINAIS
+  // ('pago', 'pago_apos_expirar', 'recusado', 'estornado' — ver
+  // `verificarPagamento`, abaixo). NÃO para pelo relógio: ver o comentário
+  // de `TETO_POLLING_APOS_EXPIRACAO_MS`, no topo do arquivo, sobre o achado
+  // BLOQUEANTE que fez o critério de parada trocar de "prazo vencido" para
+  // "estado terminal" — 'expirado' continua sendo consultado normalmente,
+  // porque é o único caminho até 'pago_apos_expirar'.
+  //
+  // ESCOPO (decidido na tarefa): só cliente LOGADO. `marketplace_orders_
+  // select_policy` só concede SELECT a `authenticated` — pedido de convidado
+  // tem `user_id` NULL e `anon` não tem política nenhuma, então a consulta
+  // abaixo voltaria vazia (RLS) mesmo sem este `!user`. A checagem explícita
+  // evita gastar uma consulta por 10s sabendo de antemão que ela nunca pode
+  // confirmar nada, e documenta a decisão em vez de depender do RLS calado.
+  useEffect(() => {
+    if (!aguardandoPagamento || !orderId || statusPagamentoPix || !user?.id)
+      return;
+
+    let parado = false;
+
+    const verificarPagamento = async () => {
+      if (parado) return;
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("marketplace_orders")
+        .select("payment_status, expires_at")
+        .eq("id", orderId)
+        .single();
+
+      if (parado || error || !data) return;
+
+      // Ver o comentário do estado `statusPagamentoPix`, acima: os dois
+      // status são finais e mutuamente exclusivos.
+      if (data.payment_status === "pago") {
+        setStatusPagamentoPix("confirmado");
+        return;
+      }
+      if (data.payment_status === "pago_apos_expirar") {
+        setStatusPagamentoPix("fora-do-prazo");
+        return;
+      }
+
+      // Os outros dois status terminais não têm tela própria aqui — só
+      // param de consultar (a constraint do banco não modela caminho de
+      // volta a partir deles, ver
+      // `supabase/migrations/20260807000000_reserva_com_expiracao.sql:17`).
+      if (
+        data.payment_status === "recusado" ||
+        data.payment_status === "estornado"
+      ) {
+        parado = true;
+        clearInterval(intervalId);
+        return;
+      }
+
+      // Teto de segurança — NUNCA pelo `expires_at` puro (ver o comentário
+      // de `TETO_POLLING_APOS_EXPIRACAO_MS`, no topo do arquivo). 'expirado'
+      // continua sendo consultado normalmente até aqui: é o único status
+      // que ainda pode virar 'pago_apos_expirar'.
+      if (
+        data.expires_at &&
+        Date.now() - new Date(data.expires_at).getTime() >=
+          TETO_POLLING_APOS_EXPIRACAO_MS
+      ) {
+        parado = true;
+        clearInterval(intervalId);
+      }
+    };
+
+    const intervalId = setInterval(verificarPagamento, 10_000);
+
+    // Achado 3 da revisão: dispara a verificação NA HORA em que a aba volta
+    // a ficar visível, em vez de esperar o próximo tick do intervalo acima.
+    // `verificarPagamento` já se protege sozinha (checa `document.
+    // visibilityState` e `parado` no topo), então só precisa ser chamada —
+    // as mesmas guardas de parada valem aqui.
+    const aoVoltarAFicarVisivel = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible"
+      ) {
+        verificarPagamento();
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", aoVoltarAFicarVisivel);
+    }
+
+    return () => {
+      parado = true;
+      clearInterval(intervalId);
+      if (typeof document !== "undefined") {
+        document.removeEventListener(
+          "visibilitychange",
+          aoVoltarAFicarVisivel,
+        );
+      }
+    };
+  }, [aguardandoPagamento, orderId, statusPagamentoPix, user?.id]);
 
   if (authLoading) {
     return (
@@ -649,6 +859,30 @@ export function CheckoutView({
   };
 
   if (aguardandoPagamento && orderId) {
+    // CHECKOUT-090: pagamento confirmado — troca o QR (e o aviso de reserva
+    // de 30 minutos, que é justamente a frase que faz o cliente achar que
+    // falhou) pela confirmação. Ramos separados, ANTES do JSX do QR: os três
+    // (QR, confirmado, fora do prazo) nunca podem coexistir na tela.
+    if (statusPagamentoPix === "confirmado") {
+      return (
+        <PagamentoConfirmadoView
+          orderId={orderId}
+          valor={valorDoPedido}
+          onNavigate={onNavigate}
+        />
+      );
+    }
+
+    if (statusPagamentoPix === "fora-do-prazo") {
+      return (
+        <PagamentoForaDoPrazoView
+          orderId={orderId}
+          valor={valorDoPedido}
+          onNavigate={onNavigate}
+        />
+      );
+    }
+
     return (
       <div className="min-h-dvh space-y-4 bg-gray-50/10 px-3.5 pt-4">
         <h1 className="text-lg font-bold text-zinc-900">
@@ -1373,6 +1607,177 @@ function SuccessView({
           className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
         >
           Ver Meus Pedidos
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// CHECKOUT-090: tela de PIX confirmado. Mesmo padrão visual do SuccessView
+// (ícone de check em círculo esmeralda, hierarquia de texto, dois botões de
+// saída) — sem redesenho. Diferente do SuccessView (pedido pago na entrega,
+// nada a confirmar), aqui existiu de fato um pagamento online recebido, daí
+// o valor pago em destaque.
+interface PagamentoConfirmadoViewProps {
+  orderId: string;
+  valor: number;
+  onNavigate: (view: View, productId?: string) => void;
+}
+
+function PagamentoConfirmadoView({
+  orderId,
+  valor,
+  onNavigate,
+}: Readonly<PagamentoConfirmadoViewProps>) {
+  return (
+    <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center">
+      <div className="group relative mb-12">
+        <div className="absolute inset-0 scale-[2.5] rounded-2xl bg-emerald-100 opacity-30 blur-3xl transition-opacity duration-1000 group-hover:opacity-50" />
+        <div className="relative flex size-32 items-center justify-center rounded-2xl border-4 border-white bg-emerald-50 shadow-2xl transition-transform duration-700 group-hover:scale-110">
+          <Check className="size-14 text-emerald-500" />
+        </div>
+        <div className="absolute -right-4 -top-4 size-8 animate-pulse rounded-full bg-amber-400 blur-xl" />
+        <div className="absolute -bottom-2 -left-2 size-6 animate-pulse rounded-full bg-primary/30 blur-lg delay-500" />
+      </div>
+
+      <h2 className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4">
+        Pagamento Confirmado!
+      </h2>
+
+      <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
+        <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
+          Pedido:{" "}
+          <span className="text-zinc-900">
+            #{orderId.slice(-6).toUpperCase()}
+          </span>
+        </p>
+        <p className="text-lg font-black text-emerald-600">
+          R$ {valor.toFixed(2).replace(".", ",")} recebido
+        </p>
+        <div className="mx-auto max-w-[300px]">
+          <p className="text-sm font-medium leading-relaxed text-zinc-500">
+            Seu pagamento foi confirmado e a loja já está preparando seu
+            pedido.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
+        <button
+          onClick={() => onNavigate("profile")}
+          className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
+        >
+          Ver Meus Pedidos
+        </button>
+        <button
+          onClick={() => onNavigate("home")}
+          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+        >
+          Retornar à Vitrine
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// CHECKOUT-090: tela do pagamento recebido DEPOIS que o prazo de reserva
+// venceu. Decisão de produto do Gabriel (16/08/2026, tomada explicitamente
+// com ele — texto abaixo NÃO é redação livre): "Recebemos seu pagamento,
+// mas o prazo de reserva venceu. A loja vai te contatar em breve para
+// confirmar ou devolver o valor." Honesto, não promete o que talvez não
+// possa cumprir, e evita que a pessoa pague de novo achando que falhou.
+//
+// Por trás: `payment_status = 'pago_apos_expirar'` significa que a
+// varredura do prazo já marcou `status='cancelled'` e já devolveu o
+// estoque (20260807000000_reserva_com_expiracao.sql:113-116) — a
+// mercadoria pode já ter sido vendida a outra pessoa. Um humano decide
+// caso a caso (spec do webhook, linha 136): reativa se ainda tiver a
+// mercadoria, ou estorna pelo painel do MP se não tiver. Por isso esta
+// tela NUNCA promete entrega, preparo, envio ou prazo — só que o dinheiro
+// chegou e que alguém vai falar com o cliente. Visual deliberadamente
+// distinto do sucesso (âmbar, não esmeralda; ícone de alerta, não de
+// check): isto não é uma comemoração.
+interface PagamentoForaDoPrazoViewProps {
+  orderId: string;
+  valor: number;
+  onNavigate: (view: View, productId?: string) => void;
+}
+
+function PagamentoForaDoPrazoView({
+  orderId,
+  valor,
+  onNavigate,
+}: Readonly<PagamentoForaDoPrazoViewProps>) {
+  const { config } = useStore();
+
+  // Mesmo mecanismo de contato já usado em OrderDetailsView, ProductView e
+  // ProfileView (wa.me com DDI 55 prefixado para número de 10 ou 11
+  // dígitos) — não um novo. `numeroLimpo` vazio (config.whatsappNumber não
+  // configurado) desliga o botão em vez de abrir um link quebrado.
+  const numeroLimpo = (config.whatsappNumber || "").replace(/\D/g, "");
+
+  const handleFalarComALoja = () => {
+    if (!numeroLimpo) return;
+    let phone = numeroLimpo;
+    if (phone.length === 11 || phone.length === 10) {
+      phone = `55${phone}`;
+    }
+    const mensagem = `Olá! Paguei o pedido #${orderId.slice(-6).toUpperCase()}, mas o prazo de reserva venceu. Podem me ajudar?`;
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
+    globalThis.open(url, "_blank");
+  };
+
+  return (
+    <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center">
+      <div className="group relative mb-12">
+        <div className="absolute inset-0 scale-[2.5] rounded-2xl bg-amber-100 opacity-30 blur-3xl transition-opacity duration-1000 group-hover:opacity-50" />
+        <div className="relative flex size-32 items-center justify-center rounded-2xl border-4 border-white bg-amber-50 shadow-2xl transition-transform duration-700 group-hover:scale-110">
+          <AlertCircle className="size-14 text-amber-500" />
+        </div>
+      </div>
+
+      <h2 className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4">
+        Pagamento Recebido
+      </h2>
+
+      <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
+        <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
+          Pedido:{" "}
+          <span className="text-zinc-900">
+            #{orderId.slice(-6).toUpperCase()}
+          </span>
+        </p>
+        <p className="text-lg font-black text-amber-600">
+          R$ {valor.toFixed(2).replace(".", ",")} recebido
+        </p>
+        <div className="mx-auto max-w-[300px]">
+          <p className="text-sm font-medium leading-relaxed text-zinc-500">
+            Recebemos seu pagamento, mas o prazo de reserva venceu. A loja vai
+            te contatar em breve para confirmar ou devolver o valor.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
+        {numeroLimpo && (
+          <button
+            onClick={handleFalarComALoja}
+            className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-amber-500 text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-black/10 transition-all hover:bg-amber-500/90 active:scale-95"
+          >
+            Falar com a Loja
+          </button>
+        )}
+        <button
+          onClick={() => onNavigate("profile")}
+          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+        >
+          Ver Meus Pedidos
+        </button>
+        <button
+          onClick={() => onNavigate("home")}
+          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+        >
+          Retornar à Vitrine
         </button>
       </div>
     </div>
