@@ -143,6 +143,69 @@ export type StatusPagamentoConhecido =
   | "expirado"
   | "estornado";
 
+/** Argumentos de uma chamada de `loadOrders`, guardados para poder repeti-la. */
+export type ConsultaAdmin = [
+  page?: number,
+  pageSize?: number,
+  statusFilter?: string,
+  searchQuery?: string,
+  startDate?: string,
+  endDate?: string,
+  silent?: boolean,
+];
+
+/**
+ * Escolhe QUAL consulta o realtime deve repetir quando a conexão volta
+ * (PEDIDO-030, #83).
+ *
+ * O `useOrders` serve as duas metades do app pelo mesmo hook: o cliente, com
+ * `fetchUserOrders` (filtra por `user_id`), e o painel, com `loadOrders`
+ * (paginada, sem filtro de dono). Os três caminhos de reconexão —
+ * `handleReconnect`, `handleVisibilityChange` e `handleOnline` — chamavam sempre
+ * a consulta do CLIENTE.
+ *
+ * Para a lojista isso devolvia zero, porque ela não compra na própria loja: o
+ * painel passava a dizer "Ainda não tem nenhum pedido" com a paginação ainda
+ * indicando várias páginas, e com pedido real parado esperando ser separado.
+ * Cair e voltar a rede é rotina em celular; o defeito aparecia sozinho.
+ *
+ * Duas escolhas dentro desta função, e as duas são sobre não trocar um estrago
+ * por outro:
+ *
+ * - **`silent` forçado para true** no modo admin: a recarga acontece sem ela
+ *   pedir, no meio da operação. Acender o esqueleto de carregamento por cima da
+ *   lista assusta igual ao defeito original.
+ * - **sem consulta anterior, não dispara nada**: não há página nem filtro a
+ *   preservar, e a tela do painel já carrega ao montar. Chamar com os valores
+ *   padrão jogaria a lojista de volta para a página 1 sem filtro.
+ */
+export function escolherRecargaDeReconexao(deps: {
+  isAdmin: boolean;
+  fetchUserOrders: () => Promise<unknown>;
+  loadOrders: (...args: ConsultaAdmin) => Promise<unknown>;
+  ultimaConsultaAdmin: ConsultaAdmin | null;
+}): () => Promise<unknown> {
+  const { isAdmin, fetchUserOrders, loadOrders, ultimaConsultaAdmin } = deps;
+
+  if (!isAdmin) return () => fetchUserOrders();
+
+  if (!ultimaConsultaAdmin) return () => Promise.resolve();
+
+  const [page, pageSize, statusFilter, searchQuery, startDate, endDate] =
+    ultimaConsultaAdmin;
+
+  return () =>
+    loadOrders(
+      page,
+      pageSize,
+      statusFilter,
+      searchQuery,
+      startDate,
+      endDate,
+      true,
+    );
+}
+
 export function useOrders(
   enabled = true,
   isAdmin = false,
@@ -294,6 +357,18 @@ export function useOrders(
     ) => {
       if (!enabled) return { orders: [], total: 0 };
 
+      // Guarda a consulta para a reconexao poder repetir ESTA pagina e ESTE
+      // filtro em vez de jogar a lojista para a pagina 1 (PEDIDO-030, #83).
+      ultimaConsultaAdminRef.current = [
+        page,
+        pageSize,
+        statusFilter,
+        searchQuery,
+        startDate,
+        endDate,
+        silent,
+      ];
+
       if (adminOrdersAbortControllerRef.current) {
         adminOrdersAbortControllerRef.current.abort();
       }
@@ -429,7 +504,16 @@ export function useOrders(
     [isAdmin, user?.id],
   );
 
+  const ultimaConsultaAdminRef = useRef<ConsultaAdmin | null>(null);
   const fetchUserOrdersRef = useRef(fetchUserOrders);
+  /**
+   * O que os tres caminhos de reconexao devem recarregar: a consulta pessoal do
+   * cliente, ou a paginada do painel na pagina e no filtro em que a lojista
+   * estava (PEDIDO-030, #83). Ver `escolherRecargaDeReconexao`.
+   */
+  const recarregarAposReconexaoRef = useRef<() => Promise<unknown>>(() =>
+    Promise.resolve(),
+  );
   const handleRealtimeInsertRef = useRef(handleRealtimeInsert);
   const handleRealtimeUpdateRef = useRef(handleRealtimeUpdate);
   const handleRealtimeDeleteRef = useRef(handleRealtimeDelete);
@@ -437,6 +521,12 @@ export function useOrders(
 
   useEffect(() => {
     fetchUserOrdersRef.current = fetchUserOrders;
+    recarregarAposReconexaoRef.current = escolherRecargaDeReconexao({
+      isAdmin,
+      fetchUserOrders,
+      loadOrders,
+      ultimaConsultaAdmin: ultimaConsultaAdminRef.current,
+    });
     handleRealtimeInsertRef.current = handleRealtimeInsert;
     handleRealtimeUpdateRef.current = handleRealtimeUpdate;
     handleRealtimeDeleteRef.current = handleRealtimeDelete;
@@ -592,7 +682,7 @@ export function useOrders(
         async () => {
           if (isUnmounting) return;
           try {
-            await fetchUserOrdersRef.current();
+            await recarregarAposReconexaoRef.current();
             if (!isUnmounting) setupRealtime();
           } catch {
             if (!isUnmounting) setupRealtime();
@@ -647,7 +737,7 @@ export function useOrders(
             console.log("[Realtime] Orders foregrounded. Forcing reconnect...");
             retryCount = 0;
             clearTimeout(reconnectTimeout);
-            fetchUserOrdersRef.current().then(() => {
+            recarregarAposReconexaoRef.current().then(() => {
               if (!isUnmounting) setupRealtime();
             });
           }
@@ -664,7 +754,7 @@ export function useOrders(
           console.log("[Realtime] Orders online. Checking...");
           retryCount = 0;
           clearTimeout(reconnectTimeout);
-          fetchUserOrdersRef.current().then(() => {
+          recarregarAposReconexaoRef.current().then(() => {
             if (!isUnmounting) setupRealtime();
           });
         }
