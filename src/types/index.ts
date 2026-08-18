@@ -5,7 +5,11 @@ export interface Product {
   name: string;
   description: string;
   price: number;
-  costPrice?: number;
+  /**
+   * Preco de custo. `null` e' a lojista limpando o campo de proposito
+   * (ADMIN-050, #96) -- distinto de `undefined`, que significa "nao mexi".
+   */
+  costPrice?: number | null;
   originalPrice?: number | null;
   images: string[];
   category: string;
@@ -23,7 +27,8 @@ export interface Product {
   variants?: ProductVariant[];
   metaTitle?: string;
   metaDescription?: string;
-  sku?: string;
+  /** `null` = limpar o codigo; `undefined` = nao mexer. Ver [ADMIN-050, #96]. */
+  sku?: string | null;
   weightKg?: number | null;
   widthCm?: number | null;
   heightCm?: number | null;

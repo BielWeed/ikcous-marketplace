@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import type { Coupon } from "@/types";
+import type { Database } from "@/types/supabase";
 import { cachedCouponsData, setCachedCouponsData } from "@/utils/admin_cache";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -151,18 +152,43 @@ export function useCoupons(autoFetch = false) {
       prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
     );
 
+    /*
+      O UPDATE é montado por PRESENÇA DE CHAVE, não por valor (ADMIN-050, #96).
+
+      Antes daqui saía um objeto com as sete chaves sempre presentes. Quem
+      segurava os patches parciais de pé era um acidente: o `JSON.stringify` do
+      supabase-js descarta chave `undefined` antes de virar SQL. O mesmo
+      descarte causava o defeito — apagar a Validade mandava `undefined`, a
+      coluna não ia no UPDATE, a data antiga sobrevivia, e a tela dizia "Cupom
+      atualizado". Depois do vencimento o cupom parava de funcionar no checkout
+      sem explicação.
+
+      Trocar `undefined` por `null` no objeto fixo consertaria isso e quebraria
+      coisa pior: `AdminCouponsView.tsx:564` liga/desliga cupom com
+      `updateCoupon(id, { active })` — um patch de uma chave só. Com `null`
+      forçado, cada clique no interruptor apagaria código, valor e validade.
+
+      Com `in`, as duas intenções param de ser a mesma coisa:
+        chave ausente  -> não mexe nesta coluna
+        chave presente -> grava, e vazio vira NULL de verdade
+    */
+    type CouponUpdate = Database["public"]["Tables"]["coupons"]["Update"];
+    const dbUpdates: CouponUpdate = {};
+    if ("code" in updates) dbUpdates.code = updates.code;
+    if ("type" in updates) dbUpdates.type = updates.type;
+    if ("value" in updates) dbUpdates.value = updates.value;
+    if ("minPurchase" in updates)
+      dbUpdates.min_purchase = updates.minPurchase ?? null;
+    if ("usageLimit" in updates)
+      dbUpdates.usage_limit = updates.usageLimit ?? null;
+    if ("validUntil" in updates)
+      dbUpdates.valid_until = updates.validUntil ?? null;
+    if ("active" in updates) dbUpdates.active = updates.active;
+
     try {
       const { error } = await supabase
         .from("coupons")
-        .update({
-          code: updates.code,
-          type: updates.type,
-          value: updates.value,
-          min_purchase: updates.minPurchase,
-          usage_limit: updates.usageLimit,
-          valid_until: updates.validUntil,
-          active: updates.active,
-        })
+        .update(dbUpdates)
         .eq("id", id);
 
       if (error) throw error;
