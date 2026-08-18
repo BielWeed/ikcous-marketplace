@@ -1,7 +1,7 @@
+import { normalizeText } from "@/lib/utils";
 import type { Product } from "@/types";
 import { useMemo, useState } from "react";
 import { useDebounce } from "./useDebounce";
-import { normalizeText } from "@/lib/utils";
 
 export type SortOption = "price_asc" | "price_desc" | "name_asc" | "newest";
 
