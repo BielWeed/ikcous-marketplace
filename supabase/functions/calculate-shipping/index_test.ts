@@ -1,6 +1,11 @@
 // @ts-nocheck
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { calculateSmartFallback, getCartHash, isLocalCep } from "./index.ts";
+import {
+  calculateSmartFallback,
+  getCartHash,
+  isLocalCep,
+  precoDeContingenciaDoTopo,
+} from "./index.ts";
 
 Deno.test("calculateSmartFallback - same region", () => {
   // Test same region: starts with same character
@@ -87,4 +92,51 @@ Deno.test("isLocalCep - faixa invertida e espaços extras", () => {
   // Campo vazio ou só pontuação cai no fallback dos 5 primeiros dígitos
   assertEquals(isLocalCep("38500-000", "38500-120", "   "), true);
   assertEquals(isLocalCep("38500-000", "38400-120", "   "), false);
+});
+
+// --- Contingência do topo: o R$ 15 fixo que a lojista pagava ---------------
+//
+// Até 18/08/2026, quando a função inteira estourava (erro antes ou depois da
+// cotação), o `catch` de topo devolvia `price: 15` cravado no código — para
+// qualquer destino do Brasil. A escada por região (15 / 22 / 38) já existia
+// logo acima, em `calculateSmartFallback`, e essa contingência não a usava:
+// uma blusa de Monte Carmelo (38xxx) para Manaus (69xxx) saía por R$ 15 e a
+// diferença ficava com a lojista, sem aparecer em lugar nenhum.
+//
+// `precoDeContingenciaDoTopo` é a decisão de preço desse `catch`, isolada para
+// poder ser medida. Devolver `null` significa "não dá para cotar honestamente"
+// — e aí a função responde erro em vez de inventar preço barato.
+
+Deno.test("contingência do topo - mesma região usa o piso de 15, não o 15 cravado", () => {
+  assertEquals(precoDeContingenciaDoTopo("38500000", "35000000", 10), 15);
+});
+
+Deno.test("contingência do topo - região vizinha cobra 22, não 15", () => {
+  assertEquals(precoDeContingenciaDoTopo("20000000", "30000000", 10), 22);
+});
+
+Deno.test("contingência do topo - Monte Carmelo para Manaus cobra 38, não 15", () => {
+  // 38xxx (MG) -> 69xxx (AM): regiões remotas. É o caso que custava dinheiro
+  // da lojista a cada cotação falha.
+  assertEquals(precoDeContingenciaDoTopo("38500000", "69000000", 10), 38);
+});
+
+Deno.test("contingência do topo - respeita a taxa da loja quando ela é maior que o piso", () => {
+  // A escada é PISO, não teto: quem configurou frete de R$ 50 não passa a
+  // cobrar 38 por causa de uma falha nossa.
+  assertEquals(precoDeContingenciaDoTopo("38500000", "69000000", 50), 70);
+});
+
+Deno.test("contingência do topo - sem CEP de destino não inventa preço", () => {
+  // Erro antes de ler o corpo do pedido: não se sabe para onde vai. Preço
+  // nenhum é honesto aqui, e o barato é o pior de todos.
+  assertEquals(precoDeContingenciaDoTopo("38500000", "", 10), null);
+  assertEquals(precoDeContingenciaDoTopo("", "69000000", 10), null);
+  assertEquals(precoDeContingenciaDoTopo(undefined, undefined, undefined), null);
+});
+
+Deno.test("contingência do topo - sem taxa da loja conhecida, a escada ainda vale", () => {
+  // `flatFee` só existe depois de ler store_config. Se o erro veio antes
+  // disso, a escada continua aplicável: ela só precisa dos dois CEPs.
+  assertEquals(precoDeContingenciaDoTopo("38500000", "69000000", undefined), 38);
 });

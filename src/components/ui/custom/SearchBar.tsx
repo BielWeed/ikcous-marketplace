@@ -1,6 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { useProducts } from "@/hooks/useProducts";
-import { cn } from "@/lib/utils";
+import { cn, normalizeText } from "@/lib/utils";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { ArrowRight, Search, Sparkles, Tag, X } from "lucide-react";
@@ -108,7 +108,9 @@ export function SearchBar({
 
   // Predictive term suggestions (autocomplete letter-by-letter)
   const predictedTerms = useMemo<string[]>(() => {
-    const query = deferredLocalValue.trim().toLowerCase();
+    // BUSCA-010 (#20): compara SEM acento nos dois lados, mas exibe o termo
+    // como ele foi cadastrado -- quem digita "alianca" ve "Alianca" sugerido.
+    const query = normalizeText(deferredLocalValue);
     if (!query) return [];
 
     const termSet = new Set<string>();
@@ -120,9 +122,10 @@ export function SearchBar({
       const words = p.name.split(/\s+/);
       words.forEach((w) => {
         const clean = w.replace(/[^\wÀ-ú]/gi, "").trim();
+        const cleanNormalizado = normalizeText(clean);
         if (
-          clean.toLowerCase().startsWith(query) &&
-          clean.length >= query.length
+          cleanNormalizado.startsWith(query) &&
+          cleanNormalizado.length >= query.length
         ) {
           const formatted =
             clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
@@ -131,13 +134,13 @@ export function SearchBar({
       });
 
       // Category match
-      if (p.category.toLowerCase().startsWith(query)) {
+      if (normalizeText(p.category).startsWith(query)) {
         termSet.add(p.category);
       }
 
       // Tags match
       (p.tags || []).forEach((t) => {
-        if (t.toLowerCase().startsWith(query)) {
+        if (normalizeText(t).startsWith(query)) {
           termSet.add(t);
         }
       });
@@ -148,12 +151,12 @@ export function SearchBar({
 
   // Matching categories
   const matchingCategories = useMemo<string[]>(() => {
-    const query = deferredLocalValue.trim().toLowerCase();
+    const query = normalizeText(deferredLocalValue);
     if (!query) return [];
 
     const catSet = new Set<string>();
     products.forEach((p) => {
-      if (p.isActive && p.category.toLowerCase().includes(query)) {
+      if (p.isActive && normalizeText(p.category).includes(query)) {
         catSet.add(p.category);
       }
     });
@@ -163,17 +166,19 @@ export function SearchBar({
 
   // Scored Product Search Results
   const searchResults = useMemo<ScoredProduct[]>(() => {
-    const query = deferredLocalValue.toLowerCase().trim();
+    const query = normalizeText(deferredLocalValue);
     if (!query) return [];
 
     const scored = products
       .filter((product) => product.isActive)
       .map((product) => {
         let score = 0;
-        const name = product.name.toLowerCase();
-        const description = product.description.toLowerCase();
-        const category = product.category.toLowerCase();
-        const tags = (product.tags || []).map((t) => t.toLowerCase());
+        const name = normalizeText(product.name);
+        // `description` pode vir nula do banco: `.toLowerCase()` direto
+        // quebrava a busca inteira aqui. `normalizeText` aguenta nulo.
+        const description = normalizeText(product.description);
+        const category = normalizeText(product.category);
+        const tags = (product.tags || []).map((t) => normalizeText(t));
 
         // Exact match
         if (name === query) score += 100;

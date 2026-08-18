@@ -1099,15 +1099,27 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       ? formData.sku.trim().toUpperCase().replace(/\s+/g, "-")
       : undefined;
 
+    /*
+      CAMPO VAZIO VAI COMO `null`, NUNCA COMO `undefined` (ADMIN-050, #96).
+
+      Este formulário sempre envia o objeto inteiro — não existe patch parcial
+      saindo daqui. Logo, campo vazio aqui só pode significar "quero limpar", e
+      nunca "não mexi nesse". `undefined` significaria a segunda coisa: a guarda
+      `updates.X !== undefined` do useProducts descarta a chave, o UPDATE sai
+      sem a coluna, o valor antigo sobrevive — e a tela confirma "Salvo".
+
+      Era assim que desmarcar "Produto em Promoção" mantinha o preço riscado na
+      loja. `null` atravessa a guarda e apaga de verdade.
+    */
     const productData = {
       name: formData.name.trim(),
       description: formData.description.trim(),
       price: Math.max(0, pPrice),
-      costPrice: pCost !== undefined ? Math.max(0, pCost) : undefined,
+      costPrice: pCost !== undefined ? Math.max(0, pCost) : null,
       originalPrice:
         isPromoActive && pOriginal !== undefined
           ? Math.max(0, pOriginal)
-          : undefined,
+          : null,
       stock: Math.max(0, pStock),
       category: formData.category,
       images: formData.images,
@@ -1116,29 +1128,37 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       isActive: formData.isActive,
       metaTitle: formData.metaTitle.trim(),
       metaDescription: formData.metaDescription.trim(),
-      sku: sanitizedSku || undefined,
+      sku: sanitizedSku || null,
       variants: formData.variants,
       sold: productId ? currentProduct?.sold || 0 : 0,
+      /*
+        As dimensões são a ÚNICA exceção à regra do bloco acima, e de propósito:
+        com entrega local a tela nem mostra esses campos, então `undefined` aqui
+        é literalmente "não mexi" — é o que impede que ligar entrega local apague
+        peso e medidas que a lojista já tinha cadastrado para o Melhor Envio.
+        Com entrega nacional a tela mostra os campos, e aí vazio quer dizer
+        limpar, como no resto do formulário.
+      */
       weightKg: isLocalShipping
         ? undefined
         : pWeight !== undefined
           ? Math.max(0, pWeight)
-          : undefined,
+          : null,
       widthCm: isLocalShipping
         ? undefined
         : pWidth !== undefined
           ? Math.max(0, pWidth)
-          : undefined,
+          : null,
       heightCm: isLocalShipping
         ? undefined
         : pHeight !== undefined
           ? Math.max(0, pHeight)
-          : undefined,
+          : null,
       lengthCm: isLocalShipping
         ? undefined
         : pLength !== undefined
           ? Math.max(0, pLength)
-          : undefined,
+          : null,
     };
 
     try {

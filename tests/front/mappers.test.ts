@@ -440,3 +440,57 @@ describe("mapOrderFromDB", () => {
     expect(o.paymentStatus).toBeNull();
   });
 });
+
+// --- CATALOGO-100 (#44): a foto grampeada no codigo ------------------------
+//
+// `extractProductImages` tinha, ANTES de olhar as imagens cadastradas:
+//
+//     if (name?.includes("Aliança Luxo")) {
+//       return ["https://m.media-amazon.com/images/I/51-mYyA-zXL...jpg"];
+//     }
+//
+// Qualquer produto cujo nome contivesse "Aliança Luxo" tinha a foto trocada por
+// uma imagem hospedada na Amazon — ignorando a que a lojista subiu. Numa
+// demonstração ao vivo isso aparece na hora; num molde que vai ser clonado por
+// loja, o grampo viaja junto.
+describe("mapProductFromDB — sem grampo de produto no codigo (#44)", () => {
+  it("produto chamado 'Aliança Luxo' usa a imagem que foi cadastrada", () => {
+    const produto = mapProductFromDB({
+      ...LINHA_VIEW_PUBLICA,
+      nome: "Aliança Luxo",
+      name: "Aliança Luxo",
+      imagem_urls: ["https://loja.exemplo/foto-da-lojista.jpg"],
+    });
+
+    expect(produto.images).toEqual([
+      "https://loja.exemplo/foto-da-lojista.jpg",
+    ]);
+  });
+
+  it("nenhuma imagem da Amazon sai deste mapeador", () => {
+    const produto = mapProductFromDB({
+      ...LINHA_VIEW_PUBLICA,
+      nome: "Aliança Luxo",
+      name: "Aliança Luxo",
+      imagem_urls: ["https://loja.exemplo/foto-da-lojista.jpg"],
+    });
+
+    expect(produto.images.join(" ")).not.toContain("media-amazon.com");
+  });
+
+  it("'Aliança Luxo' sem imagem cadastrada cai no placeholder, como qualquer produto", () => {
+    // A ancora: sem isto, um mapeador que devolvesse lista vazia faria os dois
+    // testes acima passarem pelo motivo errado.
+    const produto = mapProductFromDB({
+      ...LINHA_VIEW_PUBLICA,
+      nome: "Aliança Luxo",
+      name: "Aliança Luxo",
+      imagem_urls: null,
+      imagem_url: null,
+    });
+
+    expect(produto.images).toEqual([
+      "https://placehold.co/600x400?text=Sem+Imagem",
+    ]);
+  });
+});

@@ -17,6 +17,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useOrders } from "@/hooks/useOrders";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
 import { supabase } from "@/lib/supabase";
+import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import { cn } from "@/lib/utils";
 import type { Address, CartItem, Customer, PaymentMethod, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -315,6 +316,8 @@ export function CheckoutView({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /** Ver `criarTravaDeEnvio`: fecha o botao no tique do clique (#27). */
+  const travaDeEnvioRef = useRef(criarTravaDeEnvio());
   const [showSuccess, setShowSuccess] = useState(false);
   const [orderId, setOrderId] = useState("");
   // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
@@ -809,8 +812,32 @@ export function CheckoutView({
   };
 
   const handleSubmitEvent = async () => {
-    const isFormValid = await form.trigger();
+    /*
+      TRAVA SINCRONA, ANTES DE QUALQUER `await` (CHECKOUT-030, #27).
+
+      `disabled={isSubmitting}` nao fecha a janela do duplo toque: `isSubmitting`
+      e' estado do React e so' chega na tela no render seguinte, enquanto a
+      primeira coisa que este handler faz e' `await form.trigger()`. Dois toques
+      rapidos entravam os dois e criavam DOIS pedidos -- estoque debitado duas
+      vezes, cupom de uso unico consumido duas vezes. Celular com tela travada
+      emite esse toque repetido sozinho, e a janela cresce justamente quando o
+      aparelho esta' lento.
+
+      `travaDeEnvioRef.current.tentarEntrar()` fecha no mesmo tique do clique.
+      A liberacao vai no `finally` la' embaixo, junto com `setIsSubmitting`.
+    */
+    if (!travaDeEnvioRef.current.tentarEntrar()) return;
+
+    let isFormValid: boolean;
+    try {
+      isFormValid = await form.trigger();
+    } catch (err) {
+      travaDeEnvioRef.current.liberar();
+      throw err;
+    }
+
     if (!isFormValid) {
+      travaDeEnvioRef.current.liberar();
       toast.error(
         "Por favor, preencha todos os campos obrigatórios corretamente.",
       );
@@ -824,6 +851,7 @@ export function CheckoutView({
     if (user && !selectedAddressId) {
       toast.error("Por favor, adicione ou selecione um endereço de entrega.");
       setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
       return;
     }
 
@@ -926,6 +954,7 @@ export function CheckoutView({
         );
     } finally {
       setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
     }
   };
 

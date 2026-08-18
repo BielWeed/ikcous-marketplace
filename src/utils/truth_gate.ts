@@ -199,10 +199,29 @@ export const TruthGate = {
     if (product.stock !== undefined && stock === null) {
       violations.push("Axiom violation: stock_not_numeric");
     }
-    if (product.costPrice !== undefined && costPrice === null) {
+    // ...com uma exceção deliberada: `null` EXPLÍCITO em campo opcional é a
+    // lojista mandando limpar, não lixo (ADMIN-050, #96).
+    //
+    // `preco_custo` e `preco_original` são colunas anuláveis, e o tipo do front
+    // já é `number | null`. Sem esta exceção não existe forma de desfazer uma
+    // promoção: mandar `null` era barrado aqui, e mandar `undefined` sumia no
+    // caminho (o `!== undefined` do useProducts descarta a chave) — o painel
+    // dizia "salvo" e o preço riscado continuava na loja.
+    //
+    // `price` e `stock` continuam recusando `null` logo acima: aquelas colunas
+    // são obrigatórias, e null ali é produto sem preço no catálogo.
+    if (
+      product.costPrice !== undefined &&
+      product.costPrice !== null &&
+      costPrice === null
+    ) {
       violations.push("Axiom violation: cost_price_not_numeric");
     }
-    if (product.originalPrice !== undefined && originalPrice === null) {
+    if (
+      product.originalPrice !== undefined &&
+      product.originalPrice !== null &&
+      originalPrice === null
+    ) {
       violations.push("Axiom violation: original_price_not_numeric");
     }
 

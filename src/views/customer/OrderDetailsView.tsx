@@ -92,6 +92,7 @@ export function OrderDetailsView({
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [copiedTracking, setCopiedTracking] = useState(false);
   const [reviewedProductIds, setReviewedProductIds] = useState<Set<string>>(
     new Set(),
   );
@@ -211,6 +212,24 @@ export function OrderDetailsView({
     navigator.clipboard.writeText(orderId);
     toast.success("ID do pedido copiado!");
     haptic.light();
+  };
+
+  /**
+   * Código de rastreio, já descartado o que não serve para rastrear (#105).
+   *
+   * O campo do painel é texto livre: a lojista salva, apaga e volta a salvar, e
+   * o que sobra no banco é `""` ou espaço. Bloco "Código de Rastreio" em branco
+   * é pior que bloco nenhum — parece que o envio saiu e não saiu.
+   */
+  const codigoDeRastreio = order?.trackingCode?.trim() || null;
+
+  const handleCopyTracking = () => {
+    if (!codigoDeRastreio) return;
+    navigator.clipboard.writeText(codigoDeRastreio);
+    setCopiedTracking(true);
+    toast.success("Código de rastreio copiado!");
+    haptic.light();
+    globalThis.setTimeout(() => setCopiedTracking(false), 2000);
   };
 
   const handleWhatsAppSupport = () => {
@@ -379,6 +398,45 @@ export function OrderDetailsView({
                   );
                 },
               )}
+            </div>
+          )}
+
+          {/* Rastreio (PEDIDO-060, #105).
+              Só aparece quando existe código de verdade — ver `codigoDeRastreio`.
+              Fica DENTRO do cartão de status porque é a resposta à única
+              pergunta que traz o cliente a esta tela: "onde está meu pedido?". */}
+          {codigoDeRastreio && (
+            <div className="mt-4 border-t border-zinc-100 pt-4">
+              <span className="mb-2 block text-[9px] font-black uppercase tracking-widest text-zinc-400">
+                Código de Rastreio
+              </span>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 truncate rounded-xl bg-zinc-50 px-3 py-2.5 font-mono text-xs font-bold tracking-tight text-zinc-900">
+                  {codigoDeRastreio}
+                </code>
+                <button
+                  type="button"
+                  onClick={handleCopyTracking}
+                  title="Copiar código de rastreio"
+                  className="flex size-10 flex-shrink-0 items-center justify-center rounded-xl bg-zinc-50 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 active:scale-95"
+                >
+                  {copiedTracking ? (
+                    <Check className="size-4 text-emerald-500" />
+                  ) : (
+                    <Copy className="size-4" />
+                  )}
+                </button>
+                <a
+                  href={`https://linkrastreio.com/?codigo=${encodeURIComponent(codigoDeRastreio)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Rastrear entrega"
+                  className="flex h-10 flex-shrink-0 items-center gap-1.5 rounded-xl bg-zinc-900 px-4 text-[9px] font-black uppercase tracking-widest text-white transition-colors hover:bg-zinc-800 active:scale-95"
+                >
+                  <Truck className="size-3.5" />
+                  Rastrear
+                </a>
+              </div>
             </div>
           )}
 

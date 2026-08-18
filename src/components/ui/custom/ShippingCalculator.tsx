@@ -124,16 +124,19 @@ export function ShippingCalculator({
       console.error("Error calculating shipping:", err);
       setError(err.message || "Erro ao calcular frete.");
 
-      // Safe fallback option
-      const fallbackOption: ShippingOption = {
-        id: "flat-fee-fallback-ui",
-        name: "Entrega Padrão (Fallback)",
-        price: 15,
-        deliveryDays: 2,
-        provider: "flat_fee",
-      };
-      setOptions([fallbackOption]);
-      onSelectOption(fallbackOption);
+      // COTAÇÃO QUE FALHA NÃO VIRA PREÇO INVENTADO.
+      //
+      // Até 18/08/2026 este ponto montava uma opção própria de R$ 15 e a
+      // auto-selecionava. Dois estragos: R$ 15 valia para o Brasil inteiro (e a
+      // diferença saía do bolso da lojista), e — pior — a opção selecionada
+      // SOBRESCREVE a taxa que ela configurou: o `shippingFee` do CartContext
+      // só cai para `config.shippingFee` enquanto NÃO há opção escolhida.
+      //
+      // Sem opção nenhuma aqui, o erro aparece na tela e o frete volta a ser o
+      // número que a própria loja definiu no painel. A trava está em
+      // tests/front/shipping-calculator-sem-preco-inventado.test.tsx.
+      setOptions([]);
+      onSelectOption(null);
     } finally {
       setLoading(false);
     }

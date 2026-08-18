@@ -11,6 +11,7 @@ import {
   Package,
   QrCode,
   ShieldCheck,
+  Truck,
 } from "lucide-react";
 import { memo, useState } from "react";
 import { toast } from "sonner";
@@ -324,6 +325,22 @@ export const OrderList = memo(function OrderList({
                           <div className="flex max-w-[80px] items-center gap-0.5 truncate">
                             <MapPin className="size-2.5 stroke-[2.5] text-zinc-300" />
                             <span>{order.customer.neighborhood}</span>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Rastreio (PEDIDO-060, #105): visível sem abrir o
+                          pedido. `trim()` porque o campo do painel é texto
+                          livre — apagar deixa "" ou espaço, e um rótulo
+                          "Rastreio:" em branco parece envio que não houve. */}
+                      {order.trackingCode?.trim() && (
+                        <>
+                          <span className="size-0.5 rounded-full bg-zinc-200" />
+                          <div className="flex max-w-[120px] items-center gap-0.5 truncate">
+                            <Truck className="size-2.5 stroke-[2.5] text-zinc-300" />
+                            <span className="truncate font-mono normal-case tracking-tight text-zinc-500">
+                              {order.trackingCode.trim()}
+                            </span>
                           </div>
                         </>
                       )}

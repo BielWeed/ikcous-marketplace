@@ -367,3 +367,66 @@ Deno.test("recibo: serialização aguenta os casos difíceis", async (t) => {
     assertEquals(r.violations, []);
   });
 });
+
+// --------------------------------------------------------------------------
+// ADMIN-050 (#96): limpar campo opcional é intenção legítima, não violação
+// --------------------------------------------------------------------------
+//
+// O gate tratava QUALQUER valor não-numérico como violação, inclusive `null`.
+// Isso estava certo para `price` e `stock` (colunas obrigatórias, onde null
+// deixaria produto sem preço no catálogo) e errado para `costPrice` e
+// `originalPrice`: as duas colunas são anuláveis, o tipo do front já é
+// `number | null`, e `null` é a única forma de a lojista DESFAZER uma
+// promoção ou apagar o preço de custo.
+//
+// Enquanto o gate recusava `null`, o formulário mandava `undefined` — que
+// some no caminho e faz o painel dizer "salvo" sem salvar (#96). Consertar só
+// o formulário trocaria a mentira por um erro de validação na cara dela.
+
+Deno.test("produto: null é aceito nos campos que a lojista pode zerar (#96)", async (t) => {
+  await t.step("originalPrice null desfaz a promoção", () => {
+    assertEquals(violacoes({ originalPrice: null, price: 20 }), []);
+  });
+
+  await t.step("costPrice null apaga o preço de custo", () => {
+    assertEquals(violacoes({ costPrice: null, price: 20 }), []);
+  });
+
+  await t.step("os dois de uma vez", () => {
+    assertEquals(violacoes({ originalPrice: null, costPrice: null }), []);
+  });
+
+  await t.step("null NÃO é aceito em preço, que é obrigatório", () => {
+    assert(violacoes({ price: null }).includes("price_not_numeric"));
+  });
+
+  await t.step("null NÃO é aceito em estoque, que é obrigatório", () => {
+    assert(violacoes({ stock: null }).includes("stock_not_numeric"));
+  });
+
+  await t.step("lixo continua sendo lixo nos campos opcionais", () => {
+    // Aceitar `null` é aceitar a INTENÇÃO de limpar — não é abrir a porta
+    // para texto e NaN, que chegariam ao banco como null sem ninguém pedir.
+    for (const valor of [Number.NaN, "abc", ""]) {
+      assert(
+        violacoes({ costPrice: valor }).includes("cost_price_not_numeric"),
+        `costPrice=${String(valor)} deveria abortar`,
+      );
+      assert(
+        violacoes({ originalPrice: valor }).includes(
+          "original_price_not_numeric",
+        ),
+        `originalPrice=${String(valor)} deveria abortar`,
+      );
+    }
+  });
+
+  await t.step(
+    "originalPrice null não dispara a regra de 'maior que o preço'",
+    () => {
+      // A comparação promo x original só faz sentido com os dois números
+      // presentes; com null ela não pode inventar violação.
+      assertEquals(violacoes({ originalPrice: null, price: 999 }), []);
+    },
+  );
+});

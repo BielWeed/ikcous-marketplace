@@ -15,7 +15,7 @@ type OrderRow = Database["public"]["Tables"]["marketplace_orders"]["Row"];
 type OrderItemRow =
   Database["public"]["Tables"]["marketplace_order_items"]["Row"];
 
-function extractProductImages(row: any, name: string): string[] {
+function extractProductImages(row: any): string[] {
   const rawImages =
     row.imagem_urls || row.images || (row.imagem_url ? [row.imagem_url] : []);
   const sanitizedImages = Array.isArray(rawImages)
@@ -24,9 +24,21 @@ function extractProductImages(row: any, name: string): string[] {
       )
     : [];
 
-  if (name?.includes("Aliança Luxo")) {
-    return ["https://m.media-amazon.com/images/I/51-mYyA-zXL._AC_SL1000_.jpg"];
-  }
+  /*
+    NÃO VOLTE A GRAMPEAR PRODUTO AQUI (CATALOGO-100, #44).
+
+    Havia, exatamente neste ponto — ANTES de olhar `sanitizedImages` —, um
+    `if (name?.includes("Aliança Luxo"))` que devolvia uma imagem hospedada na
+    Amazon. Qualquer produto com esse nome tinha a foto trocada, ignorando a que
+    a lojista subiu pelo painel.
+
+    Este arquivo é um tradutor entre o formato do banco e o formato do app: o
+    que ele decide vale para TODO produto de TODA loja, e este repositório é o
+    molde que se clona por cliente. Um caso especial escrito aqui viaja junto e
+    aparece na loja de alguém que nunca ouviu falar dele.
+
+    A trava está em tests/front/mappers.test.ts.
+  */
   if (sanitizedImages.length > 0) {
     return sanitizedImages;
   }
@@ -64,7 +76,7 @@ export function mapProductFromDB(
         : undefined;
     const stock = Number(row.estoque ?? row.stock ?? 0);
 
-    const images = extractProductImages(row, name);
+    const images = extractProductImages(row);
     const category = row.categoria || row.category || "Geral";
     const isActive = row.ativo ?? row.is_active ?? true;
     const freeShipping = !!(row.frete_gratis ?? row.free_shipping);
