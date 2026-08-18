@@ -75,11 +75,12 @@ trava de segurança de carona numa correção de frete.
   remetente de caixa de areia (`onboarding@resend.dev`), que não entrega para ninguém
   além do dono da conta (#161).
 
-**Sobre a cobrança pelo site:** ao contrário da 1.3.0, a variável
-`VITE_PAGAMENTO_ONLINE` **passou a existir em Production** (criada em 17/08/2026,
-junto com `VITE_MP_PUBLIC_KEY`). O valor é criptografado e não foi lido na preparação
-desta release — portanto esta nota **não afirma** se a cobrança online está ligada ou
-desligada em produção.
+**A cobrança pelo site está LIGADA.** Isto muda em relação à 1.3.0, que subiu com o
+caminho de pagamento inerte: a variável `VITE_PAGAMENTO_ONLINE` passou a existir em
+Production em 17/08/2026, junto com `VITE_MP_PUBLIC_KEY`, e o Gabriel confirmou em
+18/08/2026 que o pagamento por PIX via Mercado Pago está ativo no app. Ou seja: a
+partir daqui o cliente pode pagar pelo site, com dinheiro de verdade, além das três
+formas de pagamento na entrega.
 
 ## [1.3.0] — 2026-08-17
 
