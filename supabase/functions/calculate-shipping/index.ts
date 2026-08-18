@@ -45,6 +45,50 @@ export function calculateSmartFallback(origin: string, dest: string, baseFee: nu
 }
 
 /**
+ * Preço da contingência de ÚLTIMO recurso — a do `catch` de topo, quando a
+ * função inteira estourou.
+ *
+ * POR QUE ELA EXISTE SEPARADA DE `calculateSmartFallback`
+ *
+ * A contingência de topo roda num ponto em que talvez nada tenha sido lido: o
+ * erro pode ter vindo antes do `req.json()`, antes do `store_config`, antes de
+ * qualquer coisa. Então ela precisa decidir com o que houver — e precisa poder
+ * dizer "não sei", que é o caso em que `null` é devolvido.
+ *
+ * O QUE ELA CONSERTA
+ *
+ * Até 18/08/2026 esse `catch` devolvia `price: 15` cravado, para qualquer
+ * destino do Brasil. A escada por região (15 / 22 / 38) já existia logo acima e
+ * não era usada aqui. O efeito: toda cotação que estourasse mandava uma peça de
+ * Monte Carmelo para Manaus por R$ 15, e a diferença saía do bolso da lojista,
+ * sem aparecer em tela nenhuma. Cotação falha é justamente quando ninguém está
+ * olhando.
+ *
+ * POR QUE `null` EM VEZ DE UM NÚMERO ALTO QUANDO FALTA CEP
+ *
+ * Sem os dois CEPs não há distância, e sem distância todo número é chute. Chute
+ * barato custa o dinheiro dela; chute caro afasta a compradora. Devolver `null`
+ * faz a função responder erro, e aí o carrinho aplica a taxa que a própria
+ * lojista configurou no painel — número dela, escolhido por ela.
+ *
+ * @returns o preço em reais, ou `null` quando não há como cotar honestamente.
+ */
+export function precoDeContingenciaDoTopo(
+    originCep?: string,
+    destCep?: string,
+    flatFee?: number,
+): number | null {
+    const origem = (originCep ?? '').replace(/\D/g, '')
+    const destino = (destCep ?? '').replace(/\D/g, '')
+    if (origem.length === 0 || destino.length === 0) return null
+
+    // `flatFee` é o piso configurado pela loja. Quando o erro impediu de lê-lo,
+    // 0 deixa a escada decidir sozinha — os pisos dela (15/22/38) já protegem.
+    const base = Number.isFinite(flatFee) ? (flatFee as number) : 0
+    return calculateSmartFallback(origem, destino, base)
+}
+
+/**
  * Dispara uma query sem bloquear a resposta, sem quebrar a função.
  *
  * O PostgrestBuilder do supabase-js implementa apenas `PromiseLike` — tem `then`,
@@ -197,6 +241,13 @@ serve(async (req: Request) => {
         return new Response('ok', { headers: corsHeaders })
     }
 
+    // Espelho das tres coisas que a contingencia de topo precisa saber para
+    // cotar. Elas nascem `const` dentro do `try` -- o `catch` nao as enxerga,
+    // e era por isso que ele so' sabia devolver um numero cravado.
+    let cepDeDestino = ''
+    let cepDeOrigem = ''
+    let taxaDaLoja: number | undefined
+
     try {
         const body = await req.json()
         const { cep, cart, action } = body
@@ -333,6 +384,7 @@ serve(async (req: Request) => {
 
         // Clean CEP (only digits)
         const cleanCep = cep.replace(/\D/g, '')
+        cepDeDestino = cleanCep
         if (cleanCep.length !== 8) {
             return new Response(
                 JSON.stringify({ error: 'CEP inválido' }),
@@ -355,6 +407,8 @@ serve(async (req: Request) => {
         const provider = storeConfig.shipping_provider || 'flat_fee'
         const originCep = (storeConfig.origin_cep || '38500-000').replace(/\D/g, '')
         const flatFee = Number(storeConfig.shipping_fee || 15)
+        cepDeOrigem = originCep
+        taxaDaLoja = flatFee
         const enabledMethods = storeConfig.enabled_shipping_methods || ['sedex', 'pac']
         
         const shippingCoverage = storeConfig.shipping_coverage || 'national'
@@ -766,13 +820,26 @@ serve(async (req: Request) => {
     } catch (err) {
         console.error('[calculate-shipping] Top-level Edge Function Error:', err)
         
-        // Fallback to standard flat fee in worst-case scenario
+        // Contingência de último recurso, pela escada de região — nunca mais um
+        // preço cravado. Ver `precoDeContingenciaDoTopo` no topo do arquivo.
         try {
+            const preco = precoDeContingenciaDoTopo(cepDeOrigem, cepDeDestino, taxaDaLoja)
+
+            // Sem os dois CEPs não há distância, e sem distância todo preço é
+            // chute. Responder erro faz o carrinho aplicar a taxa que a lojista
+            // configurou, em vez de a gente inventar uma barata por ela.
+            if (preco === null) {
+                return new Response(
+                    JSON.stringify({ error: err.message }),
+                    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
+
             const fallbackOptions = [
                 {
                     id: 'flat-fee-fallback',
                     name: 'Entrega Padrão (Contingência)',
-                    price: 15,
+                    price: preco,
                     deliveryDays: 2,
                     provider: 'flat_fee'
                 }

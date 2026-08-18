@@ -10,7 +10,6 @@ import { AnimatePresence, motion, usePresence } from "framer-motion";
 import {
   ArrowRight,
   Package,
-  RotateCcw,
   ShieldCheck,
   ShoppingCart,
   Sparkles,
@@ -608,23 +607,27 @@ export function CartView({
                       <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent transition-transform duration-1000 group-hover:translate-x-full" />
                     </button>
 
+                    {/*
+                      SÓ ENTRA AQUI O QUE A LOJA CUMPRE.
+
+                      Havia mais dois selos até 18/08/2026, e os dois descreviam
+                      recurso inexistente: "Envio expresso e código de rastreio
+                      automático" (não há envio expresso, e o rastreio é digitado
+                      à mão pela lojista no painel) e "Garantia de devolução fácil
+                      em até 7 dias" (não existe fluxo de devolução — os status
+                      são a #108, a política é a #46, ambas abertas).
+
+                      Selo de confiança que promete o que não existe não gera
+                      reclamação: gera cliente que paga, espera, não recebe e some.
+                      Antes de acrescentar um selo novo aqui, exija o caminho que
+                      o cumpre — a trava está em
+                      tests/front/cart-view-promessas-que-a-loja-nao-cumpre.test.tsx.
+                    */}
                     <div className="space-y-3 border-t border-zinc-50 pt-4">
                       <div className="flex items-center gap-3 text-zinc-500">
                         <ShieldCheck className="size-4 flex-shrink-0 text-emerald-500" />
                         <span className="text-[10px] font-semibold leading-tight tracking-tight">
                           Ambiente de pagamento 100% seguro
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 text-zinc-500">
-                        <Truck className="size-4 flex-shrink-0 text-zinc-400" />
-                        <span className="text-[10px] font-semibold leading-tight tracking-tight">
-                          Envio expresso e código de rastreio automático
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 text-zinc-500">
-                        <RotateCcw className="size-4 flex-shrink-0 text-zinc-400" />
-                        <span className="text-[10px] font-semibold leading-tight tracking-tight">
-                          Garantia de devolução fácil em até 7 dias
                         </span>
                       </div>
                     </div>
