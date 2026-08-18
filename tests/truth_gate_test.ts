@@ -421,9 +421,12 @@ Deno.test("produto: null é aceito nos campos que a lojista pode zerar (#96)", a
     }
   });
 
-  await t.step("originalPrice null não dispara a regra de 'maior que o preço'", () => {
-    // A comparação promo x original só faz sentido com os dois números
-    // presentes; com null ela não pode inventar violação.
-    assertEquals(violacoes({ originalPrice: null, price: 999 }), []);
-  });
+  await t.step(
+    "originalPrice null não dispara a regra de 'maior que o preço'",
+    () => {
+      // A comparação promo x original só faz sentido com os dois números
+      // presentes; com null ela não pode inventar violação.
+      assertEquals(violacoes({ originalPrice: null, price: 999 }), []);
+    },
+  );
 });

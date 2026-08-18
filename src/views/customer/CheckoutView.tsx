@@ -17,6 +17,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useOrders } from "@/hooks/useOrders";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
 import { supabase } from "@/lib/supabase";
+import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import { cn } from "@/lib/utils";
 import type { Address, CartItem, Customer, PaymentMethod, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -41,7 +42,6 @@ import {
   Tag,
   User,
 } from "lucide-react";
-import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Controller, useForm } from "react-hook-form";

@@ -462,7 +462,9 @@ describe("mapProductFromDB — sem grampo de produto no codigo (#44)", () => {
       imagem_urls: ["https://loja.exemplo/foto-da-lojista.jpg"],
     });
 
-    expect(produto.images).toEqual(["https://loja.exemplo/foto-da-lojista.jpg"]);
+    expect(produto.images).toEqual([
+      "https://loja.exemplo/foto-da-lojista.jpg",
+    ]);
   });
 
   it("nenhuma imagem da Amazon sai deste mapeador", () => {

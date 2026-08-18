@@ -7,6 +7,81 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.4.0] — 2026-08-18
+
+Release de correção: o app **para de afirmar o que não cumpre**. Sete defeitos em
+que a tela dizia uma coisa e o sistema fazia outra — para quem compra e para quem
+vende. Três entregas (#225, #226, #227).
+
+### O que muda para quem COMPRA
+
+- **O carrinho parou de prometer o que a loja não faz.** Saíram dois selos que
+  descreviam recurso inexistente: "Envio expresso e código de rastreio automático"
+  (não há envio expresso, e o código é digitado à mão pela lojista) e "Garantia de
+  devolução fácil em até 7 dias" (não existe fluxo de devolução — #108 e #46 seguem
+  abertas). Ficou o selo de pagamento seguro, que é verdade.
+- **O código de rastreio finalmente aparece para quem comprou** (#105). No detalhe
+  do pedido, com botão de copiar e botão "Rastrear"; e no cartão da listagem, sem
+  precisar abrir o pedido. Pedido sem código não mostra bloco vazio.
+- **Digitar "alianca" acha "Aliança"** (#20). A busca comparava sem tirar acento, e
+  teclado de celular não põe acento sozinho: o produto estava ativo, em estoque, na
+  vitrine, e a busca devolvia nada. Corrigido nos três caminhos de busca do cliente.
+  De quebra, produto sem descrição cadastrada não quebra mais a busca inteira.
+- **Dois toques no "Finalizar" param de gerar dois pedidos** (#27, metade do front).
+  O botão só desabilitava no quadro seguinte da tela, e a validação do formulário
+  acontecia antes disso — dois toques rápidos entravam os dois, com estoque
+  debitado duas vezes e cupom de uso único consumido duas vezes.
+
+### O que muda para quem VENDE
+
+- **A lista de pedidos do painel para de sumir** (#83). Ao voltar do segundo plano
+  ou trocar de rede, o app recarregava a consulta *pessoal* da lojista — que dá zero,
+  porque ela não compra na própria loja. O painel dizia "Ainda não tem nenhum pedido"
+  com a paginação indicando várias páginas e pedido real parado na fila. Agora a
+  recarga repete a mesma página e o mesmo filtro em que ela estava.
+- **O painel parou de dizer "salvo" sem salvar** (#96). Desmarcar "Produto em
+  Promoção", limpar SKU, preço de custo, validade e limite de uso do cupom agora
+  gravam de verdade. Antes a tela confirmava sucesso e o valor antigo continuava no
+  banco: o preço riscado seguia na loja, e o cupom parava de funcionar no checkout
+  depois da data que ela achava ter apagado.
+- **Cotação de frete que falha não vira preço inventado.** Havia **três** pontos
+  cravando R$ 15 para qualquer destino do Brasil. O pior estava no front: ele montava
+  uma opção própria de R$ 15 e a **auto-selecionava**, o que sobrescreve a taxa que a
+  própria lojista configurou no painel e gravava "Entrega Padrão (Fallback)" no pedido
+  como se fosse cotação. Agora falha não produz opção nenhuma, e a contingência do
+  servidor usa a escada por região (15 / 22 / 38) que já existia.
+- **A foto que ela sobe para de ser trocada por outra** (#44). O tradutor entre banco
+  e app tinha uma regra: se o produto se chamasse "Aliança Luxo", usar uma imagem
+  hospedada na Amazon — **antes** de olhar a foto cadastrada.
+
+### Verificação desta release
+
+Os sete comandos do CI passaram nos três PRs (#225, #226, #227), cada um com o
+`develop` do momento. **34 testes novos** acompanham as correções, cada um com âncora
+para não passar verde por acidente.
+
+**A edge function `calculate-shipping` foi publicada à mão em 18/08/2026 23:10 UTC**
+(versão 23 → 24), preservando `verify_jwt: false`, que era o estado no ar. Atenção:
+`supabase/config.toml` declara `verify_jwt = true` para essa função — o arquivo e o
+servidor divergem, e o deploy não corrigiu isso de propósito, para não mudar uma
+trava de segurança de carona numa correção de frete.
+
+**O que esta release NÃO resolve, de propósito:**
+
+- A segunda metade da #27 (chave de idempotência): se o banco gravar o pedido e a
+  resposta estourar por tempo, o cliente pode criar um segundo pedido. Exige
+  migration em produção e sobe separado.
+- O aviso de pedido novo por e-mail: a única saída de e-mail do app é o Resend com
+  remetente de caixa de areia (`onboarding@resend.dev`), que não entrega para ninguém
+  além do dono da conta (#161).
+
+**A cobrança pelo site está LIGADA.** Isto muda em relação à 1.3.0, que subiu com o
+caminho de pagamento inerte: a variável `VITE_PAGAMENTO_ONLINE` passou a existir em
+Production em 17/08/2026, junto com `VITE_MP_PUBLIC_KEY`, e o Gabriel confirmou em
+18/08/2026 que o pagamento por PIX via Mercado Pago está ativo no app. Ou seja: a
+partir daqui o cliente pode pagar pelo site, com dinheiro de verdade, além das três
+formas de pagamento na entrega.
+
 ## [1.3.0] — 2026-08-17
 
 Release de funcionalidade: a **cobrança PIX pelo site** entra no código (desligada em Production) e
