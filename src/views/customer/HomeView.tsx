@@ -3,7 +3,7 @@ import { CategoryFilter } from "@/components/ui/custom/CategoryFilter";
 import { useStore } from "@/contexts/StoreContext";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
-import { cn } from "@/lib/utils";
+import { cn, normalizeText } from "@/lib/utils";
 import type { Product, SortOption, View } from "@/types";
 import {
   ArrowDown,
@@ -127,12 +127,14 @@ export const HomeView = React.memo(function HomeView({
 
     // Filter by search query
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+      // Os DOIS lados normalizados (BUSCA-010, #20). `description` pode vir
+      // nula do banco; `normalizeText` aguenta.
+      const query = normalizeText(searchQuery);
       result = result.filter(
         (p) =>
-          p.name.toLowerCase().includes(query) ||
-          p.description.toLowerCase().includes(query) ||
-          p.category.toLowerCase().includes(query),
+          normalizeText(p.name).includes(query) ||
+          normalizeText(p.description).includes(query) ||
+          normalizeText(p.category).includes(query),
       );
     }
 
