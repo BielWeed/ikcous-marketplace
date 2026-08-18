@@ -1,6 +1,7 @@
 import type { Product } from "@/types";
 import { useMemo, useState } from "react";
 import { useDebounce } from "./useDebounce";
+import { normalizeText } from "@/lib/utils";
 
 export type SortOption = "price_asc" | "price_desc" | "name_asc" | "newest";
 
@@ -19,9 +20,11 @@ export function useSearch(products: Product[]) {
   const filteredProducts = useMemo(() => {
     return products
       .filter((product) => {
-        const productName = product.name.toLowerCase();
-        const productDesc = product.description?.toLowerCase() || "";
-        const searchQuery = debouncedQuery.toLowerCase();
+        // Os DOIS lados normalizados: quem digita "alianca" acha "Alianca"
+        // E quem digita "Alianca" tambem acha (BUSCA-010, #20).
+        const productName = normalizeText(product.name);
+        const productDesc = normalizeText(product.description);
+        const searchQuery = normalizeText(debouncedQuery);
 
         const matchesQuery =
           productName.includes(searchQuery) ||
