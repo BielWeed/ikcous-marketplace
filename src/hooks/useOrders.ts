@@ -1174,33 +1174,63 @@ export function useOrders(
       whatsapp: string,
       orderFragment: string,
     ): Promise<boolean> => {
+      // Inversão de 19/08/2026 (#161 + #86). Antes isto chamava a RPC
+      // `generate_order_otp_v1`, que só GRAVAVA o código e deixava um gatilho
+      // do banco enfileirar o e-mail com `net.http_post` — e essa fila só é
+      // processada DEPOIS do commit, então a RPC voltava `true` antes de
+      // qualquer envio existir. Era esse `true` prematuro que fazia a tela
+      // escrever "código de verificação enviado" sem que ninguém tivesse como
+      // saber se algo saiu.
+      //
+      // Agora quem envia é a edge function, e ela responde. `true` aqui passa
+      // a significar "o e-mail saiu", que é o que a tela sempre afirmou.
+      const NAO_ENVIOU =
+        "Não conseguimos enviar seu código agora. Tente de novo em alguns minutos.";
+      // Mensagem única para "pedido não existe", "e-mail não bate" e
+      // "fragmento curto demais": distinguir os três diria a quem está
+      // adivinhando qual metade ele já acertou (AUTH-010, #118).
+      const NAO_CONFERE =
+        "Não encontramos um pedido com esse e-mail, WhatsApp e ID juntos.";
+
       try {
-        const { data, error } = await (supabase.rpc as any)(
-          "generate_order_otp_v1",
-          {
-            p_email: email,
-            p_whatsapp: whatsapp,
-            p_order_fragment: orderFragment,
-          },
+        const { data, error } = await supabase.functions.invoke(
+          "send-otp-email",
+          { body: { email, whatsapp, orderFragment } },
         );
 
-        if (error) throw error;
+        // `invoke` transforma status >= 400 em `error`. A função devolve 502
+        // quando a loja falhou (envio ou remetente ausente) — daí o erro sem
+        // corpo cair no mesmo aviso de "não conseguimos enviar".
+        if (error && !data) {
+          console.error("Error generating OTP:", error);
+          toast.error(NAO_ENVIOU);
+          return false;
+        }
 
-        // Desde a AUTH-010 (#118) a RPC devolve FALSE em vez de levantar
-        // exceção quando os dados não fecham. A mensagem é deliberadamente a
-        // mesma para "pedido não existe", "e-mail não bate com o pedido" e
-        // "fragmento curto demais": distinguir os três diria a quem está
-        // tentando adivinhar qual metade ele já acertou.
-        if (!data) {
+        if (data?.ok) return true;
+
+        if (data?.motivo === "muito_recente") {
           toast.error(
-            "Não encontramos um pedido com esse e-mail, WhatsApp e ID juntos.",
+            `Já enviamos um código há pouco. Espere ${data.espereSegundos ?? 60} segundos e confira sua caixa de entrada.`,
           );
           return false;
         }
-        return true;
+
+        if (
+          data?.motivo === "envio_falhou" ||
+          data?.motivo === "sem_remetente"
+        ) {
+          toast.error(NAO_ENVIOU);
+          return false;
+        }
+
+        toast.error(NAO_CONFERE);
+        return false;
       } catch (err: any) {
+        // Rede caiu, função fora do ar, corpo ilegível: nada disso é culpa de
+        // quem está comprando, e nenhum deles pode virar `true`.
         console.error("Error generating OTP:", err);
-        toast.error(err.message || "Erro ao gerar código de verificação");
+        toast.error(NAO_ENVIOU);
         return false;
       }
     },
