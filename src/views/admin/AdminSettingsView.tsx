@@ -4,10 +4,10 @@ import {
   ChevronDown,
   HelpCircle,
   Layers,
+  MapPin,
   Palette,
   RefreshCw,
   Save,
-  Store,
 } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -27,15 +27,20 @@ interface AdminSettingsViewProps {
 }
 
 // ==========================================
-// Store Identity Section — nome, cidade e estado da loja
+// Store Location Section — cidade e estado da loja
 // ==========================================
 //
 // Até aqui esta tela tinha exatamente dois blocos: diagnóstico de conexão e
 // um guia de ajuda. Não havia uma única configuração de loja nela. Este
 // cartão é o que faz "Ajustes" ajustar alguma coisa.
-const StoreIdentitySection = memo(function StoreIdentitySection() {
+//
+// O campo de nome NÃO mora aqui: `storeName` grava no banco (StoreContext),
+// mas nenhuma tela do lado do cliente lê `config.storeName` -- o nome que
+// aparece continua vindo de `branding.appName`. Um campo que grava e nunca
+// aparece é a mesma classe de defeito que o commit 06176a1 já matou nesta
+// tela: prometer o que o app não faz.
+const StoreLocationSection = memo(function StoreLocationSection() {
   const { config, updateConfig } = useStore();
-  const [storeName, setStoreName] = useState(config.storeName ?? "");
   const [storeCity, setStoreCity] = useState(config.storeCity ?? "");
   const [storeState, setStoreState] = useState(config.storeState ?? "");
   const [isSaving, setIsSaving] = useState(false);
@@ -44,10 +49,9 @@ const StoreIdentitySection = memo(function StoreIdentitySection() {
   // do banco -- sem isto, os campos ficariam presos no valor vazio do
   // primeiro render mesmo depois do fetch resolver.
   useEffect(() => {
-    setStoreName(config.storeName ?? "");
     setStoreCity(config.storeCity ?? "");
     setStoreState(config.storeState ?? "");
-  }, [config.storeName, config.storeCity, config.storeState]);
+  }, [config.storeCity, config.storeState]);
 
   const handleSave = async () => {
     if (isSaving) return;
@@ -57,14 +61,13 @@ const StoreIdentitySection = memo(function StoreIdentitySection() {
       // loja não configurou" que o resto do app trata como ausência, em vez
       // de imprimir vazio no meio de uma frase.
       const salvou = await updateConfig({
-        storeName: storeName.trim() || null,
         storeCity: storeCity.trim() || null,
         storeState: storeState.trim().toUpperCase() || null,
       });
       // O toast de erro já sai de dentro do StoreContext (ADMIN-010, #94) --
       // aqui só não seguimos em frente quando o retorno não for `true`.
       if (!salvou) return;
-      toast.success("Identidade da loja salva");
+      toast.success("Localização da loja salva");
     } finally {
       setIsSaving(false);
     }
@@ -74,36 +77,19 @@ const StoreIdentitySection = memo(function StoreIdentitySection() {
     <div className="space-y-3">
       <div className="flex items-center gap-4 p-2">
         <div className="flex size-10 items-center justify-center rounded-xl border border-admin-gold/20 bg-admin-gold/10 shadow-[0_0_15px_rgba(212,175,55,0.1)]">
-          <Store className="size-5 text-admin-gold" strokeWidth={2.5} />
+          <MapPin className="size-5 text-admin-gold" strokeWidth={2.5} />
         </div>
         <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">
-          Identidade da Loja
+          Localização da Loja
         </h2>
       </div>
 
       <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
         <div className="flex flex-col gap-3">
           <p className="text-left text-[9.5px] leading-snug text-zinc-400">
-            Nome e cidade aparecem para quem compra. Deixe em branco o que a
-            loja ainda não quer mostrar -- o app omite, nunca inventa.
+            Cidade e estado aparecem para quem compra. Deixe em branco o que
+            a loja ainda não quer mostrar -- o app omite, nunca inventa.
           </p>
-
-          <div className="space-y-1.5">
-            <label
-              htmlFor="store-name"
-              className="text-xs font-semibold text-zinc-300"
-            >
-              Nome da loja
-            </label>
-            <input
-              id="store-name"
-              type="text"
-              value={storeName}
-              onChange={(e) => setStoreName(e.target.value)}
-              placeholder="Nome da loja"
-              className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-xs font-semibold text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
-            />
-          </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_100px]">
             <div className="space-y-1.5">
@@ -545,7 +531,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               </div>
             </div>
 
-            <StoreIdentitySection />
+            <StoreLocationSection />
 
             <ConnectionDiagnosticsSection />
           </>

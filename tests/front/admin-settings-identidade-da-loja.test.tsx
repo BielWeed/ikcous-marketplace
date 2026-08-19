@@ -3,8 +3,15 @@
 // Tarefa 3 do plano "o app para de inventar endereço": a tela de Ajustes
 // tinha exatamente dois blocos -- um medidor de latência de rede e um guia
 // de ajuda -- e nenhuma configuração de loja. Este teste prova o cartão
-// "Identidade da Loja" que passa a existir ali: mostra o que já está salvo,
-// grava o que a pessoa digitar, e não finge sucesso quando a gravação falha.
+// "Localização da Loja" que passa a existir ali: mostra o que já está
+// salvo, grava o que a pessoa digitar, e não finge sucesso quando a
+// gravação falha.
+//
+// O campo "Nome da loja" NÃO entra: `storeName` não tem nenhum consumidor
+// do lado do cliente (git grep confirma) -- nenhuma tela exibe o nome da
+// loja para quem compra, que continua vindo de `branding.appName`. Um
+// campo que grava e nunca aparece é a mesma classe de defeito que o commit
+// 06176a1 deste branch já matou: a tela promete o que o app não faz.
 //
 // O terceiro caso é o mais importante: o defeito de "dizer salvo sem salvar"
 // foi corrigido no PR #225 (ADMIN-010, #94) em outros formulários -- o botão
@@ -20,7 +27,6 @@ const updateConfig = vi.fn();
 // hoisted acima dos imports -- mesmo padrão de checkout-guest-cep.test.tsx.
 const { mockConfig } = vi.hoisted(() => ({
   mockConfig: {
-    storeName: "Loja Teste",
     storeCity: "Uberlândia",
     storeState: "MG",
   },
@@ -101,19 +107,27 @@ describe("AdminSettingsView — Identidade da Loja", () => {
     return botao;
   }
 
-  it("mostra os campos de identidade da loja preenchidos com o que está salvo", async () => {
+  it("mostra os campos de cidade e estado preenchidos com o que está salvo", async () => {
     await abrirTela();
 
-    expect(pegarCampo("store-name").value).toBe("Loja Teste");
     expect(pegarCampo("store-city").value).toBe("Uberlândia");
     expect(pegarCampo("store-state").value).toBe("MG");
   });
 
-  it("grava os três campos quando a pessoa salva", async () => {
+  it("não mostra campo de nome da loja, nem afirma que o nome aparece para quem compra", async () => {
+    await abrirTela();
+
+    expect(hospedeiro.querySelector("#store-name")).toBeNull();
+    // "Nome" só aparecia neste cartão pelo rótulo do campo e pela frase de
+    // ajuda -- os dois saíram junto com o campo. Uma correção parcial que
+    // tirasse só o `<input>` e deixasse a frase mentindo não passa aqui.
+    expect(hospedeiro.textContent).not.toMatch(/nome/i);
+  });
+
+  it("grava os dois campos quando a pessoa salva", async () => {
     updateConfig.mockResolvedValue(true);
     await abrirTela();
 
-    const nome = pegarCampo("store-name");
     const cidade = pegarCampo("store-city");
     const estado = pegarCampo("store-state");
 
@@ -133,7 +147,6 @@ describe("AdminSettingsView — Identidade da Loja", () => {
     };
 
     await act(async () => {
-      setValorNativo(nome, "Nova Loja");
       setValorNativo(cidade, "Patos de Minas");
       setValorNativo(estado, "mg");
     });
@@ -146,10 +159,12 @@ describe("AdminSettingsView — Identidade da Loja", () => {
 
     expect(updateConfig).toHaveBeenCalledTimes(1);
     const [payload] = updateConfig.mock.calls[0];
-    expect(payload.storeName).toBe("Nova Loja");
     expect(payload.storeCity).toBe("Patos de Minas");
     // Estado sempre em maiúscula, independente do que foi digitado.
     expect(payload.storeState).toBe("MG");
+    // Sem campo de nome na tela, a gravação não pode mais carregar
+    // `storeName` -- nem vazio, nem `null`.
+    expect(payload.storeName).toBeUndefined();
   });
 
   it("não diz que salvou quando a gravação falha", async () => {
