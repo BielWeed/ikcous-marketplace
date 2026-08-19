@@ -48,7 +48,13 @@ export const AdminShippingView = memo(function AdminShippingView({
   const [formData, setFormData] = useState({
     freeShippingMin: 0,
     shippingFee: 0,
-    originCep: "38500-000",
+    // Sem reserva de propósito: "38500-000" cravava Monte Carmelo no
+    // formulário antes mesmo de a loja abrir a tela. Como esta é a ÚNICA
+    // tela onde o CEP de origem se define, um valor pré-preenchido parece
+    // configuração pronta -- quem salva sem desconfiar grava Monte Carmelo
+    // no banco da própria loja, e a validação que a edge function
+    // (`calculate-shipping`) passou a fazer nunca dispara.
+    originCep: "",
     shippingProvider: "flat_fee" as "flat_fee" | "melhor_envio" | "frenet",
     enabledShippingMethods: ["sedex", "pac"],
     shippingCoverage: "national" as "local" | "national",
@@ -129,7 +135,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       setFormData({
         freeShippingMin: Number(config.freeShippingMin ?? 0),
         shippingFee: Number(config.shippingFee ?? 0),
-        originCep: config.originCep || "38500-000",
+        originCep: config.originCep ?? "",
         shippingProvider: (config.shippingProvider || "flat_fee") as
           | "flat_fee"
           | "melhor_envio"
@@ -177,7 +183,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     if (formData.freeShippingMin !== Number(config.freeShippingMin ?? 0))
       return true;
     if (formData.shippingFee !== Number(config.shippingFee ?? 0)) return true;
-    if (formData.originCep !== (config.originCep || "38500-000")) return true;
+    if (formData.originCep !== (config.originCep ?? "")) return true;
     if (formData.shippingProvider !== (config.shippingProvider || "flat_fee"))
       return true;
     if (formData.shippingCoverage !== (config.shippingCoverage || "national"))
@@ -769,6 +775,17 @@ export const AdminShippingView = memo(function AdminShippingView({
                     placeholder="00000-000"
                     className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 font-mono text-xs font-semibold text-white placeholder-zinc-600 transition-all focus:border-amber-500 focus:outline-none"
                   />
+                  {/* Sem CEP de origem, `calculate-shipping` recusa cotar
+                      (falha fechada, ver validarOrigemEFrete). O aviso
+                      existe para a loja perceber ANTES de salvar um
+                      formulário vazio, achando que já está configurado. */}
+                  {!formData.originCep && (
+                    <p className="flex items-center gap-1 text-[10px] font-medium text-amber-400">
+                      <AlertCircle className="size-3 shrink-0" />
+                      Obrigatório para calcular frete — sem ele, nenhuma
+                      cotação é gerada.
+                    </p>
+                  )}
                 </div>
               </div>
 
