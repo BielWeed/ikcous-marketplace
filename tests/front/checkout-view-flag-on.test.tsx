@@ -550,12 +550,42 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
 
     await act(async () => {
       botaoCartao.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("checkout-name", "Cliente Teste");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("checkout-tel", "34999999999");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      digitar("guest-cep", "01310-100");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("guest-street", "Rua Teste");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("guest-number", "100");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("guest-neighborhood", "Centro");
       await esperarMicrotarefas();
+    });
+    // Correção de 18/08/2026: cidade e estado do convidado deixaram de vir
+    // pré-preenchidos com "Monte Carmelo"/"MG" (a cobertura de entrega
+    // decide para onde a loja entrega, nunca onde o cliente mora) — quem
+    // digita agora é o cliente, então este teste também precisa digitar.
+    await act(async () => {
+      digitar("guest-city", "Cidade Teste");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      digitar("guest-state", "SP");
       await esperarMicrotarefas();
     });
 
@@ -641,13 +671,45 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
     // Prova de ponta a ponta: preenche como convidado (agora sem sessão) e
     // finaliza — se o efeito não tivesse revertido o método, isto chamaria
     // createOrder com comPagamentoOnline:true.
+    // Cada `digitar` roda no seu próprio `act`, com uma passagem de
+    // microtarefas entre um e outro — mesma correção que o caso anterior:
+    // disparar todos os `onChange` no mesmo lote síncrono fazia validações
+    // assíncronas concorrentes do zodResolver correrem em paralelo, e a
+    // última a resolver podia deixar `formState.isValid` parado em `false`
+    // mesmo com `formState.errors` já vazio.
     await act(async () => {
       digitar("checkout-name", "Cliente Teste");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("checkout-tel", "34999999999");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      digitar("guest-cep", "01310-100");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("guest-street", "Rua Teste");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("guest-number", "100");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("guest-neighborhood", "Centro");
       await esperarMicrotarefas();
+    });
+    // Correção de 18/08/2026: cidade e estado do convidado deixaram de vir
+    // pré-preenchidos com "Monte Carmelo"/"MG" — quem digita agora é o
+    // cliente, então este teste também precisa digitar.
+    await act(async () => {
+      digitar("guest-city", "Cidade Teste");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      digitar("guest-state", "SP");
       await esperarMicrotarefas();
     });
 

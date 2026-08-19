@@ -2,7 +2,6 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useStore } from "@/contexts/StoreContext";
 import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
-import { cn } from "@/lib/utils";
 import type { Address } from "@/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
@@ -44,13 +43,13 @@ export function AddressForm({
     resolver: zodResolver(addressSchema),
     defaultValues: {
       name: initialData?.name || "",
-      cep: initialData?.cep || "38500-000",
+      cep: initialData?.cep || "",
       street: initialData?.street || "",
       number: initialData?.number || "",
       complement: initialData?.complement || "",
       neighborhood: initialData?.neighborhood || "",
-      city: initialData?.city || "Monte Carmelo",
-      state: initialData?.state || "MG",
+      city: initialData?.city || "",
+      state: initialData?.state || "",
       reference: initialData?.reference || "",
       recipient_name: initialData?.recipient_name || "",
       is_default: !!initialData?.is_default,
@@ -97,23 +96,25 @@ export function AddressForm({
           is_default: !!initialData.is_default,
         });
       } else {
-        const isNational = config.shippingCoverage === "national";
+        // A cobertura de entrega da loja decide para onde ela entrega,
+        // nunca onde o cliente mora — por isso o `isNational` que existia
+        // aqui saiu dos três campos de endereço do cliente.
         form.reset({
           name: "",
-          cep: isNational ? "" : config.originCep || "38500-000",
+          cep: "",
           street: "",
           number: "",
           complement: "",
           neighborhood: "",
-          city: isNational ? "" : "Monte Carmelo",
-          state: isNational ? "" : "MG",
+          city: "",
+          state: "",
           reference: "",
           recipient_name: "",
           is_default: false,
         });
       }
     }
-  }, [isLoaded, initialData, config.shippingCoverage, config.originCep]);
+  }, [isLoaded, initialData]);
 
   const handleSubmit = async (values: AddressFormValues) => {
     setLoading(true);
@@ -212,6 +213,10 @@ export function AddressForm({
                   }
                 };
 
+                // O endereço do cliente é sempre editável — a cobertura da
+                // loja decide para onde ela entrega, nunca onde o cliente
+                // mora. `isNational` continua decidindo só se a busca
+                // automática de CEP (ViaCEP) dispara.
                 return (
                   <div className="relative">
                     <input
@@ -219,16 +224,10 @@ export function AddressForm({
                       name="cep"
                       value={field.value}
                       onChange={handleCepChange}
-                      readOnly={!isNational}
-                      placeholder={isNational ? "00000-000" : "38500-000"}
+                      placeholder="00000-000"
                       maxLength={9}
                       disabled={loading || buscandoCep}
-                      className={cn(
-                        "w-full rounded-xl border-2 border-transparent px-4 py-3 text-sm font-medium outline-none transition-all",
-                        isNational
-                          ? "bg-zinc-50 text-zinc-800 focus:border-zinc-900 focus:bg-white"
-                          : "cursor-not-allowed bg-zinc-100 text-zinc-500",
-                      )}
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                       autoComplete="postal-code"
                     />
                     {buscandoCep && (
@@ -331,17 +330,8 @@ export function AddressForm({
               id="city"
               {...form.register("city")}
               placeholder="Cidade"
-              readOnly={
-                !config.shippingCoverage ||
-                config.shippingCoverage !== "national"
-              }
               disabled={loading}
-              className={cn(
-                "w-full rounded-xl border-2 border-transparent px-4 py-3 text-sm font-medium outline-none transition-all",
-                config.shippingCoverage === "national"
-                  ? "bg-zinc-50 text-zinc-800 focus:border-zinc-900 focus:bg-white"
-                  : "cursor-not-allowed bg-zinc-100 text-zinc-500",
-              )}
+              className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
               autoComplete="address-level2"
             />
             {form.formState.errors.city && (
@@ -363,18 +353,9 @@ export function AddressForm({
               id="state"
               {...form.register("state")}
               placeholder="UF"
-              readOnly={
-                !config.shippingCoverage ||
-                config.shippingCoverage !== "national"
-              }
               disabled={loading}
               maxLength={2}
-              className={cn(
-                "w-full rounded-xl border-2 border-transparent px-4 py-3 text-sm font-medium outline-none transition-all",
-                config.shippingCoverage === "national"
-                  ? "bg-zinc-50 text-zinc-800 focus:border-zinc-900 focus:bg-white"
-                  : "cursor-not-allowed bg-zinc-100 text-zinc-500",
-              )}
+              className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
               autoComplete="address-level1"
             />
             {form.formState.errors.state && (

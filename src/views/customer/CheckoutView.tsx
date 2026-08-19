@@ -259,9 +259,9 @@ export function CheckoutView({
     defaultValues: {
       name: profile?.full_name || user?.user_metadata?.name || "",
       whatsapp: getDefaultWhatsApp(),
-      cep: localStorage.getItem("ikcous_last_shipping_cep") || "38500-000",
-      city: "Monte Carmelo",
-      state: "MG",
+      cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
+      city: "",
+      state: "",
     },
     mode: "onChange",
   });
@@ -270,26 +270,21 @@ export function CheckoutView({
   useEffect(() => {
     if (storeConfigLoaded && !hasInitializedRef.current) {
       hasInitializedRef.current = true;
-      const isNational = config.shippingCoverage === "national";
       if (!form.formState.isDirty) {
+        // Cidade e estado nascem vazios em QUALQUER cobertura de entrega —
+        // a cobertura decide para onde a loja entrega, nunca onde o cliente
+        // mora. O ternário de `isNational` que existia aqui preenchia os
+        // dois com "Monte Carmelo"/"MG" na cobertura local.
         form.reset({
           name: profile?.full_name || user?.user_metadata?.name || "",
           whatsapp: getDefaultWhatsApp(),
-          cep:
-            localStorage.getItem("ikcous_last_shipping_cep") ||
-            (isNational ? "" : config.originCep || "38500-000"),
-          city: isNational ? "" : "Monte Carmelo",
-          state: isNational ? "" : "MG",
+          cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
+          city: "",
+          state: "",
         });
       }
     }
-  }, [
-    storeConfigLoaded,
-    config.shippingCoverage,
-    config.originCep,
-    profile,
-    user,
-  ]);
+  }, [storeConfigLoaded, profile, user]);
 
   // Busca de CEP do checkout de convidado — mesma implementação do
   // AddressForm, atrás de useBuscaCep (#184 corrida, #185 timeout, #186
@@ -893,8 +888,8 @@ export function CheckoutView({
             street: data.street,
             number: data.number,
             neighborhood: data.neighborhood,
-            city: data.city || "Monte Carmelo",
-            state: data.state || "MG",
+            city: data.city,
+            state: data.state,
             complement: data.complement,
           },
 
@@ -1330,11 +1325,7 @@ export function CheckoutView({
                       <input
                         id="guest-cep"
                         {...form.register("cep")}
-                        placeholder={
-                          config.shippingCoverage === "national"
-                            ? "00000-000"
-                            : "38500-000"
-                        }
+                        placeholder="00000-000"
                         disabled={isSearchingCep}
                         className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                         onChange={async (e) => {
@@ -1435,21 +1426,8 @@ export function CheckoutView({
                     <input
                       id="guest-city"
                       {...form.register("city")}
-                      readOnly={
-                        !config.shippingCoverage ||
-                        config.shippingCoverage !== "national"
-                      }
-                      placeholder={
-                        config.shippingCoverage === "national"
-                          ? "Cidade"
-                          : "Monte Carmelo"
-                      }
-                      className={cn(
-                        "w-full rounded-xl border-2 border-transparent px-4 py-3 text-sm font-medium outline-none transition-all",
-                        config.shippingCoverage === "national"
-                          ? "bg-zinc-50 text-zinc-800 focus:border-zinc-900 focus:bg-white"
-                          : "cursor-not-allowed bg-zinc-100 text-zinc-500",
-                      )}
+                      placeholder="Cidade"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1462,20 +1440,11 @@ export function CheckoutView({
                     <input
                       id="guest-state"
                       {...form.register("state")}
-                      readOnly={
-                        !config.shippingCoverage ||
-                        config.shippingCoverage !== "national"
-                      }
                       maxLength={2}
                       placeholder={
                         config.shippingCoverage === "national" ? "UF" : "MG"
                       }
-                      className={cn(
-                        "w-full rounded-xl border-2 border-transparent px-4 py-3 text-sm font-medium outline-none transition-all",
-                        config.shippingCoverage === "national"
-                          ? "bg-zinc-50 text-zinc-800 focus:border-zinc-900 focus:bg-white"
-                          : "cursor-not-allowed bg-zinc-100 text-zinc-500",
-                      )}
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                     />
                   </div>
                   <div className="col-span-6">
@@ -1728,30 +1697,35 @@ export function CheckoutView({
           </div>
         </div>
 
-        {/* Location Notice */}
-        <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-slate-800 shadow-md">
-          <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
-            <MapPin className="size-16 text-zinc-500" />
-          </div>
-          <div className="relative z-10 flex items-start gap-3">
-            <div className="mt-0.5 shrink-0">
-              <AlertCircle className="size-5 text-zinc-500" />
+        {/* Location Notice — some por inteiro quando a loja não configurou
+            cidade. A cobertura de entrega decide para onde ela entrega, mas
+            este aviso é sobre a loja, não sobre o cliente. */}
+        {config.storeCity && (
+          <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-slate-800 shadow-md">
+            <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
+              <MapPin className="size-16 text-zinc-500" />
             </div>
-            <div>
-              <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-900">
-                Aviso de Região
-              </h4>
-              <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
-                Nossos serviços de entrega premium estão ativos exclusivamente
-                em{" "}
-                <span className="font-black text-slate-900">
-                  Monte Carmelo, MG
-                </span>
-                .
-              </p>
+            <div className="relative z-10 flex items-start gap-3">
+              <div className="mt-0.5 shrink-0">
+                <AlertCircle className="size-5 text-zinc-500" />
+              </div>
+              <div>
+                <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-900">
+                  Aviso de Região
+                </h4>
+                <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
+                  Nossos serviços de entrega premium estão ativos
+                  exclusivamente em{" "}
+                  <span className="font-black text-slate-900">
+                    {config.storeCity}
+                    {config.storeState ? `, ${config.storeState}` : ""}
+                  </span>
+                  .
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Spacer to prevent overlap by the sticky footer and bottom nav.
