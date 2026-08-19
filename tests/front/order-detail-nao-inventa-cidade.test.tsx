@@ -128,4 +128,32 @@ describe("OrderDetail — não inventa a cidade do pedido", () => {
     );
     expect(query).not.toContain("Monte Carmelo");
   });
+
+  it("o link do mapa leva o estado mesmo quando a cidade está ausente", async () => {
+    // Achado de revisão: `if (order.customer.city)` bloqueava os dois campos
+    // de entrarem na consulta do mapa quando só o estado existia. O estado
+    // sozinho já ajuda quem vai entregar — não devia ser jogado fora.
+    const { OrderDetail } = await import(
+      "@/components/admin/orders/OrderDetail"
+    );
+    const order = pedidoFake({ state: "MG" });
+
+    await act(async () => {
+      raiz.render(
+        <OrderDetail order={order} onStatusChange={vi.fn()} />,
+      );
+    });
+
+    const linkMapa = hospedeiro.querySelector<HTMLAnchorElement>(
+      'a[title="Ver no Google Maps"]',
+    );
+    expect(linkMapa).not.toBeNull();
+    const query = decodeURIComponent(
+      linkMapa?.href.split("query=")[1] ?? "",
+    );
+    expect(query).toContain("MG");
+    // Sem cidade, não pode sobrar pontuação órfã do "cidade - UF": o estado
+    // sozinho não leva o " - " que separaria dos dois valores.
+    expect(query).not.toMatch(/,\s*-\s*MG/);
+  });
 });

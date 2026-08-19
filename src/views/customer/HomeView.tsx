@@ -222,8 +222,13 @@ export const HomeView = React.memo(function HomeView({
       : config.storeCity
     : undefined;
 
+  // "Entrega expressa" saiu: não existe entrega expressa neste app — é a
+  // mesma classe de mentira que o PR #225 já tinha tirado do carrinho, só
+  // que esta sobreviveu escondida atrás do `cidadeLoja ? ... : ...` (a Tarefa
+  // 6 só olhou as linhas 217/222/224 e ninguém reparou nesta). O frete grátis
+  // fica: ele é de verdade, configurável, com valor mínimo.
   const homeDescription = cidadeLoja
-    ? `Descubra produtos exclusivos com frete grátis e entrega expressa em ${cidadeLoja}.`
+    ? `Descubra produtos exclusivos com frete grátis em ${cidadeLoja}.`
     : "Descubra produtos exclusivos.";
   const homeSocialTitle = `${branding.appName} - Seu Shopping Local`;
   const homeLogo = `${globalThis.location.origin}/branding/logo.png`;

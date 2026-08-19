@@ -949,9 +949,11 @@ export const OrderDetail = memo(function OrderDetail({
   if (order.customer.neighborhood) {
     mapsQueryParts.push(order.customer.neighborhood);
   }
-  // Sem cidade, a busca no mapa não leva Monte Carmelo calada: só empurra
-  // "cidade - UF" quando a cidade existe de verdade.
-  if (order.customer.city) {
+  // Sem cidade, a busca no mapa não leva Monte Carmelo calada: só empurra o
+  // que existe de verdade. Cidade e estado são checados em separado — pedido
+  // com só um dos dois não pode perder o que tem, e o `.filter(Boolean)`
+  // abaixo já cuida de não deixar "-" órfão quando falta um dos dois.
+  if (order.customer.city || order.customer.state) {
     mapsQueryParts.push(
       [order.customer.city, order.customer.state].filter(Boolean).join(" - "),
     );

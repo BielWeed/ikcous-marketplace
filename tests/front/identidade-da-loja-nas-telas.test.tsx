@@ -116,6 +116,33 @@ describe("HomeView — a cidade vem do config, e a home para de prometer o que n
     expect(metaOg).not.toContain("troca garantida");
   });
 
+  it("a home não promete entrega expressa quando a loja tem cidade configurada", async () => {
+    // Achado de revisão: a `homeDescription` (que alimenta og:description e
+    // twitter:description — a prévia de compartilhamento no WhatsApp) só
+    // aparecia com "entrega expressa" quando a loja TINHA cidade. O caso sem
+    // cidade acima nunca exercitava esse ramo, e a promessa sobreviveu ao
+    // PR #225 escondida atrás da condição.
+    mockConfig = { storeCity: "Uberlândia", storeState: "MG" };
+    await renderizarHome();
+
+    const metaDescricao = document.head
+      .querySelector('meta[name="description"]')
+      ?.getAttribute("content");
+    const metaOg = document.head
+      .querySelector('meta[property="og:description"]')
+      ?.getAttribute("content");
+    const metaTwitter = document.head
+      .querySelector('meta[name="twitter:description"]')
+      ?.getAttribute("content");
+
+    expect(metaDescricao).not.toContain("expressa");
+    expect(metaOg).not.toContain("expressa");
+    expect(metaTwitter).not.toContain("expressa");
+    // O frete grátis é de verdade (configurável, com mínimo) — só a
+    // promessa de entrega expressa é que não pode sobrar.
+    expect(metaOg).toContain("frete grátis");
+  });
+
   it("a home mostra a cidade da loja quando configurada", async () => {
     mockConfig = { storeCity: "Uberlândia", storeState: "MG" };
     await renderizarHome();
