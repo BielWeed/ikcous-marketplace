@@ -15,7 +15,7 @@
 // Montagem real (react-dom/client + jsdom). O componente faz createPortal
 // para document.body, entao o conteudo verificado esta la, nao no host.
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/contexts/StoreContext", () => ({
