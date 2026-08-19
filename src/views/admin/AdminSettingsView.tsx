@@ -6,8 +6,11 @@ import {
   Layers,
   Palette,
   RefreshCw,
+  Save,
+  Store,
 } from "lucide-react";
 import { memo, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,6 +25,142 @@ interface AdminSettingsViewProps {
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
 }
+
+// ==========================================
+// Store Identity Section — nome, cidade e estado da loja
+// ==========================================
+//
+// Até aqui esta tela tinha exatamente dois blocos: diagnóstico de conexão e
+// um guia de ajuda. Não havia uma única configuração de loja nela. Este
+// cartão é o que faz "Ajustes" ajustar alguma coisa.
+const StoreIdentitySection = memo(function StoreIdentitySection() {
+  const { config, updateConfig } = useStore();
+  const [storeName, setStoreName] = useState(config.storeName ?? "");
+  const [storeCity, setStoreCity] = useState(config.storeCity ?? "");
+  const [storeState, setStoreState] = useState(config.storeState ?? "");
+  const [isSaving, setIsSaving] = useState(false);
+
+  // A tela pode montar antes do StoreContext terminar de carregar o config
+  // do banco -- sem isto, os campos ficariam presos no valor vazio do
+  // primeiro render mesmo depois do fetch resolver.
+  useEffect(() => {
+    setStoreName(config.storeName ?? "");
+    setStoreCity(config.storeCity ?? "");
+    setStoreState(config.storeState ?? "");
+  }, [config.storeName, config.storeCity, config.storeState]);
+
+  const handleSave = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      // Campo vazio grava `null`, não string vazia: `null` é o estado "a
+      // loja não configurou" que o resto do app trata como ausência, em vez
+      // de imprimir vazio no meio de uma frase.
+      const salvou = await updateConfig({
+        storeName: storeName.trim() || null,
+        storeCity: storeCity.trim() || null,
+        storeState: storeState.trim().toUpperCase() || null,
+      });
+      // O toast de erro já sai de dentro do StoreContext (ADMIN-010, #94) --
+      // aqui só não seguimos em frente quando o retorno não for `true`.
+      if (!salvou) return;
+      toast.success("Identidade da loja salva");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-4 p-2">
+        <div className="flex size-10 items-center justify-center rounded-xl border border-admin-gold/20 bg-admin-gold/10 shadow-[0_0_15px_rgba(212,175,55,0.1)]">
+          <Store className="size-5 text-admin-gold" strokeWidth={2.5} />
+        </div>
+        <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">
+          Identidade da Loja
+        </h2>
+      </div>
+
+      <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
+        <div className="flex flex-col gap-3">
+          <p className="text-left text-[9.5px] leading-snug text-zinc-400">
+            Nome e cidade aparecem para quem compra. Deixe em branco o que a
+            loja ainda não quer mostrar -- o app omite, nunca inventa.
+          </p>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="store-name"
+              className="text-xs font-semibold text-zinc-300"
+            >
+              Nome da loja
+            </label>
+            <input
+              id="store-name"
+              type="text"
+              value={storeName}
+              onChange={(e) => setStoreName(e.target.value)}
+              placeholder="Nome da loja"
+              className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-xs font-semibold text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_100px]">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="store-city"
+                className="text-xs font-semibold text-zinc-300"
+              >
+                Cidade
+              </label>
+              <input
+                id="store-city"
+                type="text"
+                value={storeCity}
+                onChange={(e) => setStoreCity(e.target.value)}
+                placeholder="Cidade"
+                className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-xs font-semibold text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="store-state"
+                className="text-xs font-semibold text-zinc-300"
+              >
+                Estado (UF)
+              </label>
+              <input
+                id="store-state"
+                type="text"
+                maxLength={2}
+                value={storeState}
+                onChange={(e) => setStoreState(e.target.value.toUpperCase())}
+                placeholder="UF"
+                className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-center font-mono text-xs font-semibold uppercase text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="mt-1 flex justify-end">
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={handleSave}
+              className="h-8.5 flex select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            >
+              {isSaving ? (
+                <RefreshCw className="size-3 animate-spin text-admin-gold" />
+              ) : (
+                <Save className="size-3 text-admin-gold" />
+              )}
+              <span>{isSaving ? "Salvando..." : "Salvar"}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
 
 // ==========================================
 // Connection Diagnostics Section (Glassmorphism)
@@ -405,6 +544,8 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 </div>
               </div>
             </div>
+
+            <StoreIdentitySection />
 
             <ConnectionDiagnosticsSection />
           </>
