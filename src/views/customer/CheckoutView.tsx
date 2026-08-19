@@ -757,6 +757,27 @@ export function CheckoutView({
 
   const isValid = form.formState.isValid;
 
+  // Achado da revisão (18/08/2026): a Tarefa 7 deste bloco fez a
+  // `calculate-shipping` recusar cotar quando a loja não configurou o CEP de
+  // origem — correto. Mas este botão só olhava `isValid` (validade do
+  // FORMULÁRIO), nunca a existência de uma opção de frete. `shipping`
+  // (= CartContext `shippingFee`, CartContext.tsx:745-770) cai para
+  // `config.shippingFee` (padrão R$ 15) quando não há `selectedShippingOption`
+  // — o MESMO fallback que `create_marketplace_order_v24` usa no servidor
+  // quando `p_shipping_option_id` chega nulo. Resultado sem esta guarda:
+  // cotação falha, tela não mostra opção nenhuma, e o pedido fechava mesmo
+  // assim cobrando o frete de fallback sem entrega correspondente.
+  //
+  // `shipping > 0 && !selectedShippingOption` não reinventa a regra de
+  // frete grátis: o CartContext já devolve `shipping === 0` para os dois
+  // caminhos legítimos sem opção selecionada — item com `freeShipping`
+  // (CartContext.tsx:748-749) e limite de frete grátis atingido por
+  // cliente logado (CartContext.tsx:751-756) — então o único jeito de
+  // `shipping` vir POSITIVO sem opção selecionada é o fallback do defeito
+  // acima descrito.
+  const semFreteSelecionado =
+    cart.length > 0 && shipping > 0 && !selectedShippingOption;
+
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
     setCouponError("");
@@ -845,6 +866,19 @@ export function CheckoutView({
 
     if (user && !selectedAddressId) {
       toast.error("Por favor, adicione ou selecione um endereço de entrega.");
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
+    // Segunda trava, redundante com `disabled` no botão de propósito: o
+    // `disabled` do DOM barra o clique do mouse/toque, mas não protege
+    // quem chama `handleSubmitEvent` por outro caminho. Mesmo motivo do
+    // "endereço de entrega" acima.
+    if (semFreteSelecionado) {
+      toast.error(
+        "Escolha uma opção de frete no carrinho antes de finalizar o pedido.",
+      );
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
       return;
@@ -2040,10 +2074,10 @@ export function CheckoutView({
                           haptic.medium();
                           handleSubmitEvent();
                         }}
-                        disabled={!isValid || isSubmitting}
+                        disabled={!isValid || isSubmitting || semFreteSelecionado}
                         className={cn(
                           "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
-                          !isValid || isSubmitting
+                          !isValid || isSubmitting || semFreteSelecionado
                             ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
                             : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
                         )}
@@ -2058,6 +2092,18 @@ export function CheckoutView({
                         )}
                       </button>
                     </div>
+                    {semFreteSelecionado && (
+                      // Motivo visível: botão apagado sem explicação faz a
+                      // pessoa desistir sem saber por quê. Cenário real: a
+                      // loja não configurou de onde despacha, a cotação de
+                      // frete recusa, e sem este aviso o cliente só via um
+                      // botão cinza sem saber que precisa voltar ao
+                      // carrinho e calcular o frete.
+                      <p className="mx-auto mt-2 flex max-w-md items-center gap-1.5 text-[10px] font-bold uppercase text-red-500">
+                        <AlertCircle className="size-3.5 shrink-0" />
+                        Volte ao carrinho e calcule o frete para continuar
+                      </p>
+                    )}
                   </motion.div>
                 </div>
               )}
