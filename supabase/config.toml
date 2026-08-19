@@ -27,15 +27,27 @@
 # e largar o --project-ref e' exatamente como se publica no sandbox.
 project_id = "cafkrminfnokvgjqtkle"
 
-# Sem JWT de proposito, e NAO porque exista link aberto por quem nao tem
-# sessao — nao existe link: esta funcao manda um codigo de 6 digitos.
+# COM JWT desde a inversao de 19/08/2026 (#161 + #86) — e este bloco dizia o
+# CONTRARIO ate entao, com razao para a epoca. Guardo o porque da virada aqui,
+# porque quem ler so' o valor vai achar que foi descuido:
 #
-# O unico chamador e' um trigger do banco (handle_new_otp_verification), que
-# se autentica com um segredo opaco lido do Vault, nao com JWT. Com
-# verify_jwt = true o gateway devolve 401 ANTES de a funcao rodar, nenhum
-# codigo chega ao cliente, e o login cai. Ver DEPLOYMENT.md:52.
+#   ANTES o unico chamador era um gatilho do banco
+#   (handle_new_otp_verification), que se autentica com um segredo opaco lido
+#   do Vault, nao com JWT. Com verify_jwt = true o gateway devolvia 401 ANTES
+#   de a funcao rodar, e nenhum codigo chegava ao cliente.
+#
+#   AGORA quem chama e' o NAVEGADOR de quem compra, com a chave anon do
+#   projeto — e essa chave passa pelo portao, medido em 19/08/2026 (a
+#   send-push, que ja tinha verify_jwt = true, respondeu com corpo da propria
+#   funcao em vez de 401 do gateway). O gatilho deixou de existir na migration
+#   20260820000100.
+#
+# ⚠️ Isto tem prazo de validade: a chave anon passa por SER um JWT legado. Na
+#    migracao para a chave publishable (#126) ela deixa de ser JWT, e toda
+#    funcao com verify_jwt = true chamada sem sessao passa a recusar. Conferir
+#    este bloco antes daquela migracao.
 [functions."send-otp-email"]
-verify_jwt = false
+verify_jwt = true
 
 # Sem JWT de proposito (PEDIDO-020 #89): o pedido de convidado nasce sem
 # sessao. O que protege e' a propria funcao — corpo so aceita orderId, janela

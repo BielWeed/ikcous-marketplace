@@ -49,10 +49,22 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    O risco de errar o projeto neste prompt é real e continua valendo o aviso;
    só não foi essa a causa daquele defeito.
 
-   **Sempre deploye a `send-otp-email` com `--no-verify-jwt`.** Sem a flag, o
-   gateway passa a exigir JWT e o trigger — que se autentica com um segredo
-   opaco, não com JWT — leva 401. O valor não está versionado em lugar nenhum;
-   é o INFRA-310 (#162).
+   **A `send-otp-email` deploya SEM flag nenhuma, desde 19/08/2026.** Este
+   parágrafo dizia o contrário — "sempre com `--no-verify-jwt`" — e estava certo
+   até a inversão do envio (#161 + #86). O que mudou:
+
+   - **Antes:** quem chamava era o gatilho `handle_new_otp_verification`, que se
+     autentica com um segredo opaco do Vault, não com JWT. Com o gateway
+     exigindo JWT, ele levava 401 e nenhum código chegava ao cliente.
+   - **Agora:** quem chama é o navegador de quem compra, com a chave anon do
+     projeto, que passa pelo gateway. O gatilho foi apagado pela migration
+     `20260820000100_otp_sem_fila_nem_gatilho.sql`.
+
+   O valor vive em `supabase/config.toml` (`verify_jwt = true`), então o deploy
+   sem flag aplica o certo. **Digitar `--no-verify-jwt` aqui hoje é que seria o
+   erro:** a flag ganha do arquivo, e reabriria a função para quem não tem
+   nenhuma chave do projeto. O INFRA-310 (#162), que pedia versionar esse valor,
+   está resolvido pelo `config.toml`.
 
    **A `notify-new-order` também exige `--no-verify-jwt`** (PEDIDO-020, #89):
 
