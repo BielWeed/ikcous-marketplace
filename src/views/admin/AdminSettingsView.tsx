@@ -87,8 +87,8 @@ const StoreLocationSection = memo(function StoreLocationSection() {
       <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
         <div className="flex flex-col gap-3">
           <p className="text-left text-[9.5px] leading-snug text-zinc-400">
-            Cidade e estado aparecem para quem compra. Deixe em branco o que
-            a loja ainda não quer mostrar -- o app omite, nunca inventa.
+            Cidade e estado aparecem para quem compra. Deixe em branco o que a
+            loja ainda não quer mostrar -- o app omite, nunca inventa.
           </p>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_100px]">

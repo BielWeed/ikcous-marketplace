@@ -131,7 +131,13 @@ let mockSelectedShippingOption: {
   price: number;
   deliveryDays: number;
   provider: string;
-} | null = { id: "opt-mock", name: "Entrega Padrão", price: 20, deliveryDays: 3, provider: "flat_fee" };
+} | null = {
+  id: "opt-mock",
+  name: "Entrega Padrão",
+  price: 20,
+  deliveryDays: 3,
+  provider: "flat_fee",
+};
 
 vi.mock("@/hooks/useCart", () => ({
   useCart: () => ({

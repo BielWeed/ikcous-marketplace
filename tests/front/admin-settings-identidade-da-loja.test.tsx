@@ -84,9 +84,7 @@ describe("AdminSettingsView — Identidade da Loja", () => {
       "@/views/admin/AdminSettingsView"
     );
     await act(async () => {
-      raiz.render(
-        <AdminSettingsView onNavigate={vi.fn()} active={true} />,
-      );
+      raiz.render(<AdminSettingsView onNavigate={vi.fn()} active={true} />);
     });
     await act(async () => {
       await esperarMicrotarefas();
@@ -134,10 +132,7 @@ describe("AdminSettingsView — Identidade da Loja", () => {
     // jsdom + createRoot não reage a mutação direta de `value` sem passar
     // pelo onChange do React -- disparar via setter nativo + evento "input"
     // é o jeito que funciona com controlled inputs neste ambiente.
-    const setValorNativo = (
-      elemento: HTMLInputElement,
-      valor: string,
-    ) => {
+    const setValorNativo = (elemento: HTMLInputElement, valor: string) => {
       const setter = Object.getOwnPropertyDescriptor(
         window.HTMLInputElement.prototype,
         "value",

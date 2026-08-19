@@ -194,7 +194,12 @@ describe("StoreContext — identidade da loja (nome, cidade, estado)", () => {
   });
 
   it("ausência das três colunas no banco vira undefined, nunca texto de reserva", async () => {
-    linhaDoBanco = { id: 1, store_name: null, store_city: null, store_state: null };
+    linhaDoBanco = {
+      id: 1,
+      store_name: null,
+      store_city: null,
+      store_state: null,
+    };
 
     const { ultimoConfig } = await renderizarEcapturar();
 

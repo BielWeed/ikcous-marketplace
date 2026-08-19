@@ -782,8 +782,8 @@ export const AdminShippingView = memo(function AdminShippingView({
                   {!formData.originCep && (
                     <p className="flex items-center gap-1 text-[10px] font-medium text-amber-400">
                       <AlertCircle className="size-3 shrink-0" />
-                      Obrigatório para calcular frete — sem ele, nenhuma
-                      cotação é gerada.
+                      Obrigatório para calcular frete — sem ele, nenhuma cotação
+                      é gerada.
                     </p>
                   )}
                 </div>

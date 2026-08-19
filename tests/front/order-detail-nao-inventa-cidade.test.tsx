@@ -84,9 +84,7 @@ describe("OrderDetail — não inventa a cidade do pedido", () => {
     const order = pedidoFake({});
 
     await act(async () => {
-      raiz.render(
-        <OrderDetail order={order} onStatusChange={vi.fn()} />,
-      );
+      raiz.render(<OrderDetail order={order} onStatusChange={vi.fn()} />);
     });
 
     expect(hospedeiro.textContent).not.toContain("Monte Carmelo");
@@ -99,9 +97,7 @@ describe("OrderDetail — não inventa a cidade do pedido", () => {
     const order = pedidoFake({ city: "Patos de Minas", state: "MG" });
 
     await act(async () => {
-      raiz.render(
-        <OrderDetail order={order} onStatusChange={vi.fn()} />,
-      );
+      raiz.render(<OrderDetail order={order} onStatusChange={vi.fn()} />);
     });
 
     expect(hospedeiro.textContent).toContain("Patos de Minas");
@@ -114,18 +110,14 @@ describe("OrderDetail — não inventa a cidade do pedido", () => {
     const order = pedidoFake({});
 
     await act(async () => {
-      raiz.render(
-        <OrderDetail order={order} onStatusChange={vi.fn()} />,
-      );
+      raiz.render(<OrderDetail order={order} onStatusChange={vi.fn()} />);
     });
 
     const linkMapa = hospedeiro.querySelector<HTMLAnchorElement>(
       'a[title="Ver no Google Maps"]',
     );
     expect(linkMapa).not.toBeNull();
-    const query = decodeURIComponent(
-      linkMapa?.href.split("query=")[1] ?? "",
-    );
+    const query = decodeURIComponent(linkMapa?.href.split("query=")[1] ?? "");
     expect(query).not.toContain("Monte Carmelo");
   });
 
@@ -139,18 +131,14 @@ describe("OrderDetail — não inventa a cidade do pedido", () => {
     const order = pedidoFake({ state: "MG" });
 
     await act(async () => {
-      raiz.render(
-        <OrderDetail order={order} onStatusChange={vi.fn()} />,
-      );
+      raiz.render(<OrderDetail order={order} onStatusChange={vi.fn()} />);
     });
 
     const linkMapa = hospedeiro.querySelector<HTMLAnchorElement>(
       'a[title="Ver no Google Maps"]',
     );
     expect(linkMapa).not.toBeNull();
-    const query = decodeURIComponent(
-      linkMapa?.href.split("query=")[1] ?? "",
-    );
+    const query = decodeURIComponent(linkMapa?.href.split("query=")[1] ?? "");
     expect(query).toContain("MG");
     // Sem cidade, não pode sobrar pontuação órfã do "cidade - UF": o estado
     // sozinho não leva o " - " que separaria dos dois valores.
