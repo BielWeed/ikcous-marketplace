@@ -13,7 +13,7 @@
  * isso o hook se alcança por um componente-sonda, que só expõe a função.
  */
 import { act, useEffect } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const invoke = vi.fn();
@@ -26,7 +26,9 @@ vi.mock("@/lib/supabase", () => ({
     functions: { invoke },
     rpc,
     from: () => ({
-      select: () => ({ eq: () => ({ order: () => ({ data: [], error: null }) }) }),
+      select: () => ({
+        eq: () => ({ order: () => ({ data: [], error: null }) }),
+      }),
     }),
     channel: () => ({
       on: () => ({ subscribe: () => ({}) }),
@@ -113,7 +115,11 @@ describe("generateOrderOtp — o retorno segue o envio, não a validação", () 
     await gerar("a@b.c", "34999999999", "abcdef");
 
     expect(invoke).toHaveBeenCalledWith("send-otp-email", {
-      body: { email: "a@b.c", whatsapp: "34999999999", orderFragment: "abcdef" },
+      body: {
+        email: "a@b.c",
+        whatsapp: "34999999999",
+        orderFragment: "abcdef",
+      },
     });
     // A RPC continua existindo no banco, mas esta tela não a chama mais.
     expect(rpc).not.toHaveBeenCalled();
