@@ -20,6 +20,8 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { StoreConfig } from "@/types";
+
 const resetPassword = vi.fn().mockResolvedValue({
   success: true,
   status: "success",
@@ -42,6 +44,18 @@ vi.mock("@/hooks/useAuth", () => ({
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+}));
+
+// AuthView passou a ler useStore() (issue "o app para de inventar
+// endereço", rodapé com a cidade da loja) — sem este mock, importar o
+// módulo de verdade arrasta @/lib/supabase.ts e cria o cliente Supabase
+// real, que estoura "Web Worker is not supported" no jsdom. Mock mutável
+// (mesmo padrão de identidade-da-loja-nas-telas.test.tsx): cada teste ajusta
+// `mockConfig` antes de renderizar, porque o rodapé lê `config` em tempo de
+// render, não no import.
+let mockConfig: Partial<StoreConfig> = {};
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: mockConfig }),
 }));
 
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão de
@@ -79,6 +93,7 @@ describe("AuthView — cópia da tela reset-prompt (issue #120, frente 3: a tela
   beforeEach(() => {
     resetPassword.mockClear();
     setIsPasswordRecovery.mockClear();
+    mockConfig = {};
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -145,5 +160,58 @@ describe("AuthView — cópia da tela reset-prompt (issue #120, frente 3: a tela
     expect(indiceEnviamos).toBeGreaterThan(-1);
     const antesDeEnviamos = texto.slice(0, indiceEnviamos);
     expect(antesDeEnviamos).toMatch(/\bcadastrado\b/i);
+  });
+});
+
+// Coberta pelo commit 77a484f (AuthView passou a ler useStore() para o
+// rodapé mostrar a cidade da loja em vez de "Monte Carmelo" cravado), mas
+// entregue sem teste — este bloco fecha a lacuna. O rodapé vive na tela de
+// login/signup/forgot/new-password (AuthView.tsx ~727-733), não na
+// reset-prompt (que retorna antes, na linha 346), então basta renderizar o
+// componente sem navegar.
+describe("AuthView — rodapé mostra a cidade da loja, sem pontuação órfã quando não configurada", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    mockConfig = {};
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+  });
+
+  async function renderizarLogin() {
+    const { AuthView } = await import("@/views/shared/AuthView");
+    const onNavigate = vi.fn();
+    await act(async () => {
+      raiz.render(<AuthView onNavigate={onNavigate} />);
+    });
+  }
+
+  it("mostra a cidade da loja no rodapé quando ela está configurada", async () => {
+    mockConfig = { storeCity: "Uberlândia", storeState: "MG" };
+    await renderizarLogin();
+
+    // Formato exato do rodapé: "{appName} • {cidade}, {UF}" — ver
+    // AuthView.tsx ~731-732.
+    expect(hospedeiro.textContent).toMatch(/•\s*Uberlândia,\s*MG/);
+  });
+
+  it("sem cidade configurada, o rodapé não deixa '•' órfão nem vírgula solta", async () => {
+    mockConfig = {};
+    await renderizarLogin();
+
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).not.toContain("Monte Carmelo");
+    // Nenhum "•" sobra no rodapé quando não há cidade para exibir atrás dele.
+    expect(texto).not.toContain("•");
+    expect(texto).not.toMatch(/,\s*$/);
   });
 });
