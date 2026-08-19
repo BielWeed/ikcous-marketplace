@@ -264,6 +264,27 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20260819000000_identidade_da_loja.sql": {
+    funcao: "upsert_store_config",
+    esperado: [
+      // As tres colunas novas nos DOIS ramos. No INSERT elas entram cruas
+      // (sem COALESCE, de proposito: nulo e "a loja ainda nao disse")...
+      "config_json->>'store_name'",
+      "config_json->>'store_city'",
+      "config_json->>'store_state'",
+      // ...e no ON CONFLICT seguem o padrao de escrita parcial do PR #225:
+      // chave ausente no payload preserva o que ja estava gravado. Sem estes
+      // tres, salvar QUALQUER campo da tela de Ajustes apagaria nome, cidade
+      // e estado da loja.
+      "ELSE store_config.store_name END",
+      "ELSE store_config.store_city END",
+      "ELSE store_config.store_state END",
+      // A guarda de admin tem de sobreviver ao CREATE OR REPLACE: esta funcao
+      // e SECURITY DEFINER, e sem esta linha qualquer autenticado reconfigura
+      // a loja inteira.
+      "IF NOT public.is_admin() THEN",
+    ],
+  },
 };
 
 function lerDatabaseUrl() {
