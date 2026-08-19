@@ -213,15 +213,30 @@ export const HomeView = React.memo(function HomeView({
     { value: "price-desc", label: "Maior Preço", icon: ArrowUp },
   ];
 
-  const homeDescription =
-    "Descubra produtos exclusivos com frete grátis e entrega expressa em Monte Carmelo, MG.";
+  // A cidade da loja vem do StoreConfig, não do código. `undefined` = a
+  // loja ainda não configurou, e o trecho de localização some inteiro — sem
+  // vírgula, travessão ou "|" solto no lugar dela.
+  const cidadeLoja = config.storeCity
+    ? config.storeState
+      ? `${config.storeCity}, ${config.storeState}`
+      : config.storeCity
+    : undefined;
+
+  const homeDescription = cidadeLoja
+    ? `Descubra produtos exclusivos com frete grátis e entrega expressa em ${cidadeLoja}.`
+    : "Descubra produtos exclusivos.";
   const homeSocialTitle = `${branding.appName} - Seu Shopping Local`;
   const homeLogo = `${globalThis.location.origin}/branding/logo.png`;
 
   useDocumentMeta({
-    title: `${branding.appName} | Monte Carmelo, MG`,
+    title: cidadeLoja ? `${branding.appName} | ${cidadeLoja}` : branding.appName,
     names: {
-      description: `O melhor marketplace de Monte Carmelo com entrega ultrarrápida e troca garantida - ${branding.appName}`,
+      // "Entrega ultrarrápida" e "troca garantida" saíram: não existe fluxo
+      // de troca (issues #46 e #108, ambas abertas) nem entrega ultrarrápida
+      // — é a mesma mentira que o PR #225 já tinha tirado do carrinho.
+      description: cidadeLoja
+        ? `O marketplace online de ${cidadeLoja} - ${branding.appName}`
+        : `O marketplace online - ${branding.appName}`,
       "twitter:card": "summary_large_image",
       "twitter:title": homeSocialTitle,
       "twitter:description": homeDescription,

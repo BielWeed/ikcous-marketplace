@@ -1163,12 +1163,19 @@ export const ProductView = React.memo(function ProductView({
                 </div>
                 <span>Troca garantida em até 24h após entrega</span>
               </div>
-              <div className="flex items-center gap-3 text-sm text-gray-700">
-                <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
-                  <Truck className="size-4" />
+              {/* Sem cidade configurada, o bloco inteiro (ícone e texto)
+                  não é renderizado — nunca "Entrega em" sem destino. */}
+              {config.storeCity && (
+                <div className="flex items-center gap-3 text-sm text-gray-700">
+                  <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
+                    <Truck className="size-4" />
+                  </div>
+                  <span>
+                    Entrega em {config.storeCity}
+                    {config.storeState ? `, ${config.storeState}` : ""}
+                  </span>
                 </div>
-                <span>Entrega em Monte Carmelo, MG</span>
-              </div>
+              )}
               <div className="flex items-center gap-3 text-sm text-gray-700">
                 <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
                   <ShoppingCart className="size-4" />
