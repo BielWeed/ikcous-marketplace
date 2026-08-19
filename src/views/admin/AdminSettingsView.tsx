@@ -132,7 +132,7 @@ const StoreLocationSection = memo(function StoreLocationSection() {
               type="button"
               disabled={isSaving}
               onClick={handleSave}
-              className="h-8.5 flex select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+              className="flex select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
             >
               {isSaving ? (
                 <RefreshCw className="size-3 animate-spin text-admin-gold" />
