@@ -29,7 +29,9 @@ const defaultStoreConfig: StoreConfig = {
   themeMode: "light",
   realTimeSalesAlerts: true,
   pushMarketingEnabled: false,
-  originCep: "38500-000",
+  // originCep NÃO tem reserva de propósito. Ele valia "38500-000", e isso fazia
+  // toda loja que nunca informou de onde despacha calcular frete a partir de
+  // Monte Carmelo, calada. Sem valor = a loja não disse, e quem consome trata isso.
   shippingProvider: "flat_fee",
   enabledShippingMethods: ["sedex", "pac"],
   shippingCoverage: "national",
@@ -253,11 +255,10 @@ export function StoreProvider({
         defaultStoreConfig.pushMarketingEnabled,
       ),
       minAppVersion: getVal("min_app_version", "minAppVersion", undefined),
-      originCep: getVal(
-        "origin_cep",
-        "originCep",
-        defaultStoreConfig.originCep,
-      ),
+      storeName: getVal("store_name", "storeName", undefined),
+      storeCity: getVal("store_city", "storeCity", undefined),
+      storeState: getVal("store_state", "storeState", undefined),
+      originCep: getVal("origin_cep", "originCep", undefined),
       shippingProvider: getVal(
         "shipping_provider",
         "shippingProvider",
@@ -312,7 +313,6 @@ export function StoreProvider({
             theme_mode: defaultStoreConfig.themeMode,
             real_time_sales_alerts: defaultStoreConfig.realTimeSalesAlerts,
             push_marketing_enabled: defaultStoreConfig.pushMarketingEnabled,
-            origin_cep: defaultStoreConfig.originCep,
             shipping_provider: defaultStoreConfig.shippingProvider,
             enabled_shipping_methods: defaultStoreConfig.enabledShippingMethods,
             shipping_coverage: defaultStoreConfig.shippingCoverage,
@@ -473,6 +473,12 @@ export function StoreProvider({
           dbUpdates.push_marketing_enabled = updates.pushMarketingEnabled;
         if (updates.minAppVersion !== undefined)
           dbUpdates.min_app_version = updates.minAppVersion;
+        if (updates.storeName !== undefined)
+          dbUpdates.store_name = updates.storeName;
+        if (updates.storeCity !== undefined)
+          dbUpdates.store_city = updates.storeCity;
+        if (updates.storeState !== undefined)
+          dbUpdates.store_state = updates.storeState;
         if (updates.originCep !== undefined)
           dbUpdates.origin_cep = updates.originCep;
         if (updates.shippingProvider !== undefined)

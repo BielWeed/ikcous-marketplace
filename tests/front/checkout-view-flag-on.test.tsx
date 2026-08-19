@@ -117,6 +117,27 @@ let mockCart = [
 ];
 let mockCartTotal = 100;
 let mockShippingFee = 20;
+// Achado da revisão do bloco "o app para de inventar endereço" (18/08/2026):
+// `shippingFee` positivo sem `selectedShippingOption` é exatamente o estado
+// que o CheckoutView passou a barrar no botão "Finalizar Pedido" (a cotação
+// que gerou R$20 aqui, em produção, só existe porque uma opção FOI
+// selecionada — `shippingFee` de CartContext.tsx:758-762 só cai no valor
+// fixo de fallback quando não há `selectedShippingOption`). Sem este objeto
+// o mock representava um estado inatingível pela UI real, e mascarava o
+// próprio defeito que este bloco fecha.
+let mockSelectedShippingOption: {
+  id: string;
+  name: string;
+  price: number;
+  deliveryDays: number;
+  provider: string;
+} | null = {
+  id: "opt-mock",
+  name: "Entrega Padrão",
+  price: 20,
+  deliveryDays: 3,
+  provider: "flat_fee",
+};
 
 vi.mock("@/hooks/useCart", () => ({
   useCart: () => ({
@@ -127,12 +148,14 @@ vi.mock("@/hooks/useCart", () => ({
       clearCart();
       // Espelha CartContext.tsx:690-706/726/741: setCart([]) e frete/CEP
       // zerados, cartTotal reduzindo sobre [] e shippingFee com o guard
-      // `cart.length === 0`.
+      // `cart.length === 0`. `setSelectedShippingOption(null)` também roda
+      // nesse ponto (CartContext.tsx:707), daí zerar aqui junto.
       mockCart = [];
       mockCartTotal = 0;
       mockShippingFee = 0;
+      mockSelectedShippingOption = null;
     },
-    selectedShippingOption: null,
+    selectedShippingOption: mockSelectedShippingOption,
     shippingCep: "38500-000",
   }),
 }));
@@ -240,6 +263,13 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
     ];
     mockCartTotal = 100;
     mockShippingFee = 20;
+    mockSelectedShippingOption = {
+      id: "opt-mock",
+      name: "Entrega Padrão",
+      price: 20,
+      deliveryDays: 3,
+      provider: "flat_fee",
+    };
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
@@ -550,12 +580,42 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
 
     await act(async () => {
       botaoCartao.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("checkout-name", "Cliente Teste");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("checkout-tel", "34999999999");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      digitar("guest-cep", "01310-100");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("guest-street", "Rua Teste");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("guest-number", "100");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("guest-neighborhood", "Centro");
       await esperarMicrotarefas();
+    });
+    // Correção de 18/08/2026: cidade e estado do convidado deixaram de vir
+    // pré-preenchidos com "Monte Carmelo"/"MG" (a cobertura de entrega
+    // decide para onde a loja entrega, nunca onde o cliente mora) — quem
+    // digita agora é o cliente, então este teste também precisa digitar.
+    await act(async () => {
+      digitar("guest-city", "Cidade Teste");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      digitar("guest-state", "SP");
       await esperarMicrotarefas();
     });
 
@@ -641,13 +701,45 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO ligada", () => {
     // Prova de ponta a ponta: preenche como convidado (agora sem sessão) e
     // finaliza — se o efeito não tivesse revertido o método, isto chamaria
     // createOrder com comPagamentoOnline:true.
+    // Cada `digitar` roda no seu próprio `act`, com uma passagem de
+    // microtarefas entre um e outro — mesma correção que o caso anterior:
+    // disparar todos os `onChange` no mesmo lote síncrono fazia validações
+    // assíncronas concorrentes do zodResolver correrem em paralelo, e a
+    // última a resolver podia deixar `formState.isValid` parado em `false`
+    // mesmo com `formState.errors` já vazio.
     await act(async () => {
       digitar("checkout-name", "Cliente Teste");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("checkout-tel", "34999999999");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      digitar("guest-cep", "01310-100");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("guest-street", "Rua Teste");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("guest-number", "100");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
       digitar("guest-neighborhood", "Centro");
       await esperarMicrotarefas();
+    });
+    // Correção de 18/08/2026: cidade e estado do convidado deixaram de vir
+    // pré-preenchidos com "Monte Carmelo"/"MG" — quem digita agora é o
+    // cliente, então este teste também precisa digitar.
+    await act(async () => {
+      digitar("guest-city", "Cidade Teste");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      digitar("guest-state", "SP");
       await esperarMicrotarefas();
     });
 

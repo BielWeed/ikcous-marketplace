@@ -186,6 +186,12 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO desligada", () => {
     // Falha fechada, ponta a ponta: a opção só existiria com a flag ligada.
     expect(hospedeiro.textContent).not.toContain("Pagar agora");
 
+    // Correção de 19/08/2026: CEP, cidade e estado do convidado deixaram de
+    // vir pré-preenchidos com "38500-000"/"Monte Carmelo"/"MG" — o endereço é
+    // de quem compra, e quem digita agora é o cliente. Sem estes três campos o
+    // formulário fica inválido e o botão nasce apagado, que é o motivo pelo
+    // qual este teste passou a falhar. Mesma correção já feita em
+    // checkout-view-flag-on.test.tsx no commit 95e07b0.
     await act(async () => {
       digitar("checkout-name", "Cliente Teste");
       digitar("checkout-tel", "34999999999");
@@ -193,6 +199,18 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO desligada", () => {
       digitar("guest-number", "100");
       digitar("guest-neighborhood", "Centro");
       await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      digitar("guest-cep", "01310-100");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      digitar("guest-city", "Cidade Teste");
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      digitar("guest-state", "SP");
       await esperarMicrotarefas();
     });
 

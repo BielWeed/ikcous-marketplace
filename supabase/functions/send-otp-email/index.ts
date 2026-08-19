@@ -111,7 +111,7 @@ serve(async (req: Request) => {
                         </p>
                         <div style="border-top: 1px solid #e4e4e7; padding-top: 16px; text-align: center;">
                             <p style="font-size: 11px; color: #a1a1aa; margin: 0; font-weight: 500;">
-                                &copy; 2026 IKCOUS Marketplace. Monte Carmelo, MG.
+                                &copy; 2026 IKCOUS Marketplace.
                             </p>
                         </div>
                     </div>

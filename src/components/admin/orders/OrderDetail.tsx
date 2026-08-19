@@ -306,7 +306,9 @@ function OrderCustomerCard({
             <br />
             <span className="text-[10px] normal-case text-zinc-400">
               {order.customer.neighborhood}
-              {` • ${order.customer.city || "Monte Carmelo"}/${order.customer.state || "MG"}`}
+              {order.customer.city
+                ? ` • ${order.customer.city}${order.customer.state ? `/${order.customer.state}` : ""}`
+                : ""}
               {order.customer.cep ? ` • CEP: ${order.customer.cep}` : ""}
               {order.customer.reference
                 ? ` • Ref: ${order.customer.reference}`
@@ -927,9 +929,7 @@ export const OrderDetail = memo(function OrderDetail({
       : order.customer.address || "",
     order.customer.complement ? `Comp: ${order.customer.complement}` : "",
     order.customer.neighborhood,
-    order.customer.city || order.customer.state
-      ? `${order.customer.city || "Monte Carmelo"} - ${order.customer.state || "MG"}`
-      : "Monte Carmelo - MG",
+    [order.customer.city, order.customer.state].filter(Boolean).join(" - "),
     order.customer.cep ? `CEP: ${order.customer.cep}` : "",
     order.customer.reference ? `Ref: ${order.customer.reference}` : "",
   ]
@@ -949,9 +949,15 @@ export const OrderDetail = memo(function OrderDetail({
   if (order.customer.neighborhood) {
     mapsQueryParts.push(order.customer.neighborhood);
   }
-  const city = order.customer.city || "Monte Carmelo";
-  const state = order.customer.state || "MG";
-  mapsQueryParts.push(`${city} - ${state}`);
+  // Sem cidade, a busca no mapa não leva Monte Carmelo calada: só empurra o
+  // que existe de verdade. Cidade e estado são checados em separado — pedido
+  // com só um dos dois não pode perder o que tem, e o `.filter(Boolean)`
+  // abaixo já cuida de não deixar "-" órfão quando falta um dos dois.
+  if (order.customer.city || order.customer.state) {
+    mapsQueryParts.push(
+      [order.customer.city, order.customer.state].filter(Boolean).join(" - "),
+    );
+  }
   if (order.customer.cep) {
     mapsQueryParts.push(order.customer.cep);
   }

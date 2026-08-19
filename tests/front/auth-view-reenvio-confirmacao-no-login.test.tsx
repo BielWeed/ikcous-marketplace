@@ -47,6 +47,19 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 
+// AuthView passou a ler useStore() (issue "o app para de inventar
+// endereço", rodapé com a cidade da loja) — sem este mock, importar o
+// módulo de verdade arrasta @/lib/supabase.ts e cria o cliente Supabase
+// real, que estoura "Web Worker is not supported" no jsdom. Mesmo padrão de
+// phone-simulator-remove-troca-garantida.test.tsx. O conteúdo exato da
+// cidade não importa para os casos deste arquivo (nenhum aqui verifica o
+// rodapé) — só precisa existir para o hook não quebrar.
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: { storeCity: "Sao Paulo", storeState: "SP" },
+  }),
+}));
+
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão de
 // auth-view-reset-prompt-copy.test.tsx: sem ela o React reclama "not
 // configured to support act(...)" em todo render, mesmo dentro de act().
