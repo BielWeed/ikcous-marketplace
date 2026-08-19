@@ -5,6 +5,7 @@ import {
   getCartHash,
   isLocalCep,
   precoDeContingenciaDoTopo,
+  validarOrigemEFrete,
 } from "./index.ts";
 
 Deno.test("calculateSmartFallback - same region", () => {
@@ -139,4 +140,42 @@ Deno.test("contingência do topo - sem taxa da loja conhecida, a escada ainda va
   // `flatFee` só existe depois de ler store_config. Se o erro veio antes
   // disso, a escada continua aplicável: ela só precisa dos dois CEPs.
   assertEquals(precoDeContingenciaDoTopo("38500000", "69000000", undefined), 38);
+});
+
+// --- Origem e taxa fixa: falhar fechado, nunca assumir Monte Carmelo -------
+//
+// Mesmo defeito que a 1.4.0 corrigiu na contingência do topo, um andar
+// acima: até 18/08/2026, `storeConfig.origin_cep || '38500-000'` e
+// `Number(storeConfig.shipping_fee || 15)` calculavam frete a partir de
+// Monte Carmelo e de R$ 15 sempre que a loja nunca configurou nada.
+// `Number(null)` é `0` e `null || 15` é `15`: os dois caminhos estavam
+// errados. `validarOrigemEFrete` é a decisão isolada — string de erro
+// quando falta o que é preciso para cotar honestamente, `null` quando pode
+// seguir.
+
+Deno.test("sem CEP de origem configurado, nao devolve opcao de frete", () => {
+  const erro = validarOrigemEFrete(null, 15, "flat_fee");
+  assertEquals(typeof erro, "string");
+});
+
+Deno.test("CEP de origem vazio conta como ausente, nao so' null", () => {
+  const erro = validarOrigemEFrete("", 15, "flat_fee");
+  assertEquals(typeof erro, "string");
+});
+
+Deno.test("sem taxa configurada, nao inventa R$ 15 (provedor flat_fee)", () => {
+  const erro = validarOrigemEFrete("38500-000", null, "flat_fee");
+  assertEquals(typeof erro, "string");
+});
+
+Deno.test("com CEP de origem e taxa configurados, permite cotar", () => {
+  const erro = validarOrigemEFrete("38500-000", 15, "flat_fee");
+  assertEquals(erro, null);
+});
+
+Deno.test("sem taxa configurada mas provedor nao e flat_fee, ainda permite cotar", () => {
+  // Quem decide o preco e' a API do transportador; o piso fixo da loja nao
+  // entra nessa conta.
+  const erro = validarOrigemEFrete("38500-000", null, "melhor_envio");
+  assertEquals(erro, null);
 });
