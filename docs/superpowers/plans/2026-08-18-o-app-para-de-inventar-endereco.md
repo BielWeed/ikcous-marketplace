@@ -576,7 +576,7 @@ Três pontos, e o do meio é o pior:
 - Linhas 931-932: o endereço montado para exibição e cópia.
 - Linhas 952-953: a consulta que vai para o **Google Maps**.
 
-- [ ] **Passo 1: escrever o teste que falha**
+- [x] **Passo 1: escrever o teste que falha**
 
 Crie `tests/front/order-detail-nao-inventa-cidade.test.tsx`. Cobrir:
 
@@ -596,7 +596,7 @@ it("o link do mapa não leva cidade inventada", () => {
 });
 ```
 
-- [ ] **Passo 2: rodar e ver falhar**
+- [x] **Passo 2: rodar e ver falhar**
 
 ```bash
 npx vitest run tests/front/order-detail-nao-inventa-cidade.test.tsx
@@ -604,7 +604,7 @@ npx vitest run tests/front/order-detail-nao-inventa-cidade.test.tsx
 
 Esperado: FALHA nos casos 1 e 3.
 
-- [ ] **Passo 3: implementar**
+- [x] **Passo 3: implementar**
 
 Nas três posições, a cidade e o estado passam a ser **omitidos** quando não existem, em vez de
 substituídos:
@@ -619,7 +619,7 @@ substituídos:
 Não acrescente texto do tipo "cidade não informada" no endereço de cópia: ele é colado em
 aplicativo de entrega, e uma frase no meio atrapalha mais que a ausência.
 
-- [ ] **Passo 4: rodar e ver passar**
+- [x] **Passo 4: rodar e ver passar**
 
 ```bash
 npx vitest run tests/front/order-detail-nao-inventa-cidade.test.tsx
@@ -627,7 +627,7 @@ npx vitest run tests/front/order-detail-nao-inventa-cidade.test.tsx
 
 Esperado: PASSA, os três casos.
 
-- [ ] **Passo 5: provar que o teste não passa por acaso**
+- [x] **Passo 5: provar que o teste não passa por acaso**
 
 Reponha `|| "Monte Carmelo"` na linha 952, rode, confirme que o terceiro caso **falha**. Desfaça.
 Cole as duas saídas.
@@ -817,7 +817,7 @@ Monte Carmelo calada; se não disse quanto cobra, assume R$ 15.
 **A regra que vale aqui é a mesma da 1.4.0:** falha não produz opção nenhuma. Cotação sem origem
 não é cotação — é chute com aparência de preço.
 
-- [ ] **Passo 1: escrever os testes que falham**
+- [x] **Passo 1: escrever os testes que falham**
 
 Em `supabase/functions/calculate-shipping/index_test.ts`, acrescente:
 
@@ -836,7 +836,7 @@ Deno.test("sem taxa configurada, nao inventa R$ 15", async () => {
 Leia o arquivo de teste inteiro antes de escrever: ele já tem montagem de `storeConfig` falso, e
 reaproveitar é obrigatório.
 
-- [ ] **Passo 2: rodar e ver falhar**
+- [x] **Passo 2: rodar e ver falhar**
 
 ```bash
 npm run test:edge
@@ -844,7 +844,7 @@ npm run test:edge
 
 Esperado: FALHA nos dois casos novos.
 
-- [ ] **Passo 3: implementar**
+- [x] **Passo 3: implementar**
 
 Linha 408: quando `storeConfig.origin_cep` não tiver valor, a função **não** calcula. Devolva o
 mesmo formato de falha que o arquivo já usa para "não consegui cotar" — leia o tratamento que
@@ -857,7 +857,7 @@ errados, e o certo é não cotar.
 Deixe um comentário curto explicando, no mesmo tom dos comentários que já existem no arquivo, que
 a regra veio do defeito de R$ 15 corrigido na 1.4.0.
 
-- [ ] **Passo 4: rodar e ver passar**
+- [x] **Passo 4: rodar e ver passar**
 
 ```bash
 npm run test:edge
@@ -865,12 +865,12 @@ npm run test:edge
 
 Esperado: PASSA, inclusive os 237 que já existiam.
 
-- [ ] **Passo 5: provar que os testes não passam por acaso**
+- [x] **Passo 5: provar que os testes não passam por acaso**
 
 Reponha `|| '38500-000'` na linha 408, rode, confirme que o primeiro caso **falha**. Desfaça. Cole
 as duas saídas.
 
-- [ ] **Passo 6: NÃO publicar a função**
+- [x] **Passo 6: NÃO publicar a função**
 
 Esta tarefa termina no repositório. **Não rode `supabase functions deploy`.** A Vercel sobe o front
 sozinha no merge, mas edge function sobe à mão, e quem publica é a sessão principal — que também
