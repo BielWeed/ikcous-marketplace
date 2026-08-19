@@ -30,11 +30,42 @@ fosse para funcionar de verdade em uma loja"* — nada de recurso desligado por 
 
 ---
 
-## Como esta sessão trabalha
+## Como esta sessão trabalha — o processo NÃO mora aqui
 
-Este arquivo diz **quem faz o quê**. As regras de produto, PWA, Supabase e MCP continuam em
-[AGENTS.md](AGENTS.md); as de contribuição, em [CONTRIBUTING.md](CONTRIBUTING.md). Não duplique
-conteúdo aqui.
+**Quem decide modelo, esforço, delegação, revisão, paralelismo, custo e segurança é
+`~/.claude/CLAUDE.md`**, que carrega em toda sessão de todo projeto. Este arquivo declara
+**terreno**: o que dói neste repositório e em nenhum outro.
+
+> Até 19/08/2026 esta seção redefinia o processo aqui — e ficou para trás. A tabela de equipe
+> conhecia dois subagentes; a configuração global já tem dez, incluindo o `implementador-denso`,
+> que é **obrigatório** para dinheiro, autenticação, permissão, dado de cliente e migração — ou
+> seja, quase toda a superfície deste repositório. Processo duplicado num projeto não fica
+> igual: fica velho. Para **regra escrita**, se algo aqui contradisser a configuração global, a
+> global ganha, e eu aviso o Gabriel em vez de obedecer em silêncio.
+
+### ⚠️ Exceção que NÃO segue essa regra: `implementador` e `revisor` são sombreados aqui
+
+Para **resolução de subagente por nome** a precedência é a oposta. A documentação oficial define
+que, com nomes iguais, vence a localização de maior prioridade — e `.claude/agents/` do **projeto**
+tem prioridade sobre `~/.claude/agents/` do usuário.
+
+Este repositório tem [.claude/agents/implementador.md](.claude/agents/implementador.md) e
+[.claude/agents/revisor.md](.claude/agents/revisor.md) próprios. **Chamar esses dois nomes aqui roda
+a definição local, não a global**, e a local está uma geração atrás. Não dá para saber isso pela
+chamada: nada avisa.
+
+| | local | global |
+|---|---|---|
+| `implementador` | sem `effort`, sem a skill `executar-tarefa` | `effort: medium` + a skill |
+| `revisor` | sem `effort` | `effort: high` |
+
+- **Todos os outros oito nomes** — `implementador-denso`, `executor-rapido`, `diretor`, `socio`,
+  `auditor`, `investigador`, `triador`, `manutentor` — não têm cópia local e usam a global.
+- Enquanto as cópias existirem, tratá-las como a fonte da verdade para esses dois nomes — inclusive
+  ao ler instrução de segurança dentro delas, que pode estar vencida pelo mesmo motivo.
+
+As regras de produto, PWA, Supabase e MCP continuam em [AGENTS.md](AGENTS.md); as de
+contribuição, em [CONTRIBUTING.md](CONTRIBUTING.md). Não duplique conteúdo aqui.
 
 > O `AGENTS.md` descreve as ferramentas do **Cursor/Antigravity**, que são outras. Lá o
 > orquestrador é o MCP `orchestrator` (`auto_orchestrate_skills`) — que existe e funciona, só
@@ -57,87 +88,30 @@ O resto do ferramental agêntico tem uso preferencial definido:
 | API de biblioteca (React 19, Supabase JS, Vite, Radix, Deno) | `context7` (`query-docs`) | memória |
 | Ver a UI rodando, console, rede, responsivo | `Claude_Browser` (`preview_start` com `{name: "core_app_mkt"}`) | `npm run dev` pelo Bash |
 
-## Divisão de trabalho
+## A superfície de risco DESTE repositório
 
-O modelo da sessão é o **Opus**, e é ele quem pensa. Escrever o código de uma tarefa já decidida
-não precisa de Opus — precisa de disciplina, e sai mais barato no Sonnet. Revisar precisa de Opus
-de novo, mas com contexto limpo, porque quem escreveu tem apego ao que escreveu.
+A configuração global manda: o que toca dinheiro, autenticação, permissão, dado de cliente,
+migração ou contrato entre módulos se escreve com `implementador-denso` e se revisa com **Opus**,
+independente do tamanho do diff. **Aqui está o mapa de quais caminhos são esses**, que é a parte
+que só este repositório sabe:
 
-| Fase | Quem faz |
+| Caminho / assunto | Por que dói |
 |---|---|
-| Entender o pedido, brainstorm | sessão principal (Opus) — skill `brainstorming` |
-| Decidir arquitetura e escrever o plano em tarefas autocontidas | sessão principal (Opus) — skill `writing-plans` |
-| Implementar cada tarefa, com TDD | subagente `implementador` (Sonnet), um por tarefa |
-| Revisar o diff e rodar a verificação | subagente `revisor` (Opus), contexto limpo, somente leitura |
-| Aprovar, integrar, commitar, abrir PR | sessão principal (Opus) |
+| `supabase/migrations/` | grava em produção; backup diário e **sem PITR** |
+| RLS, `SECURITY DEFINER` | quem enxerga dado de quem |
+| `supabase/functions/` | `criar-pagamento`, `webhook-mercadopago`, `reconciliar-pagamentos`, OTP |
+| checkout e caminho do pagamento | **move dinheiro de verdade** — ver *Onde o risco realmente mora* |
+| auth / OTP | um deploy sem `--no-verify-jwt` derruba o login |
+| service worker | PWA servindo versão velha para todo mundo |
+| qualquer assinatura consumida por outro módulo | quebra silenciosa fora do diff |
 
-Os dois subagentes estão em [.claude/agents/](.claude/agents/) e são versionados no git — mudança
-neles é mudança de processo do time, e passa por PR como o resto.
+Fora dessa lista — UI, cópia, estilo, util puro já coberto por teste, `scripts/`, documentação —
+vale o degrau normal e revisão em Sonnet.
 
-## As regras que sustentam isso
-
-- **Uma tarefa por `implementador`.** Se a tarefa não cabe numa cabeça sem o contexto da conversa,
-  o defeito está no plano, não no subagente.
-- **Tarefas independentes vão em paralelo**, num único bloco de chamadas. Tarefas dependentes vão
-  em sequência.
-- **Tudo que foi delegado passa pelo `revisor`** — sem exceção e sem olhar o tamanho do diff. O
-  que caracteriza a delegação é que *ninguém com contexto leu aquele código*, e é isso que a
-  revisão cobre. O "passou" do `implementador` não é prova: quem escreveu não é testemunha do
-  próprio trabalho.
-- **O que não foi delegado também não vira "pronto" de graça.** A sessão roda a verificação ela
-  mesma e cola a saída antes de commitar. Mesma exigência de evidência, sem pagar um subagente
-  para reler o que a sessão acabou de escrever com o contexto inteiro na mão.
-- **Achado que BLOQUEIA volta para um `implementador` novo**, com o achado no prompt. Não se
-  conserta na sessão principal por atalho: é assim que a revisão continua sendo de contexto limpo.
-- **O plano é da sessão principal.** Se um `implementador` voltar dizendo que o plano está errado,
-  a decisão volta para o Opus — não para ele.
-- **Só a sessão principal commita.** Subagente entrega diff no working tree.
-
-## Quando NÃO delegar
-
-Mudança de uma linha óbvia, resposta a pergunta, exploração para entender o código, e qualquer
-coisa em que montar o prompt do subagente custe mais que fazer. Delegar tudo é tão ruim quanto
-não delegar nada.
-
-**Com uma trava:** "óbvio" é sobre o código, nunca sobre o risco. Se a mudança toca qualquer coisa
-da coluna Opus da tabela em *Calibrar o custo da revisão* — migration, RLS, `SECURITY DEFINER`,
-edge function, auth/OTP, checkout, service worker, contrato consumido por outro módulo —, ela **se
-delega e se revisa mesmo tendo uma linha**. Foi exatamente por parecerem óbvias que o
-`BEGIN`/`COMMIT` e o deploy sem `--no-verify-jwt` passaram.
-
-Isto é o mesmo eixo da seção seguinte: **risco decide se delega, risco decide qual modelo revisa,
-e tamanho nunca decide nada.**
-
-## Calibrar o custo da revisão
-
-O `revisor` é o papel mais caro do fluxo: é Opus, lê o diff, lê os chamadores e processa a saída
-de sete comandos. O `implementador` já é Sonnet, e quando a sessão classifica a tarefa ela já
-entendeu o problema para poder planejar — então **o único papel cujo preço ainda dá para escolher
-é o revisor**.
-
-O gatilho **não é dificuldade**. É quanto custa se estiver errado. Neste repositório os erros mais
-caros foram triviais de escrever: `BEGIN`/`COMMIT` numa migration (duas palavras, gravou em
-produção, com backup diário e sem PITR), deploy sem `--no-verify-jwt` (uma flag, derrubou o OTP),
-remetente do Resend em sandbox (uma linha, e nenhum e-mail chega a cliente).
-
-| Revisor em | Quando o diff toca |
-|---|---|
-| **Sonnet** | UI, cópia, estilo, util puro já coberto por teste, `scripts/`, documentação |
-| **Opus** | `supabase/migrations/`, RLS ou `SECURITY DEFINER`, `supabase/functions/`, auth/OTP, checkout/pagamento, service worker, ou qualquer assinatura consumida por outro módulo — **independente do tamanho do diff** |
-
-Na dúvida, Opus. Uma revisão de Opus desperdiçada custa tokens; um "passa" que não valia nada
-custa produção.
-
-Não crie um segundo agente para isso: o `revisor.md` continua com `model: opus` como padrão, e a
-sessão passa `model: "sonnet"` na chamada quando classificar como baixo risco — o parâmetro da
-chamada tem precedência sobre o frontmatter. Uma definição, dois preços.
-
-**O revisor pode recusar a classificação.** Se ele não conseguir sustentar nem refutar um achado,
-ou se a mudança revelar risco que a classificação não previa, ele devolve `ESCALAR` no lugar do
-veredito e a sessão redispara em Opus. A revisão de Sonnet perdida é barata; o falso "passa" não é.
-
-Note que a ponta trivial já está coberta por "quando não delegar" — mudança de uma linha óbvia não
-entra no fluxo. Esta tabela é para a faixa do meio.
+**Neste repositório os erros mais caros foram triviais de escrever**, e é por isso que tamanho de
+diff não decide nada aqui: `BEGIN`/`COMMIT` numa migration (duas palavras, gravou em produção),
+deploy sem `--no-verify-jwt` (uma flag, derrubou o OTP), remetente do Resend em sandbox (uma
+linha, e nenhum e-mail chega a cliente).
 
 ## Verificação — os sete comandos que o CI cobra
 
@@ -187,6 +161,27 @@ e ela é da sessão principal, que sabe o tamanho do diff, não do subagente, qu
 
 ## Onde o risco realmente mora
 
+### 🔴 Leia isto antes de finalizar um pedido pela tela
+
+**A cobrança pelo site está LIGADA — o checkout cobra dinheiro de verdade.** Lastro versionado,
+no [CHANGELOG.md](CHANGELOG.md), release 1.4.0: `VITE_PAGAMENTO_ONLINE` passou a existir em
+Production em 17/08/2026 junto com `VITE_MP_PUBLIC_KEY`, e o Gabriel confirmou em 18/08/2026 que
+o PIX via Mercado Pago está ativo no app. A 1.3.0 subiu com o caminho **inerte**; a partir da
+1.4.0, não.
+
+Consequência prática, e ela contraria um runbook deste próprio repositório: o
+[DEPLOYMENT.md](DEPLOYMENT.md) manda "conclua o pagamento de teste" citando esta seção como
+tranquilizante. **Concluir aquele PIX gera cobrança real.** Mexer em checkout, `criar-pagamento`,
+`webhook-mercadopago` ou `reconciliar-pagamentos` deixou de ser mudança em caminho morto.
+
+⚠️ **E não dá para conferir olhando o segredo:** na Orders API, credencial de teste e de produção
+começam as duas com `APP_USR` — o prefixo **não** indica ambiente (`DEPLOYMENT.md`).
+
+*O estado das variáveis vive na Vercel e no Supabase, fora do repositório. O que está versionado é
+o CHANGELOG acima; se passar muito tempo, reconfirmar em vez de supor que desligou.*
+
+### O resto do risco
+
 **Este repositório é o app de desenvolvimento — o molde, não uma loja.** Quando uma assinatura
 é vendida, os arquivos são clonados e a loja do cliente é montada separada. O Supabase ligado
 aqui é de desenvolvimento: medido em 10/08/2026, tem 64 pedidos em 5 meses com **um único
@@ -195,14 +190,14 @@ e-mail de cliente distinto** (57 deles cancelados) e 22 produtos. Não há negó
 Isso **desloca** o risco, não o remove — e a direção importa, porque a versão anterior desta
 seção apontava para o lado errado e cobrava um preço que não existia:
 
-- **Escrever neste banco é barato.** Pedido de teste pela tela não suja catálogo de cliente
-  nenhum; suja massa de desenvolvimento que você mesmo montou. Higiene (produto de teste com
-  nome óbvio, limpar depois) continua boa prática — não é contenção de incidente.
-- **O que o código FAZ é caro, e mais caro do que parecia.** Todo defeito daqui é replicado
-  em cada loja vendida, e é lá que existe dinheiro de verdade. A `confirmar_pagamento` não
-  movimenta um centavo neste banco; movimenta no de cada cliente. É por isso que a tabela de
-  *Calibrar o custo da revisão* continua valendo inteira — o rigor é sobre o que se replica,
-  não sobre este banco.
+- **Escrever neste banco é barato — catálogo, produto, CMS, massa de teste.** Não suja catálogo
+  de cliente nenhum; suja massa de desenvolvimento que você mesmo montou. Higiene (produto de
+  teste com nome óbvio, limpar depois) continua boa prática — não é contenção de incidente.
+  **A exceção é o checkout**, pelo motivo do bloco vermelho acima: ali o "pedido de teste pela
+  tela" custa dinheiro de verdade.
+- **E todo defeito daqui é replicado em cada loja vendida.** Este repositório é o molde: o app do
+  cliente é clone deste e recebe daqui toda atualização, para sempre. O rigor é sobre o que se
+  replica **e** sobre o que já move dinheiro aqui — os dois, não um ou outro.
 
 ### Continua valendo, independente do acima
 
@@ -228,3 +223,70 @@ seção apontava para o lado errado e cobrava um preço que não existia:
   vazada — o histórico deste repo já teve `service_role` e senha de banco commitadas. Banco de
   desenvolvimento exposto continua sendo banco exposto.
 - **Finalizar branch por Pull Request**, não por merge direto na `main` local.
+
+## Armadilhas conhecidas — cada uma já custou tempo aqui
+
+O item de maior valor deste arquivo. Uma linha cada, com o que ela custou.
+
+**Deploy e ambiente**
+
+- **Merge NÃO é estar no ar.** A Vercel sobe sozinha no merge; o Supabase **só sobe à mão**. Em
+  16/08/2026 a edge function no ar estava **duas entregas velha**, e um teste teria morrido no
+  fantasma errado. Comparar `UPDATED_AT` da function com o `git log` da pasta **antes** de testar.
+- **`functions download` devolve transpilado.** O diff contra o repo acusa remoções que não
+  existem, e o número de versão sobe sozinho em rebuild de plataforma. Olhar `UPDATED_AT`, nunca
+  `VERSION`.
+- **O `verify_jwt` É versionado desde 07/08/2026** — em [supabase/config.toml](supabase/config.toml),
+  pela #162. A precedência está **medida no CLI** e escrita lá; não suponha outra:
+  `--no-verify-jwt` (flag) **>** `verify_jwt` do `config.toml` **>** preserva o que já está no
+  servidor. Duas consequências que o próprio arquivo declara: função **sem entrada** ali não é
+  revertida (o CLI omite o campo e a API preserva) — o custo de omitir é o repositório voltar a
+  mentir sobre ela; e **o arquivo não protege contra a flag**, então quem digitar
+  `--no-verify-jwt` na função errada continua ganhando de tudo que está escrito.
+- ⚠️ **Hoje o `config.toml` e o servidor divergem, de propósito.** A `calculate-shipping` foi
+  publicada à mão em 18/08/2026 preservando `verify_jwt: false`, que era o estado no ar, enquanto
+  o `config.toml` declara `true` — para não mudar trava de segurança de carona numa correção de
+  frete ([CHANGELOG.md](CHANGELOG.md), 1.4.0). **Quem deployar essa função sem a flag aplica o
+  `true` do arquivo.**
+- **O seletor interativo do Supabase oferece outro projeto ANTES deste**, e dar Enter direto publica
+  no lugar errado **sem erro nenhum**. Sempre fixar o destino: `--project-ref cafkrminfnokvgjqtkle`.
+  O `project_id` do `config.toml` é identificador **local** e não escolhe destino de deploy.
+  ⚠️ As duas fontes do repositório discordam sobre o que é o outro projeto — o `config.toml` o
+  chama de sandbox, o `DEPLOYMENT.md` o identifica como `ikcous-mkt-priemira-cliente`. Enquanto
+  isso não for resolvido, trate como se pudesse ser banco de cliente.
+
+**Migrations**
+
+- **`db-apply` pula verificação em silêncio.** Migration sem entrada no mapa `VERIFICACOES` é
+  pulada **e ainda imprime "Tudo aplicado e verificado"**. Reescrever função já guardada por uma
+  migration nova desliga a guarda dela sem avisar.
+
+**Mercado Pago**
+
+- **A doc e o SDK erram metade cada um.** A doc erra a unidade do `ts`; o SDK erra o casing do
+  `data.id`. Custou **100% dos PIX da Orders API recusados com 401**. A correção aceita as duas
+  grafias — não "consertar" para uma só.
+- **A assinatura do webhook é por APLICAÇÃO.** Trocar de aplicação no MP invalida o
+  `MP_WEBHOOK_SECRET` e dá 401 em 100% dos avisos.
+- **O simulador do painel do MP PASSA e esconde o defeito.** Com `data.id` **numérico** as duas
+  grafias produzem HMAC **idêntico** — por isso o simulador nunca detectou a divergência. Elas só
+  divergem para o **ULID** (`ORD…`) da Orders API, que é exatamente o caso que quebrou em
+  produção. **Simulador verde não prova nada sobre a assinatura real** (ver o comentário em
+  [supabase/functions/_shared/mercadopago.ts](supabase/functions/_shared/mercadopago.ts)).
+
+**E-mail**
+
+- **Existem DOIS caminhos de e-mail, e só um está quebrado.** Confundi-los manda quem depura para
+  o subsistema errado:
+  - **Pela edge function** ([send-otp-email](supabase/functions/send-otp-email/index.ts)): fala com
+    o Resend com remetente `onboarding@resend.dev`, que **só entrega ao dono da conta** (#161). É o
+    código de verificação do rastreio de pedido — esse **não chega a cliente**.
+  - **Pelo Supabase Auth:** recuperar senha e confirmar cadastro **saem normalmente, pelo Gmail** —
+    medido no painel em 13/08/2026 ([CHANGELOG.md](CHANGELOG.md)). Não é o Resend, e não está no
+    repositório.
+- **O aviso de pedido novo NÃO é e-mail.** A [notify-new-order](supabase/functions/notify-new-order/index.ts)
+  é Web Push, e o cabeçalho dela diz em voz alta que não manda e-mail (#106) e não grava em
+  `notificacoes` (#107). Lojista sem aviso é problema de push, não de Resend.
+- **Não existe SMTP neste repositório** — a saída da edge function é HTTP para a API do Resend.
+  Procurar `nodemailer`/`smtp`/porta 465 ou 587 não acha nada, e não é omissão. O Gmail que já
+  funciona é o do Auth, configurado fora daqui; o que **não** migrou é o caminho da edge function.

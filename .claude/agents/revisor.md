@@ -100,8 +100,13 @@ caminho de arquivo ou `eval`. **Autorização checada no cliente em vez de RLS**
 essa é a falha de maior valor: toda tabela de dado de usuário precisa de RLS ativo, e função
 `SECURITY DEFINER` precisa de `search_path = public` explícito. Segredo ou chave em arquivo
 versionado (o histórico deste repo já teve `service_role` e senha de banco commitadas). Dado
-sensível em log, URL ou `localStorage`. `verify_jwt` de edge function não é versionado — um deploy
-sem `--no-verify-jwt` na função errada derruba o OTP.
+sensível em log, URL ou `localStorage`. **`verify_jwt` de edge function É versionado desde
+07/08/2026** em `supabase/config.toml` (#162) — até 19/08/2026 esta linha afirmava o contrário, e
+mandava não procurar o arquivo que existe. A precedência está **medida no CLI** e escrita lá:
+`--no-verify-jwt` (flag) > `verify_jwt` do arquivo > preserva o servidor. Logo são **dois** defeitos
+a caçar, não um: função nova **sem entrada** no `config.toml` (o CLI omite o campo, a API preserva,
+e o repositório passa a mentir sobre ela) e a flag digitada na função errada, contra a qual o
+arquivo **não** protege.
 
 **3. Escalabilidade.** Complexidade real, e **a partir de qual volume ela dói** — dê o número
 quando conseguir estimar. Consulta dentro de laço (N+1) contra o Supabase. `select('*')` sem
