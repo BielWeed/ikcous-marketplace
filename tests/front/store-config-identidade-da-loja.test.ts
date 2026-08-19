@@ -70,7 +70,9 @@ const rpcCalls: Array<{ config_json: Record<string, unknown> }> = [];
 // precisar replicar a assinatura exata da chamada. Mesmo dublê de
 // store-context-nao-mexe-em-dark.test.tsx.
 function construtorEncadeavel(resultado: { data: unknown; error: unknown }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // `any` de proposito: o alvo do Proxy tem de ser chamavel E indexavel.
+  // O eslint nao cobra `no-explicit-any` em tests/, entao a diretiva de
+  // excecao que estava aqui ficava sem uso e subia a catraca em +1.
   const alvo: any = () => construtorEncadeavel(resultado);
   return new Proxy(alvo, {
     get(_t, prop) {
