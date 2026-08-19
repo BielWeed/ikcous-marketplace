@@ -145,7 +145,26 @@ GRANT EXECUTE ON FUNCTION public.upsert_store_config(jsonb) TO authenticated, se
 
 -- 2. Restaura v_store_config para a definição do baseline (sem as três
 --    colunas novas).
-CREATE OR REPLACE VIEW public.v_store_config WITH (security_invoker='on') AS
+--
+--    CREATE OR REPLACE VIEW não serve aqui: o Postgres só permite acrescentar
+--    coluna ao FIM de uma view por CREATE OR REPLACE, nunca remover — tentar
+--    encolher de 25 para 22 colunas morre com "cannot drop columns from view"
+--    (42P16), e o passo seguinte (DROP COLUMN da tabela) morria em seguida
+--    com "cannot drop column ... because other objects depend on it"
+--    (2BP01), porque a view de 25 colunas continuava dependendo delas. Por
+--    isso aqui é DROP + CREATE.
+--
+--    Sem CASCADE: nada mais no banco depende de v_store_config — conferido
+--    via pg_depend/pg_rewrite antes de escrever este rollback (só aparecem o
+--    tipo da própria view e a regra de reescrita dela, que o DROP já leva
+--    junto). Se algo viesse a depender dela, CASCADE derrubaria esse algo
+--    também, e isso seria pior do que o problema que este rollback resolve.
+--
+--    O DROP também leva o GRANT SELECT embora, então o GRANT logo abaixo
+--    deixa de ser defensivo e passa a ser obrigatório.
+DROP VIEW public.v_store_config;
+
+CREATE VIEW public.v_store_config WITH (security_invoker='on') AS
  SELECT id,
     free_shipping_min,
     shipping_fee,
