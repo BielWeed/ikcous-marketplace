@@ -123,6 +123,30 @@ export function validarOrigemEFrete(
 }
 
 /**
+ * Decide se a taxa fixa configurada pela loja pode virar a opção "Entrega
+ * Padrão" numa cotação — usada dentro de `getFlatFeeResponse`.
+ *
+ * MESMO DEFEITO QUE `validarOrigemEFrete`, UM ANDAR ABAIXO: ela só exige
+ * `shipping_fee` quando `provider === 'flat_fee'`, de propósito — nos demais
+ * provedores quem decide o preço é a API do transportador. Mas
+ * `getFlatFeeResponse` cai na taxa fixa mesmo assim quando faltam
+ * credenciais do transportador (provider `melhor_envio`/`frenet` sem linha
+ * em `store_shipping_credentials`), e `Number(null)` é `0`: loja que nunca
+ * configurou taxa fixa E nunca cadastrou credencial cotava frete GRÁTIS
+ * para o Brasil inteiro — pior que o R$ 15 cravado que existia antes da
+ * Tarefa 7. A checagem olha o valor ORIGINAL (não o já convertido por
+ * `Number()`), porque `Number(null)` e um `0` configurado de propósito são
+ * indistinguíveis depois da conversão, e a loja pode legitimamente escolher
+ * taxa fixa R$ 0.
+ *
+ * @returns `true` só quando `shippingFee` é um número configurado de
+ * verdade (inclusive `0`, se foi essa a escolha da loja).
+ */
+export function flatFeeConfigurada(shippingFee: number | null | undefined): boolean {
+    return shippingFee !== null && shippingFee !== undefined && Number.isFinite(Number(shippingFee))
+}
+
+/**
  * Dispara uma query sem bloquear a resposta, sem quebrar a função.
  *
  * O PostgrestBuilder do supabase-js implementa apenas `PromiseLike` — tem `then`,
@@ -515,6 +539,14 @@ serve(async (req: Request) => {
         }
 
         // Helper: Generate fallback flat fee response
+        //
+        // FALHA FECHADO NA TAXA FIXA, TAMBÉM: quando o provedor não é
+        // `flat_fee` (ex.: `melhor_envio`/`frenet` sem credencial
+        // cadastrada), `storeConfig.shipping_fee` nunca foi exigido por
+        // `validarOrigemEFrete` e pode ser `null` — e `Number(null)` é `0`.
+        // Sem a checagem de `flatFeeConfigurada`, essa contingência cotava
+        // frete GRÁTIS para o Brasil inteiro em vez de recusar a opção.
+        // Ver `flatFeeConfigurada` acima.
         const getFlatFeeResponse = () => {
             const list = []
             if (isLocal) {
@@ -525,7 +557,7 @@ serve(async (req: Request) => {
                     deliveryDays: 1,
                     provider: 'local'
                 })
-            } else {
+            } else if (flatFeeConfigurada(storeConfig.shipping_fee)) {
                 list.push({
                     id: 'flat-fee-standard',
                     name: 'Entrega Padrão',

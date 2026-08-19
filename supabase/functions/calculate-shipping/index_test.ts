@@ -2,6 +2,7 @@
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   calculateSmartFallback,
+  flatFeeConfigurada,
   getCartHash,
   isLocalCep,
   precoDeContingenciaDoTopo,
@@ -178,4 +179,40 @@ Deno.test("sem taxa configurada mas provedor nao e flat_fee, ainda permite cotar
   // entra nessa conta.
   const erro = validarOrigemEFrete("38500-000", null, "melhor_envio");
   assertEquals(erro, null);
+});
+
+// --- flatFeeConfigurada: o zero de ausencia nao pode virar frete gratis ----
+//
+// `validarOrigemEFrete` so exige `shipping_fee` quando `provider ===
+// 'flat_fee'` -- de proposito, porque nos demais provedores quem cota e a
+// API do transportador. Mas `getFlatFeeResponse` (dentro do handler HTTP)
+// cai na taxa fixa mesmo assim quando faltam credenciais do transportador,
+// e ate 18/08/2026 isso usava `Number(storeConfig.shipping_fee || 15)`,
+// depois trocado para `Number(storeConfig.shipping_fee)` pela Tarefa 7.
+// `Number(null)` e `0`: loja com Melhor Envio ou Frenet sem credencial
+// cadastrada E sem taxa configurada cotava frete GRATIS para o Brasil
+// inteiro em vez de recusar -- pior que o R$ 15 inventado que existia antes.
+// `flatFeeConfigurada` e a checagem isolada que fecha esse buraco.
+
+Deno.test("flatFeeConfigurada - taxa nula (nunca configurada) nao e utilizavel", () => {
+  assertEquals(flatFeeConfigurada(null), false);
+});
+
+Deno.test("flatFeeConfigurada - taxa indefinida nao e utilizavel", () => {
+  assertEquals(flatFeeConfigurada(undefined), false);
+});
+
+Deno.test("flatFeeConfigurada - taxa nao numerica (NaN) nao e utilizavel", () => {
+  assertEquals(flatFeeConfigurada(Number("abc")), false);
+});
+
+Deno.test("flatFeeConfigurada - zero CONFIGURADO pela loja e utilizavel (frete gratis de verdade)", () => {
+  // Loja pode legitimamente escolher taxa fixa R$ 0. Isso e diferente do
+  // zero que nasce de `Number(null)` -- e por isso a checagem olha o valor
+  // original, nao o numero ja convertido.
+  assertEquals(flatFeeConfigurada(0), true);
+});
+
+Deno.test("flatFeeConfigurada - taxa positiva e utilizavel", () => {
+  assertEquals(flatFeeConfigurada(15), true);
 });
