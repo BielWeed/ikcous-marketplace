@@ -233,6 +233,12 @@ export interface StoreConfig {
   realTimeSalesAlerts?: boolean;
   pushMarketingEnabled?: boolean;
   minAppVersion?: string;
+  /** Nome da loja exibido ao cliente. `undefined` = a loja ainda não configurou. */
+  storeName?: string;
+  /** Cidade de onde a loja opera. `undefined` = não configurado; a tela omite o trecho. */
+  storeCity?: string;
+  /** UF de onde a loja opera. `undefined` = não configurado. */
+  storeState?: string;
   originCep?: string;
   shippingProvider?: "flat_fee" | "melhor_envio" | "frenet";
   enabledShippingMethods?: string[];
