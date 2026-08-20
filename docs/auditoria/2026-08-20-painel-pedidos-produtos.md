@@ -685,8 +685,18 @@ Pareciam defeito e não são. Ficam registrados para ninguém gastar tempo de no
   para um arquivo temporário da sessão, e a exclusão rodou dentro de uma transação que abortava
   sozinha se o alvo não fosse exatamente aquela linha marcada como teste. Conferido depois:
   0 pedidos com situação nula, 0 itens órfãos, 83 pedidos no total.
-- **A conexão direta com o banco (`DATABASE_URL`, porta 6543) abre as sessões em modo somente
-  leitura.** Não é problema: é só o padrão daquela conexão, um `SET` por sessão desliga, o banco
-  não está em recuperação e tem 22 MB. **O app não é afetado** — ele escreve por outro caminho,
-  e criou pedidos normalmente durante a auditoria. Fica registrado porque custou tempo descobrir
-  e vai custar de novo no próximo script que tentar escrever por aí.
+- ⚠️ **CORRIGIDO em 20/08/2026 — o que estava escrito aqui era falso.** A versao anterior dizia
+  que a conexao do `DATABASE_URL` "abre as sessoes em modo somente leitura" e que isso "nao e
+  problema". As duas afirmacoes estao erradas, e a segunda e a perigosa: ela ensina a tratar um
+  sintoma real como caracteristica do ambiente. **Conexao limpa NAO abre em somente leitura.**
+
+  O que acontece de verdade: o `DATABASE_URL` aponta para o **pooler** (porta 6543, Supavisor),
+  que **reaproveita a mesma conexao entre programas diferentes**. Um
+  `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` executado por um script de outra frente
+  grudou na conexao e vazou para quem veio depois — inclusive para esta auditoria. Foi essa
+  sujeira, e nao um padrao, que produziu o falso negativo registrado acima.
+
+  **Como escrever script daqui em diante:** abrir com `RESET ALL`, e usar `BEGIN READ ONLY` ou
+  `SET LOCAL` para limitar a transacao — **nunca `SET SESSION`**, que sobrevive ao seu programa e
+  contamina o proximo. A mesma explicacao esta em
+  [PASSAGEM-2026-08-20.md](PASSAGEM-2026-08-20.md).
