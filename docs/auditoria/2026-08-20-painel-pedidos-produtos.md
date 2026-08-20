@@ -56,7 +56,7 @@ em *Pendências minhas*, no fim.
 | 5 | Um pedido cancelado com a etiqueta "Pago fora do fluxo" | Dinheiro do cliente entrou e o pedido está cancelado. Nenhuma fila, contador ou alerta aponta para ele | quem compra e quem vende | **Alto** |
 | 6 | Botão "Todos Ativos" ligado por padrão | Traz **tudo**, inclusive cancelado: **72 dos 84** pedidos são cancelados | quem vende | **Médio-alto** |
 | 7 ✅ | "Capital Alocado", "Lucro Potencial" e "ROI" na tela de Produtos | Congelam depois de excluir, duplicar ou editar um produto — seguem contando o produto que saiu | quem vende | **Médio-alto** |
-| 8 | Um produto com "Margem de Lucro **100,0%**" | É um produto **sem custo cadastrado**. E a etiqueta "Custo Suspeito" pula justamente o custo zero | quem vende | **Médio** |
+| 8 ✅ | Um produto com "Margem de Lucro **100,0%**" | É um produto **sem custo cadastrado**. E a etiqueta "Custo Suspeito" pula justamente o custo zero | quem vende | **Médio** |
 | 9 | 6 produtos com a etiqueta verde "Em Operação" | Estão com estoque **zero**; na loja o botão deles é "Esgotado" | quem compra e quem vende | **Médio** |
 | 10 | "Ações Pendentes: 7" e, ao lado, o crachá "6" na navegação | Dois contadores da mesma coisa, na mesma tela, discordando | quem vende | **Médio** |
 | 11 | Ao abrir Produtos: "Nenhum produto cadastrado / 0 itens" | Há 19 produtos. É o texto que a tela mostra durante o carregamento | quem vende | **Médio-baixo** |
@@ -415,7 +415,56 @@ aviso, é o único excluído.
 **Quanto dói.** Médio. Uma margem de 100% num painel é um convite a comprar mais daquele
 produto. Aqui ela significa o contrário: que ninguém sabe quanto ele custou.
 
+> ### ✅ CORRIGIDO em 20/08/2026
+>
+> O cartao **parou de afirmar numero que ninguem mediu**. Sem custo cadastrado, "Margem de
+> Lucro", "ROI de Rendimento", "Capital Alocado" e "Potencial" mostram **"—"** em vez de
+> inventar 100%, 0% e R$ 0,00. E a etiqueta que existia para avisar isso e nunca avisava passou
+> a cobrir o caso, com texto proprio: **"Sem Custo Cadastrado"** para custo ausente ou zero, e a
+> **"Custo Suspeito"** de sempre para a faixa de R$ 0,01 a R$ 0,10 (suspeita de digitacao).
+>
+> **Com custo real, nada mudou** — a conta e a mesma expressao de antes, conferido operando por
+> operando na revisao, inclusive o lucro total, que era a linha mais provavel de escorregar.
+> Zero **medido** continua aparecendo: estoque zero com custo real mostra "R$ 0,00", nao "—".
+>
+> Um ganho que ninguem tinha pedido: custo que chega como `NaN` (texto sujo no campo) antes caia
+> em `NaN || 0` e produzia margem de 100% igual; agora cai em "—".
+>
+> Provado por [tests/front/admin-products-margem-sem-custo.test.tsx](../../tests/front/admin-products-margem-sem-custo.test.tsx)
+> — 6 casos, com asserção **positiva** de que o cartao esta na tela antes de qualquer negativa
+> (senao o teste ficaria verde quando a tela nao renderiza). Prova de mutacao: tratando "sem
+> custo" como custo zero de novo, **4 dos 6 caem** — `expected '100.0%' to be '—'` — e os 2 de
+> regressao seguem verdes.
+>
+> **O modo compacto nunca teve este defeito** (nao mostra numero derivado de custo), e e ele o
+> padrao da tela. Ou seja: a mentira so aparecia para quem trocava para a visualizacao detalhada
+> — e o aviso novo tambem so aparece la.
+
 ---
+
+## 18. O app nao consegue guardar "nao sei quanto custou"
+
+**Achado NOVO, encontrado na revisao do 8 — e e a raiz dele.**
+
+**O que e verdade.** `src/hooks/useProducts.ts:530` grava `custo: productData.costPrice || 0` ao
+criar produto, e `AdminProductsView.tsx:489` faz o mesmo ao duplicar. O `null` que o formulario
+monta e **achatado para `0` antes de chegar ao banco**. Depois disso, "custo zero de verdade" e
+"nunca preenchi o custo" sao a mesma linha, e nenhuma tela consegue distinguir os dois.
+
+**A consequencia que ja se paga.** A correcao do achado 8 teve de escolher um lado, e escolheu o
+menos caro: trata zero como ausencia. O preco disso e que um **brinde de custo zero legitimo**
+tambem aparece como "—" e ganha a etiqueta "Sem Custo Cadastrado", que afirma uma causa que nao
+aconteceu. Nao ha regra de exibicao que acerte os dois casos enquanto a origem for ambigua — o
+conserto e no caminho de escrita, nao na tela.
+
+**Quem sente.** Quem vende, e so quem cadastra brinde ou amostra com custo zero de proposito.
+
+**Quanto doi.** Baixo hoje. Sobe se a loja passar a usar produto de custo zero de verdade.
+
+**Onde ja esta anotado no codigo.** O comentario em `AdminProductsView.tsx` (bloco do achado 8)
+carrega o gatilho: no dia em que `useProducts.ts:530` parar de achatar `null` em `0`, o `hasCost`
+tem de virar `costPrice != null` **na mesma mudanca**, senao o zero medido fica invisivel.
+
 
 ## 9. Seis produtos aparecem como "Em Operação" com estoque zero
 
