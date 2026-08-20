@@ -163,9 +163,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     start: "",
     end: "",
   });
-  const [filter, setFilter] = useLocalStorage<OrderStatus | "all">(
-    "admin_orders_filter",
-    "all",
+  // Chave NOVA (v2): quem já tinha "all" salvo da versão antiga
+  // ("admin_orders_filter") não fica preso nele — a chave antiga é ignorada
+  // e o novo padrão ("open") vale uma vez para todo mundo, sem código de
+  // migração de dado. Aprovado pelo Gabriel em 20/08/2026: 83 pedidos, 72
+  // cancelados (86,7%); "Todos Ativos" não filtrava nada.
+  const [filter, setFilter] = useLocalStorage<OrderStatus | "all" | "open">(
+    "admin_orders_filter_v2",
+    "open",
   );
   // Filtro de payment_status: client-side, sobre a página já carregada — a
   // RPC get_admin_orders_paged não tem parâmetro pra isso (mudar a RPC é
@@ -974,17 +979,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           <div className="custom-scrollbar-hidden relative z-10 flex w-full snap-x gap-3 overflow-x-auto pt-6">
             <button
               onClick={() => {
-                setFilter("all");
+                setFilter("open");
                 setCurrentPage(0);
               }}
               className={cn(
                 "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 snap-center",
-                filter === "all"
+                filter === "open"
                   ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
                   : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
               )}
             >
-              Todos Ativos
+              Em Aberto
             </button>
             {Object.entries(statusConfig).map(([status, cfg]) => (
               <button
@@ -1009,6 +1014,23 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 {cfg.label}
               </button>
             ))}
+            {/* Saída honesta para ver tudo — inclusive cancelado e
+                entregue, que "Em Aberto" tira. Fica no FIM da fileira, não
+                perto do topo, porque não é o caminho recomendado. */}
+            <button
+              onClick={() => {
+                setFilter("all");
+                setCurrentPage(0);
+              }}
+              className={cn(
+                "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 snap-center",
+                filter === "all"
+                  ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+                  : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+              )}
+            >
+              Todos
+            </button>
           </div>
         </div>
 
@@ -1108,7 +1130,33 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       limpe o filtro para ver todos os pedidos.
                     </p>
                   </>
+                ) : filter !== "all" ||
+                  searchQuery.trim() !== "" ||
+                  dateRange.start ||
+                  dateRange.end ? (
+                  // O padrão da tela virou "Em Aberto" — um resultado já
+                  // FILTRADO no servidor — e a busca/período são ANDados com
+                  // esse filtro. Lista vazia aqui não prova "loja sem
+                  // pedido nenhum", só que nada bate com o que está sendo
+                  // pedido agora. Achado da revisão desta tarefa: 75 dos 83
+                  // pedidos do banco caem aqui se buscados pelo número na
+                  // tela padrão — dizer o absoluto manda a lojista desistir
+                  // de um pedido que existe.
+                  <>
+                    <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
+                      Nenhum pedido corresponde ao que está sendo mostrado
+                      agora
+                    </h3>
+                    <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      Pode ser o filtro de status, a busca ou o período
+                      aplicado. Toque em "Todos", no fim da fileira de
+                      filtros, ou limpe a busca e o período para ver todos os
+                      pedidos.
+                    </p>
+                  </>
                 ) : (
+                  // Sem filtro de status, sem busca e sem período: aqui a
+                  // lista vazia é mesmo "loja sem pedido nenhum".
                   <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
                     Ainda não tem nenhum pedido
                   </h3>

@@ -295,7 +295,13 @@ describe("AdminOrdersView — Total Concluído e aviso de pago após cancelado",
 
     // Achado 1: o botão leva para os cancelados (o destino que dá pra
     // cumprir para as duas portas), não mais para o filtro estreito antigo.
-    expect(window.localStorage.getItem("admin_orders_filter")).toBe(
+    //
+    // A chave é `admin_orders_filter_v2` desde que "Em Aberto" virou o padrão
+    // da tela: a chave antiga (`admin_orders_filter`) foi aposentada de
+    // propósito, para que quem já tivesse "Todos Ativos" salvo não ficasse
+    // presa nele e visse a correção. O comportamento aqui não mudou — o botão
+    // continua levando aos cancelados; só o nome da gaveta mudou.
+    expect(window.localStorage.getItem("admin_orders_filter_v2")).toBe(
       '"cancelled"',
     );
     expect(window.localStorage.getItem("admin_orders_payment_filter")).toBe(
