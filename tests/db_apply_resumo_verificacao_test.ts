@@ -251,6 +251,45 @@ Deno.test("FALHOU também lista as migrations puladas na mesma rodada, não as d
 });
 
 // --------------------------------------------------------------------------
+// N2: a explicação "o db-apply só sabe conferir marcador dentro de corpo de
+// função — ALTER TABLE, policy, grant e REVOKE saem sempre assim" só faz
+// sentido quando o motivo real é "nenhuma verificação registrada" (a
+// migration não tem entrada em VERIFICACOES — ALTER TABLE é a causa mais
+// comum). Quando o motivo é "a entrada registrada não confere nenhum
+// marcador" (esperado vazio ou só espaços), a migration TEM entrada e não é
+// DDL de tabela — imprimir a frase ali aponta para uma causa que não
+// aconteceu.
+// --------------------------------------------------------------------------
+
+Deno.test("N2: motivo de entrada ausente → mensagem inclui a explicação de ALTER TABLE/policy/grant", () => {
+  const resultados = [
+    {
+      base: "a.sql",
+      situacao: "pulada",
+      motivo: "nenhuma verificação registrada",
+    },
+  ];
+  const { mensagem } = resumirVerificacao(resultados, CAMINHO_ROLLBACK);
+  assertStringIncludes(mensagem, "ALTER TABLE, policy, grant e REVOKE");
+});
+
+Deno.test("N2: motivo de esperado vazio → mensagem NÃO inclui a explicação de ALTER TABLE/policy/grant", () => {
+  const resultados = [
+    {
+      base: "b.sql",
+      funcao: "alguma_funcao",
+      situacao: "pulada",
+      motivo: "a entrada registrada não confere nenhum marcador",
+    },
+  ];
+  const { mensagem } = resumirVerificacao(resultados, CAMINHO_ROLLBACK);
+  assert(
+    !mensagem.includes("ALTER TABLE, policy, grant e REVOKE"),
+    `mensagem sugere causa errada (ALTER TABLE) para entrada com esperado vazio: ${mensagem}`,
+  );
+});
+
+// --------------------------------------------------------------------------
 // R4: classificarChecagem() é a decisão que o laço de main() usa para
 // classificar CADA checagem depois de rodar os marcadores. Extraída para dar
 // teste direto ao laço que decide — antes desta task, só resumirVerificacao()

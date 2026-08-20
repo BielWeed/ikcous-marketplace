@@ -772,6 +772,19 @@ function resumirVerificacao(resultados, caminhoRollback) {
       verificadas.length > 0
         ? `   ${verificadas.length} de ${normalizados.length} verificação(ões) foram conferidas e passaram; as demais NÃO.\n`
         : "";
+    // N2: esta explicação só faz sentido quando o motivo de fato é "não
+    // havia entrada nenhuma em VERIFICACOES" — ALTER TABLE, policy e grant
+    // são a razão real disso. Quando o motivo é "a entrada registrada não
+    // confere nenhum marcador" (esperado vazio ou só espaços), a migration
+    // TEM entrada e provavelmente NÃO é DDL de tabela; imprimir esta frase
+    // ali sugere uma causa que não é a que aconteceu.
+    const explicacaoAlterTable = puladas.some(
+      (r) => r.motivo === "nenhuma verificação registrada",
+    )
+      ? `   O db-apply só sabe conferir marcador dentro de corpo de função\n` +
+        `   (pg_get_functiondef) — ALTER TABLE, policy, grant e REVOKE saem sempre\n` +
+        `   assim e precisam de conferência à mão.\n`
+      : "";
     return {
       estado: "PULADA",
       codigoSaida: 2,
@@ -780,9 +793,7 @@ function resumirVerificacao(resultados, caminhoRollback) {
         `quer dizer que ninguém conferiu.\n` +
         `${resumoVerificadas}` +
         `   Verificações puladas:\n     ${listaPuladas || "(nenhuma verificação informada)"}\n` +
-        `   O db-apply só sabe conferir marcador dentro de corpo de função\n` +
-        `   (pg_get_functiondef) — ALTER TABLE, policy, grant e REVOKE saem sempre\n` +
-        `   assim e precisam de conferência à mão.\n` +
+        `${explicacaoAlterTable}` +
         `${avisoCommit}`,
     };
   }
@@ -838,6 +849,175 @@ function classificarChecagem({
     return { situacao: "falhou" };
   }
   return { situacao: "verificada" };
+}
+
+/**
+ * Avalia UMA checagem completa — decide a situação, monta os textos das
+ * linhas a imprimir e diz se a função estava ausente do schema. Recebe a
+ * definição crua vinda do banco (`def`: string, ou `undefined` quando a
+ * função não existe) e o objeto de checagem (`checagem`: `{ funcao,
+ * esperado }`, ou `undefined` quando a migration não tem entrada nenhuma em
+ * VERIFICACOES).
+ *
+ * Extraída para fechar a SEGUNDA metade do defeito de 20/08/2026. A rodada
+ * anterior extraiu classificarChecagem() (a decisão pura a partir de três
+ * booleanos), mas main() continuava computando esses booleanos — e no ramo
+ * "sem entrada em VERIFICACOES" continuava passando LITERAIS escritos à mão
+ * (`temRegistro: false, ...`) direto para classificarChecagem(), sem
+ * nenhuma linha de teste exercitando esse caminho de verdade: mutar esses
+ * literais para `true` deixava a suíte inteira verde. Agora quem decide
+ * `temRegistro`/`algumMarcadorAvaliado`/`algumMarcadorAusente` é esta
+ * função, a partir dos dados reais (`def`, `checagem`) — e ela é testada
+ * direto com `avaliarChecagem(undefined, undefined)` reproduzindo o caso
+ * literal de 20/08.
+ *
+ * `linhas` já vem como texto pronto para `console.log`, na ordem em que
+ * devem aparecer: assim main() só imprime, nunca decide o que formatar.
+ *
+ * N1: um marcador vazio ou só espaço em branco NÃO conta como avaliado —
+ * `"".includes("")` é sempre `true`, e sem esta guarda `esperado: [""]`
+ * saía "ok" sem comparar nada.
+ */
+function avaliarChecagem(def, checagem) {
+  if (checagem === undefined) {
+    const { situacao, motivo } = classificarChecagem({
+      temRegistro: false,
+      algumMarcadorAvaliado: false,
+      algumMarcadorAusente: false,
+    });
+    return {
+      situacao,
+      motivo,
+      linhas: [],
+      funcaoAusente: false,
+      funcao: undefined,
+    };
+  }
+
+  const funcaoAusente = def === undefined;
+  const linhas = [];
+  if (funcaoAusente) {
+    // A2: o veredito abaixo (provavelmente AUSENTE em todo marcador) já fica
+    // certo sozinho, mas o RÓTULO "AUSENTE" mente sobre a causa — faz
+    // parecer que existe um corpo de função divergente para comparar,
+    // quando na verdade a função simplesmente não existe no schema (pode
+    // ser um no-op da migration, ou uma função com nome errado no mapa).
+    linhas.push(
+      `  (${checagem.funcao} não existe no schema — os marcadores abaixo saem AUSENTE por isso, não por divergência de corpo)`,
+    );
+  }
+
+  // Normaliza \r\n -> \n dos dois lados antes de comparar. O repo nao tem
+  // .gitattributes e core.autocrlf converte as migrations para CRLF no
+  // working tree a cada checkout/clone/stash; sem isso, um marcador que
+  // cruza uma quebra de linha (ex.: "ELSE\n            UPDATE ...") deixa
+  // de casar contra um corpo em CRLF e a verificacao grita AUSENTE para
+  // uma migration que esta correta — DEPOIS do COMMIT ja ter acontecido.
+  const defNormalizado = def?.replace(/\r\n/g, "\n");
+  let algumMarcadorAvaliado = false;
+  let algumMarcadorAusente = false;
+  for (const marcadorBruto of checagem.esperado) {
+    const marcadorNormalizado = marcadorBruto.replace(/\r\n/g, "\n");
+    if (marcadorNormalizado.trim() === "") continue; // N1: vazio/espaço não é marcador.
+    algumMarcadorAvaliado = true;
+    const ok = Boolean(defNormalizado?.includes(marcadorNormalizado));
+    if (!ok) algumMarcadorAusente = true;
+    const rotulo = `${checagem.funcao}: ${marcadorBruto.slice(0, 64)}`;
+    linhas.push(`  ${ok ? "ok     " : "AUSENTE"}  ${rotulo}`);
+  }
+
+  const { situacao, motivo } = classificarChecagem({
+    temRegistro: true,
+    algumMarcadorAvaliado,
+    algumMarcadorAusente,
+  });
+  return { situacao, motivo, linhas, funcaoAusente, funcao: checagem.funcao };
+}
+
+/**
+ * Monta a lista de tarefas de verificação a partir dos arquivos aplicados e
+ * do mapa VERIFICACOES — uma tarefa por CHECAGEM (uma função dentro de uma
+ * migration), ou uma tarefa "vazia" (`checagem: undefined`) quando o
+ * arquivo não tem entrada nenhuma no mapa. `linhasAntes` carrega a mensagem
+ * de "sem verificação registrada" quando for o caso.
+ *
+ * Extraída para que main() não precise de um `if` para decidir quantas
+ * checagens existem por arquivo, nem montar essa mensagem na hora: só
+ * percorrer o que esta função já decidiu.
+ */
+/**
+ * A forma que uma checagem PRECISA ter para ser conferível: uma função com
+ * nome e uma lista de marcadores de texto. Qualquer outra coisa é entrada
+ * malformada no mapa — que vira "pulada", nunca sucesso e nunca crash.
+ */
+function checagemBemFormada(checagem) {
+  return (
+    typeof checagem === "object" &&
+    checagem !== null &&
+    !Array.isArray(checagem) &&
+    typeof checagem.funcao === "string" &&
+    checagem.funcao !== "" &&
+    Array.isArray(checagem.esperado) &&
+    checagem.esperado.every((m) => typeof m === "string")
+  );
+}
+
+function montarTarefasDeVerificacao(arquivos, verificacoes) {
+  const tarefas = [];
+  for (const nome of arquivos) {
+    const base = path.basename(nome);
+    const registro = verificacoes[base];
+    // Qualquer coisa falsy (undefined, null, "", 0, false) e tambem a LISTA
+    // VAZIA caem aqui, em "pulada". Os dois caminhos ja custaram caro:
+    // trocar isto por `registro === undefined` fez `null` estourar TypeError
+    // DEPOIS do COMMIT, e `[]` fazia o arquivo sumir do veredito inteiro —
+    // nao virava tarefa, nao virava resultado, e o script imprimia "Tudo
+    // aplicado e verificado" contando so' os outros. Entrada malformada no
+    // mapa e' desconhecido, nunca sucesso e nunca crash.
+    if (!registro || (Array.isArray(registro) && registro.length === 0)) {
+      tarefas.push({
+        base,
+        checagem: undefined,
+        linhasAntes: [`  ${base}: sem verificação registrada, pulando.`],
+      });
+      continue;
+    }
+    // Um arquivo pode redefinir mais de uma função (ex.: a mesma migration
+    // reaplicada task a task) — registro vira lista nesse caso. Cada
+    // checagem vira uma tarefa PRÓPRIA, não um flag agregado por arquivo: um
+    // flag agregado deixaria uma segunda função sem `esperado` preenchido
+    // passar escondida atrás da primeira, que conferiu normalmente.
+    const checagens = Array.isArray(registro) ? registro : [registro];
+    for (const checagem of checagens) {
+      // A guarda acima cobre o RECIPIENTE; esta cobre o CONTEÚDO, e as duas
+      // precisam existir. `{ funcao: "f" }` sem `esperado` — o "depois eu
+      // preencho" — chegava em avaliarChecagem e estourava
+      // `checagem.esperado is not iterable` DEPOIS do COMMIT do passo 2. E o
+      // crash saía pelo main().catch com código 1, que é o MESMO código do
+      // passo 2, onde ele quer dizer "Nada foi comitado desta migration":
+      // quem lesse a tela concluiria que nada foi gravado, e tudo tinha sido.
+      if (!checagemBemFormada(checagem)) {
+        tarefas.push({
+          base,
+          checagem: undefined,
+          linhasAntes: [
+            `  ${base}: entrada malformada no mapa VERIFICACOES, tratada como sem verificação.`,
+            `           Esperado { funcao: "nome", esperado: ["marcador", ...] } — corrija o mapa.`,
+          ],
+        });
+        continue;
+      }
+      tarefas.push({ base, checagem, linhasAntes: [] });
+    }
+  }
+  return tarefas;
+}
+
+/** Busca a definição atual de uma checagem no banco — `undefined` quando não há checagem (arquivo sem entrada em VERIFICACOES). */
+async function buscarDef(client, checagem) {
+  if (checagem === undefined) return undefined;
+  const [def] = await definicaoAtual(client, checagem.funcao);
+  return def;
 }
 
 async function definicaoAtual(client, nomeFuncao) {
@@ -974,65 +1154,26 @@ async function main() {
   // 3. Verificação pós-aplicação. Cada migration termina classificada em UM
   // de três estados — nunca "verificada por padrão" — e é resumirVerificacao()
   // quem decide o veredito final a partir dessa lista (ver o comentário dela).
+  //
+  // Esta seção não decide mais nada: montarTarefasDeVerificacao() já separou
+  // o que precisa ser checado, buscarDef() só busca, avaliarChecagem() é
+  // quem classifica cada checagem — aqui só sobra laço, chamada, print e
+  // push. Se voltar a aparecer decisao aqui, o lugar dela e' dentro de uma
+  // das funcoes puras acima — foi assim que este defeito sobreviveu a duas
+  // correcoes: a fronteira andava em vez de fechar.
   console.log("\nVerificação:");
   const resultados = [];
-  for (const nome of arquivos) {
-    const base = path.basename(nome);
-    const registro = VERIFICACOES[base];
-    if (!registro) {
-      console.log(`  ${base}: sem verificação registrada, pulando.`);
-      const { situacao, motivo } = classificarChecagem({
-        temRegistro: false,
-        algumMarcadorAvaliado: false,
-        algumMarcadorAusente: false,
-      });
-      resultados.push({ base, situacao, motivo });
-      continue;
-    }
-    // Um arquivo pode redefinir mais de uma função (ex.: a mesma migration
-    // reaplicada task a task) — registro vira lista nesse caso. Cada
-    // checagem vira um resultado PRÓPRIO (com `funcao`), não um flag
-    // agregado por arquivo: um flag agregado deixaria uma segunda função
-    // sem `esperado` preenchido passar escondida atrás da primeira, que
-    // conferiu normalmente.
-    const checagens = Array.isArray(registro) ? registro : [registro];
-    for (const checagem of checagens) {
-      const [def] = await definicaoAtual(client, checagem.funcao);
-      if (def === undefined) {
-        // A2: o veredito abaixo (provavelmente AUSENTE em todo marcador) já
-        // fica certo sozinho, mas o RÓTULO "AUSENTE" mente sobre a causa —
-        // faz parecer que existe um corpo de função divergente para
-        // comparar, quando na verdade a função simplesmente não existe no
-        // schema (pode ser um no-op da migration, ou uma função com nome
-        // errado no mapa).
-        console.log(
-          `  (${checagem.funcao} não existe no schema — os marcadores abaixo saem AUSENTE por isso, não por divergência de corpo)`,
-        );
-      }
-      // Normaliza \r\n -> \n dos dois lados antes de comparar. O repo nao tem
-      // .gitattributes e core.autocrlf converte as migrations para CRLF no
-      // working tree a cada checkout/clone/stash; sem isso, um marcador que
-      // cruza uma quebra de linha (ex.: "ELSE\n            UPDATE ...") deixa
-      // de casar contra um corpo em CRLF e a verificacao grita AUSENTE para
-      // uma migration que esta correta — DEPOIS do COMMIT ja ter acontecido.
-      const defNormalizado = def?.replace(/\r\n/g, "\n");
-      let algumMarcadorAvaliado = false;
-      let algumMarcadorAusente = false;
-      for (const marcador of checagem.esperado) {
-        algumMarcadorAvaliado = true;
-        const marcadorNormalizado = marcador.replace(/\r\n/g, "\n");
-        const ok = Boolean(defNormalizado?.includes(marcadorNormalizado));
-        if (!ok) algumMarcadorAusente = true;
-        const rotulo = `${checagem.funcao}: ${marcador.slice(0, 64)}`;
-        console.log(`  ${ok ? "ok     " : "AUSENTE"}  ${rotulo}`);
-      }
-      const { situacao, motivo } = classificarChecagem({
-        temRegistro: true,
-        algumMarcadorAvaliado,
-        algumMarcadorAusente,
-      });
-      resultados.push({ base, funcao: checagem.funcao, situacao, motivo });
-    }
+  for (const tarefa of montarTarefasDeVerificacao(arquivos, VERIFICACOES)) {
+    for (const linha of tarefa.linhasAntes) console.log(linha);
+    const def = await buscarDef(client, tarefa.checagem);
+    const avaliacao = avaliarChecagem(def, tarefa.checagem);
+    for (const linha of avaliacao.linhas) console.log(linha);
+    resultados.push({
+      base: tarefa.base,
+      funcao: avaliacao.funcao,
+      situacao: avaliacao.situacao,
+      motivo: avaliacao.motivo,
+    });
   }
 
   await client.end();
@@ -1052,13 +1193,16 @@ if (require.main === module) {
 }
 
 // Exportado para tests/db_apply_rollback_test.ts (funcoesAlteradas,
-// montarRollback) e tests/db_apply_resumo_verificacao_test.ts
-// (resumirVerificacao, classificarChecagem). O guarda acima existe por
-// causa disso: sem ele, importar o módulo dispararia a aplicação das
-// migrations.
+// montarRollback), tests/db_apply_resumo_verificacao_test.ts
+// (resumirVerificacao, classificarChecagem) e
+// tests/db_apply_avaliar_checagem_test.ts (avaliarChecagem,
+// montarTarefasDeVerificacao). O guarda acima existe por causa disso: sem
+// ele, importar o módulo dispararia a aplicação das migrations.
 module.exports = {
   funcoesAlteradas,
   montarRollback,
   resumirVerificacao,
   classificarChecagem,
+  avaliarChecagem,
+  montarTarefasDeVerificacao,
 };

@@ -83,28 +83,42 @@ jobs:
       # e a mesma linha que o dev roda na maquina dele, e job separado abre
       # espaco para o CI e a maquina divergirem sem ninguem notar.
       - run: npm ci
-      # `npm test` roda tres conjuntos, 83 casos somados:
+      # `npm test` roda tres conjuntos, 728 casos somados (medidos em
+      # 20/08/2026: 294 + 60 + 374). Se voce mexer na suite, MEDA de novo em
+      # vez de somar a diferenca no numero antigo — os sub-totais abaixo ja
+      # ficaram anos-luz atras por terem sido mantidos assim.
       #
-      # test:edge — 43 casos em Deno, varrendo supabase/functions/ inteiro.
-      # 12 sao de calculate-shipping: existiam desde antes e nunca tinham sido
-      # executados por ninguem (INFRA-140). 20 sao da send-push (PUSH-010), e
-      # sobem um push service local para provar o envio sem tocar a rede. 11
-      # sao da notify-new-order (PEDIDO-020, #166). O script aponta para a
+      # test:edge — 294 casos em Deno, varrendo supabase/functions/ inteiro.
+      # Historico de como a pasta encheu: calculate-shipping existia desde
+      # antes e nunca tinha sido executada por ninguem (INFRA-140); send-push
+      # (PUSH-010) sobe um push service local para provar o envio sem tocar a
+      # rede; notify-new-order e' a PEDIDO-020 (#166). O script aponta para a
       # PASTA de proposito: citar arquivo faz teste novo de edge function
       # nascer fora do CI, que foi o que aconteceu com a send-push — e a
       # prova de que funciona e que os 11 da notify-new-order entraram aqui
       # sozinhos, sem ninguem editar este workflow.
       #
-      # test:unit — 17 testes / 64 steps em tests/, em Deno, sobre os axiomas
-      # do Truth Gate (PR #145) e sobre o cabeçalho condicional do rollback do
-      # db-apply (PR do buraco "restaurada vs criada"). Moram fora de src/ de
-      # proposito: um _test.ts la dentro entraria no `tsc -b` e quebraria o
-      # job de tipos com os globais do Deno.
+      # test:unit — 60 testes / 73 steps em tests/, em Deno, sobre os axiomas
+      # do Truth Gate (PR #145), sobre o cabeçalho condicional do rollback do
+      # db-apply (PR do buraco "restaurada vs criada") e sobre o veredito da
+      # verificacao pos-aplicacao do db-apply (resumirVerificacao,
+      # classificarChecagem, avaliarChecagem — o defeito de 20/08/2026 em que
+      # duas migrations sem verificacao saiam como "Tudo aplicado e
+      # verificado"). Moram fora de src/ de proposito: um _test.ts la dentro
+      # entraria no `tsc -b` e quebraria o job de tipos com os globais do Deno.
       #
-      # test:front — 23 casos de vitest sobre src/lib/mappers.ts (INFRA-150).
-      # Moram em tests/front/, que o script do Deno ignora explicitamente.
+      # test:front — 374 casos de vitest em tests/front/, que o script do Deno
+      # ignora explicitamente. Comecou em src/lib/mappers.ts (INFRA-150) e hoje
+      # cobre tela.
       #
-      # Os tres somados rodam em ~6s e nao tocam rede externa.
+      # Os tres somados nao tocam rede externa. No Linux do CI rodam em poucos
+      # segundos. Na maquina Windows do Gabriel, medido em 20/08/2026, o
+      # test:front sozinho levou 38,25 s e duas rodadas consecutivas na mesma
+      # arvore, sem nada mudar entre elas, deram 3 e depois 6 falhas — todas
+      # `Test timed out in 5000ms`, e um dos casos acusados passa em 4,15 s
+      # quando roda isolado. Instabilidade de ambiente, nao defeito: vermelho
+      # de test:front nesta maquina nao distingue codigo quebrado de PC
+      # ocupado. Quem cobra e' o CI.
       - run: npm test
 
   build:
