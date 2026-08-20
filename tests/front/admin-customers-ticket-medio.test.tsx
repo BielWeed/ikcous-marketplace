@@ -139,9 +139,7 @@ describe("AdminCustomersView — o card Ticket Médio", () => {
       "@/views/admin/AdminCustomersView"
     );
     await act(async () => {
-      raiz.render(
-        <AdminCustomersView active={true} onNavigate={vi.fn()} />,
-      );
+      raiz.render(<AdminCustomersView active={true} onNavigate={vi.fn()} />);
     });
     // O fetch da lista é disparado por um timer de 320 ms dentro da view.
     await act(async () => {

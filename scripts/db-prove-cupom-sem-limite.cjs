@@ -144,7 +144,7 @@ async function criarPedido(client, { rpc, produtoId, codigo, total }) {
 /** O que a validacao do checkout responde para o mesmo cupom. */
 async function validacaoDoCheckout(client, codigo) {
   const { rows } = await client.query(
-    `SELECT public.validate_coupon_secure_v2($1, $2) AS r`,
+    "SELECT public.validate_coupon_secure_v2($1, $2) AS r",
     [codigo, PRECO],
   );
   return rows[0].r;
@@ -162,7 +162,7 @@ async function estadoDoPedido(client, orderId) {
 
 async function usosDoCupom(client, cupomId) {
   const { rows } = await client.query(
-    `SELECT usage_count FROM public.coupons WHERE id = $1`,
+    "SELECT usage_count FROM public.coupons WHERE id = $1",
     [cupomId],
   );
   return rows[0].usage_count;
@@ -335,7 +335,10 @@ async function main() {
       vNeg.is_valid === true && pNeg.ok === true,
       `validacao=${vNeg.is_valid} pedido=${pNeg.ok} ${pNeg.erro ?? ""}`,
     );
-    conferir("limite negativo: uso contado", (await usosDoCupom(client, cupomNeg)) === 1);
+    conferir(
+      "limite negativo: uso contado",
+      (await usosDoCupom(client, cupomNeg)) === 1,
+    );
 
     // --- caso 3: limite de VERDADE, ainda com folga -> passa -----------------
     const cupomFolga = await criarCupom(client, {

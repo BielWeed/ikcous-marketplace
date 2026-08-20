@@ -231,10 +231,14 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         //
         // Sem pedido não existe ticket médio: cai para R$ 0,00 em vez de
         // dividir por zero e imprimir "Infinity" ou "NaN" no painel.
-        value: `R$ ${(globalStats?.global_orders
-          ? (globalStats.global_ltv || 0) / globalStats.global_orders
-          : 0
-        ).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        value: `R$ ${(
+          globalStats?.global_orders
+            ? (globalStats.global_ltv || 0) / globalStats.global_orders
+            : 0
+        ).toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`,
         icon: Wallet,
         accent: "text-blue-500",
         subValue: "Média por pedido",
