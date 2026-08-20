@@ -754,11 +754,16 @@ Vale registrar, porque foram candidatos a achado que caíram na verificação:
 
 ---
 
-## 17 ⚠️. Achado novo: o "LTV Total" de cada cliente conta pedido que ninguém pagou
+## 17 ✅. Achado novo: o "LTV Total" de cada cliente conta pedido que ninguém pagou
 
-> **Estado: a metade de tela está fechada; a metade de banco está ESCRITA e PROVADA.**
-> `AdminUserDetailView.tsx` já soma só dinheiro reconhecido (commit `d821611`). Enquanto a
-> migration não estiver no banco, a ficha e a lista divergem em sentido contrário ao de antes.
+> **Estado: FECHADO — a metade de tela E as duas migrations do par estão no banco.**
+> `AdminUserDetailView.tsx` já soma só dinheiro reconhecido (commit `d821611`), e o par
+> `20260823000000`+`20260824000000` **já foi aplicado**. Conferido em 20/08/2026 por
+> **comportamento**, não pelo ledger: o `pg_get_functiondef` das funções vivas traz o filtro
+> `payment_status IN ('pago', 'pago_apos_expirar')` **2 vezes** em `get_admin_customers_paged`
+> e **1 vez** em `get_segmented_push_targets` — exatamente a contagem de cada arquivo
+> descontando as linhas de comentário (3−1 e 3−2). A redação anterior deste bloco dizia que a
+> metade de banco seguia só "escrita e provada", e envelheceu; ficha e lista **não** divergem.
 >
 > 🔴 **A `20260823000000` e a `20260824000000` são um PAR e entram JUNTAS, nunca separadas.**
 > A `20260823000000` reescreve `get_admin_customers_paged` (a lista de Clientes); a
