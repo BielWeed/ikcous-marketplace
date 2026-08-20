@@ -40,7 +40,6 @@ import {
   Search,
   Shield,
   ShoppingBag,
-  Snowflake,
   TrendingUp,
   Users,
   Wallet,
@@ -969,14 +968,6 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
                 <Zap className="mr-2 size-4 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
                 Notificação Push
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-zinc-800/60" />
-              <DropdownMenuItem
-                onClick={() => toast.info("Funcionalidade em desenvolvimento")}
-                className="group flex cursor-pointer items-center gap-1 rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-red-500 transition-colors hover:shadow-[0_0_15px_rgba(239,68,68,0.1)] focus:bg-red-500/10 focus:text-red-400"
-              >
-                <Snowflake className="mr-2 size-4 shrink-0 text-red-500/80 transition-colors group-focus:text-red-400" />
-                Congelar Acesso
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -1061,16 +1052,6 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
                 >
                   <Zap className="mr-2 size-3.5 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
                   Notificação Push
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-zinc-800/60" />
-                <DropdownMenuItem
-                  onClick={() =>
-                    toast.info("Funcionalidade em desenvolvimento")
-                  }
-                  className="group flex cursor-pointer items-center gap-1 rounded-xl p-2.5 text-[9px] font-black uppercase tracking-widest text-red-500 transition-colors focus:bg-red-500/10 focus:text-red-400"
-                >
-                  <Snowflake className="mr-2 size-3.5 shrink-0 text-red-500/80 transition-colors group-focus:text-red-400" />
-                  Congelar Acesso
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
