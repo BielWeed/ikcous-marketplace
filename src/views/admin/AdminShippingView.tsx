@@ -6,6 +6,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
+import { frasesDaRegraDeFrete } from "@/utils/regra-de-frete";
 import {
   AlertCircle,
   Boxes,
@@ -176,6 +177,26 @@ export const AdminShippingView = memo(function AdminShippingView({
       fetchLogs();
     }
   }, [isLogsOpen, fetchLogs]);
+
+  // O que a tela AFIRMA sobre a regra que está no formulário — não sobre a
+  // que está salva: quem mexe no interruptor precisa ver na hora o que aquilo
+  // vai significar, antes de salvar. Ver `frasesDaRegraDeFrete` para o motivo
+  // de as frases não morarem mais aqui dentro do markup.
+  const frasesDaRegra = useMemo(
+    () =>
+      frasesDaRegraDeFrete({
+        freeShippingMin: formData.freeShippingMin,
+        shippingFee: formData.shippingFee,
+        shippingCoverage: formData.shippingCoverage,
+        shippingProvider: formData.shippingProvider,
+      }),
+    [
+      formData.freeShippingMin,
+      formData.shippingFee,
+      formData.shippingCoverage,
+      formData.shippingProvider,
+    ],
+  );
 
   // Dirty check to enable save button
   const isFormDirty = useMemo(() => {
@@ -537,16 +558,12 @@ export const AdminShippingView = memo(function AdminShippingView({
 
                       {/* Mini Simulation Badge */}
                       <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[10.5px] font-medium text-emerald-300">
-                        ✨ Frete grátis ativo para pedidos a partir de{" "}
-                        <strong className="font-bold underline underline-offset-2">
-                          R$ {formData.freeShippingMin}
-                        </strong>
+                        ✨ {frasesDaRegra.freteGratis}
                       </div>
                     </div>
                   ) : (
                     <p className="text-[11px] text-zinc-500 italic py-2">
-                      Frete grátis desativado. Todos os pedidos terão cobrança
-                      de entrega.
+                      {frasesDaRegra.freteGratis}
                     </p>
                   )}
                 </div>
@@ -685,20 +702,31 @@ export const AdminShippingView = memo(function AdminShippingView({
 
                       {/* Rule Summary Badge */}
                       <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-[10.5px] font-medium text-amber-300">
-                        💡 Pedidos abaixo do limite pagam taxa fixa de{" "}
-                        <strong className="font-bold underline underline-offset-2">
-                          R$ {formData.shippingFee}
-                        </strong>
+                        💡 {frasesDaRegra.taxa}
                       </div>
                     </div>
                   ) : (
                     <p className="text-[11px] text-zinc-500 italic py-2">
-                      Sem taxa fixa configurada.
+                      {frasesDaRegra.taxa}
                     </p>
                   )}
                 </div>
               </div>
             </div>
+
+            {/* O único estado em que a loja passa a entregar de graça para o
+                país inteiro sem ter pedido isso: taxa em R$ 0 com cotação
+                nacional pela taxa fixa. Fica fora dos dois cards de propósito
+                — é a COMBINAÇÃO deles que produz o efeito, e foi justamente
+                por cada card só olhar o próprio interruptor que a tela dizia
+                "todos os pedidos terão cobrança de entrega" enquanto o app
+                cobrava R$ 0,00 de todo mundo. */}
+            {frasesDaRegra.avisoDeEntregaGratuita && (
+              <div className="flex items-start gap-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-[11px] font-medium leading-snug text-amber-200 duration-200 animate-in fade-in">
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-400" />
+                <span>{frasesDaRegra.avisoDeEntregaGratuita}</span>
+              </div>
+            )}
 
             {/* Section 2: Origem & Abrangência de Envio */}
             <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4 sm:p-5 space-y-4 backdrop-blur-md shadow-xl">
