@@ -23,9 +23,12 @@
  * sessão já é 'postgres'/'service_role', o que não é o caso da conexão
  * direta usada aqui.
  *
- * A CONEXÃO PODE ABRIR EM MODO SOMENTE LEITURA: por isso `SET
- * default_transaction_read_only = off` antes do BEGIN — este script precisa
- * inserir produto e variante de teste dentro da transação.
+ * A CONEXÃO PODE ABRIR EM MODO SOMENTE LEITURA: por isso `BEGIN READ WRITE`
+ * em vez de `BEGIN` — este script precisa inserir produto e variante de teste
+ * dentro da transação. NUNCA `SET default_transaction_read_only = off`: isso é
+ * `SET SESSION` por definição e gruda na conexão do pooler (porta 6543), que é
+ * reaproveitada entre programas. `BEGIN READ WRITE` é escopo de TRANSAÇÃO e
+ * some sozinho no ROLLBACK.
  *
  * COMO CADA CASO É MEDIDO — por DELTA de um produto isolado, nunca por
  * número absoluto: `inventory.totalCost`, `inventory.totalValue` e
@@ -233,8 +236,16 @@ async function criarCasoA(client) {
     estoque: 11,
     estoqueMinimo: 0,
   });
-  await criarVariante(client, { produtoId: id, active: true, stockIncrement: 6 });
-  await criarVariante(client, { produtoId: id, active: true, stockIncrement: 4 });
+  await criarVariante(client, {
+    produtoId: id,
+    active: true,
+    stockIncrement: 6,
+  });
+  await criarVariante(client, {
+    produtoId: id,
+    active: true,
+    stockIncrement: 4,
+  });
   await criarVariante(client, {
     produtoId: id,
     active: false,
@@ -278,7 +289,11 @@ async function criarCasoD(client) {
     estoque: 20,
     estoqueMinimo: 5,
   });
-  await criarVariante(client, { produtoId: id, active: true, stockIncrement: 3 });
+  await criarVariante(client, {
+    produtoId: id,
+    active: true,
+    stockIncrement: 3,
+  });
   return id;
 }
 
@@ -309,7 +324,8 @@ async function medirDelta(client, criarFn, dias = 30) {
   const depois = await chamarComoAdmin(client, dias);
   await client.query("DELETE FROM public.produtos WHERE id = $1", [id]);
   return {
-    cost: Number(depois.inventory.totalCost) - Number(antes.inventory.totalCost),
+    cost:
+      Number(depois.inventory.totalCost) - Number(antes.inventory.totalCost),
     value:
       Number(depois.inventory.totalValue) - Number(antes.inventory.totalValue),
     low: depois.inventoryAlerts - antes.inventoryAlerts,
