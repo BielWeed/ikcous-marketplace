@@ -49,14 +49,14 @@ em *Pendências minhas*, no fim.
 
 | # | O que a pessoa vê | O que é verdade | Quem sente | Quanto dói |
 |---|---|---|---|---|
-| 1 | Um pedido de **R$ 105,00** no topo da lista, marcado "Novo Pedido" | Ele não existe para nenhum contador do painel, some do próprio filtro "Novo Pedido", e nunca vai expirar | quem compra e quem vende | **Alto** |
-| 2 | A ficha do pedido, com o botão "Avançar: Em Separação" | A ficha **não diz em lugar nenhum** se o pedido foi pago. Dá para mandar separar e enviar um pedido não pago sem nenhum aviso | quem vende | **Alto** |
-| 3 | "Receita Hoje R$ X" | Soma PIX que só foi **gerado**, nunca pago. Em 11/08 mostraria **R$ 214,40** num dia de receita **R$ 0,00** | quem vende | **Alto** |
-| 4 | "Total Concluído: 6" | São todos os pedidos dos últimos 30 dias que não foram cancelados. Entregues de verdade nesses 30 dias: **1** | quem vende | **Alto** |
-| 5 | Um pedido cancelado com a etiqueta "Pago fora do fluxo" | Dinheiro do cliente entrou e o pedido está cancelado. Nenhuma fila, contador ou alerta aponta para ele | quem compra e quem vende | **Alto** |
+| 1 ✅ | Um pedido de **R$ 105,00** no topo da lista, marcado "Novo Pedido" | Ele não existe para nenhum contador do painel, some do próprio filtro "Novo Pedido", e nunca vai expirar | quem compra e quem vende | **Alto** |
+| 2 ✅ | A ficha do pedido, com o botão "Avançar: Em Separação" | A ficha **não diz em lugar nenhum** se o pedido foi pago. Dá para mandar separar e enviar um pedido não pago sem nenhum aviso | quem vende | **Alto** |
+| 3 ✅ | "Receita Hoje R$ X" | Soma PIX que só foi **gerado**, nunca pago. Em 11/08 mostraria **R$ 214,40** num dia de receita **R$ 0,00** | quem vende | **Alto** |
+| 4 ✅ | "Total Concluído: 6" | São todos os pedidos dos últimos 30 dias que não foram cancelados. Entregues de verdade nesses 30 dias: **1** | quem vende | **Alto** |
+| 5 ✅ | Um pedido cancelado com a etiqueta "Pago fora do fluxo" | Dinheiro do cliente entrou e o pedido está cancelado. Nenhuma fila, contador ou alerta aponta para ele | quem compra e quem vende | **Alto** |
 | 6 | Botão "Todos Ativos" ligado por padrão | Traz **tudo**, inclusive cancelado: **72 dos 84** pedidos são cancelados | quem vende | **Médio-alto** |
-| 7 | "Capital Alocado", "Lucro Potencial" e "ROI" na tela de Produtos | Congelam depois de excluir, duplicar ou editar um produto — seguem contando o produto que saiu | quem vende | **Médio-alto** |
-| 8 | Um produto com "Margem de Lucro **100,0%**" | É um produto **sem custo cadastrado**. E a etiqueta "Custo Suspeito" pula justamente o custo zero | quem vende | **Médio** |
+| 7 ✅ | "Capital Alocado", "Lucro Potencial" e "ROI" na tela de Produtos | Congelam depois de excluir, duplicar ou editar um produto — seguem contando o produto que saiu | quem vende | **Médio-alto** |
+| 8 ✅ | Um produto com "Margem de Lucro **100,0%**" | É um produto **sem custo cadastrado**. E a etiqueta "Custo Suspeito" pula justamente o custo zero | quem vende | **Médio** |
 | 9 | 6 produtos com a etiqueta verde "Em Operação" | Estão com estoque **zero**; na loja o botão deles é "Esgotado" | quem compra e quem vende | **Médio** |
 | 10 | "Ações Pendentes: 7" e, ao lado, o crachá "6" na navegação | Dois contadores da mesma coisa, na mesma tela, discordando | quem vende | **Médio** |
 | 11 | Ao abrir Produtos: "Nenhum produto cadastrado / 0 itens" | Há 19 produtos. É o texto que a tela mostra durante o carregamento | quem vende | **Médio-baixo** |
@@ -329,7 +329,60 @@ verdade, e esta auditoria é somente leitura. A cadeia acima é determinística,
 não existe caminho no código que atualize esses três cartões depois de uma alteração de
 produto.
 
+
+> ### ✅ CORRIGIDO em 20/08/2026
+>
+> A tela de Produtos passou a **rebuscar o resumo executivo** depois de cada alteracao de
+> catalogo, em vez de esperar que alguem passe o mouse na aba "Geral". Sao quatro caminhos, e a
+> auditoria so tinha visto tres:
+>
+> | Caminho | Onde |
+> |---|---|
+> | excluir produto | `confirmDelete` |
+> | duplicar produto | `confirmDuplicate` |
+> | **editar** produto (o formulario e outra view, mas a lista **nao desmonta**) | efeito de transicao `active` |
+> | **ativar/desativar pelo card** — achado NOVO, descoberto na revisao | `handleToggleStatus` |
+>
+> O quarto nao estava no relatorio e e o que mais aparece: acontece **sem sair da tela**, com os
+> cartoes visiveis na mesma dobra, e a RPC de fato muda (`... WHERE deleted_at IS NULL AND ativo
+> = true`, em `20260822000100`).
+>
+> **Duas tentativas foram descartadas antes desta, e o motivo importa.** A primeira corrigia na
+> raiz: `clearAnalyticsCache()` avisaria todas as instancias e zeraria o `stats` delas. A revisao
+> de contexto limpo bloqueou — como as telas de admin **nunca desmontam** (`DeferredTabContent`),
+> o zeramento atingiria todas, e o Dashboard e a tela de Pedidos nao tem `stats` nas dependencias
+> do efeito de rebusca: passariam a mostrar **`R$ 0,00` e "Sem Dados Registrados" como se fossem
+> medicao real**, e o aviso de dinheiro em pedido cancelado sumiria sozinho — justamente o aviso
+> que existe porque sumir em silencio foi o que escondeu aquele defeito antes. Trocar "numero
+> velho, aproximadamente certo" por "numero falso, definitivamente errado" numa tela de dinheiro
+> e piorar. A correcao ficou **local a tela que tem o defeito**, e `useAnalytics.ts` voltou byte a
+> byte ao original.
+>
+> Provado por [tests/front/admin-products-kpi-apos-mexer-no-catalogo.test.tsx](../../tests/front/admin-products-kpi-apos-mexer-no-catalogo.test.tsx)
+> — 7 casos, incluindo os limites (operacao que **falha** nao rebusca) e a guarda contra RPC em
+> laco. Prova de mutacao: sabotando cada chamada, so o teste correspondente cai; e movendo a
+> atualizacao do `wasActiveRef` para depois do `return`, o caso da edicao estoura.
+
 ---
+
+## 17. A rebusca dos KPIs de Produtos nao tem debounce
+
+**Achado NOVO, encontrado na revisao da correcao do 7 — nao estava na auditoria original.**
+
+**O que a pessoa ve.** O lojista pausa tres produtos em sequencia rapida. Cada um dispara uma
+rebusca forcada, que pula a janela de 30 s e chama a RPC direto. Com retentativa e espera
+crescente (ate ~3,5 s no pior caso), a resposta do primeiro pode chegar **depois** da do
+terceiro — e a ultima a chegar e a que fica. "Capital Alocado" pode mostrar o valor de uma
+operacao atras, por ate 30 s, ate a proxima revalidacao.
+
+**Quem sente.** Quem vende, e so em operacao em lote.
+
+**Quanto doi.** Baixo, e a comparacao honesta e esta: **isso ja e melhor que o melhor caso de
+hoje**, que e o numero congelado ate recarregar o app. Se autocorrige.
+
+**A correcao, quando doer.** Debounce curto antes da rebusca. O padrao ja existe no
+repositorio: `AdminOrdersView.tsx:430-436` espera 320 ms antes de recarregar.
+
 
 ## 8. Produto sem custo aparece como o mais lucrativo do catálogo
 
@@ -362,7 +415,56 @@ aviso, é o único excluído.
 **Quanto dói.** Médio. Uma margem de 100% num painel é um convite a comprar mais daquele
 produto. Aqui ela significa o contrário: que ninguém sabe quanto ele custou.
 
+> ### ✅ CORRIGIDO em 20/08/2026
+>
+> O cartao **parou de afirmar numero que ninguem mediu**. Sem custo cadastrado, "Margem de
+> Lucro", "ROI de Rendimento", "Capital Alocado" e "Potencial" mostram **"—"** em vez de
+> inventar 100%, 0% e R$ 0,00. E a etiqueta que existia para avisar isso e nunca avisava passou
+> a cobrir o caso, com texto proprio: **"Sem Custo Cadastrado"** para custo ausente ou zero, e a
+> **"Custo Suspeito"** de sempre para a faixa de R$ 0,01 a R$ 0,10 (suspeita de digitacao).
+>
+> **Com custo real, nada mudou** — a conta e a mesma expressao de antes, conferido operando por
+> operando na revisao, inclusive o lucro total, que era a linha mais provavel de escorregar.
+> Zero **medido** continua aparecendo: estoque zero com custo real mostra "R$ 0,00", nao "—".
+>
+> Um ganho que ninguem tinha pedido: custo que chega como `NaN` (texto sujo no campo) antes caia
+> em `NaN || 0` e produzia margem de 100% igual; agora cai em "—".
+>
+> Provado por [tests/front/admin-products-margem-sem-custo.test.tsx](../../tests/front/admin-products-margem-sem-custo.test.tsx)
+> — 6 casos, com asserção **positiva** de que o cartao esta na tela antes de qualquer negativa
+> (senao o teste ficaria verde quando a tela nao renderiza). Prova de mutacao: tratando "sem
+> custo" como custo zero de novo, **4 dos 6 caem** — `expected '100.0%' to be '—'` — e os 2 de
+> regressao seguem verdes.
+>
+> **O modo compacto nunca teve este defeito** (nao mostra numero derivado de custo), e e ele o
+> padrao da tela. Ou seja: a mentira so aparecia para quem trocava para a visualizacao detalhada
+> — e o aviso novo tambem so aparece la.
+
 ---
+
+## 18. O app nao consegue guardar "nao sei quanto custou"
+
+**Achado NOVO, encontrado na revisao do 8 — e e a raiz dele.**
+
+**O que e verdade.** `src/hooks/useProducts.ts:530` grava `custo: productData.costPrice || 0` ao
+criar produto, e `AdminProductsView.tsx:489` faz o mesmo ao duplicar. O `null` que o formulario
+monta e **achatado para `0` antes de chegar ao banco**. Depois disso, "custo zero de verdade" e
+"nunca preenchi o custo" sao a mesma linha, e nenhuma tela consegue distinguir os dois.
+
+**A consequencia que ja se paga.** A correcao do achado 8 teve de escolher um lado, e escolheu o
+menos caro: trata zero como ausencia. O preco disso e que um **brinde de custo zero legitimo**
+tambem aparece como "—" e ganha a etiqueta "Sem Custo Cadastrado", que afirma uma causa que nao
+aconteceu. Nao ha regra de exibicao que acerte os dois casos enquanto a origem for ambigua — o
+conserto e no caminho de escrita, nao na tela.
+
+**Quem sente.** Quem vende, e so quem cadastra brinde ou amostra com custo zero de proposito.
+
+**Quanto doi.** Baixo hoje. Sobe se a loja passar a usar produto de custo zero de verdade.
+
+**Onde ja esta anotado no codigo.** O comentario em `AdminProductsView.tsx` (bloco do achado 8)
+carrega o gatilho: no dia em que `useProducts.ts:530` parar de achatar `null` em `0`, o `hasCost`
+tem de virar `costPrice != null` **na mesma mudanca**, senao o zero medido fica invisivel.
+
 
 ## 9. Seis produtos aparecem como "Em Operação" com estoque zero
 
@@ -632,8 +734,18 @@ Pareciam defeito e não são. Ficam registrados para ninguém gastar tempo de no
   para um arquivo temporário da sessão, e a exclusão rodou dentro de uma transação que abortava
   sozinha se o alvo não fosse exatamente aquela linha marcada como teste. Conferido depois:
   0 pedidos com situação nula, 0 itens órfãos, 83 pedidos no total.
-- **A conexão direta com o banco (`DATABASE_URL`, porta 6543) abre as sessões em modo somente
-  leitura.** Não é problema: é só o padrão daquela conexão, um `SET` por sessão desliga, o banco
-  não está em recuperação e tem 22 MB. **O app não é afetado** — ele escreve por outro caminho,
-  e criou pedidos normalmente durante a auditoria. Fica registrado porque custou tempo descobrir
-  e vai custar de novo no próximo script que tentar escrever por aí.
+- ⚠️ **CORRIGIDO em 20/08/2026 — o que estava escrito aqui era falso.** A versao anterior dizia
+  que a conexao do `DATABASE_URL` "abre as sessoes em modo somente leitura" e que isso "nao e
+  problema". As duas afirmacoes estao erradas, e a segunda e a perigosa: ela ensina a tratar um
+  sintoma real como caracteristica do ambiente. **Conexao limpa NAO abre em somente leitura.**
+
+  O que acontece de verdade: o `DATABASE_URL` aponta para o **pooler** (porta 6543, Supavisor),
+  que **reaproveita a mesma conexao entre programas diferentes**. Um
+  `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` executado por um script de outra frente
+  grudou na conexao e vazou para quem veio depois — inclusive para esta auditoria. Foi essa
+  sujeira, e nao um padrao, que produziu o falso negativo registrado acima.
+
+  **Como escrever script daqui em diante:** abrir com `RESET ALL`, e usar `BEGIN READ ONLY` ou
+  `SET LOCAL` para limitar a transacao — **nunca `SET SESSION`**, que sobrevive ao seu programa e
+  contamina o proximo. A mesma explicacao esta em
+  [PASSAGEM-2026-08-20.md](PASSAGEM-2026-08-20.md).

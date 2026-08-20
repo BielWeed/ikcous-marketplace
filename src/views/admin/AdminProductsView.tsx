@@ -117,9 +117,27 @@ export const AdminProductsView = memo(function AdminProductsView({
     [onNavigate, saveScroll, resetRestored],
   );
 
+  // Achado novo da revisão do Achado 7: `AdminProductsView` nunca desmonta —
+  // `AdminArea.tsx` só esconde o container por CSS (`visibility`/`opacity`)
+  // ao abrir `admin-product-form`. Editar o produto muda o custo, salva
+  // (`useProducts.ts` chama `clearAnalyticsCache()`, que zera só o cache de
+  // MÓDULO) e volta para "Produtos" com `stats` desta instância intacto —
+  // sem forçar aqui, o KPI segue mostrando o snapshot de antes da edição.
+  // `wasActiveRef` guarda o `active` do render anterior para disparar SÓ na
+  // transição false→true, nunca a cada render enquanto a view já está
+  // ativa (senão vira RPC em laço). Mesmo precedente de
+  // `AdminOrdersView.tsx:430-436`.
+  const wasActiveRef = useRef(active);
   useEffect(() => {
-    if (active && !stats) {
+    const wasActive = wasActiveRef.current;
+    wasActiveRef.current = active;
+    if (!active) return;
+    if (!stats) {
       fetchExecutiveSummary(false);
+      return;
+    }
+    if (!wasActive) {
+      fetchExecutiveSummary(true);
     }
   }, [active, stats, fetchExecutiveSummary]);
 
@@ -325,6 +343,31 @@ export const AdminProductsView = memo(function AdminProductsView({
     [financialStats, totalProducts],
   );
 
+  // Achado 7 da auditoria de 20/08/2026
+  // (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): excluir ou
+  // duplicar produto muda o catálogo, e `deleteProduct`/`addProduct`
+  // chamam `clearAnalyticsCache()` — mas isso só zera o cache de MÓDULO em
+  // `useAnalytics.ts`, não avisa esta instância já montada do hook. Sem
+  // rebuscar aqui, "Capital Alocado", "Lucro Potencial" e "ROI do
+  // Portfólio" seguem precificando o produto que já saiu, até o lojista
+  // trocar de aba ou recarregar. A correção anterior tentava consertar
+  // isso na RAIZ (fazendo `clearAnalyticsCache()` zerar `stats` de toda
+  // instância montada), e foi bloqueada na revisão: zerar `stats` também
+  // atinge o Dashboard e a tela de Pedidos, que não rebuscam sozinhos do
+  // nulo — o Dashboard passava a mostrar KPI zerado como se fosse real, e
+  // o aviso de dinheiro em pedido cancelado sumia da tela de Pedidos.
+  // Segue o padrão já usado em `AdminOrdersView.tsx:292-294`: rebuscar na
+  // tela que tem o defeito, não zerar o estado para todo mundo.
+  const refreshFinancialStats = useCallback(async () => {
+    try {
+      await fetchExecutiveSummary(true);
+    } catch {
+      // A rebusca é best-effort: o produto já foi excluído/duplicado com
+      // sucesso, e não pode derrubar essa operação. Os KPIs ficam com o
+      // snapshot antigo até a próxima revalidação natural.
+    }
+  }, [fetchExecutiveSummary]);
+
   const handleToggleStatus = useCallback(
     async (id: string, active: boolean) => {
       if (isOffline) {
@@ -336,9 +379,20 @@ export const AdminProductsView = memo(function AdminProductsView({
         return;
       }
       haptic.light();
-      await toggleProductStatus(id, active);
+      // Achado novo da revisão do Achado 7: ativar/desativar pelo card
+      // também muda o que a RPC do resumo executivo conta — ela filtra por
+      // `ativo = true` (supabase/migrations/20260822000100_...sql:187-192)
+      // — sem rebuscar aqui, "Capital Alocado" continua contando um
+      // produto que acabou de sair (ou entrar) do filtro do servidor, com
+      // os cartões visíveis na mesma dobra. `toggleProductStatus` resolve
+      // falsy numa falha (sem lançar) — não rebusca nesse caso, porque
+      // nada mudou de fato no catálogo do servidor.
+      const sucesso = await toggleProductStatus(id, active);
+      if (sucesso) {
+        refreshFinancialStats();
+      }
     },
-    [toggleProductStatus, isOffline],
+    [toggleProductStatus, isOffline, refreshFinancialStats],
   );
 
   const handleDelete = useCallback(
@@ -379,6 +433,16 @@ export const AdminProductsView = memo(function AdminProductsView({
         toast.success("Produto Removido", {
           description: "O produto foi excluído com sucesso.",
         });
+        // Achado da revisão do Achado 7: `AlertDialogAction` do Radix é
+        // `Dialog.Close` e fecha o diálogo síncrono no clique, antes de
+        // qualquer `await` — mas o `finally` abaixo (`setProductToDelete`)
+        // só roda depois de todos os `await`s daqui. Se o lojista excluir A
+        // e, enquanto a rebusca de A ainda corre, abrir o diálogo de B,
+        // esse `finally` tardio fecha o diálogo de B sozinho. SEM `await`
+        // aqui não alonga essa janela — `refreshFinancialStats` é `async`
+        // com `try/catch` interno, nunca rejeita, então não sobra promessa
+        // sem tratamento.
+        refreshFinancialStats();
       } else {
         haptic.error();
       }
@@ -390,7 +454,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     } finally {
       setProductToDelete(null);
     }
-  }, [deleteProduct, productToDelete, isOffline]);
+  }, [deleteProduct, productToDelete, isOffline, refreshFinancialStats]);
 
   const handleDuplicate = useCallback(
     (product: any) => {
@@ -457,6 +521,9 @@ export const AdminProductsView = memo(function AdminProductsView({
       toast.success("Produto Duplicado", {
         description: "O produto foi duplicado com sucesso.",
       });
+      // Mesmo motivo de `confirmDelete`: sem `await` para não alongar a
+      // janela entre o clique e o `finally` que fecha o diálogo.
+      refreshFinancialStats();
     } catch (err) {
       console.error("Error duplicating product:", err);
       haptic.error();
@@ -466,7 +533,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     } finally {
       setProductToDuplicate(null);
     }
-  }, [addProduct, productToDuplicate, isOffline]);
+  }, [addProduct, productToDuplicate, isOffline, refreshFinancialStats]);
 
   // Removed early return loading block to prevent visual layout shifts
 
@@ -1358,18 +1425,46 @@ const AdminProductCard = memo(function AdminProductCard({
   onPrefetch,
 }: AdminProductCardProps) {
   if (viewMode === "detailed") {
-    const margin =
-      product.price > 0
-        ? ((product.price - (product.costPrice || 0)) / product.price) * 100
+    // Achado 8 da auditoria de 20/08/2026
+    // (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): `costPrice || 0`
+    // fundia "sem custo cadastrado" com "custo é zero" — o mesmo produto
+    // mostrava margem de 100% (o melhor número do painel) e ROI de 0% ao
+    // mesmo tempo, por descrever um custo que ninguém mediu. `hasCost`
+    // separa os dois estados; sem ele, margem/ROI/capital/potencial viram
+    // `null` e a tela mostra "—" em vez de afirmar um número. Com custo
+    // real (> 0) a conta é BYTE A BYTE a mesma de antes.
+    //
+    // ⚠️ POR QUE zero conta como ausencia aqui, sendo que
+    // AdminCustomersView.tsx:252-255 faz o CONTRARIO de proposito (usa `??`
+    // para que um zero MEDIDO nao vire "nao sei"): porque neste caminho o
+    // app nao consegue representar "nao sei". `useProducts.ts:530` grava
+    // `custo: productData.costPrice || 0` no insert, entao o `null` que o
+    // formulario monta e achatado para `0` ANTES de chegar ao banco — e o
+    // produto que motivou este achado tem `custo = 0` significando ausencia.
+    // Com a origem ambigua, nenhuma regra de exibicao acerta os dois casos,
+    // e afirmar "margem de 100%" e o erro mais caro dos dois.
+    //
+    // O preco: um brinde de custo zero DE VERDADE tambem cai em "—".
+    // **Gatilho:** no dia em que `useProducts.ts:530` parar de achatar
+    // `null` em `0`, este `hasCost` deve virar `costPrice != null` (sem o
+    // `> 0`) na MESMA mudanca, senao o zero medido fica invisivel.
+    const hasCost =
+      product.costPrice !== undefined &&
+      product.costPrice !== null &&
+      product.costPrice > 0;
+    const margin = !hasCost
+      ? null
+      : product.price > 0
+        ? ((product.price - product.costPrice) / product.price) * 100
         : 0;
-    const roi =
-      (product.costPrice || 0) > 0
-        ? ((product.price - (product.costPrice || 0)) /
-            (product.costPrice || 0)) *
-          100
-        : 0;
-    const invested = (product.costPrice || 0) * product.stock;
-    const totalProfit = (product.price || 0) * product.stock - invested;
+    const roi = !hasCost
+      ? null
+      : ((product.price - product.costPrice) / product.costPrice) * 100;
+    const invested = !hasCost ? null : product.costPrice * product.stock;
+    const totalProfit = !hasCost
+      ? null
+      : (product.price || 0) * product.stock -
+        product.costPrice * product.stock;
 
     return (
       <motion.div
@@ -1457,14 +1552,17 @@ const AdminProductCard = memo(function AdminProductCard({
                   >
                     {product.isActive ? "Em Operação" : "Offline"}
                   </Badge>
-                  {product.costPrice !== undefined &&
-                    product.costPrice !== null &&
-                    product.costPrice > 0 &&
+                  {!hasCost ? (
+                    <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-500 backdrop-blur-md">
+                      Sem Custo Cadastrado
+                    </Badge>
+                  ) : (
                     product.costPrice <= 0.1 && (
                       <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-500 backdrop-blur-md">
                         Custo Suspeito
                       </Badge>
-                    )}
+                    )
+                  )}
                   {product.stock <= 5 && (
                     <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-500 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
                       Crítico
@@ -1484,19 +1582,25 @@ const AdminProductCard = memo(function AdminProductCard({
                   <span
                     className={cn(
                       "text-lg font-black tracking-tighter",
-                      margin >= 40 && "text-emerald-500",
-                      margin >= 20 && margin < 40 && "text-admin-gold",
-                      margin < 20 && "text-rose-500",
+                      margin === null && "text-zinc-500",
+                      margin !== null && margin >= 40 && "text-emerald-500",
+                      margin !== null &&
+                        margin >= 20 &&
+                        margin < 40 &&
+                        "text-admin-gold",
+                      margin !== null && margin < 20 && "text-rose-500",
                     )}
                   >
-                    {margin.toFixed(1)}%
+                    {margin === null ? "—" : `${margin.toFixed(1)}%`}
                   </span>
                   <div
                     className={cn(
                       "w-6 h-6 rounded-lg flex items-center justify-center border",
-                      margin >= 20
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
-                        : "bg-rose-500/10 border-rose-500/20 text-rose-500",
+                      margin === null
+                        ? "bg-zinc-800/50 border-white/10 text-zinc-500"
+                        : margin >= 20
+                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+                          : "bg-rose-500/10 border-rose-500/20 text-rose-500",
                     )}
                   >
                     <TrendingUp className="size-3.5" />
@@ -1511,12 +1615,16 @@ const AdminProductCard = memo(function AdminProductCard({
                   <span
                     className={cn(
                       "text-lg font-black tracking-tighter",
-                      roi >= 100 && "text-emerald-500",
-                      roi >= 50 && roi < 100 && "text-admin-gold",
-                      roi < 50 && "text-rose-500",
+                      roi === null && "text-zinc-500",
+                      roi !== null && roi >= 100 && "text-emerald-500",
+                      roi !== null &&
+                        roi >= 50 &&
+                        roi < 100 &&
+                        "text-admin-gold",
+                      roi !== null && roi < 50 && "text-rose-500",
                     )}
                   >
-                    {roi.toFixed(1)}%
+                    {roi === null ? "—" : `${roi.toFixed(1)}%`}
                   </span>
                   <div className="flex size-6 items-center justify-center rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-400">
                     <ArrowUpRight className="size-3.5" />
@@ -1557,10 +1665,11 @@ const AdminProductCard = memo(function AdminProductCard({
                   Capital Alocado
                 </span>
                 <span className="font-mono text-xs font-bold text-zinc-400">
-                  R${" "}
-                  {invested.toLocaleString("pt-BR", {
-                    minimumFractionDigits: 2,
-                  })}
+                  {invested === null
+                    ? "—"
+                    : `R$ ${invested.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                      })}`}
                 </span>
               </div>
 
@@ -1581,10 +1690,11 @@ const AdminProductCard = memo(function AdminProductCard({
                     Potencial
                   </p>
                   <p className="text-sm font-black tracking-tight text-white/80">
-                    + R${" "}
-                    {totalProfit.toLocaleString("pt-BR", {
-                      minimumFractionDigits: 0,
-                    })}
+                    {totalProfit === null
+                      ? "—"
+                      : `+ R$ ${totalProfit.toLocaleString("pt-BR", {
+                          minimumFractionDigits: 0,
+                        })}`}
                   </p>
                 </div>
               </div>

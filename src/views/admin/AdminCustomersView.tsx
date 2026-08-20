@@ -17,6 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAnalytics } from "@/hooks/useAnalytics";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
@@ -39,7 +40,6 @@ import {
   Search,
   Shield,
   ShoppingBag,
-  Snowflake,
   TrendingUp,
   Users,
   Wallet,
@@ -67,6 +67,10 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   const [customers, setCustomers] = useState<Customer[]>(
     () => cachedCustomersData?.customers || [],
   );
+  // Fonte compartilhada do Ticket Médio — a mesma que o Dashboard
+  // (AdminDashboardView) e a tela de Pedidos (AdminOrdersView) já leem.
+  // Ver o comentário no card "Ticket Médio" logo abaixo.
+  const { stats: analyticsStats, fetchExecutiveSummary } = useAnalytics();
   const { prefetchView } = usePrefetchOnHover();
 
   const handlePrefetchUserDetail = useCallback(() => {
@@ -172,6 +176,15 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     return () => clearTimeout(timer);
   }, [searchTerm, sortField, sortDirection, page, active, fetchCustomers]);
 
+  // Mesmo gatilho de AdminProductsView.tsx: só busca se ainda não tem o
+  // resumo executivo em cache (o hook já resolve isso em memória — um
+  // quarto consumidor de useAnalytics() não é uma quarta ida à rede).
+  useEffect(() => {
+    if (active && !analyticsStats) {
+      fetchExecutiveSummary(false);
+    }
+  }, [active, analyticsStats, fetchExecutiveSummary]);
+
   // Auto-refresh when coming back online
   const wasOfflineRef = useRef(isOffline);
   const shouldScrollToTop = useRef(false);
@@ -217,41 +230,72 @@ export const AdminCustomersView = memo(function AdminCustomersView({
       },
       {
         label: "Ticket Médio",
-        // Receita dividida por PEDIDOS. Até 21/08/2026 o divisor era
-        // `total_customers`, e isso é gasto médio por cliente, não ticket
-        // médio — com os números de 20/08 (R$ 450,50 em 11 pedidos, 16
-        // perfis) este card dizia R$ 28,16 enquanto o Dashboard dizia
-        // R$ 40,95 com o MESMO rótulo, na mesma sessão.
+        // Até 21/08/2026 este card CALCULAVA `global_ltv / global_orders`
+        // a partir de `get_admin_customers_paged` — que filtra pedidos só
+        // por status (`NOT IN ('cancelled','returned')`), sem olhar
+        // cobrança. O Dashboard, via `get_admin_analytics_v2`, filtra
+        // TAMBÉM por `payment_status`. As duas contas só batiam quando não
+        // existia nenhum pedido aguardando pagamento no banco — no primeiro
+        // PIX pendente, os dois cards do mesmo painel, com o mesmo rótulo
+        // "Ticket Médio", voltavam a divergir (achado 4 da auditoria de
+        // 20/08/2026; a troca de divisor do commit 402c669 corrigiu só
+        // metade do defeito).
         //
-        // A troca conserta um segundo erro de conta junto: `global_ltv` soma
-        // todos os pedidos, inclusive os de convidado, que não têm perfil.
-        // Dividir isso por `total_customers` misturava dois conjuntos
-        // diferentes. Com `global_orders` os dois lados passam a falar da
-        // mesma coisa.
+        // A correção: este card para de ter a própria conta. Passa a LER
+        // `executive.avgTicket`, a mesma fonte que o Dashboard e a tela de
+        // Pedidos já leem (ver AdminOrdersView.tsx) — não existe mais uma
+        // segunda calculadora para desalinhar.
         //
-        // Sem pedido não existe ticket médio: cai para R$ 0,00 em vez de
-        // dividir por zero e imprimir "Infinity" ou "NaN" no painel.
-        value: `R$ ${(
-          globalStats?.global_orders
-            ? (globalStats.global_ltv || 0) / globalStats.global_orders
-            : 0
-        ).toLocaleString("pt-BR", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}`,
+        // Enquanto o número não chegou, o card NÃO mostra "R$ 0,00" — isso
+        // afirmaria um fato que ninguém mediu. Mostra um espaço reservado.
+        //
+        // `??` e não `||`, de propósito: com `||`, um ticket médio MEDIDO
+        // como zero (loja sem pedido nenhum) cairia no ramo seguinte e
+        // acabaria indistinguível de "não sei". Com `??`, zero medido é
+        // zero e ausência é ausência. E a cadeia termina em `null`, não em
+        // `0`: `analyticsStats` pode existir sem `executive` — o hook
+        // também restaura resumo do cache em disco, que pode ser de uma
+        // versão anterior do payload.
+        value: (() => {
+          const medido =
+            analyticsStats?.averageTicket ??
+            analyticsStats?.executive?.avgTicket ??
+            null;
+          return medido == null
+            ? "—"
+            : `R$ ${medido.toLocaleString("pt-BR", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}`;
+        })(),
         icon: Wallet,
         accent: "text-blue-500",
         subValue: "Média por pedido",
       },
       {
         label: "Pedidos Totais",
-        value: globalStats?.global_orders || 0,
+        // Mesma história do card acima, no vizinho: `global_orders` vem de
+        // `get_admin_customers_paged`, que conta pedido sem olhar cobrança.
+        // O Dashboard conta "Total de Pedidos" com o filtro de dinheiro
+        // reconhecido. Com um PIX de R$ 89,90 aguardando, o Dashboard diz 11
+        // e esta tela dizia 12 — duas abas do mesmo painel, rótulos quase
+        // iguais, contagens diferentes.
+        //
+        // `executive.totalOrders` sai do MESMO `SELECT` que o `avgTicket` do
+        // card acima (migration 20260822000100), então os dois passam a
+        // concordar por construção, não por coincidência dos dados.
+        //
+        // Traço enquanto não chegou, pelo mesmo motivo do card acima: zero
+        // afirmaria que a loja nunca vendeu. A cadeia termina no traço, e não
+        // em `0`, para cobrir também o resumo restaurado do cache em disco sem
+        // o bloco `executive` — que existe, mas não traz contagem nenhuma.
+        value: analyticsStats?.executive?.totalOrders ?? "—",
         icon: ShoppingBag,
         accent: "text-amber-500",
         subValue: "Pedidos",
       },
     ],
-    [globalStats],
+    [globalStats, analyticsStats],
   );
 
   const totalPages = Math.ceil(totalCustomers / PAGE_SIZE);
@@ -924,14 +968,6 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
                 <Zap className="mr-2 size-4 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
                 Notificação Push
               </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-zinc-800/60" />
-              <DropdownMenuItem
-                onClick={() => toast.info("Funcionalidade em desenvolvimento")}
-                className="group flex cursor-pointer items-center gap-1 rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-red-500 transition-colors hover:shadow-[0_0_15px_rgba(239,68,68,0.1)] focus:bg-red-500/10 focus:text-red-400"
-              >
-                <Snowflake className="mr-2 size-4 shrink-0 text-red-500/80 transition-colors group-focus:text-red-400" />
-                Congelar Acesso
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -1016,16 +1052,6 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
                 >
                   <Zap className="mr-2 size-3.5 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
                   Notificação Push
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-zinc-800/60" />
-                <DropdownMenuItem
-                  onClick={() =>
-                    toast.info("Funcionalidade em desenvolvimento")
-                  }
-                  className="group flex cursor-pointer items-center gap-1 rounded-xl p-2.5 text-[9px] font-black uppercase tracking-widest text-red-500 transition-colors focus:bg-red-500/10 focus:text-red-400"
-                >
-                  <Snowflake className="mr-2 size-3.5 shrink-0 text-red-500/80 transition-colors group-focus:text-red-400" />
-                  Congelar Acesso
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
