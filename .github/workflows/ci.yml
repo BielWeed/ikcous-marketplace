@@ -83,8 +83,8 @@ jobs:
       # e a mesma linha que o dev roda na maquina dele, e job separado abre
       # espaco para o CI e a maquina divergirem sem ninguem notar.
       - run: npm ci
-      # `npm test` roda tres conjuntos, 728 casos somados (medidos em
-      # 20/08/2026: 294 + 60 + 374). Se voce mexer na suite, MEDA de novo em
+      # `npm test` roda tres conjuntos, 798 casos somados (medidos em
+      # 20/08/2026: 294 + 60 + 444). Se voce mexer na suite, MEDA de novo em
       # vez de somar a diferenca no numero antigo — os sub-totais abaixo ja
       # ficaram anos-luz atras por terem sido mantidos assim.
       #
@@ -107,18 +107,20 @@ jobs:
       # verificado"). Moram fora de src/ de proposito: um _test.ts la dentro
       # entraria no `tsc -b` e quebraria o job de tipos com os globais do Deno.
       #
-      # test:front — 374 casos de vitest em tests/front/, que o script do Deno
-      # ignora explicitamente. Comecou em src/lib/mappers.ts (INFRA-150) e hoje
-      # cobre tela.
+      # test:front — 444 casos de vitest em 78 arquivos de tests/front/, que o
+      # script do Deno ignora explicitamente. Comecou em src/lib/mappers.ts
+      # (INFRA-150) e hoje cobre tela.
       #
       # Os tres somados nao tocam rede externa. No Linux do CI rodam em poucos
-      # segundos. Na maquina Windows do Gabriel, medido em 20/08/2026, o
-      # test:front sozinho levou 38,25 s e duas rodadas consecutivas na mesma
-      # arvore, sem nada mudar entre elas, deram 3 e depois 6 falhas — todas
-      # `Test timed out in 5000ms`, e um dos casos acusados passa em 4,15 s
-      # quando roda isolado. Instabilidade de ambiente, nao defeito: vermelho
-      # de test:front nesta maquina nao distingue codigo quebrado de PC
-      # ocupado. Quem cobra e' o CI.
+      # segundos. Na maquina Windows do Gabriel o test:front leva ~40 s e o
+      # resultado NAO e' deterministico: medido em 20/08/2026, duas rodadas
+      # consecutivas na mesma arvore, sem nada mudar entre elas, deram 3 e
+      # depois 6 falhas — todas `Test timed out in 5000ms`, e um dos casos
+      # acusados passa em 4,15 s quando roda isolado; uma terceira rodada, ja
+      # sobre a develop, saiu 444/444 verde. Instabilidade de ambiente, nao
+      # defeito: vermelho de test:front nesta maquina nao distingue codigo
+      # quebrado de PC ocupado, e verde tambem nao prova muito. Quem cobra e'
+      # o CI, no Linux.
       - run: npm test
 
   build:
