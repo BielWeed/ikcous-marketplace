@@ -129,7 +129,11 @@ async function tentar(client, sql, params, rotulo) {
   try {
     const r = await client.query(sql, params);
     await client.query(`RELEASE SAVEPOINT ${sp}`);
-    return { negado: false, id: r.rows[0]?.create_marketplace_order ?? r.rows[0], rotulo };
+    return {
+      negado: false,
+      id: r.rows[0]?.create_marketplace_order ?? r.rows[0],
+      rotulo,
+    };
   } catch (erro) {
     await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
     return { negado: true, mensagem: erro.message, rotulo };
@@ -215,7 +219,9 @@ async function main() {
         "create_marketplace_order (v1)",
       );
 
-    console.log("=== 1. ANTES da migration: a permissão de execução existe? ===");
+    console.log(
+      "=== 1. ANTES da migration: a permissão de execução existe? ===",
+    );
     await trocarPara(client, "authenticated");
     await definirClaims(client, userId);
     const v1AntesAuth = await chamarV1(client);
@@ -224,14 +230,16 @@ async function main() {
       v1AntesAuth.negado &&
         /null value in column "total"/i.test(v1AntesAuth.mensagem) &&
         !/Não autenticado\./.test(v1AntesAuth.mensagem),
-      v1AntesAuth.negado ? v1AntesAuth.mensagem : "não foi negado (inesperado — deveria falhar por NOT NULL de total)",
+      v1AntesAuth.negado
+        ? v1AntesAuth.mensagem
+        : "não foi negado (inesperado — deveria falhar por NOT NULL de total)",
     );
 
     await trocarPara(client, "anon");
     await definirClaims(client, null);
     const v1AntesAnon = await chamarV1(client);
     conferir(
-      "ANTES da migration, anon é barrado pelo corpo da função (\"Não autenticado.\"), não pela permissão",
+      'ANTES da migration, anon é barrado pelo corpo da função ("Não autenticado."), não pela permissão',
       v1AntesAnon.negado && /Não autenticado\./.test(v1AntesAnon.mensagem),
       v1AntesAnon.negado ? v1AntesAnon.mensagem : "não foi negado",
     );
@@ -244,7 +252,10 @@ async function main() {
         "ANTES da migration já apareceu 'permission denied': o buraco não é o descrito (a permissão de execução já não existe). Pare e investigue.",
       );
     }
-    if (!v1AntesAuth.negado || !/null value in column "total"/i.test(v1AntesAuth.mensagem)) {
+    if (
+      !v1AntesAuth.negado ||
+      !/null value in column "total"/i.test(v1AntesAuth.mensagem)
+    ) {
       throw new Error(
         "authenticated não alcançou o INSERT da v1 pela via esperada (erro de NOT NULL em total). O comportamento do banco mudou desde que a tarefa foi escrita. Pare e investigue.",
       );
@@ -282,9 +293,7 @@ async function main() {
       v1DepoisAnon.negado ? v1DepoisAnon.mensagem : "não foi negado",
     );
 
-    console.log(
-      "\n=== 4. O caminho vivo (v23 e v24) não regrediu ===",
-    );
+    console.log("\n=== 4. O caminho vivo (v23 e v24) não regrediu ===");
     await trocarPara(client, "authenticated");
     await definirClaims(client, userId);
     const v23Depois = await tentar(
