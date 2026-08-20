@@ -248,7 +248,13 @@ describe("AdminCustomersView — o card Ticket Médio", () => {
     // Com uma cadeia terminando em `|| 0`, isto imprimiria "R$ 0,00" e
     // afirmaria que a loja tem ticket medio zero.
     mockAnalyticsStats = {
-      today: { revenue: 0, count: 0, pending: 0, revenueTrend: 0, countTrend: 0 },
+      today: {
+        revenue: 0,
+        count: 0,
+        pending: 0,
+        revenueTrend: 0,
+        countTrend: 0,
+      },
       month: { revenue: 0, count: 0, revenueTrend: 0, countTrend: 0 },
     } as unknown as typeof mockAnalyticsStats;
 
