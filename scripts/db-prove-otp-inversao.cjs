@@ -29,7 +29,16 @@
  *   Que o e-mail chega. Isso depende do SMTP da loja e da edge function
  *   publicada, e so se prova com um pedido comitado de verdade, no ar.
  *
- * USO:  node scripts/db-prove-otp-inversao.cjs
+ * USO:
+ *   node scripts/db-prove-otp-inversao.cjs              prova por ROLLBACK (antes)
+ *   node scripts/db-prove-otp-inversao.cjs --verificar   confere o estado (depois)
+ *
+ * O modo `--verificar` nao aplica nada: ele afere o banco COMO ESTA contra o
+ * estado final esperado. E o contrapeso da cegueira do db-apply — ele imprimiu
+ * "Tudo aplicado e verificado" logo depois de dizer "sem verificacao registrada,
+ * pulando", porque a migration B nao cria funcao e o mapa dele so sabe procurar
+ * marcador de texto em corpo de funcao (INFRA-370, #204).
+ *
  * Sai com codigo 0 so se TODAS as asseracoes passarem.
  */
 
@@ -87,7 +96,68 @@ const titulo = (t) => console.log(`\n=== ${t} ===`);
 /** Mascara e-mail: o endereco de quem comprou nao vai para a saida do script. */
 const mascarar = (e) => String(e ?? "").replace(/^(.).*?(@.*)$/, "$1***$2");
 
+/**
+ * Confere o estado final, sem aplicar nada. Roda DEPOIS do apply.
+ *
+ * Aqui a v2 nao e executada de proposito: no banco de verdade, cada chamada bem
+ * sucedida grava um codigo e queima a janela de 60 segundos de um pedido real.
+ * O comportamento ja foi provado na transacao que terminou em ROLLBACK; o que
+ * falta conferir e' o que ficou de pe.
+ */
+async function verificarEstadoFinal(client) {
+  titulo("Estado final (nada e aplicado neste modo)");
+  const { rows } = await client.query(`
+    SELECT
+      to_regprocedure('public.generate_order_otp_v2(text,text,text)') IS NOT NULL AS v2_existe,
+      (SELECT t.typname FROM pg_proc p JOIN pg_type t ON t.oid = p.prorettype
+        WHERE p.oid = 'public.generate_order_otp_v2(text,text,text)'::regprocedure) AS v2_retorno,
+      has_function_privilege('anon',
+        'public.generate_order_otp_v2(text,text,text)', 'EXECUTE') AS v2_anon,
+      has_function_privilege('authenticated',
+        'public.generate_order_otp_v2(text,text,text)', 'EXECUTE') AS v2_auth,
+      has_function_privilege('service_role',
+        'public.generate_order_otp_v2(text,text,text)', 'EXECUTE') AS v2_servico,
+      EXISTS (SELECT 1 FROM pg_trigger
+               WHERE tgrelid = 'public.otp_verifications'::regclass
+                 AND tgname = 'on_otp_created_send_email' AND NOT tgisinternal) AS gatilho,
+      to_regprocedure('public.handle_new_otp_verification()') IS NOT NULL AS handler,
+      to_regprocedure('public.generate_order_otp_v1(text,text,text)') IS NOT NULL AS v1_existe,
+      has_function_privilege('anon',
+        'public.generate_order_otp_v1(text,text,text)', 'EXECUTE') AS v1_anon,
+      has_function_privilege('authenticated',
+        'public.generate_order_otp_v1(text,text,text)', 'EXECUTE') AS v1_auth,
+      (SELECT count(*) FROM supabase_migrations.schema_migrations
+        WHERE version IN ('20260820000000', '20260820000100')) AS no_ledger
+  `);
+  const e = rows[0];
+  ok("a v2 existe e devolve jsonb", e.v2_existe === true && e.v2_retorno === "jsonb");
+  ok("so service_role executa a v2", e.v2_servico === true && e.v2_anon === false && e.v2_auth === false);
+  ok("o gatilho on_otp_created_send_email nao existe mais", e.gatilho === false);
+  ok("a funcao handle_new_otp_verification nao existe mais", e.handler === false);
+  ok("a v1 continua existindo (caminho de volta)", e.v1_existe === true);
+  ok("nem anon nem authenticated executam a v1", e.v1_anon === false && e.v1_auth === false);
+  ok("as duas migrations estao registradas no ledger", Number(e.no_ledger) === 2, String(e.no_ledger));
+}
+
 async function main() {
+  if (process.argv.includes("--verificar")) {
+    const client = new Client({
+      connectionString: lerDatabaseUrl(),
+      ssl: { rejectUnauthorized: false },
+    });
+    await client.connect();
+    try {
+      await verificarEstadoFinal(client);
+    } catch (e) {
+      falhas += 1;
+      console.error(`\nERRO: ${e.message}`);
+    } finally {
+      await client.end();
+    }
+    console.log(`\n=== Resultado: ${passes} asseracoes OK, ${falhas} falha(s) ===`);
+    process.exit(falhas === 0 ? 0 : 1);
+  }
+
   const sqlA = lerMigration(MIGRACAO_A);
   const sqlB = lerMigration(MIGRACAO_B);
 
