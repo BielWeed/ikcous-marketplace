@@ -55,7 +55,7 @@ em *Pendências minhas*, no fim.
 | 4 | "Total Concluído: 6" | São todos os pedidos dos últimos 30 dias que não foram cancelados. Entregues de verdade nesses 30 dias: **1** | quem vende | **Alto** |
 | 5 | Um pedido cancelado com a etiqueta "Pago fora do fluxo" | Dinheiro do cliente entrou e o pedido está cancelado. Nenhuma fila, contador ou alerta aponta para ele | quem compra e quem vende | **Alto** |
 | 6 | Botão "Todos Ativos" ligado por padrão | Traz **tudo**, inclusive cancelado: **72 dos 84** pedidos são cancelados | quem vende | **Médio-alto** |
-| 7 | "Capital Alocado", "Lucro Potencial" e "ROI" na tela de Produtos | Congelam depois de excluir, duplicar ou editar um produto — seguem contando o produto que saiu | quem vende | **Médio-alto** |
+| 7 ✅ | "Capital Alocado", "Lucro Potencial" e "ROI" na tela de Produtos | Congelam depois de excluir, duplicar ou editar um produto — seguem contando o produto que saiu | quem vende | **Médio-alto** |
 | 8 | Um produto com "Margem de Lucro **100,0%**" | É um produto **sem custo cadastrado**. E a etiqueta "Custo Suspeito" pula justamente o custo zero | quem vende | **Médio** |
 | 9 | 6 produtos com a etiqueta verde "Em Operação" | Estão com estoque **zero**; na loja o botão deles é "Esgotado" | quem compra e quem vende | **Médio** |
 | 10 | "Ações Pendentes: 7" e, ao lado, o crachá "6" na navegação | Dois contadores da mesma coisa, na mesma tela, discordando | quem vende | **Médio** |
@@ -329,7 +329,60 @@ verdade, e esta auditoria é somente leitura. A cadeia acima é determinística,
 não existe caminho no código que atualize esses três cartões depois de uma alteração de
 produto.
 
+
+> ### ✅ CORRIGIDO em 20/08/2026
+>
+> A tela de Produtos passou a **rebuscar o resumo executivo** depois de cada alteracao de
+> catalogo, em vez de esperar que alguem passe o mouse na aba "Geral". Sao quatro caminhos, e a
+> auditoria so tinha visto tres:
+>
+> | Caminho | Onde |
+> |---|---|
+> | excluir produto | `confirmDelete` |
+> | duplicar produto | `confirmDuplicate` |
+> | **editar** produto (o formulario e outra view, mas a lista **nao desmonta**) | efeito de transicao `active` |
+> | **ativar/desativar pelo card** — achado NOVO, descoberto na revisao | `handleToggleStatus` |
+>
+> O quarto nao estava no relatorio e e o que mais aparece: acontece **sem sair da tela**, com os
+> cartoes visiveis na mesma dobra, e a RPC de fato muda (`... WHERE deleted_at IS NULL AND ativo
+> = true`, em `20260822000100`).
+>
+> **Duas tentativas foram descartadas antes desta, e o motivo importa.** A primeira corrigia na
+> raiz: `clearAnalyticsCache()` avisaria todas as instancias e zeraria o `stats` delas. A revisao
+> de contexto limpo bloqueou — como as telas de admin **nunca desmontam** (`DeferredTabContent`),
+> o zeramento atingiria todas, e o Dashboard e a tela de Pedidos nao tem `stats` nas dependencias
+> do efeito de rebusca: passariam a mostrar **`R$ 0,00` e "Sem Dados Registrados" como se fossem
+> medicao real**, e o aviso de dinheiro em pedido cancelado sumiria sozinho — justamente o aviso
+> que existe porque sumir em silencio foi o que escondeu aquele defeito antes. Trocar "numero
+> velho, aproximadamente certo" por "numero falso, definitivamente errado" numa tela de dinheiro
+> e piorar. A correcao ficou **local a tela que tem o defeito**, e `useAnalytics.ts` voltou byte a
+> byte ao original.
+>
+> Provado por [tests/front/admin-products-kpi-apos-mexer-no-catalogo.test.tsx](../../tests/front/admin-products-kpi-apos-mexer-no-catalogo.test.tsx)
+> — 7 casos, incluindo os limites (operacao que **falha** nao rebusca) e a guarda contra RPC em
+> laco. Prova de mutacao: sabotando cada chamada, so o teste correspondente cai; e movendo a
+> atualizacao do `wasActiveRef` para depois do `return`, o caso da edicao estoura.
+
 ---
+
+## 17. A rebusca dos KPIs de Produtos nao tem debounce
+
+**Achado NOVO, encontrado na revisao da correcao do 7 — nao estava na auditoria original.**
+
+**O que a pessoa ve.** O lojista pausa tres produtos em sequencia rapida. Cada um dispara uma
+rebusca forcada, que pula a janela de 30 s e chama a RPC direto. Com retentativa e espera
+crescente (ate ~3,5 s no pior caso), a resposta do primeiro pode chegar **depois** da do
+terceiro — e a ultima a chegar e a que fica. "Capital Alocado" pode mostrar o valor de uma
+operacao atras, por ate 30 s, ate a proxima revalidacao.
+
+**Quem sente.** Quem vende, e so em operacao em lote.
+
+**Quanto doi.** Baixo, e a comparacao honesta e esta: **isso ja e melhor que o melhor caso de
+hoje**, que e o numero congelado ate recarregar o app. Se autocorrige.
+
+**A correcao, quando doer.** Debounce curto antes da rebusca. O padrao ja existe no
+repositorio: `AdminOrdersView.tsx:430-436` espera 320 ms antes de recarregar.
+
 
 ## 8. Produto sem custo aparece como o mais lucrativo do catálogo
 

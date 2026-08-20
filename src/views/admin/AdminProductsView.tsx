@@ -117,9 +117,27 @@ export const AdminProductsView = memo(function AdminProductsView({
     [onNavigate, saveScroll, resetRestored],
   );
 
+  // Achado novo da revisão do Achado 7: `AdminProductsView` nunca desmonta —
+  // `AdminArea.tsx` só esconde o container por CSS (`visibility`/`opacity`)
+  // ao abrir `admin-product-form`. Editar o produto muda o custo, salva
+  // (`useProducts.ts` chama `clearAnalyticsCache()`, que zera só o cache de
+  // MÓDULO) e volta para "Produtos" com `stats` desta instância intacto —
+  // sem forçar aqui, o KPI segue mostrando o snapshot de antes da edição.
+  // `wasActiveRef` guarda o `active` do render anterior para disparar SÓ na
+  // transição false→true, nunca a cada render enquanto a view já está
+  // ativa (senão vira RPC em laço). Mesmo precedente de
+  // `AdminOrdersView.tsx:430-436`.
+  const wasActiveRef = useRef(active);
   useEffect(() => {
-    if (active && !stats) {
+    const wasActive = wasActiveRef.current;
+    wasActiveRef.current = active;
+    if (!active) return;
+    if (!stats) {
       fetchExecutiveSummary(false);
+      return;
+    }
+    if (!wasActive) {
+      fetchExecutiveSummary(true);
     }
   }, [active, stats, fetchExecutiveSummary]);
 
@@ -325,6 +343,31 @@ export const AdminProductsView = memo(function AdminProductsView({
     [financialStats, totalProducts],
   );
 
+  // Achado 7 da auditoria de 20/08/2026
+  // (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): excluir ou
+  // duplicar produto muda o catálogo, e `deleteProduct`/`addProduct`
+  // chamam `clearAnalyticsCache()` — mas isso só zera o cache de MÓDULO em
+  // `useAnalytics.ts`, não avisa esta instância já montada do hook. Sem
+  // rebuscar aqui, "Capital Alocado", "Lucro Potencial" e "ROI do
+  // Portfólio" seguem precificando o produto que já saiu, até o lojista
+  // trocar de aba ou recarregar. A correção anterior tentava consertar
+  // isso na RAIZ (fazendo `clearAnalyticsCache()` zerar `stats` de toda
+  // instância montada), e foi bloqueada na revisão: zerar `stats` também
+  // atinge o Dashboard e a tela de Pedidos, que não rebuscam sozinhos do
+  // nulo — o Dashboard passava a mostrar KPI zerado como se fosse real, e
+  // o aviso de dinheiro em pedido cancelado sumia da tela de Pedidos.
+  // Segue o padrão já usado em `AdminOrdersView.tsx:292-294`: rebuscar na
+  // tela que tem o defeito, não zerar o estado para todo mundo.
+  const refreshFinancialStats = useCallback(async () => {
+    try {
+      await fetchExecutiveSummary(true);
+    } catch {
+      // A rebusca é best-effort: o produto já foi excluído/duplicado com
+      // sucesso, e não pode derrubar essa operação. Os KPIs ficam com o
+      // snapshot antigo até a próxima revalidação natural.
+    }
+  }, [fetchExecutiveSummary]);
+
   const handleToggleStatus = useCallback(
     async (id: string, active: boolean) => {
       if (isOffline) {
@@ -336,9 +379,20 @@ export const AdminProductsView = memo(function AdminProductsView({
         return;
       }
       haptic.light();
-      await toggleProductStatus(id, active);
+      // Achado novo da revisão do Achado 7: ativar/desativar pelo card
+      // também muda o que a RPC do resumo executivo conta — ela filtra por
+      // `ativo = true` (supabase/migrations/20260822000100_...sql:187-192)
+      // — sem rebuscar aqui, "Capital Alocado" continua contando um
+      // produto que acabou de sair (ou entrar) do filtro do servidor, com
+      // os cartões visíveis na mesma dobra. `toggleProductStatus` resolve
+      // falsy numa falha (sem lançar) — não rebusca nesse caso, porque
+      // nada mudou de fato no catálogo do servidor.
+      const sucesso = await toggleProductStatus(id, active);
+      if (sucesso) {
+        refreshFinancialStats();
+      }
     },
-    [toggleProductStatus, isOffline],
+    [toggleProductStatus, isOffline, refreshFinancialStats],
   );
 
   const handleDelete = useCallback(
@@ -379,6 +433,16 @@ export const AdminProductsView = memo(function AdminProductsView({
         toast.success("Produto Removido", {
           description: "O produto foi excluído com sucesso.",
         });
+        // Achado da revisão do Achado 7: `AlertDialogAction` do Radix é
+        // `Dialog.Close` e fecha o diálogo síncrono no clique, antes de
+        // qualquer `await` — mas o `finally` abaixo (`setProductToDelete`)
+        // só roda depois de todos os `await`s daqui. Se o lojista excluir A
+        // e, enquanto a rebusca de A ainda corre, abrir o diálogo de B,
+        // esse `finally` tardio fecha o diálogo de B sozinho. SEM `await`
+        // aqui não alonga essa janela — `refreshFinancialStats` é `async`
+        // com `try/catch` interno, nunca rejeita, então não sobra promessa
+        // sem tratamento.
+        refreshFinancialStats();
       } else {
         haptic.error();
       }
@@ -390,7 +454,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     } finally {
       setProductToDelete(null);
     }
-  }, [deleteProduct, productToDelete, isOffline]);
+  }, [deleteProduct, productToDelete, isOffline, refreshFinancialStats]);
 
   const handleDuplicate = useCallback(
     (product: any) => {
@@ -457,6 +521,9 @@ export const AdminProductsView = memo(function AdminProductsView({
       toast.success("Produto Duplicado", {
         description: "O produto foi duplicado com sucesso.",
       });
+      // Mesmo motivo de `confirmDelete`: sem `await` para não alongar a
+      // janela entre o clique e o `finally` que fecha o diálogo.
+      refreshFinancialStats();
     } catch (err) {
       console.error("Error duplicating product:", err);
       haptic.error();
@@ -466,7 +533,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     } finally {
       setProductToDuplicate(null);
     }
-  }, [addProduct, productToDuplicate, isOffline]);
+  }, [addProduct, productToDuplicate, isOffline, refreshFinancialStats]);
 
   // Removed early return loading block to prevent visual layout shifts
 
