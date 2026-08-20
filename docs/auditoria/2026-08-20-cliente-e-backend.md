@@ -537,19 +537,35 @@ lojista digitou, na loja dele, hoje.
 
 | Item | Situação |
 |---|---|
-| **1** — escrita anônima na vitrine | Migration escrita e **revisada**, commitada em `f91b1a9`. 🔴 **NÃO aplicada — o buraco está aberto no banco neste instante.** |
+| **1** — escrita anônima na vitrine | 🟢 **Fechado e no ar.** Migration revisada (`f91b1a9`) e **aplicada** em 20/08/2026. |
 | **2** — cupom com limite zero | 🟢 **Resolvido e no ar**, por uma sessão paralela. Confirmado no corpo vivo das duas funções. |
-| **3** — caixa paralelo (v1) | Migration escrita e **revisada**, commitada em `de2d705`. Não aplicada. Dormente, então não urge. |
+| **3** — caixa paralelo (v1) | 🟢 **Fechado e no ar.** Migration revisada (`de2d705`) e **aplicada** em 20/08/2026. |
 | 4 a 7 | Fila normal. A direção mediu e **recomendou não gastar** outra rodada de auditoria no mesmo formato: nenhum deles custa algo por dia parado. |
 
-🔴 **A frase que não pode se perder:** commit não é estar no ar, e merge também não. O item 1 só
-está fechado quando a migration for **aplicada** — até lá, o que existe é um arquivo numa branch.
-Medido depois dos commits:
+### A prova de que está no ar
+
+O `db-apply.cjs` imprime **"Tudo aplicado e verificado"** mesmo quando pula a verificação — e ele
+pulou as duas, porque `REVOKE` não redefine função e o mapa de marcadores dele só sabe conferir
+corpo de função. Então a verificação abaixo é medição direta, feita depois, não a palavra do
+script:
 
 ```
-has_table_privilege('anon','public.vw_produtos_public','UPDATE') → true   (ainda)
-select version from supabase_migrations.schema_migrations
-  where version in ('20260821000100','20260825000000')          → vazio
+                                          ANTES   DEPOIS
+anon    UPDATE em vw_produtos_public       true  →  false
+anon    DELETE em vw_produtos_public       true  →  false
+anon    INSERT em vw_produtos_public       true  →  false
+authenticated UPDATE em vw_produtos_public true  →  false
+anon    EXECUTE em create_marketplace_order (v1)  true → false
+authenticated EXECUTE em create_marketplace_order true → false
+
+ledger: 20260821000100 e 20260825000000 presentes
+```
+
+**E o que não podia quebrar, não quebrou** — as duas checagens de não-regressão:
+
+```
+catálogo como visitante anônimo:  19 produtos   (mesmo número de antes)
+create_marketplace_order_v22 / _v23 / _v24:  anon e authenticated ainda executam
 ```
 
 Os itens 1 e 3 são migration e mexem em permissão — pela regra do projeto, tarefa delegada com
