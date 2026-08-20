@@ -104,13 +104,13 @@ function esperar(ms = 0): Promise<void> {
 /** Monta o `stats` que `useAnalytics()` devolveria — só os campos que este
  * card lê importam para o teste, o resto é preenchimento neutro para bater
  * com o tipo `DashboardStats`. */
-function analyticsStatsFake(avgTicket: number) {
+function analyticsStatsFake(avgTicket: number, totalOrders = 0) {
   return {
     today: { revenue: 0, count: 0, pending: 0, revenueTrend: 0, countTrend: 0 },
     month: { revenue: 0, count: 0, revenueTrend: 0, countTrend: 0 },
     executive: {
       totalRevenue: 0,
-      totalOrders: 0,
+      totalOrders,
       revenueTrend: 0,
       ordersTrend: 0,
       avgTicket,
@@ -256,6 +256,48 @@ describe("AdminCustomersView — o card Ticket Médio", () => {
 
     expect(texto()).toContain("—");
     expect(texto()).not.toContain("R$ 0,00");
+  });
+
+  it("o card Pedidos Totais conta pela mesma fonte, nao pela do RPC de clientes", async () => {
+    // Mesmo cenario do PIX pendente do primeiro teste, agora olhando o card
+    // vizinho. `global_orders` conta o pedido aguardando pagamento (12); o
+    // Dashboard, com o filtro de dinheiro reconhecido, conta 11. Duas abas do
+    // mesmo painel com rotulos quase iguais nao podem dar contagens
+    // diferentes.
+    estadoDaRpc.stats = {
+      total_customers: 16,
+      global_ltv: 540.4,
+      global_orders: 12,
+      new_customers_30d: 0,
+    };
+    mockAnalyticsStats = analyticsStatsFake(40.95, 11);
+
+    await abrirTela();
+
+    const t = texto();
+    const posicao = t.indexOf("Pedidos Totais");
+    expect(posicao).toBeGreaterThan(-1);
+    // O valor fica logo depois do rotulo no cartao.
+    expect(t.slice(posicao, posicao + 40)).toContain("11");
+    expect(t.slice(posicao, posicao + 40)).not.toContain("12");
+  });
+
+  it("Pedidos Totais sem medicao mostra o traco, nao zero", async () => {
+    estadoDaRpc.stats = {
+      total_customers: 16,
+      global_ltv: 540.4,
+      global_orders: 12,
+      new_customers_30d: 0,
+    };
+    mockAnalyticsStats = null;
+
+    await abrirTela();
+
+    const t = texto();
+    const posicao = t.indexOf("Pedidos Totais");
+    expect(t.slice(posicao, posicao + 40)).toContain("—");
+    // Nem o zero inventado, nem o numero da fonte errada.
+    expect(t.slice(posicao, posicao + 40)).not.toContain("12");
   });
 
   it("o rótulo de apoio descreve a média por pedido, não por cliente", async () => {
