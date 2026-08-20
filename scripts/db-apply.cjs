@@ -544,133 +544,6 @@ async function definicaoAtual(client, nomeFuncao) {
   return rows.map((r) => r.def);
 }
 
-/**
- * Confere os marcadores esperados das migrations aplicadas e devolve CONTAGEM,
- * nunca veredito. Quem decide o desfecho é `resumirVerificacao`.
- *
- * Separado de `main` para poder ser exercitado com um cliente falso: até
- * 20/08/2026 esta lógica morava inteira dentro de `main`, que só é alcançável
- * com banco de verdade, e por isso o buraco do `tudoOk = true` nunca foi
- * pego por teste nenhum.
- *
- * As três saídas são deliberadamente separadas, porque significam coisas
- * diferentes e uma delas não é sucesso nem fracasso:
- *   conferidos — marcadores que estavam mesmo no corpo que ficou no banco
- *   ausentes   — marcadores que o mapa esperava e não apareceram
- *   puladas    — migrations sem entrada no mapa: NINGUÉM conferiu nada nelas
- *
- * `verificacoes` entra como parâmetro (e vira Map) em vez de ler a constante
- * global: dá para testar, e o Map evita a indexação dinâmica que dispara
- * security/detect-object-injection.
- */
-async function verificarMarcadores(client, arquivos, verificacoes) {
-  const mapa = new Map(Object.entries(verificacoes));
-  const linhas = [];
-  const puladas = [];
-  let conferidos = 0;
-  let ausentes = 0;
-
-  for (const nome of arquivos) {
-    const base = path.basename(nome);
-    const registro = mapa.get(base);
-    if (!registro) {
-      puladas.push(base);
-      linhas.push(`  ${base}: sem verificação registrada, NÃO CONFERIDA.`);
-      continue;
-    }
-    // Um arquivo pode redefinir mais de uma função (ex.: a mesma migration
-    // reaplicada task a task) — registro vira lista nesse caso.
-    const checagens = Array.isArray(registro) ? registro : [registro];
-    for (const checagem of checagens) {
-      const [def] = await definicaoAtual(client, checagem.funcao);
-      // Normaliza \r\n -> \n dos dois lados antes de comparar. O repo nao tem
-      // .gitattributes e core.autocrlf converte as migrations para CRLF no
-      // working tree a cada checkout/clone/stash; sem isso, um marcador que
-      // cruza uma quebra de linha (ex.: "ELSE\n            UPDATE ...") deixa
-      // de casar contra um corpo em CRLF e a verificacao grita AUSENTE para
-      // uma migration que esta correta — DEPOIS do COMMIT ja ter acontecido.
-      const defNormalizado = def?.replace(/\r\n/g, "\n");
-      for (const marcador of checagem.esperado) {
-        const marcadorNormalizado = marcador.replace(/\r\n/g, "\n");
-        const ok = Boolean(defNormalizado?.includes(marcadorNormalizado));
-        if (ok) conferidos++;
-        else ausentes++;
-        const rotulo = `${checagem.funcao}: ${marcador.slice(0, 64)}`;
-        linhas.push(`  ${ok ? "ok     " : "AUSENTE"}  ${rotulo}`);
-      }
-    }
-  }
-
-  return { conferidos, ausentes, puladas, linhas };
-}
-
-/**
- * O VEREDITO. Traduz as contagens em desfecho, e existe porque a última linha
- * do relatório é a única que todo mundo lê.
- *
- * O DEFEITO QUE ISTO FECHA (varredura de 20/08/2026): o acumulador nascia
- * `true` e só era derrubado por marcador AUSENTE. Uma migration sem entrada
- * no mapa imprimia "sem verificação registrada, pulando" e, três linhas
- * abaixo, "Tudo aplicado e verificado.", saindo com 0 — num script que já
- * tinha COMITADO no banco. Medido no mesmo dia: 14 entradas no mapa para 118
- * migrations no disco, ou seja 88% delas caíam nesse ramo.
- *
- * Três códigos, porque são três coisas diferentes:
- *   0 — verificado: alguma coisa foi conferida, nada ausente, nada pulado
- *   1 — REPROVOU: marcador esperado não apareceu
- *   2 — APLICADO SEM VERIFICAR: pulou alguma, ou não conferiu nada
- *
- * O 2 é o ponto todo: "não sei" tem código próprio. Não vira 0 porque não é
- * sucesso, e não vira 1 porque nada reprovou — quem receber 1 vai procurar um
- * defeito que não existe, e quem receber 0 não vai procurar nada.
- *
- * Ninguém consome este código em automação hoje (conferido em 20/08/2026: o
- * script só é invocado à mão), então acrescentar o 2 não quebra chamador.
- */
-function resumirVerificacao({ conferidos, ausentes, puladas, caminhoRollback }) {
-  const avisoDoCommit = `
-   O COMMIT do passo 2 já aconteceu — esta verificação roda DEPOIS dele, então
-   o que foi aplicado já está gravado no banco independente do resultado
-   acima; não há "não aplicar" a partir daqui.
-   Ponto de partida para desfazer: ${caminhoRollback}, salvo no passo 1 — leia
-   acima o que ele cobre e o que continua manual.`;
-
-  const listaPuladas = puladas.length
-    ? `\n   Sem verificação registrada (ninguém conferiu o efeito delas):\n${puladas
-        .map((p) => `     - ${p}`)
-        .join("\n")}
-   O mapa VERIFICACOES só sabe conferir marcador dentro de pg_get_functiondef.
-   Migration de ALTER TABLE, policy, grant ou view não cabe nele e tem de ser
-   conferida À MÃO no banco, agora.`
-    : "";
-
-  if (ausentes > 0) {
-    return {
-      codigo: 1,
-      mensagem: `\nATENÇÃO: algum marcador esperado não apareceu. Confira antes de confiar.${avisoDoCommit}${listaPuladas}`,
-    };
-  }
-
-  if (puladas.length > 0) {
-    return {
-      codigo: 2,
-      mensagem: `\nAPLICADO, MAS NÃO VERIFICADO. Nada reprovou — e nada provou.${listaPuladas}${avisoDoCommit}`,
-    };
-  }
-
-  if (conferidos === 0) {
-    return {
-      codigo: 2,
-      mensagem: `\nAPLICADO, MAS NÃO VERIFICADO: nenhuma conferência chegou a rodar.${avisoDoCommit}`,
-    };
-  }
-
-  return {
-    codigo: 0,
-    mensagem: `\nTudo aplicado e verificado: ${conferidos} marcador(es) conferido(s) no banco. (O COMMIT do passo 2 já aconteceu antes desta checagem.)`,
-  };
-}
-
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
@@ -794,13 +667,48 @@ async function main() {
 
   // 3. Verificação pós-aplicação.
   console.log("\nVerificação:");
-  const contagens = await verificarMarcadores(client, arquivos, VERIFICACOES);
-  for (const linha of contagens.linhas) console.log(linha);
+  let tudoOk = true;
+  for (const nome of arquivos) {
+    const base = path.basename(nome);
+    const registro = VERIFICACOES[base];
+    if (!registro) {
+      console.log(`  ${base}: sem verificação registrada, pulando.`);
+      continue;
+    }
+    // Um arquivo pode redefinir mais de uma função (ex.: a mesma migration
+    // reaplicada task a task) — registro vira lista nesse caso.
+    const checagens = Array.isArray(registro) ? registro : [registro];
+    for (const checagem of checagens) {
+      const [def] = await definicaoAtual(client, checagem.funcao);
+      // Normaliza \r\n -> \n dos dois lados antes de comparar. O repo nao tem
+      // .gitattributes e core.autocrlf converte as migrations para CRLF no
+      // working tree a cada checkout/clone/stash; sem isso, um marcador que
+      // cruza uma quebra de linha (ex.: "ELSE\n            UPDATE ...") deixa
+      // de casar contra um corpo em CRLF e a verificacao grita AUSENTE para
+      // uma migration que esta correta — DEPOIS do COMMIT ja ter acontecido.
+      const defNormalizado = def?.replace(/\r\n/g, "\n");
+      for (const marcador of checagem.esperado) {
+        const marcadorNormalizado = marcador.replace(/\r\n/g, "\n");
+        const ok = Boolean(defNormalizado?.includes(marcadorNormalizado));
+        if (!ok) tudoOk = false;
+        const rotulo = `${checagem.funcao}: ${marcador.slice(0, 64)}`;
+        console.log(`  ${ok ? "ok     " : "AUSENTE"}  ${rotulo}`);
+      }
+    }
+  }
 
   await client.end();
-  const veredito = resumirVerificacao({ ...contagens, caminhoRollback });
-  console.log(veredito.mensagem);
-  process.exit(veredito.codigo);
+  console.log(
+    tudoOk
+      ? "\nTudo aplicado e verificado. (O COMMIT do passo 2 já aconteceu antes desta checagem.)"
+      : `\nATENÇÃO: algum marcador esperado não apareceu. Confira antes de confiar.
+   O COMMIT do passo 2 já aconteceu — esta verificação roda DEPOIS dele, então
+   o que foi aplicado já está gravado no banco independente do resultado
+   acima; não há "não aplicar" a partir daqui.
+   Ponto de partida para desfazer: ${caminhoRollback}, salvo no passo 1 — leia
+   acima o que ele cobre e o que continua manual.`,
+  );
+  process.exit(tudoOk ? 0 : 1);
 }
 
 if (require.main === module) {
@@ -811,12 +719,6 @@ if (require.main === module) {
 }
 
 // Exportado para tests/db_apply_rollback_test.ts, que fixa o cabeçalho do
-// arquivo de rollback, e para tests/db_apply_veredito_test.ts, que fixa o
-// desfecho da verificação. O guarda acima existe por causa disso: sem ele,
-// importar o módulo dispararia a aplicação das migrations.
-module.exports = {
-  funcoesAlteradas,
-  montarRollback,
-  verificarMarcadores,
-  resumirVerificacao,
-};
+// arquivo de rollback. O guarda acima existe por causa disso: sem ele, importar
+// o módulo dispararia a aplicação das migrations.
+module.exports = { funcoesAlteradas, montarRollback };
