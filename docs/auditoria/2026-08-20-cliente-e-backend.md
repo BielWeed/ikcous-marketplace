@@ -381,6 +381,40 @@ Confirmei lendo as duas funções (`expirar_pedidos_vencidos` e `update_order_st
 nenhuma toca em `coupons`. **Nos dados ainda não aconteceu** — os dois cupons do banco estão com
 `usage_count = 0`. É defeito confirmado no código, com zero ocorrências até agora.
 
+> ### 📌 Estado em 20/08/2026: a correção EXISTE, está provada e revisada, e **não foi aplicada**
+>
+> `supabase/migrations/20260901000000_devolver_uso_de_cupom_ao_desfazer_pedido.sql`, com prova em
+> `scripts/db-prove-devolucao-de-uso-de-cupom.cjs`. Cinco rodadas e quatro revisões de contexto
+> limpo — cada uma bloqueou a anterior. **Não leia este achado como "ninguém mexeu nisso".**
+>
+> **A correção óbvia — devolver a vaga do cupom ao desfazer o pedido — foi tentada e BLOQUEADA
+> duas vezes, porque abre buraco pior que o defeito:** o pedido expira, a vaga volta, e o cliente
+> paga o PIX assim mesmo (o QR continua vivo). Passaria a existir pedido **pago de verdade** com
+> desconto e o cupom **livre** — o que hoje é impossível. Não é hipótese: o cabeçalho da migration
+> registra 27 pedidos `expirado` e 1 `pago_apos_expirar` só no banco de desenvolvimento.
+>
+> **O desenho que ficou é SUBTRATIVO, e veio de uma decisão de produto do Gabriel:** *"a vaga fica
+> reservada enquanto o PIX estiver aberto"*. Em código: a vaga **não** volta quando o pedido é
+> desfeito — volta quando o pedido está definitivamente morto, isto é, quando o PIX já não pode
+> mais ser pago. **O prazo de 24 h não foi inventado aqui:** é o mesmo limite que
+> `pagamentos_a_reconciliar()` já usa para decidir até quando um pagamento ainda pode chegar —
+> reusado, não reinventado. A varredura aplica o outro lado dele: só mexe em pedido que já passou
+> desse prazo.
+>
+> O que isso **remove**: as chamadas de devolução nos quatro pontos de desfazimento saem;
+> `reconsumir_uso_cupom` deixa de existir; e o fato "a vaga já voltou" passa a ser **registrado**
+> numa coluna nova (`marketplace_orders.coupon_usage_returned`) em vez de **deduzido** do status.
+> A devolução passa a morar num lugar só, a varredura `devolver_cupons_de_pedidos_mortos()`.
+>
+> **Ela não tem retroação.** Cupom queimado por pedido cancelado no passado continua queimado, de
+> propósito: o passado voltando seria presente silencioso de cupom ativo, e esse é o lado que
+> falha fechado.
+>
+> **Por que ainda não está no banco:** aplicar migration de caminho de dinheiro sem conseguir
+> rodar a prova dela é entregar trabalho plausível em vez de verificado. Ela também é maior que
+> uma troca de função — cria coluna e job novos. Nada de tela depende dela, então nada mente
+> enquanto espera.
+
 ---
 
 ## 5. 🟡 Duas colunas para a mesma verdade — e uma leitura na errada
