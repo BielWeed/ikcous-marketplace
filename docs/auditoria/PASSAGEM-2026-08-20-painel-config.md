@@ -72,7 +72,7 @@ O próximo é o **8**: a opção "Notificação Push" aparece no menu dos 16 cli
 **1**. Para os outros 15 o envio para no começo e **nem o aviso dentro do app é criado**, porque
 o `return` vem antes de qualquer gravação.
 
-Depois: **11** (histórico diz "ENVIADA" mesmo quando ninguém recebeu), **13** (o "Audit Log" de
+Depois: **13** (o "Audit Log" de
 frete nunca terá linha enquanto a loja usar Taxa Fixa), **14** ("pending" é o único status em
 inglês), **15** (mínimo de compra sem centavos), **16** (dois textos errados em Cupons).
 

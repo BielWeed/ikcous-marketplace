@@ -30,8 +30,8 @@ fixa de R$ 10.
 | 6 ✅ | Push → "Clientes Frequentes **3**", "Sem comprar há 30d **2**", "Novos Clientes **3**" | Os reais são **2, 0 e 0**. Os números não selecionados são 30%, 25% e 45% do total de aparelhos, calculados no próprio componente | quem vende | **Médio** |
 | 7 ✅ | Push → "**iOS: 3 · Android: 5**" | Não existe coluna de plataforma no banco. É `total × 0,4` e `total × 0,6` escrito no componente | quem vende | **Médio** |
 | 8 ✅ | No menu do cliente: "**Notificação Push**" | Funciona para **1 dos 16** clientes. Para os outros 15 o envio para e nem a notificação dentro do app é criada | quem vende e quem compra | **Médio** |
-| 9 | No menu do cliente: "**Congelar Acesso**", em vermelho | Não congela nada. Mostra "Funcionalidade em desenvolvimento" | quem vende | **Médio** |
-| 10 | Cupons → "Após esse prazo, o cupom é **desativado automaticamente pelo sistema**" | Não existe nada que desative. O cupom vencido continua com o selo verde "ATIVO" e continua contando no KPI "Cupons Ativos" | quem vende | **Médio** |
+| 9 ✅ | No menu do cliente: "**Congelar Acesso**", em vermelho | Não congela nada. Mostra "Funcionalidade em desenvolvimento" | quem vende | **Médio** |
+| 10 ✅ | Cupons → "Após esse prazo, o cupom é **desativado automaticamente pelo sistema**" | Não existe nada que desative. O cupom vencido continua com o selo verde "ATIVO" e continua contando no KPI "Cupons Ativos" | quem vende | **Médio** |
 | 11 ✅ | Histórico de Push → selo verde "**ENVIADA**" em toda linha | O selo é texto fixo. Um envio em que ninguém recebeu grava 0 e ainda aparece "0 clientes · ENVIADA" | quem vende | **Médio-baixo** |
 | 12 ✅ | Push → "Receberão: **8 clientes**" e "Enviar Notificação Agora (8 clientes)" | São 8 **aparelhos**, de 1 cliente identificado e 6 inscrições sem dono. Um cliente com três aparelhos conta como três | quem vende | **Baixo** |
 | 13 | Frete → "Histórico de Cotações & Audit Logs / Exibindo as 15 consultas mais recentes" | Com o provedor Taxa Única Fixa — o padrão e o atual — **nada é registrado ali, nunca**. A tela diz "Nenhuma cotação registrada recentemente" | quem vende | **Baixo** |
