@@ -303,6 +303,39 @@ const VERIFICACOES = {
       "^[0-9a-fA-F-]{6,}$",
     ],
   },
+  "20260821000200_cupom_sem_limite_e_ilimitado.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        // A correcao em si: limite 0 (e negativo) volta a significar ilimitado,
+        // a mesma regra da validate_coupon_secure_v2 e do "0 = Ilimitado" que o
+        // painel promete. Sem ela, o cliente aplica o desconto no checkout e
+        // leva "Cupom invalido ou expirado" ao finalizar.
+        "usage_limit IS NULL OR usage_limit <= 0 OR usage_count < usage_limit",
+        // A trava contra dois pedidos gastarem a ultima unidade do cupom ao
+        // mesmo tempo. Ela mora na MESMA consulta que a correcao mexeu.
+        "FOR UPDATE;",
+        // O resto do caminho do dinheiro tem de sobreviver ao REPLACE: esta
+        // migration reescreve a funcao inteira.
+        "Os valores do pedido mudaram",
+        "Estoque insuficiente para o produto",
+        "UPDATE public.coupons SET usage_count = usage_count + 1",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        "usage_limit IS NULL OR usage_limit <= 0 OR usage_count < usage_limit",
+        "FOR UPDATE;",
+        "Os valores do pedido mudaram",
+        "UPDATE public.coupons SET usage_count = usage_count + 1",
+        // A UNICA coisa que separa a v24 da v23: a reserva com prazo do
+        // pagamento online. Se sumir no REPLACE, o pedido de PIX deixa de
+        // expirar e o pg_cron nunca devolve o estoque.
+        "'aguardando', now() + interval '30 minutes'",
+      ],
+    },
+  ],
   "20260822000100_analitico_conta_so_dinheiro_reconhecido.sql": [
     {
       funcao: "get_admin_analytics_v2",
