@@ -632,6 +632,21 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
       expect(mensagensDeAviso.some((m) => /aviso dentro do app/i.test(m))).toBe(
         true,
       );
+
+      // 🔴 E ela fala SÓ do que observou. A versão anterior começava com "O
+      // push saiu, mas..." — uma afirmação sobre o push, feita por uma
+      // condição que não olha o push. Com os dois falhando juntos, a tela
+      // dizia "Nenhum push saiu" e, logo abaixo, "O push saiu".
+      //
+      // Nenhum teste prendia esse texto, entao a frase falsa sobreviveu a
+      // uma revisao de contexto limpo. Agora prende.
+      const descricoesDeAviso = (
+        toast.warning as ReturnType<typeof vi.fn>
+      ).mock.calls.map((chamada: any[]) => chamada[1]?.description ?? "");
+      for (const texto of [...mensagensDeAviso, ...descricoesDeAviso]) {
+        expect(texto).not.toMatch(/push saiu/i);
+        expect(texto).not.toMatch(/se o push chegar/i);
+      }
     });
   });
 

@@ -576,16 +576,25 @@ export const AdminPushView = memo(function AdminPushView({
 
       // Segundo fato, distinto do de cima: o push é uma coisa, o aviso
       // dentro do app é outra — e o toast do push não pode ser o único jeito
-      // de saber que o aviso falhou (Parte B da revisão de 20/08/2026). Sai
-      // SEMPRE que `avisoNoAppFalhou`, sem tocar no toast do push acima.
+      // de saber que o aviso falhou (Parte B da revisão de 20/08/2026).
+      //
+      // ⚠️ ESTA MENSAGEM FALA SÓ DO QUE ELA OBSERVOU. A versão anterior
+      // começava com "O push saiu, mas..." e a descrição dizia "só vê essa
+      // mensagem se o push chegar" — duas afirmações sobre o PUSH, feitas por
+      // uma condição (`avisoNoAppFalhou`) que não olha nem `pushError` nem
+      // `entregues`. Com os dois falhando juntos, a tela mostrava "Nenhum
+      // push saiu" e, logo abaixo, "O push saiu".
+      //
+      // A saída não foi acrescentar condição: foi TIRAR a afirmação que esta
+      // mensagem não tem como sustentar. São 4 desfechos de push × 2 estados
+      // do aviso = 8 combinações; enquanto a segunda frase falar da primeira,
+      // cada combinação nova é uma chance de mentir. Falando só do próprio
+      // fato, a contradição deixa de ser construível em todas as 8.
       if (avisoNoAppFalhou) {
-        toast.warning(
-          "O push saiu, mas o aviso dentro do app não foi registrado",
-          {
-            description:
-              "Quem não tiver o aparelho cadastrado só vê essa mensagem se o push chegar — o banco recusou gravar o aviso dentro do app.",
-          },
-        );
+        toast.warning("O aviso dentro do app não foi registrado", {
+          description:
+            "O banco recusou gravar a mensagem que o cliente veria ao abrir a loja. Confira o resultado do envio acima.",
+        });
       }
 
       recordAction(
