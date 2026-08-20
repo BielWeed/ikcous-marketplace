@@ -29,10 +29,10 @@ fixa de R$ 10.
 | 5 ✅ | Na lista: "João Gabriel — **Pedidos 6**". Abrindo o mesmo cliente: "**Cesta / Pedidos 16**" | Duas contagens do mesmo cliente, na mesma tela, com 10 de diferença. Nenhuma das duas explica a outra | quem vende | **Médio-alto** |
 | 6 ✅ | Push → "Clientes Frequentes **3**", "Sem comprar há 30d **2**", "Novos Clientes **3**" | Os reais são **2, 0 e 0**. Os números não selecionados são 30%, 25% e 45% do total de aparelhos, calculados no próprio componente | quem vende | **Médio** |
 | 7 ✅ | Push → "**iOS: 3 · Android: 5**" | Não existe coluna de plataforma no banco. É `total × 0,4` e `total × 0,6` escrito no componente | quem vende | **Médio** |
-| 8 | No menu do cliente: "**Notificação Push**" | Funciona para **1 dos 16** clientes. Para os outros 15 o envio para e nem a notificação dentro do app é criada | quem vende e quem compra | **Médio** |
+| 8 ✅ | No menu do cliente: "**Notificação Push**" | Funciona para **1 dos 16** clientes. Para os outros 15 o envio para e nem a notificação dentro do app é criada | quem vende e quem compra | **Médio** |
 | 9 | No menu do cliente: "**Congelar Acesso**", em vermelho | Não congela nada. Mostra "Funcionalidade em desenvolvimento" | quem vende | **Médio** |
 | 10 | Cupons → "Após esse prazo, o cupom é **desativado automaticamente pelo sistema**" | Não existe nada que desative. O cupom vencido continua com o selo verde "ATIVO" e continua contando no KPI "Cupons Ativos" | quem vende | **Médio** |
-| 11 | Histórico de Push → selo verde "**ENVIADA**" em toda linha | O selo é texto fixo. Um envio em que ninguém recebeu grava 0 e ainda aparece "0 clientes · ENVIADA" | quem vende | **Médio-baixo** |
+| 11 ✅ | Histórico de Push → selo verde "**ENVIADA**" em toda linha | O selo é texto fixo. Um envio em que ninguém recebeu grava 0 e ainda aparece "0 clientes · ENVIADA" | quem vende | **Médio-baixo** |
 | 12 ✅ | Push → "Receberão: **8 clientes**" e "Enviar Notificação Agora (8 clientes)" | São 8 **aparelhos**, de 1 cliente identificado e 6 inscrições sem dono. Um cliente com três aparelhos conta como três | quem vende | **Baixo** |
 | 13 | Frete → "Histórico de Cotações & Audit Logs / Exibindo as 15 consultas mais recentes" | Com o provedor Taxa Única Fixa — o padrão e o atual — **nada é registrado ali, nunca**. A tela diz "Nenhuma cotação registrada recentemente" | quem vende | **Baixo** |
 | 14 | No extrato do cliente, a situação "**pending**" | É o único status sem tradução da tabela. Os outros dizem Cancelado, Entregue, Enviado | quem vende | **Baixo** |
@@ -473,6 +473,36 @@ funciona em um.
 o aviso dentro do app, que não dependia de push nenhum.
 
 **Quanto dói.** Médio.
+
+---
+
+> ### ✅ CORRIGIDO em 20/08/2026 — achados 8 e 11, em duas etapas
+>
+> **O achado 11** era o mais simples e o mais enganoso: o selo verde "ENVIADA" era texto fixo,
+> sem condição nenhuma. Agora ele lê o registro — "Entregue" com entrega confirmada, "Não
+> confirmada" com zero. E o histórico parou de dizer "N clientes" para o que são entregas em
+> **aparelho** (o achado 12, sobrevivendo no único canto da tela que ninguém tinha varrido).
+>
+> **O achado 8** levou duas etapas, e a primeira nasceu errada. O `return` de "nenhum
+> destinatário" engolia também o insert em `notificacoes` — o aviso que o cliente vê ao abrir a
+> loja, e que **não depende de push nenhum**. Corrigir isso foi a primeira etapa; e ela nasceu
+> **inalcançável**, porque com o cliente sem aparelho o botão de enviar já nascia desabilitado.
+> Os 15 clientes sem aparelho encontravam um botão morto, sem explicação — e *esse* era o defeito
+> real, não o que a auditoria descreveu.
+>
+> A segunda etapa abriu o botão **só** nesse caso: exige cliente específico **e** alcance medido
+> como zero. Desconhecido continua desabilitando; segmento vazio continua desabilitando. Um aviso
+> em âmbar explica, antes do clique, que não haverá push e que a mensagem ficará registrada no
+> app.
+>
+> ⚠️ **Uma quinta rodada encontrou defeito que a quarta criou** e está em avaliação de orçamento:
+> o aviso de "o aviso no app falhou" tem texto fixo dizendo *"O push saiu"*, e dispara sem olhar
+> se o push saiu. Com os dois falhando juntos, a tela se contradiz. A raiz não é a frase: é
+> `handleSend` anunciar vários fatos independentes com vários `if`, **cada frase escrita à mão**
+> — cada fato novo multiplica as combinações, e cada combinação é uma chance de afirmar coisa
+> falsa. Foi assim cinco vezes seguidas nesta tela.
+>
+> Commits `8292d27`, `1703b19` e `03a62b8`, com revisão de contexto limpo em cada etapa.
 
 ---
 
