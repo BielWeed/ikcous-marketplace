@@ -23,15 +23,17 @@
  *      na função que ficou no banco. O veredito final é UM de três estados,
  *      nunca dois — o código de saída distingue os três:
  *        - VERIFICADO (saída 0): toda migration teve ao menos um marcador
- *          conferido, e todos apareceram.
+ *          conferido, e todos apareceram na CONTAGEM EXATA declarada.
  *        - PULADA (saída 2): alguma migration ficou SEM NENHUM marcador
  *          conferido — seja por não ter entrada em VERIFICACOES, seja por
  *          ter entrada com `esperado` vazio. Isto NÃO é sucesso: é "ninguém
  *          verificou". Migration que só faz ALTER TABLE, policy ou grant cai
  *          sempre aqui, porque o script só sabe conferir marcador dentro de
  *          corpo de função (pg_get_functiondef).
- *        - FALHOU (saída 1): algum marcador esperado não apareceu na função
- *          que ficou no banco.
+ *        - FALHOU (saída 1): algum marcador não apareceu na função que ficou
+ *          no banco na CONTAGEM EXATA declarada — de menos (parte do trecho
+ *          sumiu no REPLACE) ou de mais (a função mudou de um jeito que
+ *          ninguém previu). As duas coisas pedem olho humano.
  *
  * USO:
  *   node scripts/db-apply.cjs <arquivo.sql> [outro.sql ...]
@@ -151,7 +153,16 @@ const VERIFICACOES = {
         // FOR UPDATE SKIP LOCKED: sem ele, a varredura disputa a linha com o
         // webhook da Fase 3 em vez de pular o pedido que ja esta sendo
         // confirmado — e pode expirar um pedido que acabou de ser pago.
-        "FOR UPDATE SKIP LOCKED",
+        //
+        // Marcador CONTIGUO, colado na ultima linha do WHERE, e nao o texto
+        // solto: solto ele aparece 2x no corpo que esta migration cria, e a
+        // segunda ocorrencia e' o COMENTARIO logo abaixo do BEGIN que explica
+        // o mecanismo — bastava o comentario sobreviver para o marcador dar
+        // "ok" com o FOR UPDATE apagado do SELECT. Contagem (`vezes: 2`)
+        // fecharia esse furo e abriria outro: amarraria a checagem a REDACAO
+        // do comentario, e editar prosa — ato inofensivo — passaria a
+        // reprovar codigo correto.
+        "AND expires_at < now()\n        FOR UPDATE SKIP LOCKED",
       ],
     },
     {
@@ -206,7 +217,13 @@ const VERIFICACOES = {
       funcao: "pagamentos_a_reconciliar",
       esperado: [
         // Sem isto a varredura revisita pedido ja reconciliado a cada ciclo.
-        "AND paid_at IS NULL",
+        //
+        // Marcador CONTIGUO pelo mesmo motivo da expirar_pedidos_vencidos
+        // acima: "AND paid_at IS NULL" solto aparece 2x no corpo que esta
+        // migration cria, e a segunda ocorrencia e' a PROSA do comentario que
+        // cita o predicado. Colado na linha de cima do WHERE executavel, o
+        // marcador so' fala de codigo.
+        "AND gateway_payment_id IS NOT NULL\n       AND paid_at IS NULL",
         // A janela. Sem ela vira varredura do historico inteiro a cada 10 min.
         "interval '24 hours'",
         // So quem chegou a ter cobranca no MP.
@@ -280,9 +297,15 @@ const VERIFICACOES = {
     esperado: [
       // As tres colunas novas nos DOIS ramos. No INSERT elas entram cruas
       // (sem COALESCE, de proposito: nulo e "a loja ainda nao disse")...
-      "config_json->>'store_name'",
-      "config_json->>'store_city'",
-      "config_json->>'store_state'",
+      //
+      // `vezes: 2` e' exatamente a prova de "nos DOIS ramos": cada uma
+      // aparece uma vez na lista do INSERT e uma vez no CASE do ON CONFLICT,
+      // e as duas sao CODIGO. Como marcador solto, perder o ramo do INSERT
+      // continuava dando "ok" por causa do ramo do ON CONFLICT (e vice-versa)
+      // — o comentario acima prometia os dois ramos e a checagem provava um.
+      { texto: "config_json->>'store_name'", vezes: 2 },
+      { texto: "config_json->>'store_city'", vezes: 2 },
+      { texto: "config_json->>'store_state'", vezes: 2 },
       // ...e no ON CONFLICT seguem o padrao de escrita parcial do PR #225:
       // chave ausente no payload preserva o que ja estava gravado. Sem estes
       // tres, salvar QUALQUER campo da tela de Ajustes apagaria nome, cidade
@@ -304,7 +327,14 @@ const VERIFICACOES = {
       "'otp_code', v_otp",
       // O freio de cota. Sem ele, um laco esgota as ~100 mensagens diarias da
       // conta de Gmail da loja e ai NENHUM cliente recebe codigo no resto do dia.
-      "INTERVAL '60 seconds'",
+      //
+      // Marcador CONTIGUO: o texto solto aparece 2x no corpo que esta
+      // migration cria, e a segunda ocorrencia e' so' a aritmetica do
+      // `espere_segundos` da mensagem de resposta — cosmetica. Solto, apagar
+      // o freio de verdade (o WHERE do SELECT) continuava dando "ok" por
+      // causa da conta da mensagem; `vezes: 2` amarraria a checagem a um
+      // texto que ninguem promete manter.
+      "AND created_at > NOW() - INTERVAL '60 seconds'",
       // A regra dos dois canais (AUTH-010 #118) tem de sobreviver ao REPLACE:
       // era um OR aqui que deixava o WhatsApp sozinho abrir o fluxo com o
       // e-mail de outra pessoa.
@@ -329,7 +359,11 @@ const VERIFICACOES = {
         // O resto do caminho do dinheiro tem de sobreviver ao REPLACE: esta
         // migration reescreve a funcao inteira.
         "Os valores do pedido mudaram",
-        "Estoque insuficiente para o produto",
+        // 3x, e as tres sao CODIGO: a pre-checagem contra o estoque do banco
+        // e as duas guardas do UPDATE atomico (variante e produto pai). Como
+        // marcador solto, apagar DUAS das tres continuava imprimindo "ok" —
+        // e o pedido passaria a vender o que a loja nao tem.
+        { texto: "Estoque insuficiente para o produto", vezes: 3 },
         "UPDATE public.coupons SET usage_count = usage_count + 1",
       ],
     },
@@ -367,7 +401,16 @@ const VERIFICACOES = {
         // marcador, o grafico e a lista de mais vendidos podiam ficar com a
         // regra velha enquanto os cartoes ficavam com a nova, e as duas
         // telas passariam a discordar entre si.
-        "AND (o.payment_status IS NULL OR o.payment_status IN ('pago', 'pago_apos_expirar'))",
+        //
+        // `vezes: 3`, e as tres sao CODIGO: a CTE do grafico de receita, a
+        // CTE de lucro/custo e a consulta dos mais vendidos. Como marcador
+        // solto, apagar DUAS das tres continuava imprimindo "ok" — duas
+        // telas voltavam a contar dinheiro que nao entrou e ninguem via.
+        {
+          texto:
+            "AND (o.payment_status IS NULL OR o.payment_status IN ('pago', 'pago_apos_expirar'))",
+          vezes: 3,
+        },
         // A guarda contra o predicado VAZAR para onde nao devia:
         // today_pending conta trabalho a fazer, nao dinheiro. Se a regra
         // entrasse aqui, "Acoes Pendentes" pararia de mostrar o pedido que
@@ -425,7 +468,10 @@ const VERIFICACOES = {
         // historico ou ja cancelado por outro caminho.
         "WHERE payment_status = 'aguardando'",
         "AND status = 'pending'",
-        "FOR UPDATE SKIP LOCKED",
+        // Contiguo pelo mesmo motivo da entrada de 20260807000000: esta
+        // migration recria a funcao com o mesmo comentario abaixo do BEGIN,
+        // entao o texto solto tambem aparece 2x aqui.
+        "AND expires_at < now()\n        FOR UPDATE SKIP LOCKED",
         // A prova de que a chamada de devolver_uso_cupom SAIU deste ponto
         // (Rodada 4): bloco amarrado, nao linha solta -- se alguem
         // reinserisse "PERFORM public.devolver_uso_cupom(v_pedido.id);"
@@ -757,7 +803,7 @@ function resumirVerificacao(resultados, caminhoRollback) {
     return {
       estado: "FALHOU",
       codigoSaida: 1,
-      mensagem: `\nATENÇÃO: algum marcador esperado não apareceu. Confira antes de confiar.\n   Verificações com marcador AUSENTE: ${lista}\n${listaPuladas}${avisoCommit}`,
+      mensagem: `\nATENÇÃO: algum marcador esperado não conferiu — ausente, de menos ou de\nmais. Confira antes de confiar.\n   Verificações com marcador DIVERGENTE: ${lista}\n${listaPuladas}${avisoCommit}`,
     };
   }
 
@@ -817,8 +863,16 @@ function resumirVerificacao(resultados, caminhoRollback) {
  * `temRegistro`: a migration tinha entrada em VERIFICACOES?
  * `algumMarcadorAvaliado`: dentro dessa entrada, algum marcador chegou a
  *   ser comparado (ou seja, `esperado` não estava vazio)?
- * `algumMarcadorAusente`: algum dos marcadores comparados não apareceu na
- *   definição que ficou no banco?
+ * `algumMarcadorAusente`: algum dos marcadores comparados não apareceu
+ *   NENHUMA vez na definição que ficou no banco?
+ * `algumMarcadorDivergente`: algum dos marcadores comparados apareceu, mas
+ *   um número de vezes diferente do declarado — de menos (parte do trecho
+ *   sumiu no REPLACE) ou de mais (a função mudou de um jeito que ninguém
+ *   previu)? Sinal PRÓPRIO, e não `algumMarcadorAusente` reaproveitado:
+ *   "achou 3 onde esperava 2" não é ausência, e misturar os dois faria a
+ *   palavra "ausente" mentir sobre a causa na hora de diagnosticar. Tem
+ *   padrão `false` para que as chamadas anteriores a 20/08/2026 — e os
+ *   testes delas — continuem significando exatamente o que significavam.
  *
  * Precedência: sem registro vence tudo (nem há o que avaliar); sem nenhum
  * marcador avaliado é pulada por outro motivo (entrada existe, mas não
@@ -829,6 +883,7 @@ function classificarChecagem({
   temRegistro,
   algumMarcadorAvaliado,
   algumMarcadorAusente,
+  algumMarcadorDivergente = false,
 }) {
   if (!temRegistro) {
     return { situacao: "pulada", motivo: "nenhuma verificação registrada" };
@@ -839,10 +894,110 @@ function classificarChecagem({
       motivo: "a entrada registrada não confere nenhum marcador",
     };
   }
-  if (algumMarcadorAusente) {
+  if (algumMarcadorAusente || algumMarcadorDivergente) {
     return { situacao: "falhou" };
   }
   return { situacao: "verificada" };
+}
+
+/**
+ * O rótulo de cada situação, na largura da coluna que o terminal imprime.
+ * Sem um rótulo por situação, uma situação nova sairia como "undefined"
+ * justamente na coluna que decide se o operador confia no que acabou de ser
+ * comitado.
+ */
+const ROTULO_DA_SITUACAO = new Map([
+  ["ok", "ok     "],
+  ["ausente", "AUSENTE"],
+  ["sumiu", "SUMIU  "],
+  ["a_mais", "A MAIS "],
+]);
+
+/**
+ * As duas formas de marcador aceitas no mapa VERIFICACOES, normalizadas em
+ * `{ texto, vezes }`:
+ *   - `"texto"`             → tem de aparecer EXATAMENTE 1 vez;
+ *   - `{ texto, vezes: N }` → tem de aparecer EXATAMENTE N vezes.
+ *
+ * Assume marcador já validado por `marcadorBemFormado()`. Quem valida é a
+ * guarda de `montarTarefasDeVerificacao()`, e não esta função, para que
+ * entrada torta no mapa vire "pulada" — nunca um crash DEPOIS do COMMIT do
+ * passo 2, cujo código de saída 1 quer dizer o contrário ("nada foi
+ * comitado").
+ */
+function normalizarMarcador(bruto) {
+  const marcador = typeof bruto === "string" ? { texto: bruto } : bruto;
+  return { texto: marcador.texto, vezes: marcador.vezes ?? 1 };
+}
+
+/**
+ * A forma que um marcador PRECISA ter para ser conferível: uma string, ou um
+ * objeto `{ texto }` com `vezes` opcional. `vezes` fora de "inteiro a partir
+ * de 1" é erro de digitação no mapa — e marcador que não prova nada é pior
+ * que marcador nenhum, porque ele imprime "ok".
+ */
+function marcadorBemFormado(bruto) {
+  if (typeof bruto === "string") return true;
+  if (typeof bruto !== "object" || bruto === null || Array.isArray(bruto)) {
+    return false;
+  }
+  if (typeof bruto.texto !== "string") return false;
+  if (bruto.vezes === undefined) return true;
+  return Number.isInteger(bruto.vezes) && bruto.vezes >= 1;
+}
+
+/** Ocorrências NÃO sobrepostas de `texto` em `corpo`. */
+function contarOcorrencias(corpo, texto) {
+  let total = 0;
+  let de = corpo.indexOf(texto);
+  while (de !== -1) {
+    total += 1;
+    de = corpo.indexOf(texto, de + texto.length);
+  }
+  return total;
+}
+
+function situacaoDe(achou, vezes) {
+  // `vezes` menor que 1 nunca e' "ok", nem quando `achou` bate com ele.
+  // Sem esta linha, conferirMarcador({ texto: "NAO EXISTE", vezes: 0 })
+  // devolvia ok=true — zero ocorrencias "conferindo" com zero esperadas, ou
+  // seja, prova nenhuma passando por prova. Hoje os dois chamadores filtram
+  // marcador malformado antes (marcadorBemFormado/checagemBemFormada), mas
+  // conferirMarcador e' exportado: quem chamar direto nao herda aquela
+  // guarda, e uma funcao publica tem de carregar a propria.
+  if (!Number.isInteger(vezes) || vezes < 1) return "malformado";
+  if (achou === vezes) return "ok";
+  if (achou === 0) return "ausente";
+  return achou < vezes ? "sumiu" : "a_mais";
+}
+
+/**
+ * Confere UM marcador contra o corpo que ficou no banco — por CONTAGEM
+ * EXATA, nos dois sentidos.
+ *
+ * Até 20/08/2026 a comparação era `def.includes(marcador)`: bastava o texto
+ * existir em QUALQUER ponto da função. Se o trecho que interessa fosse
+ * apagado no CREATE OR REPLACE e o mesmo texto sobrevivesse noutro ponto,
+ * saía "ok" e o veredito final saía VERIFICADO — depois do COMMIT, num
+ * projeto sem PITR. Medido contra o banco de desenvolvimento naquele dia: 9
+ * marcadores deste mapa casavam mais de uma vez, em 12 pontos.
+ *
+ * Achar de MENOS quer dizer que parte do trecho sumiu no REPLACE; achar de
+ * MAIS quer dizer que a função mudou de um jeito que ninguém previu. As duas
+ * coisas pedem olho humano antes de confiar, então as duas reprovam.
+ */
+function conferirMarcador(def, bruto) {
+  const { texto, vezes } = normalizarMarcador(bruto);
+  // Normaliza \r\n -> \n dos dois lados antes de contar. O repo nao tem
+  // .gitattributes e core.autocrlf converte as migrations para CRLF no
+  // working tree a cada checkout/clone/stash; sem isso, um marcador que
+  // cruza uma quebra de linha (ex.: "ELSE\n            UPDATE ...") deixa
+  // de casar contra um corpo em CRLF e a verificacao grita AUSENTE para
+  // uma migration que esta correta — DEPOIS do COMMIT ja ter acontecido.
+  const corpo = typeof def === "string" ? def.replace(/\r\n/g, "\n") : "";
+  const achou = contarOcorrencias(corpo, texto.replace(/\r\n/g, "\n"));
+  const situacao = situacaoDe(achou, vezes);
+  return { texto, esperado: vezes, achou, situacao, ok: situacao === "ok" };
 }
 
 /**
@@ -868,9 +1023,12 @@ function classificarChecagem({
  * `linhas` já vem como texto pronto para `console.log`, na ordem em que
  * devem aparecer: assim main() só imprime, nunca decide o que formatar.
  *
- * N1: um marcador vazio ou só espaço em branco NÃO conta como avaliado —
- * `"".includes("")` é sempre `true`, e sem esta guarda `esperado: [""]`
- * saía "ok" sem comparar nada.
+ * N1: um marcador vazio ou só espaço em branco NÃO conta como avaliado — na
+ * comparação por presença, `"".includes("")` era sempre `true`, e sem esta
+ * guarda `esperado: [""]` saía "ok" sem comparar nada; na comparação por
+ * contagem, procurar texto vazio não tem resposta com sentido. Nos dois
+ * casos a resposta certa é a mesma: a checagem sai "pulada" (ninguém
+ * conferiu) em vez de "verificada".
  */
 function avaliarChecagem(def, checagem) {
   if (checagem === undefined) {
@@ -901,29 +1059,36 @@ function avaliarChecagem(def, checagem) {
     );
   }
 
-  // Normaliza \r\n -> \n dos dois lados antes de comparar. O repo nao tem
-  // .gitattributes e core.autocrlf converte as migrations para CRLF no
-  // working tree a cada checkout/clone/stash; sem isso, um marcador que
-  // cruza uma quebra de linha (ex.: "ELSE\n            UPDATE ...") deixa
-  // de casar contra um corpo em CRLF e a verificacao grita AUSENTE para
-  // uma migration que esta correta — DEPOIS do COMMIT ja ter acontecido.
-  const defNormalizado = def?.replace(/\r\n/g, "\n");
   let algumMarcadorAvaliado = false;
   let algumMarcadorAusente = false;
+  let algumMarcadorDivergente = false;
   for (const marcadorBruto of checagem.esperado) {
-    const marcadorNormalizado = marcadorBruto.replace(/\r\n/g, "\n");
-    if (marcadorNormalizado.trim() === "") continue; // N1: vazio/espaço não é marcador.
+    const { texto, vezes } = normalizarMarcador(marcadorBruto);
+    if (texto.trim() === "") continue; // N1: vazio/espaço não é marcador.
     algumMarcadorAvaliado = true;
-    const ok = Boolean(defNormalizado?.includes(marcadorNormalizado));
-    if (!ok) algumMarcadorAusente = true;
-    const rotulo = `${checagem.funcao}: ${marcadorBruto.slice(0, 64)}`;
-    linhas.push(`  ${ok ? "ok     " : "AUSENTE"}  ${rotulo}`);
+    const resultado = conferirMarcador(def, marcadorBruto);
+    // Contagem errada NÃO é ausência: "achou 3 onde esperava 2" é a função
+    // ter mudado de forma imprevista, e "achou 1 onde esperava 2" é metade
+    // do trecho ter sumido no REPLACE. Os dois reprovam, por sinais
+    // diferentes — ver classificarChecagem().
+    if (resultado.situacao === "ausente") algumMarcadorAusente = true;
+    else if (!resultado.ok) algumMarcadorDivergente = true;
+    // A contagem vai na linha: "AUSENTE" sozinho não distingue "sumiu tudo"
+    // de "sobrou uma cópia", e quem lê está decidindo DEPOIS do COMMIT.
+    const contagem = resultado.ok
+      ? `${resultado.achou}x`
+      : `achou ${resultado.achou}x, o mapa declara ${vezes}x`;
+    const rotulo = `${checagem.funcao}: ${texto.slice(0, 64)}`;
+    linhas.push(
+      `  ${ROTULO_DA_SITUACAO.get(resultado.situacao)}  (${contagem})  ${rotulo}`,
+    );
   }
 
   const { situacao, motivo } = classificarChecagem({
     temRegistro: true,
     algumMarcadorAvaliado,
     algumMarcadorAusente,
+    algumMarcadorDivergente,
   });
   return { situacao, motivo, linhas, funcaoAusente, funcao: checagem.funcao };
 }
@@ -941,8 +1106,9 @@ function avaliarChecagem(def, checagem) {
  */
 /**
  * A forma que uma checagem PRECISA ter para ser conferível: uma função com
- * nome e uma lista de marcadores de texto. Qualquer outra coisa é entrada
- * malformada no mapa — que vira "pulada", nunca sucesso e nunca crash.
+ * nome e uma lista de marcadores bem formados (string, ou `{ texto, vezes }`
+ * — ver `marcadorBemFormado()`). Qualquer outra coisa é entrada malformada no
+ * mapa — que vira "pulada", nunca sucesso e nunca crash.
  */
 function checagemBemFormada(checagem) {
   return (
@@ -952,7 +1118,12 @@ function checagemBemFormada(checagem) {
     typeof checagem.funcao === "string" &&
     checagem.funcao !== "" &&
     Array.isArray(checagem.esperado) &&
-    checagem.esperado.every((m) => typeof m === "string")
+    // As DUAS formas de marcador passam aqui. Exigir `typeof m === "string"`
+    // faria todo marcador com contagem (`{ texto, vezes }`) ser lido como
+    // lixo: a checagem viraria "pulada" e o mapa deixaria de ser conferido
+    // EM SILÊNCIO — pior desfecho possível, porque "pulada" não grita tanto
+    // quanto "falhou" e a migration já está comitada.
+    checagem.esperado.every((m) => marcadorBemFormado(m))
   );
 }
 
@@ -996,7 +1167,9 @@ function montarTarefasDeVerificacao(arquivos, verificacoes) {
           checagem: undefined,
           linhasAntes: [
             `  ${base}: entrada malformada no mapa VERIFICACOES, tratada como sem verificação.`,
-            `           Esperado { funcao: "nome", esperado: ["marcador", ...] } — corrija o mapa.`,
+            `           Esperado { funcao: "nome", esperado: [...] }, onde cada item e' o texto`,
+            "           do marcador (vale exatamente 1 ocorrencia) ou { texto, vezes } com",
+            `           "vezes" inteiro >= 1 — corrija o mapa.`,
           ],
         });
         continue;
@@ -1199,4 +1372,8 @@ module.exports = {
   classificarChecagem,
   avaliarChecagem,
   montarTarefasDeVerificacao,
+  conferirMarcador,
+  checagemBemFormada,
+  ROTULO_DA_SITUACAO,
+  VERIFICACOES,
 };
