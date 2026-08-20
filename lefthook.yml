@@ -133,8 +133,35 @@ pre-push:
   jobs:
     # Esta é a única barreira que resta contra push direto em main/develop,
     # já que branch protection não está disponível neste plano do GitHub.
+    #
+    # `use_stdin: true` é o que faz essa barreira apontar para o lugar certo.
+    # O git entrega o DESTINO do push pelo stdin do hook (uma linha por ref:
+    # `<local ref> <sha> <remote ref> <sha>`), e sem esta chave o lefthook não
+    # repassa esse stdin. Sem ela o guarda não fica cego — fica MÍOPE: volta ao
+    # sinal fraco, que é o nome do branch local, e avisa em stderr. O aviso SAI
+    # inteiro (medido, não é engolido), mas sai FORA DE ORDEM: depois do visto
+    # verde de `guarda-de-branch`, depois do resumo, descolado do job, e com o
+    # push terminando em exit 0 — vira ruído no fim de uma saída de sucesso, o
+    # mesmo modo de falha do `Can't find lefthook in PATH`. As duas medições
+    # foram por PIPE; em terminal interativo (pty) o lefthook pode capturar
+    # esse stderr, e isso NÃO foi reproduzido aqui. O que escapa é
+    # `git push origin HEAD:develop` feito de uma branch de trabalho: destino
+    # protegido, branch local inocente. Medido em 20/08/2026 num repositório
+    # descartável, mesmo lefthook 2.1.10 e mesmo script — sem a chave o push
+    # saiu com exit 0 e o develop remoto recebeu o commit disfarçado; com a
+    # chave, exit 1 e a guarda nomeada na saída.
+    #
+    # A chave vai SÓ aqui. A documentação do lefthook avisa que, quando vários
+    # pedem `use_stdin`, só UM recebe os dados e os outros ficam sem nada — ela
+    # fala em "commands or scripts", e no 2.x a mesma chave existe também em
+    # job, inclusive em job aninhado dentro de `group:`. Repetir a chave no
+    # `typecheck` abaixo, ou num bloco `commands:` novo, roubaria o stdin do
+    # guarda e devolveria o buraco sem quebrar mais nada — e o
+    # `lefthook validate` aprova as quatro variantes. Quem pega é a varredura
+    # de tests/lefthook_trava_test.ts, que passa por jobs, commands e scripts.
     - name: guarda-de-branch
       run: node scripts/guarda-de-branch.mjs push
+      use_stdin: true
 
     # Checagem real de tipos: ~16s sobre 911 arquivos.
     # NÃO troque por `tsc --noEmit`: o tsconfig.json da raiz tem "files": [],
