@@ -156,9 +156,7 @@ async function estoqueDoProduto(client, produtoId) {
  */
 async function criarPedido(client, { produtoId, codigo }) {
   const itens = JSON.stringify([{ product_id: produtoId, quantity: 1 }]);
-  const total = codigo
-    ? PRECO + FRETE - PRECO * 0.1
-    : PRECO + FRETE;
+  const total = codigo ? PRECO + FRETE - PRECO * 0.1 : PRECO + FRETE;
   const { rows } = await client.query(
     `SELECT public.create_marketplace_order_v24(
        $1::jsonb, $2::numeric, $3::numeric, 'pix'::text, NULL::uuid, $4::text,
@@ -207,7 +205,7 @@ async function foraDaJanela(client, orderId) {
 /** Amarra um gateway_payment_id ao pedido, exigido por confirmar_pagamento. */
 async function amarrarGateway(client, orderId, paymentId) {
   await client.query(
-    `UPDATE public.marketplace_orders SET gateway_payment_id = $2 WHERE id = $1`,
+    "UPDATE public.marketplace_orders SET gateway_payment_id = $2 WHERE id = $1",
     [orderId, paymentId],
   );
 }
@@ -229,7 +227,9 @@ async function descobrirAdmin(client) {
       ORDER BY created_at LIMIT 1`,
   );
   if (rows.length === 0) {
-    throw new Error("Nenhum usuario admin em auth.users para o cenario de cancelamento manual.");
+    throw new Error(
+      "Nenhum usuario admin em auth.users para o cenario de cancelamento manual.",
+    );
   }
   return rows[0];
 }
@@ -245,7 +245,9 @@ async function confirmarAdmin(client, sub, email) {
   await client.query("ROLLBACK TO SAVEPOINT chk_admin");
   await client.query("RESET ROLE");
   if (!rows[0].eh) {
-    throw new Error(`${email} nao resolve is_admin() = true. Nao serve para o cenario de cancelamento manual.`);
+    throw new Error(
+      `${email} nao resolve is_admin() = true. Nao serve para o cenario de cancelamento manual.`,
+    );
   }
 }
 
@@ -275,7 +277,9 @@ async function cancelarComoAdmin(client, orderId, adminSub) {
 function reinserirDevolucaoImediata(sql) {
   const alvo = "END LOOP;\n\n        -- A vaga do cupom NAO volta aqui";
   if (!sql.includes(alvo)) {
-    throw new Error("SEM_FIX_JANELA=1 nao achou o marcador -- a migration mudou.");
+    throw new Error(
+      "SEM_FIX_JANELA=1 nao achou o marcador -- a migration mudou.",
+    );
   }
   return sql.replace(
     alvo,
@@ -300,7 +304,9 @@ async function main() {
           "subir). Abortando para nao mascarar um estado inesperado.",
       );
     }
-    console.log(`banco: ${MIGRATION} AINDA NAO aplicada -- aplicando na transacao (ROLLBACK no final)\n`);
+    console.log(
+      `banco: ${MIGRATION} AINDA NAO aplicada -- aplicando na transacao (ROLLBACK no final)\n`,
+    );
 
     // Cenario fixo: frete de R$ 10,00 e nenhuma regra de frete gratis por valor.
     await client.query(
@@ -312,7 +318,9 @@ async function main() {
     const produtoId = await criarProduto(client);
     const admin = await descobrirAdmin(client);
     await confirmarAdmin(client, admin.id, admin.email);
-    console.log(`Admin de teste: ${admin.email} (is_admin() = true, conferido)\n`);
+    console.log(
+      `Admin de teste: ${admin.email} (is_admin() = true, conferido)\n`,
+    );
 
     // =========================================================================
     // GRUPO 5 (parte 1): cria a linha PRE-EXISTENTE ANTES de aplicar a
@@ -323,8 +331,14 @@ async function main() {
     // =========================================================================
     console.log("=== grupo 5: linha pre-existente (nasce ANTES do apply) ===");
     const cupomPre = await criarCupom(client, { code: "PRE_EXISTENTE" });
-    const pedidoPre = await criarPedido(client, { produtoId, codigo: "PRE_EXISTENTE" });
-    conferir("pre-existente: uso contado na criacao", (await usosDoCupom(client, cupomPre)) === 1);
+    const pedidoPre = await criarPedido(client, {
+      produtoId,
+      codigo: "PRE_EXISTENTE",
+    });
+    conferir(
+      "pre-existente: uso contado na criacao",
+      (await usosDoCupom(client, cupomPre)) === 1,
+    );
     await client.query(
       `UPDATE public.marketplace_orders
           SET status = 'cancelled', payment_status = 'expirado',
@@ -332,7 +346,9 @@ async function main() {
         WHERE id = $1`,
       [pedidoPre],
     );
-    console.log("  (linha nasceu 'cancelled'/'expirado', ja fora da janela -- ANTES do ALTER TABLE)\n");
+    console.log(
+      "  (linha nasceu 'cancelled'/'expirado', ja fora da janela -- ANTES do ALTER TABLE)\n",
+    );
 
     // =========================================================================
     // Aplica a migration DENTRO da transacao
@@ -356,7 +372,10 @@ async function main() {
       sql = reinserirDevolucaoImediata(sql);
     }
     await client.query(sql);
-    conferir("migration aplicada na transacao", await migrationJaAplicadaAoVivo(client));
+    conferir(
+      "migration aplicada na transacao",
+      await migrationJaAplicadaAoVivo(client),
+    );
 
     // Fecha o Grupo 5: coupon_usage_returned tem de ter nascido FALSE pelo
     // DEFAULT do ALTER TABLE, para a linha que ja existia antes dele.
@@ -380,11 +399,16 @@ async function main() {
     // =========================================================================
     // GRUPO 1: pedido desfeito DENTRO da janela -> a vaga CONTINUA ocupada
     // =========================================================================
-    console.log("\n=== grupo 1: desfeito DENTRO da janela -> vaga continua ocupada ===");
+    console.log(
+      "\n=== grupo 1: desfeito DENTRO da janela -> vaga continua ocupada ===",
+    );
 
     // --- 1a. expiracao automatica (dentro da janela) -------------------------
     const cupomExpJanela = await criarCupom(client, { code: "G1_EXPIRA" });
-    const pExpJanela = await criarPedido(client, { produtoId, codigo: "G1_EXPIRA" });
+    const pExpJanela = await criarPedido(client, {
+      produtoId,
+      codigo: "G1_EXPIRA",
+    });
     await dentroDaJanela(client, pExpJanela);
     const estoqueAntesExpJ = await estoqueDoProduto(client, produtoId);
     await client.query("SELECT public.expirar_pedidos_vencidos()");
@@ -404,7 +428,10 @@ async function main() {
 
     // --- 1b. cancelamento manual (dentro da janela) --------------------------
     const cupomCancelJanela = await criarCupom(client, { code: "G1_CANCELA" });
-    const pCancelJanela = await criarPedido(client, { produtoId, codigo: "G1_CANCELA" });
+    const pCancelJanela = await criarPedido(client, {
+      produtoId,
+      codigo: "G1_CANCELA",
+    });
     const estoqueAntesCancelJ = await estoqueDoProduto(client, produtoId);
     await cancelarComoAdmin(client, pCancelJanela, admin.id);
     conferir(
@@ -423,13 +450,19 @@ async function main() {
 
     // --- 1c. estorno com reserva intacta (dentro da janela) ------------------
     const cupomEstornoJanela = await criarCupom(client, { code: "G1_ESTORNO" });
-    const pEstornoJanela = await criarPedido(client, { produtoId, codigo: "G1_ESTORNO" });
+    const pEstornoJanela = await criarPedido(client, {
+      produtoId,
+      codigo: "G1_ESTORNO",
+    });
     await amarrarGateway(client, pEstornoJanela, "PAY_G1_ESTORNO");
     const rEstornoJanela = await client.query(
       "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'estornado'::text) AS r",
       [pEstornoJanela, "PAY_G1_ESTORNO"],
     );
-    conferir("grupo1/estorno: retorno = 'estornado'", rEstornoJanela.rows[0].r === "estornado");
+    conferir(
+      "grupo1/estorno: retorno = 'estornado'",
+      rEstornoJanela.rows[0].r === "estornado",
+    );
     conferir(
       "grupo1/estorno: usage_count CONTINUA 1",
       (await usosDoCupom(client, cupomEstornoJanela)) === 1,
@@ -442,13 +475,19 @@ async function main() {
 
     // --- 1d. cartao recusado com reserva intacta (dentro da janela) ----------
     const cupomRecusaJanela = await criarCupom(client, { code: "G1_RECUSA" });
-    const pRecusaJanela = await criarPedido(client, { produtoId, codigo: "G1_RECUSA" });
+    const pRecusaJanela = await criarPedido(client, {
+      produtoId,
+      codigo: "G1_RECUSA",
+    });
     await amarrarGateway(client, pRecusaJanela, "PAY_G1_RECUSA");
     const rRecusaJanela = await client.query(
       "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'recusado'::text) AS r",
       [pRecusaJanela, "PAY_G1_RECUSA"],
     );
-    conferir("grupo1/recusa: retorno = 'recusado'", rRecusaJanela.rows[0].r === "recusado");
+    conferir(
+      "grupo1/recusa: retorno = 'recusado'",
+      rRecusaJanela.rows[0].r === "recusado",
+    );
     conferir(
       "grupo1/recusa: usage_count CONTINUA 1",
       (await usosDoCupom(client, cupomRecusaJanela)) === 1,
@@ -460,7 +499,10 @@ async function main() {
     );
 
     // --- controle: cancelar pedido SEM cupom nao quebra nada -----------------
-    const pCancelSemCupom = await criarPedido(client, { produtoId, codigo: null });
+    const pCancelSemCupom = await criarPedido(client, {
+      produtoId,
+      codigo: null,
+    });
     await cancelarComoAdmin(client, pCancelSemCupom, admin.id);
     const estadoSemCupom = await pedido(client, pCancelSemCupom);
     conferir(
@@ -471,11 +513,16 @@ async function main() {
     // =========================================================================
     // GRUPO 2: pedido desfeito, JANELA VENCIDA -> a vaga volta
     // =========================================================================
-    console.log("\n=== grupo 2: desfeito com a janela VENCIDA -> vaga volta ===");
+    console.log(
+      "\n=== grupo 2: desfeito com a janela VENCIDA -> vaga volta ===",
+    );
 
     // --- 2a. expirado, depois a janela vence ---------------------------------
     const cupomExpVencida = await criarCupom(client, { code: "G2_EXPIRA" });
-    const pExpVencida = await criarPedido(client, { produtoId, codigo: "G2_EXPIRA" });
+    const pExpVencida = await criarPedido(client, {
+      produtoId,
+      codigo: "G2_EXPIRA",
+    });
     await foraDaJanela(client, pExpVencida);
     await client.query("SELECT public.expirar_pedidos_vencidos()");
     conferir(
@@ -490,7 +537,10 @@ async function main() {
 
     // --- 2b. cancelado manualmente, janela ja vencida no momento do cancelamento
     const cupomCancelVencida = await criarCupom(client, { code: "G2_CANCELA" });
-    const pCancelVencida = await criarPedido(client, { produtoId, codigo: "G2_CANCELA" });
+    const pCancelVencida = await criarPedido(client, {
+      produtoId,
+      codigo: "G2_CANCELA",
+    });
     await foraDaJanela(client, pCancelVencida);
     await cancelarComoAdmin(client, pCancelVencida, admin.id);
     conferir(
@@ -506,10 +556,15 @@ async function main() {
     // --- 2c. pedido "na entrega" (v23), sem expires_at -- caminho CORRENTE,
     //     nao residuo historico: create_marketplace_order_v23 e' a via
     //     PADRAO do app (useOrders.ts:1059-1061) e nunca grava expires_at.
-    const cupomSemExpires = await criarCupom(client, { code: "G2_SEM_EXPIRES" });
-    const pSemExpires = await criarPedido(client, { produtoId, codigo: "G2_SEM_EXPIRES" });
+    const cupomSemExpires = await criarCupom(client, {
+      code: "G2_SEM_EXPIRES",
+    });
+    const pSemExpires = await criarPedido(client, {
+      produtoId,
+      codigo: "G2_SEM_EXPIRES",
+    });
     await client.query(
-      `UPDATE public.marketplace_orders SET expires_at = NULL WHERE id = $1`,
+      "UPDATE public.marketplace_orders SET expires_at = NULL WHERE id = $1",
       [pSemExpires],
     );
     await cancelarComoAdmin(client, pSemExpires, admin.id);
@@ -523,11 +578,16 @@ async function main() {
     // GRUPO 3: desfeito DENTRO da janela, PAGO depois -> vaga continua ocupada,
     // nada devolvido nem reconsumido (reconsumir_uso_cupom nem existe mais).
     // =========================================================================
-    console.log("\n=== grupo 3: desfeito na janela, pago depois -> nada mexe em usage_count ===");
+    console.log(
+      "\n=== grupo 3: desfeito na janela, pago depois -> nada mexe em usage_count ===",
+    );
 
     // --- 3a. expirado -> pago depois ------------------------------------------
     const cupomExpPago = await criarCupom(client, { code: "G3_EXPIRA_PAGO" });
-    const pExpPago = await criarPedido(client, { produtoId, codigo: "G3_EXPIRA_PAGO" });
+    const pExpPago = await criarPedido(client, {
+      produtoId,
+      codigo: "G3_EXPIRA_PAGO",
+    });
     await amarrarGateway(client, pExpPago, "PAY_G3_EXPIRA_PAGO");
     await dentroDaJanela(client, pExpPago);
     await client.query("SELECT public.expirar_pedidos_vencidos()");
@@ -560,8 +620,13 @@ async function main() {
     );
 
     // --- 3b. cancelado manualmente -> pago depois -----------------------------
-    const cupomCancelPago = await criarCupom(client, { code: "G3_CANCELA_PAGO" });
-    const pCancelPago = await criarPedido(client, { produtoId, codigo: "G3_CANCELA_PAGO" });
+    const cupomCancelPago = await criarCupom(client, {
+      code: "G3_CANCELA_PAGO",
+    });
+    const pCancelPago = await criarPedido(client, {
+      produtoId,
+      codigo: "G3_CANCELA_PAGO",
+    });
     await amarrarGateway(client, pCancelPago, "PAY_G3_CANCELA_PAGO");
     await cancelarComoAdmin(client, pCancelPago, admin.id);
     conferir(
@@ -606,10 +671,15 @@ async function main() {
     // =========================================================================
     // GRUPO 4: a varredura rodando DUAS vezes -> a vaga nao volta duas vezes
     // =========================================================================
-    console.log("\n=== grupo 4: varredura chamada duas vezes -> nao devolve duas vezes ===");
+    console.log(
+      "\n=== grupo 4: varredura chamada duas vezes -> nao devolve duas vezes ===",
+    );
 
     const cupomIdemA = await criarCupom(client, { code: "G4_IDEM_A" });
-    const pIdemA = await criarPedido(client, { produtoId, codigo: "G4_IDEM_A" });
+    const pIdemA = await criarPedido(client, {
+      produtoId,
+      codigo: "G4_IDEM_A",
+    });
     await foraDaJanela(client, pIdemA);
     await cancelarComoAdmin(client, pIdemA, admin.id);
 
@@ -629,7 +699,10 @@ async function main() {
     // que a 2a chamada nao e' um no-op geral, so' o pedido A que ja foi
     // processado que fica parado).
     const cupomIdemB = await criarCupom(client, { code: "G4_IDEM_B" });
-    const pIdemB = await criarPedido(client, { produtoId, codigo: "G4_IDEM_B" });
+    const pIdemB = await criarPedido(client, {
+      produtoId,
+      codigo: "G4_IDEM_B",
+    });
     await foraDaJanela(client, pIdemB);
     await cancelarComoAdmin(client, pIdemB, admin.id);
 
@@ -646,10 +719,18 @@ async function main() {
     // Trava direta: chamar devolver_uso_cupom() (a funcao interna, sem a
     // guarda de coupon_usage_returned) duas vezes seguidas -- usage_count
     // nunca fica negativo, mesmo bypassando a orquestracao de proposito.
-    console.log("\n=== trava: usage_count nunca fica negativo (devolver_uso_cupom direto) ===");
-    const cupomPiso = await criarCupom(client, { code: "PISO_ZERO", usageCount: 0 });
+    console.log(
+      "\n=== trava: usage_count nunca fica negativo (devolver_uso_cupom direto) ===",
+    );
+    const cupomPiso = await criarCupom(client, {
+      code: "PISO_ZERO",
+      usageCount: 0,
+    });
     const pPiso = await criarPedido(client, { produtoId, codigo: "PISO_ZERO" });
-    await client.query("UPDATE public.coupons SET usage_count = 0 WHERE id = $1", [cupomPiso]);
+    await client.query(
+      "UPDATE public.coupons SET usage_count = 0 WHERE id = $1",
+      [cupomPiso],
+    );
     await client.query("SELECT public.devolver_uso_cupom($1::uuid)", [pPiso]);
     conferir(
       "piso (1a chamada direta): usage_count 0 -> 0, nao vira -1",
@@ -662,7 +743,10 @@ async function main() {
     );
 
     // --- controle: pedido SEM cupom nao quebra devolver_uso_cupom nem a varredura
-    const pSemCupomDireto = await criarPedido(client, { produtoId, codigo: null });
+    const pSemCupomDireto = await criarPedido(client, {
+      produtoId,
+      codigo: null,
+    });
     const { rows: retornoSemCupom } = await client.query(
       "SELECT public.devolver_uso_cupom($1::uuid) AS r",
       [pSemCupomDireto],

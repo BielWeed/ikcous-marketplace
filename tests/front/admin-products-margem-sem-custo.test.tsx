@@ -248,9 +248,7 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     );
 
     await act(async () => {
-      raiz.render(
-        <AdminProductsView onNavigate={onNavigate} active={true} />,
-      );
+      raiz.render(<AdminProductsView onNavigate={onNavigate} active={true} />);
     });
     await act(async () => {
       await esperarMicrotarefas();
@@ -269,7 +267,8 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     const cartao = hospedeiro.querySelector(
       ".content-visibility-detailed-card",
     );
-    if (!cartao) throw new Error("Cartão detalhado do produto não está na tela.");
+    if (!cartao)
+      throw new Error("Cartão detalhado do produto não está na tela.");
     return cartao as HTMLElement;
   }
 
@@ -284,7 +283,10 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
       ),
     ];
     expect(spans).toHaveLength(2);
-    return { margemTexto: spans[0].textContent, roiTexto: spans[1].textContent };
+    return {
+      margemTexto: spans[0].textContent,
+      roiTexto: spans[1].textContent,
+    };
   }
 
   /** Acha o valor pelo RÓTULO vizinho ("Capital Alocado" / "Potencial"),
@@ -307,6 +309,7 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
 
   it("custo AUSENTE (costPrice indefinido): não afirma 100,0% nem 100.0% em lugar nenhum, mostra '—'", async () => {
     montarProduto({ price: 100, stock: 10 });
+    // biome-ignore lint/performance/noDelete: o cenario deste teste e a propriedade AUSENTE, nao presente-com-undefined. Trocar por `= undefined` deixaria a chave existindo e testaria outro caso — o proprio nome do teste diz "costPrice indefinido".
     delete produtosMock[0].costPrice;
 
     await montar();
@@ -324,6 +327,7 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
 
   it("custo AUSENTE: mostra a etiqueta de aviso", async () => {
     montarProduto({ price: 100, stock: 10 });
+    // biome-ignore lint/performance/noDelete: o cenario deste teste e a propriedade AUSENTE, nao presente-com-undefined. Trocar por `= undefined` deixaria a chave existindo e testaria outro caso — o proprio nome do teste diz "costPrice indefinido".
     delete produtosMock[0].costPrice;
 
     await montar();

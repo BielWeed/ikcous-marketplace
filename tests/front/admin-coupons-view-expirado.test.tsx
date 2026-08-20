@@ -108,9 +108,7 @@ describe("AdminCouponsView — cupom vencido para de dizer Ativo", () => {
   });
 
   async function abrirTela() {
-    const { AdminCouponsView } = await import(
-      "@/views/admin/AdminCouponsView"
-    );
+    const { AdminCouponsView } = await import("@/views/admin/AdminCouponsView");
     await act(async () => {
       raiz.render(<AdminCouponsView active={true} onNavigate={vi.fn()} />);
     });
@@ -185,7 +183,12 @@ describe("AdminCouponsView — cupom vencido para de dizer Ativo", () => {
 
   it("o indicador 'Cupons Ativos' não conta o cupom vencido", async () => {
     mockCoupons = [
-      cupomFake({ id: "c1", code: "UMATIVA", active: true, validUntil: noFuturo() }),
+      cupomFake({
+        id: "c1",
+        code: "UMATIVA",
+        active: true,
+        validUntil: noFuturo(),
+      }),
       cupomFake({
         id: "c2",
         code: "UMAVENCIDA",
@@ -216,9 +219,9 @@ describe("AdminCouponsView — cupom vencido para de dizer Ativo", () => {
 
     await abrirTela();
 
-    const botaoDeAjuda = Array.from(
-      hospedeiro.querySelectorAll("button"),
-    ).find((el) => el.getAttribute("title") === "Guia de Cupons e Ajuda");
+    const botaoDeAjuda = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (el) => el.getAttribute("title") === "Guia de Cupons e Ajuda",
+    );
     expect(botaoDeAjuda).toBeTruthy();
 
     await act(async () => {

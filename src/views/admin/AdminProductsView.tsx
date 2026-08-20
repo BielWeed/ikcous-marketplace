@@ -1463,7 +1463,8 @@ const AdminProductCard = memo(function AdminProductCard({
     const invested = !hasCost ? null : product.costPrice * product.stock;
     const totalProfit = !hasCost
       ? null
-      : (product.price || 0) * product.stock - product.costPrice * product.stock;
+      : (product.price || 0) * product.stock -
+        product.costPrice * product.stock;
 
     return (
       <motion.div

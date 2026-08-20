@@ -44,9 +44,9 @@ describe("rotuloDoCupom — a chavinha manual vence a leitura de vencimento", ()
   const noFuturo = "2026-09-01T00:00:00.000Z";
 
   it("ligado e dentro do prazo: Ativo", () => {
-    expect(
-      rotuloDoCupom({ active: true, validUntil: noFuturo }, agora),
-    ).toBe("Ativo");
+    expect(rotuloDoCupom({ active: true, validUntil: noFuturo }, agora)).toBe(
+      "Ativo",
+    );
   });
 
   it("ligado e sem data de validade: Ativo", () => {
@@ -56,21 +56,21 @@ describe("rotuloDoCupom — a chavinha manual vence a leitura de vencimento", ()
   });
 
   it("ligado e vencido: Expirado", () => {
-    expect(
-      rotuloDoCupom({ active: true, validUntil: noPassado }, agora),
-    ).toBe("Expirado");
+    expect(rotuloDoCupom({ active: true, validUntil: noPassado }, agora)).toBe(
+      "Expirado",
+    );
   });
 
   it("desligado na chavinha, mesmo dentro do prazo: Inativo", () => {
-    expect(
-      rotuloDoCupom({ active: false, validUntil: noFuturo }, agora),
-    ).toBe("Inativo");
+    expect(rotuloDoCupom({ active: false, validUntil: noFuturo }, agora)).toBe(
+      "Inativo",
+    );
   });
 
   it("desligado na chavinha E vencido: Inativo, a chavinha decide — não existe um terceiro rótulo", () => {
-    expect(
-      rotuloDoCupom({ active: false, validUntil: noPassado }, agora),
-    ).toBe("Inativo");
+    expect(rotuloDoCupom({ active: false, validUntil: noPassado }, agora)).toBe(
+      "Inativo",
+    );
     expect(
       rotuloDoCupom({ active: false, validUntil: noPassado }, agora),
     ).not.toBe("Expirado");

@@ -87,9 +87,7 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenuContent: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
-  DropdownMenuLabel: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
+  DropdownMenuLabel: ({ children }: { children: ReactNode }) => <>{children}</>,
   DropdownMenuSeparator: () => null,
   DropdownMenuItem: ({
     children,

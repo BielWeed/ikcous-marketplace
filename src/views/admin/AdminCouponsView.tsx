@@ -19,8 +19,8 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import {
-  cupomEstaExpirado,
   type RotuloDeCupom,
+  cupomEstaExpirado,
   rotuloDoCupom,
 } from "@/utils/status-do-cupom";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
