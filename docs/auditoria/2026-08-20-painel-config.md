@@ -2,7 +2,7 @@
 
 **Data:** 20/08/2026 · **Escopo:** só as telas **Clientes** (mais a ficha do cliente),
 **Ajustes**, **Cupons** (mais o formulário de cupom), **Frete** e **Push** do painel admin
-· **Natureza:** auditoria somente leitura. Os achados **1, 2, 3 e 4** foram corrigidos depois, em 21/08/2026 — estão marcados com ✅; os outros 12 continuam abertos.
+· **Natureza:** auditoria somente leitura. Os achados **1 a 5** foram corrigidos depois, em 21-22/08/2026 — estão marcados com ✅; os outros 11 continuam abertos.
 
 **Como foi medido.** O app foi aberto no navegador com sessão de admin e cada tela foi usada
 de verdade; o que apareceu na tela foi conferido contra o banco de desenvolvimento por
@@ -26,7 +26,7 @@ fixa de R$ 10.
 | 2 ✅ | "Frete grátis desativado. **Todos os pedidos terão cobrança de entrega**" | Com a Taxa Padrão também desligada, o app cota **R$ 0,00 para o Brasil inteiro** — e a tela chama isso de "Sem taxa fixa configurada" | quem vende | **Alto** |
 | 3 ✅ | "✨ Frete grátis ativo para pedidos a partir de R$ 100" | Só para quem está **logado**. Quem compra como convidado paga o frete mesmo passando de R$ 100, e a tela de Frete não diz isso em lugar nenhum | quem compra e quem vende | **Alto** |
 | 4 ✅ | Clientes → "**Ticket Médio R$ 28,16**" | Ticket médio é R$ 40,95. A conta da tela é receita ÷ **clientes**, não ÷ pedidos — e o Dashboard, na mesma sessão, mostra R$ 40,95 com o mesmo rótulo | quem vende | **Médio-alto** |
-| 5 | Na lista: "João Gabriel — **Pedidos 6**". Abrindo o mesmo cliente: "**Cesta / Pedidos 16**" | Duas contagens do mesmo cliente, na mesma tela, com 10 de diferença. Nenhuma das duas explica a outra | quem vende | **Médio-alto** |
+| 5 ✅ | Na lista: "João Gabriel — **Pedidos 6**". Abrindo o mesmo cliente: "**Cesta / Pedidos 16**" | Duas contagens do mesmo cliente, na mesma tela, com 10 de diferença. Nenhuma das duas explica a outra | quem vende | **Médio-alto** |
 | 6 | Push → "Clientes Frequentes **3**", "Sem comprar há 30d **2**", "Novos Clientes **3**" | Os reais são **2, 0 e 0**. Os números não selecionados são 30%, 25% e 45% do total de aparelhos, calculados no próprio componente | quem vende | **Médio** |
 | 7 | Push → "**iOS: 3 · Android: 5**" | Não existe coluna de plataforma no banco. É `total × 0,4` e `total × 0,6` escrito no componente | quem vende | **Médio** |
 | 8 | No menu do cliente: "**Notificação Push**" | Funciona para **1 dos 16** clientes. Para os outros 15 o envio para e nem a notificação dentro do app é criada | quem vende e quem compra | **Médio** |
@@ -289,6 +289,32 @@ fora do filtro.
 cancelados, a divergência aparece em quase todo cliente com histórico.
 
 **Quanto dói.** Médio-alto.
+
+> ### ✅ CORRIGIDO em 21/08/2026
+>
+> O card passou a contar com a **mesma regra do servidor** (`status NOT IN
+> ('cancelled','returned')`) e diz na própria tela quantos ficaram de fora. Na ficha do cliente
+> da auditoria, medido no navegador: lista **6**, card **6**, e abaixo dele
+> *"10 cancelados fora da conta"*.
+>
+> A **aba continua mostrando 16**, de propósito: é o número de linhas que a tabela abaixo dela
+> lista, e trocar por 6 faria a aba mentir sobre o próprio conteúdo. Os dois números continuam
+> existindo — o que sai é o mistério.
+>
+> Junto veio um terceiro número que este achado não tinha visto: o LTV da ficha filtrava só
+> `cancelled` e esquecia `returned`, então dentro da **mesma tela** o dinheiro e a contagem de
+> pedidos falavam de conjuntos diferentes. Agora os dois usam a mesma regra.
+>
+> Provado por [tests/front/admin-user-detail-pedidos-que-contam.test.tsx](../../tests/front/admin-user-detail-pedidos-que-contam.test.tsx)
+> — 5 casos com o cenário real (16 pedidos, 10 cancelados). O primeiro deles foi **reescrito**:
+> a versão original afirmava que o card "contém 6" e passava contra o código defeituoso, porque
+> "16" contém "6". Teste decorativo. Agora compara o número exato, e a mutação confirma: com o
+> card voltando a contar tudo, 2 dos 5 caem.
+>
+> ⚠️ **Conserto separado, anotado aqui:** `OrderStatus` (`src/types/index.ts`) não inclui
+> `returned`, mas `mappers.ts:247` faz `row.status as OrderStatus` — um cast, não uma validação.
+> O tipo mente sobre o que pode chegar em execução. Alinhar o tipo ao banco mexeria em todo
+> `switch` sobre `OrderStatus`, então ficou fora desta correção.
 
 ---
 

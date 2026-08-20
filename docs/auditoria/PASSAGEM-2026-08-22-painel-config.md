@@ -11,8 +11,7 @@ Leia as duas: a árvore é compartilhada.
 ## Onde o trabalho está
 
 - **Branch:** `fix/painel-pedidos-alto-risco` (a mesma da outra frente).
-- **Tudo commitado em 22/08/2026, em quatro commits temáticos. Working tree limpo.**
-- **Nada empurrado para o GitHub. Nenhum PR aberto.**
+- **Tudo commitado e empurrado. PR [#241](https://github.com/BielWeed/ikcous-marketplace/pull/241) aberto, CI verde nos sete comandos.**
 - **A migration `20260821000200` JÁ FOI APLICADA** no Supabase de desenvolvimento, com
   autorização explícita do Gabriel, e conferida depois de aplicar.
 
@@ -24,6 +23,8 @@ Leia as duas: a árvore é compartilhada.
 | `9803741` `fix(shipping)` | as frases da tela de Frete: `src/utils/regra-de-frete.ts`, a view, e 17 casos de teste |
 | `402c669` `fix(admin)` | o ticket médio da tela de Clientes, e 5 casos de teste |
 | `8ea9fdc` `docs(tooling)` | o relatório da auditoria, esta passagem, e a correção na passagem da outra frente |
+| `3b37e87` `style(admin)` | formatação medida como o CI mede — 4 erros de Biome que teriam reprovado o PR |
+| `76de007` `fix(admin)` | a ficha do cliente conta os pedidos como a lista conta, e 5 casos de teste |
 
 Os três primeiros passaram pelos hooks (`secretlint`, `eslint`, `guarda-de-branch`,
 `commitlint`) sem `--no-verify`, com **0 erros** de eslint. Os avisos que aparecem no log são
@@ -44,7 +45,7 @@ Confira isso de novo antes de commitá-lo no futuro.
 
 Auditoria das cinco telas → **16 achados**, todos com evidência de tela + banco, em
 [2026-08-20-painel-config.md](2026-08-20-painel-config.md). O Gabriel mandou corrigir um a um,
-por ordem de dor. **Quatro estão fechados:**
+por ordem de dor. **Cinco estão fechados:**
 
 | # | Defeito | Correção | Onde |
 |---|---|---|---|
@@ -52,6 +53,7 @@ por ordem de dor. **Quatro estão fechados:**
 | 2 | "Frete grátis desativado. **Todos os pedidos terão cobrança de entrega**" — falso quando a taxa também está em zero, aí o app cota R$ 0,00 para o Brasil inteiro | frases saíram do JSX e viraram função pura; aviso destacado no estado perigoso | front |
 | 3 | "Frete grátis a partir de R$ 100" sem dizer que **exige estar logado** | a frase passou a contar a condição | front |
 | 4 | Clientes dizia "Ticket Médio R$ 28,16" e o Dashboard "R$ 40,95", mesmo rótulo | divisor passou de clientes para **pedidos** | front |
+| 5 | Lista dizia "Pedidos 6" e a ficha do mesmo cliente "Cesta / Pedidos 16" | card usa a regra do servidor e diz quantos ficaram de fora; a aba segue com o histórico | front |
 
 Cada correção tem teste próprio **e prova de mutação** — sabotei o código e conferi que os
 testes caem. Os números estão nos blocos ✅ do relatório.
@@ -60,17 +62,16 @@ testes caem. Os números estão nos blocos ✅ do relatório.
 
 ## ⚠️ O que falta
 
-1. **12 achados abertos**, do 5 ao 16 no relatório. O próximo por dor é o **5**: a lista de
-   Clientes mostra "Pedidos 6" e a ficha do mesmo cliente mostra "Cesta / Pedidos 16" — a
-   lista filtra cancelados, a ficha não. Com 72 dos 83 pedidos cancelados, aparece em quase
-   todo cliente com histórico.
-2. **O `diretor` nunca rodou nesta frente.** Foram 4 entregas em sequência; a regra manda a
+1. **11 achados abertos**, do 6 ao 16 no relatório. O próximo por dor é o **6**: os contadores
+   dos segmentos da tela de Push são percentuais fixos do total de aparelhos, não medições —
+   dois dos três segmentos estão vazios e a tela anuncia gente neles.
+2. **O `diretor` nunca rodou nesta frente.** Foram 5 entregas em sequência; a regra manda a
    conferência do conjunto. Ele deve receber: o pedido original ("audita o painel… depois
    conserta X"), a tabela acima, e o relatório.
 3. **Nada foi revisado por contexto limpo.** Esta sessão foi configurada sem subagentes, então
    não houve `revisor`. Compensei com prova de mutação em tudo, mas a exigência de processo
    continua aberta — em especial para a migration, que é caminho de dinheiro.
-4. **PR não aberto.** Os quatro commits estão só na branch local.
+4. ~~PR não aberto.~~ **Aberto: [#241](https://github.com/BielWeed/ikcous-marketplace/pull/241)**, com as duas frentes. CI verde. Falta aprovar e mergear.
 5. **Achado novo, não estava na auditoria:** a outra frente aplicou a regra de "só dinheiro
    reconhecido" em nove pontos do painel analítico, mas **não** em `get_admin_customers_paged`.
    Hoje os dois dão o mesmo número porque o pg_cron já cancelou os pedidos em aberto; vai
@@ -82,7 +83,7 @@ testes caem. Os números estão nos blocos ✅ do relatório.
 
 | | |
 |---|---|
-| `test:front` completo | **68 arquivos, 368 testes, 0 falhas** — com os 68 conferidos contra o disco |
+| `test:front` completo | **69 arquivos, 373 testes, 0 falhas** — com os 69 conferidos contra o disco |
 | `test:edge` | 294 passaram |
 | `test:unit` | 18 passaram |
 | `typecheck` / `build` / `size` | limpos (523 kB de 800 kB) |
@@ -90,6 +91,8 @@ testes caem. Os números estão nos blocos ✅ do relatório.
 | eslint no escopo do meu diff | **0 erros, 0 avisos nas minhas linhas** — a catraca não sobe |
 | prova da migration do cupom | 30 asserções, 2 mutações mortas |
 | provas do frete e do ticket médio | 22 casos, 5 mutações mortas |
+| prova do achado 5 | 5 casos, 1 mutação morta (2 dos 5 caem) |
+| CI do PR #241 | os sete comandos verdes, duas vezes |
 
 **A suíte de front só fica verde com `--maxWorkers=1`.** Com paralelismo ela dá falhas
 diferentes a cada rodada, em arquivos que passam isolados. Não confie no vermelho paralelo, e
@@ -122,6 +125,14 @@ confira sempre o número de arquivos descobertos contra o disco.
   `IntersectionObserver`.** Teste que monta tela de admin precisa dos quatro dublês, senão o
   carrossel de KPIs quebra dentro do ErrorBoundary, os cards somem do DOM e o vermelho parece
   ser do valor quando é do ambiente.
+- 🔴 **A branch compartilhada já foi reescrita por baixo, e isso apagou 5 commits meus do
+  disco.** Em 22/08/2026 a outra frente reorganizou a `fix/painel-pedidos-alto-risco` local
+  para "ficar só com o trabalho dela": as quatro correções desta frente sumiram do working
+  tree, embora o remoto e o PR seguissem íntegros (ela nunca fez push forçado — empurrou por
+  cima). Antes de qualquer `reset`, **ancore os commits das DUAS frentes numa branch de
+  resgate**: `salva/painel-config-2026-08-22` e `salva/pedidos-produtos-2026-08-22` existem por
+  isso, e podem ser apagadas depois do merge. O sinal que denunciou: a contagem de arquivos da
+  suíte **caiu** de 68 para 66 sem explicação.
 - **`git stash` nesta árvore já apagou trabalho da outra frente.** Não use `stash`, `checkout`
   nem `restore` — e proíba isso explicitamente no prompt de qualquer agente. "Já falhava antes"
   provado com stash numa árvore compartilhada não é prova.
