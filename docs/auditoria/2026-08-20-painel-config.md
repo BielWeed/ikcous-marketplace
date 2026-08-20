@@ -35,9 +35,9 @@ fixa de R$ 10.
 | 11 ✅ | Histórico de Push → selo verde "**ENVIADA**" em toda linha | O selo é texto fixo. Um envio em que ninguém recebeu grava 0 e ainda aparece "0 clientes · ENVIADA" | quem vende | **Médio-baixo** |
 | 12 ✅ | Push → "Receberão: **8 clientes**" e "Enviar Notificação Agora (8 clientes)" | São 8 **aparelhos**, de 1 cliente identificado e 6 inscrições sem dono. Um cliente com três aparelhos conta como três | quem vende | **Baixo** |
 | 13 ✅ | Frete → "Histórico de Cotações & Audit Logs / Exibindo as 15 consultas mais recentes" | Com o provedor Taxa Única Fixa — o padrão e o atual — **nada é registrado ali, nunca**. A tela diz "Nenhuma cotação registrada recentemente" | quem vende | **Baixo** |
-| 14 | No extrato do cliente, a situação "**pending**" | É o único status sem tradução da tabela. Os outros dizem Cancelado, Entregue, Enviado | quem vende | **Baixo** |
-| 15 | Cupom → "Mínimo Compra **R$ 50**" | O valor é exibido sem centavos. Um mínimo de R$ 49,90 aparece como R$ 50 no card e na pré-visualização | quem compra e quem vende | **Baixo** |
-| 16 | Cupons → "Permitir que clientes usem cupons **no carrinho**" e "receber **discounts** especiais" | O campo de cupom fica no checkout, não no carrinho; e "discounts" está em inglês no meio da frase | quem vende | **Baixo** |
+| 14 ✅ | No extrato do cliente, a situação "**pending**" | É o único status sem tradução da tabela. Os outros dizem Cancelado, Entregue, Enviado | quem vende | **Baixo** |
+| 15 ✅ | Cupom → "Mínimo Compra **R$ 50**" | O valor é exibido sem centavos. Um mínimo de R$ 49,90 aparece como R$ 50 no card e na pré-visualização | quem compra e quem vende | **Baixo** |
+| 16 ✅ | Cupons → "Permitir que clientes usem cupons **no carrinho**" e "receber **discounts** especiais" | O campo de cupom fica no checkout, não no carrinho; e "discounts" está em inglês no meio da frase | quem vende | **Baixo** |
 
 ---
 
