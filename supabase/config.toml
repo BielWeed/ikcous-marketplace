@@ -55,6 +55,17 @@ verify_jwt = true
 [functions."notify-new-order"]
 verify_jwt = false
 
+# verify_jwt = true, como a send-otp-email e pelo mesmo motivo: quem chama e' o
+# navegador, e a chave anon passa pelo portao mesmo sem sessao — foi medido em
+# 20/08/2026. Vale para ela a MESMA ressalva do bloco acima sobre a #126.
+#
+# O portao nao e' a unica defesa: o corpo so' aceita `orderId` (nome, itens e
+# valores sao lidos do banco aqui dentro, ninguem injeta texto no e-mail de
+# ninguem) e a reserva no banco limita a UMA mensagem por pedido, para sempre.
+# Por isso esta funcao nao tem janela de tempo (PEDIDO-070, #106).
+[functions."send-order-confirmation"]
+verify_jwt = true
+
 [functions."calculate-shipping"]
 verify_jwt = true
 
