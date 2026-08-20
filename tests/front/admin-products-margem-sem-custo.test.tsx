@@ -372,7 +372,10 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     const { capitalTexto, potencialTexto } = lerCapitalEPotencial();
     // invested = 10 * 20 = 200 ; totalProfit = 15*20 - 200 = 100
     expect(capitalTexto).toBe("R$ 200,00");
-    expect(potencialTexto).toBe("+ R$ 100");
+    // Achado 14 da auditoria de 20/08/2026: "Potencial" passou a usar
+    // `minimumFractionDigits: 2`, como os vizinhos — "+ R$ 100", sem casas
+    // decimais, deixou de ser um jeito válido de escrever dinheiro aqui.
+    expect(potencialTexto).toBe("+ R$ 100,00");
 
     expect(hospedeiro.textContent).not.toContain("Sem Custo Cadastrado");
     expect(hospedeiro.textContent).not.toContain("Custo Suspeito");
