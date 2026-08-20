@@ -61,7 +61,7 @@ em *Pendências minhas*, no fim.
 | 10 | "Ações Pendentes: 7" e, ao lado, o crachá "6" na navegação | Dois contadores da mesma coisa, na mesma tela, discordando | quem vende | **Médio** |
 | 11 | Ao abrir Produtos: "Nenhum produto cadastrado / 0 itens" | Há 19 produtos. É o texto que a tela mostra durante o carregamento | quem vende | **Médio-baixo** |
 | 12 | Filtro "Status de Pagamento" | Filtra só os 12 pedidos da página aberta, não os 84 | quem vende | **Médio-baixo** |
-| 13 | Card, formulário e variante dizem 10 unidades; o KPI precifica 11 | Duas contas do mesmo estoque que se soltaram uma da outra | quem vende | **Baixo** |
+| 13 ✅ | Card, formulário e variante dizem 10 unidades; o KPI precifica 11 | Duas contas do mesmo estoque que se soltaram uma da outra | quem vende | **Baixo** |
 | 14 | "Potencial: + R$ 37,2" | Dinheiro escrito com uma casa decimal | quem vende | **Baixo** |
 | 15 | "ID: #" na ficha do pedido, sem nada depois | Campo vazio renderizado como se estivesse quebrado | quem vende | **Baixo** |
 | 16 | Dois avisos de "produto removido" ao excluir um produto | Um só foi removido | quem vende | **Baixo** |
@@ -630,6 +630,16 @@ os três KPIs financeiros leem a coluna.
 
 **Quanto dói.** Baixo hoje — R$ 15,29 de capital e R$ 27,51 de lucro, com só dois produtos
 usando variante. Cresce junto com o uso de variantes.
+
+**Estado (2026-08-20).** Corrigido em
+[`supabase/migrations/20260902000000_kpi_usa_o_mesmo_estoque_que_a_tela.sql`](../../supabase/migrations/20260902000000_kpi_usa_o_mesmo_estoque_que_a_tela.sql) —
+`get_admin_analytics_v2` passa a calcular `low_stock_count`, `inventory.totalCost` e
+`inventory.totalValue` sobre o mesmo estoque efetivo que `mappers.ts` já usa (soma das
+variantes ativas quando existe ao menos uma; senão a coluna `estoque`), fechando também o
+vizinho do KPI "Estoque Baixo" que tinha o mesmo defeito. Provado com
+`node scripts/db-prove-estoque-efetivo-no-kpi.cjs` (com e sem a chave de mutação
+`SEM_FIX_ESTOQUE`, transação com `ROLLBACK` — nada gravado). **A migration ainda não foi
+aplicada** no banco; falta revisão e aplicação.
 
 ---
 
