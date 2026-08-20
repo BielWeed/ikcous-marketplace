@@ -54,7 +54,7 @@ em *Pendências minhas*, no fim.
 | 3 ✅ | "Receita Hoje R$ X" | Soma PIX que só foi **gerado**, nunca pago. Em 11/08 mostraria **R$ 214,40** num dia de receita **R$ 0,00** | quem vende | **Alto** |
 | 4 ✅ | "Total Concluído: 6" | São todos os pedidos dos últimos 30 dias que não foram cancelados. Entregues de verdade nesses 30 dias: **1** | quem vende | **Alto** |
 | 5 ✅ | Um pedido cancelado com a etiqueta "Pago fora do fluxo" | Dinheiro do cliente entrou e o pedido está cancelado. Nenhuma fila, contador ou alerta aponta para ele | quem compra e quem vende | **Alto** |
-| 6 ✅ | Botão "Todos Ativos" ligado por padrão | Traz **tudo**, inclusive cancelado: **72 dos 84** pedidos são cancelados | quem vende | **Médio-alto** |
+| 6 ✅ | Botão "Todos Ativos" ligado por padrão | Traz **tudo**, inclusive cancelado: **72 dos 83** pedidos são cancelados (o levantamento original dizia 84; remedido no banco em 20/08 ao fechar o achado) | quem vende | **Médio-alto** |
 | 7 ✅ | "Capital Alocado", "Lucro Potencial" e "ROI" na tela de Produtos | Congelam depois de excluir, duplicar ou editar um produto — seguem contando o produto que saiu | quem vende | **Médio-alto** |
 | 8 ✅ | Um produto com "Margem de Lucro **100,0%**" | É um produto **sem custo cadastrado**. E a etiqueta "Custo Suspeito" pula justamente o custo zero | quem vende | **Médio** |
 | 9 | 6 produtos com a etiqueta verde "Em Operação" | Estão com estoque **zero**; na loja o botão deles é "Esgotado" | quem compra e quem vende | **Médio** |
