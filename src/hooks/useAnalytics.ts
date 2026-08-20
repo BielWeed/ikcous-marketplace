@@ -96,6 +96,18 @@ export interface DashboardStats {
     totalValue: number;
   };
   averageTicket?: number;
+  /** Pedidos com `status = 'delivered'`, desde sempre. Opcional: campo novo
+   * na RPC `get_admin_analytics_v2`, ainda não aplicado em toda base. */
+  deliveredTotal?: number;
+  /** Pedidos com `payment_status IN ('pago','pago_apos_expirar') AND status =
+   * 'cancelled'` — dinheiro recebido em pedido cancelado. São DUAS portas, e
+   * a segunda é a mais provável: o cliente que paga o PIX fora do prazo
+   * (`pago_apos_expirar`), e o pedido já pago que o admin cancela pelo painel
+   * (`pago`), que abre com um clique. Quem ler só a primeira e escrever um
+   * rótulo tipo "pagos depois de expirar" reproduz o defeito que este campo
+   * existe para consertar — foi o que quase aconteceu aqui. Mesma ressalva de
+   * `deliveredTotal` acima. */
+  paidOnCancelled?: number;
 }
 
 // Memory cache for SWR pattern

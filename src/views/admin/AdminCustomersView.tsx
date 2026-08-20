@@ -217,10 +217,31 @@ export const AdminCustomersView = memo(function AdminCustomersView({
       },
       {
         label: "Ticket Médio",
-        value: `R$ ${((globalStats?.global_ltv || 0) / (globalStats?.total_customers || 1)).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        // Receita dividida por PEDIDOS. Até 21/08/2026 o divisor era
+        // `total_customers`, e isso é gasto médio por cliente, não ticket
+        // médio — com os números de 20/08 (R$ 450,50 em 11 pedidos, 16
+        // perfis) este card dizia R$ 28,16 enquanto o Dashboard dizia
+        // R$ 40,95 com o MESMO rótulo, na mesma sessão.
+        //
+        // A troca conserta um segundo erro de conta junto: `global_ltv` soma
+        // todos os pedidos, inclusive os de convidado, que não têm perfil.
+        // Dividir isso por `total_customers` misturava dois conjuntos
+        // diferentes. Com `global_orders` os dois lados passam a falar da
+        // mesma coisa.
+        //
+        // Sem pedido não existe ticket médio: cai para R$ 0,00 em vez de
+        // dividir por zero e imprimir "Infinity" ou "NaN" no painel.
+        value: `R$ ${(
+          globalStats?.global_orders
+            ? (globalStats.global_ltv || 0) / globalStats.global_orders
+            : 0
+        ).toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`,
         icon: Wallet,
         accent: "text-blue-500",
-        subValue: "Consumo Médio",
+        subValue: "Média por pedido",
       },
       {
         label: "Pedidos Totais",
