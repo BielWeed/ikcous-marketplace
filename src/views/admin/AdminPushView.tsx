@@ -376,7 +376,35 @@ export const AdminPushView = memo(function AdminPushView({
       const finalRecipientCount = targetList?.length || 0;
 
       if (finalRecipientCount === 0) {
-        toast.error("Nenhum destinatário encontrado para este segmento");
+        // Achado 8 da auditoria de 20/08/2026: para "Mensagem para Cliente
+        // Específico" (`targetUserId`), o `return` engolia até o aviso
+        // dentro do app — que não depende de push nenhum. Das duas metades
+        // do recurso, só a de push fica sem alvo aqui; a outra continua
+        // funcionando, então ela continua acontecendo. Segmento (sem
+        // `targetUserId`) não tem essa segunda metade: `all` grava aviso
+        // para todo mundo, e os demais segmentos não têm um destinatário
+        // único para gravar — por isso o comportamento deles não muda.
+        if (targetUserId) {
+          try {
+            await supabase.from("notificacoes").insert({
+              titulo: notification.title,
+              mensagem: notification.body,
+              tipo: "aviso",
+              usuario_id: targetUserId,
+              dados: { segment, action_url: notification.url },
+            });
+            toast.error("Este cliente não tem aparelho inscrito para push", {
+              description:
+                "A mensagem foi registrada como aviso dentro do app — ele vai ver na próxima vez que abrir a loja.",
+            });
+            setNotification({ title: "", body: "", url: "/" });
+          } catch (inAppErr) {
+            console.error("Error saving in-app notification:", inAppErr);
+            toast.error("Não foi possível registrar o aviso para este cliente");
+          }
+        } else {
+          toast.error("Nenhum destinatário encontrado para este segmento");
+        }
         return;
       }
 
@@ -1225,7 +1253,7 @@ export const AdminPushView = memo(function AdminPushView({
                         </span>
                         <span className="flex items-center gap-1 bg-zinc-800/80 px-1.5 py-0.5 rounded text-zinc-300">
                           <Users className="size-2.5 text-emerald-400" />{" "}
-                          {item.recipient_count} clientes
+                          {textoDeAlcanceEmAparelhos(item.recipient_count)}
                         </span>
                       </div>
                       <h4 className="text-[10px] font-bold text-white line-clamp-1">
@@ -1238,9 +1266,21 @@ export const AdminPushView = memo(function AdminPushView({
                         <span className="font-mono text-zinc-500 truncate max-w-[150px]">
                           Ao clicar: {item.url}
                         </span>
-                        <span className="text-emerald-400 font-bold uppercase">
-                          Enviada
-                        </span>
+                        {/* Achado 11 da auditoria de 20/08/2026: o registro
+                            nasce com `recipient_count: 0` até a edge function
+                            confirmar entrega (comentário acima, em
+                            `handleSend`) — 0 não é "falhou com certeza", é
+                            "ninguém confirmou ainda". O selo deixou de
+                            afirmar sucesso sem olhar o número. */}
+                        {item.recipient_count > 0 ? (
+                          <span className="font-bold uppercase text-emerald-400">
+                            Entregue
+                          </span>
+                        ) : (
+                          <span className="font-bold uppercase text-amber-400">
+                            Não confirmada
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))
