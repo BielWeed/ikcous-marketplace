@@ -285,6 +285,24 @@ const VERIFICACOES = {
       "IF NOT public.is_admin() THEN",
     ],
   },
+  "20260820000000_otp_v2_devolve_o_codigo.sql": {
+    funcao: "generate_order_otp_v2",
+    esperado: [
+      // O retorno estruturado, que e a UNICA razao de a v2 existir: sem ele,
+      // quem envia o e-mail nao tem o codigo e a inversao inteira cai.
+      "'otp_code', v_otp",
+      // O freio de cota. Sem ele, um laco esgota as ~100 mensagens diarias da
+      // conta de Gmail da loja e ai NENHUM cliente recebe codigo no resto do dia.
+      "INTERVAL '60 seconds'",
+      // A regra dos dois canais (AUTH-010 #118) tem de sobreviver ao REPLACE:
+      // era um OR aqui que deixava o WhatsApp sozinho abrir o fluxo com o
+      // e-mail de outra pessoa.
+      "coalesce(trim(p_whatsapp), '') = ''",
+      // O alfabeto do fragmento. Sem ele, um `%` digitado no campo volta a
+      // funcionar como curinga e o codigo sai amarrado a um pedido qualquer.
+      "^[0-9a-fA-F-]{6,}$",
+    ],
+  },
 };
 
 function lerDatabaseUrl() {
