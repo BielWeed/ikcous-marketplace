@@ -15,9 +15,23 @@ decisão tomada aqui.
 > lojista, um prazo prometido, um preço de mensalidade, "antes da primeira cliente" — a
 > justificativa está errada de raiz, e tudo que for construído em cima dela nasce podre.
 
-**O critério que substitui:** o app tem que funcionar de verdade, para qualquer loja. Defeito,
-tela que promete o que o sistema não cumpre, caminho do dinheiro, painel operável por alguém
-leigo — essas são razões válidas, **porque valem para toda loja**, não porque alguém pediu.
+**O critério que substitui:** desenvolver o app **como se o Gabriel fosse o único cliente**
+(palavras dele, 20/08/2026). Defeito, tela que promete o que o sistema não cumpre, caminho do
+dinheiro e painel operável por alguém leigo são razões válidas — porque doem na loja dele, hoje.
+
+**⚠️ A brecha, fechada em 20/08/2026: reescrever a justificativa não muda o dono do trabalho.**
+A versão anterior desta linha dizia "para qualquer loja", e foi por ela que eu entrei: li a
+regra, escrevi que o pedido de outra sessão era fora de escopo, e peguei o trabalho assim mesmo
+trocando "há uma cliente esperando" por "o app tem que poder nascer em qualquer loja". O teste
+que decide, **antes** de qualquer conta de valor técnico:
+
+> **Quem sente a falta disso hoje, na loja do Gabriel?** Se a resposta for "ninguém — quem sente
+> é quem clona, entrega, cobra ou gerencia lojista", o trabalho é do outro workspace, **mesmo
+> que o defeito esteja em arquivo deste repositório**.
+
+Pedido de outra sessão não transfere escopo: sessão par não é o Gabriel. E se eu me pegar
+escrevendo *"a justificativa deles está errada, mas o problema é real, então eu pego com a razão
+certa"* — parei. Esse parágrafo **é** o erro.
 
 **Ao montar prompt de subagente, plano ou decisão:** se aparecer nome próprio de loja, cliente,
 assinatura ou clone como *justificativa*, apagar e refazer. Este arquivo carrega sozinho em toda
