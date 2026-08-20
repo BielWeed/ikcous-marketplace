@@ -23,14 +23,23 @@
 -- deste projeto: https://supabase.com/docs/guides/database/postgres/row-level-security
 --
 -- POR QUE NAO LIGAR security_invoker (a correcao que a doc recomenda em
--- geral): ninguem tem SELECT na tabela produtos --
---   has_table_privilege('anon','public.produtos','SELECT') -> false
---   has_table_privilege('authenticated','public.produtos','SELECT') -> false
--- -- o catalogo da loja funciona HOJE porque a view roda com o crachá do
--- dono. Ligar security_invoker aqui devolveria "permission denied" para todo
--- visitante, logado ou nao, e apagaria a vitrine inteira. Essa correcao
--- (dar SELECT na tabela e deixar o RLS filtrar) e' tarefa separada, com
--- prova propria.
+-- geral): o VISITANTE ANONIMO nao tem SELECT em `produtos` --
+--   has_any_column_privilege('anon',          'public.produtos','SELECT') -> false
+--   has_any_column_privilege('authenticated', 'public.produtos','SELECT') -> true
+--     (por COLUNA: 29 de 30, todas menos `custo` — o que a
+--      20260805000000_restore_admin_view_and_hide_custo.sql fez)
+--
+-- NAO use has_table_privilege para responder isso: ela devolve `false` para o
+-- `authenticated` mesmo havendo acesso, porque grant por coluna nao aparece
+-- nessa funcao. Foi assim que a primeira versao deste comentario afirmou que
+-- "ninguem" tem SELECT — verdade para o anon, falso para o authenticated.
+--
+-- A conclusao sobrevive, mas por causa do `anon`: o catalogo funciona HOJE
+-- porque a view roda com o crachá do dono, e a loja precisa vender para quem
+-- ainda nao tem conta. Ligar security_invoker devolveria "permission denied"
+-- para todo visitante nao logado — a vitrine no chao do mesmo jeito. Essa
+-- correcao (dar SELECT na tabela e deixar o RLS filtrar) e' tarefa separada,
+-- com prova propria.
 --
 -- POR QUE NAO REVOGAR TAMBEM DE vw_produtos_admin OU produtos: o painel do
 -- lojista escreve por elas e ambas ja estao protegidas hoje --

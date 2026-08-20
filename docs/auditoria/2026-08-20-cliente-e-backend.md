@@ -21,7 +21,7 @@ saber o que foi conferido e está bom vale tanto quanto saber o que está quebra
 | # | O que é | Gravidade |
 |---|---|---|
 | 1 | Qualquer pessoa, sem login, pode alterar o preço, o estoque e o nome de qualquer produto — e apagar produtos | 🔴 Crítico |
-| 2 | Cupom criado sem preencher "limite de uso" nasce quebrado: a tela aplica o desconto e o pedido é recusado | 🟠 Alto |
+| 2 | Cupom criado sem preencher "limite de uso" nasce quebrado: a tela aplica o desconto e o pedido é recusado — 🟢 **já resolvido e no ar**, ver a seção | 🟠 Alto |
 | 3 | Existe um segundo caminho de fazer pedido, esquecido e ligado, com regras mais fracas — **dormente hoje, ver a correção de gravidade na seção** | 🟡 Médio |
 | 4 | Pedido abandonado devolve o estoque mas não devolve o cupom | 🟡 Médio |
 | 5 | O app tem duas colunas para a mesma informação, e em um lugar lê a errada | 🟡 Médio |
@@ -159,12 +159,32 @@ Como os privilégios padrão são do projeto Supabase e mudá-los afeta o schema
 para mudar é a convenção: **toda migration futura que recriar uma view põe o `REVOKE INSERT,
 UPDATE, DELETE` ao lado do `GRANT SELECT`.**
 
-### Ainda em pé: mais três views da mesma classe
+### Outras três views têm a permissão larga — mas NÃO o buraco
 
-A revisão mediu que o visitante anônimo tem INSERT/UPDATE/DELETE também em `sales_overview`,
-`v_store_config` e `vw_questions_with_answers_count`. **Não foram testadas** — estavam fora do
-diff. `vw_produtos_admin` está na mesma lista, mas foi provada inerte (o `WHERE is_admin()`
-esvazia o conjunto de linhas). As outras três seguem em aberto.
+⚠️ **CORRIGIDO em 20/08/2026 pela direção.** A primeira versão desta seção se chamava "mais três
+views da mesma classe" e deixava entender que havia mais três buracos críticos em aberto. **Não
+há**, e o erro era meu de dimensionamento.
+
+O visitante anônimo tem mesmo INSERT/UPDATE/DELETE em `sales_overview`, `v_store_config` e
+`vw_questions_with_answers_count` — isso está medido certo. Mas o buraco da `vw_produtos_public`
+precisa de **três** peças juntas, e a terceira não existe nessas:
+
+```
+sales_overview                   reloptions = {security_invoker=on}
+v_store_config                   reloptions = {security_invoker=on}
+vw_questions_with_answers_count  reloptions = {security_invoker=on}
+vw_produtos_public               reloptions = NULL   ← a ÚNICA sem
+```
+
+Com `security_invoker` ligado, a escrita é conferida como a de **quem chamou**, e aí o RLS da
+tabela de baixo vale. A permissão larga fica feia na listagem e não vira acesso.
+
+`vw_produtos_admin` também aparece na lista de permissão larga, e também foi provada inerte —
+mas por outro mecanismo: o `WHERE is_admin()` dentro do corpo esvazia o conjunto de linhas.
+
+Nenhuma das quatro foi exercitada com escrita real. O que muda em relação à primeira versão é o
+**tamanho**: era "mais três tarefas urgentes", é "quatro permissões largas para limpar quando
+sobrar tempo".
 
 ### Nota: `TRUNCATE` está solto, mas não é alcançável
 
@@ -188,7 +208,24 @@ as duas faria um "passa" tirar junto o conserto que importa, se algo desse errad
 desconto. Ela clica em finalizar e leva **"Cupom X inválido ou expirado"**. Tentar de novo dá o
 mesmo. O pedido não sai.
 
-**Quando acontece:** sempre que o cupom foi criado sem preencher o campo "Limite de Uso".
+**Quando acontecia:** sempre que o cupom foi criado sem preencher o campo "Limite de Uso".
+
+> ## 🟢 RESOLVIDO — já está no ar
+>
+> Confirmado no banco em 20/08/2026, depois que este relatório foi escrito: a correção **está
+> aplicada e viva**. As duas funções que criam pedido agora tratam `0` como ilimitado:
+>
+> ```
+> create_marketplace_order_v23 · contém "usage_limit <= 0" → true
+> create_marketplace_order_v24 · contém "usage_limit <= 0" → true
+> ```
+>
+> O conserto veio de uma sessão paralela que auditava o painel do lojista e chegou ao mesmo
+> defeito pelo outro lado — a correção dela e a minha eram idênticas caractere por caractere, e a
+> dela foi a escolhida por ter guarda melhor no `db-apply`. O `CUPOM10` não derruba mais pedido.
+>
+> **O resto desta seção fica como registro do defeito e do porquê**, que continua valendo para
+> qualquer loja que ainda não receba essa atualização.
 
 ### Por que acontece
 
@@ -453,17 +490,33 @@ defeito que eu persegui e **derrubei com evidência**.
   linha. A permissão larga não vira acesso.
 - **RLS ligado em todas as 30 tabelas.**
 - **Estoque não é descontado em dobro** (ver `handle_order_item_stock`, acima).
-- **A busca cobre o catálogo carregado**, e o catálogo é paginado. Para as 22 produtos de hoje
-  isso é indiferente; vira problema quando o catálogo passar do tamanho de uma página.
+- **A busca cobre o catálogo carregado**, e o catálogo é paginado. Com **19 produtos ativos**
+  (23 no cadastro) isso é indiferente hoje; vira problema quando o catálogo passar do tamanho de
+  uma página.
 
 ---
 
 ## O que esta auditoria NÃO cobriu
 
+⚠️ **Duas linhas acrescentadas em 20/08/2026 pela direção.** A versão original desta seção omitia
+busca e carrinho, e eles estavam no pedido — omitir a rasura é pior que a rasura.
+
+- 🔴 **Carrinho — cobertura RASA.** A única coisa que eu exercitei foi a regra de frete grátis, em
+  três arquivos. **Não olhei:** quantidade contra estoque na hora de adicionar, preço que
+  envelhece no carrinho entre a adição e o checkout, persistência entre aparelhos
+  (`sync_cart_atomic`), e o caso da variante. `sync_cart_atomic` grava `variant_id` como texto
+  vazio quando não há variante, e eu não segui o que acontece com isso na volta.
+- 🔴 **Busca — cobertura RASA.** Uma frase, na seção acima. **Não olhei:** o que a busca deixa de
+  achar (ela só olha nome e descrição — não categoria, não código), o comportamento com acento e
+  maiúscula além do caso já testado, e a interação entre o filtro local e a paginação do servidor.
 - **O painel do lojista** (`src/views/admin/`) — só entrei nele para rastrear o formulário de
-  cupom e a origem de um dado. Não foi auditado.
+  cupom e a origem de um dado. Não foi auditado. *(Uma sessão paralela auditou o painel; o
+  resultado dela está em `docs/auditoria/2026-08-20-painel-config.md`.)*
 - **As 9 edge functions** — olhei quais RPCs elas chamam e como, não o corpo delas. O webhook do
-  Mercado Pago e a reconciliação merecem passagem própria.
+  Mercado Pago e a reconciliação merecem passagem própria. ⚠️ E há uma pegadinha: a
+  `send-otp-email` que o **banco** chama por `net.http_post` está publicada em **outro projeto
+  Supabase**, não na pasta deste repositório — divergência já registrada como alta em
+  `docs/onboarding/06-ESTADO-ATUAL.md:265`.
 - **`CheckoutView.tsx` tem 2.412 linhas.** Li os trechos de pedido, pagamento, frete e cupom. O
   resto não.
 - **Nada foi testado no navegador.** Todos os achados vêm de leitura de código e consulta ao banco.
@@ -480,14 +533,24 @@ lojista digitou, na loja dele, hoje.
 
 ---
 
-## Se for para consertar em ordem
+## Onde isto parou — 20/08/2026
 
-1. **O item 1**, e antes de qualquer outra coisa. É o único com potencial de destruir a loja, e o
-   conserto é curto.
-2. **O item 2**, porque é o único que já está quebrando compra hoje, e há um cupom nesse estado no
-   banco agora.
-3. **O item 3**, revogando a execução da v1 — **sem tocar na v22**, ver a correção na seção dele.
-4. O resto entra na fila normal.
+| Item | Situação |
+|---|---|
+| **1** — escrita anônima na vitrine | Migration escrita e **revisada**, commitada em `f91b1a9`. 🔴 **NÃO aplicada — o buraco está aberto no banco neste instante.** |
+| **2** — cupom com limite zero | 🟢 **Resolvido e no ar**, por uma sessão paralela. Confirmado no corpo vivo das duas funções. |
+| **3** — caixa paralelo (v1) | Migration escrita e **revisada**, commitada em `de2d705`. Não aplicada. Dormente, então não urge. |
+| 4 a 7 | Fila normal. A direção mediu e **recomendou não gastar** outra rodada de auditoria no mesmo formato: nenhum deles custa algo por dia parado. |
+
+🔴 **A frase que não pode se perder:** commit não é estar no ar, e merge também não. O item 1 só
+está fechado quando a migration for **aplicada** — até lá, o que existe é um arquivo numa branch.
+Medido depois dos commits:
+
+```
+has_table_privilege('anon','public.vw_produtos_public','UPDATE') → true   (ainda)
+select version from supabase_migrations.schema_migrations
+  where version in ('20260821000100','20260825000000')          → vazio
+```
 
 Os itens 1 e 3 são migration e mexem em permissão — pela regra do projeto, tarefa delegada com
 revisão em Opus, e migration **sem** `BEGIN`/`COMMIT`.
