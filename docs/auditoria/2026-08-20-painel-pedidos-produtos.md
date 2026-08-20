@@ -594,6 +594,26 @@ abrir as 7 páginas uma a uma.
 limitado em vez de fingir que está tudo certo. O texto do aviso é honesto e útil. O que custa
 é o trabalho: sete páginas para responder "quem já me pagou".
 
+> **Por que este achado ficou aberto quando o achado 6 fechou — e a CONDIÇÃO que o sustenta.**
+> A fila única diz que 6 e 12 são "um mecanismo só". O 6 fechou em 20/08/2026 e o 12 ficou
+> de fora **de propósito**, porque com o padrão em "Em Aberto" sobram **8 pedidos** e a
+> página comporta **12** (`itemsPerPage`,
+> [`AdminOrdersView.tsx:206`](../../src/views/admin/AdminOrdersView.tsx#L206)). Com 8 ≤ 12,
+> "a página aberta" e "o conjunto inteiro" são o mesmo conjunto: o filtro de pagamento passa
+> a filtrar tudo, sem uma linha de código nova.
+>
+> 🔴 **A condição é essa desigualdade, não a data.** No instante em que uma loja tiver **mais
+> de 12 pedidos em aberto ao mesmo tempo**, o achado 12 volta a doer no caminho padrão — e
+> volta pior, porque agora quem opera confia no filtro, já que ele funcionava. O `8` é dado
+> do banco de **desenvolvimento** medido em 20/08/2026, e o `CLAUDE.md` deste repositório
+> avisa que todo defeito daqui é replicado em cada loja clonada, onde esse número é outro.
+>
+> A correção, quando a desigualdade quebrar, é levar o filtro para o banco: um parâmetro
+> `p_payment_status` em `get_admin_orders_paged`, do mesmo jeito que o `p_status='open'`
+> resolveu o achado 6. Registrado **aqui**, e não numa mensagem de commit, porque foi
+> exatamente assim que a regra do par de migrations do LTV quase se perdeu (achado 17 da
+> auditoria de Config).
+
 ---
 
 ## 13. Produto com variante: três telas dizem 10, o KPI precifica 11
