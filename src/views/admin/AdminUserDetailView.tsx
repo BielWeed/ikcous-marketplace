@@ -617,8 +617,13 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   </span>
                   {pedidosDescartados > 0 && (
                     <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-zinc-500">
-                      {pedidosDescartados} cancelado
-                      {pedidosDescartados > 1 ? "s" : ""} fora da conta
+                      {/* "fora da conta" e nao "cancelado": `pedidosDescartados`
+                          conta cancelado E devolvido, entao dizer "cancelado"
+                          rotularia um pedido devolvido de cancelado. Hoje nao ha
+                          nenhum `returned` no banco, mas o rotulo mentiria no
+                          primeiro que houver — e e' exatamente a familia de
+                          defeito que esta auditoria cataloga. */}
+                      {pedidosDescartados} fora da conta
                     </span>
                   )}
                 </div>

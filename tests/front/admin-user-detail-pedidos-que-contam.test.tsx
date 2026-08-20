@@ -174,7 +174,10 @@ describe("AdminUserDetailView — a contagem de pedidos bate com a lista", () =>
     await abrirFicha();
 
     // Sem esta linha, o card diria 6 e a aba 16 sem nada explicando.
-    expect(texto()).toMatch(/10 cancelad/i);
+    expect(texto()).toMatch(/10 fora da conta/i);
+    // E NAO diz "cancelado": o numero conta cancelado E devolvido, entao esse
+    // rotulo mentiria sobre um pedido devolvido.
+    expect(texto()).not.toMatch(/10 cancelad/i);
   });
 
   it("a aba continua mostrando o historico inteiro, que e o que a tabela lista", async () => {
@@ -198,12 +201,16 @@ describe("AdminUserDetailView — a contagem de pedidos bate com a lista", () =>
     expect(texto()).not.toContain("R$ 100,00");
   });
 
-  it("cliente sem nenhum cancelamento nao ganha a linha de explicacao", async () => {
+  it("cliente sem nenhum descarte nao ganha a linha de explicacao", async () => {
     // A linha só existe para explicar uma diferença. Sem diferença, ela seria
-    // ruído — e "0 cancelados" numa ficha limpa é pior que nada.
+    // ruído — e "0 fora da conta" numa ficha limpa é pior que nada.
+    //
+    // A versao anterior deste teste procurava /cancelad\w+ nao cont/, que a
+    // tela NUNCA imprimiu em cenario nenhum: ele passava com a guarda
+    // `pedidosDescartados > 0` removida. Agora procura a frase real.
     estado.orders = [{ id: "a", status: "delivered", total: 10 }];
     await abrirFicha();
 
-    expect(texto()).not.toMatch(/cancelad\w+ nao cont/i);
+    expect(texto()).not.toMatch(/fora da conta/i);
   });
 });
