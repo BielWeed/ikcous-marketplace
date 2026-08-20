@@ -92,20 +92,8 @@ pre-push:
   jobs:
     # Esta é a única barreira que resta contra push direto em main/develop,
     # já que branch protection não está disponível neste plano do GitHub.
-    #
-    # `use_stdin: true` NÃO é detalhe: o git entrega o DESTINO do push pelo
-    # stdin do hook (`<local ref> <local sha> <remote ref> <remote sha>`), e
-    # sem esta chave o lefthook não repassa esse stdin. Até 20/08/2026 o
-    # guarda só via o branch checked out, e `git push origin HEAD:develop`
-    # feito de uma feature branch passava batido — reproduzido em repositório
-    # descartável, com o commit entrando na develop remota.
-    #
-    # A chave fica SÓ aqui. A documentação do lefthook avisa que, com vários
-    # jobs do mesmo hook pedindo `use_stdin`, apenas um recebe os dados — se
-    # ela for parar no `typecheck` abaixo, este job volta a ficar cego.
     - name: guarda-de-branch
       run: node scripts/guarda-de-branch.mjs push
-      use_stdin: true
 
     # Checagem real de tipos: ~16s sobre 911 arquivos.
     # NÃO troque por `tsc --noEmit`: o tsconfig.json da raiz tem "files": [],
