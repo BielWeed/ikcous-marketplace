@@ -1,9 +1,19 @@
 import { LazyImage } from "@/components/LazyImage";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import type { Order, OrderStatus, PaymentMethod } from "@/types";
+import type { Order, OrderStatus, PaymentMethod, PaymentStatus } from "@/types";
 import {
   Check,
   CheckCircle2,
@@ -27,13 +37,40 @@ import {
 import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { OrderReceipt } from "./OrderReceipt";
-import { statusConfig } from "./OrderStatusBadge";
+import { PaymentStatusBadge, statusConfig } from "./OrderStatusBadge";
 
 const statusFlow: OrderStatus[] = [
   "pending",
   "processing",
   "shipping",
   "delivered",
+];
+
+// Os três estados em que a cobrança online não se resolveu a favor do
+// lojista: dinheiro ainda não entrou (ou não vai entrar). Avançar o pedido
+// nesses estados encaminha mercadoria sem o dinheiro confirmado — por isso
+// pedem confirmação. `pago`, `pago_apos_expirar` e `null` (sem cobrança
+// online, ex.: pagamento na entrega) não entram aqui: são fluxo legítimo e
+// avisar ali transformaria o aviso em ruído.
+//
+// Falta um SEXTO valor nesta conta, e a omissão é deliberada: `expirado`
+// (o PIX venceu e o dinheiro nunca entrou) pertenceria à lista pelo
+// critério acima, e não está nela porque HOJE ele nunca aparece sozinho —
+// todo escritor de `payment_status='expirado'` grava `status='cancelled'`
+// no mesmo UPDATE (`expirar_pedidos_vencidos`, e o backfill de
+// 20260807000002), e pedido cancelado não mostra o botão "Avançar". Ou
+// seja: a lista está certa por uma garantia que mora em OUTRO arquivo.
+//
+// ⚠️ Se algum dia existir caminho que deixe um `expirado` com status vivo
+// (um "reabrir pedido", uma reconciliação que marque sem cancelar), o
+// aviso deixa de disparar EM SILÊNCIO no caso mais óbvio de "não pagou".
+// Achado da 2ª revisão da ficha, que derrubou o próprio achado para hoje e
+// registrou o gatilho. O tipo `PaymentStatus[]` não obriga ninguém a
+// decidir sobre valor novo — se a união crescer, esta linha não reclama.
+const paymentStatusQuePedeConfirmacao: PaymentStatus[] = [
+  "aguardando",
+  "recusado",
+  "estornado",
 ];
 
 const getNextStatus = (current: OrderStatus): OrderStatus | null => {
@@ -89,19 +126,29 @@ function ItemSkuBadge({
 interface OrderHeaderProps {
   orderId: string;
   orderStatus: OrderStatus;
+  paymentStatus: PaymentStatus | null | undefined;
   nextStatus: OrderStatus | null;
   isOffline: boolean;
   isUpdatingStatus: boolean;
-  onStatusChange: (id: string, nextStatus: OrderStatus) => void;
+  // Dois callbacks, não um: "Avançar" e "Abortar Operação" são ações
+  // distintas por natureza (uma pede confirmação de pagamento pendente, a
+  // outra nunca pede), e a distinção precisa ser estrutural — cada botão
+  // chama o seu — em vez de depender de uma comparação de valor
+  // (`nextStatus !== "cancelled"`) em algum lugar rio abaixo. Ver PR de
+  // fechamento de pontas da revisão do aviso de pagamento pendente.
+  onAdvance: (id: string, nextStatus: OrderStatus) => void;
+  onCancel: (id: string) => void;
 }
 
 function OrderHeader({
   orderId,
   orderStatus,
+  paymentStatus,
   nextStatus,
   isOffline,
   isUpdatingStatus,
-  onStatusChange,
+  onAdvance,
+  onCancel,
 }: Readonly<OrderHeaderProps>) {
   return (
     <div className="admin-glass sticky top-0 z-[60] border-b border-white/5 shadow-2xl backdrop-blur-3xl">
@@ -112,10 +159,13 @@ function OrderHeader({
               GESTÃO OPERACIONAL
               <div className="size-1 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
             </h2>
-            <h1 className="text-lg font-bold tracking-tighter text-white">
-              Pedido{" "}
-              <span className="text-admin-gold">#{orderId.slice(-6)}</span>
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold tracking-tighter text-white">
+                Pedido{" "}
+                <span className="text-admin-gold">#{orderId.slice(-6)}</span>
+              </h1>
+              <PaymentStatusBadge paymentStatus={paymentStatus} />
+            </div>
           </div>
         </div>
 
@@ -131,7 +181,7 @@ function OrderHeader({
 
           {orderStatus !== "cancelled" && orderStatus !== "delivered" && (
             <Button
-              onClick={() => onStatusChange(orderId, "cancelled")}
+              onClick={() => onCancel(orderId)}
               disabled={isOffline || isUpdatingStatus}
               variant="ghost"
               className="size-10 rounded-xl border border-red-500/10 bg-red-500/5 p-0 text-red-400 transition-all duration-300 hover:bg-red-500/15 hover:text-red-300 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
@@ -143,7 +193,7 @@ function OrderHeader({
 
           {nextStatus && orderStatus !== "cancelled" && (
             <Button
-              onClick={() => onStatusChange(orderId, nextStatus)}
+              onClick={() => onAdvance(orderId, nextStatus)}
               disabled={isOffline || isUpdatingStatus}
               className="flex h-10 items-center gap-1.5 rounded-xl border border-admin-gold/20 bg-admin-gold/10 px-4 text-[10px] font-black uppercase tracking-wider text-admin-gold transition-all duration-300 hover:bg-admin-gold hover:text-black active:scale-95 disabled:pointer-events-none disabled:opacity-40"
             >
@@ -515,9 +565,12 @@ function OrderFinanceCard({ order }: Readonly<OrderFinanceCardProps>) {
               <QrCode className="size-4 text-emerald-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[8px] font-black uppercase leading-none tracking-widest text-zinc-500">
-                Liquidação
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-[8px] font-black uppercase leading-none tracking-widest text-zinc-500">
+                  Liquidação
+                </p>
+                <PaymentStatusBadge paymentStatus={order.paymentStatus} />
+              </div>
               <p className="mt-1 truncate text-xs font-bold uppercase tracking-tight text-white">
                 {getPaymentMethodLabel(order.paymentMethod)}
               </p>
@@ -818,6 +871,14 @@ export const OrderDetail = memo(function OrderDetail({
   const [copiedTracking, setCopiedTracking] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
+  // Avanço represado enquanto espera a confirmação de "pedido não pago"
+  // (ver `paymentStatusQuePedeConfirmacao` acima). `null` = nenhuma
+  // confirmação pendente / diálogo fechado.
+  const [pendingAdvance, setPendingAdvance] = useState<{
+    orderId: string;
+    status: OrderStatus;
+  } | null>(null);
+
   const handleStatusChange = async (
     orderId: string,
     nextStatus: OrderStatus,
@@ -831,6 +892,30 @@ export const OrderDetail = memo(function OrderDetail({
     } finally {
       setIsUpdatingStatus(false);
     }
+  };
+
+  // Ponto de entrada exclusivo do botão "Avançar" — o botão de abortar chama
+  // handleStatusChange direto com "cancelled" (ver onCancel no JSX abaixo),
+  // então esta função nunca recebe "cancelled" e não precisa mais comparar
+  // valor para distinguir os dois casos. Ela desvia para a confirmação só quando o
+  // pedido de verdade não foi liquidado; do contrário avança igual a antes,
+  // sem fricção nenhuma.
+  const requestStatusChange = (orderId: string, nextStatus: OrderStatus) => {
+    if (
+      order.paymentStatus &&
+      paymentStatusQuePedeConfirmacao.includes(order.paymentStatus)
+    ) {
+      setPendingAdvance({ orderId, status: nextStatus });
+      return;
+    }
+    handleStatusChange(orderId, nextStatus);
+  };
+
+  const confirmPendingAdvance = () => {
+    if (!pendingAdvance) return;
+    const { orderId, status } = pendingAdvance;
+    setPendingAdvance(null);
+    handleStatusChange(orderId, status);
   };
 
   useEffect(() => {
@@ -1032,10 +1117,12 @@ export const OrderDetail = memo(function OrderDetail({
       <OrderHeader
         orderId={order.id}
         orderStatus={order.status}
+        paymentStatus={order.paymentStatus}
         nextStatus={nextStatus}
         isOffline={isOffline}
         isUpdatingStatus={isUpdatingStatus}
-        onStatusChange={handleStatusChange}
+        onAdvance={requestStatusChange}
+        onCancel={(id) => handleStatusChange(id, "cancelled")}
       />
 
       <div className="mx-auto max-w-4xl space-y-6 p-4 md:p-6">
@@ -1101,6 +1188,35 @@ export const OrderDetail = memo(function OrderDetail({
       </div>
 
       <OrderReceipt order={order} />
+
+      <AlertDialog
+        open={pendingAdvance !== null}
+        onOpenChange={(open) => !open && setPendingAdvance(null)}
+      >
+        <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
+              Este pedido não está com o pagamento confirmado
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-zinc-400">
+              O dinheiro deste pedido não entrou. Se você avançar, a mercadoria
+              caminha para sair mesmo assim — e, depois de finalizado, não dá
+              mais para cancelar e devolver ao estoque.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmPendingAdvance}
+              className="rounded-xl border-0 bg-admin-gold px-4 py-2 text-xs font-bold text-black hover:bg-admin-gold/90"
+            >
+              Avançar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 });

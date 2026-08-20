@@ -38,6 +38,7 @@ import type { Order, OrderStatus, PaymentStatus, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { motion } from "framer-motion";
 import {
+  AlertTriangle,
   Calendar,
   CheckCircle2,
   ChevronLeft,
@@ -213,7 +214,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       analyticsStats?.averageTicket ||
       analyticsStats?.executive?.avgTicket ||
       0,
-    completed: analyticsStats?.month?.count || 0,
+    // `deliveredTotal` (status='delivered') veio pra substituir
+    // `month.count`, que contava TODOS os pedidos não cancelados dos
+    // últimos 30 dias — inclusive os que nunca saíram de "Novo Pedido".
+    // `null`, não `?? 0`: um `0` visível AFIRMA um fato falso ("zero
+    // entregues") quando o dado simplesmente não chegou (RPC ainda não
+    // migrada); o travessão não afirma nada. É essa a razão — e NÃO que o
+    // travessão sirva de aviso de "dado velho": este é o 4º de 4 cartões
+    // de um carrossel com autoplay, então no celular ele aparece ~4 s a
+    // cada 16 s, e sinal que passa voando não guarda nada (achado da
+    // 2ª revisão, que derrubou a justificativa da 1ª).
+    completed: analyticsStats?.deliveredTotal ?? null,
   }));
 
   useEffect(() => {
@@ -225,10 +236,24 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           analyticsStats.averageTicket ||
           analyticsStats.executive?.avgTicket ||
           0,
-        completed: analyticsStats.month?.count || 0,
+        completed: analyticsStats.deliveredTotal ?? null,
       });
     }
   }, [analyticsStats]);
+
+  // Pedidos com dinheiro recebido em pedido cancelado. A migration que
+  // alimenta este contador conta as DUAS portas:
+  //   payment_status IN ('pago', 'pago_apos_expirar') AND status = 'cancelled'
+  // O texto precisa valer para as duas — "pago depois de cancelado" só é
+  // verdade na segunda (achado 1 da revisão). O único sinal disso antes
+  // era a etiqueta no cartão da lista, que rola para fora de vista
+  // conforme chegam pedidos novos — daqui vem o aviso fixo logo abaixo dos
+  // cartões de métrica.
+  const paidOnCancelledCount = analyticsStats?.paidOnCancelled ?? 0;
+  const avisoPagoAposCancelado =
+    paidOnCancelledCount === 1
+      ? "1 pedido recebeu pagamento e está cancelado"
+      : `${paidOnCancelledCount} pedidos receberam pagamento e estão cancelados`;
 
   const kpiCards = useMemo<readonly KpiCardConfig[]>(
     () => [
@@ -255,7 +280,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       },
       {
         label: "Total Concluído",
-        value: stats.completed.toString(),
+        value: stats.completed === null ? "—" : stats.completed.toString(),
         icon: CheckCircle2,
         accent: "text-sky-500",
         subValue: "Concluído",
@@ -697,6 +722,56 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 title="Métricas de Pedidos"
               />
             </LocalErrorBoundary>
+          </div>
+        )}
+
+        {/* Aviso fixo: dinheiro recebido em pedido cancelado. Não some
+            sozinho (sem botão de dispensar) — foi exatamente isso que fez
+            o defeito passar despercebido antes, escondido só numa
+            etiqueta do cartão que rola para fora de vista. */}
+        {paidOnCancelledCount > 0 && (
+          <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/30 bg-amber-500/5 p-6">
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent" />
+            <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-500">
+                  <AlertTriangle className="size-5" />
+                </div>
+                <div>
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-amber-500">
+                    {avisoPagoAposCancelado}
+                  </h3>
+                  <p className="mt-1.5 text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-400">
+                    O dinheiro entrou e o pedido está cancelado. Entregue o
+                    pedido, ou estorne pelo painel do Mercado Pago — esta tela
+                    não registra estorno.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  // O botão leva aos CANCELADOS, não a um payment_status
+                  // específico: a contagem larga cobre as duas portas do
+                  // contrato ampliado ('pago' e 'pago_apos_expirar' com
+                  // status='cancelled'), e filtrar por um valor só deixava
+                  // metade dos pedidos "presos" fora da lista — a etiqueta
+                  // de cada cartão já marca qual porta é cada um (achado 1
+                  // da revisão). Busca e período também são zerados: sem
+                  // isso um filtro de uma sessão anterior sobrevivia e a
+                  // lista vinha vazia sem o lojista perceber por quê
+                  // (achado 2 da revisão).
+                  setFilter("cancelled");
+                  setPaymentFilter("all");
+                  setSearchQuery("");
+                  setDateRange({ start: "", end: "" });
+                  setCurrentPage(0);
+                }}
+                className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[10px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
+              >
+                Ver pedidos
+              </Button>
+            </div>
           </div>
         )}
 

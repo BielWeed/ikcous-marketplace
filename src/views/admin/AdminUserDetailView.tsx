@@ -312,9 +312,43 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
   if (!isAdmin) return null;
 
-  const totalSpent = orders
-    .filter((o) => o.status !== "cancelled")
-    .reduce((sum, o) => sum + o.total, 0);
+  /*
+    Um pedido "conta" quando não foi cancelado nem devolvido — a MESMA regra
+    que o servidor usa na lista de Clientes (`get_admin_customers_paged`, com
+    `status NOT IN ('cancelled','returned')`).
+
+    Até 21/08/2026 esta ficha tinha três contagens que não conversavam: o card
+    "Cesta / Pedidos" mostrava `orders.length` (tudo, cancelados incluídos), o
+    LTV filtrava só `cancelled` (esquecendo `returned`), e a lista de Clientes
+    usava a regra completa. Resultado medido: o mesmo cliente aparecia com
+    "Pedidos 6" na lista e "Cesta / Pedidos 16" aqui, sem nada explicando os
+    10 de diferença. Com 72 dos 83 pedidos deste banco cancelados, isso valia
+    para quase todo cliente com histórico.
+
+    A ABA continua mostrando o histórico inteiro de propósito: é o número de
+    linhas que a tabela abaixo dela lista. Trocar por 6 faria a aba mentir
+    sobre o próprio conteúdo. O que sai daqui não é o segundo número — é o
+    mistério, porque o card passa a dizer quantos ficaram de fora.
+  */
+  /*
+    O `as string` no `returned` não é gambiarra: `OrderStatus` (types/index.ts)
+    lista cinco valores e não inclui `returned`, mas o `mappers.ts:247` faz
+    `row.status as OrderStatus` — um cast, não uma validação. Se o banco
+    devolver `returned`, o valor chega aqui em tempo de execução com o tipo
+    mentindo sobre ele, e o TypeScript acha a comparação impossível.
+
+    Hoje nenhum pedido deste banco está nesse estado, então isto é defesa: o
+    servidor filtra por `returned` na lista, e as duas contagens têm de
+    continuar iguais no dia em que o status aparecer. Alinhar o tipo ao banco
+    é conserto de outro tamanho — mexeria em todo `switch` sobre `OrderStatus`
+    — e está anotado no relatório da auditoria.
+  */
+  const pedidosQueContam = orders.filter(
+    (o) => o.status !== "cancelled" && (o.status as string) !== "returned",
+  );
+  const pedidosDescartados = orders.length - pedidosQueContam.length;
+
+  const totalSpent = pedidosQueContam.reduce((sum, o) => sum + o.total, 0);
 
   const renderContentSkeleton = () => (
     <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -579,8 +613,14 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     Cesta / Pedidos
                   </span>
                   <span className="text-xl font-black tracking-tight text-white sm:text-2xl">
-                    {orders.length}
+                    {pedidosQueContam.length}
                   </span>
+                  {pedidosDescartados > 0 && (
+                    <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-zinc-500">
+                      {pedidosDescartados} cancelado
+                      {pedidosDescartados > 1 ? "s" : ""} fora da conta
+                    </span>
+                  )}
                 </div>
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-blue-500/20 bg-zinc-950 text-blue-500">
                   <Package className="size-4" />
