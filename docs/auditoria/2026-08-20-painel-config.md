@@ -755,6 +755,18 @@ não entrou.
 cancelado já sai da conta pelo filtro de `status`. Dói no primeiro PIX que ficar em aberto, e
 dói de novo em toda loja clonada a partir daqui.
 
+**⚠️ E há um efeito de conjunto que este achado agora carrega.** A correção do "Pedidos Totais"
+(commit `3305ea8`) alinhou a **lista** de Clientes ao Dashboard, e com isso **desalinhou a lista
+da ficha do cliente**, que ainda conta por `status`. Cliente com um pedido pago de R$ 100 e um
+PIX pendente de R$ 50: a lista diz **"Pedidos Totais: 1"** e a ficha do mesmo cliente diz
+**2 pedidos** — e como nenhum dos dois é cancelado, não aparece a linha "fora da conta" que
+explicaria a diferença. O total do painel fica menor que a contagem de um cliente só, a um
+clique de distância.
+
+Isso **não é defeito da correção do "Pedidos Totais"** — escolher o Dashboard como fonte foi
+certo. É a mesma raiz deste achado 17 aparecendo do outro lado, e é o motivo de a migration e a
+ficha do cliente terem de andar **no mesmo pacote, nunca separadas**.
+
 **Por que não corrigi junto.** É migration numa função consumida pela tela inteira, e não é um
 dos 16 achados que o Gabriel mandou corrigir por ordem de dor. Fica para ele decidir se pula a
 fila.
