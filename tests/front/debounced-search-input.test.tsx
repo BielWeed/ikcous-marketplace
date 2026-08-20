@@ -119,4 +119,57 @@ describe("DebouncedSearchInput — ciclo de digitação", () => {
     expect(onChange).toHaveBeenCalledWith("maria");
     expect(onTyping).toHaveBeenLastCalledWith(false);
   });
+
+  it('zerar o valor DE FORA desliga o "digitando" — a lupa nao gira para sempre', async () => {
+    const { DebouncedSearchInput } = await import(
+      "@/components/admin/DebouncedSearchInput"
+    );
+
+    const onChange = vi.fn();
+    const onTyping = vi.fn();
+
+    // Aqui quem manda no `value` e o proprio teste, nao um `useState` do
+    // involucro: e assim que o defeito aparece na tela de verdade. Um clique
+    // em "Ver pedidos" chama `setSearchQuery("")` e o valor externo muda
+    // sozinho, sem ninguem ter tocado na caixa de busca.
+    function renderizar(valor: string) {
+      raiz.render(
+        <DebouncedSearchInput
+          id="busca-teste"
+          value={valor}
+          onChange={onChange}
+          onTyping={onTyping}
+          delay={40}
+        />,
+      );
+    }
+
+    await act(async () => {
+      renderizar("maria");
+    });
+
+    const campo = hospedeiro.querySelector("#busca-teste") as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+
+    // Alguem digita mais uma letra: a lupa comeca a girar.
+    await act(async () => {
+      campo.focus();
+      setter?.call(campo, "marian");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(onTyping).toHaveBeenLastCalledWith(true);
+
+    // E ANTES do atraso terminar, a busca e zerada de fora. O `onChange`
+    // nunca chega a disparar, entao o unico lugar que pode desligar o
+    // "digitando" e o `else` do efeito.
+    await act(async () => {
+      renderizar("");
+    });
+
+    expect(onTyping).toHaveBeenLastCalledWith(false);
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });
