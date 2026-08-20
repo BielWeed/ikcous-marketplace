@@ -1,3 +1,4 @@
+import type { AdminUserDetailView as TipoTelaFicha } from "@/views/admin/AdminUserDetailView";
 // @vitest-environment jsdom
 //
 // Auditoria de 20/08/2026, achado 5 — a lista de Clientes e a ficha do mesmo
@@ -26,7 +27,15 @@
 //   Ou seja: os dois números continuam existindo, o que some é o mistério.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 type PedidoFalso = {
   id: string;
@@ -121,10 +130,30 @@ describe("AdminUserDetailView — a contagem de pedidos bate com a lista", () =>
     vi.restoreAllMocks();
   });
 
-  async function abrirFicha() {
-    const { AdminUserDetailView } = await import(
+  // O `await import()` da tela custa ~3,5 s (ela puxa o componente inteiro e
+  // a árvore de dependências dele). Enquanto isso vivia DENTRO do primeiro
+  // `it`, aquele caso media 3604 ms contra um `testTimeout` de 5000 ms —
+  // margem de 1,4x, e a máquina decidia o resultado. Medido: 3 verdes e 5
+  // vermelhas em 8 rodadas isoladas, e o estouro derrubava mais quatro casos
+  // por cascata (DOM vazio), o que fazia parecer defeito de lógica.
+  //
+  // Carregar aqui move o custo para onde ele é: preparação, não asserção.
+  // O `hookTimeout` é o dobro do `testTimeout`, e nenhum caso paga sozinho
+  // uma conta que é de todos.
+  // `import type` é apagado na compilação, então não dispara o carregamento
+  // do módulo — só empresta o tipo. (A anotação `typeof import("...")` em
+  // linha NÃO serve aqui: o Biome a quebra em várias linhas com vírgula, o
+  // que não é TypeScript válido, e o arquivo para de compilar.)
+  let TelaFicha: typeof TipoTelaFicha;
+
+  beforeAll(async () => {
+    ({ AdminUserDetailView: TelaFicha } = await import(
       "@/views/admin/AdminUserDetailView"
-    );
+    ));
+  });
+
+  async function abrirFicha() {
+    const AdminUserDetailView = TelaFicha;
     await act(async () => {
       raiz.render(
         <AdminUserDetailView
