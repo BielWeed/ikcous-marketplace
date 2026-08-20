@@ -50,9 +50,15 @@ const PASTA_MIGRATIONS = new URL("../supabase/migrations/", import.meta.url);
  * teste reprova em vez de imprimir "nada divergiu" — que é exatamente o mesmo
  * resultado de um extrator quebrado. Apagar entrada do mapa também reprova
  * aqui, e é para isso que o piso existe.
+ *
+ * Subiu de 22/85 para 25/97 em 20/08/2026, com a entrada nova da
+ * 20260729000002 (3 checagens, 10 marcadores) e o bloco de frete grátis
+ * acrescentado nas duas checagens da 20260821000200 (+2).
  */
-const CHECAGENS_MEDIDAS = 22;
-const MARCADORES_MEDIDOS = 85;
+const CHECAGENS_MEDIDAS = 25;
+// 97 -> 99: dois marcadores contiguos a mais em `is_local_cep`, para os dois
+// ramos que a contagem de `RETURN true;` sozinha nao protegia.
+const MARCADORES_MEDIDOS = 99;
 
 /** Uma entrada do mapa vira sempre uma lista de checagens. */
 const checagensDe = (registro) =>
@@ -437,6 +443,244 @@ Deno.test("os marcadores endurecidos não voltam a ser o texto fraco", () => {
     assert(
       !forte.includes("--"),
       `${arquivo}/${funcao}: o marcador contíguo atravessa comentário: ${forte}`,
+    );
+  }
+});
+
+// --------------------------------------------------------------------------
+// A regra de FRETE GRÁTIS, e o segundo erro de método que este arquivo fecha:
+// medir o marcador certo contra o OBJETO errado.
+//
+// A 20260729000002 criou a v23 e reescreveu a v22 como FACHADA — de lá para
+// cá quem carrega a regra do dinheiro é a v23 (e a v24), que é o que
+// `src/hooks/useOrders.ts` chama. Os marcadores que guardavam a regra
+// apontavam para a v22, cujo corpo vivo hoje é `RETURN
+// public.create_marketplace_order_v23(...)` e mais nada: um CREATE OR REPLACE
+// futuro podia derrubar o frete grátis do caminho vivo com o mapa inteiro
+// dizendo "ok", e isso viaja para toda loja clonada deste repositório.
+//
+// A entrada da 20260729000000 NÃO se reaponta: ela descreve corretamente o
+// corpo que ELA cria (histórico), e é contra esse .sql que a varredura acima
+// a confere. Reapontá-la para o corpo vivo seria trocar uma entrada certa por
+// uma errada.
+// --------------------------------------------------------------------------
+
+const MIGRATION_DA_V23 = "20260729000002_shipping_quote_validation_v23.sql";
+const MIGRATION_DO_CUPOM = "20260821000200_cupom_sem_limite_e_ilimitado.sql";
+
+/** O que prova que a v22 continua DELEGANDO, em vez de ter cópia própria da regra. */
+// Colado no BEGIN, e nao o `RETURN ...` solto: solto ele prova que a
+// delegacao EXISTE, nao que ela e' a UNICA coisa que o corpo faz. Uma v22 que
+// ganhasse um INSERT proprio entre o BEGIN e o RETURN passava como
+// "verificada" com o marcador solto — e gravaria o pedido duas vezes.
+const MARCADOR_DELEGACAO =
+  "BEGIN\n    RETURN public.create_marketplace_order_v23(";
+const DELEGACAO_SOLTA = "RETURN public.create_marketplace_order_v23(";
+
+// Os dois textos SOLTOS que guardavam a regra até aqui. Eles provam que o
+// texto existe em ALGUM ponto da função — não que um governa o outro. Ficam
+// nomeados para servir de controle negativo (a v22 não os tem) e para travar
+// que NÃO voltem como marcador solto nas entradas do caminho vivo.
+const FRETE_TEXTO_FRACO_SENTINELA =
+  "NULLIF(v_store_config.free_shipping_min, 0)";
+const FRETE_TEXTO_FRACO_PARIDADE =
+  "v_user_id IS NOT NULL AND v_calculated_subtotal >= v_free_shipping_min";
+
+/**
+ * O bloco CONTÍGUO que substitui os dois soltos nas três checagens do caminho
+ * vivo. Medido em 20/08/2026: idêntico caractere a caractere e 1x em cada um
+ * dos três corpos, sem atravessar comentário.
+ */
+const FRETE_BLOCO = `    v_free_shipping_min := COALESCE(NULLIF(v_store_config.free_shipping_min, 0), 999999);
+
+    IF v_has_free_shipping_item = true
+       OR (v_user_id IS NOT NULL AND v_calculated_subtotal >= v_free_shipping_min)
+    THEN
+        v_shipping_validated := 0;`;
+
+/**
+ * M3 — a mutação que decide se o bloco vale alguma coisa: troca a sentinela
+ * `999999` (que faz `free_shipping_min = 0` significar "frete grátis
+ * DESLIGADO") por `0`, que faz o mesmo campo significar "grátis a partir de
+ * R$ 0". Loja com frete grátis desligado passa a dar frete zero para qualquer
+ * cliente logado, com qualquer carrinho (`10 >= 0`).
+ *
+ * É a mutação que a contagem exata NÃO pega: os dois textos fracos continuam
+ * casando 1x cada, `ok=true`, e a loja para de cobrar frete. Só o bloco, que
+ * ATRAVESSA a sentinela, acusa.
+ *
+ * Devolve o corpo INALTERADO quando o trecho não existe — quem chama tem de
+ * provar que a sabotagem entrou antes de concluir qualquer coisa do resultado.
+ */
+function aplicarMutacaoM3(corpo) {
+  return corpo.replace(
+    "COALESCE(NULLIF(v_store_config.free_shipping_min, 0), 999999)",
+    "COALESCE(NULLIF(v_store_config.free_shipping_min, 0), 0)",
+  );
+}
+
+Deno.test("a v22 vira fachada na 20260729000002, e o mapa confere a DELEGAÇÃO", async (t) => {
+  const mapa = new Map(Object.entries(VERIFICACOES));
+
+  await t.step(
+    "a entrada existe e tem as TRÊS checagens que a migration cria",
+    () => {
+      // Esta migration cria três funções. Com só duas cobertas, a última linha
+      // do terminal deixaria de dizer "1 migration ficou SEM CONFERÊNCIA
+      // AUTOMÁTICA" e passaria a dizer "Tudo aplicado e verificado" — um aviso
+      // honesto trocado por uma afirmação falsa, DEPOIS do COMMIT.
+      const checagens = checagensDe(mapa.get(MIGRATION_DA_V23));
+      assertEquals(checagens.length, 3);
+      assertEquals(checagens.map((c) => c.funcao).sort(), [
+        "create_marketplace_order_v22",
+        "create_marketplace_order_v23",
+        "is_local_cep",
+      ]);
+    },
+  );
+
+  await t.step("a checagem da v22 é a da delegação, e ela casa 1x", () => {
+    const checagem = checagensDe(mapa.get(MIGRATION_DA_V23)).find(
+      (c) => c.funcao === "create_marketplace_order_v22",
+    );
+    assert(checagem, "sem checagem para create_marketplace_order_v22");
+    const textos = checagem.esperado.map((m) =>
+      typeof m === "string" ? m : m?.texto,
+    );
+    assert(
+      textos.includes(MARCADOR_DELEGACAO),
+      `checagem da v22 sem o marcador de delegação: ${JSON.stringify(textos)}`,
+    );
+    // A direção que importa: o texto FRACO não pode voltar sozinho. Ele casa
+    // no mesmo lugar, então trocar o contíguo por ele não quebra nada — só
+    // deixa de provar que a delegação é a PRIMEIRA coisa do corpo.
+    assert(
+      !textos.includes(DELEGACAO_SOLTA),
+      `o marcador solto da delegação voltou — ele aprova uma v22 com lógica própria antes de delegar: ${JSON.stringify(textos)}`,
+    );
+    assertEquals(
+      conferirMarcador(
+        corpoDaMigration(MIGRATION_DA_V23, "create_marketplace_order_v22"),
+        MARCADOR_DELEGACAO,
+      ).achou,
+      1,
+    );
+  });
+
+  await t.step(
+    "controle negativo: o corpo da v22 desta migration NÃO tem mais a regra",
+    () => {
+      // É isto que prova que a v22 virou fachada — e não que o extrator
+      // devolveu corpo vazio para tudo, caso em que os dois zeros abaixo
+      // sairiam iguais sem provar nada.
+      const corpo = corpoDaMigration(
+        MIGRATION_DA_V23,
+        "create_marketplace_order_v22",
+      );
+      assert(corpo.length > 0, "corpo da v22 veio vazio — extrator quebrado");
+      assertEquals(
+        conferirMarcador(corpo, FRETE_TEXTO_FRACO_SENTINELA).achou,
+        0,
+      );
+      assertEquals(
+        conferirMarcador(corpo, FRETE_TEXTO_FRACO_PARIDADE).achou,
+        0,
+      );
+      // Controle POSITIVO na mesma rodada: a regra não sumiu do arquivo, ela
+      // MUDOU DE FUNÇÃO. Sem esta linha, "0 ocorrências" na v22 é o mesmo
+      // resultado de um extrator quebrado.
+      assertEquals(
+        conferirMarcador(
+          corpoDaMigration(MIGRATION_DA_V23, "create_marketplace_order_v23"),
+          FRETE_TEXTO_FRACO_PARIDADE,
+        ).achou,
+        1,
+      );
+    },
+  );
+});
+
+Deno.test("o bloco de frete grátis guarda as três checagens do caminho vivo", async (t) => {
+  const mapa = new Map(Object.entries(VERIFICACOES));
+  const ALVOS = [
+    [MIGRATION_DA_V23, "create_marketplace_order_v23"],
+    [MIGRATION_DO_CUPOM, "create_marketplace_order_v23"],
+    [MIGRATION_DO_CUPOM, "create_marketplace_order_v24"],
+  ];
+
+  for (const [arquivo, funcao] of ALVOS) {
+    await t.step(
+      `${arquivo} / ${funcao}: o mapa declara o BLOCO, não os dois textos soltos`,
+      () => {
+        const checagem = checagensDe(mapa.get(arquivo)).find(
+          (c) => c.funcao === funcao,
+        );
+        assert(checagem, `${arquivo}: sem checagem para ${funcao}`);
+        const textos = checagem.esperado.map((m) =>
+          typeof m === "string" ? m : m?.texto,
+        );
+        assert(
+          textos.includes(FRETE_BLOCO),
+          `${arquivo}/${funcao}: sumiu o bloco contíguo de frete grátis`,
+        );
+        assert(
+          !textos.includes(FRETE_TEXTO_FRACO_SENTINELA),
+          `${arquivo}/${funcao}: o texto fraco da sentinela voltou como marcador solto`,
+        );
+        assert(
+          !textos.includes(FRETE_TEXTO_FRACO_PARIDADE),
+          `${arquivo}/${funcao}: o texto fraco da paridade voltou como marcador solto`,
+        );
+        // O bloco tem de CONTER os dois fracos: "endurecer" para um trecho
+        // que nem fala do mecanismo faria o marcador deixar de provar o que diz.
+        assert(FRETE_BLOCO.includes(FRETE_TEXTO_FRACO_SENTINELA));
+        assert(FRETE_BLOCO.includes(FRETE_TEXTO_FRACO_PARIDADE));
+        // E ele é feito de CÓDIGO: marcador que atravessa comentário volta a
+        // amarrar a checagem à prosa.
+        assert(!FRETE_BLOCO.includes("--"));
+      },
+    );
+
+    await t.step(
+      `${arquivo} / ${funcao}: o bloco casa exatamente 1x no .sql desta migration`,
+      () => {
+        assertEquals(
+          conferirMarcador(corpoDaMigration(arquivo, funcao), FRETE_BLOCO)
+            .achou,
+          1,
+        );
+      },
+    );
+
+    await t.step(
+      `${arquivo} / ${funcao}: M3 (999999 → 0) derruba o bloco, e os soltos NÃO acusam`,
+      () => {
+        // O passo que documenta por que a colagem existe. Sem ele, o teste só
+        // afirmaria que trocamos de string — e contagem exata já pegaria
+        // sumiço parcial. O que ela NÃO pega é troca de VALOR, e é isso aqui.
+        const corpo = corpoDaMigration(arquivo, funcao);
+        const corpoMutado = aplicarMutacaoM3(corpo);
+        assert(
+          corpoMutado !== corpo,
+          `${arquivo}/${funcao}: a mutação M3 não achou o trecho a trocar — o passo não prova nada`,
+        );
+        // Os dois soltos continuam 1x cada, ou seja: sob contagem exata eles
+        // imprimiriam "ok" com a loja tendo parado de cobrar frete.
+        assertEquals(
+          conferirMarcador(corpoMutado, FRETE_TEXTO_FRACO_SENTINELA).achou,
+          1,
+          `${arquivo}/${funcao}: era este o furo — o texto fraco casando com a regra quebrada`,
+        );
+        assertEquals(
+          conferirMarcador(corpoMutado, FRETE_TEXTO_FRACO_PARIDADE).achou,
+          1,
+        );
+        assertEquals(
+          conferirMarcador(corpoMutado, FRETE_BLOCO).achou,
+          0,
+          `${arquivo}/${funcao}: o bloco tinha de deixar de casar depois de M3`,
+        );
+      },
     );
   }
 });

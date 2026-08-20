@@ -72,6 +72,18 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // ⚠️ Corpo HISTÓRICO — não reaponte esta entrada. A
+  // 20260729000002_shipping_quote_validation_v23.sql, logo abaixo, reescreveu
+  // a v22 como FACHADA PURA ("RETURN public.create_marketplace_order_v23(...)"
+  // e mais nada). Os três marcadores daqui continuam CERTOS para o corpo que
+  // ESTA migration cria — e é contra o .sql dela que o teste offline os
+  // confere. Medi-los contra o corpo VIVO da v22 dá AUSENTE, e isso é o
+  // ESPERADO, não defeito a "corrigir".
+  //
+  // Quem guarda a regra de frete grátis HOJE, no corpo que o app chama
+  // (src/hooks/useOrders.ts escolhe entre v24 e v23), são as entradas da
+  // 20260729000002 (v23) e da 20260821000200 (v23 e v24), com o bloco
+  // contíguo.
   "20260729000000_fix_free_shipping_rule_parity.sql": {
     funcao: "create_marketplace_order_v22",
     esperado: [
@@ -88,6 +100,123 @@ const VERIFICACOES = {
       "ELSE store_config.primary_color END",
     ],
   },
+  "20260729000002_shipping_quote_validation_v23.sql": [
+    {
+      funcao: "is_local_cep",
+      esperado: [
+        // Esta migration cria TRES funcoes — is_local_cep, v23 e v22 — e sem
+        // checagem para a primeira o veredito final do terminal deixaria de
+        // dizer "1 migration ficou SEM CONFERENCIA AUTOMATICA" e passaria a
+        // dizer "Tudo aplicado e verificado", com is_local_cep sem ninguem
+        // olhando. Aviso honesto trocado por afirmacao falsa, DEPOIS do
+        // COMMIT.
+        //
+        // Ela nao e' acessoria: decide se o cliente recebe a taxa de ENTREGA
+        // LOCAL (mais barata) em vez do frete de transportadora, e tem GRANT
+        // EXECUTE para anon. O ataque a prevenir e' a degradacao para "aceita
+        // todo mundo" — um REPLACE que troque um ramo por RETURN true faz
+        // qualquer CEP do pais reivindicar entrega local.
+        //
+        // A guarda de entrada: sem ela, CEP vazio (de origem ou de destino)
+        // deixa de ser recusado de cara.
+        "IF v_origem = '' OR v_destino = '' THEN RETURN false; END IF;",
+        // Sem faixa configurada, cai nos 5 primeiros digitos — a mesma regra
+        // da edge function. Se sumir, loja sem faixa cadastrada passa a
+        // aceitar qualquer CEP como local.
+        "RETURN left(v_origem, 5) = left(v_destino, 5);",
+        // A comparacao da faixa explicita ("38500000-38505000"): sem ela, uma
+        // faixa cadastrada deixa de limitar coisa nenhuma.
+        "IF v_destino_num BETWEEN v_inicio AND v_fim THEN",
+        // A comparacao do formato que o PROPRIO admin sugere como placeholder
+        // ("38500-000, 38500-999") — o ramo mais exposto dos cinco que
+        // devolvem true, porque e' o que a maioria das lojas vai ter
+        // cadastrado. Degradado para RETURN true, qualquer CEP vira local.
+        "RETURN v_destino_num BETWEEN LEAST(v_a, v_b) AND GREATEST(v_a, v_b);",
+        // O ramo do PREFIXO (item curto na lista). Mesma classe: degradado,
+        // qualquer destino casa com qualquer token.
+        "ELSIF v_destino LIKE v_token || '%' THEN",
+        // A negativa por padrao. Medido: 2x no corpo que esta migration cria
+        // — dentro da guarda de entrada (marcador acima) e como o RETURN
+        // final, depois de esgotada toda tentativa de casar. As duas sao
+        // CODIGO, sem prosa entre elas, entao e' CONTAGEM e nao bloco
+        // contiguo (o criterio deste arquivo). Trocar qualquer uma por RETURN
+        // true derruba a contagem para 1 e a verificacao acusa.
+        { texto: "RETURN false;", vezes: 2 },
+        // E os tres RETURN true, contados: sao os tres caminhos que CONCEDEM
+        // a taxa local (faixa casada, CEP completo igual, prefixo casado).
+        // Contagem aqui e' de mao dupla, e e' a de MAIS que importa: um ramo
+        // novo que devolva true sem ninguem ter pensado nele faz 4 > 3 e
+        // reprova, em vez de passar em silencio numa funcao exposta a anon.
+        { texto: "RETURN true;", vezes: 3 },
+        // Os DOIS ramos que a contagem sozinha nao protege. Medido por revisao
+        // de contexto limpo, com mutacao e controle positivo na mesma rodada:
+        // trocar `IF v_achou_faixa` por outra variavel, ou `IF v_destino =
+        // v_token` por `IF true`, deixa os 3 `RETURN true;` intactos — a
+        // contagem continua batendo e a situacao sai "verificada".
+        //
+        // E' a MESMA lacuna da sentinela do frete, nesta funcao: contagem pega
+        // sumico de ocorrencia, nunca troca de CONDICAO. So marcador que
+        // ATRAVESSA a condicao pega. Sem estes dois, uma loja com faixa
+        // cadastrada passa a conceder taxa de entrega local a QUALQUER CEP do
+        // pais — e esta funcao tem GRANT EXECUTE para `anon`.
+        "IF v_achou_faixa THEN RETURN true; END IF;",
+        "IF v_destino = v_token THEN RETURN true; END IF;",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        // A regra do dinheiro MIGROU para ca: esta migration cria a v23 e
+        // reescreve a v22 (que ate aqui carregava a regra sozinha) como
+        // fachada que delega. Daqui em diante e' aqui — e na entrada mais
+        // recente que redefinir esta mesma funcao — que a paridade de frete
+        // gratis do usuario logado tem de sobreviver ao REPLACE.
+        //
+        // Marcador CONTIGUO, e nao os dois textos soltos da entrada da
+        // 20260729000000: solto, cada um so' prova que o texto existe em
+        // ALGUM ponto da funcao, nunca que um GOVERNA o outro. E contagem
+        // exata tambem nao fecha isto: ela pega sumico parcial, nao pega
+        // troca de VALOR. Medido — trocar a sentinela 999999 por 0 deixa os
+        // dois soltos intactos, 1x cada, "ok" nos dois, e a loja inteira
+        // para de cobrar frete (free_shipping_min = 0 deixa de significar
+        // "desligado" e passa a significar "gratis a partir de R$ 0": o
+        // primeiro cliente logado com R$ 10 no carrinho ja leva 10 >= 0). So
+        // o bloco, que ATRAVESSA a sentinela, acusa.
+        `    v_free_shipping_min := COALESCE(NULLIF(v_store_config.free_shipping_min, 0), 999999);
+
+    IF v_has_free_shipping_item = true
+       OR (v_user_id IS NOT NULL AND v_calculated_subtotal >= v_free_shipping_min)
+    THEN
+        v_shipping_validated := 0;`,
+        // O recalculo do total pelos precos do banco (Price Tampering
+        // Protection) nasce nesta funcao: sem ele o cliente volta a poder
+        // mandar o proprio total.
+        "Os valores do pedido mudaram",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v22",
+      esperado: [
+        // A partir desta migration a v22 e' FACHADA PURA, e o que importa
+        // provar sobre ela nao e' mais a regra de frete (que vive na v23) e
+        // sim que ela continua DELEGANDO. Se este marcador sumir, a v22
+        // voltou a ter copia propria da logica — copia que ninguem atualiza
+        // quando a regra mudar de novo, e o desencontro que motivou a
+        // 20260729000000 nasce outra vez, em silencio, num caminho que hoje
+        // nenhum cliente chama mas que continua com GRANT para anon.
+        //
+        // Colado no BEGIN de proposito, e nao o `RETURN ...` solto: solto ele
+        // prova que a delegacao EXISTE, nao que ela e' a UNICA coisa que o
+        // corpo faz. Medido por revisao de contexto limpo, com mutacao: uma
+        // v22 que ganha logica propria ANTES de delegar (um INSERT entre o
+        // BEGIN e o RETURN) passava como "verificada" com o marcador solto —
+        // e o pedido seria gravado duas vezes, uma pela copia e outra pela
+        // v23. Colado no BEGIN, nao cabe statement nenhum antes. E' isso que
+        // "fachada pura" quer dizer.
+        "BEGIN\n    RETURN public.create_marketplace_order_v23(",
+      ],
+    },
+  ],
   "20260804000000_add_is_admin_guard_to_category_analytics.sql": {
     funcao: "get_category_analytics",
     esperado: [
@@ -212,6 +341,14 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // ⚠️ Medido: o marcador "AND gateway_payment_id IS NOT NULL" desta entrada
+  // da AUSENTE contra o corpo VIVO — e isso NAO e' defeito, nao reaponte. A
+  // 20260812000000, mais abaixo, REORDENOU o WHERE e subiu o mesmo predicado
+  // para a primeira posicao (sem o "AND" na frente), sem perder a invariante;
+  // o corpo vivo e' guardado inteiro pela entrada DELA (os 5 marcadores de la
+  // dao 1x cada no corpo vivo, e nenhuma migration posterior redefine esta
+  // funcao). Esta entrada esta certa para o .sql que ELA cria, que e' o
+  // contrato que o teste offline cobra.
   "20260808000100_reconciliacao.sql": [
     {
       funcao: "pagamentos_a_reconciliar",
@@ -365,6 +502,24 @@ const VERIFICACOES = {
         // e o pedido passaria a vender o que a loja nao tem.
         { texto: "Estoque insuficiente para o produto", vezes: 3 },
         "UPDATE public.coupons SET usage_count = usage_count + 1",
+        // A regra de FRETE GRATIS, que nasceu na 20260729000002 e tem de
+        // sobreviver AQUI: esta migration reescreve a v23 inteira, e quem
+        // define o corpo vivo e' sempre a entrada mais recente do mapa, nunca
+        // a que criou a regra primeiro. Sem este marcador, um REPLACE futuro
+        // derruba o frete gratis do caminho que o app chama e nada acusa —
+        // e isso viaja para toda loja clonada deste repositorio.
+        //
+        // Marcador CONTIGUO pelo mesmo motivo da entrada da 20260729000002:
+        // os dois textos soltos ("NULLIF(...)" e "v_user_id IS NOT NULL
+        // AND ...") continuam casando 1x cada com a sentinela 999999 trocada
+        // por 0 — a loja para de cobrar frete e a ferramenta imprime "ok"
+        // nos dois. Contagem exata pega sumico, nao pega troca de valor.
+        `    v_free_shipping_min := COALESCE(NULLIF(v_store_config.free_shipping_min, 0), 999999);
+
+    IF v_has_free_shipping_item = true
+       OR (v_user_id IS NOT NULL AND v_calculated_subtotal >= v_free_shipping_min)
+    THEN
+        v_shipping_validated := 0;`,
       ],
     },
     {
@@ -378,6 +533,19 @@ const VERIFICACOES = {
         // pagamento online. Se sumir no REPLACE, o pedido de PIX deixa de
         // expirar e o pg_cron nunca devolve o estoque.
         "'aguardando', now() + interval '30 minutes'",
+        // Esta e' a definicao VIVA da v24 — a mais recente do mapa a
+        // redefini-la — e e' o caminho que o app chama quando o pagamento
+        // online esta ligado (src/hooks/useOrders.ts). O bloco de frete
+        // gratis precisa ser guardado aqui pelo mesmo motivo da v23 acima; a
+        // entrada da 20260807000000 mais atras guarda a mesma invariante com
+        // a regua intermediaria (o predicado solto), que nao acusa a troca da
+        // sentinela.
+        `    v_free_shipping_min := COALESCE(NULLIF(v_store_config.free_shipping_min, 0), 999999);
+
+    IF v_has_free_shipping_item = true
+       OR (v_user_id IS NOT NULL AND v_calculated_subtotal >= v_free_shipping_min)
+    THEN
+        v_shipping_validated := 0;`,
       ],
     },
   ],
