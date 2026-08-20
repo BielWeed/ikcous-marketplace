@@ -89,7 +89,13 @@ export const AdminPushView = memo(function AdminPushView({
   };
   const [loading, setLoading] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
-  const [subCount, setSubCount] = useState(0);
+  // O quarto contador (achado do revisor sobre o commit 6e406b4, em
+  // 20/08/2026): nascia em `useState(0)` e o `if (!error) setSubCount(...)`
+  // não fazia nada quando a consulta falhava — ficava preso em 0 para
+  // sempre, indistinguível de uma loja sem ninguém cadastrado. `null` é
+  // "ainda não medi ou não consegui medir"; `0` só aparece depois que o
+  // banco respondeu de verdade. Mesma convenção de `segmentCounts` acima.
+  const [subCount, setSubCount] = useState<ContagemMedida>(null);
   const [notification, setNotification] = useState({
     title: "",
     body: "",
@@ -226,7 +232,9 @@ export const AdminPushView = memo(function AdminPushView({
       .from("push_subscriptions")
       .select("*", { count: "exact", head: true });
 
-    if (!error) setSubCount(count || 0);
+    // Consulta falhou: `null`, nunca `0` — zero é a afirmação de que a loja
+    // não tem ninguém cadastrado, e isso só se pode dizer depois de medir.
+    setSubCount(error ? null : count ?? 0);
   }, []);
 
   const fetchHistory = useCallback(async () => {
@@ -284,7 +292,11 @@ export const AdminPushView = memo(function AdminPushView({
 
   const calculateReach = useCallback(async () => {
     if (segment === "all") {
-      setPredictedReach(subCount);
+      // `predictedReach` só é lido quando `segment !== "all"` (ver
+      // `effectiveReach`), então este valor nunca aparece na tela — mas o
+      // tipo de `subCount` mudou para aceitar desconhecido, e este estado
+      // continua sendo sempre numérico.
+      setPredictedReach(subCount ?? 0);
       return;
     }
 
@@ -519,7 +531,19 @@ export const AdminPushView = memo(function AdminPushView({
     }
   };
 
-  const effectiveReach = segment === "all" ? subCount : predictedReach;
+  // `effectiveReach` alimenta a TRAVA de segurança do botão de enviar
+  // (`disabled={... effectiveReach === 0 ...}`) e por isso continua
+  // numérico: total desconhecido vira 0 aqui de propósito, para que a trava
+  // falhe FECHADA (desabilitado) em vez de habilitar o envio para um total
+  // que ninguém mediu.
+  const effectiveReach = segment === "all" ? (subCount ?? 0) : predictedReach;
+
+  // `reachExibido` é o que os TEXTOS mostram ("Receberão: N aparelhos",
+  // botão de enviar). Ao contrário de `effectiveReach`, preserva o `null`
+  // — é ele que faz a tela dizer "desconhecido" em vez de "0" quando a
+  // medição falhou.
+  const reachExibido: ContagemMedida =
+    segment === "all" ? subCount : predictedReach;
 
   return (
     <div className="min-h-screen bg-[#09090b] pb-admin lg:pb-12 text-white duration-200 animate-in fade-in selection:bg-emerald-500/30 selection:text-emerald-200">
@@ -555,7 +579,9 @@ export const AdminPushView = memo(function AdminPushView({
             <div className="hidden sm:flex items-center gap-2 rounded-lg border border-white/5 bg-zinc-900/80 px-2.5 py-1 text-[10px] font-semibold text-zinc-300">
               <Smartphone className="size-3.5 text-emerald-400" />
               <span>
-                <strong className="text-white font-bold">{subCount}</strong>{" "}
+                <strong className="text-white font-bold">
+                  {rotuloDaContagem(subCount)}
+                </strong>{" "}
                 Celulares Cadastrados
               </span>
             </div>
@@ -697,7 +723,7 @@ export const AdminPushView = memo(function AdminPushView({
                 <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400">
                   <Radio className="size-3 animate-pulse" />
                   <span>
-                    Receberão: {textoDeAlcanceEmAparelhos(effectiveReach)}
+                    Receberão: {textoDeAlcanceEmAparelhos(reachExibido)}
                   </span>
                 </div>
               </div>
@@ -754,9 +780,10 @@ export const AdminPushView = memo(function AdminPushView({
                           // "all" segue vindo de `subCount`: é a única
                           // contagem que já era medição de verdade e não
                           // precisa de RPC nenhuma (achado 6, decisão 1).
-                          count: (segment === "all"
-                            ? effectiveReach
-                            : subCount) as ContagemMedida,
+                          // `subCount` já é `ContagemMedida` — não passa por
+                          // `effectiveReach`, que converte desconhecido em 0
+                          // só para a trava do botão de enviar.
+                          count: subCount,
                         },
                         {
                           id: "vip",
@@ -1002,7 +1029,7 @@ export const AdminPushView = memo(function AdminPushView({
                     <>
                       <Send className="size-4 fill-current" />
                       Enviar Notificação Agora (
-                      {textoDeAlcanceEmAparelhos(effectiveReach)})
+                      {textoDeAlcanceEmAparelhos(reachExibido)})
                     </>
                   )}
                 </button>
@@ -1141,7 +1168,7 @@ export const AdminPushView = memo(function AdminPushView({
               <div className="flex items-baseline justify-between border-b border-white/5 pb-2.5">
                 <div className="flex items-baseline gap-2">
                   <h2 className="text-3xl font-black tabular-nums tracking-tight text-white">
-                    {subCount}
+                    {rotuloDaContagem(subCount)}
                   </h2>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
                     Celulares e Computadores Cadastrados

@@ -30,6 +30,10 @@ const { estadoDoBanco } = vi.hoisted(() => ({
       new: [] as unknown[],
     } as Record<string, unknown[] | null>,
     falharRpc: false,
+    // O quarto contador (achado do revisor sobre o commit 6e406b4, em
+    // 20/08/2026): a consulta a `push_subscriptions` pode falhar, e a tela
+    // tem de mostrar desconhecido — nunca zero.
+    falharSubCount: false,
   },
 }));
 
@@ -68,7 +72,9 @@ vi.mock("@/lib/supabase", () => ({
       if (tabela === "push_subscriptions") {
         return {
           select: () =>
-            Promise.resolve({ count: estadoDoBanco.subCount, error: null }),
+            estadoDoBanco.falharSubCount
+              ? Promise.resolve({ count: null, error: new Error("falhou") })
+              : Promise.resolve({ count: estadoDoBanco.subCount, error: null }),
         };
       }
       // push_notifications_log, vw_produtos_public, public_profiles: sem
@@ -132,6 +138,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
       new: [],
     };
     estadoDoBanco.falharRpc = false;
+    estadoDoBanco.falharSubCount = false;
 
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -312,5 +319,84 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     expect(texto()).toContain("Receberão: 1 aparelho");
     expect(texto()).not.toContain("Receberão: 1 aparelhos");
+  });
+
+  // Achado do revisor sobre o commit 6e406b4, em 20/08/2026: o QUARTO
+  // contador (`subCount`, o total de aparelhos) nascia em `useState(0)` e o
+  // `if (!error) setSubCount(...)` simplesmente não fazia nada quando a
+  // consulta falhava — a tela ficava presa em "0" para sempre, indistinguível
+  // de uma loja sem ninguém cadastrado. Estes três testes provam que os TRÊS
+  // lugares de exibição (topbar, cartão grande, badge "Todos os Clientes") e
+  // o texto de alcance concordam entre si, e que o botão de enviar SEMPRE
+  // falha fechado quando o total é desconhecido.
+  describe("o total de aparelhos (subCount) distingue desconhecido de zero medido", () => {
+    function numeroDoTopbar(): string | undefined {
+      const span = Array.from(hospedeiro.querySelectorAll("span")).find(
+        (s) =>
+          (s.textContent ?? "").includes("Celulares Cadastrados") &&
+          !(s.textContent ?? "").includes("Computadores"),
+      );
+      return span?.querySelector("strong")?.textContent ?? undefined;
+    }
+
+    function numeroDoCartaoGrande(): string | undefined {
+      return (
+        hospedeiro.querySelector("h2.text-3xl")?.textContent ?? undefined
+      );
+    }
+
+    function numeroDoBadgeTodosOsClientes(): string | undefined {
+      const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+        (b) => (b.textContent ?? "").includes("Todos os Clientes"),
+      );
+      return botao?.textContent ?? undefined;
+    }
+
+    function botaoEnviar(): HTMLButtonElement | undefined {
+      return Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+        (b.textContent ?? "").includes("Enviar Notificação Agora"),
+      ) as HTMLButtonElement | undefined;
+    }
+
+    it("quando a consulta ao total de aparelhos FALHA, os três lugares mostram desconhecido — nunca zero — e o botão de enviar continua desabilitado", async () => {
+      estadoDoBanco.falharSubCount = true;
+      await abrirTela();
+
+      expect(numeroDoTopbar()).toBe("—");
+      expect(numeroDoCartaoGrande()).toBe("—");
+      expect(numeroDoBadgeTodosOsClientes()).toContain("—");
+
+      expect(texto()).toContain("Receberão: — aparelhos");
+      expect(texto()).toContain("Enviar Notificação Agora (— aparelhos)");
+
+      // O ponto mais importante desta tarefa: total desconhecido não pode
+      // virar botão liberado. Falhar fechado.
+      expect(botaoEnviar()?.disabled).toBe(true);
+    });
+
+    it("quando a consulta DEVOLVE 0 de verdade, os três lugares mostram 0 (medido) e o botão de enviar continua desabilitado, por ser zero real", async () => {
+      estadoDoBanco.subCount = 0;
+      await abrirTela();
+
+      expect(numeroDoTopbar()).toBe("0");
+      expect(numeroDoCartaoGrande()).toBe("0");
+      expect(numeroDoBadgeTodosOsClientes()).toContain("0");
+
+      expect(texto()).toContain("Receberão: 0 aparelhos");
+
+      expect(botaoEnviar()?.disabled).toBe(true);
+    });
+
+    it("quando a consulta DEVOLVE 8, os três lugares mostram 8 e o botão de enviar habilita", async () => {
+      await abrirTela();
+
+      expect(numeroDoTopbar()).toBe("8");
+      expect(numeroDoCartaoGrande()).toBe("8");
+      expect(numeroDoBadgeTodosOsClientes()).toContain("8");
+
+      expect(texto()).toContain("Receberão: 8 aparelhos");
+
+      expect(botaoEnviar()?.disabled).toBe(false);
+    });
   });
 });

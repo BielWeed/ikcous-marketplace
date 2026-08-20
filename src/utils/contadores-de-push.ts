@@ -47,8 +47,15 @@ export function rotuloDaContagem(contagem: ContagemMedida): string {
  * aparelhos)"). `push_subscriptions` é inscrição de aparelho/navegador, não
  * cliente: visitante sem conta entra na contagem, e um cliente com dois
  * aparelhos conta duas vezes.
+ *
+ * `null` vira "— aparelhos" pelo mesmo motivo de `rotuloDaContagem`: o total
+ * ainda não foi medido, ou a medição falhou, e zero é uma afirmação forte
+ * demais para chutar (achado do revisor sobre o commit 6e406b4, 20/08/2026).
  */
-export function textoDeAlcanceEmAparelhos(contagemDeAparelhos: number): string {
+export function textoDeAlcanceEmAparelhos(
+  contagemDeAparelhos: ContagemMedida,
+): string {
+  if (contagemDeAparelhos === null) return "— aparelhos";
   return contagemDeAparelhos === 1
     ? "1 aparelho"
     : `${contagemDeAparelhos} aparelhos`;
