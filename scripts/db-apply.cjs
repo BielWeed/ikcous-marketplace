@@ -303,6 +303,65 @@ const VERIFICACOES = {
       "^[0-9a-fA-F-]{6,}$",
     ],
   },
+  "20260822000100_analitico_conta_so_dinheiro_reconhecido.sql": [
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        // A correcao em si, no agregado que mais dói: "Receita Hoje" somava
+        // todo pedido nao cancelado, SEM olhar pagamento. Medido: em
+        // 11/08/2026 o cartao teria mostrado R$ 214,40 num dia de receita
+        // real R$ 0,00 (os 6 pedidos expiraram sem pagamento).
+        //
+        // Marcador e' o BLOCO INTEIRO, nao a linha do predicado sozinha: o
+        // predicado aparece 9 vezes nesta funcao, entao um marcador solto
+        // daria "ok" mesmo se ele tivesse caido fora de today_revenue. So o
+        // bloco junto prova que ele esta NESTE agregado.
+        `    WHERE created_at >= date_trunc('day', now())
+    AND status NOT IN ('cancelled', 'returned')
+    AND (payment_status IS NULL OR payment_status IN ('pago', 'pago_apos_expirar'));`,
+        // As CTEs de rev_history e o top_prods usam o alias `o.` — sem este
+        // marcador, o grafico e a lista de mais vendidos podiam ficar com a
+        // regra velha enquanto os cartoes ficavam com a nova, e as duas
+        // telas passariam a discordar entre si.
+        "AND (o.payment_status IS NULL OR o.payment_status IN ('pago', 'pago_apos_expirar'))",
+        // A guarda contra o predicado VAZAR para onde nao devia:
+        // today_pending conta trabalho a fazer, nao dinheiro. Se a regra
+        // entrasse aqui, "Acoes Pendentes" pararia de mostrar o pedido que
+        // ainda nao foi pago — que e' justamente o que precisa de acao.
+        `    SELECT COUNT(*) INTO today_pending
+    FROM public.marketplace_orders
+    WHERE status in ('pending', 'new', 'processing');`,
+        // Os dois campos novos que o front consome. Sem eles o cartao
+        // "Total Concluido" mostra travessao e o aviso de dinheiro preso
+        // simplesmente NAO APARECE — e ausencia de aviso e' indistinguivel
+        // de "esta tudo certo".
+        "'deliveredTotal', delivered_total,",
+        "'paidOnCancelled', paid_on_cancelled",
+        // O contador tem de cobrir as DUAS portas: o cliente que paga o PIX
+        // fora do prazo ('pago_apos_expirar') E o pedido ja pago que o admin
+        // cancela pelo painel ('pago'). A segunda abre com um clique.
+        `    WHERE payment_status IN ('pago', 'pago_apos_expirar') AND status = 'cancelled';`,
+        // O resto do caminho tem de sobreviver ao REPLACE: esta migration
+        // reescreve a funcao inteira. Sem a guarda, uma funcao SECURITY
+        // DEFINER passa a entregar o financeiro da loja para qualquer
+        // usuario autenticado.
+        "IF NOT public.is_admin() THEN",
+      ],
+    },
+  ],
+  // ⚠️ 20260822000000_status_do_pedido_nunca_nulo.sql NAO tem entrada aqui, e
+  // nao pode ter: este mapa so' sabe conferir marcador dentro de
+  // pg_get_functiondef, e aquela migration e' ALTER TABLE — nao redefine
+  // funcao nenhuma. O db-apply vai imprimir "sem verificacao registrada,
+  // pulando" e, no fim, "Tudo aplicado e verificado" assim mesmo.
+  //
+  // Enquanto este mapa nao souber conferir DDL de tabela, migration de
+  // ALTER TABLE, policy e grant se confere A MAO depois de aplicar. Para
+  // esta:
+  //   SELECT is_nullable, column_default FROM information_schema.columns
+  //    WHERE table_schema='public' AND table_name='marketplace_orders'
+  //      AND column_name='status';
+  //   -- esperado: is_nullable='NO', column_default=''pending''::text
 };
 
 function lerDatabaseUrl() {
