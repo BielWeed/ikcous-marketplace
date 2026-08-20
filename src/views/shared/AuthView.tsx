@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { branding } from "@/config/branding";
+import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import type { View } from "@/types";
 import { type Variants, motion } from "framer-motion";
@@ -47,6 +48,7 @@ const itemVariants: Variants = {
 };
 
 export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
+  const { config } = useStore();
   const {
     user,
     login,
@@ -441,7 +443,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               className="mt-2 max-w-[280px] px-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 sm:mt-4 sm:max-w-none sm:text-sm"
             >
               {viewMode === "login" &&
-                "O seu acesso VIP aos achadinhos mais baratos de Monte Carmelo."}
+                "O seu acesso VIP aos achadinhos mais baratos da região."}
               {viewMode === "signup" &&
                 "Inicie sua jornada no marketplace premium."}
               {viewMode === "forgot" &&
@@ -724,7 +726,10 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           className="pointer-events-none mt-auto w-full py-4 text-center sm:mt-8 sm:py-4"
         >
           <p className="px-4 text-[10px] font-black uppercase tracking-[0.4em] text-zinc-300">
-            {branding.appName} • Monte Carmelo, MG
+            {/* Sem cidade configurada, mostra só o nome, sem o "•" solto. */}
+            {branding.appName}
+            {config.storeCity &&
+              ` • ${config.storeCity}${config.storeState ? `, ${config.storeState}` : ""}`}
           </p>
         </motion.div>
       </motion.div>

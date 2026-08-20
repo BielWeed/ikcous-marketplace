@@ -1,4 +1,36 @@
-# IKCOUS Marketplace — como esta sessão trabalha
+# IKCOUS Marketplace
+
+## 🔴 ESCOPO — leia antes de qualquer coisa, inclusive antes de perguntar
+
+**Aqui se desenvolve o APP. Só o app.**
+
+Cliente, lojista, teste grátis, assinatura, cobrança de mensalidade, clonagem de loja,
+nascimento de banco de cliente e atualização das lojas clonadas **são de OUTRO projeto**, que o
+Gabriel ainda vai criar. Nada disso é assunto desta sessão, deste repositório, ou de qualquer
+decisão tomada aqui.
+
+**A regra prática, que não tem exceção:**
+
+> Se a justificativa de um trabalho depende de um cliente — um nome de loja, um perfil de
+> lojista, um prazo prometido, um preço de mensalidade, "antes da primeira cliente" — a
+> justificativa está errada de raiz, e tudo que for construído em cima dela nasce podre.
+
+**O critério que substitui:** o app tem que funcionar de verdade, para qualquer loja. Defeito,
+tela que promete o que o sistema não cumpre, caminho do dinheiro, painel operável por alguém
+leigo — essas são razões válidas, **porque valem para toda loja**, não porque alguém pediu.
+
+**Ao montar prompt de subagente, plano ou decisão:** se aparecer nome próprio de loja, cliente,
+assinatura ou clone como *justificativa*, apagar e refazer. Este arquivo carrega sozinho em toda
+sessão deste projeto justamente porque a versão anterior desta regra morava numa memória que
+precisava ser aberta, e em 18/08/2026 uma decisão inteira foi montada em cima de uma lojista
+com a regra escrita e não lida.
+
+O rumo que fica, palavras dele em 18/08/2026: *"tudo deve ser desenvolvido como se esse app
+fosse para funcionar de verdade em uma loja"* — nada de recurso desligado por conveniência.
+
+---
+
+## Como esta sessão trabalha
 
 Este arquivo diz **quem faz o quê**. As regras de produto, PWA, Supabase e MCP continuam em
 [AGENTS.md](AGENTS.md); as de contribuição, em [CONTRIBUTING.md](CONTRIBUTING.md). Não duplique

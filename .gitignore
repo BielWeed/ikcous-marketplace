@@ -142,3 +142,9 @@ backups/
 
 # Rollbacks que o db-apply.cjs gera a cada aplicacao: artefato de execucao.
 rollback-*.sql
+# ...MENOS os escritos a mao. O db-apply so sabe gerar rollback de redefinicao
+# de funcao (db-apply.cjs:371); para ALTER TABLE, view e grant ele gera um
+# arquivo VAZIO e ainda sobrescreve o que estiver no caminho (#140). Um rollback
+# de ALTER TABLE so existe se alguem o escrever, e ele tem de estar no git:
+# fora dele, a unica copia mora numa maquina so.
+!rollback-manual-*.sql

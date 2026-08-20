@@ -89,6 +89,64 @@ export function precoDeContingenciaDoTopo(
 }
 
 /**
+ * Resolve se dá para cotar a partir do que a loja configurou — falhando
+ * fechado quando falta CEP de origem ou (no frete fixo) a taxa.
+ *
+ * MESMO DEFEITO QUE A 1.4.0 CORRIGIU NA CONTINGÊNCIA DE TOPO, um andar acima
+ * (ver `precoDeContingenciaDoTopo`): até 18/08/2026 o cálculo direto usava
+ * `storeConfig.origin_cep || '38500-000'` e
+ * `Number(storeConfig.shipping_fee || 15)` — loja que nunca disse de onde
+ * despacha, ou quanto cobra, tinha o frete calculado a partir de Monte
+ * Carmelo e de R$ 15, calada. `Number(null)` é `0` e `null || 15` é `15`:
+ * os dois caminhos estavam errados. Cotação sem origem não é cotação — é
+ * chute com aparência de preço.
+ *
+ * A taxa fixa só é exigida quando `provider` é `'flat_fee'`: nos demais
+ * provedores quem decide o preço é a API do transportador, e a taxa fixa
+ * nem chega a ser usada no caminho feliz.
+ *
+ * @returns a mensagem de erro quando falta configuração, ou `null` quando
+ * pode seguir com a cotação.
+ */
+export function validarOrigemEFrete(
+    originCep: string | null | undefined,
+    shippingFee: number | null | undefined,
+    provider: string,
+): string | null {
+    if (!originCep) {
+        return 'A loja ainda não configurou o CEP de origem do frete.'
+    }
+    if (provider === 'flat_fee' && (shippingFee === null || shippingFee === undefined)) {
+        return 'A loja ainda não configurou a taxa de frete.'
+    }
+    return null
+}
+
+/**
+ * Decide se a taxa fixa configurada pela loja pode virar a opção "Entrega
+ * Padrão" numa cotação — usada dentro de `getFlatFeeResponse`.
+ *
+ * MESMO DEFEITO QUE `validarOrigemEFrete`, UM ANDAR ABAIXO: ela só exige
+ * `shipping_fee` quando `provider === 'flat_fee'`, de propósito — nos demais
+ * provedores quem decide o preço é a API do transportador. Mas
+ * `getFlatFeeResponse` cai na taxa fixa mesmo assim quando faltam
+ * credenciais do transportador (provider `melhor_envio`/`frenet` sem linha
+ * em `store_shipping_credentials`), e `Number(null)` é `0`: loja que nunca
+ * configurou taxa fixa E nunca cadastrou credencial cotava frete GRÁTIS
+ * para o Brasil inteiro — pior que o R$ 15 cravado que existia antes da
+ * Tarefa 7. A checagem olha o valor ORIGINAL (não o já convertido por
+ * `Number()`), porque `Number(null)` e um `0` configurado de propósito são
+ * indistinguíveis depois da conversão, e a loja pode legitimamente escolher
+ * taxa fixa R$ 0.
+ *
+ * @returns `true` só quando `shippingFee` é um número configurado de
+ * verdade (inclusive `0`, se foi essa a escolha da loja).
+ */
+export function flatFeeConfigurada(shippingFee: number | null | undefined): boolean {
+    return shippingFee !== null && shippingFee !== undefined && Number.isFinite(Number(shippingFee))
+}
+
+/**
  * Dispara uma query sem bloquear a resposta, sem quebrar a função.
  *
  * O PostgrestBuilder do supabase-js implementa apenas `PromiseLike` — tem `then`,
@@ -405,8 +463,18 @@ serve(async (req: Request) => {
         }
 
         const provider = storeConfig.shipping_provider || 'flat_fee'
-        const originCep = (storeConfig.origin_cep || '38500-000').replace(/\D/g, '')
-        const flatFee = Number(storeConfig.shipping_fee || 15)
+
+        // Falha fechado: sem CEP de origem, ou sem taxa fixa quando o
+        // provedor é o frete fixo, a função não calcula nada. Ver
+        // `validarOrigemEFrete` acima — mesmo defeito que a 1.4.0 corrigiu
+        // na contingência do topo, um andar acima.
+        const erroDeConfiguracao = validarOrigemEFrete(storeConfig.origin_cep, storeConfig.shipping_fee, provider)
+        if (erroDeConfiguracao) {
+            throw new Error(erroDeConfiguracao)
+        }
+
+        const originCep = storeConfig.origin_cep.replace(/\D/g, '')
+        const flatFee = Number(storeConfig.shipping_fee)
         cepDeOrigem = originCep
         taxaDaLoja = flatFee
         const enabledMethods = storeConfig.enabled_shipping_methods || ['sedex', 'pac']
@@ -471,6 +539,14 @@ serve(async (req: Request) => {
         }
 
         // Helper: Generate fallback flat fee response
+        //
+        // FALHA FECHADO NA TAXA FIXA, TAMBÉM: quando o provedor não é
+        // `flat_fee` (ex.: `melhor_envio`/`frenet` sem credencial
+        // cadastrada), `storeConfig.shipping_fee` nunca foi exigido por
+        // `validarOrigemEFrete` e pode ser `null` — e `Number(null)` é `0`.
+        // Sem a checagem de `flatFeeConfigurada`, essa contingência cotava
+        // frete GRÁTIS para o Brasil inteiro em vez de recusar a opção.
+        // Ver `flatFeeConfigurada` acima.
         const getFlatFeeResponse = () => {
             const list = []
             if (isLocal) {
@@ -481,7 +557,7 @@ serve(async (req: Request) => {
                     deliveryDays: 1,
                     provider: 'local'
                 })
-            } else {
+            } else if (flatFeeConfigurada(storeConfig.shipping_fee)) {
                 list.push({
                     id: 'flat-fee-standard',
                     name: 'Entrega Padrão',

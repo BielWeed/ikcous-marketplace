@@ -259,9 +259,9 @@ export function CheckoutView({
     defaultValues: {
       name: profile?.full_name || user?.user_metadata?.name || "",
       whatsapp: getDefaultWhatsApp(),
-      cep: localStorage.getItem("ikcous_last_shipping_cep") || "38500-000",
-      city: "Monte Carmelo",
-      state: "MG",
+      cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
+      city: "",
+      state: "",
     },
     mode: "onChange",
   });
@@ -270,26 +270,21 @@ export function CheckoutView({
   useEffect(() => {
     if (storeConfigLoaded && !hasInitializedRef.current) {
       hasInitializedRef.current = true;
-      const isNational = config.shippingCoverage === "national";
       if (!form.formState.isDirty) {
+        // Cidade e estado nascem vazios em QUALQUER cobertura de entrega —
+        // a cobertura decide para onde a loja entrega, nunca onde o cliente
+        // mora. O ternário de `isNational` que existia aqui preenchia os
+        // dois com "Monte Carmelo"/"MG" na cobertura local.
         form.reset({
           name: profile?.full_name || user?.user_metadata?.name || "",
           whatsapp: getDefaultWhatsApp(),
-          cep:
-            localStorage.getItem("ikcous_last_shipping_cep") ||
-            (isNational ? "" : config.originCep || "38500-000"),
-          city: isNational ? "" : "Monte Carmelo",
-          state: isNational ? "" : "MG",
+          cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
+          city: "",
+          state: "",
         });
       }
     }
-  }, [
-    storeConfigLoaded,
-    config.shippingCoverage,
-    config.originCep,
-    profile,
-    user,
-  ]);
+  }, [storeConfigLoaded, profile, user]);
 
   // Busca de CEP do checkout de convidado — mesma implementação do
   // AddressForm, atrás de useBuscaCep (#184 corrida, #185 timeout, #186
@@ -762,6 +757,27 @@ export function CheckoutView({
 
   const isValid = form.formState.isValid;
 
+  // Achado da revisão (18/08/2026): a Tarefa 7 deste bloco fez a
+  // `calculate-shipping` recusar cotar quando a loja não configurou o CEP de
+  // origem — correto. Mas este botão só olhava `isValid` (validade do
+  // FORMULÁRIO), nunca a existência de uma opção de frete. `shipping`
+  // (= CartContext `shippingFee`, CartContext.tsx:745-770) cai para
+  // `config.shippingFee` (padrão R$ 15) quando não há `selectedShippingOption`
+  // — o MESMO fallback que `create_marketplace_order_v24` usa no servidor
+  // quando `p_shipping_option_id` chega nulo. Resultado sem esta guarda:
+  // cotação falha, tela não mostra opção nenhuma, e o pedido fechava mesmo
+  // assim cobrando o frete de fallback sem entrega correspondente.
+  //
+  // `shipping > 0 && !selectedShippingOption` não reinventa a regra de
+  // frete grátis: o CartContext já devolve `shipping === 0` para os dois
+  // caminhos legítimos sem opção selecionada — item com `freeShipping`
+  // (CartContext.tsx:748-749) e limite de frete grátis atingido por
+  // cliente logado (CartContext.tsx:751-756) — então o único jeito de
+  // `shipping` vir POSITIVO sem opção selecionada é o fallback do defeito
+  // acima descrito.
+  const semFreteSelecionado =
+    cart.length > 0 && shipping > 0 && !selectedShippingOption;
+
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
     setCouponError("");
@@ -855,6 +871,19 @@ export function CheckoutView({
       return;
     }
 
+    // Segunda trava, redundante com `disabled` no botão de propósito: o
+    // `disabled` do DOM barra o clique do mouse/toque, mas não protege
+    // quem chama `handleSubmitEvent` por outro caminho. Mesmo motivo do
+    // "endereço de entrega" acima.
+    if (semFreteSelecionado) {
+      toast.error(
+        "Escolha uma opção de frete no carrinho antes de finalizar o pedido.",
+      );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
     const customerInfo = data as unknown as Customer;
     const observations = notes || undefined;
 
@@ -893,8 +922,8 @@ export function CheckoutView({
             street: data.street,
             number: data.number,
             neighborhood: data.neighborhood,
-            city: data.city || "Monte Carmelo",
-            state: data.state || "MG",
+            city: data.city,
+            state: data.state,
             complement: data.complement,
           },
 
@@ -1330,11 +1359,7 @@ export function CheckoutView({
                       <input
                         id="guest-cep"
                         {...form.register("cep")}
-                        placeholder={
-                          config.shippingCoverage === "national"
-                            ? "00000-000"
-                            : "38500-000"
-                        }
+                        placeholder="00000-000"
                         disabled={isSearchingCep}
                         className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                         onChange={async (e) => {
@@ -1435,21 +1460,8 @@ export function CheckoutView({
                     <input
                       id="guest-city"
                       {...form.register("city")}
-                      readOnly={
-                        !config.shippingCoverage ||
-                        config.shippingCoverage !== "national"
-                      }
-                      placeholder={
-                        config.shippingCoverage === "national"
-                          ? "Cidade"
-                          : "Monte Carmelo"
-                      }
-                      className={cn(
-                        "w-full rounded-xl border-2 border-transparent px-4 py-3 text-sm font-medium outline-none transition-all",
-                        config.shippingCoverage === "national"
-                          ? "bg-zinc-50 text-zinc-800 focus:border-zinc-900 focus:bg-white"
-                          : "cursor-not-allowed bg-zinc-100 text-zinc-500",
-                      )}
+                      placeholder="Cidade"
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1462,20 +1474,11 @@ export function CheckoutView({
                     <input
                       id="guest-state"
                       {...form.register("state")}
-                      readOnly={
-                        !config.shippingCoverage ||
-                        config.shippingCoverage !== "national"
-                      }
                       maxLength={2}
                       placeholder={
                         config.shippingCoverage === "national" ? "UF" : "MG"
                       }
-                      className={cn(
-                        "w-full rounded-xl border-2 border-transparent px-4 py-3 text-sm font-medium outline-none transition-all",
-                        config.shippingCoverage === "national"
-                          ? "bg-zinc-50 text-zinc-800 focus:border-zinc-900 focus:bg-white"
-                          : "cursor-not-allowed bg-zinc-100 text-zinc-500",
-                      )}
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                     />
                   </div>
                   <div className="col-span-6">
@@ -1728,30 +1731,35 @@ export function CheckoutView({
           </div>
         </div>
 
-        {/* Location Notice */}
-        <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-slate-800 shadow-md">
-          <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
-            <MapPin className="size-16 text-zinc-500" />
-          </div>
-          <div className="relative z-10 flex items-start gap-3">
-            <div className="mt-0.5 shrink-0">
-              <AlertCircle className="size-5 text-zinc-500" />
+        {/* Location Notice — some por inteiro quando a loja não configurou
+            cidade. A cobertura de entrega decide para onde ela entrega, mas
+            este aviso é sobre a loja, não sobre o cliente. */}
+        {config.storeCity && (
+          <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-slate-800 shadow-md">
+            <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
+              <MapPin className="size-16 text-zinc-500" />
             </div>
-            <div>
-              <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-900">
-                Aviso de Região
-              </h4>
-              <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
-                Nossos serviços de entrega premium estão ativos exclusivamente
-                em{" "}
-                <span className="font-black text-slate-900">
-                  Monte Carmelo, MG
-                </span>
-                .
-              </p>
+            <div className="relative z-10 flex items-start gap-3">
+              <div className="mt-0.5 shrink-0">
+                <AlertCircle className="size-5 text-zinc-500" />
+              </div>
+              <div>
+                <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-900">
+                  Aviso de Região
+                </h4>
+                <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
+                  Nossos serviços de entrega premium estão ativos
+                  exclusivamente em{" "}
+                  <span className="font-black text-slate-900">
+                    {config.storeCity}
+                    {config.storeState ? `, ${config.storeState}` : ""}
+                  </span>
+                  .
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Spacer to prevent overlap by the sticky footer and bottom nav.
@@ -2066,10 +2074,10 @@ export function CheckoutView({
                           haptic.medium();
                           handleSubmitEvent();
                         }}
-                        disabled={!isValid || isSubmitting}
+                        disabled={!isValid || isSubmitting || semFreteSelecionado}
                         className={cn(
                           "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
-                          !isValid || isSubmitting
+                          !isValid || isSubmitting || semFreteSelecionado
                             ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
                             : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
                         )}
@@ -2084,6 +2092,18 @@ export function CheckoutView({
                         )}
                       </button>
                     </div>
+                    {semFreteSelecionado && (
+                      // Motivo visível: botão apagado sem explicação faz a
+                      // pessoa desistir sem saber por quê. Cenário real: a
+                      // loja não configurou de onde despacha, a cotação de
+                      // frete recusa, e sem este aviso o cliente só via um
+                      // botão cinza sem saber que precisa voltar ao
+                      // carrinho e calcular o frete.
+                      <p className="mx-auto mt-2 flex max-w-md items-center gap-1.5 text-[10px] font-bold uppercase text-red-500">
+                        <AlertCircle className="size-3.5 shrink-0" />
+                        Volte ao carrinho e calcule o frete para continuar
+                      </p>
+                    )}
                   </motion.div>
                 </div>
               )}

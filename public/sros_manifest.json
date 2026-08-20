@@ -30,7 +30,7 @@
     "price_non_negative": true,
     "stock_limit": 10000,
     "stock_non_negative": true,
-    "delivery_restriction": "Monte Carmelo, MG"
+    "delivery_restriction": null
   },
   "verification": {
     "runtime": "VOR G17",

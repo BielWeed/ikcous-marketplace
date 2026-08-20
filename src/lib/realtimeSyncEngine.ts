@@ -53,7 +53,10 @@ interface TableConfig {
   mapRecord: ((raw: any) => any) | null;
 }
 
-const TABLE_CONFIGS: TableConfig[] = [
+// Exportado para teste: `tests/front/realtime-sync-engine-identidade-da-loja.test.ts`
+// exercita `mapRecord` diretamente, sem montar toda a cadeia de assinatura
+// Realtime/DataVault que os métodos de `RealtimeSyncEngine` dependem.
+export const TABLE_CONFIGS: TableConfig[] = [
   {
     table: "produtos",
     store: "products",
@@ -118,6 +121,14 @@ const TABLE_CONFIGS: TableConfig[] = [
           : undefined,
       localCepRange: raw.local_cep_range,
       homeSections: raw.home_sections,
+      // Sem estes três, a identidade da loja (Tarefa 2/3 do bloco "o app
+      // para de inventar endereço") some assim que o app carrega
+      // `store_config` pelo caminho offline/realtime em vez de vir direto
+      // do `StoreContext` -- era uma terceira cópia da mesma lista de
+      // colunas, desatualizada em relação à RPC e à view do banco.
+      storeName: raw.store_name,
+      storeCity: raw.store_city,
+      storeState: raw.store_state,
     }),
   },
   {

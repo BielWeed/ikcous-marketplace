@@ -26,7 +26,6 @@ import {
   Heart,
   MessageCircle,
   Share2,
-  ShieldCheck,
   ShoppingCart,
   Star,
   Truck,
@@ -1156,19 +1155,23 @@ export const ProductView = React.memo(function ProductView({
             <MarkdownRenderer content={product.description || ""} />
 
             {/* Benefits */}
+            {/* "Troca garantida em até 24h após entrega" foi removida daqui:
+                não existe fluxo de troca/devolução neste app (issues #46 e
+                #108 seguem abertas), então a promessa era falsa. */}
             <div className="mt-6 space-y-3">
-              <div className="flex items-center gap-3 text-sm text-gray-700">
-                <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
-                  <ShieldCheck className="size-4" />
+              {/* Sem cidade configurada, o bloco inteiro (ícone e texto)
+                  não é renderizado — nunca "Entrega em" sem destino. */}
+              {config.storeCity && (
+                <div className="flex items-center gap-3 text-sm text-gray-700">
+                  <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
+                    <Truck className="size-4" />
+                  </div>
+                  <span>
+                    Entrega em {config.storeCity}
+                    {config.storeState ? `, ${config.storeState}` : ""}
+                  </span>
                 </div>
-                <span>Troca garantida em até 24h após entrega</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm text-gray-700">
-                <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
-                  <Truck className="size-4" />
-                </div>
-                <span>Entrega em Monte Carmelo, MG</span>
-              </div>
+              )}
               <div className="flex items-center gap-3 text-sm text-gray-700">
                 <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
                   <ShoppingCart className="size-4" />

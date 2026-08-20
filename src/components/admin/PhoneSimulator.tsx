@@ -1,3 +1,4 @@
+import { useStore } from "@/contexts/StoreContext";
 import { cn } from "@/lib/utils";
 import type { ProductVariant } from "@/types";
 import { AnimatePresence, motion } from "framer-motion";
@@ -62,6 +63,8 @@ export const PhoneSimulator = memo(function PhoneSimulator({
   activeDetailTab,
   setActiveDetailTab,
 }: PhoneSimulatorProps) {
+  const { config } = useStore();
+
   const [failedImages, setFailedImages] = React.useState<
     Record<string, boolean>
   >({});
@@ -723,14 +726,28 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                                 Nenhuma descrição informada.
                               </p>
                             )}
+                            {/* Espelha o bloco de beneficios da pagina real
+                                (ProductView.tsx): "Troca garantida" saiu de
+                                la porque nao existe fluxo de troca/devolucao
+                                neste app (issues #46 e #108 seguem abertas),
+                                e o selo de entrega usa a cidade da loja, se
+                                configurada -- nunca "local" numa loja com
+                                cobertura nacional. */}
                             <div className="mt-3 space-y-1.5 border-t border-zinc-100 pt-3">
+                              {config.storeCity && (
+                                <div className="flex items-center gap-1.5 text-[8px] text-zinc-500">
+                                  <Truck className="size-3.5 text-zinc-400" />
+                                  <span>
+                                    Entrega em {config.storeCity}
+                                    {config.storeState
+                                      ? `, ${config.storeState}`
+                                      : ""}
+                                  </span>
+                                </div>
+                              )}
                               <div className="flex items-center gap-1.5 text-[8px] text-zinc-500">
-                                <ShieldCheck className="size-3.5 text-zinc-400" />
-                                <span>Troca garantida em até 24h</span>
-                              </div>
-                              <div className="flex items-center gap-1.5 text-[8px] text-zinc-500">
-                                <Truck className="size-3.5 text-zinc-400" />
-                                <span>Entrega local rápida</span>
+                                <ShoppingCart className="size-3.5 text-zinc-400" />
+                                <span>Produto em estoque - Envio rápido</span>
                               </div>
                             </div>
                           </motion.div>

@@ -131,10 +131,17 @@ export function FreeShippingBlock({ onNavigate }: FreeShippingBlockProps) {
 
           <div className="min-w-0 flex-1">
             <div className="mb-0.5 flex items-center gap-1.5 overflow-hidden">
-              <span className="whitespace-nowrap text-[9px] font-bold uppercase tracking-wider text-emerald-400">
-                Monte Carmelo
-              </span>
-              <div className="size-1 flex-shrink-0 rounded-full bg-zinc-700" />
+              {/* Sem cidade configurada, o rótulo e o ponto separador somem
+                  os dois — "Entrega Grátis" fica sozinho, nunca "• Entrega
+                  Grátis" com o separador órfão. */}
+              {config.storeCity && (
+                <>
+                  <span className="whitespace-nowrap text-[9px] font-bold uppercase tracking-wider text-emerald-400">
+                    {config.storeCity}
+                  </span>
+                  <div className="size-1 flex-shrink-0 rounded-full bg-zinc-700" />
+                </>
+              )}
               <span className="truncate text-[9px] font-semibold text-zinc-400">
                 {isGoalReached ? "Meta Atingida" : "Entrega Grátis"}
               </span>

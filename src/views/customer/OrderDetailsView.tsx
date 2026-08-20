@@ -615,7 +615,11 @@ export function OrderDetailsView({
                 <p className="text-[10px] font-bold uppercase leading-relaxed tracking-wider text-zinc-400">
                   {order.customer.address}, {order.customer.number}
                   <br />
-                  {order.customer.neighborhood} • Monte Carmelo
+                  {/* Cidade do PEDIDO, nunca da loja — é o endereço de quem
+                      comprou. Sem cidade no pedido, mostra só o bairro, sem
+                      o "•" solto. */}
+                  {order.customer.neighborhood}
+                  {order.customer.city && ` • ${order.customer.city}`}
                 </p>
               </div>
             </div>
