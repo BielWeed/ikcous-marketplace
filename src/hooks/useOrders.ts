@@ -1010,6 +1010,40 @@ export function useOrders(
     }
   }, []);
 
+  /**
+   * Manda ao CLIENTE o comprovante do pedido dele (PEDIDO-070, #106).
+   *
+   * Mesma forma do `avisarLojista` logo acima, e pelo mesmo motivo: sem `await`
+   * e com catch que só registra. O pedido JÁ está no banco quando isto roda, e
+   * o critério 3 da issue exige que falha de envio não impeça a criação do
+   * pedido — a forma de garantir isso é o fluxo de quem compra nunca esperar
+   * por esta chamada nem enxergar o resultado dela.
+   *
+   * A repetição é problema do BANCO, não daqui: `reivindicar_email_de_
+   * confirmacao` faz um UPDATE condicional atômico e só a primeira chamada
+   * ganha. Isso é o que segura o StrictMode montando duas vezes, o recarregar
+   * de página e a retentativa de rede — nenhum dos três é evitável deste lado.
+   */
+  const enviarComprovanteAoCliente = useCallback((orderId: string) => {
+    try {
+      void (supabase as any).functions
+        .invoke("send-order-confirmation", { body: { orderId } })
+        .then((r: any) => {
+          if (r?.error) {
+            console.warn(
+              "send-order-confirmation: comprovante não saiu",
+              r.error,
+            );
+          }
+        })
+        .catch((err: unknown) => {
+          console.warn("send-order-confirmation: comprovante não saiu", err);
+        });
+    } catch (err) {
+      console.warn("send-order-confirmation: comprovante não saiu", err);
+    }
+  }, []);
+
   const createOrder = useCallback(
     async (orderData: any, opts?: { comPagamentoOnline?: boolean }) => {
       // 🛡️ Checkout de Convidados: O login não é mais obrigatório no frontend.
@@ -1063,7 +1097,17 @@ export function useOrders(
         // o lojista separar mercadoria de um pedido que pode morrer. Quem avisa
         // nesse caminho é o webhook da Fase 3, quando o pagamento é confirmado
         // ("aprovado → payment_status='pago', dispara notify-new-order").
-        if (!opts?.comPagamentoOnline) avisarLojista(data);
+        // O comprovante do cliente segue a MESMA regra do aviso ao lojista, e
+        // pelo mesmo motivo: no caminho online o pedido é uma reserva que o
+        // pg_cron cancela em 30 min. Mandar "recebemos seu pedido" ali seria o
+        // app afirmando o que ele mesmo pode desfazer daqui a meia hora. Quem
+        // envia nesse caminho é o webhook, quando o pagamento confirma —
+        // entrega separada, porque mexer no caminho do dinheiro pede revisão
+        // própria.
+        if (!opts?.comPagamentoOnline) {
+          avisarLojista(data);
+          enviarComprovanteAoCliente(data);
+        }
 
         return {
           ...orderData,
@@ -1078,7 +1122,7 @@ export function useOrders(
         throw err;
       }
     },
-    [avisarLojista],
+    [avisarLojista, enviarComprovanteAoCliente],
   );
 
   /**
