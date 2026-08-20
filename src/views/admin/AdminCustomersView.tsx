@@ -275,7 +275,22 @@ export const AdminCustomersView = memo(function AdminCustomersView({
       },
       {
         label: "Pedidos Totais",
-        value: globalStats?.global_orders || 0,
+        // Mesma história do card acima, no vizinho: `global_orders` vem de
+        // `get_admin_customers_paged`, que conta pedido sem olhar cobrança.
+        // O Dashboard conta "Total de Pedidos" com o filtro de dinheiro
+        // reconhecido. Com um PIX de R$ 89,90 aguardando, o Dashboard diz 11
+        // e esta tela dizia 12 — duas abas do mesmo painel, rótulos quase
+        // iguais, contagens diferentes.
+        //
+        // `executive.totalOrders` sai do MESMO `SELECT` que o `avgTicket` do
+        // card acima (migration 20260822000100), então os dois passam a
+        // concordar por construção, não por coincidência dos dados.
+        //
+        // Traço enquanto não chegou, pelo mesmo motivo do card acima: zero
+        // afirmaria que a loja nunca vendeu. A cadeia termina no traço, e não
+        // em `0`, para cobrir também o resumo restaurado do cache em disco sem
+        // o bloco `executive` — que existe, mas não traz contagem nenhuma.
+        value: analyticsStats?.executive?.totalOrders ?? "—",
         icon: ShoppingBag,
         accent: "text-amber-500",
         subValue: "Pedidos",
