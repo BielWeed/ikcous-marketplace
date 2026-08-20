@@ -735,12 +735,13 @@ function resumirVerificacao(resultados, caminhoRollback) {
   // tem `funcao`, e por isso cai só no nome do arquivo.
   const rotulo = (r) => (r.funcao ? `${r.base} (${r.funcao})` : r.base);
 
-  const avisoCommit =
-    `   O COMMIT do passo 2 já aconteceu — esta verificação roda DEPOIS dele, então\n` +
-    `   o que foi aplicado já está gravado no banco independente do resultado\n` +
-    `   acima; não há "não aplicar" a partir daqui.\n` +
-    `   Ponto de partida para desfazer: ${caminhoRollback}, salvo no passo 1 — leia\n` +
-    `   acima o que ele cobre e o que continua manual.`;
+  const avisoCommit = [
+    "   O COMMIT do passo 2 já aconteceu — esta verificação roda DEPOIS dele, então",
+    "   o que foi aplicado já está gravado no banco independente do resultado",
+    '   acima; não há "não aplicar" a partir daqui.',
+    `   Ponto de partida para desfazer: ${caminhoRollback}, salvo no passo 1 — leia`,
+    "   acima o que ele cobre e o que continua manual.",
+  ].join("\n");
 
   if (falharam.length > 0) {
     const lista = falharam.map(rotulo).join(", ");
@@ -756,11 +757,7 @@ function resumirVerificacao(resultados, caminhoRollback) {
     return {
       estado: "FALHOU",
       codigoSaida: 1,
-      mensagem:
-        `\nATENÇÃO: algum marcador esperado não apareceu. Confira antes de confiar.\n` +
-        `   Verificações com marcador AUSENTE: ${lista}\n` +
-        `${listaPuladas}` +
-        `${avisoCommit}`,
+      mensagem: `\nATENÇÃO: algum marcador esperado não apareceu. Confira antes de confiar.\n   Verificações com marcador AUSENTE: ${lista}\n${listaPuladas}${avisoCommit}`,
     };
   }
 
@@ -781,20 +778,19 @@ function resumirVerificacao(resultados, caminhoRollback) {
     const explicacaoAlterTable = puladas.some(
       (r) => r.motivo === "nenhuma verificação registrada",
     )
-      ? `   O db-apply só sabe conferir marcador dentro de corpo de função\n` +
-        `   (pg_get_functiondef) — ALTER TABLE, policy, grant e REVOKE saem sempre\n` +
-        `   assim e precisam de conferência à mão.\n`
+      ? [
+          "   O db-apply só sabe conferir marcador dentro de corpo de função",
+          "   (pg_get_functiondef) — ALTER TABLE, policy, grant e REVOKE saem sempre",
+          "   assim e precisam de conferência à mão.",
+          "",
+        ].join("\n")
       : "";
     return {
       estado: "PULADA",
       codigoSaida: 2,
-      mensagem:
-        `\nATENÇÃO: aplicado, mas NÃO VERIFICADO — isto não quer dizer que passou,\n` +
-        `quer dizer que ninguém conferiu.\n` +
-        `${resumoVerificadas}` +
-        `   Verificações puladas:\n     ${listaPuladas || "(nenhuma verificação informada)"}\n` +
-        `${explicacaoAlterTable}` +
-        `${avisoCommit}`,
+      mensagem: `\nATENÇÃO: aplicado, mas NÃO VERIFICADO — isto não quer dizer que passou,\nquer dizer que ninguém conferiu.\n${resumoVerificadas}   Verificações puladas:\n     ${
+        listaPuladas || "(nenhuma verificação informada)"
+      }\n${explicacaoAlterTable}${avisoCommit}`,
     };
   }
 
@@ -805,9 +801,7 @@ function resumirVerificacao(resultados, caminhoRollback) {
   return {
     estado: "VERIFICADO",
     codigoSaida: 0,
-    mensagem:
-      `\nTudo aplicado e verificado. (O COMMIT do passo 2 já aconteceu antes desta\n` +
-      `checagem.) ${verificadas.length} de ${normalizados.length} verificações conferidas.`,
+    mensagem: `\nTudo aplicado e verificado. (O COMMIT do passo 2 já aconteceu antes desta\nchecagem.) ${verificadas.length} de ${normalizados.length} verificações conferidas.`,
   };
 }
 

@@ -27,7 +27,10 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 const require = createRequire(import.meta.url);
-const { resumirVerificacao, classificarChecagem } = require("../scripts/db-apply.cjs");
+const {
+  resumirVerificacao,
+  classificarChecagem,
+} = require("../scripts/db-apply.cjs");
 
 const CAMINHO_ROLLBACK = "rollback-20260823000000_ltv.sql";
 
@@ -51,7 +54,8 @@ Deno.test("todas verificadas: estado VERIFICADO, código 0", () => {
 // --------------------------------------------------------------------------
 
 Deno.test("todas puladas por falta de entrada: PULADA, código 2, sem frase de sucesso", () => {
-  const NOME_1 = "20260823000000_ltv_do_cliente_conta_so_dinheiro_reconhecido.sql";
+  const NOME_1 =
+    "20260823000000_ltv_do_cliente_conta_so_dinheiro_reconhecido.sql";
   const NOME_2 =
     "20260824000000_cliente_frequente_conta_so_dinheiro_reconhecido.sql";
   const resultados = [
@@ -138,7 +142,10 @@ Deno.test("precedência: falhou + pulada juntos vira FALHOU, código 1", () => {
       motivo: "nenhuma verificação registrada",
     },
   ];
-  const { estado, codigoSaida } = resumirVerificacao(resultados, CAMINHO_ROLLBACK);
+  const { estado, codigoSaida } = resumirVerificacao(
+    resultados,
+    CAMINHO_ROLLBACK,
+  );
   assertEquals(estado, "FALHOU");
   assertEquals(codigoSaida, 1);
 });

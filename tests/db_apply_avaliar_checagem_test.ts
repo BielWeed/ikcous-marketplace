@@ -38,9 +38,10 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 const require = createRequire(import.meta.url);
-const { avaliarChecagem, montarTarefasDeVerificacao } = require(
-  "../scripts/db-apply.cjs",
-);
+const {
+  avaliarChecagem,
+  montarTarefasDeVerificacao,
+} = require("../scripts/db-apply.cjs");
 
 const FUNCAO = "minha_funcao";
 
@@ -85,28 +86,43 @@ Deno.test("def === undefined (função não existe no schema): linha A2 aparece 
 
 Deno.test("esperado: [] → pulada, motivo de nenhum marcador conferido", () => {
   const checagem = { funcao: FUNCAO, esperado: [] };
-  const resultado = avaliarChecagem("CREATE OR REPLACE FUNCTION public.f()", checagem);
+  const resultado = avaliarChecagem(
+    "CREATE OR REPLACE FUNCTION public.f()",
+    checagem,
+  );
   assertEquals(resultado.situacao, "pulada");
-  assertEquals(resultado.motivo, "a entrada registrada não confere nenhum marcador");
+  assertEquals(
+    resultado.motivo,
+    "a entrada registrada não confere nenhum marcador",
+  );
 });
 
 Deno.test("N1: esperado: [''] (string vazia) → pulada, não verificada", () => {
   const checagem = { funcao: FUNCAO, esperado: [""] };
   const resultado = avaliarChecagem("qualquer corpo de função", checagem);
   assertEquals(resultado.situacao, "pulada");
-  assertEquals(resultado.motivo, "a entrada registrada não confere nenhum marcador");
+  assertEquals(
+    resultado.motivo,
+    "a entrada registrada não confere nenhum marcador",
+  );
 });
 
 Deno.test("N1: esperado: ['   '] (só espaço) → pulada, não verificada", () => {
   const checagem = { funcao: FUNCAO, esperado: ["   "] };
   const resultado = avaliarChecagem("qualquer corpo de função", checagem);
   assertEquals(resultado.situacao, "pulada");
-  assertEquals(resultado.motivo, "a entrada registrada não confere nenhum marcador");
+  assertEquals(
+    resultado.motivo,
+    "a entrada registrada não confere nenhum marcador",
+  );
 });
 
 Deno.test("N1: marcador vazio misturado com marcador real — o vazio não conta, o real ainda é avaliado", () => {
   const checagem = { funcao: FUNCAO, esperado: ["", "presente"] };
-  const resultado = avaliarChecagem("corpo com a palavra presente dentro", checagem);
+  const resultado = avaliarChecagem(
+    "corpo com a palavra presente dentro",
+    checagem,
+  );
   assertEquals(resultado.situacao, "verificada");
   // Só uma linha impressa — a do marcador "presente"; o vazio não gera linha
   // nenhuma, senão o terminal mostraria "ok" para algo que não foi comparado.
@@ -119,13 +135,19 @@ Deno.test("N1: marcador vazio misturado com marcador real — o vazio não conta
 
 Deno.test("marcador presente na definição → ok, verificada", () => {
   const checagem = { funcao: FUNCAO, esperado: ["ELSE valor"] };
-  const resultado = avaliarChecagem("BEGIN IF x THEN y ELSE valor END IF; END", checagem);
+  const resultado = avaliarChecagem(
+    "BEGIN IF x THEN y ELSE valor END IF; END",
+    checagem,
+  );
   assertEquals(resultado.situacao, "verificada");
   assert(resultado.linhas[0].includes("ok"));
 });
 
 Deno.test("marcador ausente na definição → falhou", () => {
-  const checagem = { funcao: FUNCAO, esperado: ["texto que não existe no corpo"] };
+  const checagem = {
+    funcao: FUNCAO,
+    esperado: ["texto que não existe no corpo"],
+  };
   const resultado = avaliarChecagem("BEGIN RETURN 1; END", checagem);
   assertEquals(resultado.situacao, "falhou");
   assert(resultado.linhas[0].includes("AUSENTE"));
@@ -136,7 +158,10 @@ Deno.test("um marcador presente e outro ausente → falhou (não basta um passar
     funcao: FUNCAO,
     esperado: ["está aqui", "não está aqui"],
   };
-  const resultado = avaliarChecagem("o texto está aqui dentro do corpo", checagem);
+  const resultado = avaliarChecagem(
+    "o texto está aqui dentro do corpo",
+    checagem,
+  );
   assertEquals(resultado.situacao, "falhou");
 });
 
@@ -234,21 +259,29 @@ Deno.test("entrada [] nao faz o arquivo sumir do veredito — vira tarefa pulada
   // interno nao empurrava tarefa nenhuma. O arquivo era aplicado, comitado,
   // nunca conferido, e NAO APARECIA em lugar nenhum da saida — com o script
   // imprimindo "Tudo aplicado e verificado" contando so os outros.
-  const tarefas = montarTarefasDeVerificacao(["alter.sql"], { "alter.sql": [] });
+  const tarefas = montarTarefasDeVerificacao(["alter.sql"], {
+    "alter.sql": [],
+  });
   assertEquals(tarefas.length, 1);
   assertEquals(tarefas[0].checagem, undefined);
-  assertEquals(avaliarChecagem(undefined, tarefas[0].checagem).situacao, "pulada");
+  assertEquals(
+    avaliarChecagem(undefined, tarefas[0].checagem).situacao,
+    "pulada",
+  );
 });
 
 Deno.test("entrada [] no meio de arquivos validos nao desaparece do veredito", () => {
   // O caso que morde de verdade: misturado, a guarda de lista vazia de
   // resumirVerificacao nao pega, porque a lista NAO fica vazia.
-  const tarefas = montarTarefasDeVerificacao(
-    ["alter.sql", "func.sql"],
-    { "alter.sql": [], "func.sql": { funcao: "f", esperado: ["M"] } },
-  );
+  const tarefas = montarTarefasDeVerificacao(["alter.sql", "func.sql"], {
+    "alter.sql": [],
+    "func.sql": { funcao: "f", esperado: ["M"] },
+  });
   assertEquals(tarefas.length, 2);
-  assertEquals(tarefas.map((t) => t.base), ["alter.sql", "func.sql"]);
+  assertEquals(
+    tarefas.map((t) => t.base),
+    ["alter.sql", "func.sql"],
+  );
 });
 
 Deno.test("entradas falsy (null, string vazia, 0, false) viram pulada, nunca TypeError", () => {
@@ -271,10 +304,9 @@ Deno.test("o nome do arquivo casa no mapa mesmo vindo com pasta na frente", () =
   // duas vezes), entao a busca no mapa tem de usar a base. Sem isso, rodar
   // com "supabase/migrations/y.sql" faria TUDO virar "sem verificacao".
   const registro = { funcao: "f", esperado: ["m"] };
-  const tarefas = montarTarefasDeVerificacao(
-    ["supabase/migrations/y.sql"],
-    { "y.sql": registro },
-  );
+  const tarefas = montarTarefasDeVerificacao(["supabase/migrations/y.sql"], {
+    "y.sql": registro,
+  });
   assertEquals(tarefas.length, 1);
   assertEquals(tarefas[0].base, "y.sql");
   assertEquals(tarefas[0].checagem, registro);
@@ -309,7 +341,10 @@ Deno.test("checagem sem `esperado` vira pulada, não TypeError", () => {
   });
   assertEquals(tarefas.length, 1);
   assertEquals(tarefas[0].checagem, undefined);
-  assertEquals(avaliarChecagem(undefined, tarefas[0].checagem).situacao, "pulada");
+  assertEquals(
+    avaliarChecagem(undefined, tarefas[0].checagem).situacao,
+    "pulada",
+  );
   assertStringIncludes(tarefas[0].linhasAntes.join(" "), "malformada");
 });
 
@@ -317,16 +352,19 @@ Deno.test("checagem malformada NO MEIO de uma lista não derruba as irmãs boas"
   // A primeira confere normalmente; a segunda estourava e levava a rodada
   // inteira junto, sem veredito nenhum.
   const tarefas = montarTarefasDeVerificacao(["y.sql"], {
-    "y.sql": [
-      { funcao: "f1", esperado: ["A"] },
-      { funcao: "f2" },
-    ],
+    "y.sql": [{ funcao: "f1", esperado: ["A"] }, { funcao: "f2" }],
   });
   assertEquals(tarefas.length, 2);
   assertEquals(tarefas[0].checagem.funcao, "f1");
   assertEquals(tarefas[1].checagem, undefined);
-  assertEquals(avaliarChecagem("corpo com A", tarefas[0].checagem).situacao, "verificada");
-  assertEquals(avaliarChecagem(undefined, tarefas[1].checagem).situacao, "pulada");
+  assertEquals(
+    avaliarChecagem("corpo com A", tarefas[0].checagem).situacao,
+    "verificada",
+  );
+  assertEquals(
+    avaliarChecagem(undefined, tarefas[1].checagem).situacao,
+    "pulada",
+  );
 });
 
 Deno.test("todas as formas malformadas viram pulada — nenhuma estoura", () => {
@@ -342,7 +380,9 @@ Deno.test("todas as formas malformadas viram pulada — nenhuma estoura", () => 
     ["número no lugar do registro", 42],
   ];
   for (const [nome, registro] of ruins) {
-    const tarefas = montarTarefasDeVerificacao(["z.sql"], { "z.sql": registro });
+    const tarefas = montarTarefasDeVerificacao(["z.sql"], {
+      "z.sql": registro,
+    });
     assertEquals(tarefas.length, 1, nome);
     assertEquals(tarefas[0].checagem, undefined, nome);
     const r = avaliarChecagem(undefined, tarefas[0].checagem);
@@ -356,5 +396,8 @@ Deno.test("`esperado: [1, 2]` (lista de não-strings) vira pulada, não estoura 
     "w.sql": { funcao: "f", esperado: [1, 2] },
   });
   assertEquals(tarefas[0].checagem, undefined);
-  assertEquals(avaliarChecagem(undefined, tarefas[0].checagem).situacao, "pulada");
+  assertEquals(
+    avaliarChecagem(undefined, tarefas[0].checagem).situacao,
+    "pulada",
+  );
 });
