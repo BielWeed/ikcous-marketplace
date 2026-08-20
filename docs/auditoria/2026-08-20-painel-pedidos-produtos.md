@@ -2,7 +2,31 @@
 
 **Data:** 20/08/2026 · **Escopo:** só as telas **Pedidos** e **Produtos** do painel admin,
 mais a ficha de pedido e o formulário de produto que saem delas
-· **Natureza:** somente leitura — nada foi corrigido, nada foi alterado no banco.
+· **Natureza da AUDITORIA:** somente leitura — nenhum destes 16 achados foi corrigido enquanto
+ela era escrita, e nada foi alterado no banco até aqui.
+
+> ## ⚠️ Este relatório não é mais só um retrato — leia isto antes de agir sobre ele
+>
+> **Depois da auditoria, o Gabriel mandou corrigir os achados de ALTO RISCO, e os cinco foram
+> corrigidos** (itens 1 a 5), revisados por contexto limpo e commitados em `e6f0864`. **As duas
+> migrations foram aplicadas** no Supabase de desenvolvimento, com autorização explícita dele.
+>
+> | Item | O que era | Como está hoje |
+> |---|---|---|
+> | 1 · pedido com situação nula, invisível a todo contador | coluna aceitava nulo | `NOT NULL` + `DEFAULT 'pending'` — **fechado** |
+> | 2 · a ficha não dizia se foi pago, e avançava sem trava | nada na tela | pagamento em 2 pontos + confirmação antes de avançar — **fechado** |
+> | 3 · "Receita Hoje" contava PIX nunca pago | 9 agregados sem filtro | regra única de dinheiro reconhecido — **fechado** |
+> | 4 · "Total Concluído" mostrava 6 e não contava concluído | `month.count` | `deliveredTotal`, hoje **3** — **fechado** |
+> | 5 · dinheiro em pedido cancelado sem fila | nenhum contador | `paidOnCancelled` + aviso fixo — **fechado** |
+>
+> **Os 11 achados de risco médio e baixo (itens 6 a 16) continuam abertos** — não foram pedidos.
+>
+> Os números e as evidências do corpo deste documento são os **medidos durante a auditoria**, e
+> foram deixados como estavam de propósito: eles precisam continuar batendo com o que as telas
+> mostravam naquela hora, senão a evidência perde o valor. Onde um item foi corrigido depois,
+> há uma nota dentro dele dizendo isso.
+>
+> Estado do trabalho e o que falta: [PASSAGEM-2026-08-20.md](PASSAGEM-2026-08-20.md).
 
 **Como foi medido.** O app foi aberto no navegador com sessão de admin e cada tela foi usada
 de verdade; o que apareceu na tela foi conferido contra o banco de desenvolvimento por
@@ -104,9 +128,13 @@ um pedido e ao mesmo tempo excluí-lo de todo número que você usa para decidir
 
 **Situação em 20/08/2026, depois da auditoria.** O Gabriel autorizou e a linha foi apagada
 (1 pedido + 2 itens; nada mais dependia dela, e não havia estoque a devolver porque os itens
-não tinham produto vinculado). O banco não tem mais nenhum pedido com situação nula. **A porta
-continua aberta:** `marketplace_orders.status` segue aceitando nulo e sem valor padrão, e o
-painel segue com o mesmo modo de falhar se outra linha chegar assim.
+não tinham produto vinculado). O banco não tem mais nenhum pedido com situação nula.
+
+**✅ CORRIGIDO em 20/08/2026, depois disto.** A frase que estava aqui — *"a porta continua
+aberta: `marketplace_orders.status` segue aceitando nulo e sem valor padrão"* — **deixou de ser
+verdade** e por isso saiu. A migration `20260822000000_status_do_pedido_nunca_nulo.sql` foi
+aplicada com autorização do Gabriel, e o banco responde hoje `is_nullable = NO`,
+`column_default = 'pending'::text`. A porta está fechada.
 
 ---
 
