@@ -348,7 +348,31 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   );
   const pedidosDescartados = orders.length - pedidosQueContam.length;
 
-  const totalSpent = pedidosQueContam.reduce((sum, o) => sum + o.total, 0);
+  /*
+    Achado 17 (auditoria de 20/08/2026): o "LTV Total" contava pedido que
+    ninguém pagou. A correção do servidor (migration `20260823000000`, em
+    `get_admin_customers_paged`) mexeu SÓ no dinheiro de `total_spent` —
+    `orders_count` continua contando pela MESMA regra de sempre (só status).
+    Se esta ficha também filtrasse `pedidosQueContam` por pagamento, o card
+    "Cesta / Pedidos" voltaria a divergir da coluna "Pedidos" da lista de
+    Clientes — reabrindo o achado 5 por outra porta. Por isso o filtro de
+    dinheiro é uma SEGUNDA passada, só para a soma do LTV, em cima do mesmo
+    `pedidosQueContam` — a contagem de pedidos não muda.
+
+    A regra de "dinheiro reconhecido" é a mesma das migrations
+    `20260822000100` e `20260823000000`: `paymentStatus` nulo CONTA (pedido
+    pago na entrega, ou histórico sem cobrança online, mesma leitura do
+    mapper — ver mappers.ts:244-246); só ficam de fora 'aguardando',
+    'recusado', 'expirado' e 'estornado'.
+  */
+  const pedidosPagos = pedidosQueContam.filter(
+    (o) =>
+      o.paymentStatus == null ||
+      o.paymentStatus === "pago" ||
+      o.paymentStatus === "pago_apos_expirar",
+  );
+
+  const totalSpent = pedidosPagos.reduce((sum, o) => sum + o.total, 0);
 
   const renderContentSkeleton = () => (
     <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-12">

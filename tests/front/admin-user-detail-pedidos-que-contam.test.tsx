@@ -28,7 +28,12 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-type PedidoFalso = { id: string; status: string; total: number };
+type PedidoFalso = {
+  id: string;
+  status: string;
+  total: number;
+  payment_status?: string | null;
+};
 
 const { estado } = vi.hoisted(() => ({
   estado: { orders: [] as PedidoFalso[] },
@@ -162,6 +167,37 @@ describe("AdminUserDetailView — a contagem de pedidos bate com a lista", () =>
     return Number(numero);
   }
 
+  /**
+   * O valor em reais do card, extraído EXATO — mesma ideia do `numeroDoCard`,
+   * mas para "LTV Total".
+   *
+   * `toContain("R$ 40,00")` no texto inteiro da tela é decorativo: a tabela
+   * "Extrato Histórico" imprime `formatCurrency(order.total)` por LINHA,
+   * então o valor de um pedido aparece ali INDEPENDENTE de ele entrar no LTV
+   * ou não — um teste que procurasse só isso passaria mesmo com o filtro de
+   * pagamento inteiramente removido. Este helper sobe ao cartão do rótulo e
+   * pega só o valor QUE ESTÁ NELE.
+   */
+  function valorDoCard(rotulo: string): string {
+    const etiqueta = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent?.trim() === rotulo,
+    );
+    if (!etiqueta) throw new Error(`Card "${rotulo}" não está na tela.`);
+    const cartao = etiqueta.parentElement?.parentElement;
+    // \s+ -> " ": o Intl.NumberFormat de moeda separa "R$" do número com um
+    // espaço NÃO separável (U+00A0), invisível na comparação mas diferente
+    // byte a byte de um espaço normal digitado no teste. `texto()`, acima,
+    // já faz a mesma normalização — sem ela `toBe("R$ 100,00")` falharia
+    // sempre, mesmo com o valor certo.
+    const valor = [...(cartao?.querySelectorAll("span") ?? [])]
+      .map((s) => (s.textContent ?? "").replace(/\s+/g, " ").trim())
+      .find((t) => /^R\$/.test(t));
+    if (valor === undefined) {
+      throw new Error(`Card "${rotulo}" não tem valor: ${cartao?.textContent}`);
+    }
+    return valor;
+  }
+
   it("o card conta os pedidos que valem, com a mesma regra da lista", async () => {
     await abrirFicha();
 
@@ -212,5 +248,43 @@ describe("AdminUserDetailView — a contagem de pedidos bate com a lista", () =>
     await abrirFicha();
 
     expect(texto()).not.toMatch(/fora da conta/i);
+  });
+
+  // Achado 17 (auditoria de 20/08/2026): o LTV contava pedido que ninguém
+  // pagou. A correção (migration 20260823000000, espelhada aqui) é SÓ sobre
+  // dinheiro — a contagem de "Cesta / Pedidos" continua na mesma regra de
+  // sempre (status), porque mudar a contagem reabriria o achado 5 acima:
+  // a lista de Clientes conta pedido aguardando pagamento como "Pedidos", e
+  // se a ficha parasse de contar o mesmo pedido os dois números voltariam a
+  // discordar.
+  it("pedido aguardando pagamento nao entra no LTV, mas continua contando como pedido", async () => {
+    estado.orders = [
+      { id: "pago", status: "delivered", total: 100, payment_status: "pago" },
+      {
+        id: "pendente",
+        status: "pending",
+        total: 30,
+        payment_status: "aguardando",
+      },
+    ];
+    await abrirFicha();
+
+    // Os dois continuam "pedidos que contam" para a contagem — só o dinheiro
+    // do pendente sai do LTV.
+    expect(numeroDoCard("Cesta / Pedidos")).toBe(2);
+    expect(valorDoCard("LTV Total")).toBe("R$ 100,00");
+  });
+
+  it("pedido com payment_status nulo entra no LTV, igual a pedido pago na entrega", async () => {
+    // payment_status NULO significa "sem cobrança online" (pedido pago na
+    // entrega, ou histórico) — CONTA por definição da regra, a mesma leitura
+    // que o mapper já preserva (mappers.ts:244-246, `null` não é traduzido).
+    estado.orders = [
+      { id: "sem-cobranca", status: "delivered", total: 40, payment_status: null },
+    ];
+    await abrirFicha();
+
+    expect(numeroDoCard("Cesta / Pedidos")).toBe(1);
+    expect(valorDoCard("LTV Total")).toBe("R$ 40,00");
   });
 });
