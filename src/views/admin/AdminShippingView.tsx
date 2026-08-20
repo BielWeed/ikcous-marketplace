@@ -82,6 +82,7 @@ export const AdminShippingView = memo(function AdminShippingView({
   // Calculation Logs State
   const [logs, setLogs] = useState<any[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logsError, setLogsError] = useState(false);
   const [isLogsOpen, setIsLogsOpen] = useState(false);
 
   // Dropdown State
@@ -115,6 +116,10 @@ export const AdminShippingView = memo(function AdminShippingView({
   // Fetch calculation logs
   const fetchLogs = useCallback(async () => {
     setLoadingLogs(true);
+    // Limpa o erro da rodada anterior no início de CADA busca — senão uma
+    // falha antiga fica grudada na tela depois de um "Atualizar" que deu
+    // certo.
+    setLogsError(false);
     try {
       const { data, error } = await supabase
         .from("shipping_calculation_logs")
@@ -125,6 +130,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       setLogs(data || []);
     } catch (err) {
       console.error("[ShippingLogs] Error fetching logs:", err);
+      setLogsError(true);
     } finally {
       setLoadingLogs(false);
     }
@@ -1218,7 +1224,10 @@ export const AdminShippingView = memo(function AdminShippingView({
             )}
 
             {/* Section 4: Logs & Histórico de Cotações */}
-            <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4 backdrop-blur-md shadow-xl">
+            <div
+              id="shipping-logs-section"
+              className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4 backdrop-blur-md shadow-xl"
+            >
               <button
                 type="button"
                 onClick={() => setIsLogsOpen((prev) => !prev)}
@@ -1247,6 +1256,30 @@ export const AdminShippingView = memo(function AdminShippingView({
                       <Skeleton className="h-8 w-full rounded-lg bg-white/5" />
                       <Skeleton className="h-8 w-full rounded-lg bg-white/5" />
                     </div>
+                  ) : logsError ? (
+                    // Consulta que falhou não pode se parecer com "vazio de
+                    // verdade" — quem for diagnosticar por que um cliente
+                    // não conseguiu cotar precisa saber que o histórico não
+                    // carregou, não achar que ele está genuinamente limpo.
+                    <div className="py-4 text-center text-xs font-semibold text-red-400">
+                      Não foi possível carregar o histórico de cotações.
+                      Tente novamente em "Atualizar".
+                    </div>
+                  ) : logs.length === 0 &&
+                    (config?.shippingProvider || "flat_fee") ===
+                      "flat_fee" ? (
+                    // Com Taxa Única Fixa a edge function responde o frete
+                    // na hora, sem consultar transportadora — por isso este
+                    // histórico fica em zero por desenho, não porque
+                    // ninguém tentou calcular frete. Ele volta a receber
+                    // linhas se a loja trocar para Melhor Envio ou Frenet.
+                    <p className="py-4 text-center text-xs text-zinc-400">
+                      Nenhuma cotação para mostrar: com a Taxa Única Fixa o
+                      app já responde o frete direto, sem consultar
+                      transportadora, então não existe cotação para
+                      registrar aqui. Este histórico passa a receber linhas
+                      se a loja trocar para Melhor Envio ou Frenet.
+                    </p>
                   ) : logs.length === 0 ? (
                     <p className="py-4 text-center text-xs italic text-zinc-500">
                       Nenhuma cotação registrada recentemente.
@@ -1314,12 +1347,25 @@ export const AdminShippingView = memo(function AdminShippingView({
                   )}
 
                   <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-1">
-                    <span>Exibindo as 15 consultas mais recentes</span>
+                    {logs.length > 0 && (
+                      // "Exibindo as 15" com 0 linha era a mesma mentira do
+                      // resto da seção: prometia exibir 15 de coisa nenhuma.
+                      // Agora reflete a contagem real, e some quando não há
+                      // linha nenhuma para exibir.
+                      <span>
+                        Exibindo {logs.length === 1 ? "a" : "as"} {logs.length}{" "}
+                        {logs.length === 1 ? "consulta" : "consultas"} mais
+                        recente{logs.length === 1 ? "" : "s"}
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={fetchLogs}
                       disabled={loadingLogs}
-                      className="flex items-center gap-1 font-bold text-amber-400 hover:underline"
+                      // `ml-auto` porque o texto ao lado agora some quando
+                      // não há linha: sem ele, o `justify-between` fica com
+                      // um filho só e o botão pula para a esquerda.
+                      className="ml-auto flex items-center gap-1 font-bold text-amber-400 hover:underline"
                     >
                       <RefreshCw
                         className={`size-3 ${loadingLogs ? "animate-spin" : ""}`}
