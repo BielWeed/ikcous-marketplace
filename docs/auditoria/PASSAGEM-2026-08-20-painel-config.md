@@ -25,11 +25,18 @@ tempo. As outras são `painel-pedidos-produtos` (passagem em
   node "C:\Users\Gabriel\.claude\mural\mural.mjs" core_app_mkt
   ```
 
-- **PRs já mergeados na `develop`:** #241 e #243. Nada foi para a `main` — **merge não é estar
-  no ar**.
+- **PRs já mergeados na `develop`:** #241 e #243. ⚠️ **Esta linha dizia "nada foi para a `main`"
+  e é falsa desde 20/08/2026 08:06:27** — o PR #245 levou 28 commits da `develop` para a `main`
+  (merge `1f88209`). O que continua verdadeiro é a regra: **merge não é estar no ar**, e o
+  trabalho de 20/08 segue fora da `main`, no PR #244.
 - **A migration `20260821000200` (cupom sem limite) JÁ FOI APLICADA** no Supabase de
   desenvolvimento, com autorização explícita do Gabriel, e conferida por duas revisões
   independentes depois.
+- 🔴 **As migrations `20260823000000` (LTV por cliente) e `20260824000000` (Clientes Frequentes)
+  são um PAR e entram JUNTAS, nunca separadas.** Uma sozinha põe a mesma pessoa com "LTV Total
+  R$ 0,00" na tela de Clientes e dentro de "Clientes Frequentes" na tela de Push, ao mesmo tempo.
+  O motivo completo está no bloco do achado 17 em
+  [2026-08-20-painel-config.md](2026-08-20-painel-config.md).
 
 ---
 
@@ -68,20 +75,25 @@ caíram. As mutações estão descritas nos blocos ✅ do relatório e nas mensa
 
 ### Defeito puro — dá para seguir sozinho, na ordem de dor
 
-O próximo é o **8**: a opção "Notificação Push" aparece no menu dos 16 clientes e funciona em
-**1**. Para os outros 15 o envio para no começo e **nem o aviso dentro do app é criado**, porque
-o `return` vem antes de qualquer gravação.
+⚠️ **Esta seção dizia "o próximo é o 8" e mandava a próxima sessão refazer trabalho pronto.**
+O achado **8** está **FECHADO** desde 20/08/2026 — o envio de Push que falhava calado para 15 dos
+16 clientes foi corrigido com revisão de contexto limpo, e o bloco de correção está neste mesmo
+relatório. O **11** também.
 
-Depois: **13** (o "Audit Log" de
-frete nunca terá linha enquanto a loja usar Taxa Fixa), **14** ("pending" é o único status em
-inglês), **15** (mínimo de compra sem centavos), **16** (dois textos errados em Cupons).
+O próximo em aberto é o **13** (o "Audit Log" de frete nunca terá linha enquanto a loja usar Taxa
+Fixa). Depois: **14** ("pending" é o único status em inglês), **15** (mínimo de compra sem
+centavos), **16** (dois textos errados em Cupons).
+
+🔴 **Antes de pegar qualquer um destes, confira o estado no código e no git — nunca neste
+parágrafo.** Prosa de passagem envelhece em minutos; foi exatamente assim que esta linha passou a
+mandar refazer o 8.
 
 ### 🔴 Trava no Gabriel — decisão de produto, não técnica
 
 | # | A escolha | Por que é dele |
 |---|---|---|
-| 9 | "Congelar Acesso" não faz nada | ou implementa o bloqueio de conta, ou tira a opção da tela |
-| 10 | Cupom vencido continua "Ativo" | a tela **promete** desativação automática e ela não existe: ou cria o mecanismo, ou apaga a promessa |
+| ~~9~~ | ~~"Congelar Acesso" não faz nada~~ | ✅ **FECHADO em 20/08/2026** — decidido tirar a opção da tela. Conferido: `grep -rn "Congelar" src/` devolve **zero** |
+| ~~10~~ | ~~Cupom vencido continua "Ativo"~~ | ✅ **FECHADO em 20/08/2026** — o cupom vencido passou a exibir "Expirado" e saiu do contador de ativos (`src/utils/status-do-cupom.ts`, consumido em `AdminCouponsView.tsx`) |
 | 17 | "LTV Total" por cliente conta pedido não pago | exige **migration** numa função que alimenta a tela inteira, e está fora dos 16 |
 | 18 | A tela de Push baixa credencial de envio só para contar | exige função nova no banco; hoje são 3 KB, ninguém sente |
 

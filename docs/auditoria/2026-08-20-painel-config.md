@@ -495,14 +495,16 @@ o aviso dentro do app, que não dependia de push nenhum.
 > em âmbar explica, antes do clique, que não haverá push e que a mensagem ficará registrada no
 > app.
 >
-> ⚠️ **Uma quinta rodada encontrou defeito que a quarta criou** e está em avaliação de orçamento:
-> o aviso de "o aviso no app falhou" tem texto fixo dizendo *"O push saiu"*, e dispara sem olhar
-> se o push saiu. Com os dois falhando juntos, a tela se contradiz. A raiz não é a frase: é
+> ✅ **Uma quinta rodada encontrou defeito que a quarta criou, e ele foi CORRIGIDO** (commit
+> `f5cb25c`, 20/08/2026 07:55): o aviso de "o aviso no app falhou" tinha texto fixo dizendo
+> *"O push saiu"* e disparava sem olhar se o push saiu. Com os dois falhando juntos, a tela se
+> contradizia. A raiz não é a frase: é
 > `handleSend` anunciar vários fatos independentes com vários `if`, **cada frase escrita à mão**
 > — cada fato novo multiplica as combinações, e cada combinação é uma chance de afirmar coisa
 > falsa. Foi assim cinco vezes seguidas nesta tela.
 >
-> Commits `8292d27`, `1703b19` e `03a62b8`, com revisão de contexto limpo em cada etapa.
+> Commits `8292d27`, `1703b19`, `03a62b8` e `f5cb25c`, com revisão de contexto limpo em cada
+> etapa.
 
 ---
 
@@ -754,10 +756,20 @@ Vale registrar, porque foram candidatos a achado que caíram na verificação:
 
 ## 17 ⚠️. Achado novo: o "LTV Total" de cada cliente conta pedido que ninguém pagou
 
-> **Estado: a metade de tela está fechada; a metade de banco está ESCRITA, PROVADA e PARADA.**
-> `AdminUserDetailView.tsx` já soma só dinheiro reconhecido (commit `d821611`). A migration
-> `20260823000000` **não foi aplicada** — gravar no banco é decisão do Gabriel. Enquanto ela não
-> for, a ficha e a lista divergem em sentido contrário ao de antes.
+> **Estado: a metade de tela está fechada; a metade de banco está ESCRITA e PROVADA.**
+> `AdminUserDetailView.tsx` já soma só dinheiro reconhecido (commit `d821611`). Enquanto a
+> migration não estiver no banco, a ficha e a lista divergem em sentido contrário ao de antes.
+>
+> 🔴 **A `20260823000000` e a `20260824000000` são um PAR e entram JUNTAS, nunca separadas.**
+> A `20260823000000` reescreve `get_admin_customers_paged` (a lista de Clientes); a
+> `20260824000000` reescreve `get_segmented_push_targets` (o segmento "Clientes Frequentes" da
+> tela de Push, com corte de R$ 150). As duas passam a contar só dinheiro reconhecido. Aplicar
+> **uma sozinha** põe a mesma pessoa com **"LTV Total R$ 0,00"** na tela de Clientes e **dentro**
+> de "Clientes Frequentes" na tela de Push, ao mesmo tempo.
+>
+> Isto está escrito aqui porque, até 20/08/2026, a regra existia **só dentro de uma mensagem de
+> commit** — `grep -rn "20260824" docs/` devolvia zero. Quem fosse aplicar migration lendo a
+> pasta em ordem de nome não teria como saber.
 
 Não estava nesta auditoria. Nasceu em 20/08/2026, do `diretor` da frente de coordenação, e eu
 confirmei na fonte antes de registrar.

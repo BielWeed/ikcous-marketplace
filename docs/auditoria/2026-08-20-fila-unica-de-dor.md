@@ -117,8 +117,11 @@ topo da fila única. **A é o topo**, e **B+C juntos** vêm logo atrás.
 
 ## Duas observações que a fila não resolve, e não deve
 
-- **A, F e G exigem decisão de produto antes de código** — o que a tela deve prometer não é
-  escolha técnica. Nenhum agente deve tocar neles antes disso.
+- **A, F e G exigiam decisão de produto antes de código** — o que a tela deve prometer não é
+  escolha técnica. ⚠️ **Vencido em 20/08/2026:** as três decisões saíram, **F** e **G** estão
+  fechados e **A** está pela metade. A linha original mandava *"nenhum agente deve tocar neles"* —
+  e chegou a proteger trabalho que já estava feito. **Confirme no código antes de obedecer a
+  qualquer restrição escrita aqui.**
 - **K é a segunda metade de J.** Consertar J sozinho deixa o problema pela metade, e essa
   dependência não aparecia em nenhuma das duas listas porque as duas ordenavam por dor
   individual, não por dependência.
@@ -131,11 +134,23 @@ mural, que mede na hora:
 node "C:\Users\Gabriel\.claude\mural\mural.mjs" core_app_mkt
 ```
 
-## Já corrigido, para não voltar à fila
+## ~~Já corrigido, para não voltar à fila~~ — esta lista foi REMOVIDA em 20/08/2026
 
-**Pedidos e Produtos 1 a 5** (pedido invisível a todo contador; a ficha não dizia se o pedido foi
-pago; "Receita Hoje" contava PIX nunca pago; "Total Concluído" não contava concluído; dinheiro em
-pedido cancelado sem fila de ação) e **Clientes/Push 1 a 7 e 12** (cupom ilimitado recusado ao
-fechar; frete grátis para o Brasil inteiro; frete grátis que exigia login sem dizer; ticket médio
-dividido por clientes; 6 pedidos na lista e 16 na ficha; contadores de segmento inventados;
-"iOS/Android" calculado por porcentagem; "clientes" que eram aparelhos).
+Aqui existia uma lista do que já tinha sido corrigido. **Ela apodreceu duas vezes em um único
+dia** e, na segunda, mandava refazer seis achados que já estavam fechados — exatamente o dano que
+o aviso no topo deste documento diz ser o mais caro que ele pode causar.
+
+**A causa é a lista existir, não o descuido de quem a manteve.** Este documento declara que
+carrega a ORDEM e nunca o estado; uma lista de "já corrigido" **é** estado, e vai envelhecer
+sempre, porque quem corrige um achado está mexendo em código e não neste arquivo.
+
+**Onde perguntar, e a resposta é medida na hora:**
+
+```
+grep -n "^| [0-9]* ✅" docs/auditoria/2026-08-20-painel-pedidos-produtos.md
+grep -n "^| [0-9]* ✅" docs/auditoria/2026-08-20-painel-config.md
+```
+
+Essas tabelas foram amostradas por um `diretor` em 20/08/2026 contra o código e o git: **15 de 15
+marcas conferidas bateram, 0 mentiram.** A prosa em volta delas é que não converge — três rodadas
+de conserto de texto no mesmo dia, e a quarta não pagaria.
