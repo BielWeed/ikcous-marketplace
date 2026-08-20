@@ -4,6 +4,11 @@ import React, { useState, useEffect, useRef } from "react";
 interface DebouncedSearchInputProps {
   readonly value: string;
   readonly onChange: (value: string) => void;
+  /** Chamado com `false` sempre que a caixa e o `value` de cima passam a
+   * coincidir — inclusive **na montagem**, antes de alguem digitar. Os 5
+   * consumidores de hoje so trocam um icone, entao o evento inicial e
+   * inofensivo; quem for fazer algo nao idempotente aqui precisa tratar
+   * isso. Nunca chama `true` sem digitacao. */
   readonly onTyping?: (isTyping: boolean) => void;
   readonly delay?: number;
   readonly placeholder?: string;
