@@ -10,6 +10,47 @@
 # Instalação: automática via script `prepare` do package.json.
 # Backlog: INFRA-160.
 
+# Duas chaves de topo, medidas em 20/08/2026, que mantêm esta trava LIGADA
+# dentro de um `git worktree` — que é exatamente onde ela estava DESLIGADA
+# em silêncio.
+#
+# O `.git/hooks/pre-commit` é gerado pelo lefthook e é COMPARTILHADO por
+# todos os worktrees (o `core.hooksPath` de cada um aponta para o
+# `.git/hooks` da árvore principal). O shim gerado procurava o binário em
+# `$(git rev-parse --show-toplevel)/node_modules`, que dentro de um worktree
+# é a pasta do próprio worktree — e 3 dos 5 não têm `node_modules`. O último
+# ramo do shim fazia `echo "Can't find lefthook in PATH"` SEM `exit 1`: o
+# git APROVAVA o commit, e a mensagem passava por ruído no meio de uma saída
+# de sucesso.
+#
+# ATENÇÃO à atribuição de causa — quem fecha a trava HOJE é a chave
+# `lefthook:` logo abaixo, NÃO esta. O lefthook emite aquela chave como
+# `elif test -n "<valor>/../node_modules/.bin/lefthook"`, e essa string tem
+# sufixo LITERAL: `test -n` nela é SEMPRE verdadeiro. O ramo é incondicional,
+# então TUDO abaixo dele é código morto — inclusive o `else` final onde esta
+# chave põe o `exit 1`. Com PATH vazio o shim atual sai com 127 (o binário
+# não existe naquele caminho), não com o `exit 1` do `assert_`.
+#
+# Esta chave fica assim mesmo, como reserva: ela é o que volta a fechar a
+# trava se a `lefthook:` for removida ou deixar de resolver. Só não a credite
+# pelo comportamento que se observa hoje. Ver `npm run hooks:prova`,
+# controles 3 e 4.
+assert_lefthook_installed: true
+
+# `--git-common-dir` aponta para o `.git` da ÁRVORE PRINCIPAL a partir de
+# qualquer worktree; é ele que acha o `node_modules` que existe de verdade.
+#
+# `--path-format=relative` NÃO é enfeite. O lefthook emite este valor SEM
+# aspas no shim (`then <valor> "$@"`), e sem a flag o git devolve o caminho
+# ABSOLUTO — que neste projeto tem espaços ("software Gerenciador ecossistema
+# ikcous"). O shell quebrava em palavras e o hook morria com exit 127 em todo
+# worktree (`sh: C:/Users/Gabriel/Documents/software: No such file or
+# directory`). Com a flag o valor vira `../../../.git`, sem espaço nenhum.
+# Medido nos 5 worktrees e na árvore principal: resolve 2.1.10 em ~1 s.
+# `npx --no-install lefthook` também resolve, mas custa ~7 s por invocação, e
+# são 3 hooks por ciclo de commit/push.
+lefthook: "$(git rev-parse --path-format=relative --git-common-dir)/../node_modules/.bin/lefthook"
+
 pre-commit:
   parallel: true
   jobs:

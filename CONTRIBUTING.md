@@ -50,6 +50,127 @@ E mais duas limitações reais dos hooks:
 2. **Só valem em branch que contém o `lefthook.yml`.** Se você fizer checkout de
    um commit anterior a este PR, o lefthook não acha configuração e libera tudo.
 
+### 20/08/2026 — a trava estava DESLIGADA, e o texto acima dizia que não
+
+Até esta data, quem trabalhava numa **cópia paralela do repositório** (o
+`git worktree`: uma segunda pasta que aponta para o mesmo histórico, para
+mexer em duas coisas ao mesmo tempo sem uma atrapalhar a outra) podia
+commitar uma senha de banco **e o commit passava**. Sem erro, sem vermelho,
+sem aviso. Nada nesta página avisava, porque nada aqui tinha sido medido.
+
+O que acontecia, em uma frase: o programinha que o git chama antes de cada
+commit procurava o lefthook numa pasta onde ele não estava, não achava,
+escrevia uma linha discreta — `Can't find lefthook in PATH` — e **terminava
+dizendo que deu tudo certo**. O git acredita nesse "tudo certo" e grava o
+commit. Das 5 cópias paralelas que existiam na máquina naquele dia, **3
+estavam nesse estado**, e a linha discreta saía no meio de uma saída de
+sucesso, onde ninguém repara nela.
+
+O conserto são duas linhas no `lefthook.yml`:
+
+- `lefthook: "$(git rev-parse --path-format=relative --git-common-dir)/..."`
+  — ensina o hook a procurar o programa na pasta **principal** do projeto, e
+  não dentro da cópia paralela, onde ele não existe. **É esta linha que
+  conserta o problema hoje**, sozinha.
+- `assert_lefthook_installed: true` — a reserva. Ela manda o hook **reprovar**
+  em vez de aprovar quando o lefthook não é encontrado. Medido em 20/08/2026:
+  do jeito que o lefthook escreve o programinha, o trecho onde essa reserva
+  age está **fora do caminho** enquanto a linha de cima existir — ou seja, ela
+  não muda nada que dê para observar hoje. Fica porque volta a valer no dia em
+  que a linha de cima sumir ou parar de resolver. Não a credite pelo conserto.
+
+**Como conferir, sem acreditar em ninguém:**
+
+```bash
+npm run hooks:prova
+```
+
+Ele monta um repositório descartável (dentro de `scratch/`, que o git ignora,
+e apaga tudo no fim), e mede seis coisas na mesma rodada. A primeira é a que
+mais importa no dia a dia: **os três programinhas que o git realmente vai
+chamar nesta pasta — os de commit, de mensagem e de push — são o que a
+configuração atual gera?** Depois vêm as outras cinco:
+commitar uma senha falsa tem de ser **recusado**; commitar o mesmo arquivo
+limpo tem de **passar** (e o secretlint tem de aparecer nas duas saídas, senão
+um hook que não roda nada "aprovaria" o arquivo limpo); e o cenário antigo é
+reproduzido lado a lado para mostrar que o "aprovava" virou "recusa". Termina
+com um veredito. Se ele não fechar em `TRAVA LIGADA E FECHADA`, **não trate o
+hook como proteção.**
+
+`ls .git/hooks` não serve para conferir isso: os três arquivos estiveram lá o
+tempo todo, inclusive nas cópias onde a trava estava desligada.
+
+**A proteção ainda não está garantida — e é importante saber por quê.**
+
+Os três arquivos de hook são **um só jogo, compartilhado por todas as cópias
+paralelas** do repositório. O lefthook reescreve esse jogo sozinho toda vez
+que alguém commita ou dá push de uma cópia cujo `lefthook.yml` está diferente
+do último que ele sincronizou. Enquanto as duas linhas acima não estiverem na
+branch base (`develop`/`main`) **e** cada cópia não tiver feito `git pull`,
+um commit feito de qualquer cópia atrasada **desfaz o conserto para todo
+mundo** — e a trava volta a aprovar em silêncio. Isso aconteceu em
+20/08/2026, no meio da própria revisão desta mudança.
+
+**E a troca acontece no meio do commit, não antes dele.** Medido em
+20/08/2026 num repositório descartável, com marcadores plantados dentro do
+arquivo de hook:
+
+```text
+shim ANTES  tem MARCADOR_A: 2   MARCADOR_B: 0
+[hook: pre-commit]
+sync hooks: ✔️(commit-msg, pre-commit)      <- reescreve AQUI
+JOB-PRE-COMMIT-RODOU                         <- e só então roda o job
+shim DEPOIS tem MARCADOR_A: 0   MARCADOR_B: 2
+```
+
+Duas consequências práticas, e nenhuma é óbvia:
+
+- **O estado da trava não é uma propriedade da sua máquina — é uma
+  propriedade da última cópia que commitou.** Você pode ter rodado a prova de
+  manhã, com tudo verde, e estar desprotegido à tarde sem ter tocado em nada:
+  basta outra cópia paralela (ou outra sessão) ter commitado de uma branch que
+  ainda não tem as duas linhas. Não é "conserta uma vez e acabou"; é "confira
+  antes de confiar".
+- **Um ✔️ de um job não diz nada sobre os hooks seguintes do mesmo commit.**
+  Como a reescrita acontece antes de os jobs rodarem, dá para ver na mesma
+  saída um `✔️ eslint` e, logo abaixo, um `Can't find lefthook in PATH` —
+  aconteceu exatamente assim com outra sessão em 20/08/2026. O visto verde é
+  daquele job, não da trava.
+
+E não é raro: em 20/08/2026, numa máquina com cinco cópias paralelas ativas,
+os três hooks foram revertidos **três vezes em treze minutos** (12:03, 12:10 e
+12:16) sem ninguém pedir. Por isso o passo a passo abaixo é para usar, não
+para guardar.
+
+**O que fazer com isso, na prática:**
+
+- **Como você percebe:** rode `npm run hooks:prova`. O primeiro controle
+  compara os **três** hooks em uso (`pre-commit`, `commit-msg` e `pre-push`)
+  com o que a configuração gera e **reprova** quando algum diverge, dizendo
+  qual.
+- **Como você conserta:** rode `npx --no-install lefthook install` na sua
+  pasta. Leva um segundo. Se ele reclamar que não achou o lefthook, rode
+  `npm install` e repita.
+  <br>O `--no-install` não é frescura: sem ele, no dia em que o
+  `node_modules` estiver quebrado, o `npx` **baixa da internet** a versão mais
+  nova do lefthook — e é essa versão desconhecida que vai reescrever os hooks
+  de **todas** as cópias paralelas. A versão certa já está travada no
+  `package-lock.json` e já está no disco. Com `--no-install`, o comando falha
+  em vez de improvisar, que é o que se quer de uma ferramenta de segurança.
+- **Quando isso acaba:** quando as duas linhas chegarem à branch base e todas
+  as cópias tiverem puxado. Até lá, rodar a prova antes de confiar no hook não
+  é paranoia — é a única forma de saber.
+
+Duas coisas que continuam verdadeiras e que a correção **não** resolve:
+
+- `--no-verify` continua passando por cima de tudo. Isto é um lembrete que
+  funciona, não uma garantia.
+- O secretlint pega senha de banco em URL de conexão, chave da AWS e token de
+  Slack, mas **não** pega um JWT no formato `service_role` do Supabase —
+  medido em 20/08/2026 com o preset atual. Ou seja: justamente o tipo de
+  chave que já vazou neste repositório não é coberto pelo preset. Trocar ou
+  somar regra ao secretlint é trabalho à parte.
+
 O caminho para uma trava de verdade é GitHub Pro (US$ 4/mês, mantém o repositório
 privado) ou tornar o repositório público com o histórico purgado. **O Gabriel
 adiou essa decisão em 30/07/2026.** Está registrada como INFRA-240 no backlog.
@@ -543,12 +664,18 @@ de desenvolvimento e acha que regrediu.
 Automático no `npm install`, via script `prepare`. Para conferir:
 
 ```bash
-npx lefthook validate
+npx --no-install lefthook validate
 ls .git/hooks
 ```
 
-Deve listar `pre-commit`, `commit-msg` e `pre-push`. Se não listar:
+Deve listar `pre-commit`, `commit-msg` e `pre-push`. **Listar não é
+funcionar** — quem responde se a trava está de pé é `npm run hooks:prova`.
+Ver [A trava que não existe](#a-trava-que-não-existe). Se não listar:
 
 ```bash
-npx lefthook install
+npx --no-install lefthook install
 ```
+
+O `--no-install` impede o `npx` de baixar `lefthook@latest` da internet quando
+o `node_modules` está quebrado. A versão certa está travada no
+`package-lock.json`; se o comando falhar, rode `npm install` e repita.
