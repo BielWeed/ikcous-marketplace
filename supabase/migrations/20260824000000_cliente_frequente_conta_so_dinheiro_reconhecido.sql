@@ -2,20 +2,44 @@
 -- "quem gastou muito" pela mesma regra de dinheiro reconhecido que o resto
 -- do painel já usa (achado de revisão sobre o commit d821611, 24/08/2026).
 --
--- O DEFEITO, MEDIDO NA FONTE
+-- O DEFEITO, MEDIDO NA FONTE — E O QUE NÃO É
 --   d821611 corrigiu o "LTV Total" da tela de Clientes para só contar
 --   `status NOT IN ('cancelled', 'returned') AND (payment_status IS NULL OR
 --   payment_status IN ('pago', 'pago_apos_expirar'))` — a mesma regra que a
 --   migration 20260822000100 já tinha posto em nove pontos do painel
 --   analítico. Mas o ramo 'vip' de `get_segmented_push_targets` ficou para
 --   trás: soma `o.total` de todo pedido não cancelado/devolvido, sem olhar
---   `payment_status`. Todo pedido nasce `status='pending'` +
---   `payment_status='aguardando'` com 30 minutos para ser pago — um cliente
---   com um PIX nunca pago entra na soma como se já tivesse gasto o dinheiro,
---   e pode acabar dentro de "Clientes Frequentes" mesmo com LTV reconhecido
---   igual a zero. Depois de d821611 as duas telas do mesmo painel discordam:
---   a de Clientes mostra R$ 0,00 para esse cliente; a de Push manda o
---   disparo de "cliente frequente" para ele mesmo assim.
+--   `payment_status`.
+--
+--   Uma primeira leitura deste achado citava um caso concreto — "uma pessoa
+--   com um PIX de R$ 214,40 nunca pago aparece com LTV R$ 0,00 e recebe o
+--   disparo de Clientes Frequentes". Medido, só leitura, em 24/08/2026: ESSE
+--   CASO NÃO EXISTE NESTE BANCO. R$ 214,40 é a receita de UM DIA somando 6
+--   pedidos (cabeçalho de 20260822000100), não o valor de um PIX de uma
+--   pessoa; e há só 1 dono de aparelho distinto entre as 8 assinaturas de
+--   push cadastradas, o que já torna "uma pessoa recebendo o disparo por
+--   engano" um fato que não pode estar acontecendo hoje. Com isso
+--   confirmado, o efeito desta migration NESTE BANCO, HOJE, é ZERO clientes:
+--   o conjunto devolvido pelo segmento 'vip' é idêntico antes e depois da
+--   correção (provado no script abaixo, ponto a ponto).
+--
+--   O MECANISMO REAL — hipotético neste banco, mas real na forma como o app
+--   funciona: todo pedido nasce `status='pending'` +
+--   `payment_status='aguardando'`, e o PIX gerado no checkout tem cerca de
+--   30 minutos de validade antes de expirar. Nessa janela — do clique em
+--   "finalizar pedido" até a rotina de expiração cancelar o pedido — o
+--   total do pedido já entra na soma do ramo 'vip', porque ele só filtra
+--   por `status`, não por `payment_status`. Pedido já expirado
+--   (`payment_status = 'expirado'`) já sai pelo filtro de status hoje,
+--   porque a varredura de expiração cancela o pedido junto; o que sobrevive
+--   ao filtro de status e ainda infla a soma é (a) a janela dos ~30 minutos
+--   em que o pedido está pendente e ainda não expirou, e (b) qualquer
+--   pedido `recusado`/`estornado` que porventura não cancele o pedido
+--   junto. Numa loja com PIX ativo o dia inteiro, essa janela acontece o
+--   dia inteiro, todo dia — é aí que o defeito deixa de ser hipotético: ele
+--   se replica para toda loja clonada deste molde. Só não há, hoje, um
+--   cliente deste banco de desenvolvimento parado dentro dela para servir
+--   de exemplo concreto.
 --
 -- A REGRA, A MESMA DE 20260822000100 E 20260823000000 — NÃO É REGRA NOVA
 --   status NOT IN ('cancelled', 'returned')
