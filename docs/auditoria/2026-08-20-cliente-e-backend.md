@@ -1,9 +1,35 @@
 # Auditoria — o lado de quem compra e o backend
 
 **Data:** 20/08/2026 · **Alvo:** catálogo, produto, busca, carrinho, checkout · banco, edge
-functions, permissões · **Banco lido:** o de desenvolvimento (o mesmo que a produção usa hoje)
+functions, permissões · **Banco lido:** o de **desenvolvimento**
 
-Tudo aqui é leitura. Nenhuma linha do banco foi escrita, nenhum arquivo do app foi alterado.
+Durante a auditoria, tudo aqui foi leitura — nenhuma linha do banco foi escrita.
+*(As duas migrations que saíram deste relatório foram aplicadas depois, com autorização; ver o
+quadro no fim.)*
+
+### O que "banco de desenvolvimento" muda na leitura deste relatório
+
+⚠️ **CORRIGIDO em 20/08/2026.** A primeira versão desta linha dizia "o de desenvolvimento (o
+mesmo que a produção usa hoje)". O Gabriel confirmou o que importa: **este é o banco de
+desenvolvimento, e não há loja de verdade rodando nele.**
+
+O parêntese não era falso — o site publicado realmente aponta para este mesmo banco, medido em
+17/08/2026 lendo o host das requisições da página no ar. Mas ele era **enganoso**, porque fazia
+"produção" soar como "loja com clientes", quando o que está publicado é a demonstração. Fato
+técnico certo, conclusão errada na cabeça de quem lê — que é o defeito mais caro de um relatório,
+porque passa pela conferência.
+
+Isso **não muda nenhum achado nem nenhuma correção**. Muda a urgência, e a direção do risco:
+
+- **Escrever neste banco é barato.** O buraco da vitrine (item 1) não tinha ninguém para vitimar
+  aqui: são 83 pedidos, o último de 18/08, sem tráfego real.
+- **O que o CÓDIGO FAZ é que é caro** — e mais caro do que parecia. Este repositório é o **molde**:
+  o app de cada loja é clone deste e recebe daqui toda atualização, para sempre. Um defeito daqui
+  é replicado em cada loja que existir, e é lá que existe dinheiro de verdade.
+
+Ou seja: o item 1 não era um incêndio; era um **defeito de fábrica** — e por isso valia consertar
+com o mesmo rigor, só que sem pressa de relógio. A tabela de gravidade abaixo continua valendo,
+lida assim: ela mede o que o defeito faria **numa loja com movimento**, não o que ele fez aqui.
 
 ---
 
