@@ -173,9 +173,32 @@ jobs:
             npm run secretlint
             exit 0
           fi
-          mapfile -t ARQUIVOS < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA")
+          # NÃO volte para `mapfile -t ARQUIVOS < <(git diff ...)`.
+          #
+          # `set -euo pipefail` não alcança o process substitution: se o
+          # `git diff` falha lá dentro, o mapfile ainda sai 0 e a lista vem
+          # VAZIA. Medido em 20/08/2026 — o passo caía em "Nenhum arquivo
+          # alterado", saía 0, e o job ficava verde sem o secretlint ter
+          # olhado um único arquivo. Num repositório que já teve
+          # `service_role` e senha de banco no histórico, e sem branch
+          # protection para segurar o merge.
+          #
+          # Aqui o diff é um comando simples, com o status tratado na hora, e
+          # a falha cai no fallback que varre tudo em vez de aprovar sem
+          # varrer. Fechado por tests/ci_varredura_de_segredo_test.ts, que
+          # extrai este bloco e mede se o secretlint É CHAMADO em cada caso.
+          LISTA="${RUNNER_TEMP:-/tmp}/arquivos-do-diff.txt"
+          ERRO="${RUNNER_TEMP:-/tmp}/erro-do-diff.txt"
+          if ! git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" > "$LISTA" 2> "$ERRO"; then
+            echo "O git diff falhou — não há lista de arquivos confiável:"
+            cat "$ERRO"
+            echo "Varrendo o repositório inteiro em vez de aprovar sem varrer."
+            npm run secretlint
+            exit 0
+          fi
+          mapfile -t ARQUIVOS < "$LISTA"
           if [ "${#ARQUIVOS[@]}" -eq 0 ]; then
-            echo "Nenhum arquivo alterado."
+            echo "Nenhum arquivo alterado (o git diff rodou e voltou vazio)."
             exit 0
           fi
           printf 'Varrendo %d arquivo(s).\n' "${#ARQUIVOS[@]}"
