@@ -11,30 +11,32 @@ Leia as duas: a árvore é compartilhada.
 ## Onde o trabalho está
 
 - **Branch:** `fix/painel-pedidos-alto-risco` (a mesma da outra frente).
-- **NADA do meu trabalho está commitado.** Está tudo no working tree, listado abaixo.
+- **Tudo commitado em 22/08/2026, em quatro commits temáticos. Working tree limpo.**
 - **Nada empurrado para o GitHub. Nenhum PR aberto.**
 - **A migration `20260821000200` JÁ FOI APLICADA** no Supabase de desenvolvimento, com
   autorização explícita do Gabriel, e conferida depois de aplicar.
 
-### Arquivos meus no working tree (não commitados)
+### Os quatro commits
 
-| Arquivo | O que é |
+| Commit | O que traz |
 |---|---|
-| `docs/auditoria/2026-08-20-painel-config.md` | o relatório: 16 achados, 4 com ✅ |
-| `supabase/migrations/20260821000200_cupom_sem_limite_e_ilimitado.sql` | **já aplicada no banco** |
-| `scripts/db-prove-cupom-sem-limite.cjs` | prova da migration, 30 asserções |
-| `rollback-20260821000200_...sql` (raiz) | ponto de retorno da migration |
-| `src/utils/regra-de-frete.ts` | as frases da tela de Frete |
-| `src/views/admin/AdminShippingView.tsx` (modificado) | liga as frases na tela |
-| `src/views/admin/AdminCustomersView.tsx` (modificado) | o ticket médio |
-| `tests/front/admin-shipping-frases-da-regra.test.ts` | 11 casos |
-| `tests/front/admin-shipping-tela-nao-promete-cobranca.test.tsx` | 6 casos |
-| `tests/front/admin-customers-ticket-medio.test.tsx` | 5 casos |
-| um bloco dentro de `scripts/db-apply.cjs` | a entrada `20260821000200` no `VERIFICACOES` |
+| `162c652` `fix(orders)` | o cupom sem limite: migration (**já aplicada**), a prova de 30 asserções, e a entrada no `VERIFICACOES` do `db-apply` |
+| `9803741` `fix(shipping)` | as frases da tela de Frete: `src/utils/regra-de-frete.ts`, a view, e 17 casos de teste |
+| `402c669` `fix(admin)` | o ticket médio da tela de Clientes, e 5 casos de teste |
+| `8ea9fdc` `docs(tooling)` | o relatório da auditoria, esta passagem, e a correção na passagem da outra frente |
 
-⚠️ **`scripts/db-apply.cjs` é compartilhado.** A outra frente já commitou o bloco dela por
-montagem cirúrgica; o meu bloco continua em disco esperando commit. Não commite o arquivo
-inteiro sem separar.
+Os três primeiros passaram pelos hooks (`secretlint`, `eslint`, `guarda-de-branch`,
+`commitlint`) sem `--no-verify`, com **0 erros** de eslint. Os avisos que aparecem no log são
+a dívida pré-existente dos arquivos, medida linha a linha antes de commitar: nenhum caiu em
+linha minha.
+
+O ponto de retorno da migration é `rollback-20260821000200_cupom_sem_limite_e_ilimitado.sql`,
+na raiz — **não versionado**, o `.gitignore` cobre `rollback-*.sql`. Se a árvore for limpa,
+ele some; o conteúdo pode ser regerado com `node scripts/db-apply.cjs --dry-run <migration>`.
+
+⚠️ **`scripts/db-apply.cjs` é compartilhado com a outra frente.** Quando commitei, o bloco
+dela já estava no histórico e o diff tinha só o meu — não precisei de montagem cirúrgica.
+Confira isso de novo antes de commitá-lo no futuro.
 
 ---
 
@@ -68,7 +70,7 @@ testes caem. Os números estão nos blocos ✅ do relatório.
 3. **Nada foi revisado por contexto limpo.** Esta sessão foi configurada sem subagentes, então
    não houve `revisor`. Compensei com prova de mutação em tudo, mas a exigência de processo
    continua aberta — em especial para a migration, que é caminho de dinheiro.
-4. **PR não aberto, nada commitado.**
+4. **PR não aberto.** Os quatro commits estão só na branch local.
 5. **Achado novo, não estava na auditoria:** a outra frente aplicou a regra de "só dinheiro
    reconhecido" em nove pontos do painel analítico, mas **não** em `get_admin_customers_paged`.
    Hoje os dois dão o mesmo número porque o pg_cron já cancelou os pedidos em aberto; vai
