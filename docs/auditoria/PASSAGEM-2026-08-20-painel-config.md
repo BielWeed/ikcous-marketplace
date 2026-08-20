@@ -1,166 +1,159 @@
-# Passagem de sessão — painel do lojista: Clientes, Ajustes, Cupons, Frete e Push
+# Passagem — painel do lojista: Clientes, Ajustes, Cupons, Frete e Push
 
 Documento para quem continuar isto numa sessão nova. Lê em 4 minutos.
 
-Esta é a **segunda frente** do mesmo trabalho. A outra — Pedidos e Produtos — tem passagem
-própria em [PASSAGEM-2026-08-20.md](PASSAGEM-2026-08-20.md), e o que está lá continua valendo.
-Leia as duas: a árvore é compartilhada.
+⚠️ **Datas.** Tudo nesta linha de trabalho aconteceu em **20/08/2026**. A versão anterior deste
+documento datava entregas em 21 e 22/08 e o próprio arquivo se chamava `PASSAGEM-2026-08-22`;
+nenhuma dessas datas existiu — o `git log --date=iso-strict` mostra os commits entre 04:22 e
+05:04 do dia 20. As datas falsas concordavam entre si e não quebravam teste nenhum. Carimbe
+data de `git log` ou do relógio, nunca de cabeça.
+
+Esta é uma de **três frentes** que trabalharam no mesmo repositório e na mesma árvore ao mesmo
+tempo. As outras são `painel-pedidos-produtos` (passagem em
+[PASSAGEM-2026-08-20.md](PASSAGEM-2026-08-20.md)) e `coordenacao-e-fechamento`.
 
 ---
 
 ## Onde o trabalho está
 
-- **Branch:** `fix/painel-pedidos-alto-risco` (a mesma da outra frente).
-- **Tudo commitado e empurrado. PR [#241](https://github.com/BielWeed/ikcous-marketplace/pull/241) aberto, CI verde nos sete comandos.**
-- **A migration `20260821000200` JÁ FOI APLICADA** no Supabase de desenvolvimento, com
-  autorização explícita do Gabriel, e conferida depois de aplicar.
+- **Branch:** `fix/painel-pedidos-alto-risco`, compartilhada pelas três frentes.
+- **Tudo commitado e empurrado.** Sem PR aberto no momento em que isto foi escrito — a frente
+  de coordenação combinou abrir **um** PR com tudo, para o CI não medir alvo em movimento.
+- **Não confie em nenhuma afirmação de estado escrita aqui.** Rode o quadro, que mede na hora:
 
-### Os quatro commits
+  ```bash
+  node "C:\Users\Gabriel\.claude\mural\mural.mjs" core_app_mkt
+  ```
 
-| Commit | O que traz |
-|---|---|
-| `162c652` `fix(orders)` | o cupom sem limite: migration (**já aplicada**), a prova de 30 asserções, e a entrada no `VERIFICACOES` do `db-apply` |
-| `9803741` `fix(shipping)` | as frases da tela de Frete: `src/utils/regra-de-frete.ts`, a view, e 17 casos de teste |
-| `402c669` `fix(admin)` | o ticket médio da tela de Clientes, e 5 casos de teste |
-| `8ea9fdc` `docs(tooling)` | o relatório da auditoria, esta passagem, e a correção na passagem da outra frente |
-| `3b37e87` `style(admin)` | formatação medida como o CI mede — 4 erros de Biome que teriam reprovado o PR |
-| `76de007` `fix(admin)` | a ficha do cliente conta os pedidos como a lista conta, e 5 casos de teste |
-
-Os três primeiros passaram pelos hooks (`secretlint`, `eslint`, `guarda-de-branch`,
-`commitlint`) sem `--no-verify`, com **0 erros** de eslint. Os avisos que aparecem no log são
-a dívida pré-existente dos arquivos, medida linha a linha antes de commitar: nenhum caiu em
-linha minha.
-
-O ponto de retorno da migration é `rollback-20260821000200_cupom_sem_limite_e_ilimitado.sql`,
-na raiz — **não versionado**, o `.gitignore` cobre `rollback-*.sql`. Se a árvore for limpa,
-ele some; o conteúdo pode ser regerado com `node scripts/db-apply.cjs --dry-run <migration>`.
-
-⚠️ **`scripts/db-apply.cjs` é compartilhado com a outra frente.** Quando commitei, o bloco
-dela já estava no histórico e o diff tinha só o meu — não precisei de montagem cirúrgica.
-Confira isso de novo antes de commitá-lo no futuro.
+- **PRs já mergeados na `develop`:** #241 e #243. Nada foi para a `main` — **merge não é estar
+  no ar**.
+- **A migration `20260821000200` (cupom sem limite) JÁ FOI APLICADA** no Supabase de
+  desenvolvimento, com autorização explícita do Gabriel, e conferida por duas revisões
+  independentes depois.
 
 ---
 
-## O que foi feito
+## O que está fechado
 
-Auditoria das cinco telas → **16 achados**, todos com evidência de tela + banco, em
-[2026-08-20-painel-config.md](2026-08-20-painel-config.md). O Gabriel mandou corrigir um a um,
-por ordem de dor. **Cinco estão fechados:**
+Auditoria das cinco telas → **16 achados** com evidência de tela + banco, em
+[2026-08-20-painel-config.md](2026-08-20-painel-config.md), ordenados por dor. O Gabriel mandou
+corrigir um a um, por essa ordem. Fechados:
 
-| # | Defeito | Correção | Onde |
-|---|---|---|---|
-| 1 | Cupom com "∞ usos" era aceito no checkout e **recusado ao finalizar** — todo cupom criado sem preencher "Limite de Uso" nascia assim | `usage_limit` nulo ou `<= 0` passa a significar ilimitado nas duas RPCs de criação de pedido | migration **aplicada no banco** |
-| 2 | "Frete grátis desativado. **Todos os pedidos terão cobrança de entrega**" — falso quando a taxa também está em zero, aí o app cota R$ 0,00 para o Brasil inteiro | frases saíram do JSX e viraram função pura; aviso destacado no estado perigoso | front |
-| 3 | "Frete grátis a partir de R$ 100" sem dizer que **exige estar logado** | a frase passou a contar a condição | front |
-| 4 | Clientes dizia "Ticket Médio R$ 28,16" e o Dashboard "R$ 40,95", mesmo rótulo | divisor passou de clientes para **pedidos** | front |
-| 5 | Lista dizia "Pedidos 6" e a ficha do mesmo cliente "Cesta / Pedidos 16" | card usa a regra do servidor e diz quantos ficaram de fora; a aba segue com o histórico | front |
+| # | O defeito | O que a tela faz agora |
+|---|---|---|
+| 1 | Cupom "∞ usos" aceito no checkout e **recusado ao finalizar** | limite nulo ou ≤ 0 significa ilimitado nas duas RPCs de criação de pedido |
+| 2 | "Todos os pedidos terão cobrança de entrega" — falso com a taxa em zero | as frases saíram do JSX, viraram função pura, e o estado perigoso ganhou aviso |
+| 3 | "Frete grátis a partir de R$ 100" sem dizer que exige estar logado | a frase conta a condição |
+| 4 | "Ticket Médio" divergindo do Dashboard | o cartão **parou de calcular** e lê a fonte que o Dashboard já publica |
+| 5 | Mesmo cliente com 6 pedidos na lista e 16 na ficha | o cartão usa a regra do servidor e diz quantos ficaram de fora |
+| 6 | Contadores de segmento de Push eram 30%, 25% e 45% do total | os quatro são medidos; "3 · 2 · 3" virou "2 · 0 · 0" |
+| 7 | "iOS: 3 · Android: 5" | saiu da tela — não existe coluna de plataforma para medir |
+| 12 | "Receberão: 8 clientes" | "8 aparelhos", com singular e plural certos |
 
-Cada correção tem teste próprio **e prova de mutação** — sabotei o código e conferi que os
-testes caem. Os números estão nos blocos ✅ do relatório.
+**Três vizinhos apareceram nas revisões e foram junto:**
+
+- **"Pedidos Totais"** contava 12 enquanto o Dashboard contava 11 (mesma raiz do achado 4).
+- **O total de aparelhos** ficava em `0` para sempre se a consulta falhasse — indistinguível de
+  loja sem ninguém inscrito. A trava do botão de enviar **não** mudou: desconhecido continua
+  desabilitando. Falha fechado.
+- **A ficha do cliente** dizia "N cancelado fora da conta" para um número que conta cancelado
+  **e** devolvido.
+
+Cada correção tem teste próprio **e prova de mutação** — o código foi sabotado e os testes
+caíram. As mutações estão descritas nos blocos ✅ do relatório e nas mensagens de commit.
 
 ---
 
 ## ⚠️ O que falta
 
-1. **11 achados abertos**, do 6 ao 16 no relatório. O próximo por dor é o **6**: os contadores
-   dos segmentos da tela de Push são percentuais fixos do total de aparelhos, não medições —
-   dois dos três segmentos estão vazios e a tela anuncia gente neles.
-2. **O `diretor` nunca rodou nesta frente.** Foram 5 entregas em sequência; a regra manda a
-   conferência do conjunto. Ele deve receber: o pedido original ("audita o painel… depois
-   conserta X"), a tabela acima, e o relatório.
-3. **Nada foi revisado por contexto limpo.** Esta sessão foi configurada sem subagentes, então
-   não houve `revisor`. Compensei com prova de mutação em tudo, mas a exigência de processo
-   continua aberta — em especial para a migration, que é caminho de dinheiro.
-4. ~~PR não aberto.~~ **Aberto: [#241](https://github.com/BielWeed/ikcous-marketplace/pull/241)**, com as duas frentes. CI verde. Falta aprovar e mergear.
-5. **Achado novo, não estava na auditoria:** a outra frente aplicou a regra de "só dinheiro
-   reconhecido" em nove pontos do painel analítico, mas **não** em `get_admin_customers_paged`.
-   Hoje os dois dão o mesmo número porque o pg_cron já cancelou os pedidos em aberto; vai
-   divergir no primeiro PIX pendente. Está escrito no fim do relatório.
+### Defeito puro — dá para seguir sozinho, na ordem de dor
+
+O próximo é o **8**: a opção "Notificação Push" aparece no menu dos 16 clientes e funciona em
+**1**. Para os outros 15 o envio para no começo e **nem o aviso dentro do app é criado**, porque
+o `return` vem antes de qualquer gravação.
+
+Depois: **11** (histórico diz "ENVIADA" mesmo quando ninguém recebeu), **13** (o "Audit Log" de
+frete nunca terá linha enquanto a loja usar Taxa Fixa), **14** ("pending" é o único status em
+inglês), **15** (mínimo de compra sem centavos), **16** (dois textos errados em Cupons).
+
+### 🔴 Trava no Gabriel — decisão de produto, não técnica
+
+| # | A escolha | Por que é dele |
+|---|---|---|
+| 9 | "Congelar Acesso" não faz nada | ou implementa o bloqueio de conta, ou tira a opção da tela |
+| 10 | Cupom vencido continua "Ativo" | a tela **promete** desativação automática e ela não existe: ou cria o mecanismo, ou apaga a promessa |
+| 17 | "LTV Total" por cliente conta pedido não pago | exige **migration** numa função que alimenta a tela inteira, e está fora dos 16 |
+| 18 | A tela de Push baixa credencial de envio só para contar | exige função nova no banco; hoje são 3 KB, ninguém sente |
+
+Os achados **17 e 18** nasceram das revisões, não da auditoria, e estão escritos no relatório
+com evidência e com o motivo de não terem sido corrigidos.
 
 ---
 
-## O que JÁ foi verificado, para não refazer
+## O que JÁ foi verificado
 
 | | |
 |---|---|
-| `test:front` completo | **69 arquivos, 373 testes, 0 falhas** — com os 69 conferidos contra o disco |
-| `test:edge` | 294 passaram |
-| `test:unit` | 18 passaram |
-| `typecheck` / `build` / `size` | limpos (523 kB de 800 kB) |
-| `lint:links` | nenhum quebrado |
-| eslint no escopo do meu diff | **0 erros, 0 avisos nas minhas linhas** — a catraca não sobe |
-| prova da migration do cupom | 30 asserções, 2 mutações mortas |
-| provas do frete e do ticket médio | 22 casos, 5 mutações mortas |
-| prova do achado 5 | 5 casos, 1 mutação morta (2 dos 5 caem) |
-| CI do PR #241 | os sete comandos verdes, duas vezes |
+| `diretor` sobre o conjunto das 5 primeiras entregas | **CORRIGE** — datas inventadas, achado 5 sem CI, números da passagem medidos localmente e não pelo CI. Tudo cumprido |
+| `revisor` (Opus) sobre as 5 primeiras correções | um **BLOQUEIA** (Ticket Médio pela metade), corrigido |
+| `revisor` (Sonnet) sobre a tela de Push | passa, com achados que viraram os commits seguintes |
+| `revisor` (Sonnet) sobre o Ticket Médio | passa, e achou o vizinho "Pedidos Totais" |
+| Revisão independente da frente irmã sobre a migration do cupom | **passa** — e a prova forte: o predicado novo é a negação exata do que o checkout já recusava, então a criação de pedido passou a aceitar exatamente o conjunto que o checkout aceitava, nem um a mais |
+| Testes dos 4 arquivos tocados | **28 casos, 4 arquivos, 0 falhas** (`--maxWorkers=1`) |
+| `typecheck` | limpo |
+| `lint:links` | 288 links em 47 arquivos, nenhum quebrado |
+| eslint no escopo dos diffs | **0 erros**, e nenhum aviso novo em linha minha |
 
-**A suíte de front só fica verde com `--maxWorkers=1`.** Com paralelismo ela dá falhas
-diferentes a cada rodada, em arquivos que passam isolados. Não confie no vermelho paralelo, e
-confira sempre o número de arquivos descobertos contra o disco.
+⚠️ **A suíte de front inteira não foi rodada nesta sessão**, de propósito: três frentes na mesma
+máquina, e duas rodadas concorrentes se atrapalham. Quem certifica é o CI, sobre o PR.
 
 ---
 
-## ⚠️ Armadilhas que custaram tempo nesta frente
+## ⚠️ Armadilhas que custaram tempo
 
-- **O `SET SESSION` vaza entre programas.** O `DATABASE_URL` aponta para o pooler do Supabase
-  (`:6543`, Supavisor), que **reaproveita a mesma conexão entre clientes diferentes**. Um
-  `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` meu grudou na conexão e vazou para o
-  script seguinte, que morreu com "cannot execute UPDATE in a read-only transaction" sem nunca
-  ter pedido read-only — e chegou a produzir um **falso negativo numa auditoria de segurança
-  da outra frente**, que anunciou "o buraco não existe" sobre um buraco real.
-  **Use `BEGIN READ ONLY` ou `SET LOCAL`, nunca `SET SESSION`, e abra todo script com
-  `RESET ALL`.** (A passagem da outra frente descreve isso como "a conexão abre em modo
-  somente leitura, não é defeito" — **isso está errado**: não é característica do ambiente, é
-  sujeira que alguém deixou, e some com `RESET ALL`.)
-- **Prova de "está protegido" precisa de controle na mesma rodada.** "0 linhas afetadas" é o
-  mesmo resultado de um instrumento quebrado. Todo teste desse tipo leva um controle positivo
-  (o instrumento escreve quando tem direito?) e um alvo sabidamente vulnerável medido junto.
-- **O painel do navegador ficou oculto a sessão inteira.** Sem ele o `requestAnimationFrame`
-  não roda, as animações do `framer-motion` congelam e listas com `AnimatePresence` **nunca
-  renderizam** — parece defeito da tela e não é. Contorno usado: no console da página,
-  `(await import('/node_modules/.vite/deps/framer-motion.js')).MotionGlobalConfig.skipAnimations = true`
-  e navegar por `history.pushState` + `PopStateEvent` para forçar o re-render. Nenhuma captura
-  de tela foi possível nesta sessão.
-- **jsdom neste projeto não traz `localStorage`, `matchMedia`, `ResizeObserver` nem
-  `IntersectionObserver`.** Teste que monta tela de admin precisa dos quatro dublês, senão o
-  carrossel de KPIs quebra dentro do ErrorBoundary, os cards somem do DOM e o vermelho parece
-  ser do valor quando é do ambiente.
-- 🔴 **A branch compartilhada já foi reescrita por baixo, e isso apagou 5 commits meus do
-  disco.** Em 22/08/2026 a outra frente reorganizou a `fix/painel-pedidos-alto-risco` local
-  para "ficar só com o trabalho dela": as quatro correções desta frente sumiram do working
-  tree, embora o remoto e o PR seguissem íntegros (ela nunca fez push forçado — empurrou por
-  cima). Antes de qualquer `reset`, **ancore os commits das DUAS frentes numa branch de
-  resgate**: `salva/painel-config-2026-08-22` e `salva/pedidos-produtos-2026-08-22` existem por
-  isso, e podem ser apagadas depois do merge. O sinal que denunciou: a contagem de arquivos da
-  suíte **caiu** de 68 para 66 sem explicação.
-- **`git stash` nesta árvore já apagou trabalho da outra frente.** Não use `stash`, `checkout`
-  nem `restore` — e proíba isso explicitamente no prompt de qualquer agente. "Já falhava antes"
-  provado com stash numa árvore compartilhada não é prova.
-- **`lint:ratchet` completo passa de 10 minutos nesta máquina** (o CI faz em ~1,2 min). Rodar
-  o eslint só nos arquivos do diff e comparar os avisos linha a linha.
-- **Escopo de commit vem de lista fechada** em `.commitlintrc.json` e não aceita português.
+- **`git add` não reserva nada nesta árvore — o índice do git é compartilhado.** Ele *arma* o
+  arquivo para o próximo commit de **qualquer** sessão, e o hook de pre-commit leva 20-30 s.
+  Foi assim que o commit `6e406b4` saiu com 24 linhas de documentação de outra frente dentro.
+  Use **`git commit -- <caminho>`**, que ignora o índice.
+- **Nunca `git stash`, `checkout`, `restore`, `clean` nem `reset`.** Já apagaram trabalho alheio
+  aqui. Para ver o original de um arquivo: `git show HEAD:<caminho>`.
+- **O `pre-push` roda `typecheck` sobre a ÁRVORE, não sobre o seu commit.** Trabalho pela metade
+  de outra frente bloqueia o seu push com o seu commit impecável — e o inverso é pior: **vermelho
+  de `pre-push` não acusa o commit que está sendo empurrado.** Olhe o `git status` antes do diff.
+- **O `SET SESSION` vaza entre programas.** A `DATABASE_URL` aponta para o pooler do Supabase
+  (`:6543`), que reaproveita conexão entre clientes. Use `BEGIN READ ONLY` ou `SET LOCAL`, e
+  abra todo script com `RESET ALL`.
+- **Script de prova que escreve é ação de escrita, mesmo chamando-se prova.**
+  `db-prove-cupom-sem-limite.cjs` redefine as duas funções do caminho do dinheiro dentro de uma
+  transação e trava `store_config`. Com outras sessões no mesmo banco, prefira a prova
+  equivalente só de leitura: comparar `pg_get_functiondef` vivo com o arquivo da migration.
+- **`tests/front/checkout-view-flag-off.test.tsx` é vermelho conhecido nesta máquina** — o
+  `.env.local` tem `VITE_PAGAMENTO_ONLINE=true` e o teste mede a flag desligada. Confirmado com
+  a variável sobreposta: passa. **Não descarte esse vermelho sem sobrepor a variável** — esse
+  rótulo já escondeu regressão real uma vez.
+- **jsdom aqui não traz `localStorage`, `matchMedia`, `ResizeObserver` nem
+  `IntersectionObserver`**, e **`@testing-library/react` não existe** neste projeto. Teste de
+  tela de admin precisa dos quatro dublês; sem eles o conteúdo some dentro do ErrorBoundary e o
+  vermelho parece ser do valor quando é do ambiente.
+- **`lint:ratchet` completo passa de 10 min aqui** (o CI faz em ~1,2 min). Rode o eslint só nos
+  arquivos do diff e compare os avisos linha a linha contra as faixas do `git diff -U0`.
+- **Escopo de commit vem de lista fechada** em `.commitlintrc.json`, e o **assunto não pode ter
+  iniciais maiúsculas** — "Pedidos Totais" no assunto reprova.
 
 ---
 
-## Coordenação entre as duas sessões
+## Coordenação entre as sessões
 
-- **Numeração de migration:** a outra frente fica de `20260825000000` para cima; o range
-  `2026082[1-4]*` é desta. A divisão vale **daqui para frente** — as migrations `20260822*`
-  já aplicadas continuam sendo dela.
-- Já colidimos uma vez: as duas escreveram a **mesma** correção do cupom, reivindicando o
-  mesmo número. O Gabriel ficou com a desta frente.
-- **Alerta dela que eu verifiquei e é falso:** `sales_overview`, `v_store_config` e
-  `vw_questions_with_answers_count` **não** têm a falha de escrita anônima — as três têm
-  `security_invoker = on`. A prova está no relatório. Se ela ainda não corrigiu o relatório
-  dela, isso vai virar trabalho inútil.
+Existe um quadro compartilhado, fora da árvore do projeto, em `~/.claude/mural/`. Protocolo em
+`COMO-FUNCIONA.md`, terreno deste repositório em `core_app_mkt/_REGRAS.md`. **Registre a sua
+frente antes de editar o primeiro arquivo** — o quadro acusa arquivo mexido que ninguém assumiu.
 
----
+⚠️ **A armadilha do campo `sessao`:** o identificador do transcript (o nome da pasta de
+scratchpad) **não é** o identificador do canal de mensagens, e uma sessão não consegue ler o
+próprio. **As três frentes publicaram o identificador errado** — inclusive a que escreveu o
+alerta sobre isso. Ele só aparece no cabeçalho de uma mensagem, do outro lado: mande uma
+mensagem a alguém e peça o identificador de volta.
 
-## Pendências de produto — decisão do Gabriel, não técnica
-
-- **"Congelar Acesso"** no menu do cliente não faz nada (achado 9). Ou implementa, ou some da
-  tela.
-- **Os contadores inventados da tela de Push** (achados 6, 7 e 12) mostram números calculados
-  por porcentagem fixa, não medidos. Consertar exige decidir o que fazer com segmentos vazios.
-- **Cupom vencido continua "Ativo"** (achado 10): não existe nada que desative, e a tela
-  promete que existe. Ou cria o mecanismo, ou tira a promessa.
+**Faixa de migration desta frente:** `20260821*` a `20260824*`. Confira o disco antes de
+escolher número — existe uma quarta frente que nunca entrou no acordo e já usou número de duas
+faixas reservadas.

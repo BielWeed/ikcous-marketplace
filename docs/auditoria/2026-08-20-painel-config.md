@@ -273,8 +273,17 @@ cupom. E o painel mostra dois valores diferentes com o mesmo nome, sem dizer qua
 > pendente, onde a conta antiga e a nova dão números diferentes (R$ 45,03 contra R$ 40,95). São
 > 5 casos, e duas mutações provaram que caem.
 >
+> **O vizinho foi junto (commit `3305ea8`).** O `revisor` desta correção olhou para o lado e
+> achou o cartão "Pedidos Totais" com a mesma raiz: vinha de `global_orders`, que conta pedido
+> sem olhar cobrança, enquanto o Dashboard conta "Total de Pedidos" com o filtro. Com o mesmo
+> PIX de R$ 89,90 aguardando: Dashboard **11**, Clientes **12**. Agora lê
+> `executive.totalOrders`, que sai do **mesmo `SELECT`** do `avgTicket` — os dois concordam por
+> construção. Dois testes novos, provados por mutação.
+>
 > ⚠️ **O que este achado NÃO cobre:** a coluna "LTV Total" de cada cliente continua vindo da
 > fonte sem filtro de cobrança. É o [achado 17](#17-achado-novo-o-ltv-total-de-cada-cliente-conta-pedido-que-ninguém-pagou).
+> Com ele, são **três cartões da mesma tela com a mesma raiz** — sinal de que a tela inteira
+> bebia os números globais de uma fonte que conta dinheiro por outra regra.
 >
 > A troca conserta de graça o segundo erro que este achado registrava: como `global_ltv` soma
 > todos os pedidos, inclusive os de convidado, dividir por `total_customers` misturava dois
@@ -399,6 +408,14 @@ recebe "Nenhum destinatário encontrado para este segmento".
 > E os dois textos de alcance passaram a dizer **"aparelhos"**, com singular e plural certos —
 > é contagem de linhas de `push_subscriptions`, e das 8 medidas 6 não têm dono e as outras 2
 > são do mesmo cliente.
+>
+> **O quarto número da mesma tela fechou depois (commit `d2c4a67`)**, achado pelo `revisor`
+> desta correção: `subCount`, o total de aparelhos, nascia em `useState(0)` e, se a consulta
+> falhasse, ficava em 0 para sempre — "0 Celulares Cadastrados" indistinguível de uma loja sem
+> ninguém inscrito. **A trava não mudou:** o botão de enviar continua desabilitado quando o
+> total é desconhecido, porque desconhecido cai no mesmo caminho que já desabilitava para zero.
+> Falhar fechado. Provado por mutação, inclusive fora do subagente: fazer o desconhecido
+> habilitar o botão derruba o teste.
 >
 > Commit `6e406b4`. Provado por
 > [tests/front/admin-push-view-contadores.test.tsx](../../tests/front/admin-push-view-contadores.test.tsx)
@@ -741,6 +758,39 @@ dói de novo em toda loja clonada a partir daqui.
 **Por que não corrigi junto.** É migration numa função consumida pela tela inteira, e não é um
 dos 16 achados que o Gabriel mandou corrigir por ordem de dor. Fica para ele decidir se pula a
 fila.
+
+---
+
+## 18. Achado novo: a tela de Push baixa credencial de envio para contar gente
+
+Não estava nesta auditoria. Nasceu do `revisor` da frente irmã sobre o commit `6e406b4` — ou
+seja, **é consequência da correção do achado 6**, e por isso entra aqui em vez de virar
+pendência de outra pessoa.
+
+**O que acontece.** Para saber quantas pessoas há em cada segmento, a tela chama
+`get_segmented_push_targets` três vezes ao abrir e lê o tamanho da lista. Essa função devolve
+`auth`, `endpoint` e `p256dh` de **cada** inscrição — as credenciais que o servidor usa para
+enviar a notificação. A tela precisa de um inteiro e recebe o material de envio inteiro.
+
+**Quanto pesa.** Estimado em ~380–450 bytes por inscrição em JSON (o endereço de entrega tem
+200–300 caracteres, a chave pública 88, o segredo 24). Hoje são **8 inscrições, uns 3 KB, e
+ninguém sente**. Com 1.000 seriam ~1,3 MB **a cada abertura da tela**, mesmo que o lojista não
+clique em segmento nenhum; com 10.000, ~13 MB.
+
+**Não é escalada de privilégio:** a função exige `is_admin()` e quem abre a tela já alcança
+essas linhas. É dado sensível trafegando sem necessidade, não dado exposto a quem não devia.
+
+**Por que não corrigi.** A correção natural é uma função de contagem no banco, devolvendo
+quatro inteiros. Mas uma função de contagem com **os próprios** critérios de "cliente
+frequente" pode discordar da função que escolhe o destinatário real — e isso recria o achado 6
+numa forma pior, porque o número voltaria a ser fabricado com cara de medição. Existe desenho
+que elimina o risco (a contagem chamar a mesma função de alvo em vez de repetir os critérios),
+mas continua sendo mudança de banco que se replica para toda loja clonada, por um problema que
+loja nenhuma tem hoje.
+
+**O gatilho para voltar:** a primeira loja com centenas de inscrições de push.
+
+**Quanto dói.** Hoje, nada. Cresce linearmente com a base.
 
 ---
 
