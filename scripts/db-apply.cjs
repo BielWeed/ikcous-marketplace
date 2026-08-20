@@ -382,6 +382,141 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20260901000000_devolver_uso_de_cupom_ao_desfazer_pedido.sql": [
+    // ⚠️ Rodada 4 (redesenho subtrativo): reconsumir_uso_cupom DEIXA DE
+    // EXISTIR (DROP FUNCTION) e a coluna nova coupon_usage_returned entra
+    // por ALTER TABLE. Nenhum dos dois e' verificavel por este mapa: DROP
+    // nao tem "depois" para ler via pg_get_functiondef (a funcao some, e
+    // buscar marcador dentro de uma definicao que nao existe so' devolveria
+    // AUSENTE para tudo, mesmo com o DROP correto), e ALTER TABLE nao
+    // redefine funcao nenhuma. Confira os dois A MAO depois de aplicar:
+    //   SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    //    WHERE n.nspname = 'public' AND p.proname = 'reconsumir_uso_cupom';
+    //   -- esperado: 0 linhas.
+    //   SELECT column_default, is_nullable FROM information_schema.columns
+    //    WHERE table_schema='public' AND table_name='marketplace_orders'
+    //      AND column_name='coupon_usage_returned';
+    //   -- esperado: column_default='false', is_nullable='NO'.
+    {
+      funcao: "devolver_uso_cupom",
+      esperado: [
+        // Sobrevive sem mudanca de comportamento nesta rodada -- so muda
+        // quem chama (a varredura nova, abaixo).
+        "SELECT coupon_id INTO v_coupon_id",
+        "GREATEST(usage_count - 1, 0)",
+      ],
+    },
+    {
+      funcao: "expirar_pedidos_vencidos",
+      esperado: [
+        // As tres guardas ja existentes (20260807000000) tem de sobreviver
+        // ao REPLACE: sem elas a varredura passaria a alcancar pedido pago,
+        // historico ou ja cancelado por outro caminho.
+        "WHERE payment_status = 'aguardando'",
+        "AND status = 'pending'",
+        "FOR UPDATE SKIP LOCKED",
+        // A prova de que a chamada de devolver_uso_cupom SAIU deste ponto
+        // (Rodada 4): bloco amarrado, nao linha solta -- se alguem
+        // reinserisse "PERFORM public.devolver_uso_cupom(v_pedido.id);"
+        // entre as duas linhas abaixo, esta string contigua deixaria de
+        // casar. E o mesmo defeito que passou pelos sete marcadores soltos
+        // da Rodada 3: o revisor apagou uma chamada e a verificacao nao
+        // percebeu porque cada PERFORM era um marcador isolado.
+        `PERFORM public.devolver_estoque(v_pedido.id);
+
+        UPDATE public.marketplace_orders
+           SET payment_status = 'expirado',`,
+      ],
+    },
+    {
+      funcao: "update_order_status_atomic",
+      esperado: [
+        // A guarda de dono a prova de NULL (20260804010000) tem de
+        // sobreviver ao REPLACE.
+        "v_user_id IS DISTINCT FROM v_caller_id AND NOT v_is_admin",
+        "SET estoque = estoque + v_item.quantity",
+        // Bloco amarrado: prova que a chamada de devolver_uso_cupom SAIU do
+        // cancelamento manual (Rodada 4). Se ela voltasse entre o fim do
+        // loop de estoque e o fechamento do IF, este marcador nao casaria.
+        `END LOOP;
+
+        -- A vaga do cupom NAO volta aqui (Rodada 4): ela so' volta na
+        -- varredura devolver_cupons_de_pedidos_mortos(), depois que o PIX
+        -- ja nao pode mais ser pago (expires_at + 24h). Devolver no momento
+        -- do cancelamento e' exatamente o que abriu a janela das Rodadas 2 e
+        -- 3 -- ver o cabecalho desta migration.
+    END IF;`,
+      ],
+    },
+    {
+      funcao: "confirmar_pagamento",
+      esperado: [
+        // Guardas ja existentes (20260808000000/20260810000000) que tem de
+        // sobreviver ao REPLACE.
+        "FOR UPDATE;",
+        "IF v_pedido.payment_status IN ('pago', 'pago_apos_expirar') THEN\n            RETURN 'ja_pago';",
+        // Os quatro blocos amarrados abaixo provam que as chamadas de
+        // devolver_uso_cupom/reconsumir_uso_cupom SAIRAM exatamente dos
+        // quatro pontos que a Rodada 4 desmonta -- nao marcador solto: e'
+        // a mesma falha da Rodada 3 (sete marcadores soltos passaram com uma
+        // chamada apagada) que este formato existe para nao repetir.
+        //
+        // 1. Estorno com reserva intacta -- devolver_estoque sobrevive,
+        //    devolver_uso_cupom nao aparece mais entre ele e o UPDATE.
+        `IF v_pedido.payment_status = 'aguardando'
+           AND v_pedido.status = 'pending' THEN
+            PERFORM public.devolver_estoque(p_order_id);
+            UPDATE public.marketplace_orders
+               SET payment_status = 'estornado',`,
+        // 2. Recusado com reserva intacta -- mesma prova.
+        `PERFORM public.devolver_estoque(p_order_id);
+
+        UPDATE public.marketplace_orders
+           SET payment_status = 'recusado',
+               status         = 'cancelled',`,
+        // 3. expirado -> pago: reconsumir_uso_cupom nao aparece mais entre
+        //    a guarda e o UPDATE.
+        `IF v_pedido.payment_status = 'expirado' THEN
+            UPDATE public.marketplace_orders
+               SET payment_status = 'pago_apos_expirar',`,
+        // 4. cancelado manualmente -> pago: mesma prova.
+        `IF v_pedido.status = 'cancelled' THEN
+                UPDATE public.marketplace_orders
+                   SET payment_status = 'pago_apos_expirar',`,
+      ],
+    },
+    {
+      funcao: "devolver_cupons_de_pedidos_mortos",
+      esperado: [
+        // A funcao nova, unico lugar onde a vaga do cupom volta (Rodada 4).
+        //
+        // Rodada 5: os seis marcadores soltos de antes (um por clausula do
+        // WHERE) davam "ok" mesmo com o WHERE INTEIRO apagado do corpo --
+        // provado por um revisor de contexto limpo -- porque cada clausula
+        // tambem aparece, verbatim, no bloco de comentario logo acima deste
+        // WHERE executavel. E' a MESMA falha da Rodada 3 (sete marcadores
+        // soltos passaram com uma chamada apagada): aqui o texto que engana
+        // nao e' outro ponto da funcao, e' o comentario dela mesma.
+        //
+        // O marcador agora e' o BLOCO INTEIRO, do WHERE ate FOR UPDATE SKIP
+        // LOCKED, no mesmo formato ja usado (e confirmado pelo revisor) em
+        // expirar_pedidos_vencidos e confirmar_pagamento acima: contiguo o
+        // bastante para nao existir em nenhum outro lugar do arquivo --
+        // nem no comentario (que quebra linha e pontua diferente), nem no
+        // WHERE do CREATE INDEX (mesma clausula inicial, indentacao
+        // diferente).
+        `WHERE coupon_id IS NOT NULL
+          AND status = 'cancelled'
+          AND payment_status IS DISTINCT FROM 'pago'
+          AND payment_status IS DISTINCT FROM 'pago_apos_expirar'
+          AND coupon_usage_returned = FALSE
+          AND (expires_at IS NULL OR expires_at < now() - interval '24 hours')
+        FOR UPDATE SKIP LOCKED`,
+        "PERFORM public.devolver_uso_cupom(v_pedido.id);",
+        "SET coupon_usage_returned = TRUE",
+      ],
+    },
+  ],
   // ⚠️ 20260822000000_status_do_pedido_nunca_nulo.sql NAO tem entrada aqui, e
   // nao pode ter: este mapa so' sabe conferir marcador dentro de
   // pg_get_functiondef, e aquela migration e' ALTER TABLE — nao redefine
