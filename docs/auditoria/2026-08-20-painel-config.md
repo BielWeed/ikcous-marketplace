@@ -2,7 +2,7 @@
 
 **Data:** 20/08/2026 · **Escopo:** só as telas **Clientes** (mais a ficha do cliente),
 **Ajustes**, **Cupons** (mais o formulário de cupom), **Frete** e **Push** do painel admin
-· **Natureza:** auditoria somente leitura. Os achados **1 a 5** foram corrigidos depois, em 21-22/08/2026 — estão marcados com ✅; os outros 11 continuam abertos.
+· **Natureza:** auditoria somente leitura. Os achados **1 a 5** foram corrigidos no mesmo dia, 20/08/2026 — estão marcados com ✅, e o **4** ficou pela metade (leia o bloco dele). Os achados **6, 7 e 12** foram corrigidos em seguida, também em 20/08/2026.
 
 **Como foi medido.** O app foi aberto no navegador com sessão de admin e cada tela foi usada
 de verdade; o que apareceu na tela foi conferido contra o banco de desenvolvimento por
@@ -25,7 +25,7 @@ fixa de R$ 10.
 | 1 ✅ | Cupom com "**∞ usos**", aceito no checkout, desconto aplicado no total | O pedido é **recusado** na hora de finalizar com "Cupom X inválido ou expirado". Todo cupom criado sem preencher "Limite de Uso" nasce assim | quem compra e quem vende | **Alto** |
 | 2 ✅ | "Frete grátis desativado. **Todos os pedidos terão cobrança de entrega**" | Com a Taxa Padrão também desligada, o app cota **R$ 0,00 para o Brasil inteiro** — e a tela chama isso de "Sem taxa fixa configurada" | quem vende | **Alto** |
 | 3 ✅ | "✨ Frete grátis ativo para pedidos a partir de R$ 100" | Só para quem está **logado**. Quem compra como convidado paga o frete mesmo passando de R$ 100, e a tela de Frete não diz isso em lugar nenhum | quem compra e quem vende | **Alto** |
-| 4 ✅ | Clientes → "**Ticket Médio R$ 28,16**" | Ticket médio é R$ 40,95. A conta da tela é receita ÷ **clientes**, não ÷ pedidos — e o Dashboard, na mesma sessão, mostra R$ 40,95 com o mesmo rótulo | quem vende | **Médio-alto** |
+| 4 ⚠️ | Clientes → "**Ticket Médio R$ 28,16**" | Ticket médio é R$ 40,95. A conta da tela é receita ÷ **clientes**, não ÷ pedidos — e o Dashboard, na mesma sessão, mostra R$ 40,95 com o mesmo rótulo | quem vende | **Médio-alto** |
 | 5 ✅ | Na lista: "João Gabriel — **Pedidos 6**". Abrindo o mesmo cliente: "**Cesta / Pedidos 16**" | Duas contagens do mesmo cliente, na mesma tela, com 10 de diferença. Nenhuma das duas explica a outra | quem vende | **Médio-alto** |
 | 6 | Push → "Clientes Frequentes **3**", "Sem comprar há 30d **2**", "Novos Clientes **3**" | Os reais são **2, 0 e 0**. Os números não selecionados são 30%, 25% e 45% do total de aparelhos, calculados no próprio componente | quem vende | **Médio** |
 | 7 | Push → "**iOS: 3 · Android: 5**" | Não existe coluna de plataforma no banco. É `total × 0,4` e `total × 0,6` escrito no componente | quem vende | **Médio** |
@@ -87,7 +87,7 @@ uma campanha que ninguém aproveitou.
 **Quanto dói.** Alto. É venda perdida no último passo, e o padrão do formulário produz o
 defeito por omissão. Em 5 meses o banco tem **zero** pedidos com cupom.
 
-> ### ✅ CORRIGIDO E APLICADO NO BANCO em 21/08/2026
+> ### ✅ CORRIGIDO E APLICADO NO BANCO em 20/08/2026
 >
 > [supabase/migrations/20260821000200_cupom_sem_limite_e_ilimitado.sql](../../supabase/migrations/20260821000200_cupom_sem_limite_e_ilimitado.sql)
 > alinhou a criação de pedido com a validação do checkout: `usage_limit` nulo ou `<= 0` passa a
@@ -137,7 +137,7 @@ pedido, para qualquer CEP do país, achando que desligou uma promoção.
 **Quanto dói.** Alto. O comportamento é intencional e correto; o texto da tela é que descreve
 o inverso do que vai acontecer.
 
-> ### ✅ CORRIGIDO em 21/08/2026 (junto com o achado 3)
+> ### ✅ CORRIGIDO em 20/08/2026 (junto com o achado 3)
 >
 > Nenhum comportamento mudou — mudou o que a tela **afirma**. As frases saíram dos
 > condicionais dentro do markup e viraram
@@ -193,7 +193,7 @@ com frete.
 **Quanto dói.** Alto. A tela que define a regra é a única que não conta a condição que a
 governa.
 
-> ### ✅ CORRIGIDO em 21/08/2026 (mesma correção do achado 2)
+> ### ✅ CORRIGIDO em 20/08/2026 (mesma correção do achado 2)
 >
 > A tela agora diz, com a regra ligada em R$ 100:
 >
@@ -236,15 +236,28 @@ cupom. E o painel mostra dois valores diferentes com o mesmo nome, sem dizer qua
 
 **Quanto dói.** Médio-alto.
 
-> ### ✅ CORRIGIDO em 21/08/2026
+> ### ⚠️ CORRIGIDO PELA METADE em 20/08/2026 — leia até o fim
 >
 > O card passou a dividir a receita por **pedidos**, não por clientes, e o rótulo de apoio
 > mudou de "Consumo Médio" para "Média por pedido". Uma linha em
 > [AdminCustomersView.tsx:234](../../src/views/admin/AdminCustomersView.tsx#L234).
 >
-> As duas telas agora dizem a mesma coisa, medido no navegador na mesma sessão:
+> As duas telas mostraram o mesmo número, medido no navegador na mesma sessão:
 > **Clientes → TICKET MÉDIO R$ 40,95 · MÉDIA POR PEDIDO** e
 > **Dashboard → TICKET MÉDIO R$ 40,95 · MÉDIA POR TRANSAÇÃO**.
+>
+> 🔴 **Mas isso foi coincidência dos dados, não da conta** — achado do `revisor` em
+> 20/08/2026, confirmado na fonte. O divisor foi consertado; a **base** não. A tela de
+> Clientes soma todo pedido não cancelado; o Dashboard soma só o dinheiro reconhecido
+> (`payment_status` nulo, `pago` ou `pago_apos_expirar`, desde a migration
+> `20260822000100`). Os dois bateram porque, naquele instante, **nenhum pedido não
+> cancelado estava aguardando pagamento** — a limpeza automática já havia cancelado
+> todos. Com um PIX de R$ 89,90 em aberto, Clientes diria **R$ 45,03** e o Dashboard
+> **R$ 40,95**: o mesmo rótulo, R$ 4,08 de diferença, que é este achado de volta.
+>
+> E o teste chamado *"bate com o Dashboard para outro conjunto de números"* nunca
+> renderizou nada do Dashboard — o nome afirmava uma paridade que o corpo não
+> exercitava.
 >
 > A troca conserta de graça o segundo erro que este achado registrava: como `global_ltv` soma
 > todos os pedidos, inclusive os de convidado, dividir por `total_customers` misturava dois
@@ -290,7 +303,7 @@ cancelados, a divergência aparece em quase todo cliente com histórico.
 
 **Quanto dói.** Médio-alto.
 
-> ### ✅ CORRIGIDO em 21/08/2026
+> ### ✅ CORRIGIDO em 20/08/2026
 >
 > O card passou a contar com a **mesma regra do servidor** (`status NOT IN
 > ('cancelled','returned')`) e diz na própria tela quantos ficaram de fora. Na ficha do cliente
@@ -599,7 +612,7 @@ desse card.
 
 ## Resposta à sessão par: as três views apontadas NÃO têm o buraco
 
-Em 22/08/2026 a sessão que auditou o lado de quem compra avisou que
+Em 20/08/2026 a sessão que auditou o lado de quem compra avisou que
 `sales_overview`, `v_store_config` e `vw_questions_with_answers_count` teriam a mesma falha da
 `vw_produtos_public` — visitante anônimo escrevendo pela view — e disse não ter testado
 nenhuma das três. Testei, porque são do terreno deste relatório. **Não têm.**
@@ -666,7 +679,7 @@ Coisas que eu não consegui verificar e que, por isso, **não** viraram achado:
    a ficha não; hoje não existe nenhum pedido nesse status no banco, então o defeito é
    possível mas não observável. O mesmo vale para pedido com `status` nulo: existe um, mas é
    de convidado, então não aparece em ficha de cliente nenhuma.
-5. **Achado NOVO, nascido em 22/08/2026 e que não estava nesta auditoria: a tela de Clientes e
+5. **Achado NOVO, nascido em 20/08/2026 e que não estava nesta auditoria: a tela de Clientes e
    o Dashboard passaram a contar receita por regras diferentes.** Outra sessão aplicou no banco
    a migration `20260822000100_analitico_conta_so_dinheiro_reconhecido.sql`, que faz o painel
    analítico ignorar cobrança pendente ou fracassada
