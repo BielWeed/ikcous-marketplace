@@ -15,6 +15,28 @@ O efeito já aconteceu, e é medido: o commit `6e406b4` consertou um achado de d
 enquanto dois **Médio-alto** da outra lista continuavam abertos. Ninguém errou — não existia uma
 lista só.
 
+## 🔴 Este documento carrega a ORDEM, nunca o estado
+
+**Não existe "aberto" ou "fechado" aqui, e a ausência de marca não significa nada.** Duas horas
+depois desta fila ser escrita, **3 dos 20 itens já estavam fechados** — um por outra frente, dois
+por mim. Uma fila de dor com item já resolvido manda alguém refazer trabalho, e essa é a forma
+mais cara de errar que este documento tem.
+
+A causa é estrutural, não descuido: **retrato escrito vence.** Já mordeu três vezes neste
+repositório em um dia — um PR duplicado quase aberto contra `origin` velho, uma frente afirmando
+commits não empurrados que já estavam no remoto, e esta fila.
+
+**Onde o estado mora de verdade:** o `✅` na tabela de cada relatório de auditoria, mantido por
+quem corrigiu, e o histórico do git. Antes de pegar qualquer item daqui:
+
+```
+grep -n "^| [0-9]* ✅" docs/auditoria/2026-08-20-painel-pedidos-produtos.md
+grep -n "^| [0-9]* ✅" docs/auditoria/2026-08-20-painel-config.md
+```
+
+E quem está trabalhando em quê agora é o mural que responde, medindo na hora:
+`node "C:\Users\Gabriel\.claude\mural\mural.mjs" core_app_mkt`
+
 ## A régua
 
 Ordenar por adjetivo ("Alto", "Médio") não sobrevive à fusão: o "Médio" de uma auditoria não é o
