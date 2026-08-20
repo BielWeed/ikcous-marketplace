@@ -19,6 +19,11 @@ import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useVOR } from "@/hooks/useVOR";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
+import {
+  type ContagemMedida,
+  rotuloDaContagem,
+  textoDeAlcanceEmAparelhos,
+} from "@/utils/contadores-de-push";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
@@ -234,10 +239,48 @@ export const AdminPushView = memo(function AdminPushView({
     if (!error && data) setHistory(data);
   }, []);
 
+  // Achado 6 da auditoria de 20/08/2026: dos quatro botões de público, só o
+  // segmento SELECIONADO era medido de verdade — os outros três eram
+  // `subCount * 0,3 / 0,25 / 0,45`, escritos aqui no componente. Agora os
+  // três não selecionados também vêm da mesma RPC que já mede o
+  // selecionado (`get_segmented_push_targets`), e `null` (medição ainda não
+  // chegou, ou falhou) não vira zero — vira traço no rótulo
+  // (`rotuloDaContagem`). Zero é uma afirmação forte demais para chutar.
+  const [segmentCounts, setSegmentCounts] = useState<{
+    vip: ContagemMedida;
+    inactive: ContagemMedida;
+    new: ContagemMedida;
+  }>({ vip: null, inactive: null, new: null });
+
+  const fetchSegmentCounts = useCallback(async () => {
+    const segmentosNaoSelecionaveisPeloTodos = ["vip", "inactive", "new"] as const;
+    const resultados = await Promise.all(
+      segmentosNaoSelecionaveisPeloTodos.map(async (seg) => {
+        try {
+          const { data, error } = await (supabase.rpc as any)(
+            "get_segmented_push_targets",
+            { p_segment: seg },
+          );
+          if (error || !data) return null;
+          return (data as any[]).length;
+        } catch (err) {
+          console.error(`Erro ao medir o segmento ${seg}:`, err);
+          return null;
+        }
+      }),
+    );
+    setSegmentCounts({
+      vip: resultados[0],
+      inactive: resultados[1],
+      new: resultados[2],
+    });
+  }, []);
+
   useEffect(() => {
     fetchSubscribers();
     fetchHistory();
-  }, [fetchSubscribers, fetchHistory]);
+    fetchSegmentCounts();
+  }, [fetchSubscribers, fetchHistory, fetchSegmentCounts]);
 
   const calculateReach = useCallback(async () => {
     if (segment === "all") {
@@ -653,7 +696,9 @@ export const AdminPushView = memo(function AdminPushView({
 
                 <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400">
                   <Radio className="size-3 animate-pulse" />
-                  <span>Receberão: {effectiveReach} clientes</span>
+                  <span>
+                    Receberão: {textoDeAlcanceEmAparelhos(effectiveReach)}
+                  </span>
                 </div>
               </div>
 
@@ -706,31 +751,33 @@ export const AdminPushView = memo(function AdminPushView({
                         {
                           id: "all",
                           label: "Todos os Clientes",
-                          count: segment === "all" ? effectiveReach : subCount,
+                          // "all" segue vindo de `subCount`: é a única
+                          // contagem que já era medição de verdade e não
+                          // precisa de RPC nenhuma (achado 6, decisão 1).
+                          count: (segment === "all"
+                            ? effectiveReach
+                            : subCount) as ContagemMedida,
                         },
                         {
                           id: "vip",
                           label: "Clientes Frequentes",
-                          count:
-                            segment === "vip"
-                              ? effectiveReach
-                              : Math.ceil(subCount * 0.3),
+                          count: (segment === "vip"
+                            ? effectiveReach
+                            : segmentCounts.vip) as ContagemMedida,
                         },
                         {
                           id: "inactive",
                           label: "Sem comprar há 30d",
-                          count:
-                            segment === "inactive"
-                              ? effectiveReach
-                              : Math.floor(subCount * 0.25),
+                          count: (segment === "inactive"
+                            ? effectiveReach
+                            : segmentCounts.inactive) as ContagemMedida,
                         },
                         {
                           id: "new",
                           label: "Novos Clientes",
-                          count:
-                            segment === "new"
-                              ? effectiveReach
-                              : Math.floor(subCount * 0.45),
+                          count: (segment === "new"
+                            ? effectiveReach
+                            : segmentCounts.new) as ContagemMedida,
                         },
                       ].map((s) => (
                         <button
@@ -747,7 +794,7 @@ export const AdminPushView = memo(function AdminPushView({
                           <span
                             className={`text-[8px] font-mono rounded px-1 shrink-0 ${segment === s.id ? "bg-emerald-500/20 text-emerald-200" : "bg-zinc-800 text-zinc-500"}`}
                           >
-                            {s.count}
+                            {rotuloDaContagem(s.count)}
                           </span>
                         </button>
                       ))}
@@ -954,7 +1001,8 @@ export const AdminPushView = memo(function AdminPushView({
                   ) : (
                     <>
                       <Send className="size-4 fill-current" />
-                      Enviar Notificação Agora ({effectiveReach} clientes)
+                      Enviar Notificação Agora (
+                      {textoDeAlcanceEmAparelhos(effectiveReach)})
                     </>
                   )}
                 </button>
@@ -1070,6 +1118,15 @@ export const AdminPushView = memo(function AdminPushView({
             )}
 
             {/* Metric Card - Celulares Cadastrados */}
+            {/*
+              Achado 7 da auditoria de 20/08/2026: este card tinha selos
+              "iOS: X" e "Android: Y" que eram 40% e 60% de `subCount`,
+              arredondados — não existe coluna de plataforma em
+              `push_subscriptions` (id, endpoint, p256dh, auth, user_id,
+              created_at), então não havia nada para medir. Sem dado, a
+              única saída honesta é não afirmar: os selos saíram, sem
+              inventar substituto.
+            */}
             <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3.5 shadow-lg backdrop-blur-xl">
               <div className="flex items-center justify-between mb-2">
                 <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400">
@@ -1088,15 +1145,6 @@ export const AdminPushView = memo(function AdminPushView({
                   </h2>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
                     Celulares e Computadores Cadastrados
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5 text-[9px] font-mono text-zinc-400">
-                  <span className="rounded bg-zinc-800 px-1.5 py-0.5">
-                    iOS: {Math.floor(subCount * 0.4)}
-                  </span>
-                  <span className="rounded bg-zinc-800 px-1.5 py-0.5">
-                    Android: {Math.ceil(subCount * 0.6)}
                   </span>
                 </div>
               </div>
