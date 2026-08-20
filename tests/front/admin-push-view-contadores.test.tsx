@@ -227,7 +227,12 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     expect(numeroDoSegmento(botaoNovo)).toBe("0");
   });
 
-  it("segmento vazio mostra 0 (medido), e o botão de enviar some ao selecioná-lo", async () => {
+  // C2 (revisão de 20/08/2026): o título original prometia "mostra 0
+  // (medido)" e "o botão de enviar some ao selecioná-lo" — o corpo nunca
+  // afirmava o "0", e o botão não some, DESABILITA. Corrigido nos dois
+  // lados: o corpo agora prova o "0" que o título promete, e o título
+  // deixou de dizer "some".
+  it("segmento vazio mostra 0 (medido), e o botão de enviar desabilita ao selecioná-lo", async () => {
     await abrirTela();
 
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
@@ -242,6 +247,8 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     await act(async () => {
       await esperar(50);
     });
+
+    expect(numeroDoSegmento(botaoInativo as HTMLButtonElement)).toBe("0");
 
     const botaoEnviar = Array.from(hospedeiro.querySelectorAll("button")).find(
       (b) => (b.textContent ?? "").includes("Enviar Notificação Agora"),
@@ -353,6 +360,124 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     expect(numeroDoSegmento(botaoInativo())).not.toBe("0");
     expect(texto()).toContain("Receberão: — aparelhos");
     expect(botaoEnviar()?.disabled).toBe(true);
+  });
+
+  // Parte A1 da revisão de 20/08/2026: o teste acima só observa o estado
+  // DEPOIS que a RPC do segmento seguinte termina (falhando). Ele não prova
+  // nada sobre a JANELA em que a nova medição ainda está no ar — e é
+  // exatamente aí que `setPredictedReach(null)` (chamado ANTES do `await`
+  // em `calculateReach`) age: sem essa linha, o número do segmento anterior
+  // sobreviveria na tela enquanto a nova consulta ainda estivesse voando.
+  // Medido pelo revisor: apagar essa linha deixava os 20 testes originais
+  // verdes, porque nenhum deles olhava o instante intermediário — só depois
+  // do flush, quando o `else`/`catch` já tinha gravado `null` de qualquer
+  // jeito.
+  it("troca de segmento: o número do segmento ANTERIOR não pode aparecer enquanto a medição do novo segmento ainda está no ar", async () => {
+    await abrirTela();
+
+    const botoes = () => Array.from(hospedeiro.querySelectorAll("button"));
+    const botaoVip = () =>
+      botoes().find((b) =>
+        (b.textContent ?? "").includes("Clientes Frequentes"),
+      );
+    const botaoInativo = () =>
+      botoes().find((b) =>
+        (b.textContent ?? "").includes("Sem comprar há 30d"),
+      );
+
+    // 1) Seleciona "Clientes Frequentes" e deixa medir de verdade: 2.
+    await act(async () => {
+      botaoVip()!.click();
+    });
+    await act(async () => {
+      await esperar(50);
+    });
+    expect(texto()).toContain("Receberão: 2 aparelhos");
+
+    // 2) A partir de agora, a RPC do segmento "inactive" fica PRESA num
+    // Promise que só este teste resolve — simula a medição em voo.
+    const controlador: { resolver: (() => void) | null } = { resolver: null };
+    const travada = new Promise<void>((resolve) => {
+      controlador.resolver = () => resolve();
+    });
+    const { supabase } = await import("@/lib/supabase");
+    const original = supabase.rpc;
+    (supabase as any).rpc = vi.fn(
+      async (nome: string, args: { p_segment: string }) => {
+        if (
+          nome === "get_segmented_push_targets" &&
+          args.p_segment === "inactive"
+        ) {
+          await travada;
+        }
+        return (original as any)(nome, args);
+      },
+    );
+
+    // 3) Seleciona "inactive": o clique dispara a nova medição, mas ela
+    // fica travada — nunca chega a resolver dentro deste teste.
+    await act(async () => {
+      botaoInativo()!.click();
+    });
+    await act(async () => {
+      await esperar(50);
+    });
+
+    // Enquanto a medição de "inactive" está no ar, o "2" de "vip" (o
+    // segmento ANTERIOR) não pode sobreviver na tela.
+    expect(texto()).not.toContain("Receberão: 2 aparelhos");
+    expect(texto()).toContain("Receberão: — aparelhos");
+
+    // Limpeza: libera a RPC travada para não vazar para o teste seguinte.
+    controlador.resolver?.();
+    await act(async () => {
+      await esperar(50);
+    });
+  });
+
+  // Parte A2 da revisão de 20/08/2026: tentativa de ISOLAR, por mutação de
+  // um termo só, a trava `botaoEnviarDesabilitado = ... || reachDesconhecido
+  // || (effectiveReach === 0 && !podeGravarAvisoSemPush)` para o caso de
+  // alcance desconhecido. Medido pelo revisor: mutar `podeGravarAvisoSemPush`
+  // para aceitar `null` derruba a asserção do BANNER (não tem aparelho),
+  // nunca a do `disabled` — o outro termo segura.
+  //
+  // Tentei a mutação pedida — remover `reachDesconhecido ||` da expressão —
+  // e ela TAMBÉM não derruba este teste (verificado manualmente: mutação
+  // aplicada, suíte rodada, ficou verde; revertida em seguida). A razão é
+  // estrutural, não coincidência de dado de teste: `effectiveReach` é
+  // `reachExibido ?? 0` e `reachDesconhecido` é `reachExibido === null` — as
+  // duas vêm da MESMA fonte (`reachExibido`). Sempre que `reachDesconhecido`
+  // é verdadeiro, `reachExibido` é `null`, e por isso `effectiveReach` já é
+  // `0` por causa do `?? 0` — o segundo termo fecha sozinho, em TODO estado
+  // alcançável do código atual. Não existe teste de UI (mudar segmento,
+  // cliente-alvo, RPC) capaz de isolar `reachDesconhecido` sozinho sem antes
+  // mudar a fórmula de `effectiveReach` — e mudar produção para viabilizar
+  // um teste de isolamento estava fora do escopo desta tarefa.
+  //
+  // Fica então como teste de REGRESSÃO (prova que a trava falha fechada com
+  // alcance desconhecido), não como prova de isolamento de termo — a mesma
+  // conclusão que o comentário reescrito em `AdminPushView.tsx` (achado C1)
+  // documenta: as duas guardas são mutuamente redundantes hoje.
+  it("alcance desconhecido (RPC de segmento falhou): o botão de enviar falha fechado — teste de regressão, não isola o termo por mutação (ver comentário acima)", async () => {
+    estadoDoBanco.falharRpc = true;
+    await abrirTela();
+
+    const botoes = Array.from(hospedeiro.querySelectorAll("button"));
+    const botaoVip = botoes.find((b) =>
+      (b.textContent ?? "").includes("Clientes Frequentes"),
+    );
+    await act(async () => {
+      botaoVip!.click();
+    });
+    await act(async () => {
+      await esperar(50);
+    });
+
+    const botaoEnviar = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => (b.textContent ?? "").includes("Enviar Notificação Agora"),
+    ) as HTMLButtonElement | undefined;
+    expect(botaoEnviar?.disabled).toBe(true);
   });
 
   it("os selos de plataforma iOS/Android saíram da tela", async () => {

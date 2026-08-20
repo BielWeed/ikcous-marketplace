@@ -561,9 +561,13 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
 
       await clicarEnviar();
 
-      // Nada foi de fato gravado.
-      expect(inserts.notificacoes).toHaveLength(0);
-
+      // `inserts.notificacoes.toHaveLength(0)` foi removida daqui (C3 da
+      // revisão de 20/08/2026): o dublê de `notificacoes.insert` retorna
+      // `{ error }` ANTES de empilhar a linha em `inserts.notificacoes`
+      // (ver o mock acima), então esse comprimento dá 0 com ou sem a
+      // correção — a asserção provava o mock, nunca o código. O que prova
+      // o código é a tela dizer "não foi possível" (abaixo) e não limpar o
+      // formulário (mais abaixo).
       const { toast } = await import("sonner");
       const mensagensDeErro = (
         toast.error as ReturnType<typeof vi.fn>
@@ -585,6 +589,49 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
         hospedeiro.querySelector<HTMLTextAreaElement>("#push-body");
       expect(campoTitulo?.value).toBe("Oferta especial");
       expect(campoCorpo?.value).toBe("Corre que acaba hoje!");
+    });
+  });
+
+  // Parte B da revisão de 20/08/2026: o Conserto 4 aplicou a checagem de
+  // `{ error }` só no insert do caminho "alcance zero" (achado 8). Os OUTROS
+  // três inserts em `notificacoes` — cliente específico COM aparelho,
+  // segmento "all" e segmento não vazio — continuavam sem checar, e o
+  // `catch` que os cobre só fazia `console.error` (silencioso para quem usa
+  // a tela). Cenário: envio para "Todos os Clientes", o push SAI, mas o
+  // banco recusa a linha do aviso dentro do app — e ninguém era avisado
+  // disso. O push tem de continuar sendo anunciado (não pode virar falha de
+  // envio), e o aviso-no-app tem de ganhar um segundo aviso, distinto.
+  describe("Parte B — a convenção do erro vale para os quatro inserts em notificacoes", () => {
+    it("segmento 'Todos os Clientes': insert do aviso recusado pelo banco não apaga a confirmação de que o push saiu, e soma um aviso à parte sobre o aviso no app", async () => {
+      await abrirTela();
+      await preencherMensagem("Aviso geral", "Confira as novidades!");
+
+      estadoDoBanco.erroDoInsertNotificacoes = { message: "RLS negou a linha" };
+
+      await clicarEnviar();
+
+      // O push SAIU de verdade: log criado, função chamada.
+      expect(inserts.pushLog).toHaveLength(1);
+      expect(invokeSendPush).toHaveBeenCalledTimes(1);
+
+      const { toast } = await import("sonner");
+      const mensagensDeSucesso = (
+        toast.success as ReturnType<typeof vi.fn>
+      ).mock.calls.map((chamada: any[]) => chamada[0]);
+      // O primeiro fato — o push saiu — não pode ser apagado pela falha do
+      // segundo.
+      expect(
+        mensagensDeSucesso.some((m) => /entregue em \d+ dispositivo/i.test(m)),
+      ).toBe(true);
+
+      // O segundo fato — o aviso dentro do app NÃO foi gravado — tem de
+      // aparecer, separado do primeiro.
+      const mensagensDeAviso = (
+        toast.warning as ReturnType<typeof vi.fn>
+      ).mock.calls.map((chamada: any[]) => chamada[0]);
+      expect(mensagensDeAviso.some((m) => /aviso dentro do app/i.test(m))).toBe(
+        true,
+      );
     });
   });
 

@@ -454,23 +454,39 @@ export const AdminPushView = memo(function AdminPushView({
 
       if (logError) throw logError;
 
+      // Parte B da revisão de 20/08/2026: o Conserto 4 checou o `{ error }`
+      // só no insert do caminho "alcance zero" (achado 8), logo acima. Estes
+      // três — cliente específico COM aparelho, segmento "all" e segmento
+      // não vazio — não checavam, e o `catch` abaixo só fazia
+      // `console.error`: o push saía e o aviso dentro do app podia falhar
+      // em silêncio, sem ninguém saber (cenário: "Todos os Clientes", banco
+      // recusa a linha, e quem não tem aparelho nunca é avisado). O push
+      // não pode virar falha por causa disso — só marca `avisoNoAppFalhou`
+      // para o toast separado logo abaixo do envio.
+      let avisoNoAppFalhou = false;
       try {
         if (targetUserId) {
-          await supabase.from("notificacoes").insert({
-            titulo: notification.title,
-            mensagem: notification.body,
-            tipo: "aviso",
-            usuario_id: targetUserId,
-            dados: { segment, action_url: notification.url },
-          });
+          const { error: avisoError } = await supabase
+            .from("notificacoes")
+            .insert({
+              titulo: notification.title,
+              mensagem: notification.body,
+              tipo: "aviso",
+              usuario_id: targetUserId,
+              dados: { segment, action_url: notification.url },
+            });
+          if (avisoError) avisoNoAppFalhou = true;
         } else if (segment === "all") {
-          await supabase.from("notificacoes").insert({
-            titulo: notification.title,
-            mensagem: notification.body,
-            tipo: "aviso",
-            usuario_id: null,
-            dados: { segment, action_url: notification.url },
-          });
+          const { error: avisoError } = await supabase
+            .from("notificacoes")
+            .insert({
+              titulo: notification.title,
+              mensagem: notification.body,
+              tipo: "aviso",
+              usuario_id: null,
+              dados: { segment, action_url: notification.url },
+            });
+          if (avisoError) avisoNoAppFalhou = true;
         } else {
           const uniqueUserIds = Array.from(
             new Set(targetList.map((t: any) => t.user_id).filter(Boolean)),
@@ -486,12 +502,16 @@ export const AdminPushView = memo(function AdminPushView({
             const chunkSize = 100;
             for (let i = 0; i < inAppRows.length; i += chunkSize) {
               const chunk = inAppRows.slice(i, i + chunkSize);
-              await supabase.from("notificacoes").insert(chunk);
+              const { error: avisoError } = await supabase
+                .from("notificacoes")
+                .insert(chunk);
+              if (avisoError) avisoNoAppFalhou = true;
             }
           }
         }
       } catch (inAppErr) {
         console.error("Error saving in-app notification:", inAppErr);
+        avisoNoAppFalhou = true;
       }
 
       const { data: envio, error: pushError } = await supabase.functions.invoke(
@@ -554,6 +574,20 @@ export const AdminPushView = memo(function AdminPushView({
         toast.success(`Notificação entregue em ${entregues} dispositivo(s)`);
       }
 
+      // Segundo fato, distinto do de cima: o push é uma coisa, o aviso
+      // dentro do app é outra — e o toast do push não pode ser o único jeito
+      // de saber que o aviso falhou (Parte B da revisão de 20/08/2026). Sai
+      // SEMPRE que `avisoNoAppFalhou`, sem tocar no toast do push acima.
+      if (avisoNoAppFalhou) {
+        toast.warning(
+          "O push saiu, mas o aviso dentro do app não foi registrado",
+          {
+            description:
+              "Quem não tiver o aparelho cadastrado só vê essa mensagem se o push chegar — o banco recusou gravar o aviso dentro do app.",
+          },
+        );
+      }
+
       recordAction(
         "PUSH_DISPATCH",
         {
@@ -586,14 +620,26 @@ export const AdminPushView = memo(function AdminPushView({
     }
   };
 
-  // `effectiveReach` alimenta a TRAVA de segurança do botão de enviar
-  // (`disabled={... effectiveReach === 0 ...}`) e por isso é sempre
-  // numérico nos DOIS ramos: total ou alcance desconhecido vira 0 aqui de
-  // propósito, para que a trava falhe FECHADA (desabilitado) em vez de
-  // habilitar o envio para uma contagem que ninguém mediu. Antes da
-  // correção do quinto contador, só o ramo "all" tinha esse `?? 0` — o
-  // ramo do segmento usava `predictedReach` puro, que nunca chegava a ser
-  // `null` (o defeito que este comentário agora documenta como corrigido).
+  // `effectiveReach` é a versão SEMPRE numérica do alcance — total ou
+  // alcance desconhecido vira 0 aqui de propósito (antes da correção do
+  // quinto contador, só o ramo "all" tinha esse `?? 0`; o ramo do segmento
+  // usava `predictedReach` puro, que nunca chegava a ser `null`). Ela
+  // alimenta a trava do botão de enviar JUNTO com `reachDesconhecido`,
+  // abaixo — mas não é ela quem fecha primeiro hoje.
+  //
+  // Reescrito na revisão de 20/08/2026 (achado C1): a versão anterior deste
+  // comentário dizia que `effectiveReach === 0` era a trava que falha
+  // fechada para alcance desconhecido — não é. Quem fecha primeiro é
+  // `reachDesconhecido`, definida logo abaixo de `reachExibido` — porque
+  // `reachExibido` (a MESMA fonte, sem o `?? 0`) sendo `null` já basta
+  // sozinho. `effectiveReach === 0` fecha a mesma situação por um caminho
+  // diferente — o `?? 0` também vira 0 quando o alcance é desconhecido — e
+  // por isso as duas guardas são mutuamente redundantes NO CÓDIGO ATUAL
+  // (medido: mutar qualquer uma das duas, isolada, não derruba teste
+  // nenhum). Cada uma continua aqui porque segura uma edição futura
+  // diferente da outra: mudar `effectiveReach` para não usar `?? 0`, ou
+  // remover `reachDesconhecido` da expressão. Isso é legítimo — só não
+  // pode ficar documentado como se uma delas, sozinha, fosse A trava.
   const effectiveReach =
     segment === "all" ? (subCount ?? 0) : (predictedReach ?? 0);
 
@@ -851,8 +897,11 @@ export const AdminPushView = memo(function AdminPushView({
                   {/* Conserto 3: alcance MEDIDO como zero (nunca desconhecido)
                       para um cliente específico — avisa ANTES do clique que
                       não vai sair push, mas que a mensagem ainda vira aviso
-                      dentro do app (o botão está habilitado por isso). */}
-                  {targetUserId && podeGravarAvisoSemPush && (
+                      dentro do app (o botão está habilitado por isso).
+                      C4 (revisão de 20/08/2026): `podeGravarAvisoSemPush` já
+                      inclui `Boolean(targetUserId)` — o `targetUserId &&`
+                      daqui era o mesmo termo repetido duas vezes. */}
+                  {podeGravarAvisoSemPush && (
                     <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-amber-300 animate-in fade-in">
                       <AlertCircle className="size-3.5 shrink-0" />
                       <p className="text-[10px] font-medium leading-tight">
