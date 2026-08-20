@@ -12,6 +12,7 @@
     "dev": "vite",
     "build": "npx tsc -b && vite build",
     "lint": "eslint . --cache --cache-strategy content",
+    "lint:rapido": "eslint . --config eslint.config.rapido.js --cache --cache-strategy content --cache-location .eslintcache-rapido",
     "lint:ratchet": "node scripts/lint-ratchet.mjs",
     "lint:links": "node scripts/verifica-links-md.mjs",
     "typecheck": "tsc -b --force",

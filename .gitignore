@@ -26,6 +26,7 @@ build/
 # seguinte so analisar o que mudou. E' derivado e por maquina: versionar traria
 # resultado de OUTRO sistema de arquivos para dentro da catraca.
 .eslintcache
+.eslintcache-rapido
 
 # Log files accumulated during development
 *.log
