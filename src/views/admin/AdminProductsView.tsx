@@ -1400,6 +1400,27 @@ export const AdminProductsView = memo(function AdminProductsView({
   );
 });
 
+/**
+ * A etiqueta de status do cartão de produto — mesma decisão nos dois modos
+ * de visualização (compact e detailed). Achado 9 da auditoria de 20/08/2026
+ * (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): a etiqueta olhava
+ * só `isActive` e um produto ATIVO com estoque zero (6 no banco, medido em
+ * 20/08/2026) aparecia como "Em Operação" — a mesma tela que, no simulador
+ * de celular ao lado (PhoneSimulator.tsx), já escrevia "Esgotado" para o
+ * mesmo produto. "Esgotado" é a palavra que o resto do sistema usa
+ * (ProductCard.tsx, PremiumOffers.tsx, PhoneSimulator.tsx) — reaproveitada
+ * aqui em vez de inventar um sinônimo. Precedência: inativo vence tudo
+ * ("Offline", mesmo com estoque), depois esgotado, depois em operação.
+ */
+function statusDoProdutoNoPainel(product: {
+  isActive: boolean;
+  stock: number;
+}): "Offline" | "Esgotado" | "Em Operação" {
+  if (!product.isActive) return "Offline";
+  if (product.stock <= 0) return "Esgotado";
+  return "Em Operação";
+}
+
 interface AdminProductCardProps {
   readonly product: any;
   readonly viewMode: "detailed" | "compact";
@@ -1548,9 +1569,17 @@ const AdminProductCard = memo(function AdminProductCard({
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Badge
-                    className={`${product.isActive ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-500" : "border-white/5 bg-zinc-800 text-zinc-500"} rounded-lg border px-2.5 py-1 text-[8px] font-black uppercase tracking-widest backdrop-blur-md transition-all`}
+                    className={cn(
+                      "rounded-lg border px-2.5 py-1 text-[8px] font-black uppercase tracking-widest backdrop-blur-md transition-all",
+                      statusDoProdutoNoPainel(product) === "Em Operação" &&
+                        "border-emerald-500/20 bg-emerald-500/10 text-emerald-500",
+                      statusDoProdutoNoPainel(product) === "Esgotado" &&
+                        "border-rose-500/20 bg-rose-500/10 text-rose-500",
+                      statusDoProdutoNoPainel(product) === "Offline" &&
+                        "border-white/5 bg-zinc-800 text-zinc-500",
+                    )}
                   >
-                    {product.isActive ? "Em Operação" : "Offline"}
+                    {statusDoProdutoNoPainel(product)}
                   </Badge>
                   {!hasCost ? (
                     <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-500 backdrop-blur-md">
@@ -1783,12 +1812,15 @@ const AdminProductCard = memo(function AdminProductCard({
             <Badge
               className={cn(
                 "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border backdrop-blur-md transition-all self-start",
-                product.isActive
-                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                  : "bg-zinc-800 text-zinc-500 border-white/5",
+                statusDoProdutoNoPainel(product) === "Em Operação" &&
+                  "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+                statusDoProdutoNoPainel(product) === "Esgotado" &&
+                  "bg-rose-500/10 text-rose-500 border-rose-500/20",
+                statusDoProdutoNoPainel(product) === "Offline" &&
+                  "bg-zinc-800 text-zinc-500 border-white/5",
               )}
             >
-              {product.isActive ? "Em Operação" : "Offline"}
+              {statusDoProdutoNoPainel(product)}
             </Badge>
           </div>
         </div>

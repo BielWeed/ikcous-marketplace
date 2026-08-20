@@ -24,11 +24,18 @@
     "telas que ele já ia tocar. Regra do escoteiro funcionando como projetada.",
     "",
     "Teto zero é diferente dos outros: ele não protege margem, ele proíbe. Erro",
-    "novo de eslint agora reprova o CI direto."
+    "novo de eslint agora reprova o CI direto.",
+    "",
+    "20/08/2026 — warnings de eslint de 553 para 551. Medido no CI, run",
+    "32372581134 (PR #247): 'eslint warnings 551 / teto 553 / baixou -2 —",
+    "abaixe o teto'. A queda NÃO veio deste PR (o arquivo novo dele mede 0",
+    "problemas no eslint); veio da develop, exatamente como em 05/08. Abaixado",
+    "no mesmo PR que o CI apontou, para o teto não ficar protegendo margem que",
+    "já não existe."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 553
+    "warnings": 551
   },
   "biome": {
     "errors": 30,
