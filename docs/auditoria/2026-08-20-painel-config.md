@@ -25,15 +25,15 @@ fixa de R$ 10.
 | 1 ✅ | Cupom com "**∞ usos**", aceito no checkout, desconto aplicado no total | O pedido é **recusado** na hora de finalizar com "Cupom X inválido ou expirado". Todo cupom criado sem preencher "Limite de Uso" nasce assim | quem compra e quem vende | **Alto** |
 | 2 ✅ | "Frete grátis desativado. **Todos os pedidos terão cobrança de entrega**" | Com a Taxa Padrão também desligada, o app cota **R$ 0,00 para o Brasil inteiro** — e a tela chama isso de "Sem taxa fixa configurada" | quem vende | **Alto** |
 | 3 ✅ | "✨ Frete grátis ativo para pedidos a partir de R$ 100" | Só para quem está **logado**. Quem compra como convidado paga o frete mesmo passando de R$ 100, e a tela de Frete não diz isso em lugar nenhum | quem compra e quem vende | **Alto** |
-| 4 ⚠️ | Clientes → "**Ticket Médio R$ 28,16**" | Ticket médio é R$ 40,95. A conta da tela é receita ÷ **clientes**, não ÷ pedidos — e o Dashboard, na mesma sessão, mostra R$ 40,95 com o mesmo rótulo | quem vende | **Médio-alto** |
+| 4 ✅ | Clientes → "**Ticket Médio R$ 28,16**" | Ticket médio é R$ 40,95. A conta da tela é receita ÷ **clientes**, não ÷ pedidos — e o Dashboard, na mesma sessão, mostra R$ 40,95 com o mesmo rótulo | quem vende | **Médio-alto** |
 | 5 ✅ | Na lista: "João Gabriel — **Pedidos 6**". Abrindo o mesmo cliente: "**Cesta / Pedidos 16**" | Duas contagens do mesmo cliente, na mesma tela, com 10 de diferença. Nenhuma das duas explica a outra | quem vende | **Médio-alto** |
-| 6 | Push → "Clientes Frequentes **3**", "Sem comprar há 30d **2**", "Novos Clientes **3**" | Os reais são **2, 0 e 0**. Os números não selecionados são 30%, 25% e 45% do total de aparelhos, calculados no próprio componente | quem vende | **Médio** |
-| 7 | Push → "**iOS: 3 · Android: 5**" | Não existe coluna de plataforma no banco. É `total × 0,4` e `total × 0,6` escrito no componente | quem vende | **Médio** |
+| 6 ✅ | Push → "Clientes Frequentes **3**", "Sem comprar há 30d **2**", "Novos Clientes **3**" | Os reais são **2, 0 e 0**. Os números não selecionados são 30%, 25% e 45% do total de aparelhos, calculados no próprio componente | quem vende | **Médio** |
+| 7 ✅ | Push → "**iOS: 3 · Android: 5**" | Não existe coluna de plataforma no banco. É `total × 0,4` e `total × 0,6` escrito no componente | quem vende | **Médio** |
 | 8 | No menu do cliente: "**Notificação Push**" | Funciona para **1 dos 16** clientes. Para os outros 15 o envio para e nem a notificação dentro do app é criada | quem vende e quem compra | **Médio** |
 | 9 | No menu do cliente: "**Congelar Acesso**", em vermelho | Não congela nada. Mostra "Funcionalidade em desenvolvimento" | quem vende | **Médio** |
 | 10 | Cupons → "Após esse prazo, o cupom é **desativado automaticamente pelo sistema**" | Não existe nada que desative. O cupom vencido continua com o selo verde "ATIVO" e continua contando no KPI "Cupons Ativos" | quem vende | **Médio** |
 | 11 | Histórico de Push → selo verde "**ENVIADA**" em toda linha | O selo é texto fixo. Um envio em que ninguém recebeu grava 0 e ainda aparece "0 clientes · ENVIADA" | quem vende | **Médio-baixo** |
-| 12 | Push → "Receberão: **8 clientes**" e "Enviar Notificação Agora (8 clientes)" | São 8 **aparelhos**, de 1 cliente identificado e 6 inscrições sem dono. Um cliente com três aparelhos conta como três | quem vende | **Baixo** |
+| 12 ✅ | Push → "Receberão: **8 clientes**" e "Enviar Notificação Agora (8 clientes)" | São 8 **aparelhos**, de 1 cliente identificado e 6 inscrições sem dono. Um cliente com três aparelhos conta como três | quem vende | **Baixo** |
 | 13 | Frete → "Histórico de Cotações & Audit Logs / Exibindo as 15 consultas mais recentes" | Com o provedor Taxa Única Fixa — o padrão e o atual — **nada é registrado ali, nunca**. A tela diz "Nenhuma cotação registrada recentemente" | quem vende | **Baixo** |
 | 14 | No extrato do cliente, a situação "**pending**" | É o único status sem tradução da tabela. Os outros dizem Cancelado, Entregue, Enviado | quem vende | **Baixo** |
 | 15 | Cupom → "Mínimo Compra **R$ 50**" | O valor é exibido sem centavos. Um mínimo de R$ 49,90 aparece como R$ 50 no card e na pré-visualização | quem compra e quem vende | **Baixo** |
@@ -236,7 +236,7 @@ cupom. E o painel mostra dois valores diferentes com o mesmo nome, sem dizer qua
 
 **Quanto dói.** Médio-alto.
 
-> ### ⚠️ CORRIGIDO PELA METADE em 20/08/2026 — leia até o fim
+> ### ✅ CORRIGIDO em 20/08/2026, em duas etapas — a primeira fechou metade
 >
 > O card passou a dividir a receita por **pedidos**, não por clientes, e o rótulo de apoio
 > mudou de "Consumo Médio" para "Média por pedido". Uma linha em
@@ -258,6 +258,23 @@ cupom. E o painel mostra dois valores diferentes com o mesmo nome, sem dizer qua
 > E o teste chamado *"bate com o Dashboard para outro conjunto de números"* nunca
 > renderizou nada do Dashboard — o nome afirmava uma paridade que o corpo não
 > exercitava.
+>
+> **A segunda etapa fechou (commit `6bbdc7c`).** O card **parou de ter conta própria**: passou a
+> ler `executive.avgTicket`, a mesma fonte que o Dashboard e a tela de Pedidos já leem. Não é
+> mais um caso de alinhar duas calculadoras — a segunda deixou de existir. Nada no banco mudou.
+>
+> Junto veio a regra que o resto desta linha de trabalho já seguia: número que não chegou **não
+> vira zero**. O card mostra um traço. A cadeia usa `??` terminando em `null`, e não `||`
+> terminando em `0` — com `||`, um ticket médio medido como zero (loja sem pedido nenhum) cairia
+> no ramo seguinte, e um resumo restaurado do cache em disco sem o bloco `executive` imprimiria
+> "R$ 0,00" afirmando um fato que ninguém mediu.
+>
+> O teste que mentia no nome foi refeito: agora prova **leitura da fonte**, no cenário do PIX
+> pendente, onde a conta antiga e a nova dão números diferentes (R$ 45,03 contra R$ 40,95). São
+> 5 casos, e duas mutações provaram que caem.
+>
+> ⚠️ **O que este achado NÃO cobre:** a coluna "LTV Total" de cada cliente continua vindo da
+> fonte sem filtro de cobrança. É o [achado 17](#17-achado-novo-o-ltv-total-de-cada-cliente-conta-pedido-que-ninguém-pagou).
 >
 > A troca conserta de graça o segundo erro que este achado registrava: como `global_ltv` soma
 > todos os pedidos, inclusive os de convidado, dividir por `total_customers` misturava dois
@@ -359,6 +376,37 @@ recebe "Nenhum destinatário encontrado para este segmento".
 **Quem sente.** Quem vende: escolhe o público por um número que não existe.
 
 **Quanto dói.** Médio.
+
+---
+
+> ### ✅ CORRIGIDO em 20/08/2026 — achados 6, 7 e 12 na mesma correção
+>
+> Os quatro contadores de segmento passaram a ser **medidos** pela mesma RPC
+> (`get_segmented_push_targets`) que já media o selecionado. Com os 8 aparelhos do banco, os
+> botões que diziam "3, 2, 3" passaram a dizer **"2, 0, 0"** — dois dos três segmentos estão
+> vazios, e agora a tela admite isso.
+>
+> Número que ainda não chegou, ou cuja medição falhou, mostra **um traço**, nunca zero: zero é
+> uma afirmação forte e só aparece quando foi medido de verdade.
+>
+> Os selos `iOS:` e `Android:` **saíram da tela**. Não há coluna de plataforma em
+> `push_subscriptions` — os dois números eram 40% e 60% do total, e não existe de onde derivar
+> o certo. Sem dado, a saída honesta é não afirmar. Aprovado pelo Gabriel em 20/08/2026.
+>
+> No caminho apareceu um quarto número inventado que esta auditoria não tinha visto:
+> `Math.floor(subCount * 0.45)` no contador de "Novos Clientes". Foi junto.
+>
+> E os dois textos de alcance passaram a dizer **"aparelhos"**, com singular e plural certos —
+> é contagem de linhas de `push_subscriptions`, e das 8 medidas 6 não têm dono e as outras 2
+> são do mesmo cliente.
+>
+> Commit `6e406b4`. Provado por
+> [tests/front/admin-push-view-contadores.test.tsx](../../tests/front/admin-push-view-contadores.test.tsx)
+> (7 casos, montando a tela de verdade) e
+> [tests/front/push-contadores-de-segmento.test.ts](../../tests/front/push-contadores-de-segmento.test.ts)
+> (6 casos nas funções puras). Quatro mutações aplicadas: voltar a multiplicação → caem 3
+> testes; "clientes" no lugar de "aparelhos" → caem 5; traço virando `0` → caem 4; selo de
+> plataforma de volta → cai 1. Revisado em contexto limpo.
 
 ---
 
@@ -654,6 +702,45 @@ Vale registrar, porque foram candidatos a achado que caíram na verificação:
 - **"Novos (30d): 0"** está correto: nenhum perfil criado nos últimos 30 dias.
 - **"Nenhuma cotação registrada"** não é falha de permissão: a tabela está mesmo vazia (é o achado 13, que é sobre a causa, não sobre o número).
 - **O interruptor "Cupons de Desconto" funciona:** desligado, o campo some do checkout de verdade.
+
+---
+
+## 17. Achado novo: o "LTV Total" de cada cliente conta pedido que ninguém pagou
+
+Não estava nesta auditoria. Nasceu em 20/08/2026, do `diretor` da frente de coordenação, e eu
+confirmei na fonte antes de registrar.
+
+**O que a pessoa vê.** Na lista de Clientes, cada linha traz **LTV Total R$ X** — e a tela
+chama isso, em outro ponto, de "Maior LTV (Gasto Total)" e "LTV (Lifetime Value)".
+
+**O que é verdade.** O número vem de `total_spent`, calculado em `get_admin_customers_paged`
+por um `LEFT JOIN ... ON o.user_id = p.id AND o.status NOT IN ('cancelled','returned')` —
+**sem nenhum filtro de cobrança**. Um cliente que gerou um PIX e nunca pagou entra na soma
+como se tivesse gasto. O painel analítico, desde a migration `20260822000100`, conta só
+dinheiro reconhecido (`payment_status` nulo, `pago` ou `pago_apos_expirar`).
+
+É a mesma raiz do achado 4, num lugar que a correção do achado 4 não alcança: ali eu pude
+mandar o card **ler** a fonte compartilhada, porque o Dashboard já publica um ticket médio.
+Aqui não existe fonte compartilhada — ninguém mais calcula gasto **por cliente**. Fechar isto
+exige mexer na própria `get_admin_customers_paged`, ou seja, uma migration numa função
+consumida pela tela inteira.
+
+**Evidência.**
+
+- [baseline, corpo de `get_admin_customers_paged`](../../supabase/migrations/20260806000000_baseline_do_schema_vivo.sql#L1134) — `COALESCE(SUM(o.total::numeric), 0) as total_spent` sobre um join filtrado só por `status`.
+- Onde aparece na tela: [AdminCustomersView.tsx:880](../../src/views/admin/AdminCustomersView.tsx#L880) e [:1106](../../src/views/admin/AdminCustomersView.tsx#L1106), ambos lendo `customer.total_spent`.
+- A regra do outro lado: [`20260822000100`, linha 170](../../supabase/migrations/20260822000100_analitico_conta_so_dinheiro_reconhecido.sql#L170).
+
+**Quem sente.** Quem vende: decide quem é bom cliente por um número que inclui dinheiro que
+não entrou.
+
+**Quanto dói.** Hoje, nada — o pg_cron já cancelou todos os pedidos que estavam aguardando, e
+cancelado já sai da conta pelo filtro de `status`. Dói no primeiro PIX que ficar em aberto, e
+dói de novo em toda loja clonada a partir daqui.
+
+**Por que não corrigi junto.** É migration numa função consumida pela tela inteira, e não é um
+dos 16 achados que o Gabriel mandou corrigir por ordem de dor. Fica para ele decidir se pula a
+fila.
 
 ---
 
