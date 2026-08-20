@@ -266,6 +266,14 @@ describe("AdminOrdersView — estado vazio da lista (Item 1 da revisão)", () =>
   });
 
   it("lista vazia de verdade, SEM filtro ativo: mostra 'Ainda não tem nenhum pedido'", async () => {
+    // O padrão da tela virou "Em Aberto" (`filter = "open"`), que é filtro de
+    // verdade: ele exclui cancelado e entregue no banco. Então "sem filtro
+    // ativo" deixou de ser o estado inicial e passou a exigir esta semeadura
+    // explícita — senão o teste cai no estado vazio FILTRADO, que diz outra
+    // coisa de propósito ("nenhum pedido corresponde ao que está sendo
+    // mostrado agora"), justamente para a tela não afirmar que a loja não tem
+    // pedido nenhum quando existem 72 cancelados fora do filtro.
+    window.localStorage.setItem("admin_orders_filter_v2", JSON.stringify("all"));
     mockOrders = [];
     mockTotalOrders = 0;
 
