@@ -7,6 +7,82 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.5.0] — 2026-08-20
+
+Release de correção: **o app para de falar por uma loja que ele não conhece**.
+Duas frentes — o endereço inventado no código e a promessa de e-mail que nunca
+saía. Três entregas (#231, #232, #233) e uma ferramenta (#234).
+
+### O que muda para quem COMPRA
+
+- **O código para acompanhar o pedido finalmente chega** (#86, #161). A tela
+  dizia "código de verificação enviado para seu e-mail" e ninguém nunca soube se
+  algo tinha saído: o caminho era tela → banco → fila → gatilho → função, e a
+  fila só é processada **depois** que a transação fecha — a resposta que a tela
+  recebia vinha antes disso. O sistema era incapaz de saber. E o e-mail não
+  chegava a ninguém de qualquer forma, porque o remetente era o de caixa de
+  areia do Resend, que recusa todo destinatário que não seja o dono da conta.
+  Agora quem envia responde, e "enviado" só aparece quando o e-mail saiu.
+- **Falha de envio é dita na tela**, no mesmo passo, com a pessoa podendo tentar
+  de novo — em vez de esperar um e-mail que não vem.
+- **Pedir o código de novo cedo demais diz quantos segundos faltam**, em vez de
+  parecer travado.
+- **O formulário de endereço para de vir preenchido com a cidade errada** (#231).
+  Havia o endereço de uma loja específica escrito no código — cidade, estado e
+  CEP — e ele vazava em cinco lugares, inclusive travando campos do formulário.
+- **O pedido não fecha mais cobrando frete que ninguém escolheu**, e saíram da
+  home e da página de produto os selos de "entrega ultrarrápida" e "troca
+  garantida" — nenhum dos dois existe no sistema.
+
+### O que muda para quem VENDE
+
+- **A tela de Ajustes passa a ajustar nome, cidade, estado e CEP de despacho**
+  da loja. Antes esses dados não tinham onde ser digitados: vinham do código.
+- **O painel para de completar o endereço do pedido com cidade inventada** — era
+  esse endereço que ia para o mapa na hora de entregar.
+- **Frete nunca configurado deixa de virar frete grátis para o Brasil inteiro.**
+
+### O que muda no MOLDE
+
+- **Sai a autenticação por segredo compartilhado** do envio de código, que
+  aceitava a `service_role` — uma chave do projeto inteiro trafegando para
+  mandar um e-mail. O gatilho e a fila do banco somem junto.
+- **O e-mail do código deixa de ter nome de loja e cidade cravados.** O que fica
+  cravado neste repositório viaja para toda loja clonada; há teste dedicado a isso.
+- **Freio novo:** um código por pedido a cada 60 segundos. A função fica num
+  endereço que qualquer visitante alcança, e cada envio gasta uma das ~100
+  mensagens diárias da conta de e-mail da loja. Sem o freio, um laço esgota a
+  cota e nenhum cliente recebe código pelo resto do dia.
+- **O `db-apply` ganhou verificação para a migration da identidade da loja**
+  (#232) e o repositório ganhou um script que **prova as duas migrations do
+  código de verificação sem gravar nada** (#234): ele aplica, executa a função
+  com dados de um pedido real, afere o comportamento e desfaz tudo com
+  `ROLLBACK`. Sem ele a segunda migration seria aplicada e o `db-apply` diria
+  "Tudo aplicado e verificado" sem ter conferido uma linha (#204).
+
+### Verificação desta release
+
+Os sete comandos do CI passaram em cada entrega. O script de prova das migrations
+rodou em 19/08/2026 com **27 asserções e nenhuma falha**, e o banco voltou ao
+estado original — conferido fora da transação.
+
+**Ressalva registrada, não escondida:** a entrega #233 subiu **sem revisor de
+contexto limpo** — a sessão estava com subagentes desligados, e o CI foi a única
+instância independente que olhou aquele código. Ele mexe no caminho de
+autenticação de pedido de convidado.
+
+### Ações à mão desta release, na ordem
+
+1. `20260820000000_otp_v2_devolve_o_codigo.sql` — **aplicada em 19/08/2026**,
+   antes do merge. É aditiva: cria a função nova ao lado, sem tocar na antiga.
+2. Publicar a `send-otp-email` **junto com a subida do front**. Enquanto a
+   produção rodar o front antigo, é o caminho velho que atende.
+3. **Só então** `20260820000100_otp_sem_fila_nem_gatilho.sql`. Aplicar antes
+   derruba o código de verificação até o deploy alcançar.
+
+Entre os passos 2 e 3 existe uma janela de poucos minutos em que pedir o código
+não funciona: a função publicada é uma só, e ela troca de dono no caminho.
+
 ## [1.4.0] — 2026-08-18
 
 Release de correção: o app **para de afirmar o que não cumpre**. Sete defeitos em
