@@ -1,0 +1,56 @@
+-- Fecha a escrita anonima na vitrine de produtos (vw_produtos_public).
+--
+-- vw_produtos_public NAO tem security_invoker: sem essa opcao, as checagens
+-- de permissao e o RLS da tabela de baixo rodam como o DONO da view
+-- (postgres), nao como quem chamou. `produtos` e' de postgres e tem
+-- relforcerowsecurity = false, entao o dono e' isento do proprio RLS -- as
+-- policies existem, estao corretas, e nunca sao consultadas por este
+-- caminho. Como a view e' auto-atualizavel (is_updatable = YES), o GRANT de
+-- origem deixou `anon` com INSERT/UPDATE/DELETE nela. Medido em 20/08/2026:
+--
+--   has_table_privilege('anon','public.vw_produtos_public','UPDATE') -> true
+--   has_table_privilege('anon','public.vw_produtos_public','DELETE') -> true
+--   has_table_privilege('anon','public.vw_produtos_public','INSERT') -> true
+--
+-- Ou seja: qualquer requisicao HTTP com a chave publica `anon` (a que vem no
+-- bundle do site) altera preco, estoque e nome de qualquer produto, e apaga
+-- produtos, sem login, direto pelo PostgREST. As policies que deveriam
+-- barrar (produtos_admin_update_policy, produtos_admin_delete_policy, ambas
+-- {authenticated} + is_admin()) nunca sao consultadas nesse caminho porque a
+-- view roda com o crachá do dono, nao com o de quem chamou.
+--
+-- Esta e' a armadilha conhecida de views no Supabase, nao uma peculiaridade
+-- deste projeto: https://supabase.com/docs/guides/database/postgres/row-level-security
+--
+-- POR QUE NAO LIGAR security_invoker (a correcao que a doc recomenda em
+-- geral): o VISITANTE ANONIMO nao tem SELECT em `produtos` --
+--   has_any_column_privilege('anon',          'public.produtos','SELECT') -> false
+--   has_any_column_privilege('authenticated', 'public.produtos','SELECT') -> true
+--     (por COLUNA: 29 de 30, todas menos `custo` — o que a
+--      20260805000000_restore_admin_view_and_hide_custo.sql fez)
+--
+-- NAO use has_table_privilege para responder isso: ela devolve `false` para o
+-- `authenticated` mesmo havendo acesso, porque grant por coluna nao aparece
+-- nessa funcao. Foi assim que a primeira versao deste comentario afirmou que
+-- "ninguem" tem SELECT — verdade para o anon, falso para o authenticated.
+--
+-- A conclusao sobrevive, mas por causa do `anon`: o catalogo funciona HOJE
+-- porque a view roda com o crachá do dono, e a loja precisa vender para quem
+-- ainda nao tem conta. Ligar security_invoker devolveria "permission denied"
+-- para todo visitante nao logado — a vitrine no chao do mesmo jeito. Essa
+-- correcao (dar SELECT na tabela e deixar o RLS filtrar) e' tarefa separada,
+-- com prova propria.
+--
+-- POR QUE NAO REVOGAR TAMBEM DE vw_produtos_admin OU produtos: o painel do
+-- lojista escreve por elas e ambas ja estao protegidas hoje --
+-- vw_produtos_admin tem WHERE is_admin() no corpo (20260805000000) e
+-- check_option=cascaded; produtos direto e' barrado pela
+-- produtos_admin_update_policy para quem nao e' admin. Nao tocado aqui.
+--
+-- POR QUE NAO REVOGAR TRUNCATE: o PostgREST nao expõe verbo de TRUNCATE, ou
+-- seja, nao e' alcancavel pela chave publica por essa via -- e' outro
+-- assunto, ja agendado a parte.
+--
+-- SEM BEGIN/COMMIT: o db-apply.cjs abre a transacao.
+
+REVOKE INSERT, UPDATE, DELETE ON public.vw_produtos_public FROM anon, authenticated;

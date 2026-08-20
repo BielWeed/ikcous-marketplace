@@ -1,0 +1,61 @@
+-- Fecha o caixa paralelo esquecido: create_marketplace_order (v1, sem sufixo).
+--
+-- E' a primeira geracao da funcao que cria pedido, uma implementacao completa
+-- e propria de 5.652 caracteres, com regras piores que as de hoje. O corpo
+-- dela contem, na ordem:
+--   - laco de validacao que CONFERE saldo (IF v_db_stock < v_quantity THEN
+--     RAISE 'Estoque insuficiente') com FOR NO KEY UPDATE;
+--   - cupom lido por `SELECT id, value INTO ...`, ignorando `coupons.type`:
+--     um cupom de 10% viraria R$ 10,00 de desconto;
+--   - INSERT no cabecalho do pedido gravando total_amount/shipping_cost/
+--     observation (colunas mortas) em vez de total/shipping/notes;
+--   - SO DEPOIS o laco que desconta estoque com UPDATE ... SET estoque =
+--     estoque - v_quantity, esse sim sem ROW_COUNT, e o UPDATE de usage_count
+--     do cupom.
+--
+-- 🔴 ATENCAO AO TEMPO VERBAL — medido em 20/08/2026, e a ordem acima e' o que
+-- decide: a funcao NUNCA persistiu pedido nenhum nesta base, e por isso as
+-- regras ruins dela NUNCA rodaram. `marketplace_orders.total` e' NOT NULL sem
+-- default, `marketplace_orders` nao tem trigger nenhum, e o INSERT da v1 nao
+-- inclui a coluna `total` — entao ele viola NOT NULL de forma incondicional,
+-- para qualquer entrada. A funcao aborta NO INSERT, que vem ANTES do laco de
+-- estoque e ANTES do UPDATE de cupom. Dano persistido ate hoje: ZERO.
+--
+-- ENTAO POR QUE REVOGAR? Porque o que segura a v1 hoje e' um ACIDENTE DE
+-- SCHEMA, nao uma trava desenhada. Um `ALTER TABLE marketplace_orders ALTER
+-- COLUMN total SET DEFAULT 0` a ressuscita inteira no mesmo instante, e ai os
+-- dois defeitos passam a valer. O gatilho nao e' hipotetico: ha trabalho em
+-- curso mexendo em NOT NULL/default nesta mesma tabela. Revogar EXECUTE tira a
+-- v1 do alcance do PostgREST independente do que acontecer com o schema.
+--
+-- Nao e' furo de preco (os precos sao calculados no servidor). E' um
+-- SECURITY DEFINER dormente ao alcance do navegador: `anon` e `authenticated`
+-- ainda tem EXECUTE nela, e ela roda como `postgres`, ignorando RLS.
+--
+-- Varredura em 20/08/2026 (app em src/, edge functions, scripts, e
+-- pg_get_functiondef de toda funcao de public): NINGUEM chama esta funcao —
+-- so aparece nos dois arquivos de tipos gerados automaticamente do app. O
+-- caminho vivo de hoje e' create_marketplace_order_v23 (pagamento na entrega)
+-- e create_marketplace_order_v24 (pagamento online); create_marketplace_
+-- order_v22 e' um encaminhador de 6 linhas para a v23 e tem 4 dependentes
+-- reais (scripts/db-prove-regression.cjs, db-test-guest-checkout.cjs,
+-- db-test-migration-v23.cjs, e o mapa de VERIFICACOES do db-apply.cjs) —
+-- fora do escopo desta migration.
+--
+-- REVOGAR, nao apagar: o unico caminho ate ela e' HTTP via PostgREST, que
+-- executa como anon ou authenticated. Revogar a torna inalcancavel, mesma
+-- protecao de um DROP, fracao do risco, e reversivel (basta o GRANT do
+-- comentario abaixo) — o mesmo molde usado em
+-- 20260812010000_revoke_check_user_confirmation_status.sql. O corpo da
+-- funcao fica intacto: consertar codigo morto e' trabalho jogado fora.
+--
+-- SEM BEGIN/COMMIT: o db-apply.cjs abre a transacao.
+
+REVOKE EXECUTE ON FUNCTION public.create_marketplace_order(
+  jsonb, text, uuid, text, text, text, text
+) FROM anon, authenticated, PUBLIC;
+
+-- Desfazer:
+-- GRANT EXECUTE ON FUNCTION public.create_marketplace_order(
+--   jsonb, text, uuid, text, text, text, text
+-- ) TO anon, authenticated;
