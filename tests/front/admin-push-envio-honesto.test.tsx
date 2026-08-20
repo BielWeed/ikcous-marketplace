@@ -40,15 +40,31 @@ const { estadoDoBanco } = vi.hoisted(() => ({
     } as Record<string, unknown[] | null>,
     // RPC `get_segmented_push_targets` para um `p_segment` que É um UUID —
     // o caso "Mensagem para Cliente Específico".
-    alvosDoClienteEspecifico: [] as { user_id: string; endpoint: string; p256dh: string; auth: string }[],
+    alvosDoClienteEspecifico: [] as {
+      user_id: string;
+      endpoint: string;
+      p256dh: string;
+      auth: string;
+    }[],
     nomeDoClienteEspecifico: "Cliente de Teste",
     // Resultado do RPC para o segmento "all" — a lista de destinatários
     // que o `handleSend` usa de verdade para montar os tokens do push.
     alvosDoSegmentoTodos: [
-      { user_id: "u1", endpoint: "https://push.example/1", p256dh: "p1", auth: "a1" },
+      {
+        user_id: "u1",
+        endpoint: "https://push.example/1",
+        p256dh: "p1",
+        auth: "a1",
+      },
     ] as { user_id: string; endpoint: string; p256dh: string; auth: string }[],
     respostaDoEnvio: { enviados: 1, falharam: 0, falhas: [] as unknown[] },
     historico: [] as Record<string, unknown>[],
+    // Conserto 4: o insert em `notificacoes` pode ser recusado pelo banco
+    // (RLS, coluna obrigatória faltando etc.) sem lançar exceção — o
+    // postgrest-js resolve normalmente com `{ data: null, error }`. `null`
+    // aqui é "insert vai dar certo"; preencher é "o banco recusou esta
+    // linha".
+    erroDoInsertNotificacoes: null as null | { message: string },
   },
 }));
 
@@ -119,7 +135,10 @@ vi.mock("@/lib/supabase", () => ({
             }),
           }),
           insert: (linha: Record<string, unknown>) => {
-            const registrado = { id: `log-${inserts.pushLog.length + 1}`, ...linha };
+            const registrado = {
+              id: `log-${inserts.pushLog.length + 1}`,
+              ...linha,
+            };
             inserts.pushLog.push(registrado);
             return {
               select: () => ({
@@ -139,7 +158,17 @@ vi.mock("@/lib/supabase", () => ({
       }
       if (tabela === "notificacoes") {
         return {
-          insert: (linhaOuLinhas: Record<string, unknown> | Record<string, unknown>[]) => {
+          insert: (
+            linhaOuLinhas: Record<string, unknown> | Record<string, unknown>[],
+          ) => {
+            // Como o postgrest-js de verdade: uma linha recusada NÃO lança
+            // exceção — resolve com `{ error }` preenchido, e nada entra na
+            // tabela.
+            if (estadoDoBanco.erroDoInsertNotificacoes) {
+              return Promise.resolve({
+                error: estadoDoBanco.erroDoInsertNotificacoes,
+              });
+            }
             const linhas = Array.isArray(linhaOuLinhas)
               ? linhaOuLinhas
               : [linhaOuLinhas];
@@ -150,14 +179,21 @@ vi.mock("@/lib/supabase", () => ({
       }
       return {
         select: () => ({
-          order: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }),
-          eq: () => ({ order: () => Promise.resolve({ data: [], error: null }) }),
+          order: () => ({
+            limit: () => Promise.resolve({ data: [], error: null }),
+          }),
+          eq: () => ({
+            order: () => Promise.resolve({ data: [], error: null }),
+          }),
         }),
       };
     },
     rpc: (nome: string, args: { p_segment: string }) => {
       if (nome !== "get_segmented_push_targets") {
-        return Promise.resolve({ data: null, error: new Error("rpc desconhecida") });
+        return Promise.resolve({
+          data: null,
+          error: new Error("rpc desconhecida"),
+        });
       }
       const seg = args.p_segment;
       if (seg === "vip" || seg === "inactive" || seg === "new") {
@@ -172,11 +208,17 @@ vi.mock("@/lib/supabase", () => ({
         });
       }
       if (seg === "all") {
-        return Promise.resolve({ data: estadoDoBanco.alvosDoSegmentoTodos, error: null });
+        return Promise.resolve({
+          data: estadoDoBanco.alvosDoSegmentoTodos,
+          error: null,
+        });
       }
       // Qualquer outro valor é tratado, no banco real, como UUID de cliente
       // específico (`get_segmented_push_targets`, caso 1).
-      return Promise.resolve({ data: estadoDoBanco.alvosDoClienteEspecifico, error: null });
+      return Promise.resolve({
+        data: estadoDoBanco.alvosDoClienteEspecifico,
+        error: null,
+      });
     },
     functions: { invoke: invokeSendPush },
   },
@@ -206,16 +248,25 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
 
   beforeEach(() => {
     vi.clearAllMocks();
-    invokeSendPush.mockResolvedValue({ data: estadoDoBanco.respostaDoEnvio, error: null });
+    invokeSendPush.mockResolvedValue({
+      data: estadoDoBanco.respostaDoEnvio,
+      error: null,
+    });
     estadoDoBanco.subCount = 8;
     estadoDoBanco.porSegmento = { vip: [], inactive: [], new: [] };
     estadoDoBanco.alvosDoClienteEspecifico = [];
     estadoDoBanco.nomeDoClienteEspecifico = "Cliente de Teste";
     estadoDoBanco.alvosDoSegmentoTodos = [
-      { user_id: "u1", endpoint: "https://push.example/1", p256dh: "p1", auth: "a1" },
+      {
+        user_id: "u1",
+        endpoint: "https://push.example/1",
+        p256dh: "p1",
+        auth: "a1",
+      },
     ];
     estadoDoBanco.respostaDoEnvio = { enviados: 1, falharam: 0, falhas: [] };
     estadoDoBanco.historico = [];
+    estadoDoBanco.erroDoInsertNotificacoes = null;
     inserts.notificacoes = [];
     inserts.pushLog = [];
 
@@ -268,7 +319,10 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
 
   const texto = () => hospedeiro.textContent ?? "";
 
-  function digitar(elemento: HTMLInputElement | HTMLTextAreaElement, valor: string) {
+  function digitar(
+    elemento: HTMLInputElement | HTMLTextAreaElement,
+    valor: string,
+  ) {
     const prototipo =
       elemento instanceof HTMLTextAreaElement
         ? window.HTMLTextAreaElement.prototype
@@ -279,8 +333,10 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
   }
 
   async function preencherMensagem(titulo: string, corpo: string) {
-    const campoTitulo = hospedeiro.querySelector<HTMLInputElement>("#push-title");
-    const campoCorpo = hospedeiro.querySelector<HTMLTextAreaElement>("#push-body");
+    const campoTitulo =
+      hospedeiro.querySelector<HTMLInputElement>("#push-title");
+    const campoCorpo =
+      hospedeiro.querySelector<HTMLTextAreaElement>("#push-body");
     expect(campoTitulo).toBeTruthy();
     expect(campoCorpo).toBeTruthy();
     await act(async () => {
@@ -320,7 +376,12 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
     // efeito de "1 dos 16 tem aparelho" da auditoria, só que capturado no
     // meio da corrida em vez de num cliente já sem aparelho desde sempre.
     estadoDoBanco.alvosDoClienteEspecifico = [
-      { user_id: "cliente-sem-aparelho", endpoint: "e1", p256dh: "p1", auth: "a1" },
+      {
+        user_id: "cliente-sem-aparelho",
+        endpoint: "e1",
+        p256dh: "p1",
+        auth: "a1",
+      },
     ];
     await abrirTela("cliente-sem-aparelho");
     await preencherMensagem("Oferta especial", "Corre que acaba hoje!");
@@ -351,7 +412,12 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
 
   it("cliente específico COM aparelho: continua criando o log de envio e o aviso no app (sem regressão)", async () => {
     estadoDoBanco.alvosDoClienteEspecifico = [
-      { user_id: "cliente-com-aparelho", endpoint: "https://push.example/2", p256dh: "p2", auth: "a2" },
+      {
+        user_id: "cliente-com-aparelho",
+        endpoint: "https://push.example/2",
+        p256dh: "p2",
+        auth: "a2",
+      },
     ];
     await abrirTela("cliente-com-aparelho");
     await preencherMensagem("Chegou novidade", "Confere lá na loja!");
@@ -420,6 +486,106 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
     // sem a fronteira de palavra o teste acusaria um selo que não existe.
     expect(texto()).not.toMatch(/\bENVIADA\b/i);
     expect(texto()).toContain("Não confirmada");
+  });
+
+  // Conserto 3 (decisão do plano, 20/08/2026, corrigindo o achado 8): dos 16
+  // clientes sem aparelho, o botão "Enviar Notificação Agora" nascia
+  // desabilitado (`effectiveReach === 0`) e NUNCA ficava clicável — o aviso
+  // gravado no app (achado 8) era, na prática, inalcançável. A correção: se
+  // existe `targetUserId` E o alcance foi MEDIDO como zero (não
+  // desconhecido), ainda há uma ação real e segura — gravar o aviso — então
+  // o botão habilita, e a tela avisa antes do clique.
+  describe("Conserto 3 — cliente específico sem aparelho não trava mais o botão", () => {
+    it("cliente específico sem aparelho, medido como zero (sem corrida): o botão fica HABILITADO e a tela avisa antes do clique", async () => {
+      estadoDoBanco.alvosDoClienteEspecifico = [];
+      await abrirTela("cliente-sem-aparelho");
+
+      expect(botaoEnviar()?.disabled).toBe(false);
+      expect(texto()).toMatch(/não tem aparelho/i);
+    });
+
+    it("segmento vazio, sem cliente específico: o botão continua DESABILITADO — a trava de sempre", async () => {
+      estadoDoBanco.porSegmento.inactive = [];
+      await abrirTela();
+
+      const botaoInativo = Array.from(
+        hospedeiro.querySelectorAll("button"),
+      ).find((b) => (b.textContent ?? "").includes("Sem comprar há 30d"));
+      expect(botaoInativo).toBeTruthy();
+      await act(async () => {
+        botaoInativo!.click();
+      });
+      await act(async () => {
+        await esperar(80);
+      });
+
+      expect(botaoEnviar()?.disabled).toBe(true);
+    });
+
+    it("alcance desconhecido (a medição falhou): o botão continua DESABILITADO, mesmo com cliente específico", async () => {
+      const { supabase } = await import("@/lib/supabase");
+      const original = supabase.rpc;
+      (supabase as any).rpc = vi.fn(
+        async (nome: string, args: { p_segment: string }) => {
+          if (
+            nome === "get_segmented_push_targets" &&
+            args.p_segment === "cliente-sem-medicao"
+          ) {
+            return { data: null, error: new Error("falhou") };
+          }
+          return (original as any)(nome, args);
+        },
+      );
+
+      await abrirTela("cliente-sem-medicao");
+
+      expect(botaoEnviar()?.disabled).toBe(true);
+      // Sem medição não há como saber se falta aparelho — não afirma isso.
+      expect(texto()).not.toMatch(/não tem aparelho/i);
+    });
+  });
+
+  // Conserto 4 (revisão de contexto limpo sobre o commit 8292d27,
+  // 20/08/2026): o insert em `notificacoes`, no caminho "cliente sem
+  // aparelho", ficava dentro de um `try/catch` sem conferir o `{ error }`
+  // do retorno. O cliente do Supabase NÃO lança exceção quando o Postgrest
+  // recusa a linha — o `catch` nunca disparava, e a tela seguia para o
+  // toast de sucesso e limpava o formulário mesmo sem ter gravado nada.
+  describe("Conserto 4 — insert do aviso recusado pelo banco não vira sucesso", () => {
+    it("cliente específico sem aparelho: se o banco recusar o insert do aviso, a tela NÃO diz que registrou, e o texto continua no formulário", async () => {
+      estadoDoBanco.alvosDoClienteEspecifico = [];
+      await abrirTela("cliente-sem-aparelho");
+      await preencherMensagem("Oferta especial", "Corre que acaba hoje!");
+
+      estadoDoBanco.erroDoInsertNotificacoes = { message: "RLS negou a linha" };
+
+      await clicarEnviar();
+
+      // Nada foi de fato gravado.
+      expect(inserts.notificacoes).toHaveLength(0);
+
+      const { toast } = await import("sonner");
+      const mensagensDeErro = (
+        toast.error as ReturnType<typeof vi.fn>
+      ).mock.calls.map((chamada: any[]) => chamada[0]);
+      expect(mensagensDeErro).toContain(
+        "Não foi possível registrar o aviso para este cliente",
+      );
+      // O toast de "registrado com sucesso" não pode sair quando o insert
+      // falhou.
+      expect(mensagensDeErro).not.toContain(
+        "Este cliente não tem aparelho inscrito para push",
+      );
+
+      // O formulário não pode ter sido limpo: a pessoa precisa poder
+      // tentar de novo com o texto ainda na tela.
+      const campoTitulo =
+        hospedeiro.querySelector<HTMLInputElement>("#push-title");
+      const campoCorpo =
+        hospedeiro.querySelector<HTMLTextAreaElement>("#push-body");
+      expect(campoTitulo?.value).toBe("Oferta especial");
+      expect(campoCorpo?.value).toBe("Corre que acaba hoje!");
+    });
   });
 
   it("histórico com recipient_count > 0 continua dizendo que chegou, e conta 'aparelhos' (singular certo)", async () => {

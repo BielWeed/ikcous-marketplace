@@ -105,7 +105,13 @@ export const AdminPushView = memo(function AdminPushView({
   const { recordAction } = useVOR();
   const [isTestSubscribed, setIsTestSubscribed] = useState(false);
   const [segment, setSegment] = useState("all");
-  const [predictedReach, setPredictedReach] = useState(0);
+  // O quinto contador (achado do revisor sobre a correção do quarto, em
+  // 20/08/2026): igual a `subCount`, nascia em `useState(0)` e o
+  // `if (!error && data)` de `calculateReach` não fazia nada quando a RPC
+  // falhava — o valor medido para o segmento ANTERIOR sobrevivia à falha do
+  // segmento seguinte. `null` é "ainda não medi este segmento, ou não
+  // consegui".
+  const [predictedReach, setPredictedReach] = useState<ContagemMedida>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [targetUserName, setTargetUserName] = useState<string | null>(null);
   const [destType, setDestType] = useState<string>("home");
@@ -234,7 +240,7 @@ export const AdminPushView = memo(function AdminPushView({
 
     // Consulta falhou: `null`, nunca `0` — zero é a afirmação de que a loja
     // não tem ninguém cadastrado, e isso só se pode dizer depois de medir.
-    setSubCount(error ? null : count ?? 0);
+    setSubCount(error ? null : (count ?? 0));
   }, []);
 
   const fetchHistory = useCallback(async () => {
@@ -261,7 +267,11 @@ export const AdminPushView = memo(function AdminPushView({
   }>({ vip: null, inactive: null, new: null });
 
   const fetchSegmentCounts = useCallback(async () => {
-    const segmentosNaoSelecionaveisPeloTodos = ["vip", "inactive", "new"] as const;
+    const segmentosNaoSelecionaveisPeloTodos = [
+      "vip",
+      "inactive",
+      "new",
+    ] as const;
     const resultados = await Promise.all(
       segmentosNaoSelecionaveisPeloTodos.map(async (seg) => {
         try {
@@ -293,13 +303,18 @@ export const AdminPushView = memo(function AdminPushView({
   const calculateReach = useCallback(async () => {
     if (segment === "all") {
       // `predictedReach` só é lido quando `segment !== "all"` (ver
-      // `effectiveReach`), então este valor nunca aparece na tela — mas o
-      // tipo de `subCount` mudou para aceitar desconhecido, e este estado
-      // continua sendo sempre numérico.
-      setPredictedReach(subCount ?? 0);
+      // `effectiveReach`/`reachExibido`), então este valor nunca aparece na
+      // tela para "all" — mas mantém os dois em sincronia mesmo assim.
+      setPredictedReach(subCount);
       return;
     }
 
+    // Zera ANTES do `await`: enquanto a nova medição está no ar, ou se ela
+    // falhar, o valor do segmento ANTERIOR não pode sobreviver — senão a
+    // tela mostra, para o segmento recém-selecionado, um número que nunca
+    // foi medido para ele (achado do revisor sobre a correção do quarto
+    // contador, 20/08/2026).
+    setPredictedReach(null);
     try {
       const { data, error } = await (supabase.rpc as any)(
         "get_segmented_push_targets",
@@ -309,9 +324,12 @@ export const AdminPushView = memo(function AdminPushView({
       );
       if (!error && data) {
         setPredictedReach((data as any[]).length);
+      } else {
+        setPredictedReach(null);
       }
     } catch (err) {
       console.error("Error calculating reach:", err);
+      setPredictedReach(null);
     }
   }, [segment, subCount]);
 
@@ -386,13 +404,22 @@ export const AdminPushView = memo(function AdminPushView({
         // único para gravar — por isso o comportamento deles não muda.
         if (targetUserId) {
           try {
-            await supabase.from("notificacoes").insert({
-              titulo: notification.title,
-              mensagem: notification.body,
-              tipo: "aviso",
-              usuario_id: targetUserId,
-              dados: { segment, action_url: notification.url },
-            });
+            // Conserto 4 (revisão sobre o commit 8292d27, 20/08/2026): o
+            // cliente do Supabase NÃO lança exceção quando o Postgrest
+            // recusa a linha — ele resolve com `{ error }` preenchido. Sem
+            // conferir isso (como `targetError` e `logError` já conferem,
+            // acima), o `catch` nunca disparava e a tela anunciava sucesso
+            // e limpava o formulário mesmo sem ter gravado nada.
+            const { error: inAppInsertError } = await supabase
+              .from("notificacoes")
+              .insert({
+                titulo: notification.title,
+                mensagem: notification.body,
+                tipo: "aviso",
+                usuario_id: targetUserId,
+                dados: { segment, action_url: notification.url },
+              });
+            if (inAppInsertError) throw inAppInsertError;
             toast.error("Este cliente não tem aparelho inscrito para push", {
               description:
                 "A mensagem foi registrada como aviso dentro do app — ele vai ver na próxima vez que abrir a loja.",
@@ -560,18 +587,38 @@ export const AdminPushView = memo(function AdminPushView({
   };
 
   // `effectiveReach` alimenta a TRAVA de segurança do botão de enviar
-  // (`disabled={... effectiveReach === 0 ...}`) e por isso continua
-  // numérico: total desconhecido vira 0 aqui de propósito, para que a trava
-  // falhe FECHADA (desabilitado) em vez de habilitar o envio para um total
-  // que ninguém mediu.
-  const effectiveReach = segment === "all" ? (subCount ?? 0) : predictedReach;
+  // (`disabled={... effectiveReach === 0 ...}`) e por isso é sempre
+  // numérico nos DOIS ramos: total ou alcance desconhecido vira 0 aqui de
+  // propósito, para que a trava falhe FECHADA (desabilitado) em vez de
+  // habilitar o envio para uma contagem que ninguém mediu. Antes da
+  // correção do quinto contador, só o ramo "all" tinha esse `?? 0` — o
+  // ramo do segmento usava `predictedReach` puro, que nunca chegava a ser
+  // `null` (o defeito que este comentário agora documenta como corrigido).
+  const effectiveReach =
+    segment === "all" ? (subCount ?? 0) : (predictedReach ?? 0);
 
-  // `reachExibido` é o que os TEXTOS mostram ("Receberão: N aparelhos",
-  // botão de enviar). Ao contrário de `effectiveReach`, preserva o `null`
-  // — é ele que faz a tela dizer "desconhecido" em vez de "0" quando a
-  // medição falhou.
+  // `reachExibido` é o que os TEXTOS e os SELOS de segmento mostram
+  // ("Receberão: N aparelhos", botão de enviar, badge do segmento
+  // selecionado). Ao contrário de `effectiveReach`, preserva o `null` — é
+  // ele que faz a tela dizer "desconhecido" em vez de "0" quando a medição
+  // falhou, e é por isso que os badges abaixo leem `reachExibido` (nunca
+  // `effectiveReach`) para o segmento selecionado.
   const reachExibido: ContagemMedida =
     segment === "all" ? subCount : predictedReach;
+
+  // Conserto 3 (decisão do plano, 20/08/2026, corrigindo o achado 8): com
+  // `targetUserId` (Mensagem para Cliente Específico) e o cliente sem
+  // aparelho, o botão nascia desabilitado para sempre — `effectiveReach`
+  // media 0 e a trava fechava, mesmo havendo uma ação real e segura a
+  // executar: gravar o aviso dentro do app, que não depende de push
+  // nenhum. Só essa porta abre; todo o resto continua fechado como antes.
+  const reachDesconhecido = reachExibido === null;
+  const podeGravarAvisoSemPush = Boolean(targetUserId) && reachExibido === 0;
+  const botaoEnviarDesabilitado =
+    loading ||
+    isOffline ||
+    reachDesconhecido ||
+    (effectiveReach === 0 && !podeGravarAvisoSemPush);
 
   return (
     <div className="min-h-screen bg-[#09090b] pb-admin lg:pb-12 text-white duration-200 animate-in fade-in selection:bg-emerald-500/30 selection:text-emerald-200">
@@ -799,7 +846,24 @@ export const AdminPushView = memo(function AdminPushView({
                         Mudar para todos os clientes
                       </button>
                     </div>
-                  ) : (
+                  ) : null}
+
+                  {/* Conserto 3: alcance MEDIDO como zero (nunca desconhecido)
+                      para um cliente específico — avisa ANTES do clique que
+                      não vai sair push, mas que a mensagem ainda vira aviso
+                      dentro do app (o botão está habilitado por isso). */}
+                  {targetUserId && podeGravarAvisoSemPush && (
+                    <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-amber-300 animate-in fade-in">
+                      <AlertCircle className="size-3.5 shrink-0" />
+                      <p className="text-[10px] font-medium leading-tight">
+                        Este cliente não tem aparelho inscrito para push — a
+                        mensagem será registrada como aviso dentro do app, e ele
+                        vai ver na próxima vez que abrir a loja.
+                      </p>
+                    </div>
+                  )}
+
+                  {!targetUserId && (
                     <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                       {[
                         {
@@ -816,22 +880,29 @@ export const AdminPushView = memo(function AdminPushView({
                         {
                           id: "vip",
                           label: "Clientes Frequentes",
+                          // `reachExibido`, não `effectiveReach`: o badge do
+                          // segmento selecionado tem de poder mostrar "—"
+                          // quando a medição está no ar ou falhou — se
+                          // usasse `effectiveReach` (sempre numérico, de
+                          // propósito, para a trava do botão) ele "viraria
+                          // 0" bem na hora em que os outros badges mostram
+                          // traço, contradizendo a própria tela.
                           count: (segment === "vip"
-                            ? effectiveReach
+                            ? reachExibido
                             : segmentCounts.vip) as ContagemMedida,
                         },
                         {
                           id: "inactive",
                           label: "Sem comprar há 30d",
                           count: (segment === "inactive"
-                            ? effectiveReach
+                            ? reachExibido
                             : segmentCounts.inactive) as ContagemMedida,
                         },
                         {
                           id: "new",
                           label: "Novos Clientes",
                           count: (segment === "new"
-                            ? effectiveReach
+                            ? reachExibido
                             : segmentCounts.new) as ContagemMedida,
                         },
                       ].map((s) => (
@@ -1046,7 +1117,7 @@ export const AdminPushView = memo(function AdminPushView({
                 <button
                   className="mt-1 flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 text-xs font-black uppercase tracking-[0.15em] text-white shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all hover:bg-emerald-400 hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] active:scale-[0.98] disabled:opacity-30 disabled:grayscale disabled:shadow-none"
                   onClick={handleSend}
-                  disabled={loading || effectiveReach === 0 || isOffline}
+                  disabled={botaoEnviarDesabilitado}
                 >
                   {loading ? (
                     <div className="flex items-center gap-2">

@@ -92,14 +92,20 @@ vi.mock("@/lib/supabase", () => ({
     },
     rpc: (nome: string, args: { p_segment: string }) => {
       if (nome !== "get_segmented_push_targets") {
-        return Promise.resolve({ data: null, error: new Error("rpc desconhecida") });
+        return Promise.resolve({
+          data: null,
+          error: new Error("rpc desconhecida"),
+        });
       }
       if (estadoDoBanco.falharRpc) {
         return Promise.resolve({ data: null, error: new Error("falhou") });
       }
       const linhas = estadoDoBanco.porSegmento[args.p_segment] ?? null;
       if (linhas === null) {
-        return Promise.resolve({ data: null, error: new Error("sem segmento") });
+        return Promise.resolve({
+          data: null,
+          error: new Error("sem segmento"),
+        });
       }
       return Promise.resolve({ data: linhas, error: null });
     },
@@ -187,18 +193,24 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
   const texto = () => hospedeiro.textContent ?? "";
 
+  // Lê o CONTADOR (o `<span>` que mostra o número), não o `textContent` do
+  // botão inteiro. Conserto 2 (revisão de 20/08/2026): o rótulo "Sem
+  // comprar há 30d" contém um "0" (o "0" de "30d"), então
+  // `botao.textContent.toContain("0")` passava mesmo com o multiplicador
+  // antigo devolvendo "Sem comprar há 30d2" — o "2" ficava colado ao "d" e
+  // nenhum `\bN\b` casava. O contador vive no `<span>` com a classe
+  // `font-mono`, que é o único span com essa classe dentro do botão.
+  function numeroDoSegmento(
+    botao: HTMLButtonElement | undefined,
+  ): string | undefined {
+    return botao?.querySelector("span.font-mono")?.textContent ?? undefined;
+  }
+
   it("cada segmento mostra O SEU número medido, não uma fração do total", async () => {
     await abrirTela();
 
     // vip=2, inactive=0, new=0 — o real do banco. A versão com o defeito
     // mostraria 3, 2 e 3 (30%, 25% e 45% de 8).
-    const cardVip = hospedeiro.querySelector(
-      'button:has(span:first-child)',
-    );
-    void cardVip;
-
-    // Procura os botões de segmento pelo texto do rótulo e confere o
-    // número ao lado de cada um.
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = botoes.find((b) =>
       (b.textContent ?? "").includes("Clientes Frequentes"),
@@ -210,14 +222,9 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
       (b.textContent ?? "").includes("Novos Clientes"),
     );
 
-    expect(botaoVip?.textContent).toContain("2");
-    expect(botaoVip?.textContent).not.toMatch(/\b3\b/);
-
-    expect(botaoInativo?.textContent).toContain("0");
-    expect(botaoInativo?.textContent).not.toMatch(/\b2\b/);
-
-    expect(botaoNovo?.textContent).toContain("0");
-    expect(botaoNovo?.textContent).not.toMatch(/\b3\b/);
+    expect(numeroDoSegmento(botaoVip)).toBe("2");
+    expect(numeroDoSegmento(botaoInativo)).toBe("0");
+    expect(numeroDoSegmento(botaoNovo)).toBe("0");
   });
 
   it("segmento vazio mostra 0 (medido), e o botão de enviar some ao selecioná-lo", async () => {
@@ -296,6 +303,58 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     expect(botaoInativo?.textContent).toContain("—");
   });
 
+  // Conserto 1 (revisão de 20/08/2026, o "quinto contador"): `predictedReach`
+  // nascia em `useState(0)` e o `if (!error && data)` de `calculateReach` não
+  // fazia nada quando a RPC falhava — o valor do segmento medido ANTES
+  // sobrevivia à falha do segmento seguinte, e o selo do segmento
+  // selecionado (que lia `effectiveReach`, sempre numérico) virava "0" em
+  // vez de "—" mesmo quando a medição daquele segmento nunca chegou.
+  it("RPC de um segmento falha depois de outro já medido: mostra traço, não herda o número anterior, e o botão de enviar desabilita", async () => {
+    await abrirTela();
+
+    const botoes = () => Array.from(hospedeiro.querySelectorAll("button"));
+    const botaoVip = () =>
+      botoes().find((b) =>
+        (b.textContent ?? "").includes("Clientes Frequentes"),
+      );
+    const botaoInativo = () =>
+      botoes().find((b) =>
+        (b.textContent ?? "").includes("Sem comprar há 30d"),
+      );
+    const botaoEnviar = () =>
+      botoes().find((b) =>
+        (b.textContent ?? "").includes("Enviar Notificação Agora"),
+      ) as HTMLButtonElement | undefined;
+
+    // 1) Seleciona "Clientes Frequentes" — mede 2 de verdade.
+    await act(async () => {
+      botaoVip()!.click();
+    });
+    await act(async () => {
+      await esperar(50);
+    });
+
+    expect(numeroDoSegmento(botaoVip())).toBe("2");
+    expect(botaoEnviar()?.disabled).toBe(false);
+
+    // 2) Agora o segmento "inactive" vai falhar de propósito ao medir.
+    estadoDoBanco.porSegmento.inactive = null;
+
+    await act(async () => {
+      botaoInativo()!.click();
+    });
+    await act(async () => {
+      await esperar(50);
+    });
+
+    // O "2" do segmento anterior não pode sobreviver: o segmento selecionado
+    // agora é "inactive", que nunca terminou de medir.
+    expect(numeroDoSegmento(botaoInativo())).toBe("—");
+    expect(numeroDoSegmento(botaoInativo())).not.toBe("0");
+    expect(texto()).toContain("Receberão: — aparelhos");
+    expect(botaoEnviar()?.disabled).toBe(true);
+  });
+
   it("os selos de plataforma iOS/Android saíram da tela", async () => {
     await abrirTela();
 
@@ -340,9 +399,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     }
 
     function numeroDoCartaoGrande(): string | undefined {
-      return (
-        hospedeiro.querySelector("h2.text-3xl")?.textContent ?? undefined
-      );
+      return hospedeiro.querySelector("h2.text-3xl")?.textContent ?? undefined;
     }
 
     function numeroDoBadgeTodosOsClientes(): string | undefined {
