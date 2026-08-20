@@ -280,7 +280,12 @@ describe("AdminUserDetailView — a contagem de pedidos bate com a lista", () =>
     // entrega, ou histórico) — CONTA por definição da regra, a mesma leitura
     // que o mapper já preserva (mappers.ts:244-246, `null` não é traduzido).
     estado.orders = [
-      { id: "sem-cobranca", status: "delivered", total: 40, payment_status: null },
+      {
+        id: "sem-cobranca",
+        status: "delivered",
+        total: 40,
+        payment_status: null,
+      },
     ];
     await abrirFicha();
 

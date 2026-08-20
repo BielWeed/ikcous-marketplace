@@ -239,7 +239,10 @@ async function main() {
 
   try {
     const controle = await escolherClienteControle(client);
-    const exercitado = await escolherClienteExercitado(client, controle.user_id);
+    const exercitado = await escolherClienteExercitado(
+      client,
+      controle.user_id,
+    );
     console.log(`Cliente de controle:   ${controle.email}`);
     console.log(`Cliente exercitado:    ${exercitado.email}\n`);
 
@@ -349,7 +352,9 @@ async function main() {
       `antes ${baseControle.orders_count}, depois ${controleDepois.orders_count}`,
     );
 
-    console.log("\n=== 7. Agregados globais (stats.global_ltv / global_orders) ===");
+    console.log(
+      "\n=== 7. Agregados globais (stats.global_ltv / global_orders) ===",
+    );
     conferir(
       "global_ltv sobe os mesmos R$ 150 do cliente exercitado (mesma correção, sem recorte por cliente)",
       depois.global_ltv === baseExercitado.global_ltv + 150,
@@ -377,7 +382,7 @@ async function main() {
   );
 
   const pedidoAindaExiste = await client.query(
-    `SELECT COUNT(*) AS n FROM public.marketplace_orders WHERE customer_name = $1`,
+    "SELECT COUNT(*) AS n FROM public.marketplace_orders WHERE customer_name = $1",
     [NOME_PEDIDO_TESTE],
   );
   conferir(
