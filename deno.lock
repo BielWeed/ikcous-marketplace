@@ -150,6 +150,7 @@
         "npm:@radix-ui/react-slot@^1.2.4",
         "npm:@radix-ui/react-switch@^1.2.6",
         "npm:@radix-ui/react-tabs@^1.1.13",
+        "npm:@secretlint/secretlint-rule-pattern@^13.0.4",
         "npm:@secretlint/secretlint-rule-preset-recommend@^13.0.4",
         "npm:@size-limit/preset-big-lib@^11.0.2",
         "npm:@supabase/supabase-js@^2.110.1",
