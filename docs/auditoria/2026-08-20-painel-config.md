@@ -752,7 +752,12 @@ Vale registrar, porque foram candidatos a achado que caíram na verificação:
 
 ---
 
-## 17. Achado novo: o "LTV Total" de cada cliente conta pedido que ninguém pagou
+## 17 ⚠️. Achado novo: o "LTV Total" de cada cliente conta pedido que ninguém pagou
+
+> **Estado: a metade de tela está fechada; a metade de banco está ESCRITA, PROVADA e PARADA.**
+> `AdminUserDetailView.tsx` já soma só dinheiro reconhecido (commit `d821611`). A migration
+> `20260823000000` **não foi aplicada** — gravar no banco é decisão do Gabriel. Enquanto ela não
+> for, a ficha e a lista divergem em sentido contrário ao de antes.
 
 Não estava nesta auditoria. Nasceu em 20/08/2026, do `diretor` da frente de coordenação, e eu
 confirmei na fonte antes de registrar.
@@ -833,6 +838,29 @@ loja nenhuma tem hoje.
 **O gatilho para voltar:** a primeira loja com centenas de inscrições de push.
 
 **Quanto dói.** Hoje, nada. Cresce linearmente com a base.
+
+---
+
+## 19. Achado novo: o resultado do envio e o histórico se contradizem na mesma tela
+
+Não estava na auditoria. Achado pelo `diretor` no veredito de orçamento da tela de Push, em
+20/08/2026. **Não corrigido de propósito** — é degrau baixo, e a tela acabou de sair de cinco
+rodadas.
+
+**O que acontece.** Se o passo que atualiza a contagem de entregas falhar, o código só faz
+`console.error` ([AdminPushView.tsx:543-554](../../src/views/admin/AdminPushView.tsx#L543)). Em
+seguida o histórico é recarregado e, com a contagem ainda em zero, a linha carimba **"Não
+confirmada"** ([:1395](../../src/views/admin/AdminPushView.tsx#L1395)) — no mesmo segundo em que
+o aviso de resultado disse *"Notificação entregue em N dispositivo(s)"*.
+
+**Nenhuma das duas frases é falsa.** O push saiu mesmo, e a entrega não foi confirmada mesmo. Elas
+só se contradizem para quem lê, e não há nada na tela explicando qual vale.
+
+**É a mesma família dos achados 11 e do defeito criado na quinta rodada:** frase fixa afirmando um
+estado que a condição ao lado não testou. A diferença é que aqui as duas frases estão certas e o
+conflito é de leitura, não de verdade — por isso é degrau mais baixo.
+
+**Quanto dói.** Baixo. Depende de o passo de atualização falhar, que hoje não se observou.
 
 ---
 
