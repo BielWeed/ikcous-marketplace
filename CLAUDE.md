@@ -56,6 +56,38 @@ conteúdo aqui.
 > `carregar_skill` → `ler_recurso_skill`). Ferramenta citada no `AGENTS.md` que não estiver na
 > sua lista não existe para você: não invoque e não invente substituto.
 
+## 🟡 Primeiro comando da sessão: o mural
+
+**Este repositório costuma ter três sessões trabalhando na mesma árvore ao mesmo tempo.** Antes
+de tocar em qualquer arquivo, veja quem está em quê:
+
+```
+node "C:\Users\Gabriel\.claude\mural\mural.mjs" core_app_mkt
+```
+
+Depois **registre a sua frente** em `~/.claude/mural/core_app_mkt/frentes/<apelido>.md`,
+reivindicando os arquivos **antes** de editar — reivindicação que chega junto com o diff não
+evitou nada. O protocolo está em `~/.claude/mural/COMO-FUNCIONA.md` (2 min) e o terreno deste
+repositório — faixas de numeração de migration, arquivos compartilhados, armadilhas medidas —
+em `~/.claude/mural/core_app_mkt/_REGRAS.md`.
+
+O quadro cruza o que foi reivindicado com o `git status` e acusa **ORFAO** (arquivo mexido que
+ninguém assumiu), **COLISAO** (dois donos) e **SILENCIO** (frente que se diz ativa e sumiu).
+Para o que não pode esperar o outro lado olhar o quadro — vou commitar arquivo compartilhado,
+preciso de um arquivo seu, vou mexer na branch, apliquei migration — mande direto com
+`mcp__ccd_session_mgmt__send_message` para o `sessao` que está no arquivo da frente.
+
+**As três travas da árvore compartilhada, que entram no prompt de TODO subagente** (inclusive nos
+que não têm nada a ver com git — a pergunta "isto já falhava antes do meu diff?" aparece sozinha
+em qualquer tarefa e puxa o `stash` junto):
+
+1. Nunca `git stash`, `checkout`, `restore`, `clean` nem `reset`. Para comparar com o original,
+   `git show HEAD:<caminho>` no scratchpad.
+2. Nunca `git add` seguido de `git commit` — **o índice do git também é compartilhado**, e o
+   pre-commit daqui leva 20-30 s. Use `git commit -- <caminho> [<caminho>…]`.
+3. Arquivo compartilhado não entra em commit seu: vira commit próprio depois que todos
+   terminarem, ou entra por montagem cirúrgica.
+
 ## Sempre: orquestre skills antes de agir
 
 Antes de qualquer tarefa não trivial — a sessão principal e **todo** subagente — chame

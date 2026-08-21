@@ -381,6 +381,40 @@ Confirmei lendo as duas funções (`expirar_pedidos_vencidos` e `update_order_st
 nenhuma toca em `coupons`. **Nos dados ainda não aconteceu** — os dois cupons do banco estão com
 `usage_count = 0`. É defeito confirmado no código, com zero ocorrências até agora.
 
+> ### 📌 Estado em 20/08/2026: a correção EXISTE, está provada e revisada, e **não foi aplicada**
+>
+> `supabase/migrations/20260901000000_devolver_uso_de_cupom_ao_desfazer_pedido.sql`, com prova em
+> `scripts/db-prove-devolucao-de-uso-de-cupom.cjs`. Cinco rodadas e quatro revisões de contexto
+> limpo — cada uma bloqueou a anterior. **Não leia este achado como "ninguém mexeu nisso".**
+>
+> **A correção óbvia — devolver a vaga do cupom ao desfazer o pedido — foi tentada e BLOQUEADA
+> duas vezes, porque abre buraco pior que o defeito:** o pedido expira, a vaga volta, e o cliente
+> paga o PIX assim mesmo (o QR continua vivo). Passaria a existir pedido **pago de verdade** com
+> desconto e o cupom **livre** — o que hoje é impossível. Não é hipótese: o cabeçalho da migration
+> registra 27 pedidos `expirado` e 1 `pago_apos_expirar` só no banco de desenvolvimento.
+>
+> **O desenho que ficou é SUBTRATIVO, e veio de uma decisão de produto do Gabriel:** *"a vaga fica
+> reservada enquanto o PIX estiver aberto"*. Em código: a vaga **não** volta quando o pedido é
+> desfeito — volta quando o pedido está definitivamente morto, isto é, quando o PIX já não pode
+> mais ser pago. **O prazo de 24 h não foi inventado aqui:** é o mesmo limite que
+> `pagamentos_a_reconciliar()` já usa para decidir até quando um pagamento ainda pode chegar —
+> reusado, não reinventado. A varredura aplica o outro lado dele: só mexe em pedido que já passou
+> desse prazo.
+>
+> O que isso **remove**: as chamadas de devolução nos quatro pontos de desfazimento saem;
+> `reconsumir_uso_cupom` deixa de existir; e o fato "a vaga já voltou" passa a ser **registrado**
+> numa coluna nova (`marketplace_orders.coupon_usage_returned`) em vez de **deduzido** do status.
+> A devolução passa a morar num lugar só, a varredura `devolver_cupons_de_pedidos_mortos()`.
+>
+> **Ela não tem retroação.** Cupom queimado por pedido cancelado no passado continua queimado, de
+> propósito: o passado voltando seria presente silencioso de cupom ativo, e esse é o lado que
+> falha fechado.
+>
+> **Por que ainda não está no banco:** aplicar migration de caminho de dinheiro sem conseguir
+> rodar a prova dela é entregar trabalho plausível em vez de verificado. Ela também é maior que
+> uma troca de função — cria coluna e job novos. Nada de tela depende dela, então nada mente
+> enquanto espera.
+
 ---
 
 ## 5. 🟡 Duas colunas para a mesma verdade — e uma leitura na errada
@@ -532,9 +566,27 @@ busca e carrinho, e eles estavam no pedido — omitir a rasura é pior que a ras
   envelhece no carrinho entre a adição e o checkout, persistência entre aparelhos
   (`sync_cart_atomic`), e o caso da variante. `sync_cart_atomic` grava `variant_id` como texto
   vazio quando não há variante, e eu não segui o que acontece com isso na volta.
-- 🔴 **Busca — cobertura RASA.** Uma frase, na seção acima. **Não olhei:** o que a busca deixa de
+- ~~🔴 **Busca — cobertura RASA.** Uma frase, na seção acima. **Não olhei:** o que a busca deixa de
   achar (ela só olha nome e descrição — não categoria, não código), o comportamento com acento e
-  maiúscula além do caso já testado, e a interação entre o filtro local e a paginação do servidor.
+  maiúscula além do caso já testado, e a interação entre o filtro local e a paginação do servidor.~~
+  <br>⚠️ **RASURADO em 20/08/2026 — a parte entre parênteses estava DESATUALIZADA e mandava refazer
+  trabalho já feito.** A busca da loja **já cobre nome, descrição, categoria e tags**, e **já é cega
+  a acento nos dois lados da comparação**: `normalizeText` (`src/lib/utils.ts:58-63`) faz
+  `NFD` + remoção de diacríticos + `toLowerCase`, e a `SearchBar` a aplica em nome (`:176`),
+  descrição (`:179`), categoria (`:180`, `:137`, `:159`) e tags (`:143`). O comentário no código
+  nomeia o caso que motivou o conserto: quem digitava *alianca* não achava a *Aliança*.
+  <br>**O que continua verdadeiro e ainda não foi olhado:** busca por código do produto, e a
+  interação entre o filtro local e a paginação do servidor.
+  <br>**Nuance descoberta ao rasurar, que ninguém tinha registrado:** existem **dois** caminhos de
+  busca e eles não cobrem os mesmos campos. `SearchBar.tsx` cobre os quatro campos acima;
+  `useSearch.ts:25-27` normaliza apenas **nome e descrição**. Divergência não medida quanto a
+  impacto — fica como pista, não como achado.
+  <br>🔴 **Por que esta rasura existe:** uma sessão da caça de 20/08 mediu `ilike` no banco, obteve
+  0 resultados para todos os termos sem acento, viu que batia com o texto acima e **quase reportou
+  um defeito que não existe**. Só não virou achado falso porque ela foi digitar na tela antes de
+  escrever. É exatamente o dano que `2026-08-20-fila-unica-de-dor.md` descreve no topo — retrato
+  escrito envelhece, e o detalhe convincente é o que engana. **Confirme no código antes de obedecer
+  a qualquer "não foi coberto" escrito aqui.**
 - **O painel do lojista** (`src/views/admin/`) — só entrei nele para rastrear o formulário de
   cupom e a origem de um dado. Não foi auditado. *(Uma sessão paralela auditou o painel; o
   resultado dela está em `docs/auditoria/2026-08-20-painel-config.md`.)*

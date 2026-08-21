@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { AdminErrorState } from "@/components/admin/AdminErrorState";
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import {
   AdminKpiCarousel,
@@ -117,9 +118,27 @@ export const AdminProductsView = memo(function AdminProductsView({
     [onNavigate, saveScroll, resetRestored],
   );
 
+  // Achado novo da revisão do Achado 7: `AdminProductsView` nunca desmonta —
+  // `AdminArea.tsx` só esconde o container por CSS (`visibility`/`opacity`)
+  // ao abrir `admin-product-form`. Editar o produto muda o custo, salva
+  // (`useProducts.ts` chama `clearAnalyticsCache()`, que zera só o cache de
+  // MÓDULO) e volta para "Produtos" com `stats` desta instância intacto —
+  // sem forçar aqui, o KPI segue mostrando o snapshot de antes da edição.
+  // `wasActiveRef` guarda o `active` do render anterior para disparar SÓ na
+  // transição false→true, nunca a cada render enquanto a view já está
+  // ativa (senão vira RPC em laço). Mesmo precedente de
+  // `AdminOrdersView.tsx:430-436`.
+  const wasActiveRef = useRef(active);
   useEffect(() => {
-    if (active && !stats) {
+    const wasActive = wasActiveRef.current;
+    wasActiveRef.current = active;
+    if (!active) return;
+    if (!stats) {
       fetchExecutiveSummary(false);
+      return;
+    }
+    if (!wasActive) {
+      fetchExecutiveSummary(true);
     }
   }, [active, stats, fetchExecutiveSummary]);
 
@@ -175,7 +194,21 @@ export const AdminProductsView = memo(function AdminProductsView({
     }
   }, [active]);
 
-  const firstLoadRef = useRef(true);
+  // Achado 11 da auditoria de 20/08/2026: a busca da lista só dispara 320 ms
+  // depois de a tela abrir (o `setTimeout` do efeito logo abaixo), e nesse
+  // intervalo `loading` (do `useProducts`) ainda é `false` — só vira `true`
+  // DENTRO de `loadProducts`, chamado só depois do atraso. A condição do
+  // estado vazio (`products?.length === 0`) já era verdadeira nessa janela:
+  // "ainda não perguntei" virava "perguntei e não há nada". `hasLoadedOnce`
+  // fecha essa janela (existia um `firstLoadRef` aqui antes, mas era um
+  // `ref` nunca LIDO em lugar nenhum do arquivo — não fazia nada). `loadError`
+  // é o terceiro estado que faltava: sem ele, a correção óbvia (trocar a
+  // condição por `loading || !hasLoadedOnce`) trocaria "nenhum produto" por
+  // um esqueleto ETERNO sempre que a busca falhasse de verdade — mentira
+  // diferente, mesma gravidade.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const effectiveLoading = loading || !hasLoadedOnce;
   const shouldScrollToTop = useRef(false);
 
   useEffect(() => {
@@ -199,6 +232,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           category: filterCategory === "all" ? undefined : filterCategory,
         });
         if (result) {
+          setLoadError(false);
           setTotalProducts(result.total);
           cachedProductsTotal = result.total;
 
@@ -206,9 +240,16 @@ export const AdminProductsView = memo(function AdminProductsView({
           if (pageToFetch > maxPage) {
             setCurrentPage(maxPage);
           }
+        } else {
+          // `loadProducts` nunca lança aqui: numa falha real ela já mostrou
+          // `toast.error` e devolveu `null` (abort de uma busca superada
+          // também devolve `null`, sem toast — o pior caso é este banner
+          // aparecer por um instante numa corrida de busca/filtro, e sumir
+          // sozinho na resposta seguinte).
+          setLoadError(true);
         }
       } finally {
-        firstLoadRef.current = false;
+        setHasLoadedOnce(true);
       }
     },
     [loadProducts, pageSize, searchTerm, filterCategory, setCurrentPage],
@@ -325,6 +366,31 @@ export const AdminProductsView = memo(function AdminProductsView({
     [financialStats, totalProducts],
   );
 
+  // Achado 7 da auditoria de 20/08/2026
+  // (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): excluir ou
+  // duplicar produto muda o catálogo, e `deleteProduct`/`addProduct`
+  // chamam `clearAnalyticsCache()` — mas isso só zera o cache de MÓDULO em
+  // `useAnalytics.ts`, não avisa esta instância já montada do hook. Sem
+  // rebuscar aqui, "Capital Alocado", "Lucro Potencial" e "ROI do
+  // Portfólio" seguem precificando o produto que já saiu, até o lojista
+  // trocar de aba ou recarregar. A correção anterior tentava consertar
+  // isso na RAIZ (fazendo `clearAnalyticsCache()` zerar `stats` de toda
+  // instância montada), e foi bloqueada na revisão: zerar `stats` também
+  // atinge o Dashboard e a tela de Pedidos, que não rebuscam sozinhos do
+  // nulo — o Dashboard passava a mostrar KPI zerado como se fosse real, e
+  // o aviso de dinheiro em pedido cancelado sumia da tela de Pedidos.
+  // Segue o padrão já usado em `AdminOrdersView.tsx:292-294`: rebuscar na
+  // tela que tem o defeito, não zerar o estado para todo mundo.
+  const refreshFinancialStats = useCallback(async () => {
+    try {
+      await fetchExecutiveSummary(true);
+    } catch {
+      // A rebusca é best-effort: o produto já foi excluído/duplicado com
+      // sucesso, e não pode derrubar essa operação. Os KPIs ficam com o
+      // snapshot antigo até a próxima revalidação natural.
+    }
+  }, [fetchExecutiveSummary]);
+
   const handleToggleStatus = useCallback(
     async (id: string, active: boolean) => {
       if (isOffline) {
@@ -336,9 +402,20 @@ export const AdminProductsView = memo(function AdminProductsView({
         return;
       }
       haptic.light();
-      await toggleProductStatus(id, active);
+      // Achado novo da revisão do Achado 7: ativar/desativar pelo card
+      // também muda o que a RPC do resumo executivo conta — ela filtra por
+      // `ativo = true` (supabase/migrations/20260822000100_...sql:187-192)
+      // — sem rebuscar aqui, "Capital Alocado" continua contando um
+      // produto que acabou de sair (ou entrar) do filtro do servidor, com
+      // os cartões visíveis na mesma dobra. `toggleProductStatus` resolve
+      // falsy numa falha (sem lançar) — não rebusca nesse caso, porque
+      // nada mudou de fato no catálogo do servidor.
+      const sucesso = await toggleProductStatus(id, active);
+      if (sucesso) {
+        refreshFinancialStats();
+      }
     },
-    [toggleProductStatus, isOffline],
+    [toggleProductStatus, isOffline, refreshFinancialStats],
   );
 
   const handleDelete = useCallback(
@@ -368,17 +445,29 @@ export const AdminProductsView = memo(function AdminProductsView({
     }
     try {
       // `deleteProduct` nunca lança — captura tudo internamente e devolve
-      // `true`/`false` (já mostrando o toast de erro dela mesma numa
-      // falha). Descartar esse retorno fazia o admin ver DOIS toasts
-      // contraditórios numa falha de soft-delete: "Erro ao excluir
-      // produto" (do hook) e "Produto Removido" (daqui, incondicional). O
-      // toast de sucesso só aparece quando o hook confirma o sucesso.
+      // `true`/`false`, já mostrando o toast (sucesso OU erro) dela mesma.
+      // Achado 16 da auditoria de 20/08/2026: esta view chegou a duplicar o
+      // aviso de SUCESSO aqui (`toast.success("Produto Removido", {...})`
+      // incondicional), e o admin via dois avisos empilhados para uma
+      // exclusão só. O caminho de FALHA já seguia a regra certa — só o
+      // hook avisa, com `toast.error`, e o `else` abaixo fica calado —
+      // porque é o hook quem sabe o resultado no instante em que ele
+      // acontece, o mesmo padrão de TODA outra mutação do hook (criar,
+      // atualizar, alternar status, variantes). A correção do sucesso é a
+      // mesma regra: o aviso mora só lá, esta view não repete.
       const sucesso = await deleteProduct(productToDelete);
       if (sucesso) {
         haptic.success();
-        toast.success("Produto Removido", {
-          description: "O produto foi excluído com sucesso.",
-        });
+        // Achado da revisão do Achado 7: `AlertDialogAction` do Radix é
+        // `Dialog.Close` e fecha o diálogo síncrono no clique, antes de
+        // qualquer `await` — mas o `finally` abaixo (`setProductToDelete`)
+        // só roda depois de todos os `await`s daqui. Se o lojista excluir A
+        // e, enquanto a rebusca de A ainda corre, abrir o diálogo de B,
+        // esse `finally` tardio fecha o diálogo de B sozinho. SEM `await`
+        // aqui não alonga essa janela — `refreshFinancialStats` é `async`
+        // com `try/catch` interno, nunca rejeita, então não sobra promessa
+        // sem tratamento.
+        refreshFinancialStats();
       } else {
         haptic.error();
       }
@@ -390,7 +479,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     } finally {
       setProductToDelete(null);
     }
-  }, [deleteProduct, productToDelete, isOffline]);
+  }, [deleteProduct, productToDelete, isOffline, refreshFinancialStats]);
 
   const handleDuplicate = useCallback(
     (product: any) => {
@@ -457,6 +546,9 @@ export const AdminProductsView = memo(function AdminProductsView({
       toast.success("Produto Duplicado", {
         description: "O produto foi duplicado com sucesso.",
       });
+      // Mesmo motivo de `confirmDelete`: sem `await` para não alongar a
+      // janela entre o clique e o `finally` que fecha o diálogo.
+      refreshFinancialStats();
     } catch (err) {
       console.error("Error duplicating product:", err);
       haptic.error();
@@ -466,7 +558,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     } finally {
       setProductToDuplicate(null);
     }
-  }, [addProduct, productToDuplicate, isOffline]);
+  }, [addProduct, productToDuplicate, isOffline, refreshFinancialStats]);
 
   // Removed early return loading block to prevent visual layout shifts
 
@@ -655,7 +747,7 @@ export const AdminProductsView = memo(function AdminProductsView({
 
         {/* Grid view of Products as Assets */}
         <LocalErrorBoundary>
-          {!loading && products?.length === 0 ? null : (
+          {!effectiveLoading && products?.length === 0 ? null : (
             <div className="relative min-h-[400px]">
               {showVisualLoading && <div className="admin-sync-progress-bar" />}
               {viewMode === "detailed" ? (
@@ -663,7 +755,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                   key="detailed-grid"
                   className="grid min-h-[400px] grid-cols-1 gap-8 pb-10 duration-200 animate-in fade-in md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
                 >
-                  {loading && products.length === 0
+                  {effectiveLoading && products.length === 0
                     ? Array.from({ length: 8 }).map((_, i) => (
                         <div
                           key={i}
@@ -712,7 +804,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                   key="compact-grid"
                   className="grid min-h-[250px] grid-cols-2 gap-3 pb-10 duration-200 animate-in fade-in sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
                 >
-                  {loading && products.length === 0
+                  {effectiveLoading && products.length === 0
                     ? Array.from({ length: 12 }).map((_, i) => (
                         <div
                           key={i}
@@ -785,8 +877,8 @@ export const AdminProductsView = memo(function AdminProductsView({
           </div>
         )}
 
-        {/* Empty State */}
-        {!loading && products?.length === 0 && (
+        {/* Empty State — só depois que o servidor REALMENTE respondeu "nenhum" */}
+        {!effectiveLoading && !loadError && products?.length === 0 && (
           <div className="admin-glass relative flex flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-white/5 px-6 py-12 text-center">
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-admin-gold/[0.02] to-transparent" />
             <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
@@ -796,6 +888,17 @@ export const AdminProductsView = memo(function AdminProductsView({
               Nenhum produto cadastrado
             </h3>
           </div>
+        )}
+
+        {/* Erro ao carregar — estado distinto do vazio real e do
+            carregamento: achado 11 avisava que trocar a mentira "vazio" por
+            um esqueleto eterno na falha seria trocar uma mentira por outra. */}
+        {!effectiveLoading && loadError && products?.length === 0 && (
+          <AdminErrorState
+            title="Erro ao Carregar Produtos"
+            onRetry={() => loadData(currentPage)}
+            isLoading={loading}
+          />
         )}
 
         {/* Modal de Ajuda Global */}
@@ -1333,6 +1436,27 @@ export const AdminProductsView = memo(function AdminProductsView({
   );
 });
 
+/**
+ * A etiqueta de status do cartão de produto — mesma decisão nos dois modos
+ * de visualização (compact e detailed). Achado 9 da auditoria de 20/08/2026
+ * (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): a etiqueta olhava
+ * só `isActive` e um produto ATIVO com estoque zero (6 no banco, medido em
+ * 20/08/2026) aparecia como "Em Operação" — a mesma tela que, no simulador
+ * de celular ao lado (PhoneSimulator.tsx), já escrevia "Esgotado" para o
+ * mesmo produto. "Esgotado" é a palavra que o resto do sistema usa
+ * (ProductCard.tsx, PremiumOffers.tsx, PhoneSimulator.tsx) — reaproveitada
+ * aqui em vez de inventar um sinônimo. Precedência: inativo vence tudo
+ * ("Offline", mesmo com estoque), depois esgotado, depois em operação.
+ */
+function statusDoProdutoNoPainel(product: {
+  isActive: boolean;
+  stock: number;
+}): "Offline" | "Esgotado" | "Em Operação" {
+  if (!product.isActive) return "Offline";
+  if (product.stock <= 0) return "Esgotado";
+  return "Em Operação";
+}
+
 interface AdminProductCardProps {
   readonly product: any;
   readonly viewMode: "detailed" | "compact";
@@ -1358,18 +1482,46 @@ const AdminProductCard = memo(function AdminProductCard({
   onPrefetch,
 }: AdminProductCardProps) {
   if (viewMode === "detailed") {
-    const margin =
-      product.price > 0
-        ? ((product.price - (product.costPrice || 0)) / product.price) * 100
+    // Achado 8 da auditoria de 20/08/2026
+    // (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): `costPrice || 0`
+    // fundia "sem custo cadastrado" com "custo é zero" — o mesmo produto
+    // mostrava margem de 100% (o melhor número do painel) e ROI de 0% ao
+    // mesmo tempo, por descrever um custo que ninguém mediu. `hasCost`
+    // separa os dois estados; sem ele, margem/ROI/capital/potencial viram
+    // `null` e a tela mostra "—" em vez de afirmar um número. Com custo
+    // real (> 0) a conta é BYTE A BYTE a mesma de antes.
+    //
+    // ⚠️ POR QUE zero conta como ausencia aqui, sendo que
+    // AdminCustomersView.tsx:252-255 faz o CONTRARIO de proposito (usa `??`
+    // para que um zero MEDIDO nao vire "nao sei"): porque neste caminho o
+    // app nao consegue representar "nao sei". `useProducts.ts:530` grava
+    // `custo: productData.costPrice || 0` no insert, entao o `null` que o
+    // formulario monta e achatado para `0` ANTES de chegar ao banco — e o
+    // produto que motivou este achado tem `custo = 0` significando ausencia.
+    // Com a origem ambigua, nenhuma regra de exibicao acerta os dois casos,
+    // e afirmar "margem de 100%" e o erro mais caro dos dois.
+    //
+    // O preco: um brinde de custo zero DE VERDADE tambem cai em "—".
+    // **Gatilho:** no dia em que `useProducts.ts:530` parar de achatar
+    // `null` em `0`, este `hasCost` deve virar `costPrice != null` (sem o
+    // `> 0`) na MESMA mudanca, senao o zero medido fica invisivel.
+    const hasCost =
+      product.costPrice !== undefined &&
+      product.costPrice !== null &&
+      product.costPrice > 0;
+    const margin = !hasCost
+      ? null
+      : product.price > 0
+        ? ((product.price - product.costPrice) / product.price) * 100
         : 0;
-    const roi =
-      (product.costPrice || 0) > 0
-        ? ((product.price - (product.costPrice || 0)) /
-            (product.costPrice || 0)) *
-          100
-        : 0;
-    const invested = (product.costPrice || 0) * product.stock;
-    const totalProfit = (product.price || 0) * product.stock - invested;
+    const roi = !hasCost
+      ? null
+      : ((product.price - product.costPrice) / product.costPrice) * 100;
+    const invested = !hasCost ? null : product.costPrice * product.stock;
+    const totalProfit = !hasCost
+      ? null
+      : (product.price || 0) * product.stock -
+        product.costPrice * product.stock;
 
     return (
       <motion.div
@@ -1453,18 +1605,29 @@ const AdminProductCard = memo(function AdminProductCard({
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Badge
-                    className={`${product.isActive ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-500" : "border-white/5 bg-zinc-800 text-zinc-500"} rounded-lg border px-2.5 py-1 text-[8px] font-black uppercase tracking-widest backdrop-blur-md transition-all`}
+                    className={cn(
+                      "rounded-lg border px-2.5 py-1 text-[8px] font-black uppercase tracking-widest backdrop-blur-md transition-all",
+                      statusDoProdutoNoPainel(product) === "Em Operação" &&
+                        "border-emerald-500/20 bg-emerald-500/10 text-emerald-500",
+                      statusDoProdutoNoPainel(product) === "Esgotado" &&
+                        "border-rose-500/20 bg-rose-500/10 text-rose-500",
+                      statusDoProdutoNoPainel(product) === "Offline" &&
+                        "border-white/5 bg-zinc-800 text-zinc-500",
+                    )}
                   >
-                    {product.isActive ? "Em Operação" : "Offline"}
+                    {statusDoProdutoNoPainel(product)}
                   </Badge>
-                  {product.costPrice !== undefined &&
-                    product.costPrice !== null &&
-                    product.costPrice > 0 &&
+                  {!hasCost ? (
+                    <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-500 backdrop-blur-md">
+                      Sem Custo Cadastrado
+                    </Badge>
+                  ) : (
                     product.costPrice <= 0.1 && (
                       <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-500 backdrop-blur-md">
                         Custo Suspeito
                       </Badge>
-                    )}
+                    )
+                  )}
                   {product.stock <= 5 && (
                     <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-500 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
                       Crítico
@@ -1484,19 +1647,25 @@ const AdminProductCard = memo(function AdminProductCard({
                   <span
                     className={cn(
                       "text-lg font-black tracking-tighter",
-                      margin >= 40 && "text-emerald-500",
-                      margin >= 20 && margin < 40 && "text-admin-gold",
-                      margin < 20 && "text-rose-500",
+                      margin === null && "text-zinc-500",
+                      margin !== null && margin >= 40 && "text-emerald-500",
+                      margin !== null &&
+                        margin >= 20 &&
+                        margin < 40 &&
+                        "text-admin-gold",
+                      margin !== null && margin < 20 && "text-rose-500",
                     )}
                   >
-                    {margin.toFixed(1)}%
+                    {margin === null ? "—" : `${margin.toFixed(1)}%`}
                   </span>
                   <div
                     className={cn(
                       "w-6 h-6 rounded-lg flex items-center justify-center border",
-                      margin >= 20
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
-                        : "bg-rose-500/10 border-rose-500/20 text-rose-500",
+                      margin === null
+                        ? "bg-zinc-800/50 border-white/10 text-zinc-500"
+                        : margin >= 20
+                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+                          : "bg-rose-500/10 border-rose-500/20 text-rose-500",
                     )}
                   >
                     <TrendingUp className="size-3.5" />
@@ -1511,12 +1680,16 @@ const AdminProductCard = memo(function AdminProductCard({
                   <span
                     className={cn(
                       "text-lg font-black tracking-tighter",
-                      roi >= 100 && "text-emerald-500",
-                      roi >= 50 && roi < 100 && "text-admin-gold",
-                      roi < 50 && "text-rose-500",
+                      roi === null && "text-zinc-500",
+                      roi !== null && roi >= 100 && "text-emerald-500",
+                      roi !== null &&
+                        roi >= 50 &&
+                        roi < 100 &&
+                        "text-admin-gold",
+                      roi !== null && roi < 50 && "text-rose-500",
                     )}
                   >
-                    {roi.toFixed(1)}%
+                    {roi === null ? "—" : `${roi.toFixed(1)}%`}
                   </span>
                   <div className="flex size-6 items-center justify-center rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-400">
                     <ArrowUpRight className="size-3.5" />
@@ -1557,10 +1730,11 @@ const AdminProductCard = memo(function AdminProductCard({
                   Capital Alocado
                 </span>
                 <span className="font-mono text-xs font-bold text-zinc-400">
-                  R${" "}
-                  {invested.toLocaleString("pt-BR", {
-                    minimumFractionDigits: 2,
-                  })}
+                  {invested === null
+                    ? "—"
+                    : `R$ ${invested.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                      })}`}
                 </span>
               </div>
 
@@ -1581,10 +1755,11 @@ const AdminProductCard = memo(function AdminProductCard({
                     Potencial
                   </p>
                   <p className="text-sm font-black tracking-tight text-white/80">
-                    + R${" "}
-                    {totalProfit.toLocaleString("pt-BR", {
-                      minimumFractionDigits: 0,
-                    })}
+                    {totalProfit === null
+                      ? "—"
+                      : `+ R$ ${totalProfit.toLocaleString("pt-BR", {
+                          minimumFractionDigits: 2,
+                        })}`}
                   </p>
                 </div>
               </div>
@@ -1673,12 +1848,15 @@ const AdminProductCard = memo(function AdminProductCard({
             <Badge
               className={cn(
                 "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border backdrop-blur-md transition-all self-start",
-                product.isActive
-                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                  : "bg-zinc-800 text-zinc-500 border-white/5",
+                statusDoProdutoNoPainel(product) === "Em Operação" &&
+                  "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+                statusDoProdutoNoPainel(product) === "Esgotado" &&
+                  "bg-rose-500/10 text-rose-500 border-rose-500/20",
+                statusDoProdutoNoPainel(product) === "Offline" &&
+                  "bg-zinc-800 text-zinc-500 border-white/5",
               )}
             >
-              {product.isActive ? "Em Operação" : "Offline"}
+              {statusDoProdutoNoPainel(product)}
             </Badge>
           </div>
         </div>

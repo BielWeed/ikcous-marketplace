@@ -16,8 +16,13 @@ import { useStore } from "@/contexts/StoreContext";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
+import {
+  type RotuloDeCupom,
+  cupomEstaExpirado,
+  rotuloDoCupom,
+} from "@/utils/status-do-cupom";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
 import {
   Calendar,
@@ -54,6 +59,19 @@ const itemVariants: Variants = {
     y: 0,
     transition: { type: "spring", stiffness: 100, damping: 15 },
   },
+};
+
+// Aparência do selo de status por rótulo (achado do lote 1: cupom vencido
+// não pode continuar com a mesma cara de "Ativo").
+const classesDoSeloPorRotulo: Record<RotuloDeCupom, string> = {
+  Ativo: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+  Expirado: "border-amber-500/20 bg-amber-500/10 text-amber-400",
+  Inativo: "border-zinc-500/20 bg-zinc-500/10 text-zinc-500",
+};
+const classesDoPontoPorRotulo: Record<RotuloDeCupom, string> = {
+  Ativo: "animate-pulse bg-emerald-400",
+  Expirado: "bg-amber-400",
+  Inativo: "bg-zinc-600",
 };
 
 interface AdminCouponsViewProps {
@@ -158,7 +176,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
 
   // Dynamic stats computation
   const totalCoupons = coupons.length;
-  const activeCoupons = coupons.filter((c) => c.active).length;
+  // Achado do lote 1: cupom vencido continuava contado aqui, mesmo o
+  // servidor já recusando ele no checkout (`valid_until > now()`).
+  const activeCoupons = coupons.filter(
+    (c) => c.active && !cupomEstaExpirado(c.validUntil),
+  ).length;
   const totalUsage = coupons.reduce((sum, c) => sum + (c.usageCount || 0), 0);
   const averageDiscount = (() => {
     const percentageCoupons = coupons.filter((c) => c.type === "percentage");
@@ -337,7 +359,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <p className="text-[11px] text-zinc-400 leading-none">
-                        Permitir que clientes usem cupons no carrinho.
+                        {/* Achado 16 da auditoria de 20/08/2026: o campo de
+                            cupom fica no checkout, não no carrinho — existe
+                            um só CouponInput no app inteiro
+                            (CheckoutView.tsx). */}
+                        Permitir que clientes usem cupons no checkout.
                       </p>
                       <button
                         type="button"
@@ -378,8 +404,8 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                     <div className="mt-3 pt-3 border-t border-white/5 text-[11px] leading-relaxed text-zinc-500 text-left space-y-1.5">
                       <p>
                         Ativando esta opção, seus clientes poderão digitar
-                        códigos de cupom (ex: GANHE10) no carrinho para receber
-                        discounts especiais.
+                        códigos de cupom (ex: GANHE10) no checkout para
+                        receber descontos especiais.
                       </p>
                       <p>
                         Se desativado, o campo de cupom ficará totalmente oculto
@@ -545,16 +571,12 @@ export const AdminCouponsView = memo(function AdminCouponsView({
 
                           <div className="flex items-center gap-2">
                             <div
-                              className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-[8px] font-black uppercase tracking-widest ${
-                                coupon.active
-                                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                                  : "border-zinc-500/20 bg-zinc-500/10 text-zinc-500"
-                              }`}
+                              className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-[8px] font-black uppercase tracking-widest ${classesDoSeloPorRotulo[rotuloDoCupom(coupon)]}`}
                             >
                               <div
-                                className={`size-1 rounded-full ${coupon.active ? "animate-pulse bg-emerald-400" : "bg-zinc-600"}`}
+                                className={`size-1 rounded-full ${classesDoPontoPorRotulo[rotuloDoCupom(coupon)]}`}
                               />
-                              {coupon.active ? "Ativo" : "Inativo"}
+                              {rotuloDoCupom(coupon)}
                             </div>
                             <Switch
                               checked={coupon.active}
@@ -600,9 +622,14 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                                 Mínimo Compra
                               </p>
                               <p className="text-xl font-black text-zinc-400">
-                                {coupon.minPurchase && coupon.minPurchase > 0
-                                  ? `R$ ${Number(coupon.minPurchase).toFixed(0)}`
-                                  : "R$ 0"}
+                                {/* Achado 15 da auditoria de 20/08/2026:
+                                    `.toFixed(0)` arredondava R$ 49,90 para
+                                    "R$ 50" — valor que não existe, e que
+                                    quem compra usa para decidir se bate o
+                                    mínimo. `formatCurrency` é o mesmo
+                                    utilitário de moeda já usado no resto do
+                                    painel, com centavos garantidos. */}
+                                {formatCurrency(coupon.minPurchase || 0)}
                               </p>
                             </div>
                           </div>
@@ -729,8 +756,13 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                   Validade
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Defina uma data limite. Após esse prazo, o cupom é desativado
-                  automaticamente pelo sistema.
+                  {/* Achado 16 da auditoria de 20/08/2026, terceira
+                      ocorrência (não estava no relatório original): mesmo
+                      erro das duas primeiras — o cupom nunca foi aceito no
+                      carrinho, só no checkout. */}
+                  Defina uma data limite. Depois dela, o cupom deixa de ser
+                  aceito no checkout e o selo aqui muda para "Expirado" — a
+                  chavinha de ativação continua sob seu controle manual.
                 </p>
               </div>
 

@@ -20,7 +20,18 @@
  *   2. Aplica cada migration numa transação própria. Se falhar, faz ROLLBACK e para.
  *   3. Registra a versão em supabase_migrations.schema_migrations.
  *   4. Reexecuta uma verificação: confere se os marcadores esperados estão mesmo
- *      na função que ficou no banco.
+ *      na função que ficou no banco. O veredito final é UM de três estados,
+ *      nunca dois — o código de saída distingue os três:
+ *        - VERIFICADO (saída 0): toda migration teve ao menos um marcador
+ *          conferido, e todos apareceram.
+ *        - PULADA (saída 2): alguma migration ficou SEM NENHUM marcador
+ *          conferido — seja por não ter entrada em VERIFICACOES, seja por
+ *          ter entrada com `esperado` vazio. Isto NÃO é sucesso: é "ninguém
+ *          verificou". Migration que só faz ALTER TABLE, policy ou grant cai
+ *          sempre aqui, porque o script só sabe conferir marcador dentro de
+ *          corpo de função (pg_get_functiondef).
+ *        - FALHOU (saída 1): algum marcador esperado não apareceu na função
+ *          que ficou no banco.
  *
  * USO:
  *   node scripts/db-apply.cjs <arquivo.sql> [outro.sql ...]
@@ -382,11 +393,148 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20260901000000_devolver_uso_de_cupom_ao_desfazer_pedido.sql": [
+    // ⚠️ Rodada 4 (redesenho subtrativo): reconsumir_uso_cupom DEIXA DE
+    // EXISTIR (DROP FUNCTION) e a coluna nova coupon_usage_returned entra
+    // por ALTER TABLE. Nenhum dos dois e' verificavel por este mapa: DROP
+    // nao tem "depois" para ler via pg_get_functiondef (a funcao some, e
+    // buscar marcador dentro de uma definicao que nao existe so' devolveria
+    // AUSENTE para tudo, mesmo com o DROP correto), e ALTER TABLE nao
+    // redefine funcao nenhuma. Confira os dois A MAO depois de aplicar:
+    //   SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    //    WHERE n.nspname = 'public' AND p.proname = 'reconsumir_uso_cupom';
+    //   -- esperado: 0 linhas.
+    //   SELECT column_default, is_nullable FROM information_schema.columns
+    //    WHERE table_schema='public' AND table_name='marketplace_orders'
+    //      AND column_name='coupon_usage_returned';
+    //   -- esperado: column_default='false', is_nullable='NO'.
+    {
+      funcao: "devolver_uso_cupom",
+      esperado: [
+        // Sobrevive sem mudanca de comportamento nesta rodada -- so muda
+        // quem chama (a varredura nova, abaixo).
+        "SELECT coupon_id INTO v_coupon_id",
+        "GREATEST(usage_count - 1, 0)",
+      ],
+    },
+    {
+      funcao: "expirar_pedidos_vencidos",
+      esperado: [
+        // As tres guardas ja existentes (20260807000000) tem de sobreviver
+        // ao REPLACE: sem elas a varredura passaria a alcancar pedido pago,
+        // historico ou ja cancelado por outro caminho.
+        "WHERE payment_status = 'aguardando'",
+        "AND status = 'pending'",
+        "FOR UPDATE SKIP LOCKED",
+        // A prova de que a chamada de devolver_uso_cupom SAIU deste ponto
+        // (Rodada 4): bloco amarrado, nao linha solta -- se alguem
+        // reinserisse "PERFORM public.devolver_uso_cupom(v_pedido.id);"
+        // entre as duas linhas abaixo, esta string contigua deixaria de
+        // casar. E o mesmo defeito que passou pelos sete marcadores soltos
+        // da Rodada 3: o revisor apagou uma chamada e a verificacao nao
+        // percebeu porque cada PERFORM era um marcador isolado.
+        `PERFORM public.devolver_estoque(v_pedido.id);
+
+        UPDATE public.marketplace_orders
+           SET payment_status = 'expirado',`,
+      ],
+    },
+    {
+      funcao: "update_order_status_atomic",
+      esperado: [
+        // A guarda de dono a prova de NULL (20260804010000) tem de
+        // sobreviver ao REPLACE.
+        "v_user_id IS DISTINCT FROM v_caller_id AND NOT v_is_admin",
+        "SET estoque = estoque + v_item.quantity",
+        // Bloco amarrado: prova que a chamada de devolver_uso_cupom SAIU do
+        // cancelamento manual (Rodada 4). Se ela voltasse entre o fim do
+        // loop de estoque e o fechamento do IF, este marcador nao casaria.
+        `END LOOP;
+
+        -- A vaga do cupom NAO volta aqui (Rodada 4): ela so' volta na
+        -- varredura devolver_cupons_de_pedidos_mortos(), depois que o PIX
+        -- ja nao pode mais ser pago (expires_at + 24h). Devolver no momento
+        -- do cancelamento e' exatamente o que abriu a janela das Rodadas 2 e
+        -- 3 -- ver o cabecalho desta migration.
+    END IF;`,
+      ],
+    },
+    {
+      funcao: "confirmar_pagamento",
+      esperado: [
+        // Guardas ja existentes (20260808000000/20260810000000) que tem de
+        // sobreviver ao REPLACE.
+        "FOR UPDATE;",
+        "IF v_pedido.payment_status IN ('pago', 'pago_apos_expirar') THEN\n            RETURN 'ja_pago';",
+        // Os quatro blocos amarrados abaixo provam que as chamadas de
+        // devolver_uso_cupom/reconsumir_uso_cupom SAIRAM exatamente dos
+        // quatro pontos que a Rodada 4 desmonta -- nao marcador solto: e'
+        // a mesma falha da Rodada 3 (sete marcadores soltos passaram com uma
+        // chamada apagada) que este formato existe para nao repetir.
+        //
+        // 1. Estorno com reserva intacta -- devolver_estoque sobrevive,
+        //    devolver_uso_cupom nao aparece mais entre ele e o UPDATE.
+        `IF v_pedido.payment_status = 'aguardando'
+           AND v_pedido.status = 'pending' THEN
+            PERFORM public.devolver_estoque(p_order_id);
+            UPDATE public.marketplace_orders
+               SET payment_status = 'estornado',`,
+        // 2. Recusado com reserva intacta -- mesma prova.
+        `PERFORM public.devolver_estoque(p_order_id);
+
+        UPDATE public.marketplace_orders
+           SET payment_status = 'recusado',
+               status         = 'cancelled',`,
+        // 3. expirado -> pago: reconsumir_uso_cupom nao aparece mais entre
+        //    a guarda e o UPDATE.
+        `IF v_pedido.payment_status = 'expirado' THEN
+            UPDATE public.marketplace_orders
+               SET payment_status = 'pago_apos_expirar',`,
+        // 4. cancelado manualmente -> pago: mesma prova.
+        `IF v_pedido.status = 'cancelled' THEN
+                UPDATE public.marketplace_orders
+                   SET payment_status = 'pago_apos_expirar',`,
+      ],
+    },
+    {
+      funcao: "devolver_cupons_de_pedidos_mortos",
+      esperado: [
+        // A funcao nova, unico lugar onde a vaga do cupom volta (Rodada 4).
+        //
+        // Rodada 5: os seis marcadores soltos de antes (um por clausula do
+        // WHERE) davam "ok" mesmo com o WHERE INTEIRO apagado do corpo --
+        // provado por um revisor de contexto limpo -- porque cada clausula
+        // tambem aparece, verbatim, no bloco de comentario logo acima deste
+        // WHERE executavel. E' a MESMA falha da Rodada 3 (sete marcadores
+        // soltos passaram com uma chamada apagada): aqui o texto que engana
+        // nao e' outro ponto da funcao, e' o comentario dela mesma.
+        //
+        // O marcador agora e' o BLOCO INTEIRO, do WHERE ate FOR UPDATE SKIP
+        // LOCKED, no mesmo formato ja usado (e confirmado pelo revisor) em
+        // expirar_pedidos_vencidos e confirmar_pagamento acima: contiguo o
+        // bastante para nao existir em nenhum outro lugar do arquivo --
+        // nem no comentario (que quebra linha e pontua diferente), nem no
+        // WHERE do CREATE INDEX (mesma clausula inicial, indentacao
+        // diferente).
+        `WHERE coupon_id IS NOT NULL
+          AND status = 'cancelled'
+          AND payment_status IS DISTINCT FROM 'pago'
+          AND payment_status IS DISTINCT FROM 'pago_apos_expirar'
+          AND coupon_usage_returned = FALSE
+          AND (expires_at IS NULL OR expires_at < now() - interval '24 hours')
+        FOR UPDATE SKIP LOCKED`,
+        "PERFORM public.devolver_uso_cupom(v_pedido.id);",
+        "SET coupon_usage_returned = TRUE",
+      ],
+    },
+  ],
   // ⚠️ 20260822000000_status_do_pedido_nunca_nulo.sql NAO tem entrada aqui, e
   // nao pode ter: este mapa so' sabe conferir marcador dentro de
   // pg_get_functiondef, e aquela migration e' ALTER TABLE — nao redefine
   // funcao nenhuma. O db-apply vai imprimir "sem verificacao registrada,
-  // pulando" e, no fim, "Tudo aplicado e verificado" assim mesmo.
+  // pulando" e, no fim, o veredito PULADA (saida 2) — nao "Tudo aplicado e
+  // verificado". Ate 20/08/2026 ele imprimia essa ultima frase mesmo assim;
+  // e' o defeito que resumirVerificacao() (mais abaixo) existe para fechar.
   //
   // Enquanto este mapa nao souber conferir DDL de tabela, migration de
   // ALTER TABLE, policy e grant se confere A MAO depois de aplicar. Para
@@ -534,6 +682,338 @@ function montarRollback(arquivos, restauracoes) {
   };
 }
 
+/**
+ * Resume o resultado da verificação pós-aplicação em UM de três estados —
+ * nunca dois. O booleano `tudoOk` que existia antes só sabia representar
+ * "verifiquei e passou" / "verifiquei e falhou", e "não verifiquei nada"
+ * caía dentro do primeiro por padrão: foi assim que, em 20/08/2026, duas
+ * migrations sem entrada em VERIFICACOES saíram como "Tudo aplicado e
+ * verificado".
+ *
+ * `resultados` é uma lista de `{ base, funcao?, situacao, motivo? }` — um
+ * resultado por CHECAGEM (uma função dentro de uma migration), não por
+ * arquivo; `funcao` só existe quando o resultado veio de uma checagem
+ * registrada em VERIFICACOES. `situacao` deveria estar em
+ * `"verificada" | "pulada" | "falhou"`, mas QUALQUER outro valor (typo,
+ * ausência, string inventada) é tratado como "pulada" antes de mais nada —
+ * desconhecido nunca é sucesso, nem por acidente de digitação. Precedência:
+ * qualquer "falhou" vence tudo (e ainda assim lista as "pulada" da mesma
+ * rodada, para elas não desaparecerem do veredito); senão, qualquer
+ * "pulada" vence "verificada"; lista vazia é tratada como "pulada".
+ *
+ * O código de saída tem TRÊS valores de propósito (0 / 1 / 2), não dois. Um
+ * chamador que só testar `!= 0` continua falhando fechado do mesmo jeito
+ * que falhava antes; quem quiser distinguir "não verificado" de "falhou",
+ * consegue.
+ */
+function resumirVerificacao(resultados, caminhoRollback) {
+  // Desconhecido nunca é sucesso, nem em silêncio: qualquer `situacao` fora
+  // do vocabulário conhecido (typo, ausência, valor inventado) é tratada
+  // como "pulada", com um motivo próprio que cita o valor recebido. Sem
+  // isto, o `filter` por igualdade de string dos três estados conhecidos
+  // não casa nada, os três `filter` abaixo saem vazios, e o `return` final
+  // — que assume "nada falhou, nada foi pulado, então passou" — devolve
+  // VERIFICADO. É o defeito de 20/08/2026 outra vez, dentro da própria
+  // função escrita para matá-lo.
+  const ESTADOS_CONHECIDOS = new Set(["verificada", "pulada", "falhou"]);
+  const normalizados = resultados.map((r) => {
+    if (ESTADOS_CONHECIDOS.has(r.situacao)) return r;
+    return {
+      ...r,
+      situacao: "pulada",
+      motivo: `situação desconhecida: ${JSON.stringify(r.situacao)}`,
+    };
+  });
+
+  const falharam = normalizados.filter((r) => r.situacao === "falhou");
+  const puladas = normalizados.filter((r) => r.situacao === "pulada");
+  const verificadas = normalizados.filter((r) => r.situacao === "verificada");
+
+  // Identifica um resultado na mensagem. `funcao` só existe quando o
+  // resultado veio de uma checagem de fato registrada (uma função dentro da
+  // migration) — o pseudo-resultado de "sem entrada em VERIFICACOES" não
+  // tem `funcao`, e por isso cai só no nome do arquivo.
+  const rotulo = (r) => (r.funcao ? `${r.base} (${r.funcao})` : r.base);
+
+  const avisoCommit = [
+    "   O COMMIT do passo 2 já aconteceu — esta verificação roda DEPOIS dele, então",
+    "   o que foi aplicado já está gravado no banco independente do resultado",
+    '   acima; não há "não aplicar" a partir daqui.',
+    `   Ponto de partida para desfazer: ${caminhoRollback}, salvo no passo 1 — leia`,
+    "   acima o que ele cobre e o que continua manual.",
+  ].join("\n");
+
+  if (falharam.length > 0) {
+    const lista = falharam.map(rotulo).join(", ");
+    // As puladas da MESMA rodada não podem desaparecer daqui: são elas que,
+    // se a mensagem só falar de FALHOU, ficam sem verificação para sempre
+    // depois que alguém conserta só o que apareceu e roda de novo sozinho.
+    const listaPuladas =
+      puladas.length > 0
+        ? `\n   Verificações puladas nesta mesma rodada (também sem confirmação): ${puladas
+            .map(rotulo)
+            .join(", ")}\n`
+        : "";
+    return {
+      estado: "FALHOU",
+      codigoSaida: 1,
+      mensagem: `\nATENÇÃO: algum marcador esperado não apareceu. Confira antes de confiar.\n   Verificações com marcador AUSENTE: ${lista}\n${listaPuladas}${avisoCommit}`,
+    };
+  }
+
+  if (puladas.length > 0 || resultados.length === 0) {
+    const listaPuladas = puladas
+      .map((r) => `${rotulo(r)} (${r.motivo ?? "sem motivo registrado"})`)
+      .join("\n     ");
+    const resumoVerificadas =
+      verificadas.length > 0
+        ? `   ${verificadas.length} de ${normalizados.length} verificação(ões) foram conferidas e passaram; as demais NÃO.\n`
+        : "";
+    // N2: esta explicação só faz sentido quando o motivo de fato é "não
+    // havia entrada nenhuma em VERIFICACOES" — ALTER TABLE, policy e grant
+    // são a razão real disso. Quando o motivo é "a entrada registrada não
+    // confere nenhum marcador" (esperado vazio ou só espaços), a migration
+    // TEM entrada e provavelmente NÃO é DDL de tabela; imprimir esta frase
+    // ali sugere uma causa que não é a que aconteceu.
+    const explicacaoAlterTable = puladas.some(
+      (r) => r.motivo === "nenhuma verificação registrada",
+    )
+      ? [
+          "   O db-apply só sabe conferir marcador dentro de corpo de função",
+          "   (pg_get_functiondef) — ALTER TABLE, policy, grant e REVOKE saem sempre",
+          "   assim e precisam de conferência à mão.",
+          "",
+        ].join("\n")
+      : "";
+    return {
+      estado: "PULADA",
+      codigoSaida: 2,
+      mensagem: `\nATENÇÃO: aplicado, mas NÃO VERIFICADO — isto não quer dizer que passou,\nquer dizer que ninguém conferiu.\n${resumoVerificadas}   Verificações puladas:\n     ${
+        listaPuladas || "(nenhuma verificação informada)"
+      }\n${explicacaoAlterTable}${avisoCommit}`,
+    };
+  }
+
+  // Só chega aqui quando, depois da normalização acima, nenhum resultado é
+  // "falhou" nem "pulada" e a lista não está vazia — ou seja, TODOS são
+  // "verificada". VERIFICADO nunca é o caminho padrão: ele só sai de prova
+  // positiva de cada um dos `normalizados.length` itens.
+  return {
+    estado: "VERIFICADO",
+    codigoSaida: 0,
+    mensagem: `\nTudo aplicado e verificado. (O COMMIT do passo 2 já aconteceu antes desta\nchecagem.) ${verificadas.length} de ${normalizados.length} verificações conferidas.`,
+  };
+}
+
+/**
+ * Decide a `situacao` de UMA checagem (uma função dentro de uma migration,
+ * ou o pseudo-caso "a migration não tem entrada nenhuma em VERIFICACOES") a
+ * partir do que o laço de `main()` observou ao rodar os marcadores.
+ *
+ * Extraída para ter teste direto: antes desta função existir, só
+ * `resumirVerificacao()` era testada, e o laço que DECIDE a situação — a
+ * metade do defeito de 20/08/2026 — não tinha nenhum teste em cima.
+ *
+ * `temRegistro`: a migration tinha entrada em VERIFICACOES?
+ * `algumMarcadorAvaliado`: dentro dessa entrada, algum marcador chegou a
+ *   ser comparado (ou seja, `esperado` não estava vazio)?
+ * `algumMarcadorAusente`: algum dos marcadores comparados não apareceu na
+ *   definição que ficou no banco?
+ *
+ * Precedência: sem registro vence tudo (nem há o que avaliar); sem nenhum
+ * marcador avaliado é pulada por outro motivo (entrada existe, mas não
+ * confere nada); só com marcador avaliado é que falhou/verificada fazem
+ * sentido.
+ */
+function classificarChecagem({
+  temRegistro,
+  algumMarcadorAvaliado,
+  algumMarcadorAusente,
+}) {
+  if (!temRegistro) {
+    return { situacao: "pulada", motivo: "nenhuma verificação registrada" };
+  }
+  if (!algumMarcadorAvaliado) {
+    return {
+      situacao: "pulada",
+      motivo: "a entrada registrada não confere nenhum marcador",
+    };
+  }
+  if (algumMarcadorAusente) {
+    return { situacao: "falhou" };
+  }
+  return { situacao: "verificada" };
+}
+
+/**
+ * Avalia UMA checagem completa — decide a situação, monta os textos das
+ * linhas a imprimir e diz se a função estava ausente do schema. Recebe a
+ * definição crua vinda do banco (`def`: string, ou `undefined` quando a
+ * função não existe) e o objeto de checagem (`checagem`: `{ funcao,
+ * esperado }`, ou `undefined` quando a migration não tem entrada nenhuma em
+ * VERIFICACOES).
+ *
+ * Extraída para fechar a SEGUNDA metade do defeito de 20/08/2026. A rodada
+ * anterior extraiu classificarChecagem() (a decisão pura a partir de três
+ * booleanos), mas main() continuava computando esses booleanos — e no ramo
+ * "sem entrada em VERIFICACOES" continuava passando LITERAIS escritos à mão
+ * (`temRegistro: false, ...`) direto para classificarChecagem(), sem
+ * nenhuma linha de teste exercitando esse caminho de verdade: mutar esses
+ * literais para `true` deixava a suíte inteira verde. Agora quem decide
+ * `temRegistro`/`algumMarcadorAvaliado`/`algumMarcadorAusente` é esta
+ * função, a partir dos dados reais (`def`, `checagem`) — e ela é testada
+ * direto com `avaliarChecagem(undefined, undefined)` reproduzindo o caso
+ * literal de 20/08.
+ *
+ * `linhas` já vem como texto pronto para `console.log`, na ordem em que
+ * devem aparecer: assim main() só imprime, nunca decide o que formatar.
+ *
+ * N1: um marcador vazio ou só espaço em branco NÃO conta como avaliado —
+ * `"".includes("")` é sempre `true`, e sem esta guarda `esperado: [""]`
+ * saía "ok" sem comparar nada.
+ */
+function avaliarChecagem(def, checagem) {
+  if (checagem === undefined) {
+    const { situacao, motivo } = classificarChecagem({
+      temRegistro: false,
+      algumMarcadorAvaliado: false,
+      algumMarcadorAusente: false,
+    });
+    return {
+      situacao,
+      motivo,
+      linhas: [],
+      funcaoAusente: false,
+      funcao: undefined,
+    };
+  }
+
+  const funcaoAusente = def === undefined;
+  const linhas = [];
+  if (funcaoAusente) {
+    // A2: o veredito abaixo (provavelmente AUSENTE em todo marcador) já fica
+    // certo sozinho, mas o RÓTULO "AUSENTE" mente sobre a causa — faz
+    // parecer que existe um corpo de função divergente para comparar,
+    // quando na verdade a função simplesmente não existe no schema (pode
+    // ser um no-op da migration, ou uma função com nome errado no mapa).
+    linhas.push(
+      `  (${checagem.funcao} não existe no schema — os marcadores abaixo saem AUSENTE por isso, não por divergência de corpo)`,
+    );
+  }
+
+  // Normaliza \r\n -> \n dos dois lados antes de comparar. O repo nao tem
+  // .gitattributes e core.autocrlf converte as migrations para CRLF no
+  // working tree a cada checkout/clone/stash; sem isso, um marcador que
+  // cruza uma quebra de linha (ex.: "ELSE\n            UPDATE ...") deixa
+  // de casar contra um corpo em CRLF e a verificacao grita AUSENTE para
+  // uma migration que esta correta — DEPOIS do COMMIT ja ter acontecido.
+  const defNormalizado = def?.replace(/\r\n/g, "\n");
+  let algumMarcadorAvaliado = false;
+  let algumMarcadorAusente = false;
+  for (const marcadorBruto of checagem.esperado) {
+    const marcadorNormalizado = marcadorBruto.replace(/\r\n/g, "\n");
+    if (marcadorNormalizado.trim() === "") continue; // N1: vazio/espaço não é marcador.
+    algumMarcadorAvaliado = true;
+    const ok = Boolean(defNormalizado?.includes(marcadorNormalizado));
+    if (!ok) algumMarcadorAusente = true;
+    const rotulo = `${checagem.funcao}: ${marcadorBruto.slice(0, 64)}`;
+    linhas.push(`  ${ok ? "ok     " : "AUSENTE"}  ${rotulo}`);
+  }
+
+  const { situacao, motivo } = classificarChecagem({
+    temRegistro: true,
+    algumMarcadorAvaliado,
+    algumMarcadorAusente,
+  });
+  return { situacao, motivo, linhas, funcaoAusente, funcao: checagem.funcao };
+}
+
+/**
+ * Monta a lista de tarefas de verificação a partir dos arquivos aplicados e
+ * do mapa VERIFICACOES — uma tarefa por CHECAGEM (uma função dentro de uma
+ * migration), ou uma tarefa "vazia" (`checagem: undefined`) quando o
+ * arquivo não tem entrada nenhuma no mapa. `linhasAntes` carrega a mensagem
+ * de "sem verificação registrada" quando for o caso.
+ *
+ * Extraída para que main() não precise de um `if` para decidir quantas
+ * checagens existem por arquivo, nem montar essa mensagem na hora: só
+ * percorrer o que esta função já decidiu.
+ */
+/**
+ * A forma que uma checagem PRECISA ter para ser conferível: uma função com
+ * nome e uma lista de marcadores de texto. Qualquer outra coisa é entrada
+ * malformada no mapa — que vira "pulada", nunca sucesso e nunca crash.
+ */
+function checagemBemFormada(checagem) {
+  return (
+    typeof checagem === "object" &&
+    checagem !== null &&
+    !Array.isArray(checagem) &&
+    typeof checagem.funcao === "string" &&
+    checagem.funcao !== "" &&
+    Array.isArray(checagem.esperado) &&
+    checagem.esperado.every((m) => typeof m === "string")
+  );
+}
+
+function montarTarefasDeVerificacao(arquivos, verificacoes) {
+  const tarefas = [];
+  for (const nome of arquivos) {
+    const base = path.basename(nome);
+    const registro = verificacoes[base];
+    // Qualquer coisa falsy (undefined, null, "", 0, false) e tambem a LISTA
+    // VAZIA caem aqui, em "pulada". Os dois caminhos ja custaram caro:
+    // trocar isto por `registro === undefined` fez `null` estourar TypeError
+    // DEPOIS do COMMIT, e `[]` fazia o arquivo sumir do veredito inteiro —
+    // nao virava tarefa, nao virava resultado, e o script imprimia "Tudo
+    // aplicado e verificado" contando so' os outros. Entrada malformada no
+    // mapa e' desconhecido, nunca sucesso e nunca crash.
+    if (!registro || (Array.isArray(registro) && registro.length === 0)) {
+      tarefas.push({
+        base,
+        checagem: undefined,
+        linhasAntes: [`  ${base}: sem verificação registrada, pulando.`],
+      });
+      continue;
+    }
+    // Um arquivo pode redefinir mais de uma função (ex.: a mesma migration
+    // reaplicada task a task) — registro vira lista nesse caso. Cada
+    // checagem vira uma tarefa PRÓPRIA, não um flag agregado por arquivo: um
+    // flag agregado deixaria uma segunda função sem `esperado` preenchido
+    // passar escondida atrás da primeira, que conferiu normalmente.
+    const checagens = Array.isArray(registro) ? registro : [registro];
+    for (const checagem of checagens) {
+      // A guarda acima cobre o RECIPIENTE; esta cobre o CONTEÚDO, e as duas
+      // precisam existir. `{ funcao: "f" }` sem `esperado` — o "depois eu
+      // preencho" — chegava em avaliarChecagem e estourava
+      // `checagem.esperado is not iterable` DEPOIS do COMMIT do passo 2. E o
+      // crash saía pelo main().catch com código 1, que é o MESMO código do
+      // passo 2, onde ele quer dizer "Nada foi comitado desta migration":
+      // quem lesse a tela concluiria que nada foi gravado, e tudo tinha sido.
+      if (!checagemBemFormada(checagem)) {
+        tarefas.push({
+          base,
+          checagem: undefined,
+          linhasAntes: [
+            `  ${base}: entrada malformada no mapa VERIFICACOES, tratada como sem verificação.`,
+            `           Esperado { funcao: "nome", esperado: ["marcador", ...] } — corrija o mapa.`,
+          ],
+        });
+        continue;
+      }
+      tarefas.push({ base, checagem, linhasAntes: [] });
+    }
+  }
+  return tarefas;
+}
+
+/** Busca a definição atual de uma checagem no banco — `undefined` quando não há checagem (arquivo sem entrada em VERIFICACOES). */
+async function buscarDef(client, checagem) {
+  if (checagem === undefined) return undefined;
+  const [def] = await definicaoAtual(client, checagem.funcao);
+  return def;
+}
+
 async function definicaoAtual(client, nomeFuncao) {
   const { rows } = await client.query(
     `SELECT pg_get_functiondef(p.oid) AS def
@@ -665,50 +1145,38 @@ async function main() {
     }
   }
 
-  // 3. Verificação pós-aplicação.
+  // 3. Verificação pós-aplicação. Cada migration termina classificada em UM
+  // de três estados — nunca "verificada por padrão" — e é resumirVerificacao()
+  // quem decide o veredito final a partir dessa lista (ver o comentário dela).
+  //
+  // Esta seção não decide mais nada: montarTarefasDeVerificacao() já separou
+  // o que precisa ser checado, buscarDef() só busca, avaliarChecagem() é
+  // quem classifica cada checagem — aqui só sobra laço, chamada, print e
+  // push. Se voltar a aparecer decisao aqui, o lugar dela e' dentro de uma
+  // das funcoes puras acima — foi assim que este defeito sobreviveu a duas
+  // correcoes: a fronteira andava em vez de fechar.
   console.log("\nVerificação:");
-  let tudoOk = true;
-  for (const nome of arquivos) {
-    const base = path.basename(nome);
-    const registro = VERIFICACOES[base];
-    if (!registro) {
-      console.log(`  ${base}: sem verificação registrada, pulando.`);
-      continue;
-    }
-    // Um arquivo pode redefinir mais de uma função (ex.: a mesma migration
-    // reaplicada task a task) — registro vira lista nesse caso.
-    const checagens = Array.isArray(registro) ? registro : [registro];
-    for (const checagem of checagens) {
-      const [def] = await definicaoAtual(client, checagem.funcao);
-      // Normaliza \r\n -> \n dos dois lados antes de comparar. O repo nao tem
-      // .gitattributes e core.autocrlf converte as migrations para CRLF no
-      // working tree a cada checkout/clone/stash; sem isso, um marcador que
-      // cruza uma quebra de linha (ex.: "ELSE\n            UPDATE ...") deixa
-      // de casar contra um corpo em CRLF e a verificacao grita AUSENTE para
-      // uma migration que esta correta — DEPOIS do COMMIT ja ter acontecido.
-      const defNormalizado = def?.replace(/\r\n/g, "\n");
-      for (const marcador of checagem.esperado) {
-        const marcadorNormalizado = marcador.replace(/\r\n/g, "\n");
-        const ok = Boolean(defNormalizado?.includes(marcadorNormalizado));
-        if (!ok) tudoOk = false;
-        const rotulo = `${checagem.funcao}: ${marcador.slice(0, 64)}`;
-        console.log(`  ${ok ? "ok     " : "AUSENTE"}  ${rotulo}`);
-      }
-    }
+  const resultados = [];
+  for (const tarefa of montarTarefasDeVerificacao(arquivos, VERIFICACOES)) {
+    for (const linha of tarefa.linhasAntes) console.log(linha);
+    const def = await buscarDef(client, tarefa.checagem);
+    const avaliacao = avaliarChecagem(def, tarefa.checagem);
+    for (const linha of avaliacao.linhas) console.log(linha);
+    resultados.push({
+      base: tarefa.base,
+      funcao: avaliacao.funcao,
+      situacao: avaliacao.situacao,
+      motivo: avaliacao.motivo,
+    });
   }
 
   await client.end();
-  console.log(
-    tudoOk
-      ? "\nTudo aplicado e verificado. (O COMMIT do passo 2 já aconteceu antes desta checagem.)"
-      : `\nATENÇÃO: algum marcador esperado não apareceu. Confira antes de confiar.
-   O COMMIT do passo 2 já aconteceu — esta verificação roda DEPOIS dele, então
-   o que foi aplicado já está gravado no banco independente do resultado
-   acima; não há "não aplicar" a partir daqui.
-   Ponto de partida para desfazer: ${caminhoRollback}, salvo no passo 1 — leia
-   acima o que ele cobre e o que continua manual.`,
+  const { mensagem, codigoSaida } = resumirVerificacao(
+    resultados,
+    caminhoRollback,
   );
-  process.exit(tudoOk ? 0 : 1);
+  console.log(mensagem);
+  process.exit(codigoSaida);
 }
 
 if (require.main === module) {
@@ -718,7 +1186,17 @@ if (require.main === module) {
   });
 }
 
-// Exportado para tests/db_apply_rollback_test.ts, que fixa o cabeçalho do
-// arquivo de rollback. O guarda acima existe por causa disso: sem ele, importar
-// o módulo dispararia a aplicação das migrations.
-module.exports = { funcoesAlteradas, montarRollback };
+// Exportado para tests/db_apply_rollback_test.ts (funcoesAlteradas,
+// montarRollback), tests/db_apply_resumo_verificacao_test.ts
+// (resumirVerificacao, classificarChecagem) e
+// tests/db_apply_avaliar_checagem_test.ts (avaliarChecagem,
+// montarTarefasDeVerificacao). O guarda acima existe por causa disso: sem
+// ele, importar o módulo dispararia a aplicação das migrations.
+module.exports = {
+  funcoesAlteradas,
+  montarRollback,
+  resumirVerificacao,
+  classificarChecagem,
+  avaliarChecagem,
+  montarTarefasDeVerificacao,
+};

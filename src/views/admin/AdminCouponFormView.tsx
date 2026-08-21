@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import type { Coupon, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AlertTriangle, Calendar, Ticket } from "lucide-react";
@@ -240,7 +240,10 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                     Mínimo Compra
                   </p>
                   <p className="text-xs font-bold text-zinc-400 leading-none">
-                    R$ {Number(formData.minPurchase || 0).toFixed(0)}
+                    {/* Achado 15 da auditoria de 20/08/2026 — mesmo defeito
+                        do card em AdminCouponsView.tsx: `.toFixed(0)`
+                        arredondava R$ 49,90 para "R$ 50". */}
+                    {formatCurrency(formData.minPurchase || 0)}
                   </p>
                 </div>
               </div>

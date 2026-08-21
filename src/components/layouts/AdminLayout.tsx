@@ -36,6 +36,27 @@ import {
 import React from "react";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 
+/**
+ * Pedidos que ainda exigem ação do lojista — espelha o predicado de
+ * `today_pending` na RPC `get_admin_analytics_v2` (o cartão "Ações
+ * Pendentes" da tela de Pedidos). Um pedido em "Em Separação" ainda
+ * precisa ser embalado e enviado, então conta igual a um pedido novo.
+ *
+ * Achado 10 da auditoria de 20/08/2026: o crachá desta barra e o cartão
+ * contavam coisas diferentes ("pending" contra "pending"+"new"+"processing")
+ * e discordavam na tela. Exportada para o mesmo texto ser usado nos dois
+ * lados em vez de duas listas soltas voltarem a divergir.
+ *
+ * `"new"` é um valor histórico da coluna `status` no banco — o enum
+ * `OrderStatus` do front nunca o modelou — mantido aqui só para bater com
+ * o que a RPC de fato soma.
+ */
+export const STATUS_PEDIDOS_COM_ACAO_PENDENTE = [
+  "pending",
+  "new",
+  "processing",
+] as const;
+
 interface AdminLayoutProps {
   children: React.ReactNode;
   currentView: View;
@@ -82,7 +103,7 @@ export function AdminLayout({
         const { count: ordersCount, error: ordersErr } = await supabase
           .from("marketplace_orders")
           .select("*", { count: "exact", head: true })
-          .eq("status", "pending");
+          .in("status", STATUS_PEDIDOS_COM_ACAO_PENDENTE);
 
         if (!ordersErr && ordersCount !== null && isMounted) {
           setPendingOrdersCount(ordersCount);

@@ -276,6 +276,22 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             Novo
           </Badge>
         );
+      case "pending":
+        // Achado 14 da auditoria de 20/08/2026: "pending" é o estado inicial
+        // de TODO pedido (create_marketplace_order_v23/v24 gravam isso no
+        // INSERT) e caía no `default`, aparecendo cru em inglês. A palavra
+        // usada aqui é a mesma que `statusConfig.pending.label`
+        // (OrderStatusBadge.tsx) já usa no selo real de todo pedido, em
+        // todo o app — inclusive do lado do cliente. "Pendente" seria um
+        // segundo nome para o mesmo status.
+        return (
+          <Badge
+            variant="secondary"
+            className="border-blue-200 bg-blue-100 text-blue-800"
+          >
+            Novo Pedido
+          </Badge>
+        );
       case "processing":
         return (
           <Badge
@@ -306,6 +322,16 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       case "cancelled":
         return <Badge variant="destructive">Cancelado</Badge>;
       default:
+        // Com "pending" coberto acima, este `default` só é alcançado por um
+        // valor fora dos cinco de `OrderStatus` — hoje, na prática,
+        // "returned" (ver o comentário maior logo abaixo sobre
+        // `pedidosQueContam`: o tipo não lista esse valor, mas o banco pode
+        // gravá-lo). Mostrar o valor cru é feio, mas NÃO some com o dado —
+        // trocar por "—" ou string vazia esconderia justamente o status que
+        // ninguém tratou ainda. Traduzir "returned" aqui seria alinhar o
+        // tipo ao banco, que este mesmo arquivo já registrou como conserto
+        // de outro tamanho (mexe em todo `switch` sobre `OrderStatus`) e
+        // ficou de fora de propósito.
         return <Badge variant="outline">{status}</Badge>;
     }
   };
@@ -348,7 +374,31 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   );
   const pedidosDescartados = orders.length - pedidosQueContam.length;
 
-  const totalSpent = pedidosQueContam.reduce((sum, o) => sum + o.total, 0);
+  /*
+    Achado 17 (auditoria de 20/08/2026): o "LTV Total" contava pedido que
+    ninguém pagou. A correção do servidor (migration `20260823000000`, em
+    `get_admin_customers_paged`) mexeu SÓ no dinheiro de `total_spent` —
+    `orders_count` continua contando pela MESMA regra de sempre (só status).
+    Se esta ficha também filtrasse `pedidosQueContam` por pagamento, o card
+    "Cesta / Pedidos" voltaria a divergir da coluna "Pedidos" da lista de
+    Clientes — reabrindo o achado 5 por outra porta. Por isso o filtro de
+    dinheiro é uma SEGUNDA passada, só para a soma do LTV, em cima do mesmo
+    `pedidosQueContam` — a contagem de pedidos não muda.
+
+    A regra de "dinheiro reconhecido" é a mesma das migrations
+    `20260822000100` e `20260823000000`: `paymentStatus` nulo CONTA (pedido
+    pago na entrega, ou histórico sem cobrança online, mesma leitura do
+    mapper — ver mappers.ts:244-246); só ficam de fora 'aguardando',
+    'recusado', 'expirado' e 'estornado'.
+  */
+  const pedidosPagos = pedidosQueContam.filter(
+    (o) =>
+      o.paymentStatus == null ||
+      o.paymentStatus === "pago" ||
+      o.paymentStatus === "pago_apos_expirar",
+  );
+
+  const totalSpent = pedidosPagos.reduce((sum, o) => sum + o.total, 0);
 
   const renderContentSkeleton = () => (
     <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -617,8 +667,13 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   </span>
                   {pedidosDescartados > 0 && (
                     <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-zinc-500">
-                      {pedidosDescartados} cancelado
-                      {pedidosDescartados > 1 ? "s" : ""} fora da conta
+                      {/* "fora da conta" e nao "cancelado": `pedidosDescartados`
+                          conta cancelado E devolvido, entao dizer "cancelado"
+                          rotularia um pedido devolvido de cancelado. Hoje nao ha
+                          nenhum `returned` no banco, mas o rotulo mentiria no
+                          primeiro que houver — e e' exatamente a familia de
+                          defeito que esta auditoria cataloga. */}
+                      {pedidosDescartados} fora da conta
                     </span>
                   )}
                 </div>

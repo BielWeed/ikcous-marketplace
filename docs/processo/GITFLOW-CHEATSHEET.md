@@ -142,9 +142,24 @@ git revert -m 1 <sha-do-merge>       # revert, nunca reset em branch publicada
 ## Estado dos hooks
 
 ```bash
-npx lefthook validate
-npx lefthook install     # se .git/hooks estiver vazio
+npm run hooks:prova
 ```
+
+Ele tem de fechar em **`TRAVA LIGADA E FECHADA`**. Se disser `TRAVA DESLIGADA`,
+o conserto é:
+
+```bash
+npx --no-install lefthook install
+```
+
+**Não confie em `.git/hooks` estar cheio** — era esse o teste antigo daqui, e ele
+não vale: em 20/08/2026 os três arquivos estavam lá o tempo todo, inclusive nas
+cópias paralelas onde a trava estava desligada e o commit passava sem o
+secretlint. Só a prova acima olha o que os hooks realmente fazem.
+
+E o `--no-install` não é enfeite: sem ele, no dia em que o `node_modules` estiver
+quebrado, o `npx` **baixa** o lefthook do registro — e é essa versão que reescreve
+o `.git/hooks` de todas as cópias paralelas.
 
 Não existe branch protection neste repositório — os hooks são locais e caem com
 `--no-verify`. Ver "A trava que não existe" no `CONTRIBUTING.md`.
