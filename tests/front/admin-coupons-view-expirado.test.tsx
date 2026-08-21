@@ -230,7 +230,10 @@ describe("AdminCouponsView — cupom vencido para de dizer Ativo", () => {
 
     // O modal é montado via createPortal em document.body, fora de `hospedeiro`.
     const textoDoModal = document.body.textContent ?? "";
-    expect(textoDoModal).toContain("deixa de ser aceito no carrinho");
+    // Achado 16 da auditoria de 20/08/2026 (lote 1): esta frase dizia
+    // "carrinho", mas o cupom nunca foi aceito lá — só no checkout. A
+    // asserção original deste teste travava a palavra errada.
+    expect(textoDoModal).toContain("deixa de ser aceito no checkout");
     expect(textoDoModal).not.toContain(
       "é desativado automaticamente pelo sistema",
     );

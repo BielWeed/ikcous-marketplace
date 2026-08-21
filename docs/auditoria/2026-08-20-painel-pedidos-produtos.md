@@ -58,13 +58,13 @@ em *Pendências minhas*, no fim.
 | 7 ✅ | "Capital Alocado", "Lucro Potencial" e "ROI" na tela de Produtos | Congelam depois de excluir, duplicar ou editar um produto — seguem contando o produto que saiu | quem vende | **Médio-alto** |
 | 8 ✅ | Um produto com "Margem de Lucro **100,0%**" | É um produto **sem custo cadastrado**. E a etiqueta "Custo Suspeito" pula justamente o custo zero | quem vende | **Médio** |
 | 9 ✅ | 6 produtos com a etiqueta verde "Em Operação" | Estão com estoque **zero**; na loja o botão deles é "Esgotado" | quem compra e quem vende | **Médio** |
-| 10 | "Ações Pendentes: 7" e, ao lado, o crachá "6" na navegação | Dois contadores da mesma coisa, na mesma tela, discordando | quem vende | **Médio** |
-| 11 | Ao abrir Produtos: "Nenhum produto cadastrado / 0 itens" | Há 19 produtos. É o texto que a tela mostra durante o carregamento | quem vende | **Médio-baixo** |
+| 10 ✅ | "Ações Pendentes: 7" e, ao lado, o crachá "6" na navegação | Dois contadores da mesma coisa, na mesma tela, discordando | quem vende | **Médio** |
+| 11 ✅ | Ao abrir Produtos: "Nenhum produto cadastrado / 0 itens" | Há 19 produtos. É o texto que a tela mostra durante o carregamento | quem vende | **Médio-baixo** |
 | 12 | Filtro "Status de Pagamento" | Filtra só os 12 pedidos da página aberta, não os 84 | quem vende | **Médio-baixo** |
 | 13 ✅ | Card, formulário e variante dizem 10 unidades; o KPI precifica 11 | Duas contas do mesmo estoque que se soltaram uma da outra | quem vende | **Baixo** |
-| 14 | "Potencial: + R$ 37,2" | Dinheiro escrito com uma casa decimal | quem vende | **Baixo** |
-| 15 | "ID: #" na ficha do pedido, sem nada depois | Campo vazio renderizado como se estivesse quebrado | quem vende | **Baixo** |
-| 16 | Dois avisos de "produto removido" ao excluir um produto | Um só foi removido | quem vende | **Baixo** |
+| 14 ✅ | "Potencial: + R$ 37,2" | Dinheiro escrito com uma casa decimal | quem vende | **Baixo** |
+| 15 ✅ | "ID: #" na ficha do pedido, sem nada depois | Campo vazio renderizado como se estivesse quebrado | quem vende | **Baixo** |
+| 16 ✅ | Dois avisos de "produto removido" ao excluir um produto | Um só foi removido | quem vende | **Baixo** |
 
 ---
 

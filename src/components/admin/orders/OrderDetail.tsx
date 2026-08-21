@@ -116,9 +116,16 @@ function ItemSkuBadge({
       </span>
     );
   }
+  // Achado 15 da auditoria de 20/08/2026: sem SKU e sem produto vinculado
+  // (item.productId vazio — product_id nulo no banco), a tela imprimia
+  // "ID: #" sozinho, um campo com cara de quebrado. Sem id nenhum para
+  // mostrar, o campo inteiro some em vez de aparecer vazio.
+  if (!productId) {
+    return null;
+  }
   return (
     <span className="font-mono text-[8px] uppercase text-zinc-500">
-      ID: #{productId ? productId.slice(-6) : ""}
+      ID: #{productId.slice(-6)}
     </span>
   );
 }

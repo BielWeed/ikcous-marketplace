@@ -1,41 +1,43 @@
 // @vitest-environment jsdom
 //
-// Achado da revisão de contexto limpo (Trilha 1, #98/#99 — conserto 4):
-// `AdminProductsView.confirmDelete` descartava o retorno de `deleteProduct`
-// (src/hooks/useProducts.ts) e mostrava `toast.success("Produto Removido")`
-// incondicionalmente. Como `deleteProduct` NUNCA lança — captura tudo
-// internamente e devolve `true`/`false`, já mostrando "Erro ao excluir
-// produto" ela mesma numa falha —, o `catch` da view nunca disparava numa
-// falha de soft-delete: o admin via os DOIS toasts ao mesmo tempo ("Erro ao
-// excluir produto" do hook + "Produto Removido" da view).
-//
 // Achado 16 da auditoria de 20/08/2026
-// (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): o "conserto 4"
-// acima consertou só a metade da FALHA — o comentário que ele deixou em
-// `AdminProductsView.tsx` dizia isso mesmo ("o caso de sucesso ficou de
-// fora"). No SUCESSO, a view continuava mostrando o próprio
-// `toast.success("Produto Removido", {...})` incondicional, duplicando o
-// `toast.success("Produto removido")` que o hook já mostra sozinho — dois
-// avisos empilhados para uma exclusão só. A correção do achado 16 remove o
-// da view: o aviso de sucesso passa a morar só no hook (mockado neste
-// arquivo, então invisível aqui), a mesma regra que a FALHA já seguia. Por
-// isso o primeiro teste abaixo mudou de "a view mostra" para "a view NÃO
-// mostra mais" — ver também admin-products-um-so-aviso-ao-excluir.test.tsx.
+// (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): ao excluir um
+// produto com sucesso, dois avisos apareciam empilhados — "Produto
+// removido" (de `useProducts.ts:896`, dentro de `deleteProduct`, que
+// executa a exclusão e sabe o resultado no mesmo instante em que ele
+// acontece) e "Produto Removido" com descrição (de
+// `AdminProductsView.tsx`, incondicional sempre que `sucesso` era `true`).
+// Um produto só foi removido.
 //
-// Este arquivo monta `AdminProductsView` de verdade (sem @testing-library,
-// mesmo padrão de admin-product-form-draft-e-duplo-clique.test.tsx: createRoot
-// + act do React puro) e mocka os componentes Radix (`dropdown-menu`,
-// `alert-dialog`) para não depender de PointerEvent/ResizeObserver que o
-// jsdom não implementa — mesma razão que already levou a mockar
-// `@/components/ui/select` no teste do formulário de produto.
+// O caminho de FALHA já seguia a regra certa: só o hook mostra
+// `toast.error`, e a view fica calada (`else { haptic.error(); }`, sem
+// toast). A correção aplica a MESMA regra ao sucesso — o aviso mora só no
+// hook, que é quem sabe o resultado e tem o contexto para descrevê-lo, e é
+// o padrão usado por toda outra mutação do hook (criar, atualizar,
+// alternar status, variantes: todas avisam de dentro do próprio hook,
+// nunca da view). `deleteProduct` só tem UM chamador em todo o `src/`
+// (conferido com `find_referencing_symbols` antes de decidir) — não hà
+// nenhum outro caminho que dependesse do toast da view.
+//
+// Este teste mocka `useProducts` inteiro (mesmo padrão de
+// admin-products-kpi-apos-mexer-no-catalogo.test.tsx), então o
+// `toast.success("Produto removido")` REAL do hook nunca roda aqui — o que
+// ele prova é a metade que é desta view: que ela parou de EMITIR o próprio
+// aviso de sucesso.
 import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const deleteProduct = vi.fn();
+const addProduct = vi.fn();
 const loadProducts = vi.fn();
+const toggleProductStatus = vi.fn();
 const onNavigate = vi.fn();
+const fetchExecutiveSummary = vi.fn();
+const toastSuccess = vi.fn();
+const toastError = vi.fn();
+const toastLoading = vi.fn();
 
 const produtoTeste = {
   id: "prod-1",
@@ -55,14 +57,17 @@ vi.mock("@/hooks/useProducts", () => ({
     products: [produtoTeste],
     loading: false,
     deleteProduct,
-    toggleProductStatus: vi.fn(),
-    addProduct: vi.fn(),
+    toggleProductStatus,
+    addProduct,
     loadProducts,
   }),
 }));
 
 vi.mock("@/hooks/useAnalytics", () => ({
-  useAnalytics: () => ({ stats: null, fetchExecutiveSummary: vi.fn() }),
+  useAnalytics: () => ({
+    stats: { inventory: { totalCost: 500, totalValue: 900 } },
+    fetchExecutiveSummary,
+  }),
 }));
 
 vi.mock("@/hooks/useCategories", () => ({
@@ -77,9 +82,6 @@ vi.mock("@/hooks/usePrefetchOnHover", () => ({
   usePrefetchOnHover: () => ({ prefetchView: vi.fn() }),
 }));
 
-// Mocks dos componentes Radix: renderizam sempre os itens/conteúdo (sem
-// depender de abrir/fechar via pointer capture), preservando `onClick` e
-// `disabled` — é isso que este teste precisa disparar diretamente.
 vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenu: ({ children }: { children: ReactNode }) => <>{children}</>,
   DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
@@ -150,19 +152,21 @@ vi.mock("@/components/ui/alert-dialog", () => ({
   ),
 }));
 
-const toastSuccess = vi.fn();
-const toastError = vi.fn();
 vi.mock("sonner", () => ({
   toast: {
     success: toastSuccess,
     error: toastError,
-    loading: vi.fn(),
+    loading: toastLoading,
   },
 }));
 
-// jsdom não implementa IntersectionObserver -- LazyImage (usado pelo card de
-// produto) cria um a cada montagem.
 class IntersectionObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+class ResizeObserverStub {
   observe() {}
   unobserve() {}
   disconnect() {}
@@ -185,17 +189,29 @@ function localizarBotaoPorTexto(
   ) as HTMLButtonElement | undefined;
 }
 
-describe("AdminProductsView — conserto 4: toast de sucesso só some com deleteProduct verdadeiro", () => {
+describe("AdminProductsView — achado 16: excluir produto não duplica o aviso de sucesso", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
     vi.clearAllMocks();
     loadProducts.mockResolvedValue({ products: [produtoTeste], total: 1 });
+    fetchExecutiveSummary.mockResolvedValue(null);
+    addProduct.mockResolvedValue(undefined);
+    toggleProductStatus.mockResolvedValue(true);
+
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
-    // Mesmo padrão de admin-product-form-draft-e-duplo-clique.test.tsx: um
-    // Map de verdade, não o `localStorage` real do jsdom — que neste runner
-    // (Node com `--localstorage-file`) devolve um objeto sem `getItem`.
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
@@ -206,6 +222,7 @@ describe("AdminProductsView — conserto 4: toast de sucesso só some com delete
         armazem.delete(chave);
       },
     });
+
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -220,7 +237,7 @@ describe("AdminProductsView — conserto 4: toast de sucesso só some com delete
     vi.restoreAllMocks();
   });
 
-  async function montarEExcluir() {
+  async function montar() {
     const { AdminProductsView } = await import(
       "@/views/admin/AdminProductsView"
     );
@@ -231,10 +248,11 @@ describe("AdminProductsView — conserto 4: toast de sucesso só some com delete
     await act(async () => {
       await esperarMicrotarefas();
     });
+  }
 
+  async function excluir() {
     const botaoExcluir = localizarBotaoPorTexto(hospedeiro, "Excluir Produto")!;
     expect(botaoExcluir).toBeDefined();
-
     await act(async () => {
       botaoExcluir.click();
     });
@@ -244,34 +262,36 @@ describe("AdminProductsView — conserto 4: toast de sucesso só some com delete
       "Confirmar Exclusão",
     )!;
     expect(botaoConfirmar).toBeDefined();
-
     await act(async () => {
       botaoConfirmar.click();
       await esperarMicrotarefas();
     });
   }
 
-  it("deleteProduct devolve true: a VIEW não mostra mais 'Produto Removido' — achado 16, quem avisa agora é só o hook", async () => {
+  it("exclusão com sucesso: a VIEW não emite o próprio toast.success — quem avisa é só o hook", async () => {
     deleteProduct.mockResolvedValue(true);
 
-    await montarEExcluir();
+    await montar();
+    await excluir();
 
     expect(deleteProduct).toHaveBeenCalledWith("prod-1");
+    // Antes da correção, este era o ponto onde a view chamava
+    // `toast.success("Produto Removido", {...})` — incondicional sempre
+    // que `sucesso` era `true`. `deleteProduct` está mockado aqui (o
+    // `toast.success("Produto removido")` REAL do hook nunca roda dentro
+    // deste teste), então zero chamadas é exatamente o que a view sozinha
+    // deve produzir.
     expect(toastSuccess).not.toHaveBeenCalled();
   });
 
-  it("deleteProduct devolve false: NÃO mostra 'Produto Removido' (o hook já avisou o erro)", async () => {
-    // `deleteProduct` real nunca lança — resolve `false` e já mostrou
-    // "Erro ao excluir produto" ela mesma. Este teste falha se a view voltar
-    // a descartar o retorno: o `toastSuccess` seria chamado incondicionalmente.
+  it("caso-limite (regressão): exclusão que FALHA continua sem toast da view — só o hook avisaria, e ele está mockado aqui", async () => {
     deleteProduct.mockResolvedValue(false);
 
-    await montarEExcluir();
+    await montar();
+    await excluir();
 
     expect(deleteProduct).toHaveBeenCalledWith("prod-1");
-    expect(toastSuccess).not.toHaveBeenCalledWith(
-      "Produto Removido",
-      expect.anything(),
-    );
+    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
   });
 });

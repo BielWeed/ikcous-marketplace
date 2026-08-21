@@ -276,6 +276,22 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             Novo
           </Badge>
         );
+      case "pending":
+        // Achado 14 da auditoria de 20/08/2026: "pending" é o estado inicial
+        // de TODO pedido (create_marketplace_order_v23/v24 gravam isso no
+        // INSERT) e caía no `default`, aparecendo cru em inglês. A palavra
+        // usada aqui é a mesma que `statusConfig.pending.label`
+        // (OrderStatusBadge.tsx) já usa no selo real de todo pedido, em
+        // todo o app — inclusive do lado do cliente. "Pendente" seria um
+        // segundo nome para o mesmo status.
+        return (
+          <Badge
+            variant="secondary"
+            className="border-blue-200 bg-blue-100 text-blue-800"
+          >
+            Novo Pedido
+          </Badge>
+        );
       case "processing":
         return (
           <Badge
@@ -306,6 +322,16 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       case "cancelled":
         return <Badge variant="destructive">Cancelado</Badge>;
       default:
+        // Com "pending" coberto acima, este `default` só é alcançado por um
+        // valor fora dos cinco de `OrderStatus` — hoje, na prática,
+        // "returned" (ver o comentário maior logo abaixo sobre
+        // `pedidosQueContam`: o tipo não lista esse valor, mas o banco pode
+        // gravá-lo). Mostrar o valor cru é feio, mas NÃO some com o dado —
+        // trocar por "—" ou string vazia esconderia justamente o status que
+        // ninguém tratou ainda. Traduzir "returned" aqui seria alinhar o
+        // tipo ao banco, que este mesmo arquivo já registrou como conserto
+        // de outro tamanho (mexe em todo `switch` sobre `OrderStatus`) e
+        // ficou de fora de propósito.
         return <Badge variant="outline">{status}</Badge>;
     }
   };

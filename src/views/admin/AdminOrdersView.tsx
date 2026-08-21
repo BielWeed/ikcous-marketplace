@@ -15,6 +15,7 @@ import {
   paymentStatusKey,
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
+import { STATUS_PEDIDOS_COM_ACAO_PENDENTE } from "@/components/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import {
@@ -73,6 +74,26 @@ const STATUS_ORDER_COLORS: Record<string, string> = {
   delivered: "bg-emerald-500",
   cancelled: "bg-zinc-500",
 };
+
+/**
+ * Subtítulo do cartão "Ações Pendentes" — achado 10 da auditoria de
+ * 20/08/2026. Antes alternava entre "Urgente" e "Limpo" conforme
+ * `stats.pending`, e um pedido parado em "Em Separação" desde 24/03/2026
+ * deixou "Urgente" aceso por cinco meses seguidos: um alarme que nunca
+ * apaga deixa de ser lido no dia em que significar alguma coisa.
+ *
+ * Em vez de julgar o número, o subtítulo descreve o que ele conta — e isso
+ * é verdade sempre, então não precisa mudar. Derivado de
+ * `STATUS_PEDIDOS_COM_ACAO_PENDENTE` (mesma lista que o crachá de Pedidos
+ * usa em `AdminLayout.tsx`) para as duas contagens nunca voltarem a
+ * divergir. `"new"` não tem rótulo em `statusConfig` (valor histórico do
+ * banco, nunca modelado no front) e é descartado aqui.
+ */
+const ACOES_PENDENTES_SUBTITULO = STATUS_PEDIDOS_COM_ACAO_PENDENTE.map(
+  (status) => statusConfig[status as OrderStatus]?.label,
+)
+  .filter((label): label is string => Boolean(label))
+  .join(" · ");
 
 /**
  * `mapOrderFromDB` (src/lib/mappers.ts) já copia `payment_status` para
@@ -274,7 +295,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         value: stats.pending.toString(),
         icon: Clock,
         accent: "text-amber-500",
-        subValue: stats.pending > 0 ? "Urgente" : "Limpo",
+        subValue: ACOES_PENDENTES_SUBTITULO,
       },
       {
         label: "Ticket Médio",
