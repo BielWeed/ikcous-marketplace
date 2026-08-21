@@ -7,6 +7,109 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.6.0] — 2026-08-21
+
+Release de correção: **o painel para de afirmar o que não sabe**. Três frentes de
+auditoria varreram as telas do administrador, a fila de dor resultante foi consertada
+em lotes, e o ferramental de verificação que deixava defeito passar foi fechado junto.
+55 mudanças sem merge — 29 correções (17 delas em `src/`), 20 de documentação,
+3 de formatação, 2 reversões e 1 teste — mais 5 migrations.
+
+O padrão que se repete em quase todos os itens, e que dá o título à release: **a tela
+mostrava um número que ela não tinha como saber, e o mostrava com a mesma confiança de
+um número real.** Zero de "não consegui medir" era desenhado igual a zero de verdade.
+
+### O que muda para quem COMPRA
+
+- **Cupom de uso único deixa de ser perdido — e deixa de poder ser gasto duas vezes.**
+  Quando o pedido que usou o cupom morre de vez (expira ou é cancelado), a vaga volta e
+  o cupom pode ser usado de novo. Enquanto o PIX ainda for pagável, a vaga fica presa:
+  sem isso o mesmo cupom seria devolvido, gasto num pedido novo, e o pedido original
+  ainda assim seria pago com desconto. Levou quatro rodadas até fechar nos dois sentidos.
+
+### O que muda para quem VENDE
+
+O painel administrativo é a superfície inteira desta release.
+
+**Dinheiro deixa de ser contado errado**
+
+- **O LTV do cliente conta só o dinheiro que entrou**, e não mais o que foi apenas pedido.
+- **Quem é "cliente frequente" também conta só dinheiro reconhecido.**
+- **O Ticket Médio de Clientes lê a mesma fonte do Dashboard**, em vez de ter conta
+  própria — antes os dois batiam por coincidência, e parariam de bater sem aviso.
+- **Produto sem custo cadastrado para de posar como o mais lucrativo.** Sem custo, a
+  margem calculada era 100%.
+- **Os KPIs de dinheiro da tela de Produtos param de congelar** no primeiro valor lido.
+- **O cartão de pedidos totais conta como o dashboard conta.**
+
+**Pedidos**
+
+- **A tela de Pedidos abre no que precisa de ação**, em vez de abrir num filtro que
+  escondia trabalho — e **para de negar pedido que existe**.
+- **A ficha para de chamar de cancelado o pedido que foi devolvido.** São duas coisas
+  diferentes e o dinheiro delas é diferente.
+- **O histórico de frete para de dizer que ninguém tentou cotar** quando houve tentativa.
+
+**Produtos e estoque**
+
+- **O painel para de anunciar "Em Operação" para produto que acabou.**
+- **O painel para de precificar um estoque que ele não mostra.**
+
+**Notificações**
+
+- **A tela de Push para de anunciar público que não existe.**
+- **O histórico para de carimbar entrega que não houve** — envio despachado não é
+  envio recebido.
+- **O quinto contador para de fingir zero**, e **o total de aparelhos não finge zero
+  quando não conseguiu medir.** Zero passa a significar zero.
+
+**Avisos e contagens**
+
+- **O painel para de contar duas coisas com o mesmo nome e de avisar duas vezes.**
+- **O aviso fala só do que ele observou**, sem estender a conclusão ao que não olhou.
+- **A tela para de prometer o que o sistema não faz.**
+- **A checagem de erro chega nos quatro inserts, não só num** — antes, três falhas
+  silenciosas eram possíveis.
+
+### O que muda no MOLDE
+
+Nada disto aparece na loja, e tudo isto decide se um defeito chega nela.
+
+- **O `db-apply` para de dizer "verificado" para migration que ele não conferiu.** A
+  fronteira sem teste que deixava isso acontecer de novo foi fechada junto.
+- **A varredura de segredo para de ficar verde sem ter varrido nada** — um verde de
+  ferramenta que não rodou é pior que vermelho, porque encerra a checagem.
+- **A trava de segredo para de aprovar em silêncio dentro de worktree.**
+- **A guarda de push volta a olhar o DESTINO do push, não o branch local.**
+- **A suíte do front para de reprovar teste que ninguém quebrou.**
+- **Cinco migrations** acompanham as correções de dinheiro e de filtro: LTV e cliente
+  frequente contando só dinheiro reconhecido, devolução do uso de cupom, o KPI usando o
+  mesmo estoque que a tela, e o filtro de pedidos em aberto passando a filtrar no banco.
+  Todas já estavam aplicadas no banco antes desta promoção (ledger: 123 arquivos, 123
+  casadas, 0 pendentes).
+
+### Sobre a verificação desta release
+
+**A cota mensal do GitHub Actions da conta se esgotou em 20/08/2026**, e desde então
+toda execução do CI morre em 3-6 segundos sem rodar um passo sequer. Os sete comandos
+foram rodados na máquina local antes da promoção: `typecheck` 0, `test:edge` 294/294,
+`test:unit` 66/66, `test:front` 485/485 em 90 arquivos (com `VITE_PAGAMENTO_ONLINE=false`
+sobreposto — sem a sobreposição a máquina local dá 484/485, por causa de um `.env.local`
+que não existe na Vercel), `build` 0, `lint:links` 0, `lint:ratchet` 0 (eslint 0 erros,
+551 warnings, ambos no teto) e `size` 0.
+
+**A prova é local e está dita como local.** O Biome, que o CI mede no Linux, não é
+mensurável de forma confiável no Windows; nos arquivos alterados desde o último CI verde
+há 4 apontamentos reais, todos em `scripts/` e `tests/`, nenhum em `src/`.
+
+### Sabido e não corrigido
+
+- **Nove achados do lote seguinte** continuam em conserto por outra frente e não entram
+  nesta release.
+- **A promoção 1.5.0 → produção foi feita por merge direto `develop` → `main`**, sem
+  branch de release, e por isso o app ficou no ar identificado como `1.5.0` por algumas
+  horas enquanto já servia este conteúdo. Esta entrada corrige o registro.
+
 ## [1.5.0] — 2026-08-20
 
 Release de correção: **o app para de falar por uma loja que ele não conhece**.
