@@ -17,6 +17,50 @@ import { handler } from "./index.ts";
 
 const SEGREDO = "segredo-webhook-teste";
 const UUID_PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
+// O id que o MP DEVOLVE é DIFERENTE do que veio no corpo do webhook, de
+// propósito. O corpo é forjável (esta função roda com `verify_jwt=false`, então
+// quem descobre a URL escolhe o que mandar); a resposta do MP é autenticada pelo
+// token do gateway. Enquanto os dois lados carregavam o MESMO valor, a asserção
+// de `p_payment_id` era satisfeita por coincidência do arranjo e não distinguia
+// de ONDE o campo veio — medido em 20/08/2026: a mutação que faz a produção ler
+// o id do corpo sobrevivia a TODOS os 30 testes deste arquivo, nos dois caminhos.
+//
+// É a mesma técnica que o teste da order já usava para `status`/`status_detail`
+// ("DIVERGEM de propósito", abaixo) e que o `corpo hostil não decide o pedido`
+// usa para `external_reference`. Aqui ela chega ao id.
+//
+// ⚠️ SÓ O LADO DO MP MUDA; o corpo do webhook fica como estava. O handler
+// escolhe a ROTA pela FORMA do id do corpo (numérico -> /v1/payments/, ULID ->
+// /v1/orders/, em `index.ts:370-377`), então mexer no corpo trocaria o caminho
+// testado em silêncio, deixando o teste verde provando outra coisa.
+//
+// ⚠️ `ID_ORDER_DO_MP` é diferente do corpo E de `transactions.payments[0].id`
+// ("PAY01KZZ…", no teste `type 'order' aprovada`). Os dois importam: aquele teste
+// já distinguia `order.id` de `payments[0].id` — guarda antiga, que continua de
+// pé; a distinção contra o corpo é a que entra agora. Um valor que colidisse com
+// qualquer um dos dois fecharia uma cegueira e abriria a outra.
+//
+// E essa guarda antiga não é preciosismo. `_shared/mercadopago.ts:536-556`
+// registra que, no caminho da Orders API, o `gateway_payment_id` deve ser o
+// `order.id` e não o `payments[0].id` — a Orders API não expõe reconsulta por id
+// de pagamento. Com o id errado gravado, a `confirmar_pagamento` cai no
+// `IS DISTINCT FROM` (`20260808000000_confirmar_pagamento.sql:53-57`) e devolve
+// 'divergente' 32 linhas ANTES do primeiro UPDATE da função (`:88`): ela recusa
+// sem gravar nada.
+//
+// 🔴 A recusa é PROJETADA — não é o defeito. O comentário do ramo (`:40-42`) diz:
+// "alguém está confirmando o pagamento de OUTRO pedido: não escrever e deixar
+// para uma pessoa olhar". Se você chegou aqui investigando um pedido preso, NÃO
+// afrouxe essa guarda: ela é o que impede confirmar o pagamento do pedido errado.
+// O que falta é a segunda metade da frase do autor — **ninguém avisa a pessoa**.
+// O pedido para, o MP reenvia, a guarda recusa de novo, e não há alerta em lugar
+// nenhum. Destrava corrigindo o `gateway_payment_id`, se alguém notar que existe.
+//
+// (O próprio módulo, em `:554-555`, marca a escolha do `orderId` como pendente de
+// confirmação contra o corpo real do MP. Enquanto ela não vem, este teste é o
+// único registro executável da decisão.)
+const ID_PAGAMENTO_DO_MP = 12345;
+const ID_ORDER_DO_MP = "ORDMP99KZZ4D94WC79335A68CZ5NZ7X";
 
 Deno.env.set("MP_WEBHOOK_SECRET", SEGREDO);
 Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
@@ -183,7 +227,7 @@ Deno.test("MP diz approved, RPC devolve 'pago' -> 200 e o push dispara uma vez",
   const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
   const req = await requisicaoAssinada("999");
   const fetchImpl = fetchConsulta(200, {
-    id: 999,
+    id: ID_PAGAMENTO_DO_MP,
     status: "approved",
     external_reference: UUID_PEDIDO,
   });
@@ -198,7 +242,7 @@ Deno.test("MP diz approved, RPC devolve 'pago' -> 200 e o push dispara uma vez",
   assertEquals(chamadasPush.length, 1);
   assertEquals(registro.chamadasRpc.length, 1);
   assertEquals(registro.chamadasRpc[0].args.p_order_id, UUID_PEDIDO);
-  assertEquals(registro.chamadasRpc[0].args.p_payment_id, "999");
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, String(ID_PAGAMENTO_DO_MP));
   assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
 });
 
@@ -538,7 +582,7 @@ Deno.test("type 'order' aprovada -> RPC recebe p_order_id do external_reference 
   const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
   const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
   const fetchImpl = fetchConsulta(200, {
-    id: ID_ORDER_TESTE,
+    id: ID_ORDER_DO_MP,
     external_reference: UUID_PEDIDO,
     status: "processed",
     status_detail: "accredited",
@@ -556,7 +600,7 @@ Deno.test("type 'order' aprovada -> RPC recebe p_order_id do external_reference 
   assertEquals(resposta.status, 200);
   assertEquals(registro.chamadasRpc.length, 1);
   assertEquals(registro.chamadasRpc[0].args.p_order_id, UUID_PEDIDO);
-  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_TESTE);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_DO_MP);
   assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
   assertEquals(chamadasPush.length, 1);
 });
@@ -589,7 +633,7 @@ Deno.test("type 'payment' explícito continua no caminho clássico (não-regress
   const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
   const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
   const req = await requisicaoAssinada("999", { corpoExtra: { type: "payment" } });
-  const fetchImpl = fetchConsulta(200, { id: 999, status: "approved", external_reference: UUID_PEDIDO });
+  const fetchImpl = fetchConsulta(200, { id: ID_PAGAMENTO_DO_MP, status: "approved", external_reference: UUID_PEDIDO });
   const chamadasPush: unknown[] = [];
   const enviarPush = async (args: unknown) => {
     chamadasPush.push(args);
@@ -599,7 +643,7 @@ Deno.test("type 'payment' explícito continua no caminho clássico (não-regress
 
   assertEquals(resposta.status, 200);
   assertEquals(registro.chamadasRpc.length, 1);
-  assertEquals(registro.chamadasRpc[0].args.p_payment_id, "999");
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, String(ID_PAGAMENTO_DO_MP));
   assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
   assertEquals(chamadasPush.length, 1);
 });
@@ -612,7 +656,7 @@ Deno.test("type ausente + id em forma de ULID -> caminho de ORDER (consulta /v1/
   const { fn: fetchImpl, chamadas } = fetchInspecionavel({
     order: {
       status: 200,
-      corpo: { id: ID_ORDER_TESTE, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
+      corpo: { id: ID_ORDER_DO_MP, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
     },
   });
 
@@ -621,7 +665,7 @@ Deno.test("type ausente + id em forma de ULID -> caminho de ORDER (consulta /v1/
   assertEquals(resposta.status, 200);
   assertEquals(chamadas.some((u) => u.includes("/v1/orders/")), true, "deveria ter consultado /v1/orders/");
   assertEquals(registro.chamadasRpc.length, 1);
-  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_TESTE);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_DO_MP);
 });
 
 Deno.test("type ausente + id numérico -> caminho CLÁSSICO (consulta /v1/payments/, não-regressão)", async () => {
@@ -630,7 +674,7 @@ Deno.test("type ausente + id numérico -> caminho CLÁSSICO (consulta /v1/paymen
   const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
   const req = await requisicaoAssinada("999"); // sem `type`
   const { fn: fetchImpl, chamadas } = fetchInspecionavel({
-    pagamento: { status: 200, corpo: { id: 999, status: "approved", external_reference: UUID_PEDIDO } },
+    pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "approved", external_reference: UUID_PEDIDO } },
   });
 
   const resposta = await handler(req, { supabase, fetchImpl });
@@ -638,7 +682,7 @@ Deno.test("type ausente + id numérico -> caminho CLÁSSICO (consulta /v1/paymen
   assertEquals(resposta.status, 200);
   assertEquals(chamadas.some((u) => u.includes("/v1/payments/")), true, "deveria ter consultado /v1/payments/");
   assertEquals(registro.chamadasRpc.length, 1);
-  assertEquals(registro.chamadasRpc[0].args.p_payment_id, "999");
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, String(ID_PAGAMENTO_DO_MP));
 });
 
 Deno.test("type 'order' com external_reference sem forma de UUID -> 200, RPC não chamada", async () => {
@@ -696,7 +740,7 @@ Deno.test("type DESCONHECIDO + id em forma de order -> consulta a Orders API (n�
   const { fn: fetchImpl, chamadas } = fetchInspecionavel({
     order: {
       status: 200,
-      corpo: { id: ID_ORDER_TESTE, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
+      corpo: { id: ID_ORDER_DO_MP, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited" },
     },
   });
   const chamadasErro: unknown[][] = [];
@@ -710,7 +754,7 @@ Deno.test("type DESCONHECIDO + id em forma de order -> consulta a Orders API (n�
     assertEquals(resposta.status, 200);
     assertEquals(chamadas.some((u) => u.includes("/v1/orders/")), true, "deveria ter consultado /v1/orders/");
     assertEquals(registro.chamadasRpc.length, 1);
-    assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_TESTE);
+    assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_DO_MP);
     assertEquals(chamadasErro.length, 1, "type desconhecido deveria logar console.error, não console.warn");
   } finally {
     console.error = console_error;
@@ -723,7 +767,7 @@ Deno.test("type DESCONHECIDO + id numérico -> caminho CLÁSSICO (consulta /v1/p
   const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
   const req = await requisicaoAssinada("999", { corpoExtra: { type: "order.updated" } });
   const { fn: fetchImpl, chamadas } = fetchInspecionavel({
-    pagamento: { status: 200, corpo: { id: 999, status: "approved", external_reference: UUID_PEDIDO } },
+    pagamento: { status: 200, corpo: { id: ID_PAGAMENTO_DO_MP, status: "approved", external_reference: UUID_PEDIDO } },
   });
 
   const resposta = await handler(req, { supabase, fetchImpl });
@@ -731,7 +775,7 @@ Deno.test("type DESCONHECIDO + id numérico -> caminho CLÁSSICO (consulta /v1/p
   assertEquals(resposta.status, 200);
   assertEquals(chamadas.some((u) => u.includes("/v1/payments/")), true, "deveria ter consultado /v1/payments/");
   assertEquals(registro.chamadasRpc.length, 1);
-  assertEquals(registro.chamadasRpc[0].args.p_payment_id, "999");
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, String(ID_PAGAMENTO_DO_MP));
 });
 
 Deno.test("type irrelevante da lista oficial (point_integration_wh) -> 200, descartado sem NENHUMA chamada ao MP", async () => {
