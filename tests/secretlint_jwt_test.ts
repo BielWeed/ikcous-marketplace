@@ -420,7 +420,7 @@ async function rodaSecretlintContra(
 
 Deno.test("a trava de credencial enxerga .ps1 e .bat — .secretlintignore", async (t) => {
   await t.step(
-    "o `.secretlintignore` não declara mais `*.ps1` nem `*.bat`",
+    "o `.secretlintignore` não declara mais `*.ps1`, `*.bat` nem `package-lock.json`",
     async () => {
       const texto = await Deno.readTextFile(SECRETLINTIGNORE);
       const linhas = texto.split(/\r?\n/).map((l) => l.trim());
@@ -433,6 +433,18 @@ Deno.test("a trava de credencial enxerga .ps1 e .bat — .secretlintignore", asy
       assert(
         !linhas.includes("*.bat"),
         "`.secretlintignore` voltou a ter `*.bat` — mesmo buraco do `*.ps1`.",
+      );
+      // Medido em 21/08/2026: as 1.381 entradas `resolved` do lockfile
+      // apontam todas para `registry.npmjs.org`, sem token na URL, e
+      // varrer o arquivo custa 600 ms sem gerar nenhum achado. A excecao
+      // nao pagava nada e criava um ponto cego que passa a valer no dia
+      // em que este projeto usar um registro PRIVADO de pacotes -- que e
+      // o unico caminho pelo qual uma credencial cai num lockfile.
+      assert(
+        !linhas.includes("package-lock.json"),
+        "`.secretlintignore` voltou a ter `package-lock.json` — se um dia " +
+          "este projeto usar registro privado de pacotes, a credencial dele " +
+          "cai no lockfile e passaria despercebida.",
       );
     },
   );
