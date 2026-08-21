@@ -56,7 +56,7 @@
  */
 // Ordem alfabética por especificador: é o que o `organizeImports` do Biome
 // cobra, e ele conta como erro na catraca de lint (`Found N errors.`).
-import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
+import { fromFileUrl, join } from "https://deno.land/std@0.177.0/path/mod.ts";
 import {
   assert,
   assertEquals,
@@ -66,6 +66,17 @@ import {
 // pathname devolve `%20` mais uma barra sobrando no Windows.
 const RC = fromFileUrl(new URL("../.secretlintrc.json", import.meta.url));
 const PKG = fromFileUrl(new URL("../package.json", import.meta.url));
+const RAIZ_DO_REPO = fromFileUrl(new URL("..", import.meta.url));
+const SECRETLINTIGNORE = fromFileUrl(
+  new URL("../.secretlintignore", import.meta.url),
+);
+const SECRETLINT_CLI = join(
+  RAIZ_DO_REPO,
+  "node_modules",
+  "secretlint",
+  "bin",
+  "secretlint.js",
+);
 
 const ID_PATTERN = "@secretlint/secretlint-rule-pattern";
 const ID_PRESET = "@secretlint/secretlint-rule-preset-recommend";
@@ -309,4 +320,163 @@ ids declarados: ${ids.join(", ")}`,
       );
     }
   });
+});
+
+// ============================================================================
+// SEGUNDO BURACO na mesma trava, medido e fechado em 21/08/2026: o
+// `.secretlintignore` tinha `*.bat` e `*.ps1` na lista de exceções. Uma
+// credencial dentro de um script PowerShell passava DIRETO — e isto importa
+// neste projeto especificamente: o terminal do dono é PowerShell e há 4
+// arquivos `.ps1`/`.bat` versionados no repositório. Um
+// `$env:SUPABASE_SECRET_KEY = "sb_secret_..."` num `.ps1` escapava da trava.
+//
+// Medido em 21/08/2026, controle positivo e negativo na mesma rodada:
+//
+//   COM a exceção:  isca .ps1 com sb_secret_ .... 0 achados, exit 0  <- o buraco
+//                   isca .bat com sb_secret_ .... 0 achados, exit 0  <- o buraco
+//   SEM a exceção:  isca .ps1 com sb_secret_ .... 1 achado,  exit 1
+//                   isca .bat com sb_secret_ .... 1 achado,  exit 1
+//                   .ps1 LIMPO (controle negativo) ... 0 achados, exit 0
+//
+// E a varredura do repositório inteiro (`npm run secretlint`), com a exceção
+// removida: 0 achados — nenhum `.ps1`/`.bat` rastreado hoje carrega
+// credencial, então tirar a exceção não acende nada que já existisse.
+//
+// O QUE ESTE TESTE MEDE: o COMPORTAMENTO real do `secretlint` (subprocesso
+// `node` de verdade, não regex isolado), contra uma isca sintética. Assertar
+// só a AUSÊNCIA das linhas `*.ps1`/`*.bat` no arquivo provaria a intenção,
+// não o efeito — e é o efeito que interessa: se alguém puser as linhas de
+// volta, este teste cai porque o secretlint VOLTA a deixar passar, não
+// porque um grep achou uma string.
+//
+// `--no-gitignore`: o secretlint v13 respeita `.gitignore` por padrão, e a
+// isca deste teste é gravada em `scratch/`, que este repositório ignora. Sem
+// a flag, um arquivo ignorado dá o mesmo "0 achados" que o próprio buraco —
+// um falso "passou" pelo motivo errado. Isto é particularidade do ARRANJO
+// deste teste: o hook real (`lefthook.yml`) roda contra `{staged_files}`,
+// que por definição nunca são arquivos ignorados (o git recusa `add` num
+// arquivo ignorado sem `-f`) — a flag não muda nada do comportamento em
+// produção, só evita um falso negativo aqui.
+//
+// NENHUMA CREDENCIAL DE VERDADE ENTRA AQUI — mesma isca sintética
+// `sb_secret_` de cima, montada em tempo de execução.
+// ============================================================================
+
+/**
+ * Roda o `secretlint` DE VERDADE (subprocesso `node`, o mesmo binário que o
+ * `lefthook.yml` chama) contra um arquivo escrito em `scratch/`, com o
+ * `.secretlintignore` REAL deste repositório. Se alguém reintroduzir
+ * `*.ps1`/`*.bat` naquele arquivo, é este processo real que passa a devolver
+ * "0 achados" de novo — não uma cópia congelada dentro do teste.
+ */
+async function rodaSecretlintContra(
+  nomeDoArquivo: string,
+  conteudo: string,
+): Promise<{ code: number; achados: unknown[]; stderr: string }> {
+  const caminhoRelativo = `scratch/${nomeDoArquivo}`;
+  const caminhoAbsoluto = join(RAIZ_DO_REPO, caminhoRelativo);
+  await Deno.mkdir(join(RAIZ_DO_REPO, "scratch"), { recursive: true });
+  await Deno.writeTextFile(caminhoAbsoluto, conteudo);
+  try {
+    const cmd = new Deno.Command("node", {
+      args: [
+        SECRETLINT_CLI,
+        "--no-gitignore",
+        "--secretlintignore",
+        // Literal RELATIVO, não a constante `SECRETLINTIGNORE` (absoluta) —
+        // medido em 21/08/2026: com `cwd` fixo, `--secretlintignore` com
+        // caminho ABSOLUTO faz o secretlint parar de aplicar os padrões de
+        // extensão do arquivo (`*.ps1`/`*.bat` deixavam de ignorar mesmo
+        // estando lá). Só o caminho RELATIVO reproduz o comportamento real —
+        // que é como `lefthook.yml` chama (`--secretlintignore
+        // .secretlintignore`, também relativo). Um teste com o caminho
+        // absoluto passaria SEMPRE, mutação ou não: não estaria medindo nada.
+        ".secretlintignore",
+        "--format",
+        "json",
+        caminhoRelativo,
+      ],
+      cwd: RAIZ_DO_REPO,
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code, stdout, stderr } = await cmd.output();
+    const saidaStdout = new TextDecoder().decode(stdout).trim();
+    const saidaStderr = new TextDecoder().decode(stderr).trim();
+    let achados: unknown[] = [];
+    try {
+      const parsed = JSON.parse(saidaStdout || "[]");
+      achados = Array.isArray(parsed) ? (parsed[0]?.messages ?? []) : [];
+    } catch {
+      throw new Error(
+        `saída do secretlint não é JSON: ${saidaStdout}\n${saidaStderr}`,
+      );
+    }
+    return { code, achados, stderr: saidaStderr };
+  } finally {
+    await Deno.remove(caminhoAbsoluto).catch(() => {});
+  }
+}
+
+Deno.test("a trava de credencial enxerga .ps1 e .bat — .secretlintignore", async (t) => {
+  await t.step(
+    "o `.secretlintignore` não declara mais `*.ps1` nem `*.bat`",
+    async () => {
+      const texto = await Deno.readTextFile(SECRETLINTIGNORE);
+      const linhas = texto.split(/\r?\n/).map((l) => l.trim());
+      assert(
+        !linhas.includes("*.ps1"),
+        "`.secretlintignore` voltou a ter `*.ps1` — o terminal deste " +
+          "projeto é PowerShell e há arquivos `.ps1` versionados aqui; " +
+          "uma credencial ali passaria despercebida.",
+      );
+      assert(
+        !linhas.includes("*.bat"),
+        "`.secretlintignore` voltou a ter `*.bat` — mesmo buraco do `*.ps1`.",
+      );
+    },
+  );
+
+  await t.step(
+    "POSITIVO — chave `sb_secret_` dentro de um `.ps1` é RECUSADA pela trava real",
+    async () => {
+      const r = await rodaSecretlintContra(
+        `isca-ps1-${crypto.randomUUID()}.ps1`,
+        `$env:SUPABASE_SECRET_KEY = "${sbSecretSintetica()}"\n`,
+      );
+      assert(
+        r.code !== 0 && r.achados.length > 0,
+        `o secretlint NÃO recusou uma chave sb_secret_ dentro de um .ps1 (exit=${r.code}, achados=${r.achados.length}). Isto é o buraco voltando — provavelmente *.ps1 voltou ao .secretlintignore.\n${r.stderr}`,
+      );
+    },
+  );
+
+  await t.step(
+    "POSITIVO — chave `sb_secret_` dentro de um `.bat` é RECUSADA pela trava real",
+    async () => {
+      const r = await rodaSecretlintContra(
+        `isca-bat-${crypto.randomUUID()}.bat`,
+        `set SUPABASE_SECRET_KEY=${sbSecretSintetica()}\n`,
+      );
+      assert(
+        r.code !== 0 && r.achados.length > 0,
+        `o secretlint NÃO recusou uma chave sb_secret_ dentro de um .bat (exit=${r.code}, achados=${r.achados.length}).\n${r.stderr}`,
+      );
+    },
+  );
+
+  await t.step(
+    "NEGATIVO — `.ps1` sem credencial PASSA (instrumento não recusa tudo)",
+    async () => {
+      const r = await rodaSecretlintContra(
+        `isca-ps1-limpo-${crypto.randomUUID()}.ps1`,
+        "$env:SUPABASE_SECRET_KEY = $env:MINHA_VARIAVEL_DE_AMBIENTE\n",
+      );
+      assertEquals(
+        r.code,
+        0,
+        `um .ps1 sem credencial foi recusado (achados=${r.achados.length}) — falso positivo, e não é isso que este teste deveria provar.\n${r.stderr}`,
+      );
+    },
+  );
 });
