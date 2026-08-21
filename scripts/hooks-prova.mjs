@@ -39,10 +39,19 @@
  *                            NOVO da chave secreta do Supabase, sucessor do
  *                            `service_role`, também ignora RLS, e o preset
  *                            recomendado é cego para ele igual era para o JWT.
+ *  1d. POSITIVO   a MESMA chave `sb_secret_` de 1c, mas dentro de um `.ps1`
+ *                 (PS1)      -> commit RECUSADO. Até 21/08/2026 o
+ *                            `.secretlintignore` tinha `*.ps1` e `*.bat` na
+ *                            lista de exceções: a regra de padrão (1c prova
+ *                            que ela está certa) nunca chegava a rodar contra
+ *                            um arquivo com essa extensão. O terminal deste
+ *                            projeto é PowerShell, e há 4 arquivos `.ps1` e
+ *                            `.bat` versionados aqui — era nessa casca que
+ *                            a trava ficava cega.
  *   2. NEGATIVO   o MESMO arquivo limpo -> commit PASSA, e o secretlint
  *                                          continua sendo nomeado (senão um
  *                                          hook que não roda nada "aprova")
- *      (1, 1b, 1c e 2 rodam de dentro de um `git worktree`, que é onde a
+ *      (1, 1b, 1c, 1d e 2 rodam de dentro de um `git worktree`, que é onde a
  *      trava estava desligada; o caminho absoluto deles tem espaços, como o
  *      do projeto.)
  *   3. ANTES      shim gerado da MESMA config, só sem as duas chaves de topo,
@@ -284,6 +293,19 @@ function sbSecretFalso() {
     (b) => alfabeto[b % alfabeto.length],
   ).join("");
   return `SUPABASE_SECRET_KEY=sb_secret_${sufixo}`;
+}
+
+/**
+ * A mesma chave `sb_secret_` sintética de `sbSecretFalso`, só que formatada
+ * como um script PowerShell atribuiria a variável de ambiente — a forma que
+ * um script de setup em PowerShell escreveria. O padrão
+ * que o secretlint casa é o mesmo (o regex não olha para `$env:`/aspas); o
+ * que muda é a CASCA — e é a casca (a extensão `.ps1`) que o buraco do
+ * `.secretlintignore` explorava até 21/08/2026.
+ */
+function sbSecretComoScriptPs1() {
+  const [, chave] = sbSecretFalso().split("=");
+  return `$env:SUPABASE_SECRET_KEY = "${chave}"`;
 }
 
 const LINHA_LIMPA =
@@ -540,7 +562,7 @@ const SEM_PATH_FORMAT = (yml) => yml.replace("--path-format=relative ", "");
 
 /** @type {{nome: string, estado: "PASSOU"|"FALHOU"|"INDETERMINADO", detalhe: string}[]} */
 const resultados = [];
-const CONTROLES_ESPERADOS = 8;
+const CONTROLES_ESPERADOS = 9;
 
 function registrar(nome, estado, detalhe) {
   resultados.push({ nome, estado, detalhe });
@@ -697,29 +719,48 @@ Rode \`npm install\` na árvore principal do projeto.`,
     );
   }
 
-  const arquivo = join(atual.wt, "credencial-de-teste.txt");
-
   /**
-   * Grava a isca no MESMO arquivo, confere que ela chegou ao índice e tenta
-   * commitar.
+   * Grava a isca no arquivo `nomeRelativo` (relativo ao worktree), confere
+   * que ela chegou ao índice e tenta commitar.
    *
    * O `staged` é assertado de propósito: um `git add` que não pegou nada faria
    * o commit passar por motivo nenhum, e o controle leria isso como "a trava
    * aprovou". Arranjo é premissa, e premissa se mede antes do veredito.
+   *
+   * Generalizado para aceitar o nome do arquivo (e não só o conteúdo) porque
+   * o controle 1d precisa de uma EXTENSÃO diferente (`.ps1`) — é a extensão,
+   * não o conteúdo, que o buraco do `.secretlintignore` explorava.
+   *
+   * `git reset` ANTES do `add`: cada chamada tem de partir de um índice
+   * LIMPO. Quando a trava recusa um commit (o caso comum aqui), o arquivo
+   * fica staged e não sai do índice sozinho — e como os controles 1, 1b e 1c
+   * reusam o MESMO nome (`credencial-de-teste.txt`), a reentrada não somava
+   * (era o mesmo caminho se sobrescrevendo). O controle 1d usa outro nome
+   * (`script-de-teste.ps1`) e por isso o índice passava a ter DUAS entradas,
+   * disparando o `throw` abaixo por um motivo que não tinha nada a ver com o
+   * que o controle mede. `git reset` (sem argumento, sem `--hard`) só move o
+   * ÍNDICE de volta para o HEAD deste repositório descartável — não toca no
+   * working tree e não é o `reset` proibido na árvore compartilhada, que é
+   * outra árvore. A asserção abaixo continua EXATA de propósito: um `add`
+   * frouxo que "pegasse algo" faria o commit passar por motivo nenhum.
    */
-  const tentarCommit = (conteudo, mensagem) => {
-    writeFileSync(arquivo, `${conteudo}\n`);
-    gitExige(["add", "credencial-de-teste.txt"], atual.wt);
+  const commitarArquivo = (nomeRelativo, conteudo, mensagem) => {
+    gitExige(["reset"], atual.wt);
+    writeFileSync(join(atual.wt, nomeRelativo), `${conteudo}\n`);
+    gitExige(["add", nomeRelativo], atual.wt);
     const staged = gitExige(
       ["diff", "--cached", "--name-only"],
       atual.wt,
     ).saida.trim();
-    if (staged !== "credencial-de-teste.txt") {
+    if (staged !== nomeRelativo) {
       throw new Error(`arranjo furado: staged = "${staged}"`);
     }
     const r = git(["commit", "-m", mensagem], atual.wt);
     return { ...r, nomeouSecretlint: /secretlint/i.test(r.saida) };
   };
+
+  const tentarCommit = (conteudo, mensagem) =>
+    commitarArquivo("credencial-de-teste.txt", conteudo, mensagem);
 
   /** Recusado só conta quando o secretlint aparece na saída como o motivo. */
   const observadoNaRecusa = (r) =>
@@ -767,6 +808,30 @@ Rode \`npm install\` na árvore principal do projeto.`,
     detalhe: detalheDaRecusa(comSbSecret),
   });
   console.log(indentar(comSbSecret.saida));
+
+  // --- 1d. POSITIVO: sb_secret_ dentro de um `.ps1` -----------------------
+  // SEGUNDO buraco na mesma trava, fechado em 21/08/2026: até então o
+  // `.secretlintignore` tinha `*.ps1` (e `*.bat`) na lista de exceções — a
+  // MESMA credencial do controle 1c, só que dentro de um script PowerShell,
+  // nunca chegava a ser varrida pela regra de padrão (que o 1c já prova
+  // certa). O terminal deste projeto é PowerShell e há 4 arquivos `.ps1` e
+  // `.bat` versionados aqui — era nessa casca que a trava ficava cega.
+  // Se alguém puser `*.ps1` de volta no
+  // `.secretlintignore`, é este controle que acende sozinho.
+  const comSbSecretPs1 = commitarArquivo(
+    "script-de-teste.ps1",
+    sbSecretComoScriptPs1(),
+    "test: sb_secret_ falso dentro de .ps1",
+  );
+  classificar(
+    "1d. POSITIVO — commit com `sb_secret_` dentro de um `.ps1` é RECUSADO",
+    {
+      esperado: "recusado",
+      observado: observadoNaRecusa(comSbSecretPs1),
+      detalhe: detalheDaRecusa(comSbSecretPs1),
+    },
+  );
+  console.log(indentar(comSbSecretPs1.saida));
 
   // --- 2. NEGATIVO --------------------------------------------------------
   const semSegredo = tentarCommit(
@@ -918,11 +983,11 @@ if (aprovado) {
   console.log(
     "  TRAVA LIGADA E FECHADA. Os três hooks que o git executa NESTA árvore\n" +
       "  (pre-commit, commit-msg e pre-push) são o que esta configuração gera;\n" +
-      "  commit com senha de banco, com JWT `service_role` e com chave\n" +
-      "  `sb_secret_` do Supabase (formato legado e formato novo) são\n" +
-      "  recusados de dentro de um worktree; arquivo limpo passa pelo\n" +
-      "  secretlint; e o shim sai com erro — não com sucesso — quando não acha\n" +
-      "  o lefthook.",
+      "  commit com senha de banco, com JWT `service_role`, com chave\n" +
+      "  `sb_secret_` do Supabase (formato legado e formato novo, inclusive\n" +
+      "  dentro de um `.ps1`) são recusados de dentro de um worktree; arquivo\n" +
+      "  limpo passa pelo secretlint; e o shim sai com erro — não com sucesso —\n" +
+      "  quando não acha o lefthook.",
   );
   process.exit(0);
 }
