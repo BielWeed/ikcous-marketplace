@@ -7,6 +7,74 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.6.1] — 2026-08-21
+
+Release de ferramental: **a trava que impede uma credencial de ser gravada no
+repositório deixa de ter pontos cegos.** Quatro entregas (#256, #261, #262, #263).
+
+**Nada muda para quem COMPRA nem para quem VENDE.** Nenhum arquivo de `src/`
+foi tocado, nenhuma migration, nenhuma edge function — o aplicativo que vai ao
+ar é byte a byte o mesmo da `1.6.0`. Por isso o número sobe só o último dígito.
+
+### O que muda no MOLDE
+
+O `secretlint` roda no hook de pre-commit e é a **única** proteção deste
+repositório contra credencial gravada no git — e o histórico dele já teve
+`service_role` e senha de banco commitadas. Ele tinha três cegueiras, e todas
+foram medidas antes e depois, com controle positivo na mesma rodada:
+
+- **A chave do Supabase no formato legado** (`eyJ...`, um JWT) passava direto.
+  Agora é recusada (#256).
+- **A chave no formato novo** (`sb_secret_...`) também passava — e essa é a
+  sucessora da `service_role`, que ignora RLS e tem acesso total aos dados. A
+  documentação do Supabase descontinua o formato legado até o fim de 2026, então
+  a trava estava protegendo justamente o formato que vai deixar de existir (#261).
+- **Qualquer credencial dentro de um `.ps1` ou `.bat`** escapava, porque as duas
+  extensões estavam na lista de exceções. O terminal deste projeto é PowerShell
+  e há quatro arquivos desses versionados aqui (#262).
+- **O `package-lock.json`** era pulado. Hoje não há nada sensível nele — as 1.381
+  dependências vêm todas do registro público — mas a exceção não pagava nada e
+  criava um ponto cego que vale no dia em que o projeto usar um registro
+  **privado** de pacotes, o único caminho pelo qual credencial cai num lockfile
+  (#263).
+
+A `sb_publishable_` **não** é bloqueada, e isso é deliberado: a documentação
+oficial do Supabase diz que ela é feita para ser pública. Bloqueá-la seria falso
+positivo por construção — e falso positivo em trava de segurança é o que faz
+alguém arrancar a trava inteira. A justificativa mora num caso de teste que
+reprova quem acrescentar o padrão sem pensar.
+
+### Como isso foi provado
+
+O `scripts/hooks-prova.mjs` ganhou três controles e passou de 6 para **9**. Ele
+não simula: monta um repositório descartável, instala os hooks reais e faz
+`git commit` de verdade com a credencial dentro.
+
+```
+controles executados: 9 de 9, todos PASSOU
+  1b. commit com JWT `service_role` é RECUSADO
+  1c. commit com chave `sb_secret_` é RECUSADO
+  1d. commit com `sb_secret_` dentro de um `.ps1` é RECUSADO
+  2.  o MESMO arquivo, limpo, PASSA
+```
+
+E cinco mutações individuais derrubam **exatamente** o controle que cada uma
+cobre, nenhum outro — nenhum controle passa de carona no estado do anterior.
+
+### Sabido e não corrigido
+
+- **A cota mensal do GitHub Actions se esgotou em 20/08/2026.** Desde então toda
+  execução do CI morre em 3-6 segundos sem rodar um passo, e **o CI não tem
+  veredito** sobre nada desta release. Toda a verificação foi local e está dita
+  como local em cada PR.
+- O `.secretlintignore` mantém `node_modules/`, `dist/`, `.ship-safe/`,
+  `.vercel/`, `.git/` e as quatro extensões de imagem. Nenhuma delas é formato
+  onde credencial em texto se esconde.
+- O pre-commit **não roda a partir de um worktree em outro caminho**: o shim do
+  lefthook resolve o binário por caminho relativo à árvore principal. Pré-existente,
+  e o motivo de os commits desta release terem sido criados pela API do GitHub,
+  com o `secretlint` rodado à mão sobre cada diff em compensação.
+
 ## [1.6.0] — 2026-08-21
 
 Release de correção: **o painel para de afirmar o que não sabe**. Três frentes de
