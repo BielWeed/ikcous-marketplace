@@ -62,6 +62,25 @@ const UUID_PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
 const ID_PAGAMENTO_DO_MP = 12345;
 const ID_ORDER_DO_MP = "ORDMP99KZZ4D94WC79335A68CZ5NZ7X";
 
+// O valor que `criar-pagamento` REALMENTE grava em `gateway_payment_id` desde
+// a migração para a Orders API (index.ts:590: sempre o id da ORDER, "ORD...",
+// nunca o de um pagamento clássico) — usado nos testes da rota `payment` que
+// provam a correção de 21/08/2026. DIFERENTE de propósito tanto do id que o
+// corpo do webhook carrega ("999", forjável) quanto do que a rota `payment`
+// do MP devolve (ID_PAGAMENTO_DO_MP, numérico): são três fontes, e só a
+// prova distingue se o teste as mantém diferentes entre si.
+const ID_GRAVADO_NO_BANCO = "ORDBANCO1KZZ4D94WC79335A68CZ5NZ7X";
+
+// Um id CLÁSSICO (só dígitos) DIFERENTE de `ID_PAGAMENTO_DO_MP` — usado pelo
+// controle negativo abaixo. Achado de revisão (mutação "M2b", 21/08/2026):
+// gravar o MESMO valor que o MP devolve nos dois lados faz a asserção do
+// `p_payment_id` ser satisfeita OU pelo comportamento certo (substitui só
+// quando não-clássico) OU por uma mutação que substitui SEMPRE com aviso
+// condicional — os dois passam pelos 32 testes quando os dois lados
+// coincidem. Só um valor clássico e DIFERENTE do que o MP devolve prova que
+// o código de fato NÃO substituiu.
+const ID_GRAVADO_CLASSICO_DIFERENTE = "777777";
+
 Deno.env.set("MP_WEBHOOK_SECRET", SEGREDO);
 Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
 
@@ -154,12 +173,23 @@ function fetchConsulta(status: number, corpo: Record<string, unknown>) {
  * `confirmar_pagamento`, o que importa provar são os ARGUMENTOS) e
  * `.from().select().eq().maybeSingle()` devolve o pedido para montar o aviso
  * de push — mesmo padrão de `criar-pagamento/index_test.ts:55-114`.
+ *
+ * `registro.chamadasFrom`, quando presente, grava tabela/colunas/coluna/valor
+ * de CADA `.eq()` — sem isso, nada prova que a leitura aponta para a linha
+ * CERTA (`orderId`, vindo da resposta autenticada do MP) e não para o id cru
+ * do corpo do webhook (`dataIdStr`, forjável). Achado de revisão (mutação
+ * "M8"): trocar `.eq("id", orderId)` por `.eq("id", dataIdStr)` sobrevivia a
+ * todos os testes, porque o cliente falso devolvia o mesmo `pedido` fixo
+ * para qualquer `.eq()`, ignorando o argumento.
  */
 function clienteFalso(opts: {
   rpcResultado?: string;
   rpcError?: unknown;
   pedido?: Record<string, unknown> | null;
-  registro?: { chamadasRpc: Array<{ args: Record<string, unknown> }> };
+  registro?: {
+    chamadasRpc: Array<{ args: Record<string, unknown> }>;
+    chamadasFrom?: Array<{ tabela: string; colunas: string; coluna: string; valor: unknown }>;
+  };
 }) {
   return {
     rpc: async (_nome: string, args: Record<string, unknown>) => {
@@ -167,11 +197,12 @@ function clienteFalso(opts: {
       if (opts.rpcError) return { data: null, error: opts.rpcError };
       return { data: opts.rpcResultado ?? null, error: null };
     },
-    from(_tabela: string) {
+    from(tabela: string) {
       return {
-        select(_cols: string) {
+        select(colunas: string) {
           return {
-            eq(_col: string, _val: unknown) {
+            eq(coluna: string, valor: unknown) {
+              opts.registro?.chamadasFrom?.push({ tabela, colunas, coluna, valor });
               return { maybeSingle: async () => ({ data: opts.pedido ?? null, error: null }) };
             },
           };
@@ -220,10 +251,25 @@ Deno.test("MP responde 500 ao consultar o pagamento -> a função responde 500",
 });
 
 // --- 3. approved + 'pago' ----------------------------------------------------
+//
+// Correção de 21/08/2026 (o defeito dos três elos, achado de auditoria): em
+// produção `criar-pagamento` (index.ts:590) SEMPRE grava o id da ORDER em
+// `gateway_payment_id` — nunca o id clássico que esta rota recebe do MP. O
+// mock deste teste refletia um cenário que nunca acontece de verdade (os
+// dois lados "clássicos" e coincidindo por acaso); ele agora grava
+// ID_GRAVADO_NO_BANCO (ORD…) para exercitar o caso real, e a RPC precisa
+// receber ESSE valor — não o que a rota `payment` do MP devolveu — senão
+// `confirmar_pagamento` cai em 'divergente' e nada é gravado.
 
-Deno.test("MP diz approved, RPC devolve 'pago' -> 200 e o push dispara uma vez", async () => {
-  const registro = { chamadasRpc: [] };
-  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+Deno.test("MP diz approved, gateway_payment_id gravado é ORD (Orders API) -> RPC recebe o valor do BANCO, com aviso logado", async () => {
+  const registro = { chamadasRpc: [], chamadasFrom: [] };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: ID_GRAVADO_NO_BANCO,
+  };
   const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
   const req = await requisicaoAssinada("999");
   const fetchImpl = fetchConsulta(200, {
@@ -235,15 +281,63 @@ Deno.test("MP diz approved, RPC devolve 'pago' -> 200 e o push dispara uma vez",
   const enviarPush = async (args: unknown) => {
     chamadasPush.push(args);
   };
+  const chamadasAviso: unknown[][] = [];
+  const console_warn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    chamadasAviso.push(args);
+  };
 
-  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+  let resposta: Response;
+  try {
+    resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+  } finally {
+    console.warn = console_warn;
+  }
 
   assertEquals(resposta.status, 200);
   assertEquals(chamadasPush.length, 1);
   assertEquals(registro.chamadasRpc.length, 1);
   assertEquals(registro.chamadasRpc[0].args.p_order_id, UUID_PEDIDO);
-  assertEquals(registro.chamadasRpc[0].args.p_payment_id, String(ID_PAGAMENTO_DO_MP));
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_GRAVADO_NO_BANCO);
   assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
+  assertEquals(chamadasAviso.length, 1, "deveria logar um aviso ao substituir o id pelo valor do banco");
+  // Achado de revisão (mutação "M12"): a versão anterior desta asserção
+  // juntava TODOS os argumentos numa string só e perguntava se ela CONTINHA
+  // os valores — trocar os dois campos do objeto logado entre si
+  // (`idDevolvidoPeloMp: idGravadoNoBanco, idGravadoNoBanco: idParaRpc`)
+  // continuava satisfazendo essa busca, porque os dois valores apareciam em
+  // algum lugar da string, na ordem que fosse. E
+  // `assertStringIncludes(texto, "gateway_payment_id")` era satisfeita pela
+  // MENSAGEM ESTÁTICA (que já contém esse literal), não pelo objeto — não
+  // provava nada. Asserção POR CAMPO no objeto logado prova que cada valor
+  // foi para o rótulo certo.
+  const [, campos] = chamadasAviso[0] as [string, Record<string, unknown>];
+  assertEquals(campos.orderId, UUID_PEDIDO);
+  assertEquals(campos.idDevolvidoPeloMp, String(ID_PAGAMENTO_DO_MP));
+  assertEquals(campos.idGravadoNoBanco, ID_GRAVADO_NO_BANCO);
+  // Achado de revisão (mutação "M8"): prova que as DUAS leituras de
+  // `marketplace_orders` (a do gateway_payment_id e a do push) apontam para
+  // `orderId` (vindo da resposta autenticada do MP) — não para `dataIdStr`
+  // ("999", o id cru e forjável do corpo do webhook).
+  assertEquals(registro.chamadasFrom.length, 2, "deveria ter lido o pedido duas vezes: gateway_payment_id e push");
+  // Achado de revisão (mutação "M10"): as duas leituras pedem COLUNAS
+  // diferentes (a nova, "gateway_payment_id"; a do push, que já existia,
+  // "id, customer_name, total, total_amount") — por isso a asserção é POR
+  // LEITURA, não um laço uniforme. Trocar `.select("gateway_payment_id")`
+  // por `.select("id")` sobrevivia a todos os testes: o laço antigo conferia
+  // tabela/coluna/valor mas nunca `colunas`, e o PostgREST devolveria só
+  // `{ id }` — `?.gateway_payment_id` viraria `undefined`, a correção nunca
+  // dispararia, em silêncio, com os testes desta correção continuando
+  // verdes.
+  const [leituraGatewayId, leituraPush] = registro.chamadasFrom;
+  assertEquals(leituraGatewayId.tabela, "marketplace_orders");
+  assertEquals(leituraGatewayId.colunas, "gateway_payment_id");
+  assertEquals(leituraGatewayId.coluna, "id");
+  assertEquals(leituraGatewayId.valor, UUID_PEDIDO);
+  assertEquals(leituraPush.tabela, "marketplace_orders");
+  assertEquals(leituraPush.colunas, "id, customer_name, total, total_amount");
+  assertEquals(leituraPush.coluna, "id");
+  assertEquals(leituraPush.valor, UUID_PEDIDO);
 });
 
 // --- 4. 'ja_pago' -> idempotência --------------------------------------------
@@ -628,9 +722,15 @@ Deno.test("type 'order' com status 'expired:expired' -> 200 com rótulo próprio
   assertEquals(corpo.ignorado, "order expirada");
 });
 
-Deno.test("type 'payment' explícito continua no caminho clássico (não-regressão)", async () => {
+Deno.test("type 'payment' explícito continua no caminho clássico, e ainda assim aplica a correção (não-regressão)", async () => {
   const registro = { chamadasRpc: [] };
-  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: ID_GRAVADO_NO_BANCO,
+  };
   const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
   const req = await requisicaoAssinada("999", { corpoExtra: { type: "payment" } });
   const fetchImpl = fetchConsulta(200, { id: ID_PAGAMENTO_DO_MP, status: "approved", external_reference: UUID_PEDIDO });
@@ -643,7 +743,7 @@ Deno.test("type 'payment' explícito continua no caminho clássico (não-regress
 
   assertEquals(resposta.status, 200);
   assertEquals(registro.chamadasRpc.length, 1);
-  assertEquals(registro.chamadasRpc[0].args.p_payment_id, String(ID_PAGAMENTO_DO_MP));
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_GRAVADO_NO_BANCO);
   assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
   assertEquals(chamadasPush.length, 1);
 });
@@ -668,9 +768,15 @@ Deno.test("type ausente + id em forma de ULID -> caminho de ORDER (consulta /v1/
   assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_DO_MP);
 });
 
-Deno.test("type ausente + id numérico -> caminho CLÁSSICO (consulta /v1/payments/, não-regressão)", async () => {
+Deno.test("type ausente + id numérico -> caminho CLÁSSICO (consulta /v1/payments/), e aplica a correção do gateway_payment_id", async () => {
   const registro = { chamadasRpc: [] };
-  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: ID_GRAVADO_NO_BANCO,
+  };
   const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
   const req = await requisicaoAssinada("999"); // sem `type`
   const { fn: fetchImpl, chamadas } = fetchInspecionavel({
@@ -682,7 +788,7 @@ Deno.test("type ausente + id numérico -> caminho CLÁSSICO (consulta /v1/paymen
   assertEquals(resposta.status, 200);
   assertEquals(chamadas.some((u) => u.includes("/v1/payments/")), true, "deveria ter consultado /v1/payments/");
   assertEquals(registro.chamadasRpc.length, 1);
-  assertEquals(registro.chamadasRpc[0].args.p_payment_id, String(ID_PAGAMENTO_DO_MP));
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_GRAVADO_NO_BANCO);
 });
 
 Deno.test("type 'order' com external_reference sem forma de UUID -> 200, RPC não chamada", async () => {
@@ -761,9 +867,15 @@ Deno.test("type DESCONHECIDO + id em forma de order -> consulta a Orders API (n�
   }
 });
 
-Deno.test("type DESCONHECIDO + id numérico -> caminho CLÁSSICO (consulta /v1/payments/)", async () => {
+Deno.test("type DESCONHECIDO + id numérico -> caminho CLÁSSICO (consulta /v1/payments/), e aplica a correção do gateway_payment_id", async () => {
   const registro = { chamadasRpc: [] };
-  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: ID_GRAVADO_NO_BANCO,
+  };
   const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
   const req = await requisicaoAssinada("999", { corpoExtra: { type: "order.updated" } });
   const { fn: fetchImpl, chamadas } = fetchInspecionavel({
@@ -775,7 +887,7 @@ Deno.test("type DESCONHECIDO + id numérico -> caminho CLÁSSICO (consulta /v1/p
   assertEquals(resposta.status, 200);
   assertEquals(chamadas.some((u) => u.includes("/v1/payments/")), true, "deveria ter consultado /v1/payments/");
   assertEquals(registro.chamadasRpc.length, 1);
-  assertEquals(registro.chamadasRpc[0].args.p_payment_id, String(ID_PAGAMENTO_DO_MP));
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_GRAVADO_NO_BANCO);
 });
 
 Deno.test("type irrelevante da lista oficial (point_integration_wh) -> 200, descartado sem NENHUMA chamada ao MP", async () => {
@@ -951,4 +1063,208 @@ Deno.test("RPC devolve 'divergente' ou 'inexistente' -> 200 e console.error acus
       console.error = console_error;
     }
   }
+});
+
+// --- correção de 21/08/2026: gateway_payment_id gravado vs. id que a rota
+// `payment` do MP devolve (achado de auditoria, os três elos) ---------------
+//
+// `criar-pagamento` sempre grava o id da ORDER em `gateway_payment_id`
+// (index.ts:590), mesmo quando o painel do MP está inscrito no tópico
+// clássico e esta rota recebe um id NUMÉRICO do MP. Sem ler o valor gravado
+// e substituir por ele, `confirmar_pagamento` cai em 'divergente' e o
+// dinheiro que já entrou no MP nunca é registrado — o teste principal desse
+// caminho está no teste 3 (linha ~231, acima). Os dois testes abaixo cobrem
+// o CONTROLE (nada muda quando os dois lados já falam a mesma língua) e o
+// caminho de FALHA da leitura.
+
+Deno.test("rota payment: gateway_payment_id gravado é clássico (e DIFERENTE do id do MP) -> nada muda, e NÃO loga aviso (controle negativo)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    // Clássico, mas DIFERENTE de ID_PAGAMENTO_DO_MP (o que o MP devolve
+    // abaixo) — cobrança criada ANTES da migração para a Orders API, ou
+    // clone que ainda usa o endpoint clássico. Achado de revisão (mutação
+    // "M2b"): com os dois lados no MESMO valor, "substitui sempre com aviso
+    // condicional" e "substitui só quando não-clássico" produzem a mesma
+    // asserção de `p_payment_id` — só um valor DIFERENTE prova que o código
+    // não substituiu.
+    gateway_payment_id: ID_GRAVADO_CLASSICO_DIFERENTE,
+  };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+  const chamadasAviso: unknown[][] = [];
+  const console_warn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    chamadasAviso.push(args);
+  };
+
+  let resposta: Response;
+  try {
+    resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+  } finally {
+    console.warn = console_warn;
+  }
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, String(ID_PAGAMENTO_DO_MP));
+  assertEquals(
+    chamadasAviso.length,
+    0,
+    "não deveria logar aviso quando os dois lados já falam a mesma língua",
+  );
+});
+
+Deno.test("rota payment: falha ao ler gateway_payment_id do pedido -> 500, RPC NÃO chamada, evento mantido na fila do MP", async () => {
+  const chamadasRpc: Array<{ args: Record<string, unknown> }> = [];
+  const erroLeitura = { message: "connection reset" };
+  // Cliente falso PRÓPRIO deste teste (não `clienteFalso`): precisa devolver
+  // um `error` na leitura de `marketplace_orders`, o que `clienteFalso` não
+  // parametriza (ele só injeta erro no `.rpc()`).
+  const supabase = {
+    rpc: async (_nome: string, args: Record<string, unknown>) => {
+      chamadasRpc.push({ args });
+      return { data: "pago", error: null };
+    },
+    from(_tabela: string) {
+      return {
+        select(_cols: string) {
+          return {
+            eq(_col: string, _val: unknown) {
+              return { maybeSingle: async () => ({ data: null, error: erroLeitura }) };
+            },
+          };
+        },
+      };
+    },
+  };
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 500);
+  assertEquals(chamadasRpc.length, 0, "não deveria chamar confirmar_pagamento com o id que não pôde ser confirmado");
+});
+
+// Achado de revisão (mutação "M7", 21/08/2026): remover o `if (rota ===
+// "payment")` que envolve o bloco de substituição não quebra NENHUM teste
+// acima, porque nenhum deles exercita a rota `order` com um
+// `gateway_payment_id` gravado que NÃO seja clássico. Na rota `order` a
+// guarda (d) de `confirmar_pagamento` ainda compara duas fontes
+// independentes (o `order.id` que o MP devolveu contra o `ORD…` gravado no
+// banco) — é o que já pegou o defeito real de gravar `payments[0].id` no
+// lugar de `order.id` (linhas 43-49, acima). Se o bloco de substituição
+// rodasse também aqui, o valor gravado (não-clássico, forma de order)
+// substituiria o `order.id` verdadeiro sem que nada acusasse.
+Deno.test("rota order: gateway_payment_id gravado (ORD do banco) NÃO substitui o order.id do MP — a guarda (d) continua comparando duas fontes independentes", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    // Valor gravado no banco, DIFERENTE do que o MP devolve abaixo
+    // (ID_ORDER_DO_MP) — se o bloco de substituição (restrito hoje a
+    // `rota === "payment"`) rodasse aqui, a RPC receberia este valor em vez
+    // do order.id verdadeiro.
+    gateway_payment_id: ID_GRAVADO_NO_BANCO,
+  };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_DO_MP,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_DO_MP);
+});
+
+Deno.test("rota payment: gateway_payment_id gravado é string vazia -> não substitui, guarda (c) fica sem trava e RPC recebe o id do MP", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    // Pedido criado sem cobrança gravada (ou coluna zerada por engano) — o
+    // `length > 0` da condição de substituição barra este valor, e a RPC
+    // segue com o id que o MP devolveu, que `confirmar_pagamento` recusa na
+    // guarda (c) (gateway_payment_id IS NOT NULL). Sem este teste, o `length
+    // > 0` não tinha nenhum caso exercitando a string vazia.
+    gateway_payment_id: "",
+  };
+  const supabase = clienteFalso({ rpcResultado: "divergente", pedido, registro });
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, String(ID_PAGAMENTO_DO_MP));
+});
+
+// Achado de revisão (mutação "M15", 21/08/2026): nenhum teste acima exercita
+// a rota `payment` com `gateway_payment_id` gravado em forma de ORD **e**
+// status DIFERENTE de 'pago' — todos os testes que gravam ID_GRAVADO_NO_BANCO
+// usam status "approved" ("pago"). Restringir a substituição a
+// `statusMapeado === "pago"` (em vez de a TODOS os status) sobrevivia a toda
+// a suíte. Na vida real isso apaga um estorno: uma cobrança da Orders API
+// notificada pelo tópico clássico (`refunded` -> "estornado") voltaria a
+// 'divergente' e o estorno nunca seria registrado — o dinheiro já voltou no
+// MP e o app segue mostrando o pedido como se nada tivesse acontecido.
+Deno.test("rota payment: status 'refunded' (estornado) com gateway_payment_id gravado ORD -> RPC recebe o id do BANCO, não só quando 'pago' (M15)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: ID_GRAVADO_NO_BANCO,
+  };
+  const supabase = clienteFalso({ rpcResultado: "estornado", pedido, registro });
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "refunded",
+    external_reference: UUID_PEDIDO,
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_GRAVADO_NO_BANCO);
+  assertEquals(registro.chamadasRpc[0].args.p_status, "estornado");
 });
