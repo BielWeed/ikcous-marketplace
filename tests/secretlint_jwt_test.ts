@@ -19,13 +19,39 @@
  * barreira: branch protection retorna 403 neste plano do GitHub e a cota de
  * Actions está esgotada.
  *
+ * SEGUNDO BURACO, fechado em 21/08/2026: o padrão de JWT só pega o formato
+ * LEGADO da chave secreta do Supabase (`eyJ...`). O formato NOVO, `sb_secret_...`,
+ * passava em silêncio — medido com controle positivo na mesma rodada: isca
+ * `eyJ...` -> bloqueada; isca `sb_secret_...` -> exit 0. A doc oficial do
+ * Supabase diz que as chaves legadas serão descontinuadas até o fim de 2026, e
+ * o runbook deste projeto (`docs/runbooks/rotacao-credenciais-supabase.md:166`)
+ * recomenda migrar para `sb_secret_...` — que é o sucessor do `service_role`
+ * e também ignora RLS. O dia em que alguém seguir o próprio manual do projeto
+ * era o dia em que a trava ficava cega.
+ *
+ * DELIBERADO: este arquivo NÃO cobra bloqueio de `sb_publishable_`. A doc
+ * oficial do Supabase diz que a chave publishable é FEITA para ser pública
+ * ("anyone can retrieve the key from the source code or build artifacts") —
+ * é o substituto da `anon`, não do `service_role`. Bloqueá-la seria falso
+ * positivo por construção, e falso positivo é o que faz alguém arrancar a
+ * trava inteira (é hook de pre-commit: request legítimo bloqueado por engano
+ * custa caro). O caso "NEGATIVO INTENCIONAL — sb_publishable_" abaixo existe
+ * para que, se alguém "consertar" essa omissão sem ler este parágrafo, o
+ * teste avise.
+ *
+ * ⚠️ O `{16,}` do sufixo de `sb_secret_` é ESCOLHA DE ENGENHARIA, não spec: a
+ * doc oficial do Supabase não publica o alfabeto nem o comprimento do sufixo
+ * dessas chaves. Ele foi calibrado para separar chave real de placeholder de
+ * documentação (`sb_secret_...`, `sb_secret_xxx`, medidos neste repositório
+ * em 21/08/2026) — não trate como fato do fornecedor.
+ *
  * O QUE ESTE TESTE MEDE: o COMPORTAMENTO do padrão declarado, não o texto dele.
  * Ele lê o `.secretlintrc.json` de verdade, monta os `RegExp` do mesmo jeito
  * que o secretlint monta, e roda contra iscas GERADAS AQUI. Assertar a string
  * do regex faria o teste passar com um padrão que não casa nada.
  *
- * NENHUMA CREDENCIAL DE VERDADE ENTRA AQUI. Os JWT são sintéticos, montados em
- * tempo de execução — um teste que carrega credencial real é o próprio
+ * NENHUMA CREDENCIAL DE VERDADE ENTRA AQUI. As chaves são sintéticas, montadas
+ * em tempo de execução — um teste que carrega credencial real é o próprio
  * incidente que ele deveria pegar.
  */
 // Ordem alfabética por especificador: é o que o `organizeImports` do Biome
@@ -95,6 +121,31 @@ function jwtSintetico(role: string): string {
     exp: 2000000000,
   });
   return `${cabecalho}.${corpo}.${base64url(bytes)}`;
+}
+
+/**
+ * Sufixo aleatório no alfabeto `[A-Za-z0-9_-]`, no comprimento pedido.
+ *
+ * Usado para montar as chaves `sb_secret_`/`sb_publishable_` sintéticas: o
+ * texto do sufixo não importa, só o alfabeto e o comprimento — que são
+ * exatamente as duas coisas que o padrão do `.secretlintrc.json` verifica.
+ */
+function sufixoAleatorio(tamanho: number): string {
+  const alfabeto =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
+  const bytes = new Uint8Array(tamanho);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => alfabeto[b % alfabeto.length]).join("");
+}
+
+/** Uma chave `sb_secret_` sintética, com formato realista (prefixo + 40). */
+function sbSecretSintetica(): string {
+  return `sb_secret_${sufixoAleatorio(40)}`;
+}
+
+/** Uma chave `sb_publishable_` sintética, com formato realista. */
+function sbPublishableSintetica(): string {
+  return `sb_publishable_${sufixoAleatorio(40)}`;
 }
 
 const rc = JSON.parse(await Deno.readTextFile(RC));
@@ -167,6 +218,54 @@ ids declarados: ${ids.join(", ")}`,
       "nenhum padrão declarado casou um JWT `anon` bem formado",
     );
   });
+
+  await t.step("POSITIVO — uma chave `sb_secret_` sintética CASA", () => {
+    assert(
+      casaAlgum(`SUPABASE_SECRET_KEY=${sbSecretSintetica()}`),
+      "nenhum padrão declarado casou uma chave `sb_secret_` bem formada — " +
+        "é o formato novo, sucessor do `service_role`, e ignora RLS igual",
+    );
+  });
+
+  await t.step(
+    "NEGATIVO — placeholder `sb_secret_...` (documentação) NÃO casa",
+    () => {
+      assertEquals(
+        casaAlgum("SUPABASE_SECRET_KEY=sb_secret_..."),
+        false,
+        "o padrão de `sb_secret_` está casando placeholder de documentação — " +
+          "o runbook e o onboarding usam exatamente essa forma",
+      );
+    },
+  );
+
+  await t.step(
+    "NEGATIVO — placeholder `sb_secret_xxx` (documentação) NÃO casa",
+    () => {
+      assertEquals(
+        casaAlgum("SUPABASE_SECRET_KEY=sb_secret_xxx"),
+        false,
+        "o padrão de `sb_secret_` está casando placeholder de documentação",
+      );
+    },
+  );
+
+  await t.step(
+    "NEGATIVO INTENCIONAL — `sb_publishable_` NÃO é bloqueada",
+    () => {
+      // Deliberado, não esquecido: a publishable é FEITA para ser pública
+      // (substituta da `anon`), e bloqueá-la seria falso positivo por
+      // construção — ver o cabeçalho deste arquivo. Se este caso passar a
+      // FALHAR porque alguém acrescentou um padrão para `sb_publishable_`,
+      // essa é a mudança que precisa vir com a justificativa, não este teste.
+      assertEquals(
+        casaAlgum(`SUPABASE_PUBLISHABLE_KEY=${sbPublishableSintetica()}`),
+        false,
+        "a trava passou a bloquear `sb_publishable_` — isso é falso positivo " +
+          "por construção, ver o cabeçalho deste arquivo",
+      );
+    },
+  );
 
   await t.step(
     "CONTROLE — há padrão declarado para casar (instrumento)",

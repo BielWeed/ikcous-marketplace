@@ -33,12 +33,18 @@
  *                            padrão, acrescentada ao `.secretlintrc.json` em
  *                            20/08/2026 justamente porque o preset é cego
  *                            para ele.
+ *  1c. POSITIVO   chave `sb_secret_` staged -> commit RECUSADO. Mesma REGRA
+ *                 (sb_secret_) que pega o JWT (1b) — a de padrão —, mas outro
+ *                            padrão dentro dela: `sb_secret_...` é o formato
+ *                            NOVO da chave secreta do Supabase, sucessor do
+ *                            `service_role`, também ignora RLS, e o preset
+ *                            recomendado é cego para ele igual era para o JWT.
  *   2. NEGATIVO   o MESMO arquivo limpo -> commit PASSA, e o secretlint
  *                                          continua sendo nomeado (senão um
  *                                          hook que não roda nada "aprova")
- *      (1, 1b e 2 rodam de dentro de um `git worktree`, que é onde a trava
- *      estava desligada; o caminho absoluto deles tem espaços, como o do
- *      projeto.)
+ *      (1, 1b, 1c e 2 rodam de dentro de um `git worktree`, que é onde a
+ *      trava estava desligada; o caminho absoluto deles tem espaços, como o
+ *      do projeto.)
  *   3. ANTES      shim gerado da MESMA config, só sem as duas chaves de topo,
  *                 com o lefthook fora de alcance -> exit 0  (o bug histórico)
  *   4. DEPOIS     shim gerado da config ATUAL, mesmo cenário -> exit != 0
@@ -202,22 +208,33 @@ function acharSh() {
 // pegar. Também não existem como literal no fonte — o que está escrito é a
 // receita, não a isca.
 //
-// São DOIS formatos porque são DUAS regras, e uma pode cair sem a outra:
+// São TRÊS formatos, e caem em DUAS regras — uma pode ceder sem a outra:
 //
 //   senha de banco  URL de conexão PostgreSQL com senha, que é exatamente o
 //                   que já foi commitado neste repositório. Pega pelo
 //                   @secretlint/secretlint-rule-database-connection-string,
 //                   que vem no preset-recommend.
-//   JWT             chave `service_role`/`anon` do Supabase. Medido em
-//                   20/08/2026: o preset-recommend (secretlint 13.0.4) é CEGO
-//                   para este formato — a isca saía com 0 achados e o commit
-//                   passava. E `service_role` é a credencial mais perigosa
-//                   deste projeto, porque ignora RLS. Quem pega é o
-//                   @secretlint/secretlint-rule-pattern, acrescentado ao
-//                   `.secretlintrc.json`. Se aquela regra sumir da config,
-//                   este é o controle que acende.
+//   JWT             chave `service_role`/`anon` do Supabase, formato LEGADO
+//                   (`eyJ...`). Medido em 20/08/2026: o preset-recommend
+//                   (secretlint 13.0.4) é CEGO para este formato — a isca
+//                   saía com 0 achados e o commit passava.
+//   sb_secret_      chave secreta do Supabase, formato NOVO. Medido em
+//                   21/08/2026: também cega para o preset-recommend, e a doc
+//                   oficial do Supabase diz que o formato legado (linha
+//                   acima) será descontinuado até o fim de 2026 — o dia em
+//                   que o formato novo virar o único em uso é o dia em que
+//                   este controle passa a ser o único que ainda pega a chave
+//                   secreta.
 //
-// Nenhuma das duas é canônica de documentação: isca de exemplo costuma estar
+//   JWT e `sb_secret_` são ambos pegos pelo @secretlint/secretlint-rule-pattern,
+//   acrescentado ao `.secretlintrc.json` — como DOIS padrões dentro da MESMA
+//   regra. `service_role`/`sb_secret_` são as credenciais mais perigosas
+//   deste projeto, porque ignoram RLS. Se a regra de padrão sumir da config,
+//   OS DOIS controles (1b e 1c) acendem juntos; se só um dos dois padrões
+//   sumir de dentro dela, só o controle correspondente acende — é por isso
+//   que os dois existem separados, e não um só cobrindo "a regra de padrão".
+//
+// Nenhuma das três é canônica de documentação: isca de exemplo costuma estar
 // em allowlist do próprio detector, e aí "não pegou" vira indistinguível de
 // furo real.
 // --------------------------------------------------------------------------
@@ -248,6 +265,25 @@ function jwtFalso() {
   });
   const assinatura = randomBytes(32).toString("base64url");
   return `SUPABASE_SERVICE_ROLE_KEY=${cabecalho}.${corpo}.${assinatura}`;
+}
+
+/**
+ * Uma chave `sb_secret_` sintética, com formato realista.
+ *
+ * `{16,}` no `.secretlintrc.json` é o que separa chave de placeholder de
+ * documentação (`sb_secret_...`, `sb_secret_xxx`) — por isso o sufixo aqui
+ * tem bem mais que 16 caracteres, do mesmo alfabeto `[A-Za-z0-9_-]` que o
+ * padrão aceita. A doc oficial do Supabase não publica o alfabeto nem o
+ * comprimento reais dessas chaves; isto é a isca, não a especificação.
+ */
+function sbSecretFalso() {
+  const alfabeto =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
+  const sufixo = Array.from(
+    randomBytes(40),
+    (b) => alfabeto[b % alfabeto.length],
+  ).join("");
+  return `SUPABASE_SECRET_KEY=sb_secret_${sufixo}`;
 }
 
 const LINHA_LIMPA =
@@ -504,7 +540,7 @@ const SEM_PATH_FORMAT = (yml) => yml.replace("--path-format=relative ", "");
 
 /** @type {{nome: string, estado: "PASSOU"|"FALHOU"|"INDETERMINADO", detalhe: string}[]} */
 const resultados = [];
-const CONTROLES_ESPERADOS = 7;
+const CONTROLES_ESPERADOS = 8;
 
 function registrar(nome, estado, detalhe) {
   resultados.push({ nome, estado, detalhe });
@@ -719,6 +755,19 @@ Rode \`npm install\` na árvore principal do projeto.`,
   });
   console.log(indentar(comJwt.saida));
 
+  // --- 1c. POSITIVO: sb_secret_ do Supabase (regra de padrão) -------------
+  // Segundo padrão dentro da MESMA regra de padrão que o 1b. A doc oficial do
+  // Supabase diz que o formato JWT (legado) será descontinuado até o fim de
+  // 2026 em favor deste — se alguém tirar SÓ este padrão da config (e deixar
+  // o JWT), o 1b continua verde e é este controle que acende sozinho.
+  const comSbSecret = tentarCommit(sbSecretFalso(), "test: sb_secret_ falso");
+  classificar("1c. POSITIVO — commit com chave `sb_secret_` é RECUSADO", {
+    esperado: "recusado",
+    observado: observadoNaRecusa(comSbSecret),
+    detalhe: detalheDaRecusa(comSbSecret),
+  });
+  console.log(indentar(comSbSecret.saida));
+
   // --- 2. NEGATIVO --------------------------------------------------------
   const semSegredo = tentarCommit(
     LINHA_LIMPA,
@@ -869,8 +918,9 @@ if (aprovado) {
   console.log(
     "  TRAVA LIGADA E FECHADA. Os três hooks que o git executa NESTA árvore\n" +
       "  (pre-commit, commit-msg e pre-push) são o que esta configuração gera;\n" +
-      "  commit com senha de banco E commit com JWT `service_role` do Supabase\n" +
-      "  são recusados de dentro de um worktree; arquivo limpo passa pelo\n" +
+      "  commit com senha de banco, com JWT `service_role` e com chave\n" +
+      "  `sb_secret_` do Supabase (formato legado e formato novo) são\n" +
+      "  recusados de dentro de um worktree; arquivo limpo passa pelo\n" +
       "  secretlint; e o shim sai com erro — não com sucesso — quando não acha\n" +
       "  o lefthook.",
   );
