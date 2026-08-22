@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
 import type { CartItem, ShippingOption } from "@/types";
@@ -236,8 +237,17 @@ export function ShippingCalculator({
         },
       );
 
-      if (funcError || !data || !data.options) {
-        throw new Error(funcError?.message || "Falha ao cotar frete.");
+      if (funcError) {
+        // Relançado sem embrulho: `mensagemAmigavelErroEdgeFunction`, logo
+        // abaixo no `catch`, decide pelo `.name` do próprio erro do SDK
+        // (FunctionsFetchError/FunctionsRelayError/FunctionsHttpError) —
+        // embrulhar aqui em `new Error(...)` perderia esse `.name` e a
+        // tradução cairia sempre no genérico, mesmo quando a causa real é
+        // sabidamente falta de rede.
+        throw funcError;
+      }
+      if (!data || !data.options) {
+        throw new Error("Falha ao cotar frete.");
       }
 
       const calculatedOptions: ShippingOption[] = data.options;
@@ -268,7 +278,13 @@ export function ShippingCalculator({
     } catch (err: any) {
       if (meuId !== reqRef.current) return;
       console.error("Error calculating shipping:", err);
-      setError(err.message || "Erro ao calcular frete.");
+      setError(
+        mensagemAmigavelErroEdgeFunction(err, {
+          mensagensSeguras: ["Sem conexão com a internet.", "Falha ao cotar frete."],
+          mensagemGenerica:
+            "Não foi possível calcular o frete agora. Tente novamente em instantes.",
+        }),
+      );
 
       // COTAÇÃO QUE FALHA NÃO VIRA PREÇO INVENTADO.
       //

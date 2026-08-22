@@ -360,6 +360,59 @@ export const mensagemAmigavelErroOtp = (error: unknown): string => {
   return "Não conseguimos verificar seu código agora. Tente novamente em instantes.";
 };
 
+/**
+ * Traduz a recusa crua de `update_order_status_atomic` (RPC chamada por
+ * `updateOrderStatus`, abaixo — supabase/migrations/20260901000000_
+ * devolver_uso_de_cupom_ao_desfazer_pedido.sql tem a definição viva) para o
+ * que quem mexe no pedido lê na tela.
+ *
+ * Confirmado na fonte, não presumido: a função inteira não tem NENHUM
+ * `RAISE ... USING ERRCODE` — todo `RAISE EXCEPTION` dela (sessão ausente,
+ * pedido não encontrado, permissão negada, transição de status não
+ * permitida) sai com o SQLSTATE padrão do plpgsql (`P0001`, raise_exception)
+ * e texto JÁ em português, iguais aos de `mensagemAmigavelErroPedido` acima.
+ * Por isso o mesmo tratamento: `code === "P0001"` é a RPC falando por conta
+ * própria — passa direto.
+ *
+ * Sem a ressalva de duplicidade de `mensagemAmigavelErroPedido`: repetir uma
+ * atualização de status não duplica efeito nenhum. A própria função é
+ * idempotente na única operação com efeito colateral (a restituição de
+ * estoque do cancelamento só roda `IF v_old_status IS DISTINCT FROM
+ * 'cancelled'` — reenviar o mesmo cancelamento não devolve estoque duas
+ * vezes), então "tente novamente" é seguro para QUALQUER causa que não seja
+ * P0001, sem precisar distinguir formato de SQLSTATE.
+ */
+export const mensagemAmigavelErroAtualizacaoStatus = (
+  error: unknown,
+): string => {
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
+  const textoOriginal =
+    typeof detalhes.message === "string" ? detalhes.message : "";
+
+  // `validateStatusUpdate` (topo deste arquivo) lança ANTES de qualquer
+  // chamada de rede, com uma das duas frases fixas abaixo — já em
+  // português, escritas pelo próprio app. Ela já dispara o SEU PRÓPRIO
+  // `toast.error` com o mesmo texto (quando `!silent`); sem este
+  // passthrough, este catch trocaria essa segunda leitura por uma frase
+  // genérica diferente, o que pareceria dois erros DIFERENTES para o mesmo
+  // clique. Comparação por texto exato — e não "sem `code`" — porque uma
+  // falha de rede pura (ex.: `TypeError: Failed to fetch`) também chega sem
+  // `code`, e essa SIM precisa cair no genérico.
+  if (
+    textoOriginal === "Usuários só podem cancelar pedidos" ||
+    textoOriginal === "Apenas pedidos pendentes podem ser cancelados"
+  ) {
+    return textoOriginal;
+  }
+
+  if (codigo === "P0001" && textoOriginal) {
+    return textoOriginal;
+  }
+
+  return "Não foi possível atualizar o status do pedido agora. Tente novamente em instantes.";
+};
+
 export function useOrders(
   enabled = true,
   isAdmin = false,
@@ -1059,7 +1112,7 @@ export function useOrders(
           const cacheKey = `ikcous_orders_cache_${user.id}`;
           localStorage.setItem(cacheKey, JSON.stringify(originalOrders));
         }
-        if (!silent) toast.error(err.message || "Erro ao atualizar status");
+        if (!silent) toast.error(mensagemAmigavelErroAtualizacaoStatus(err));
         throw err;
       }
     },

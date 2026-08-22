@@ -3,6 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -300,7 +301,9 @@ export const AdminShippingView = memo(function AdminShippingView({
       console.error("[TestCredentials] Error:", err);
       setTestResult({
         success: false,
-        message: err.message || "Erro de comunicação com a Edge Function.",
+        message: mensagemAmigavelErroEdgeFunction(err, {
+          mensagemGenerica: "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+        }),
       });
       toast.error("Erro ao testar credenciais");
     } finally {
