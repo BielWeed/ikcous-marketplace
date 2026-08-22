@@ -115,7 +115,10 @@ describe("addReview — o erro cru do banco não vaza para a tela", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   // Estrutura mínima do espião, sem depender dos genéricos internos do vitest.
-  let consolaErro: { mock: { calls: Array<unknown[]> }; mockRestore: () => void };
+  let consolaErro: {
+    mock: { calls: Array<unknown[]> };
+    mockRestore: () => void;
+  };
 
   beforeEach(async () => {
     h.singleOk = { data: null, error: null };
@@ -156,7 +159,8 @@ describe("addReview — o erro cru do banco não vaza para a tela", () => {
         chamada
           .map((parte) => {
             if (typeof parte === "string") return parte;
-            if (parte instanceof Error) return `${parte.name}: ${parte.message}`;
+            if (parte instanceof Error)
+              return `${parte.name}: ${parte.message}`;
             try {
               return JSON.stringify(parte);
             } catch {
@@ -224,7 +228,10 @@ describe("addReview — o erro cru do banco não vaza para a tela", () => {
     // supabase/migrations/20260812020000_reviews_insert_respeita_enable_reviews.sql).
     // Sem "jwt" na mensagem, não há como diferenciar as duas causas — por
     // isso a tela tem de ficar com a frase genérica, nunca com "faça login".
-    h.singleOk = { data: null, error: { code: "42501", message: MENSAGEM_RLS } };
+    h.singleOk = {
+      data: null,
+      error: { code: "42501", message: MENSAGEM_RLS },
+    };
 
     const retorno = await chamarAddReview();
 
