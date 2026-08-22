@@ -167,8 +167,7 @@ Deno.test("o passo de varredura de segredo nunca aprova sem varrer", async (t) =
       });
       assert(
         r.chamadas.includes("secretlint"),
-        `o secretlint NÃO foi chamado. O passo aprovou sem varrer.\n` +
-          `saida:\n${r.stdout}\n${r.stderr}`,
+        `o secretlint NÃO foi chamado. O passo aprovou sem varrer.\nsaida:\n${r.stdout}\n${r.stderr}`,
       );
     },
   );

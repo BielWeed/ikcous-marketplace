@@ -405,7 +405,9 @@ export function StoreProvider({
 
         if (publicRes.error && error) {
           throw error;
-        } else if (publicRes.data) {
+        }
+
+        if (publicRes.data) {
           data = publicRes.data;
           error = null;
         }

@@ -114,7 +114,7 @@ async function main() {
   console.log(`Carrinho         : 2 un = R$ ${subtotal.toFixed(2)}`);
   console.log(`Taxa de entrega  : R$ ${frete.toFixed(2)}`);
   console.log(`free_shipping_min real da loja: R$ ${Number(cfgRows[0].free_shipping_min).toFixed(2)}`);
-  console.log(`Usuário para o caso logado: ${userId ? userId.slice(0, 8) + "…" : "nenhum encontrado"}\n`);
+  console.log(`Usuário para o caso logado: ${userId ? `${userId.slice(0, 8)}…` : "nenhum encontrado"}\n`);
 
   const cenarios = [
     {

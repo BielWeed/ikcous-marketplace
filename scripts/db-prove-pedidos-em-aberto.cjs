@@ -131,7 +131,7 @@ async function comoAdmin(client, adminId, fn) {
 async function chamarFuncao(client, adminId, status, pageSize = 10) {
   return comoAdmin(client, adminId, async () => {
     const { rows } = await client.query(
-      `SELECT public.get_admin_orders_paged($1, $2, $3, $4, $5, $6) AS resultado`,
+      "SELECT public.get_admin_orders_paged($1, $2, $3, $4, $5, $6) AS resultado",
       ["", status, "", "", 0, pageSize],
     );
     return rows[0].resultado;

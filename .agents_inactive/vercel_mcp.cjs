@@ -1,8 +1,8 @@
-const fs = require("fs");
-const path = require("path");
-const https = require("https");
-const { exec } = require("child_process");
-const readline = require("readline");
+const fs = require("node:fs");
+const path = require("node:path");
+const https = require("node:https");
+const { exec } = require("node:child_process");
+const readline = require("node:readline");
 
 function logError(msg) {
   process.stderr.write(`[Error] ${msg}\n`);
@@ -25,7 +25,7 @@ function getVercelToken() {
       return auth.token;
     }
   } catch (err) {
-    logError("Error reading local Vercel auth.json: " + err.message);
+    logError(`Error reading local Vercel auth.json: ${err.message}`);
   }
   return null;
 }
@@ -66,7 +66,7 @@ function vercelApi(method, apiPath, body = null) {
               ),
             );
           }
-        } catch (e) {
+        } catch (_e) {
           if (res.statusCode >= 200 && res.statusCode < 300) {
             resolve(data);
           } else {
@@ -129,30 +129,30 @@ rl.on("line", async (line) => {
       }
     }
   } catch (err) {
-    logError("Error processing line: " + err.message);
+    logError(`Error processing line: ${err.message}`);
   }
 });
 
 function sendResponse(id, result) {
   process.stdout.write(
-    JSON.stringify({
+    `${JSON.stringify({
       jsonrpc: "2.0",
       id: id,
       result: result,
-    }) + "\n",
+    })}\n`,
   );
 }
 
 function sendError(id, code, message) {
   process.stdout.write(
-    JSON.stringify({
+    `${JSON.stringify({
       jsonrpc: "2.0",
       id: id,
       error: {
         code: code,
         message: message,
       },
-    }) + "\n",
+    })}\n`,
   );
 }
 
@@ -176,7 +176,7 @@ function getToolsList() {
     }
     return tools;
   } catch (err) {
-    logError("Error reading tools list: " + err.message);
+    logError(`Error reading tools list: ${err.message}`);
     return [];
   }
 }
@@ -285,7 +285,7 @@ async function handleToolCall(name, args) {
       };
     }
     case "deploy_to_vercel": {
-      const cmd = `npx vercel --yes`;
+      const cmd = "npx vercel --yes";
       const deployResult = await runCommand(cmd);
       return {
         content: [{ type: "text", text: deployResult }],
@@ -297,7 +297,7 @@ async function handleToolCall(name, args) {
 }
 
 function runCommand(cmd) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     exec(cmd, { cwd: process.cwd() }, (error, stdout, stderr) => {
       if (error) {
         resolve(

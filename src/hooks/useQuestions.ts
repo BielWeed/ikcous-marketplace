@@ -30,6 +30,26 @@ export interface Answer {
   role?: string;
 }
 
+/**
+ * Resultado de `getQAStats` com o estado da consulta explícito.
+ *
+ * O cliente do Supabase não lança exceção: quando a consulta falha, ele
+ * devolve `{ count: null, error }`. Tratar essa falha com `|| 0` fazia o
+ * "não sei" (erro) vestir a fantasia do "não há nenhum" (zero real) — e o
+ * cartão de Perguntas anunciava "Fila Limpa" com cliente esperando resposta.
+ * Os três estados (falha, com perguntas, vazia de verdade) precisam chegar
+ * distinguíveis a quem consome.
+ */
+export type QAStatsResult =
+  | {
+      status: "ok";
+      total: number;
+      pending: number;
+      answered: number;
+      rate: number;
+    }
+  | { status: "error"; error: unknown };
+
 const QUESTIONS_CACHE_KEY_PREFIX = "ikcous_questions_cache_";
 const memoryQuestionsCache = new Map<string, Question[]>();
 
@@ -671,7 +691,7 @@ export function useQuestions() {
     };
   }, []);
 
-  const getQAStats = useCallback(async () => {
+  const getQAStats = useCallback(async (): Promise<QAStatsResult> => {
     const [totalRes, pendingRes] = await Promise.all([
       supabase
         .from("vw_questions_with_answers_count" as any)
@@ -682,12 +702,20 @@ export function useQuestions() {
         .eq("answers_count", 0),
     ]);
 
-    const total = totalRes.count || 0;
-    const pending = pendingRes.count || 0;
+    // Falha de consulta NÃO é zero: sem este guarda, `{ count: null, error }`
+    // virava `total = 0` e `pending = 0` — "Fila Limpa" mentirosa na tela.
+    if (totalRes.error) return { status: "error", error: totalRes.error };
+    if (pendingRes.error) return { status: "error", error: pendingRes.error };
+
+    // Aqui só chega consulta que respondeu; count nulo sem error não ocorre
+    // no supabase-js, e `??` mantém o zero legítimo exatamente como era.
+    const total = totalRes.count ?? 0;
+    const pending = pendingRes.count ?? 0;
     const answered = Math.max(0, total - pending);
     const rate = total > 0 ? Math.round((answered / total) * 100) : 0;
 
     return {
+      status: "ok",
       total,
       pending,
       answered,
