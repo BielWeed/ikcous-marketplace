@@ -39,12 +39,15 @@ documento de estado do projeto.
 | 26 a 50 | 15 | **10** | 0 | 0 | medida |
 | 51 a 76 | 11 | **15** | 0 | 0 | medida |
 | **os 76 numerados** | **40** | **36** | **0** | **0** | **completa** |
-| R1 a R9 (runtime) | — | — | — | — | **PENDENTE** |
+| R1 a R9 (runtime) | 5 | **3** | 0 | 1 | completa |
+| **TOTAL — os 85** | **45** | **39** | **0** | **1** | **completa** |
 
-**Nos 76 numerados: 36 abertos, não 66.** O "66" de 30/07 contava os 85 (com os 9 de runtime) e
-nunca foi remedido. Os 9 de runtime ainda estavam sendo medidos quando esta linha foi escrita —
-até eles fecharem, **não existe número final**, e nenhum dos dois números se compara ao outro
-sem essa ressalva.
+**Eram 66 abertos em 30/07. São 39 hoje** — mais 1 indeterminado (`R4`, que exige medir com o app
+no ar). Os 85 são os 76 numerados **mais** os 9 de runtime; `45 + 39 + 1 = 85` fecha.
+
+O placar de julho era `18 corrigidos + 66 abertos + 1 não se aplicava`. **27 achados foram
+fechados entre 30/07 e 22/08**, e 4 dos 5 fechamentos de runtime saíram de um único commit
+(`9542f04`), no dia seguinte à auditoria.
 
 **Nada aqui é conclusão sobre o total até as quatro faixas fecharem.** Faixa sem cobertura é
 PENDENTE, nunca "fechada".
@@ -176,6 +179,38 @@ PENDENTE, nunca "fechada".
 | 13 | **70** | A loja pode ficar **presa no tema escuro** | `App.tsx:554-571` — falta o `else` final | front |
 | 14 | **72** | O filtro de categoria **zera ao trocar de aba** | `App.tsx:903,1663` | front |
 | 15 | **74** | O prefetch grava no disco **a cada render** | `useBehavioralPrefetch.ts:56-68`, `useNetworkAdaptive.ts` | front |
+
+## Achados de runtime (R1 a R9) — medidos
+
+### Os 5 fechados
+
+| R# | Título curto | Onde o conserto está |
+|---|---|---|
+| R1 | Build de produção não sobe, tela branca | `src/lib/env.ts:29-87` (validação virou módulo, pinta a tela antes do `throw`) + `src/lib/supabase.ts:6` (`9542f04`) |
+| R2 | `react-helmet-async` morto sob React 19 | Pacote **sumiu do `package.json` e do lock**; substituto em `src/hooks/useDocumentMeta.ts:48-94`, usado nas 3 views. React confirmado `19.2.0` (`9542f04`) |
+| R3 | Precache de 6,6 MB no Service Worker | `vite.config.ts:379-389` (`globIgnores`); `public/images/demo/` não existe mais; `og-image.png` caiu de 673 kB para **30.175 bytes** (`78e7d3c`) |
+| R5 | Imagens em resolução original | `src/lib/imageUrl.ts:45,49` (transform + `srcSet`), consumido em 4 componentes (`9542f04`) |
+| R7 | `NODE_ENV` do shell degrada o build | `vite.config.ts:45-47,152` (`df4c187`, 05/08) |
+
+### Os 3 abertos e 1 indeterminado
+
+| Ordem | R# | O que acontece | Onde | Classe |
+|---|---|---|---|---|
+| 1 | **R8** | **540 `console.*` em produção** (eram 512 — piorou), em 73 arquivos, só 5 sob guarda `DEV`. **Um deles imprime o nome completo do cliente**: qualquer pessoa que abra o console na loja lê `[Auth] Profile fetched: <nome completo>`. Os outros 539 entregam nomes de tabela, fluxo e IDs a quem quiser sondar | `src/contexts/AuthContext.tsx:361` (o de PII); `src/main.tsx:5-17`; nenhum `drop_console` em config nenhuma | front — **dado de pessoa** |
+| 2 | **R9** | **Não existe rota 404.** Link quebrado (produto excluído, URL antiga no WhatsApp) cai na Home sem explicação, e o Google indexa como "soft 404", sujando o índice da loja | `App.tsx:1500,1796-1798`; `vercel.json` reescreve `/(.*)` | front |
+| 3 | **R6** | Pontinhos do carrossel de **8×6 px** (difícil de acertar no dedo, não só para quem tem deficiência) e foco de teclado invisível | `BannerCarousel.tsx:257-266`, `Header.tsx:170,342,359`, `index.css:138` | front |
+| — | **R4** | Requisições duplicadas no boot (5×, 4×, 29 no total, medido em julho) | — | **INDETERMINADO** |
+
+> **R4 não é "aberto", é não medido.** O número original veio de Resource Timing com o app
+> rodando, e ninguém rodou o app aqui. O que **se pode** afirmar: em 277 commits **nada atacou a
+> causa** — não entrou camada de dedupe (sem `react-query`/`swr` no `package.json`), o único
+> *in-flight* do projeto é o do admin-check, e o throttle de 10 s do `NotificationContext` já
+> existia quando a auditoria mediu 5×. Fechar ou reabrir isso custa uma sessão com o servidor de
+> desenvolvimento no ar.
+
+> **R6 e o achado #73 se sobrepõem:** os dois querem mexer em `src/index.css:138`
+> (`outline: none !important` no seletor `*`, que por ser `!important` anula o `:focus-visible`
+> de `:421-424`). **É um conserto só, não dois** — quem pegar um precisa fechar o outro junto.
 
 ## 🔴 Três achados, uma causa só — e é aqui que está o desenho errado
 
