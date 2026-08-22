@@ -138,6 +138,10 @@ export const AdminQAView = memo(function AdminQAView({
   const [responseRate, setResponseRate] = useState(
     () => cachedQAStats?.rate || 0,
   );
+  // A consulta de estatísticas falhou (e os números na tela podem ser
+  // velhos — ou nunca terem chegado). Enquanto verdadeiro, os cartões não
+  // podem dizer "Fila Limpa", "0%" nem "0 de 0": erro não é fila vazia.
+  const [statsUnavailable, setStatsUnavailable] = useState(false);
 
   // --- 2. REFS ---
   const { ref: viewRef } = useScrollRestoration(
@@ -156,13 +160,22 @@ export const AdminQAView = memo(function AdminQAView({
   const fetchStats = useCallback(async () => {
     try {
       const stats = await getQAStats();
+      if (stats.status === "error") {
+        console.error("Error fetching QA stats:", stats.error);
+        // Mantém os últimos números bons no cache, mas marca a tela:
+        // apresentar zero aqui seria o defeito da "Fila Limpa" mentirosa.
+        setStatsUnavailable(true);
+        return;
+      }
       cachedQAStats = stats;
       setTotalCount(stats.total);
       setPendingCount(stats.pending);
       setAnsweredCount(stats.answered);
       setResponseRate(stats.rate);
+      setStatsUnavailable(false);
     } catch (error) {
       console.error("Error fetching QA stats:", error);
+      setStatsUnavailable(true);
     }
   }, [getQAStats]);
 
@@ -367,7 +380,7 @@ export const AdminQAView = memo(function AdminQAView({
         iconBg: "bg-amber-500/10 border-amber-500/20",
         hoverBorder:
           "hover:border-amber-500/30 hover:shadow-[0_0_30px_rgba(245,158,11,0.05)]",
-        value: pendingCount,
+        value: statsUnavailable ? "—" : pendingCount,
         accent: "text-amber-400",
         content: (
           <div className="mt-3 flex items-center gap-1.5 animate-in fade-in">
@@ -378,7 +391,11 @@ export const AdminQAView = memo(function AdminQAView({
               )}
             />
             <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-              {pendingCount > 0 ? "Ação Requerida" : "Fila Limpa"}
+              {statsUnavailable
+                ? "Erro ao atualizar"
+                : pendingCount > 0
+                  ? "Ação Requerida"
+                  : "Fila Limpa"}
             </span>
           </div>
         ),
@@ -392,7 +409,7 @@ export const AdminQAView = memo(function AdminQAView({
         iconBg: "bg-emerald-500/10 border-emerald-500/20",
         hoverBorder:
           "hover:border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.05)]",
-        value: `${responseRate}%`,
+        value: statsUnavailable ? "—" : `${responseRate}%`,
         accent: "text-emerald-400",
         content: (
           <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-900 animate-in fade-in">
@@ -402,7 +419,9 @@ export const AdminQAView = memo(function AdminQAView({
             />
           </div>
         ),
-        footer: `${answeredCount} de ${totalCount} respondidas`,
+        footer: statsUnavailable
+          ? "Não foi possível carregar agora"
+          : `${answeredCount} de ${totalCount} respondidas`,
       },
       {
         id: "total",
@@ -412,7 +431,7 @@ export const AdminQAView = memo(function AdminQAView({
         iconBg: "bg-sky-500/10 border-sky-500/20",
         hoverBorder:
           "hover:border-sky-500/30 hover:shadow-[0_0_30px_rgba(14,165,233,0.05)]",
-        value: totalCount,
+        value: statsUnavailable ? "—" : totalCount,
         accent: "text-sky-400",
         content: (
           <div className="mt-3 flex items-center gap-1.5 animate-in fade-in">
@@ -445,7 +464,7 @@ export const AdminQAView = memo(function AdminQAView({
         footer: "Q&A aumenta a confiança",
       },
     ],
-    [pendingCount, responseRate, answeredCount, totalCount],
+    [statsUnavailable, pendingCount, responseRate, answeredCount, totalCount],
   );
 
   const renderSkeleton = () => (
