@@ -1,3 +1,4 @@
+import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { cn } from "@/lib/utils";
 import type { Order, OrderStatus, PaymentMethod, View } from "@/types";
 import { motion } from "framer-motion";
@@ -251,24 +252,27 @@ export const OrderList = memo(function OrderList({
                   </span>
                 </div>
 
-                <div
-                  className={cn(
-                    "px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border border-current/10 flex items-center gap-1",
-                    status.color,
-                    status.bg,
-                    // Utiliza dinamicamente a borda baseada na cor do status
-                  )}
-                >
-                  <span
+                <div className="flex flex-col items-end gap-1">
+                  <div
                     className={cn(
-                      "w-1 h-1 rounded-full",
-                      status.dot,
-                      (order.status === "shipping" ||
-                        order.status === "pending") &&
-                        "animate-pulse",
+                      "px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border border-current/10 flex items-center gap-1",
+                      status.color,
+                      status.bg,
+                      // Utiliza dinamicamente a borda baseada na cor do status
                     )}
-                  />
-                  {status.label}
+                  >
+                    <span
+                      className={cn(
+                        "w-1 h-1 rounded-full",
+                        status.dot,
+                        (order.status === "shipping" ||
+                          order.status === "pending") &&
+                          "animate-pulse",
+                      )}
+                    />
+                    {status.label}
+                  </div>
+                  <CustomerPaymentBadge paymentStatus={order.paymentStatus} />
                 </div>
               </div>
 

@@ -1177,7 +1177,7 @@ export type Database = {
           enable_reviews: boolean | null;
           enabled_shipping_methods: string[] | null;
           free_shipping_min: number | null;
-          home_sections: Json;
+          home_sections: Json | null;
           id: number;
           local_cep_range: string | null;
           local_delivery_fee: number;
