@@ -65,7 +65,8 @@ estavam errados e 1 tinha evidência falsa** — 3 de 8, quase 40%:
 
 - **#22** afirmava que o "Salvar" do admin grava banner truncado por cima do que já existia.
   Isso é impossível: `banners` tem 8 colunas no banco, nenhuma delas `subtitle`, `title_color`
-  ou `start_date`, e `06-ESTADO-ATUAL.md:148` já tinha refutado exatamente essa premissa antes
+  ou `start_date`, e a tabela "⚪ O único que não se aplica" de `06-ESTADO-ATUAL.md` (achado
+  #22) já tinha refutado exatamente essa premissa antes
   desta reauditoria existir. A versão anterior deste documento reabriu o achado sem citar a
   refutação — corrigido abaixo, de volta a NÃO SE APLICA.
 - **R8** citava um vazamento de nome completo do cliente no console que já tinha sido fechado
@@ -130,7 +131,8 @@ que número não verificado apodrece não pode se isentar da própria regra.
 | 10 | **11** | Cliente monta o carrinho no celular e abre no desktop: a variação escolhida some, e o pedido chega ao lojista sem dizer qual cor/tamanho separar | `sync_cart_atomic`, em `20260806000000_baseline_do_schema_vivo.sql` | **migration** |
 
 > **Ressalva nos achados #17 e #18 — mesma classe do #44 (abaixo): não verificado contra o banco
-> vivo.** `docs/onboarding/06-ESTADO-ATUAL.md:214` e `:215` registram os dois como "Rebaixado"
+> vivo.** A tabela "❌ Os 66 que ainda estão de pé" de `docs/onboarding/06-ESTADO-ATUAL.md`
+> (linhas dos achados **#17** e **#18**) registra os dois como "Rebaixado"
 > em ~30/07, medido contra a produção daquele dia (`product_variants` com 2 linhas, ambas do
 > mesmo grupo; 18 produtos ativos, longe do teto de 200). Essa medição tem quase um mês e **não
 > foi revalidada aqui** — a reauditoria é somente leitura, sem credencial de banco. **Não
@@ -142,7 +144,7 @@ que número não verificado apodrece não pode se isentar da própria regra.
 
 | # | Achado original | Por que não se aplica |
 |---|---|---|
-| 22 | "Apaga dado, sem volta": o sync grava banner truncado e o "Salvar" do admin grava `subtitle=''`, `title_color=''`, `start_date=null` por cima do que já existia | **Premissa impossível.** `public.banners` tem 8 colunas no banco (`id, image_url, title, link, position, active, order, created_at` — `20260806000000_baseline_do_schema_vivo.sql`, `CREATE TABLE public.banners`); nenhuma migration posterior adiciona coluna. `subtitle`, `title_color` e `start_date` não existem — o PostgREST rejeita a escrita, não a aceita truncada. `mapRecord` em `src/lib/realtimeSyncEngine.ts:78-88` mapeia exatamente as 7 colunas reais além do `id`, sem truncar nada. **Já tinha sido refutado**: `docs/onboarding/06-ESTADO-ATUAL.md:148` marca #22 como ⚪ desde antes desta reauditoria; uma versão anterior deste documento reabriu o achado sem citar essa refutação, e esta correção reverte isso. **A descrição errada escondia um defeito real, de natureza oposta**: `src/hooks/useBanners.ts:309-321` (`addBanner`) e `:415-443` (`updateBanner`) escrevem `subtitle`, `title_color`, `subtitle_color` e outras colunas que não existem no banco — como o PostgREST rejeita, o modo "completo" do formulário de banners **não salva**, em vez de gravar por cima. Esse defeito novo não tem número próprio nesta reauditoria; achado #22, como descrito originalmente, segue não se aplicando. |
+| 22 | "Apaga dado, sem volta": o sync grava banner truncado e o "Salvar" do admin grava `subtitle=''`, `title_color=''`, `start_date=null` por cima do que já existia | **Premissa impossível.** `public.banners` tem 8 colunas no banco (`id, image_url, title, link, position, active, order, created_at` — `20260806000000_baseline_do_schema_vivo.sql`, `CREATE TABLE public.banners`); nenhuma migration posterior adiciona coluna. `subtitle`, `title_color` e `start_date` não existem — o PostgREST rejeita a escrita, não a aceita truncada. `mapRecord` em `src/lib/realtimeSyncEngine.ts:78-88` mapeia 6 das 7 colunas reais além do `id` (`imageUrl, title, link, position, active, order`; falta `created_at`), sem truncar nada. **Já tinha sido refutado**: a tabela "⚪ O único que não se aplica" de `docs/onboarding/06-ESTADO-ATUAL.md` marca #22 como ⚪ desde antes desta reauditoria; uma versão anterior deste documento reabriu o achado sem citar essa refutação, e esta correção reverte isso. **A descrição errada escondia um defeito real, de natureza oposta**: `src/hooks/useBanners.ts:309-321` (`addBanner`) e `:415-443` (`updateBanner`) escrevem `subtitle`, `title_color`, `subtitle_color` e outras colunas que não existem no banco — como o PostgREST rejeita, o modo "completo" do formulário de banners **não salva**, em vez de gravar por cima. Esse defeito novo não tem número próprio nesta reauditoria; achado #22, como descrito originalmente, segue não se aplicando. |
 
 ## Faixa 26 a 50 — medida
 
@@ -182,8 +184,8 @@ que número não verificado apodrece não pode se isentar da própria regra.
 | 10 | **45** | O scroll da Home volta para 12 itens a cada venda de qualquer produto | `ProductList.tsx:36-38` + `StoreContext.tsx:796` | front |
 
 > **Ressalva no #44 — é o único achado em que repositório e produção provavelmente discordam.**
-> `docs/onboarding/06-ESTADO-ATUAL.md:216` afirma que a produção **hoje** tem a tabela na
-> publicação, habilitada à mão fora das migrations. Isso **não foi verificado contra o banco
+> A tabela "❌ Os 66 que ainda estão de pé" de `docs/onboarding/06-ESTADO-ATUAL.md` (linha do
+> achado **#44**) afirma que a produção **hoje** tem a tabela na publicação, habilitada à mão fora das migrations. Isso **não foi verificado contra o banco
 > vivo** (a reauditoria é somente leitura, sem credencial). O defeito real não é a loja de hoje:
 > é que o repositório não sabe reproduzir a configuração que ela tem.
 
@@ -233,7 +235,8 @@ que número não verificado apodrece não pode se isentar da própria regra.
 | 15 | **74** | O prefetch grava no disco **a cada render** | `useBehavioralPrefetch.ts:56-68`, `useNetworkAdaptive.ts` | front |
 
 > **Ressalva nos achados #67 e #76 — mesma classe do #44 (faixa anterior): não verificado
-> contra o banco vivo.** `docs/onboarding/06-ESTADO-ATUAL.md:217` e `:221` registram os dois
+> contra o banco vivo.** A mesma tabela "❌ Os 66 que ainda estão de pé" de
+> `docs/onboarding/06-ESTADO-ATUAL.md` (linhas dos achados **#67** e **#76**) registra os dois
 > como "Rebaixado" em ~30/07 (0 favoritos apontando para fora do catálogo truncado; 0 pedidos
 > com desconto gravado). Dado com quase um mês, não revalidado aqui — mesma ressalva do #44,
 > **não rebaixamos** os dois nesta reauditoria.
@@ -254,7 +257,7 @@ que número não verificado apodrece não pode se isentar da própria regra.
 
 | Ordem | R# | O que acontece | Onde | Classe |
 |---|---|---|---|---|
-| 1 | **R8** | **533 `console.*` reais em produção** (eram 512 em julho — piorou), em 73 arquivos, **6** sob guarda `DEV`. **O vazamento do nome completo do cliente já foi fechado, em `a4863e4`** (3 minutos antes desta linha ter sido escrita pela primeira vez): `AuthContext.tsx:366` hoje é `console.log("[Auth] Profile fetched")`, sem dado nenhum, dentro de `if (profileData && import.meta.env.DEV)`. A classe do achado segue aberta — os 533 continuam entregando nome de tabela, fluxo e ID a quem abrir o console | `src/main.tsx:5-17` (filtro global de logs); nenhum `drop_console` em config nenhuma | front — sem PII conhecido hoje, mas **exposição de estrutura interna** |
+| 1 | **R8** | **533 `console.*` reais em produção** (eram 512 em julho — piorou), em 73 arquivos, **3** sob guarda `DEV` de verdade. **O vazamento do nome completo do cliente já foi fechado, em `a4863e4`** (3 minutos antes desta linha ter sido escrita pela primeira vez): `AuthContext.tsx:366` hoje é `console.log("[Auth] Profile fetched")`, sem dado nenhum, dentro de `if (profileData && import.meta.env.DEV)`. A classe do achado segue aberta — os 533 continuam entregando nome de tabela, fluxo e ID a quem abrir o console | `src/main.tsx:5-17` (filtro global de logs); nenhum `drop_console` em config nenhuma | front — sem PII conhecido hoje, mas **exposição de estrutura interna** |
 | 2 | **R9** | **Não existe rota 404.** Link quebrado (produto excluído, URL antiga no WhatsApp) cai na Home sem explicação, e o Google indexa como "soft 404", sujando o índice da loja | `App.tsx:1500,1796-1798`; `vercel.json` reescreve `/(.*)` | front |
 | 3 | **R6** | Pontinhos do carrossel de **8×6 px** (difícil de acertar no dedo, não só para quem tem deficiência) e foco de teclado invisível | `BannerCarousel.tsx:257-266`, `Header.tsx:170,342,359`, `index.css:138` | front |
 | — | **R4** | Requisições duplicadas no boot (5×, 4×, 29 no total, medido em julho) | — | **INDETERMINADO** |
@@ -265,6 +268,16 @@ que número não verificado apodrece não pode se isentar da própria regra.
 > aparecer no console do navegador`), commit ancestral do que escreveu essa linha. A parte de
 > PII do R8 está fechada desde então; o resto da classe (533 chamadas sem `drop_console`,
 > estrutura interna exposta) segue aberto.
+>
+> **A rodada seguinte corrigiu "5" para "6"; o número certo é 3.** Existem 6 ocorrências de
+> `import.meta.env.DEV` em `src/`, mas só metade guarda um `console.*`: `src/lib/supabase.ts:24-26`,
+> `src/contexts/AuthContext.tsx:365-366` e `src/hooks/useRealtimeUpdate.ts:110-113`. As outras
+> três não guardam console: `GlobalErrorBoundary.tsx:143` guarda a renderização de um bloco JSX
+> (a pilha de erro na tela), não um log; `useUpdateCheck.ts:67` guarda um `return` de versão, sem
+> `console` por perto. E `useUpdateCheck.ts:258-259` merece nota à parte: `if (isDev) return false`
+> faz os `console.error`/`console.log` de `:276-283` rodarem **só em produção** — o oposto de uma
+> guarda de `DEV`, e mais um caso da mesma classe do R8. Isso não vira achado novo nem muda o
+> placar; é a mesma exposição de estrutura interna que o R8 já cobre, e o R8 segue ABERTO.
 
 > **R4 não é "aberto", é não medido.** O número original veio de Resource Timing com o app
 > rodando, e ninguém rodou o app aqui. O que **se pode** afirmar: em mais de 200 commits **nada
