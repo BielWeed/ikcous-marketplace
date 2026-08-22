@@ -255,7 +255,7 @@ export const OrderList = memo(function OrderList({
                       </>
                     )}
                   </button>
-                  <span className="font-mono text-[8.5px] font-semibold tracking-tight text-zinc-400/90">
+                  <span className="font-mono text-[8.5px] font-semibold tracking-tight text-zinc-500">
                     {date.toLocaleDateString("pt-BR")}
                   </span>
                 </div>
@@ -318,7 +318,7 @@ export const OrderList = memo(function OrderList({
                     </h4>
 
                     {/* Condensed Metadata Row */}
-                    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[8px] font-bold uppercase tracking-wide text-zinc-400">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[8px] font-bold uppercase tracking-wide text-zinc-500">
                       <div className="flex items-center gap-0.5">
                         <Package className="size-2.5 stroke-[2.5] text-zinc-300" />
                         <span>
@@ -365,11 +365,11 @@ export const OrderList = memo(function OrderList({
 
                 {/* Right side: Price */}
                 <div className="flex-shrink-0 self-center text-right">
-                  <span className="mb-0.5 block text-[7px] font-black uppercase tracking-widest text-zinc-300">
+                  <span className="mb-0.5 block text-[7px] font-black uppercase tracking-widest text-zinc-500">
                     Total
                   </span>
                   <div className="flex items-baseline justify-end leading-none">
-                    <span className="mr-0.5 text-[8px] font-extrabold text-zinc-400">
+                    <span className="mr-0.5 text-[8px] font-extrabold text-zinc-500">
                       R$
                     </span>
                     <span className="text-sm font-black tracking-tight text-zinc-950">
