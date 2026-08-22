@@ -272,9 +272,7 @@ describe("OrderDetailsView — pedido cancelado com pagamento que ficou com a lo
     expect(hospedeiro.textContent).toContain(
       "Este pedido foi cancelado e não seguirá para entrega.",
     );
-    expect(hospedeiro.textContent).not.toContain(
-      "seu pagamento foi recebido",
-    );
+    expect(hospedeiro.textContent).not.toContain("seu pagamento foi recebido");
   });
 
   it("B2: status 'cancelled' + recusado: o selo fixo removido ('Confirmado') não aparece em lugar nenhum do documento", async () => {
