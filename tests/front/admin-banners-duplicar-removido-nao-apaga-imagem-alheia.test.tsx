@@ -136,9 +136,9 @@ function localizarBotaoPorTitulo(
   raizDom: ParentNode,
   titulo: string,
 ): HTMLButtonElement | undefined {
-  return raizDom.querySelector(
-    `button[title="${titulo}"]`,
-  ) as HTMLButtonElement | undefined;
+  return raizDom.querySelector(`button[title="${titulo}"]`) as
+    | HTMLButtonElement
+    | undefined;
 }
 
 /** Simula selecionar um arquivo no `<input type="file">` — não dá para usar
@@ -204,14 +204,10 @@ describe("AdminBannersView — remoção de Duplicar preserva Criar e Editar", (
   });
 
   async function montar() {
-    const { AdminBannersView } = await import(
-      "@/views/admin/AdminBannersView"
-    );
+    const { AdminBannersView } = await import("@/views/admin/AdminBannersView");
 
     await act(async () => {
-      raiz.render(
-        <AdminBannersView onNavigate={onNavigate} active={true} />,
-      );
+      raiz.render(<AdminBannersView onNavigate={onNavigate} active={true} />);
     });
     await act(async () => {
       await esperarMicrotarefas();
@@ -222,9 +218,7 @@ describe("AdminBannersView — remoção de Duplicar preserva Criar e Editar", (
     await montar();
 
     expect(localizarBotaoPorTitulo(hospedeiro, "Duplicar")).toBeNull();
-    expect(
-      localizarBotaoPorTitulo(hospedeiro, "Duplicar Banner"),
-    ).toBeNull();
+    expect(localizarBotaoPorTitulo(hospedeiro, "Duplicar Banner")).toBeNull();
     expect(localizarBotaoPorTexto(hospedeiro, "Duplicar")).toBeUndefined();
   });
 
@@ -244,9 +238,7 @@ describe("AdminBannersView — remoção de Duplicar preserva Criar e Editar", (
 
     // Dialog aberto para CRIAR: editingBanner é null, formData.imageUrl
     // começa vazio.
-    expect(
-      hospedeiro.textContent?.includes("Novo Banner"),
-    ).toBe(true);
+    expect(hospedeiro.textContent?.includes("Novo Banner")).toBe(true);
 
     const arquivo = new File(["conteudo"], "imagem-recem-enviada.jpg", {
       type: "image/jpeg",
