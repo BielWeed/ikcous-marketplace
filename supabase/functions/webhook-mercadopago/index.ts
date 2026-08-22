@@ -514,20 +514,24 @@ async function handler(
   // PEDIDO errado é a invariante nº 1 deste arquivo: o `orderId` sai sempre
   // do `external_reference` da RESPOSTA AUTENTICADA do MP (linhas 467-475),
   // nunca do corpo do webhook — é essa disciplina, não uma guarda do banco,
-  // que barra o corpo forjado (teste `:414`, "corpo hostil não decide o
-  // pedido"). Quem for procurar "onde mora a defesa contra creditar o
-  // pedido errado" e achar só a RPC corre o risco de afrouxar essa
-  // disciplina no handler achando que a rede de proteção está do outro
-  // lado — não está.
+  // que barra o corpo forjado (teste "corpo hostil não decide o pedido —
+  // p_order_id vem SEMPRE da resposta do MP", index_test.ts). Quem for
+  // procurar "onde mora a defesa contra creditar o pedido errado" e achar só
+  // a RPC corre o risco de afrouxar essa disciplina no handler achando que a
+  // rede de proteção está do outro lado — não está.
   //
   // ⚠️ Silêncio que esta correção não fecha: o VALOR pago não é comparado
-  // com o `total` do pedido em lugar nenhum deste fluxo. Sob a guarda (d)
-  // antiga isso vinha de graça (o `payment_id` batendo já garantia que era a
-  // NOSSA cobrança, logo o nosso valor); aqui nada garante isso mais. Não há
-  // exploit construído hoje — o `external_reference` só é escrito por nós, e
-  // o PIX da Orders API tem um único pagamento por order — mas é uma
-  // checagem que existia de graça e sumiu, e precisa continuar escrita até
-  // alguém decidir se vale a pena reconstruí-la.
+  // com o `total` do pedido em lugar nenhum deste fluxo — e isso NUNCA foi
+  // diferente nesta rota (`payment`): não é uma conferência que se perdeu
+  // com esta correção, é o estado de sempre. A guarda (d) da RPC nunca deu
+  // essa conferência de graça aqui: o `gateway_payment_id` gravado é sempre
+  // o id da ORDER ("ORD...") e o que esta rota recebe do MP é o id CLÁSSICO
+  // numérico — os dois só coincidem em cobranças criadas antes da migração
+  // para a Orders API. Não há exploit construído hoje — o
+  // `external_reference` só é escrito por nós, e o PIX da Orders API tem um
+  // único pagamento por order — mas é uma checagem de valor que nunca
+  // existiu nesta rota e continua sem existir, até alguém decidir se vale a
+  // pena construí-la.
   //
   // 🔒 É POR ISSO que o bloco abaixo é restrito a `rota === "payment"`: na
   // rota `order` a (d) ainda compara duas fontes de verdade INDEPENDENTES (o

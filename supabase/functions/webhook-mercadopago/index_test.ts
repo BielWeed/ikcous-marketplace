@@ -181,6 +181,19 @@ function fetchConsulta(status: number, corpo: Record<string, unknown>) {
  * "M8"): trocar `.eq("id", orderId)` por `.eq("id", dataIdStr)` sobrevivia a
  * todos os testes, porque o cliente falso devolvia o mesmo `pedido` fixo
  * para qualquer `.eq()`, ignorando o argumento.
+ *
+ * O `.select()` PROJETA as colunas pedidas a partir de `pedido`, em vez de
+ * devolver o objeto inteiro (achado de revisão, 21/08/2026): sem isso,
+ * `.select("gateway_payment_id")` → `.select("id")` na produção passava
+ * batido por 34 dos 35 testes — só a asserção de metadado em
+ * `leituraGatewayId.colunas` acusava, e a produção quebrada (id trocado, em
+ * silêncio) não derrubava NENHUM teste pelo comportamento. Com a projeção,
+ * a mesma mutação some o campo `gateway_payment_id` do objeto devolvido, e
+ * quem depende dele (a substituição do `idParaRpc`) falha pelo
+ * COMPORTAMENTO, não só pelo nome da coluna pedida. `colunas.trim() === "*"`
+ * devolve o `pedido` inteiro — não há nenhum `select("*")` neste arquivo
+ * hoje, mas um projetor que quebrasse nesse caso venceria por ausência de
+ * cobertura, não por estar certo.
  */
 function clienteFalso(opts: {
   rpcResultado?: string;
@@ -203,7 +216,24 @@ function clienteFalso(opts: {
           return {
             eq(coluna: string, valor: unknown) {
               opts.registro?.chamadasFrom?.push({ tabela, colunas, coluna, valor });
-              return { maybeSingle: async () => ({ data: opts.pedido ?? null, error: null }) };
+              const pedido = opts.pedido ?? null;
+              const colunasPedidas = new Set(
+                colunas
+                  .split(",")
+                  .map((c) => c.trim())
+                  .filter((c) => c.length > 0),
+              );
+              const projetado =
+                pedido === null
+                  ? null
+                  : colunas.trim() === "*"
+                    ? pedido
+                    : Object.fromEntries(
+                        Object.entries(pedido as Record<string, unknown>).filter(([chave]) =>
+                          colunasPedidas.has(chave),
+                        ),
+                      );
+              return { maybeSingle: async () => ({ data: projetado, error: null }) };
             },
           };
         },
@@ -296,6 +326,19 @@ Deno.test("MP diz approved, gateway_payment_id gravado é ORD (Orders API) -> RP
 
   assertEquals(resposta.status, 200);
   assertEquals(chamadasPush.length, 1);
+  // Achado de revisão, 22/08/2026: esta é a ÚNICA asserção sobre o CONTEÚDO
+  // do push em todo o arquivo, e ela existe para provar a outra metade do
+  // projetor de colunas do `clienteFalso` — a leitura multi-coluna do push.
+  // Sem ela, quebrar o projetor (basta tirar o `.trim()` de `colunas.split`)
+  // deixa a suíte 35/0 enquanto `total` some do objeto lido, `formatarBRL`
+  // recebe `undefined` e devolve "R$ 0,00" (index.ts:128, `Number(valor ?? 0)`
+  // — não estoura, só mente): o lojista receberia "Pedido pago · #1234 ·
+  // R$ 0,00". Medida nas duas pontas antes de entrar: 35/0 com o projetor
+  // são, 34/1 com ele quebrado.
+  assertStringIncludes(
+    String((chamadasPush[0] as { aviso: { body: string } }).aviso.body),
+    "149,90",
+  );
   assertEquals(registro.chamadasRpc.length, 1);
   assertEquals(registro.chamadasRpc[0].args.p_order_id, UUID_PEDIDO);
   assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_GRAVADO_NO_BANCO);
