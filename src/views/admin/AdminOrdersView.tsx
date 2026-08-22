@@ -638,7 +638,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         });
         return;
       }
-      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${order.id.slice(-6)} foi atualizado.\nStatus: ${statusConfig[order.status].label}\n\nObrigado por comprar na ${branding.appName}!`;
+      // O CHECK do banco aceita SEIS status (inclui 'new', histórico —
+      // migrado para 'pending' pela 20260327000003, 0 pedidos hoje), o
+      // `statusConfig` (OrderStatusBadge.tsx) só conhece os CINCO do type
+      // `OrderStatus`. Sem o `|| statusConfig.pending` (mesma guarda de
+      // OrderStatusBadge.tsx:68 e OrderList.tsx:209) o botão quebra. E
+      // NUNCA `?.label || newStatus` aqui (como a linha 520 acima): isso
+      // botaria o valor cru do banco, em inglês, dentro da mensagem que a
+      // lojista manda para a cliente.
+      const statusMsg = statusConfig[order.status] || statusConfig.pending;
+      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${order.id.slice(-6)} foi atualizado.\nStatus: ${statusMsg.label}\n\nObrigado por comprar na ${branding.appName}!`;
 
       let phone = (order.customer?.whatsapp || "").replace(/\D/g, "");
       if (phone.length === 11 || phone.length === 10) {
