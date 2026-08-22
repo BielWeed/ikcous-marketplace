@@ -62,6 +62,16 @@
  *      sao decorativas: um instrumento que aprova tudo da o mesmo verde que um
  *      instrumento que funciona.
  *
+ *   8. A VOLTA TAMBEM E PROVADA. A reversao escrita a mao
+ *      (rollback-manual-20260950000000_*.sql) roda na MESMA transacao, logo
+ *      depois da ida, e a funcao tem de voltar ao estado original — texto do
+ *      corpo E comportamento, com os atributos intactos. Reverter nao pode ser
+ *      mais perigoso que aplicar: a reversao tambem e CREATE OR REPLACE.
+ *
+ *      O controle negativo da VOLTA e o que quase se perde: **antes de reverter,
+ *      a chave tem de estar PRESENTE**. Sem isso, uma reversao que nao faz nada
+ *      passa identica a uma que funciona — as duas terminam com a chave ausente.
+ *
  * USO:  node scripts/db-prove-otp-mostra-pagamento.cjs
  */
 
@@ -71,6 +81,8 @@ const { Client } = require("pg");
 
 const RAIZ = path.resolve(__dirname, "..");
 const MIGRATION = "20260950000000_rastreio_por_codigo_mostra_o_pagamento.sql";
+const REVERSAO =
+  "rollback-manual-20260950000000_rastreio_por_codigo_mostra_o_pagamento.sql";
 const ASSINATURA = "public.get_orders_by_otp_v1(text,text)";
 
 let passou = 0;
@@ -221,18 +233,33 @@ function semVolateis(valor) {
   return valor;
 }
 
-function lerMigration() {
-  const caminho = path.join(RAIZ, "supabase", "migrations", MIGRATION);
+/**
+ * Le um SQL e RECUSA se ele tiver controle de transacao no topo. Serve para a
+ * ida e para a volta: a reversao roda dentro da MESMA transacao desta prova, e
+ * um `COMMIT;` dentro dela gravaria tudo do mesmo jeito.
+ */
+function lerSqlSemControleDeTransacao(caminho, rotulo) {
   // eslint-disable-next-line security/detect-non-literal-fs-filename
   const sql = fs.readFileSync(caminho, "utf8");
 
   const controle = sql.split("\n").filter(ehControleDeTransacao);
   if (controle.length > 0) {
     throw new Error(
-      `${MIGRATION} tem controle de transacao no topo (${controle.length} linha(s)). Com ele o ROLLBACK desta prova vira no-op e a mudanca ficaria GRAVADA. Recusando.`,
+      `${rotulo} tem controle de transacao no topo (${controle.length} linha(s)). Com ele o ROLLBACK desta prova vira no-op e a mudanca ficaria GRAVADA. Recusando.`,
     );
   }
   return sql;
+}
+
+function lerMigration() {
+  return lerSqlSemControleDeTransacao(
+    path.join(RAIZ, "supabase", "migrations", MIGRATION),
+    MIGRATION,
+  );
+}
+
+function lerReversao() {
+  return lerSqlSemControleDeTransacao(path.join(RAIZ, REVERSAO), REVERSAO);
 }
 
 /** Estado da funcao, preso a assinatura exata. Nunca rows[0] de uma varredura. */
@@ -523,6 +550,66 @@ async function main() {
       "a sabotagem foi desfeita (a versao boa voltou)",
       restaurada.prosecdef === true && restaurada.expoe_pagamento === true,
       `prosecdef ${restaurada.prosecdef}, expoe_pagamento ${restaurada.expoe_pagamento}`,
+    );
+
+    console.log("\n9. A VOLTA — a reversao escrita a mao desfaz a ida");
+    // CONTROLE NEGATIVO DA VOLTA: so faz sentido reverter o que esta aplicado.
+    // Sem esta assercao, uma reversao que nao faz nada "passaria" identica a uma
+    // que funciona — as duas deixariam a chave ausente no fim.
+    conferir(
+      "antes de reverter: a chave payment_status ESTA presente (ha o que desfazer)",
+      restaurada.expoe_pagamento === true,
+      `expoe_pagamento veio ${restaurada.expoe_pagamento}`,
+    );
+
+    await client.query(lerReversao());
+    const revertida = await estadoDaFuncao(client);
+
+    conferir(
+      "depois de reverter: a funcao volta a NAO expor payment_status",
+      revertida.expoe_pagamento === false,
+      `expoe_pagamento veio ${revertida.expoe_pagamento}`,
+    );
+
+    // A prova de comportamento, nao so de texto do corpo: um pedido pago volta
+    // a chegar sem a chave, que e exatamente o estado de antes da ida.
+    await montarCenario(client, {
+      email: "prova-otp-revertido@exemplo.invalido",
+      otp: "444444",
+      paymentStatus: "pago",
+    });
+    const depoisDaVolta = await pedidoPeloCodigo(client, {
+      email: "prova-otp-revertido@exemplo.invalido",
+      otp: "444444",
+    });
+    conferir(
+      "depois de reverter: o pedido pago volta SEM a chave, como antes da ida",
+      !("payment_status" in depoisDaVolta),
+      `chaves: ${Object.keys(depoisDaVolta).join(", ")}`,
+    );
+    conferir(
+      "depois de reverter: o objeto e identico ao do estado original",
+      JSON.stringify(semVolateis(depoisDaVolta)) ===
+        JSON.stringify(antesNormalizado),
+      `voltou ${JSON.stringify(semVolateis(depoisDaVolta))}`,
+    );
+
+    // 🔴 REVERTER NAO PODE SER MAIS PERIGOSO QUE APLICAR. A reversao tambem e
+    // CREATE OR REPLACE, entao ela apaga em silencio o atributo que nao repetir.
+    conferir(
+      "depois de reverter: SECURITY DEFINER, search_path, retorno e ACL intactos",
+      revertida.prosecdef === antesDaFuncao.prosecdef &&
+        JSON.stringify(revertida.proconfig) ===
+          JSON.stringify(antesDaFuncao.proconfig) &&
+        revertida.retorno === antesDaFuncao.retorno &&
+        revertida.acl === antesDaFuncao.acl,
+      `prosecdef ${revertida.prosecdef}, proconfig ${JSON.stringify(revertida.proconfig)}, retorno ${revertida.retorno}`,
+    );
+    conferir(
+      "depois de reverter: o conjunto de assinaturas continua o mesmo",
+      JSON.stringify(await assinaturas(client)) ===
+        JSON.stringify(assinaturasAntes),
+      "a reversao criou ou removeu uma sobrecarga",
     );
   } finally {
     await client.query("ROLLBACK");
