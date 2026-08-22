@@ -16,6 +16,84 @@ import { useEffect, useMemo, useRef, useState } from "react";
  */
 const SHIPPING_RECALC_DEBOUNCE_MS = 700;
 
+/**
+ * Validade do cache de frete NO NAVEGADOR.
+ *
+ * 2 h é exatamente o prazo que a edge function usa para considerar uma cotação
+ * recente (`twoHoursAgo` em `supabase/functions/calculate-shipping/index.ts`,
+ * no CACHE LOOKUP). Acima disso ela recalcularia de qualquer jeito — servir do
+ * navegador seria fabricar um frescor que o servidor não daria.
+ *
+ * 🔴 Este prazo NÃO é o mesmo assunto que a janela de 24 h do `WHERE` da RPC
+ * que valida o pedido, e um não implica o outro: **encurtar o prazo do BANCO
+ * causa RECUSA** na cara de quem já clicou em finalizar; **encurtar este aqui
+ * causa RECÁLCULO**. Botões parecidos, consequências opostas.
+ */
+const SHIPPING_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+
+interface EnvelopeDeCacheDeFrete {
+  /** Assinatura do carrinho que gerou esta cotação (mesmo formato de `cartSignature`). */
+  assinatura: string;
+  /** `Date.now()` de quando a cotação foi gravada. */
+  gravadoEm: number;
+  opcoes: ShippingOption[];
+}
+
+/**
+ * Decide se uma entrada do cache local pode virar preço na tela.
+ *
+ * A chave (`ikcous_shipping_cache_<CEP>`) diz só o CEP. Quem responde "de qual
+ * carrinho isto veio?" e "quando foi cotado?" é o próprio conteúdo — por isso a
+ * validação mora aqui e não na chave: manter UMA entrada por CEP preserva os
+ * dois consumidores que já dependem do formato exato da chave (o `removeItem`
+ * da invalidação por mudança de carrinho, logo abaixo, e a varredura por
+ * prefixo do logout em `AuthContext.tsx`) e impede o `localStorage` de crescer
+ * uma entrada nova a cada combinação de carrinho — estouro de cota ali cai no
+ * `catch` de `calculateShipping` e apagaria uma cotação boa da tela.
+ *
+ * Devolve `null` — ou seja, "não tem cache" — para tudo que não for uma
+ * cotação do carrinho de agora, gravada dentro da validade. A lista crua (o
+ * formato anterior a 22/08/2026, que ainda está no navegador das clientes) cai
+ * na checagem de `assinatura`: uma lista não tem esse campo, e não há como
+ * saber de qual carrinho ela veio. Não há guarda separada para ela de
+ * propósito — foi medido que uma guarda de formato não decidia caso nenhum que
+ * a checagem de assinatura já não decidisse.
+ */
+export function cotacaoCacheadaQueAindaServe(
+  bruto: unknown,
+  assinaturaAtual: string,
+  agora: number,
+): ShippingOption[] | null {
+  if (!bruto || typeof bruto !== "object") return null;
+
+  const envelope = bruto as Partial<EnvelopeDeCacheDeFrete>;
+
+  if (
+    typeof envelope.assinatura !== "string" ||
+    envelope.assinatura !== assinaturaAtual
+  ) {
+    return null;
+  }
+
+  if (
+    typeof envelope.gravadoEm !== "number" ||
+    !Number.isFinite(envelope.gravadoEm)
+  ) {
+    return null;
+  }
+
+  // Idade negativa = relógio andou para trás (ou data adulterada). Recusar é o
+  // lado seguro: o preço do frete entra no total do pedido.
+  const idade = agora - envelope.gravadoEm;
+  if (idade < 0 || idade > SHIPPING_CACHE_TTL_MS) return null;
+
+  if (!Array.isArray(envelope.opcoes) || envelope.opcoes.length === 0) {
+    return null;
+  }
+
+  return envelope.opcoes as ShippingOption[];
+}
+
 interface ShippingCalculatorProps {
   cart: CartItem[];
   subtotal: number;
@@ -105,25 +183,36 @@ export function ShippingCalculator({
 
     try {
       // 1. Check local cache first if offline or as speedup
+      //
+      // Este acerto não só mostra o preço: ele já SELECIONA a opção logo
+      // abaixo, e é ela que vai para o pedido. Por isso a entrada precisa ser
+      // do carrinho de agora e estar dentro da validade — ver
+      // `cotacaoCacheadaQueAindaServe`. Até 22/08/2026 bastava ser uma lista
+      // não vazia gravada sob este CEP, de qualquer carrinho e de qualquer
+      // época.
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
         try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          const opcoesEmCache = cotacaoCacheadaQueAindaServe(
+            JSON.parse(cached),
+            cartSignature,
+            Date.now(),
+          );
+          if (opcoesEmCache) {
             // Sem lacre aqui de propósito: até este ponto só rodou
             // `localStorage.getItem`/`JSON.parse`, ambos síncronos — nenhum
             // `await` passou, então `meuId` ainda é garantidamente o valor
             // mais recente de `reqRef.current`. A guarda existia mas nunca
             // podia disparar; ela só escondia o fato de que este ramo não
             // precisa de proteção.
-            setOptions(parsed);
+            setOptions(opcoesEmCache);
 
             // Auto-select first/cheapest option if none selected
-            const hasMatch = parsed.some(
+            const hasMatch = opcoesEmCache.some(
               (opt) => opt.id === selectedOption?.id,
             );
             if (!hasMatch) {
-              onSelectOption(parsed[0]);
+              onSelectOption(opcoesEmCache[0]);
             }
             onCepValidated?.(cep);
             setLoading(false);
@@ -155,8 +244,15 @@ export function ShippingCalculator({
       if (meuId !== reqRef.current) return;
       setOptions(calculatedOptions);
 
-      // Save to cache
-      localStorage.setItem(cacheKey, JSON.stringify(calculatedOptions));
+      // Save to cache — junto com de QUAL carrinho esta cotação é e QUANDO ela
+      // foi feita. Sem esses dois campos a leitura acima não tem como recusar
+      // uma lista de outro carrinho ou de outro dia.
+      const envelope: EnvelopeDeCacheDeFrete = {
+        assinatura: cartSignature,
+        gravadoEm: Date.now(),
+        opcoes: calculatedOptions,
+      };
+      localStorage.setItem(cacheKey, JSON.stringify(envelope));
       localStorage.setItem("ikcous_last_shipping_cep", cep);
 
       // Auto-select cheapest option if not selected
