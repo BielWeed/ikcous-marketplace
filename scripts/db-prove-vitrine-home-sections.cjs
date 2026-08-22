@@ -380,10 +380,11 @@ async function main() {
     );
     conferir(
       "ANTES: o jsonb devolvido pela RPC NÃO tem a chave home_sections (foi ignorada em silêncio)",
-      rpcAntes.ok && !Object.prototype.hasOwnProperty.call(
-        rpcAntes.valor || {},
-        "home_sections",
-      ),
+      rpcAntes.ok &&
+        !Object.prototype.hasOwnProperty.call(
+          rpcAntes.valor || {},
+          "home_sections",
+        ),
       "chave home_sections ausente do retorno",
       rpcAntes.ok
         ? `chaves do retorno: ${Object.keys(rpcAntes.valor).join(", ")}`
@@ -419,9 +420,7 @@ async function main() {
       "a função aplicada na transação menciona home_sections",
       defFuncao.rows[0].def.includes("home_sections"),
       "definição contém 'home_sections'",
-      defFuncao.rows[0].def.includes("home_sections")
-        ? "contém"
-        : "NÃO contém",
+      defFuncao.rows[0].def.includes("home_sections") ? "contém" : "NÃO contém",
     );
 
     // CREATE OR REPLACE é SUBSTITUIÇÃO: tudo que a migration não repetir por
@@ -567,7 +566,9 @@ async function main() {
       "DEPOIS: as outras colunas continuam com o valor esperado (as 21 que não foram enviadas, iguais a antes; share_text, que foi enviada, igual ao que foi mandado)",
       divergencias.length === 0,
       "nenhuma divergência",
-      divergencias.length === 0 ? "nenhuma divergência" : divergencias.join(" | "),
+      divergencias.length === 0
+        ? "nenhuma divergência"
+        : divergencias.join(" | "),
     );
 
     // Sem asserção de "updated_at mudou": now() é estável DENTRO da mesma
@@ -601,9 +602,7 @@ async function main() {
     await client.query("ROLLBACK").catch(() => {});
   }
 
-  console.log(
-    "\n=== 5. Fora da transação: nada ficou gravado ===",
-  );
+  console.log("\n=== 5. Fora da transação: nada ficou gravado ===");
   const selectForaDaTransacao = await selecionarHomeSectionsSemTransacao(
     client,
     "store_config",
@@ -619,7 +618,9 @@ async function main() {
 
   await client.end();
 
-  console.log(`\n${passou} / ${ESPERADAS} asserções esperadas passaram, ${falhou} falharam.`);
+  console.log(
+    `\n${passou} / ${ESPERADAS} asserções esperadas passaram, ${falhou} falharam.`,
+  );
   console.log(`MIGRATION: ${MIGRATION}`);
   console.log(`sha256: ${migrationSha256}`);
   process.exit(falhou > 0 || passou !== ESPERADAS ? 1 : 0);
