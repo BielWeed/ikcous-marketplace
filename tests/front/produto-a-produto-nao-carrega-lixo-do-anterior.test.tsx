@@ -1,3 +1,5 @@
+import { act } from "react";
+import { type Root, createRoot } from "react-dom/client";
 // @vitest-environment jsdom
 /**
  * Trocar de produto pela vitrine "você também pode gostar" tem de abrir a tela
@@ -32,8 +34,6 @@
  *     ficaria verde com ou sem a correção, que é o pior desfecho possível.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act } from "react";
-import { type Root, createRoot } from "react-dom/client";
 
 // `vi.hoisted` porque as fábricas de `vi.mock` sobem para o topo do arquivo e
 // não enxergam variáveis normais de módulo.
@@ -113,13 +113,11 @@ vi.mock("framer-motion", async () => {
       // variável dispara `security/detect-object-injection`, e a catraca de
       // lint deste projeto reprova qualquer aviso novo.
       const limpo = Object.fromEntries(
-        Object.entries(resto).filter(([chave]) => !PROPS_DE_ANIMACAO.has(chave)),
+        Object.entries(resto).filter(
+          ([chave]) => !PROPS_DE_ANIMACAO.has(chave),
+        ),
       );
-      return React.createElement(
-        tag,
-        limpo,
-        children as React.ReactNode,
-      );
+      return React.createElement(tag, limpo, children as React.ReactNode);
     };
   // O cache é o que mantém o TIPO estável entre renders. Ver o cabeçalho.
   const cache = new Map<string, unknown>();
@@ -131,7 +129,11 @@ vi.mock("framer-motion", async () => {
     },
   });
   function AnimatePresence({ children }: { readonly children?: unknown }) {
-    return React.createElement(React.Fragment, null, children as React.ReactNode);
+    return React.createElement(
+      React.Fragment,
+      null,
+      children as React.ReactNode,
+    );
   }
   return { motion, AnimatePresence, useReducedMotion: () => true };
 });
