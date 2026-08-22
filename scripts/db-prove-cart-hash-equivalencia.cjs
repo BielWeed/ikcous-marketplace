@@ -14,29 +14,69 @@
  *   - a RPC que VALIDA O DINHEIRO busca por CEP + 24h + id da opção, e
  *     `cart_hash` NÃO aparece (`grep -c` = 0)
  *
- * O conserto é a RPC recalcular o hash a partir de `p_items` — que ela já
- * recebe — e acrescentá-lo ao WHERE. Isso evita parâmetro novo, e com isso a
- * armadilha registrada em `mudar-assinatura-de-rpc-custa-o-grant`: parâmetro
+ * ⚠️ ESTE SCRIPT CONTINUA VÁLIDO, MAS O CONSERTO NÃO FOI O QUE ELE PREVIA.
+ *
+ * O texto abaixo descrevia o conserto como *"a RPC recalcular o hash a partir
+ * de `p_items` e acrescentá-lo ao WHERE"*. **Não foi assim que ficou.** A
+ * migration 20260951000000 desmonta os dois lados em (produto, variante,
+ * quantidade) e compara CONJUNTO contra CONJUNTO, ordenando dentro do próprio
+ * SQL — nenhum texto de hash é recomposto.
+ *
+ * 🔴 **E essa diferença é o que torna a pergunta deste script IRRELEVANTE PARA
+ * A CORREÇÃO ENTREGUE.** Se ninguém recompõe a serialização do JavaScript, não
+ * há ordenação a casar: a trava não depende de collation nenhuma. Este é o
+ * argumento que sobrevive à troca de banco — e ele vale mais que qualquer
+ * medição de ordenação, que é sempre verdade POR BANCO.
+ *
+ * O que o conserto entregue evita continua valendo: nenhum parâmetro novo, e
+ * com isso a armadilha de `mudar-assinatura-de-rpc-custa-o-grant` — parâmetro
  * com DEFAULT cria SOBRECARGA no Postgres, o PostgREST fica ambíguo, e o DROP
- * que resolve leva o GRANT junto — e os GRANTs desta função estão todos em
+ * que resolve leva o GRANT junto, e os GRANTs desta função estão todos em
  * migrations `_arquivadas/`.
  *
- * 🔴 O RISCO QUE ESTE SCRIPT EXISTE PARA MEDIR
+ * 🔴 O RISCO QUE ESTE SCRIPT EXISTE PARA MEDIR — e o que a frase antiga errava
  *
  * Se o hash calculado em SQL divergir do calculado em JS, **todo pedido passa
- * a ser recusado** com "A cotação de frete expirou" — o checkout morre. Não é
- * hipótese: JS ordena com `localeCompare` e o Postgres com a collation do
- * banco, e elas DIVERGEM. Medido antes de escrever isto: com `Z`, `a`, `b` na
- * mesma lista, `localeCompare` põe `Z` por último e o codepoint põe `Z`
- * primeiro. Para UUID minúsculo (o formato real de product_id/variant_id) as
- * duas batem — 0 divergências em 2000 rodadas — e é por isso que o conserto é
- * viável. Este script é a segunda opinião sobre essa medida, feita no banco
- * de verdade em vez de na minha cabeça.
+ * a ser recusado** com "A cotação de frete expirou" — o checkout morre. Essa
+ * preocupação era legítima e continua sendo, para quem um dia escrever a
+ * versão que recompõe o texto.
+ *
+ * O que a redação anterior errava: ela afirmava *"JS ordena com `localeCompare`
+ * e o Postgres com a collation do banco, e elas DIVERGEM"* e oferecia como
+ * prova o caso `Z`, `a`, `b`, em que `localeCompare` põe `Z` por último e o
+ * **codepoint** põe `Z` primeiro. Isso compara JS contra JS: o Postgres não
+ * aparece na evidência. Medido depois, no banco: sob `en_US.UTF-8` o
+ * `ORDER BY` acompanha o `localeCompare` (`a, b, Z`), e quem diverge dos dois é
+ * o codepoint — que o banco não usa.
+ *
+ * A autora **não** deixou de medir o que importava: duas linhas adiante ela já
+ * registrava que para UUID minúsculo (o formato real de `product_id` e
+ * `variant_id`) as ordens batem, com 0 divergências em 2000 rodadas. A
+ * conclusão dela estava certa; só a frase de abertura prometia uma divergência
+ * que a evidência ao lado não sustentava.
+ *
+ * 🔴 NÃO LEIA DAQUI NENHUMA AFIRMAÇÃO DE ESTADO — CONFIRA. Collation é
+ * propriedade DO BANCO, e este repositório é o MOLDE: cada loja roda num banco
+ * próprio, criado depois, cuja collation ninguém mediu. A consulta que confere,
+ * e que vale mais que qualquer número escrito aqui:
+ *
+ *     SELECT datcollate FROM pg_database WHERE datname = current_database();
+ *     SELECT x FROM unnest(ARRAY['Z','a','b']) AS x ORDER BY x;
+ *
+ * Compare a segunda saída com `['Z','a','b'].sort((a,b) => a.localeCompare(b))`
+ * no Node. Se baterem, a ordenação não é um risco NAQUELE banco. Se não
+ * baterem, ela é — e aí a versão que recompõe o texto não pode ser escrita sem
+ * tratar isso. Rodar este script inteiro é a versão completa dessa checagem.
  *
  * NADA É ESCRITO. Tudo roda dentro de `BEGIN READ ONLY`, e isso não é
  * promessa: é o Postgres RECUSANDO escrita. `SHOW transaction_read_only` é
  * assertado como 'on' ANTES de qualquer consulta — sem essa trava, um erro de
  * digitação em SQL viraria escrita real. Termina em ROLLBACK.
+ *
+ * ✅ O INSTRUMENTO ESTÁ ÍNTEGRO — o que mudou aqui foi só o TEXTO. Ele roda,
+ * mede e passa (`divergências: 0`). Quem vir um diff só de cabeçalho não deve
+ * concluir que a ferramenta estava quebrada: ela não estava, e a conclusão dela
+ * bate com a medição independente feita em 22/08/2026.
  *
  * Uso: node scripts/db-prove-cart-hash-equivalencia.cjs
  */
