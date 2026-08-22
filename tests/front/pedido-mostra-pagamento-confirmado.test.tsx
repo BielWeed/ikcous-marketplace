@@ -546,4 +546,107 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
     expect(selo?.querySelector(".text-zinc-600")).not.toBeNull();
     expect(selo?.querySelector(".text-zinc-500")).toBeNull();
   });
+
+  // Sentinelas do achado 2 — o pill de STATUS do pedido (esteira), não o
+  // selo de pagamento acima. Escopo: `elementoForaDoSelo` acha o primeiro
+  // elemento que casa com o seletor e NÃO está dentro de
+  // `[data-testid="customer-payment-badge"]` (`.closest`) — é o mesmo risco
+  // de colisão descrito no comentário acima ("Achado do revisor"), só que
+  // aqui as classes trocadas (`text-emerald-700`, `text-rose-700`) são as
+  // MESMAS que `CustomerPaymentBadge` já usa para os tons 'confirmado' e
+  // 'recusado'. Por isso os testes de 'delivered' e 'cancelled' escolhem de
+  // propósito um `paymentStatus` que faz o selo renderizar com a MESMA
+  // classe do pill (colisão real, não hipotética) e provam, com uma
+  // asserção de sanidade sobre o próprio selo, que a colisão de fato
+  // acontece antes de confiar no escopo para diferenciá-la.
+  function elementoForaDoSelo(seletor: string): Element | null {
+    return (
+      Array.from(hospedeiro.querySelectorAll(seletor)).find(
+        (el) => !el.closest('[data-testid="customer-payment-badge"]'),
+      ) ?? null
+    );
+  }
+
+  it("pill de status 'processing': usa text-amber-700 (contraste AA), não mais text-amber-600", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    const order: Order = {
+      ...pedidoComPagamento("aguardando"),
+      status: "processing",
+    };
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    expect(elementoForaDoSelo(".text-amber-700")).not.toBeNull();
+    expect(elementoForaDoSelo(".text-amber-600")).toBeNull();
+  });
+
+  it("pill de status 'delivered': usa text-emerald-700 (contraste AA), não mais text-emerald-600 — mesmo com o selo de pagamento também em emerald-700 ao lado", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    // paymentStatus 'pago' + status 'delivered' faz o CustomerPaymentBadge
+    // renderizar com tom 'confirmado' (text-emerald-700) — a mesma classe do
+    // pill trocado. É a colisão real que o escopo precisa sobreviver.
+    const order: Order = {
+      ...pedidoComPagamento("pago"),
+      status: "delivered",
+    };
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    const selo = hospedeiro.querySelector(
+      '[data-testid="customer-payment-badge"]',
+    );
+    expect(selo).not.toBeNull();
+    expect(selo?.querySelector(".text-emerald-700")).not.toBeNull();
+
+    expect(elementoForaDoSelo(".text-emerald-700")).not.toBeNull();
+    expect(elementoForaDoSelo(".text-emerald-600")).toBeNull();
+  });
+
+  it("pill de status 'cancelled': usa text-rose-700 (contraste AA), não mais text-rose-600 — mesmo com o selo de pagamento também em rose-700 ao lado", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    // paymentStatus 'recusado' faz o CustomerPaymentBadge renderizar com tom
+    // 'recusado' (text-rose-700) — a mesma classe do pill trocado. Colisão
+    // real, igual ao teste acima.
+    const order: Order = {
+      ...pedidoComPagamento("recusado"),
+      status: "cancelled",
+    };
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    const selo = hospedeiro.querySelector(
+      '[data-testid="customer-payment-badge"]',
+    );
+    expect(selo).not.toBeNull();
+    expect(selo?.querySelector(".text-rose-700")).not.toBeNull();
+
+    expect(elementoForaDoSelo(".text-rose-700")).not.toBeNull();
+    expect(elementoForaDoSelo(".text-rose-600")).toBeNull();
+  });
+
+  it("subtexto do status (status.desc) usa text-zinc-500 (contraste AA), não mais text-zinc-400", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    const order: Order = { ...pedidoComPagamento(null), status: "pending" };
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    // "Recebido com sucesso" é o `desc` de 'pending' em `statusConfig`
+    // (OrderList.tsx) — texto próprio, que não colide com nenhum outro
+    // `span` da lista (ID do pedido, data, "Total", preço, metadados).
+    const spans = Array.from(hospedeiro.querySelectorAll("span"));
+    const subtexto = spans.find(
+      (el) => el.textContent === "Recebido com sucesso",
+    );
+    expect(subtexto).not.toBeUndefined();
+    expect(subtexto?.classList.contains("text-zinc-500")).toBe(true);
+    expect(subtexto?.classList.contains("text-zinc-400")).toBe(false);
+  });
 });

@@ -178,8 +178,27 @@ export function OrderDetailsView({
 
   const handleCancelOrder = async () => {
     if (!order) return;
+    // O botão "Cancelar Pedido" aparece para TODO pedido 'pending' com
+    // usuário logado, sem olhar o pagamento — e este app não tem estorno
+    // automático em lugar nenhum. Quem já pagou (`pago` ou
+    // `pago_apos_expirar`, via `paymentStatusKey` — a ÚNICA fonte que decide
+    // "null vira sem_cobranca") precisa saber, ANTES de confirmar, que o
+    // dinheiro fica com a loja até alguém devolver à mão. Quem ainda não
+    // pagou (aguardando/recusado/expirado/estornado/nulo) continua vendo o
+    // texto original: cancelar ali é inofensivo, e falar em dinheiro
+    // assustaria à toa.
+    // `===` e nao `.includes()`: o array seria inferido como `string[]` e
+    // aceitaria qualquer coisa, entao um rename futuro de `PaymentStatus`
+    // quebraria os dois `switch` deste arquivo e passaria calado AQUI —
+    // `pagamentoJaEntrou` viraria `false` para sempre e quem pagou voltaria
+    // a ler o texto generico. Com `===` o TypeScript reprova (TS2678).
+    const chavePagamento = paymentStatusKey(order.paymentStatus);
+    const pagamentoJaEntrou =
+      chavePagamento === "pago" || chavePagamento === "pago_apos_expirar";
     const confirmCancel = globalThis.confirm(
-      "Tem certeza que deseja cancelar este pedido? Esta ação não pode ser desfeita.",
+      pagamentoJaEntrou
+        ? "Você já pagou este pedido. Se cancelar, ele não será entregue e o dinheiro NÃO volta automaticamente — você vai precisar falar com a loja para pedir a devolução. Tem certeza?"
+        : "Tem certeza que deseja cancelar este pedido? Esta ação não pode ser desfeita.",
     );
     if (!confirmCancel) return;
 

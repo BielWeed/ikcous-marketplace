@@ -17,6 +17,14 @@ import {
 import { memo, useState } from "react";
 import { toast } from "sonner";
 
+// O texto de `color` e o `desc` (abaixo, ~386) rodam a 8px — bem abaixo do
+// limiar de "texto grande" do WCAG —, então o mínimo AA é 4,5:1. Medido
+// (Tailwind v3) contra o fundo REAL do pill: `bg` é a cor `*-50/50` (50% de
+// opacidade) sobre o card branco, não a cor `*-50` pura.
+//   processing (amber-600/amber-50 a 50%):  3,13 → amber-700:   4,93
+//   delivered  (emerald-600/emerald-50 a 50%): 3,67 → emerald-700: 5,35
+//   cancelled  (rose-600/rose-50 a 50%):    4,48 → rose-700:    6,00
+// `pending` (4,97) e `shipping` (5,97) já passavam e não mudam.
 const statusConfig: Record<
   OrderStatus,
   { label: string; color: string; bg: string; dot: string; desc: string }
@@ -30,7 +38,7 @@ const statusConfig: Record<
   },
   processing: {
     label: "Em Separação",
-    color: "text-amber-600",
+    color: "text-amber-700",
     bg: "bg-amber-50/50",
     dot: "bg-amber-500",
     desc: "Preparando seu envio",
@@ -44,14 +52,14 @@ const statusConfig: Record<
   },
   delivered: {
     label: "Entregue",
-    color: "text-emerald-600",
+    color: "text-emerald-700",
     bg: "bg-emerald-50/50",
     dot: "bg-emerald-500",
     desc: "Entregue com sucesso!",
   },
   cancelled: {
     label: "Cancelado",
-    color: "text-rose-600",
+    color: "text-rose-700",
     bg: "bg-rose-50/50",
     dot: "bg-rose-500",
     desc: "Pedido cancelado",
@@ -382,7 +390,7 @@ export const OrderList = memo(function OrderList({
                       status.dot,
                     )}
                   />
-                  <span className="max-w-[160px] truncate text-[8px] font-bold uppercase tracking-wider text-zinc-400">
+                  <span className="max-w-[160px] truncate text-[8px] font-bold uppercase tracking-wider text-zinc-500">
                     {status.desc}
                   </span>
                 </div>
