@@ -371,7 +371,17 @@ export function OrderDetailsView({
     );
   }
 
-  const currentStatus = statusConfig[order.status as OrderStatus];
+  // O CHECK do banco (marketplace_orders_status_check, baseline
+  // 20260806000000:3981) aceita SEIS status: pending, processing, shipping,
+  // delivered, cancelled, new. Este `statusConfig` (linha 43) só conhece os
+  // CINCO do type `OrderStatus` — falta 'new'. A migration
+  // 20260327000003_sync_order_status_constraint.sql migrou todo pedido
+  // 'new' para 'pending' (linhas 20-24) e manteve 'new' no CHECK só por
+  // compatibilidade histórica: hoje há 0 pedidos nesse estado, mas o banco
+  // continua aceitando o valor, e sem o `|| statusConfig.pending` esta tela
+  // fica em branco se um chegar. Mesma guarda de OrderList.tsx:209.
+  const currentStatus =
+    statusConfig[order.status as OrderStatus] || statusConfig.pending;
   const StatusIcon = currentStatus.icon;
   const statusDescription =
     order.status === "pending"
