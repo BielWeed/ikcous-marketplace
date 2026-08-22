@@ -31,14 +31,31 @@
     "abaixe o teto'. A queda NÃO veio deste PR (o arquivo novo dele mede 0",
     "problemas no eslint); veio da develop, exatamente como em 05/08. Abaixado",
     "no mesmo PR que o CI apontou, para o teto não ficar protegendo margem que",
-    "já não existe."
+    "já não existe.",
+    "",
+    "22/08/2026 — biome de 30 para 28 erros e de 3 para 1 warning. Medido no CI,",
+    "run 32547865905 (PR #266): 'biome errors 28 / teto 30 / baixou -2'. Desta vez",
+    "a queda VEIO do PR: 18 erros de regra foram zerados (11 deles em",
+    "`.agents_inactive/`, ferramenta desativada que continua versionada).",
+    "",
+    "Como esta dívida ficou escondida, porque a lição vale para a próxima: o",
+    "CLAUDE.md diz — corretamente — que Biome acima do teto no Windows é CRLF e",
+    "não é dívida. É verdade, e foi isso que escondeu o resto. No Windows o",
+    "`biome check .` acusa 244; o número é tão inflado que a medida INTEIRA era",
+    "descartada, e os 16 erros reais moravam dentro dele. Ruído explicado é pior",
+    "que ruído estranho: entrega uma justificativa pronta que dispensa olhar.",
+    "",
+    "O instrumento que separa os dois, e que funciona no Windows:",
+    "`npx biome lint .` (só o linter, sem o formatter) não depende de fim de",
+    "linha. Use ele para medir Biome nesta máquina; `biome check` só é legível",
+    "no Linux do CI."
   ],
   "eslint": {
     "errors": 0,
     "warnings": 551
   },
   "biome": {
-    "errors": 30,
-    "warnings": 3
+    "errors": 28,
+    "warnings": 1
   }
 }
