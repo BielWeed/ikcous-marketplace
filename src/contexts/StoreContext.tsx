@@ -98,7 +98,10 @@ type TipoColunaStoreConfig =
 // `security/detect-object-injection` aponta (o `in`/`[]` de baixo enxergam
 // o PROTÓTIPO do objeto, não só as chaves próprias). `Map.get` não confunde
 // chave com propriedade herdada.
-export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<string, TipoColunaStoreConfig>([
+export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<
+  string,
+  TipoColunaStoreConfig
+>([
   ["free_shipping_min", "numeric"],
   ["shipping_fee", "numeric"],
   ["local_delivery_fee", "numeric"],
@@ -135,7 +138,9 @@ function normalizarHomeSections(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(normalizarHomeSections);
   if (v && typeof v === "object") {
     const entradasOrdenadas = Object.entries(v as Record<string, unknown>)
-      .sort(([chaveA], [chaveB]) => (chaveA < chaveB ? -1 : chaveA > chaveB ? 1 : 0))
+      .sort(([chaveA], [chaveB]) =>
+        chaveA < chaveB ? -1 : chaveA > chaveB ? 1 : 0,
+      )
       .map(([chave, valor]) => [chave, normalizarHomeSections(valor)] as const);
     return Object.fromEntries(entradasOrdenadas);
   }
@@ -147,7 +152,10 @@ function normalizarHomeSections(v: unknown): unknown {
 // JSON.parse da resposta) nunca é `===` ao array da tela, mesmo com o
 // mesmo conteúdo. `[] === []` é sempre `false`. Por isso a comparação
 // serializa o valor NORMALIZADO -- por valor, recursiva.
-function homeSectionsForamGravadas(enviado: unknown, gravado: unknown): boolean {
+function homeSectionsForamGravadas(
+  enviado: unknown,
+  gravado: unknown,
+): boolean {
   if (!Array.isArray(enviado) || !Array.isArray(gravado)) return false;
   if (enviado.length !== gravado.length) return false;
   return (
