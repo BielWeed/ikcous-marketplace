@@ -29,7 +29,10 @@ import { branding } from "@/config/branding";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { useOrders } from "@/hooks/useOrders";
+import {
+  mensagemAmigavelErroAtualizacaoStatus,
+  useOrders,
+} from "@/hooks/useOrders";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { mapOrderFromDB } from "@/lib/mappers";
@@ -532,6 +535,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     [orders, paymentFilter],
   );
 
+  // `silent` é código morto HOJE: o único chamador real é `OrderDetail`
+  // (`onStatusChange={handleStatusChange}` logo abaixo), e `OrderDetailProps.
+  // onStatusChange` (OrderDetail.tsx) tem assinatura de 2 argumentos, sem
+  // `silent` — nenhum clique de verdade passa `true` aqui. Mantido mesmo
+  // assim (não removido) porque `updateOrderStatus` do hook já aceita e usa
+  // esse parâmetro para outros chamadores (ex.: CheckoutView, no cancelamento
+  // automático) — se um dia esta view ganhar um caminho silencioso próprio
+  // (ex.: sincronização em lote), o guard do catch abaixo já cobre o caso sem
+  // precisar lembrar de adicioná-lo depois.
   const handleStatusChange = async (
     orderId: string,
     newStatus: OrderStatus,
@@ -555,11 +567,25 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     } catch (err: any) {
       haptic.error();
       console.error("[handleStatusChange] Erro ao avançar status:", err);
-      toast.error("Erro ao atualizar status do pedido", {
-        description:
-          err?.message ||
-          "Verifique sua conexão ou se possui permissões de administrador.",
-      });
+      // `useOrders.updateOrderStatus` (catch de useOrders.ts, por volta da
+      // linha 1115) já mostra o PRÓPRIO toast traduzido via
+      // `mensagemAmigavelErroAtualizacaoStatus` sempre que `!silent` — mostrar
+      // de novo aqui, mesmo traduzido, empilharia um SEGUNDO aviso para o
+      // mesmo clique. Antes deste conserto o segundo aviso lia `err?.message`
+      // cru (achado 1 da revisão do commit ec4cbdd): a lojista via a frase
+      // amigável e, por cima, o texto bruto do Postgres/RPC (ex.:
+      // "duplicate key value violates unique constraint
+      // \"marketplace_order_history_pkey\"").
+      //
+      // O toast AQUI só dispara quando `silent` é `true` — a única situação
+      // em que o hook ficou CALADO de propósito, e por isso este seria o
+      // ÚNICO aviso visível. Sem esta ressalva, o caminho `silent` ficaria
+      // sem nenhum aviso de erro.
+      if (silent) {
+        toast.error("Erro ao atualizar status do pedido", {
+          description: mensagemAmigavelErroAtualizacaoStatus(err),
+        });
+      }
       throw err;
     }
 
@@ -1174,14 +1200,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   // de um pedido que existe.
                   <>
                     <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-                      Nenhum pedido corresponde ao que está sendo mostrado
-                      agora
+                      Nenhum pedido corresponde ao que está sendo mostrado agora
                     </h3>
                     <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
                       Pode ser o filtro de status, a busca ou o período
-                      aplicado. Toque em "Todos", no fim da fileira de
-                      filtros, ou limpe a busca e o período para ver todos os
-                      pedidos.
+                      aplicado. Toque em "Todos", no fim da fileira de filtros,
+                      ou limpe a busca e o período para ver todos os pedidos.
                     </p>
                   </>
                 ) : (

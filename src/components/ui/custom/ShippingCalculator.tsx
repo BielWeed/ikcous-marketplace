@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
 import type { CartItem, ShippingOption } from "@/types";
@@ -30,6 +31,25 @@ const SHIPPING_RECALC_DEBOUNCE_MS = 700;
  * causa RECÁLCULO**. Botões parecidos, consequências opostas.
  */
 const SHIPPING_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * As duas frases que `calculateShipping` lança ANTES de chegar ao SDK de
+ * Edge Function (ver `catch` logo abaixo) — escritas pelo PRÓPRIO componente,
+ * já em português. `mensagemAmigavelErroEdgeFunction` (src/lib/mensagens-erro.ts)
+ * as reconhece por comparação de TEXTO EXATO via `mensagensSeguras` e as
+ * deixa passar direto, em vez de as trocar pelo genérico.
+ *
+ * Constantes, não dois literais soltos: até 22/08/2026 esta frase existia
+ * duas vezes no arquivo (aqui e na lista de `mensagensSeguras`), sem nada
+ * amarrando as duas — editar uma sem lembrar da outra fazia quem está
+ * OFFLINE ler "Não foi possível calcular o frete agora. Tente novamente em
+ * instantes." em vez do aviso de conexão, o conselho errado para quem não
+ * tem internet nenhuma. Usar a MESMA constante nos dois lugares torna essa
+ * divergência impossível de compilar, em vez de só impossível de passar num
+ * teste que alguém pode esquecer de rodar.
+ */
+const MENSAGEM_SEM_CONEXAO_FRETE = "Sem conexão com a internet.";
+const MENSAGEM_FALHA_AO_COTAR = "Falha ao cotar frete.";
 
 interface EnvelopeDeCacheDeFrete {
   /** Assinatura do carrinho que gerou esta cotação (mesmo formato de `cartSignature`). */
@@ -226,7 +246,7 @@ export function ShippingCalculator({
 
       // 2. Fallback to Edge Function request
       if (isOffline) {
-        throw new Error("Sem conexão com a internet.");
+        throw new Error(MENSAGEM_SEM_CONEXAO_FRETE);
       }
 
       const { data, error: funcError } = await supabase.functions.invoke(
@@ -236,8 +256,17 @@ export function ShippingCalculator({
         },
       );
 
-      if (funcError || !data || !data.options) {
-        throw new Error(funcError?.message || "Falha ao cotar frete.");
+      if (funcError) {
+        // Relançado sem embrulho: `mensagemAmigavelErroEdgeFunction`, logo
+        // abaixo no `catch`, decide pelo `.name` do próprio erro do SDK
+        // (FunctionsFetchError/FunctionsRelayError/FunctionsHttpError) —
+        // embrulhar aqui em `new Error(...)` perderia esse `.name` e a
+        // tradução cairia sempre no genérico, mesmo quando a causa real é
+        // sabidamente falta de rede.
+        throw funcError;
+      }
+      if (!data || !data.options) {
+        throw new Error(MENSAGEM_FALHA_AO_COTAR);
       }
 
       const calculatedOptions: ShippingOption[] = data.options;
@@ -268,7 +297,16 @@ export function ShippingCalculator({
     } catch (err: any) {
       if (meuId !== reqRef.current) return;
       console.error("Error calculating shipping:", err);
-      setError(err.message || "Erro ao calcular frete.");
+      setError(
+        mensagemAmigavelErroEdgeFunction(err, {
+          mensagensSeguras: [
+            MENSAGEM_SEM_CONEXAO_FRETE,
+            MENSAGEM_FALHA_AO_COTAR,
+          ],
+          mensagemGenerica:
+            "Não foi possível calcular o frete agora. Tente novamente em instantes.",
+        }),
+      );
 
       // COTAÇÃO QUE FALHA NÃO VIRA PREÇO INVENTADO.
       //
