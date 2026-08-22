@@ -64,6 +64,11 @@ vi.mock("@/lib/supabase", () => ({
           passouPorEq = true;
           return construtor;
         },
+        // O query builder do Supabase É thenable por desenho — é isso que faz
+        // `await supabase.from(...).select(...)` funcionar sem `.execute()`.
+        // O dublê precisa desta propriedade para se parecer com o objeto real;
+        // mesmo precedente de admin-layout-cracha-pedidos-pendentes.test.tsx.
+        // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
         then: (resolucao, rejeicao) => {
           Promise.resolve(passouPorEq ? h.respostas[1] : h.respostas[0]).then(
             resolucao,
@@ -119,9 +124,7 @@ describe("getQAStats — falha de consulta nunca vira 'Fila Limpa'", () => {
     hospedeiro.remove();
   });
 
-  const montarECapturar = async (): Promise<
-    () => Promise<QAStatsResult>
-  > => {
+  const montarECapturar = async (): Promise<() => Promise<QAStatsResult>> => {
     // A Sonda REPORTA por callback (mesmo padrão de auth-logout-cleanup.test.tsx:
     // "não por mutação de variável fechada — é isso que react-hooks/globals
     // reprova"). Quem captura é o vi.fn; o teste lê a última chamada.

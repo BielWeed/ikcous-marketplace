@@ -178,12 +178,7 @@ describe("AdminQAView na tela — erro de estatística nunca vira 'Fila Limpa'",
     const { AdminQAView } = await import("@/views/admin/AdminQAView");
 
     await act(async () => {
-      raiz.render(
-        <AdminQAView
-          onNavigate={() => {}}
-          active={true}
-        />,
-      );
+      raiz.render(<AdminQAView onNavigate={() => {}} active={true} />);
     });
     // Deixa fetchStats (promessa assíncrona do dublê) resolver e o React
     // commitar o estado resultante.
@@ -284,9 +279,7 @@ describe("AdminQAView na tela — erro de estatística nunca vira 'Fila Limpa'",
 
     // A lista em si também renderiza de verdade (caminho separado do stats).
     expect(hospedeiro.textContent).toContain("Maria Teste");
-    expect(hospedeiro.textContent).toContain(
-      "Vocês enviam para o interior?",
-    );
+    expect(hospedeiro.textContent).toContain("Vocês enviam para o interior?");
     expect(hospedeiro.textContent).toContain("Pendente");
   });
 });
