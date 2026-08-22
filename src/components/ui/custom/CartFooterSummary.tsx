@@ -92,7 +92,7 @@ export function CartFooterSummary({
               {shipping === 0 && (
                 <div className="flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5">
                   <SparklesIcon className="size-2.5 fill-emerald-500/20 text-emerald-500" />
-                  <span className="text-[8px] font-black uppercase tracking-tighter text-emerald-600">
+                  <span className="text-[8px] font-black uppercase tracking-tighter text-emerald-700">
                     Bônus VIP
                   </span>
                 </div>

@@ -235,7 +235,7 @@ export const OrderList = memo(function OrderList({
                     className={cn(
                       "flex items-center gap-1 px-1.5 py-0.5 rounded-md border transition-all duration-200 group/id",
                       copiedId === order.id
-                        ? "bg-emerald-50 text-emerald-600 border-emerald-200/60"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
                         : "bg-zinc-50/50 border-zinc-100/80 hover:bg-zinc-100/50 text-zinc-500",
                     )}
                   >
