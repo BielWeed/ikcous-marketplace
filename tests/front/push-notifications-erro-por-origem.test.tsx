@@ -116,11 +116,14 @@ describe("usePushNotifications — o erro deixa de ser um catch só para três c
     class PushManagerStub {}
     vi.stubGlobal("PushManager", PushManagerStub);
 
-    class NotificationStub {
-      static permission: NotificationPermission = "default";
-      static requestPermission = requestPermission;
-    }
-    vi.stubGlobal("Notification", NotificationStub);
+    // Objeto, não classe: o código sob teste só lê `Notification.permission`
+    // e chama `Notification.requestPermission()` — nunca faz `new`. Uma
+    // classe com apenas membros estáticos é o mesmo objeto com cerimônia a
+    // mais, e o Biome reprova (`lint/complexity/noStaticOnlyClass`).
+    vi.stubGlobal("Notification", {
+      permission: "default" as NotificationPermission,
+      requestPermission,
+    });
 
     Object.defineProperty(globalThis.navigator, "serviceWorker", {
       value: { ready: Promise.resolve(registration) },
@@ -139,8 +142,9 @@ describe("usePushNotifications — o erro deixa de ser um catch só para três c
     hospedeiro.remove();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
-    // @ts-expect-error limpando o stub de navigator.serviceWorker
-    delete globalThis.navigator.serviceWorker;
+    // `Reflect.deleteProperty` em vez de `delete`: mesmo efeito, e o Biome
+    // reprova o operador (`lint/performance/noDelete`).
+    Reflect.deleteProperty(globalThis.navigator, "serviceWorker");
   });
 
   async function montar() {
@@ -235,7 +239,10 @@ describe("usePushNotifications — o erro deixa de ser um catch só para três c
     const { toast, aoAtualizar } = await montar();
     requestPermission.mockResolvedValue("granted");
     subscribeNoNavegador.mockRejectedValue(
-      new DOMException("Registration failed - push service error", "AbortError"),
+      new DOMException(
+        "Registration failed - push service error",
+        "AbortError",
+      ),
     );
 
     const { subscribe } = ultimoEstado(aoAtualizar)!;
@@ -363,5 +370,4 @@ describe("usePushNotifications — o erro deixa de ser um catch só para três c
     expect(toast.error).not.toHaveBeenCalled();
     expect(toast.success).toHaveBeenCalled();
   });
-
 });
