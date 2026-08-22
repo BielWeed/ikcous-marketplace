@@ -78,13 +78,52 @@ function apagarLiterais(linha: string): string {
   let aspa: string | null = null;
   // profundidade de `${ ... }` dentro de template literal; 0 = texto puro
   let interpolacao = 0;
+  // comentário `//` — vai até o fim da linha (até um `\n`, se houver)
+  let comentarioDeLinha = false;
+  // comentário `/* ... */` — pode atravessar várias linhas quando `linha` é
+  // na verdade um texto já acumulado de várias linhas originais (ver
+  // `agruparChamadasConsole`, que reprocessa o acumulado inteiro nesta mesma
+  // função em vez de contar parênteses linha a linha)
+  let comentarioDeBloco = false;
   for (let i = 0; i < linha.length; i++) {
     // `charAt` e não `linha[i]`: o índice variável dispara o aviso
     // `security/detect-object-injection` do eslint, e a catraca de lint deste
     // projeto tem teto fixo — 2 avisos novos reprovam o CI.
     const c = linha.charAt(i);
     const anterior = i > 0 ? linha.charAt(i - 1) : "";
+    const proximo = i + 1 < linha.length ? linha.charAt(i + 1) : "";
+
+    if (comentarioDeLinha) {
+      if (c === "\n") {
+        comentarioDeLinha = false;
+        fora += c;
+      } else {
+        fora += " ";
+      }
+      continue;
+    }
+    if (comentarioDeBloco) {
+      if (anterior === "*" && c === "/") {
+        comentarioDeBloco = false;
+        fora += c;
+      } else {
+        fora += c === "\n" ? c : " ";
+      }
+      continue;
+    }
     if (aspa === null) {
+      // comentário só começa FORA de string — dentro de aspa, "//" é texto
+      // (é exatamente o caso de uma URL: "http://exemplo.com")
+      if (c === "/" && proximo === "/") {
+        comentarioDeLinha = true;
+        fora += " ";
+        continue;
+      }
+      if (c === "/" && proximo === "*") {
+        comentarioDeBloco = true;
+        fora += " ";
+        continue;
+      }
       if (c === '"' || c === "'" || c === "`") aspa = c;
       fora += c;
       continue;
@@ -105,7 +144,7 @@ function apagarLiterais(linha: string): string {
       aspa = null;
       fora += c;
     } else {
-      fora += " ";
+      fora += c === "\n" ? c : " ";
     }
   }
   return fora;
@@ -180,7 +219,14 @@ function agruparChamadasConsole(
       i++;
       continue;
     }
-    let profundidade = contarParenteses(semTexto);
+    // A profundidade é recontada sobre o TEXTO ACUMULADO (não somada linha a
+    // linha) e usa a MESMA `apagarLiterais` da detecção final, com `\n` real
+    // entre as linhas originais — nunca espaço. É isso que faz o rastreio de
+    // parênteses e `citaDadoDePessoa` pararem de discordar: aspa aberta numa
+    // linha (template literal) e comentário `//` (que só termina no `\n`)
+    // agora carregam estado através de todo o grupo, numa varredura só,
+    // igual à detecção final.
+    let profundidade = contarParenteses(apagarLiterais(linha));
     if (profundidade <= 0) {
       // fechou na própria linha — forma comum, nada a agrupar
       grupos.push({ texto: linha, inicio: i + 1 });
@@ -192,8 +238,8 @@ function agruparChamadasConsole(
     i++;
     while (profundidade > 0 && i < linhas.length) {
       const proxima = linhas.at(i) ?? "";
-      acumulado += ` ${proxima}`;
-      profundidade += contarParenteses(apagarLiterais(proxima));
+      acumulado += `\n${proxima}`;
+      profundidade = contarParenteses(apagarLiterais(acumulado));
       i++;
     }
     grupos.push({ texto: acumulado, inicio });
@@ -281,6 +327,64 @@ Deno.test("agruparChamadasConsole junta chamada multilinha para o detector enxer
   ]);
   assertEquals(grupoInocuo.length, 1);
   assertEquals(citaDadoDePessoa(grupoInocuo[0].texto), null);
+});
+
+/**
+ * CALIBRAGEM ADVERSARIAL (reauditoria de 22/08/2026, achado das duas metades
+ * discordando): o rastreio de profundidade de parênteses em
+ * `agruparChamadasConsole` chamava `apagarLiterais` linha a linha, sem
+ * carregar estado de aspas entre linhas, e sem nunca apagar comentário — só
+ * a detecção final (`citaDadoDePessoa`, que roda sobre o texto já
+ * concatenado) tratava aspas corretamente. As três provas abaixo são os
+ * casos medidos que expunham essa discordância.
+ */
+Deno.test("agruparChamadasConsole não fecha o grupo cedo por parêntese dentro de comentário de linha intermediária", () => {
+  // FALSO NEGATIVO medido: o comentário na linha do meio tem `))`, e o
+  // rastreio antigo contava esses parênteses como se fossem código, fechando
+  // o grupo ANTES de alcançar `profileData.full_name,`. O campo escapava da
+  // varredura inteiro.
+  const grupo = agruparChamadasConsole([
+    "console.log(",
+    '  "before", // nota: fecha errado (parenteses extra aqui: ))',
+    "  profileData.full_name,",
+    ");",
+  ]);
+  assertEquals(grupo.length, 1);
+  assertEquals(citaDadoDePessoa(grupo[0].texto), "full_name");
+});
+
+Deno.test("agruparChamadasConsole não engole o resto do arquivo por parêntese desbalanceado em comentário", () => {
+  // FALSO POSITIVO / engole-arquivo medido: a chamada fecha na PRÓPRIA
+  // linha, mas o comentário à direita tem um "(" sem par. O rastreio antigo
+  // nunca voltava a profundidade ≤0 e juntava todo o resto do arquivo — código
+  // limpo e sem relação nenhuma — num grupo só.
+  const linhas = [
+    'console.log("ok"); // ver (detalhes do fluxo',
+    "const totalDeItensNoCarrinho = 42;",
+    "function outraCoisaQualquer() {",
+    "  return totalDeItensNoCarrinho;",
+    "}",
+  ];
+  const grupos = agruparChamadasConsole(linhas);
+  assertEquals(grupos.length, linhas.length);
+  assertEquals(grupos[0].texto, linhas[0]);
+});
+
+Deno.test("agruparChamadasConsole conta parênteses corretamente através de template literal multilinha", () => {
+  // FALSO POSITIVO medido: a crase de FECHAMENTO na última linha, processada
+  // isoladamente (sem saber que já estava dentro de um template literal
+  // aberto), era lida como ABERTURA de uma nova string — o que apagava o `)`
+  // real da contagem e engolia o que vinha depois.
+  const linhas = [
+    "console.log(`valor:",
+    "${1 + 1}",
+    "fim`);",
+    "function outraCoisaQualquer() {}",
+  ];
+  const grupos = agruparChamadasConsole(linhas);
+  assertEquals(grupos.length, 2);
+  assertEquals(grupos[0].inicio, 1);
+  assertEquals(grupos[1].texto, "function outraCoisaQualquer() {}");
 });
 
 Deno.test("apagarLiterais preserva expressão e apaga texto", () => {
