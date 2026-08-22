@@ -176,6 +176,7 @@ export function useReviews() {
         verified: item.verified,
         helpful: item.helpful,
         createdAt: item.created_at,
+        merchantReply: item.merchant_reply,
       }));
 
       if (latestProductIdRef.current === productId) {
