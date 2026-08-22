@@ -163,7 +163,11 @@ function mensagemParaLojista(erro: unknown, acaoQueFalhou: string): string {
   // Sessão: só quando o próprio token diz que venceu/é inválido (PGRST301 é
   // o código do PostgREST para JWT problemático). Um 401 genérico NÃO entra
   // aqui — pode ser chave de API errada, e "entre novamente" não resolveria.
-  if (/\bjwt\b/i.test(texto) || /session expired/i.test(texto) || codigo === "PGRST301") {
+  if (
+    /\bjwt\b/i.test(texto) ||
+    /session expired/i.test(texto) ||
+    codigo === "PGRST301"
+  ) {
     return "Sua sessão expirou. Entre novamente com sua conta e tente de novo.";
   }
   // Permissão: recusa do Postgres (42501) ou negação de RLS. Não promete que
