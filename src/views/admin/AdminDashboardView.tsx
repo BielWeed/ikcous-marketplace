@@ -147,7 +147,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
         .channel("admin-dashboard-products")
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "products" },
+          { event: "*", schema: "public", table: "produtos" },
           handleDbChange,
         )
         .subscribe();
