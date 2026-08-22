@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 /**
  * Nenhum console.* imprime dado de pessoa — varredura de src/
  *
@@ -37,7 +38,6 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 
 // `fromFileUrl` e não `.pathname`: o caminho deste projeto tem espaços, e o
 // pathname devolve `%20` mais uma barra sobrando no Windows.
@@ -73,7 +73,7 @@ const CAMPOS_DE_PESSOA = [
  * vírgula. Apagar o miolo da crase inteiro deixaria passar metade das formas
  * de vazar — o detector ficaria verde justamente onde o código é mais comum.
  */
-export function apagarLiterais(linha: string): string {
+function apagarLiterais(linha: string): string {
   let fora = "";
   let aspa: string | null = null;
   // profundidade de `${ ... }` dentro de template literal; 0 = texto puro
@@ -112,7 +112,7 @@ export function apagarLiterais(linha: string): string {
 }
 
 /** Acha `.campo` como ACESSO A PROPRIEDADE, fora de string. */
-export function citaDadoDePessoa(linha: string): string | null {
+function citaDadoDePessoa(linha: string): string | null {
   const semTexto = apagarLiterais(linha);
   if (!/console\.(log|warn|error|debug|info|trace)\s*\(/.test(semTexto)) {
     return null;
@@ -122,7 +122,7 @@ export function citaDadoDePessoa(linha: string): string | null {
     // Feito com indexOf em vez de `new RegExp(campo)` porque regex montada de
     // string dispara `security/detect-non-literal-regexp`, e a catraca de lint
     // deste projeto reprova qualquer aviso novo.
-    const alvo = "." + campo;
+    const alvo = `.${campo}`;
     let de = semTexto.indexOf(alvo);
     while (de !== -1) {
       // a borda direita precisa terminar a palavra: `.email` sim,
@@ -133,6 +133,72 @@ export function citaDadoDePessoa(linha: string): string | null {
     }
   }
   return null;
+}
+
+/** Conta parênteses de uma linha já com strings apagadas (sem risco de contar parêntese que está dentro de texto). */
+function contarParenteses(semTexto: string): number {
+  let n = 0;
+  for (const c of semTexto) {
+    if (c === "(") n++;
+    else if (c === ")") n--;
+  }
+  return n;
+}
+
+/**
+ * Agrupa linhas que formam uma única chamada `console.*` quebrada em várias
+ * linhas — é exatamente o que o formatador do projeto produz sozinho para
+ * chamada longa:
+ *
+ *   console.log(
+ *     "[Auth] Profile fetched:",
+ *     profileData.full_name,
+ *   );
+ *
+ * Linha a linha isolada, nenhuma tem `console.` e `.full_name` na mesma
+ * linha, então o detector line-by-line não via nada. Só junta o que abriu
+ * `console.*` sem fechar os parênteses na mesma linha — chamada de qualquer
+ * outra função continua isolada, uma linha por vez, para não arriscar juntar
+ * coisa que não tem nada a ver.
+ */
+function agruparChamadasConsole(
+  linhas: string[],
+): { texto: string; inicio: number }[] {
+  const grupos: { texto: string; inicio: number }[] = [];
+  let i = 0;
+  while (i < linhas.length) {
+    // `.at(i)` e não `linhas[i]`: indexação por variável dispara
+    // security/detect-object-injection, e a catraca de lint deste projeto
+    // não abre exceção para arquivo de teste.
+    const linha = linhas.at(i) ?? "";
+    const semTexto = apagarLiterais(linha);
+    const abreConsole = /console\.(log|warn|error|debug|info|trace)\s*\(/.test(
+      semTexto,
+    );
+    if (!abreConsole) {
+      grupos.push({ texto: linha, inicio: i + 1 });
+      i++;
+      continue;
+    }
+    let profundidade = contarParenteses(semTexto);
+    if (profundidade <= 0) {
+      // fechou na própria linha — forma comum, nada a agrupar
+      grupos.push({ texto: linha, inicio: i + 1 });
+      i++;
+      continue;
+    }
+    const inicio = i + 1;
+    let acumulado = linha;
+    i++;
+    while (profundidade > 0 && i < linhas.length) {
+      const proxima = linhas.at(i) ?? "";
+      acumulado += ` ${proxima}`;
+      profundidade += contarParenteses(apagarLiterais(proxima));
+      i++;
+    }
+    grupos.push({ texto: acumulado, inicio });
+  }
+  return grupos;
 }
 
 function listarArquivos(dir: string): string[] {
@@ -177,10 +243,7 @@ Deno.test("o detector reage ao caso real E discrimina o parecido", () => {
   // Template literal interpolando o campo vaza IGUAL à forma com vírgula, e
   // é a forma mais comum de escrever. Se isto voltar a devolver null, metade
   // das maneiras de vazar passa direto.
-  assertEquals(
-    citaDadoDePessoa("console.log(`perfil: ${p.email}`);"),
-    "email",
-  );
+  assertEquals(citaDadoDePessoa("console.log(`perfil: ${p.email}`);"), "email");
 
   // ...mas o mesmo campo escrito como TEXTO dentro da crase não é vazamento.
   assertEquals(
@@ -190,6 +253,34 @@ Deno.test("o detector reage ao caso real E discrimina o parecido", () => {
 
   // Fora de console.*, não é problema desta varredura.
   assertEquals(citaDadoDePessoa("const nome = profile.full_name;"), null);
+});
+
+Deno.test("agruparChamadasConsole junta chamada multilinha para o detector enxergar", () => {
+  // CONTROLE POSITIVO — a forma que o FORMATADOR do projeto produz sozinho
+  // para chamada longa (é o que AuthContext.tsx:361 vira depois de formatado).
+  // Linha a linha isolada, nenhuma tem `console.` e `.full_name` juntos —
+  // só agrupando as duas o detector vê a mesma coisa do controle positivo
+  // original.
+  const grupoVazando = agruparChamadasConsole([
+    "console.log(",
+    '  "[Auth] Profile fetched:",',
+    "  profileData.full_name,",
+    ");",
+  ]);
+  assertEquals(grupoVazando.length, 1);
+  assertEquals(citaDadoDePessoa(grupoVazando[0].texto), "full_name");
+
+  // CONTROLE NEGATIVO — a MESMA quebra de linha, só que num log inócuo (erro
+  // sem dado de pessoa). Prova que agrupar linhas não passou a acusar TODA
+  // chamada multilinha, só a que carrega campo de pessoa.
+  const grupoInocuo = agruparChamadasConsole([
+    "console.error(",
+    '  "falha ao salvar",',
+    "  err,",
+    ");",
+  ]);
+  assertEquals(grupoInocuo.length, 1);
+  assertEquals(citaDadoDePessoa(grupoInocuo[0].texto), null);
 });
 
 Deno.test("apagarLiterais preserva expressão e apaga texto", () => {
@@ -210,20 +301,22 @@ Deno.test("nenhum console.* em src/ imprime dado de pessoa", () => {
   // do instrumento quebrado, não do código limpo.
   if (arquivos.length < 50) {
     throw new Error(
-      `varredura leu apenas ${arquivos.length} arquivos de src/ — ` +
-        `instrumento quebrado, nao codigo limpo`,
+      `varredura leu apenas ${arquivos.length} arquivos de src/ — instrumento quebrado, nao codigo limpo`,
     );
   }
 
   for (const arquivo of arquivos) {
     const linhas = Deno.readTextFileSync(arquivo).split("\n");
-    linhas.forEach((linha, i) => {
-      const campo = citaDadoDePessoa(linha);
+    const grupos = agruparChamadasConsole(linhas);
+    for (const grupo of grupos) {
+      const campo = citaDadoDePessoa(grupo.texto);
       if (campo) {
         const relativo = arquivo.slice(SRC.length + 1);
-        ofensas.push(`${relativo}:${i + 1} imprime "${campo}" -> ${linha.trim()}`);
+        ofensas.push(
+          `${relativo}:${grupo.inicio} imprime "${campo}" -> ${grupo.texto.trim()}`,
+        );
       }
-    });
+    }
   }
 
   assertEquals(
