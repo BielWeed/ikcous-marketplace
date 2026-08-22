@@ -164,8 +164,14 @@ pedido e o front inteiro têm **zero**. Enquanto o PR #11 não mergear, esses 12
 rodar em lugar nenhum: não há script `test` na `develop` e o `npx knip` classifica o arquivo
 como não utilizado.
 
-E é exatamente no fluxo de dinheiro que a auditoria concentrou o estrago: dos 85 achados, 66
-continuam abertos, e a Onda 1 do ROADMAP é quase inteira carrinho / cupom / frete / checkout.
+E é exatamente no fluxo de dinheiro que a auditoria concentrou o estrago, e a Onda 1 do ROADMAP
+é quase inteira carrinho / cupom / frete / checkout.
+
+> **O número "66 abertos" era de 30/07/2026 e não vale mais para planejar.** A reauditoria de
+> 22/08/2026 mediu, no código de hoje, **51 dos 85 achados: 25 fechados e 26 abertos** — as
+> faixas 26-50 e os 9 de runtime ainda estavam sendo medidos quando isto foi escrito. O estado
+> por achado está em
+> [`../auditoria/2026-08-22-reauditoria-de-julho.md`](../auditoria/2026-08-22-reauditoria-de-julho.md).
 
 **Como funciona para dois.** Exigir TDD em tudo hoje seria exigir uma suíte que não existe e
 um runner de front que ninguém instalou (`INFRA-150`). Então o começo é este, nesta ordem:
@@ -405,7 +411,7 @@ cada uma tem o motivo escrito para que a decisão possa ser revista com base em 
 | **Estimativa em pontos de história** | O backlog já tem tamanho P/M/G e isso basta para caber num cartão. Converter para pontos só acrescenta uma unidade que ninguém sabe calibrar |
 | **Par presencial o dia inteiro** | Assíncrono, lugares diferentes. Substituído pelos três formatos do item 2.3 |
 | **TDD universal** | Não há runner de teste no front (`INFRA-150` está aberta). Exigir TDD em tudo hoje é exigir o impossível, e regra impossível ensina a ignorar regra. Restrito ao fluxo de dinheiro (item 2.4) |
-| **Release a cada ciclo** | A `main` é a loja no ar e há 66 achados de auditoria abertos. Release semanal por calendário aumentaria exposição sem melhorar nada. Release sai quando uma onda do ROADMAP fecha, ou quando um conjunto coeso está testado em preview |
+| **Release a cada ciclo** | A `main` é a loja no ar e ainda há achados de auditoria abertos (estado medido em [`2026-08-22-reauditoria-de-julho.md`](../auditoria/2026-08-22-reauditoria-de-julho.md); o antigo "66" é de 30/07 e não foi remedido desde então). Release semanal por calendário aumentaria exposição sem melhorar nada. Release sai quando uma onda do ROADMAP fecha, ou quando um conjunto coeso está testado em preview |
 | **Dono de módulo formal** | O `CODEOWNERS` já concentra em uma pessoa por necessidade. Formalizar isso como método congelaria o gargalo que o item 2.8 existe para desfazer |
 
 ---
