@@ -838,10 +838,21 @@ export const RealtimeSyncEngine = {
         }
 
         if (outOfDateIds.length > 0) {
-          const { data: rawProducts } = await supabase
+          // Espelha o filtro que `productsQuery` já aplica na consulta de
+          // RESUMO, no começo deste mesmo método. Entre as duas idas à rede
+          // existe uma janela: se um produto for excluído (soft-delete) nesse
+          // intervalo, buscar sem este filtro traz de volta um registro já com
+          // `deleted_at` preenchido -- e o `putMany` o grava no cofre como se
+          // estivesse vivo. A view `vw_produtos_public` já filtra por conta
+          // própria e não expõe a coluna, então o filtro só entra no ramo admin.
+          let detailQuery = supabase
             .from(isAdmin ? "produtos" : ("vw_produtos_public" as any))
             .select("*, product_variants(*)")
             .in("id", outOfDateIds);
+          if (isAdmin) {
+            detailQuery = detailQuery.is("deleted_at", null);
+          }
+          const { data: rawProducts } = await detailQuery;
 
           if (rawProducts) {
             const variantRecord = TABLE_CONFIGS.find(
