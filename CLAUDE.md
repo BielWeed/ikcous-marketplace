@@ -195,15 +195,22 @@ entra no fluxo. Esta tabela é para a faixa do meio.
 
 Duas leituras que enganam:
 
-- **`eslint` tem 553 warnings pré-existentes e 0 erro — os dois são tetos, e os dois reprovam se
+- **`eslint` tem 551 warnings pré-existentes e 0 erro — os dois são tetos, e os dois reprovam se
   subirem.** `scripts/lint-ratchet.mjs` marca `subiu = true` (e sai com `process.exit(1)`) para
   **qualquer** contagem — erro ou warning — que fique acima do teto de `.lint-baseline.json`; não
-  há tratamento especial para warning. O que o teto de 553 acomoda é a dívida **pré-existente**:
+  há tratamento especial para warning. O que o teto de 551 acomoda é a dívida **pré-existente**:
   warning que já existia antes do seu diff não reprova, porque já está contado no teto. Warning
-  **novo** — que faz a contagem passar de 553 — reprova exatamente como erro novo (teto 0). Não
+  **novo** — que faz a contagem passar de 551 — reprova exatamente como erro novo (teto 0). Não
   leia "warning não reprova" como "warning nunca reprova": é "warning dentro do teto não reprova".
-- **`lint:ratchet` acusa Biome acima do teto no Windows por causa de CRLF.** Não é dívida — o
-  próprio script avisa que Biome só é cobrado no CI (Linux).
+  O teto vale é o de `.lint-baseline.json`; se este texto divergir dele, o arquivo é que manda.
+- **`lint:ratchet` acusa Biome acima do teto no Windows por causa de CRLF — e essa explicação
+  verdadeira já escondeu dívida real.** No Windows o `biome check .` acusa ~244 problemas de fim
+  de linha; medido em 22/08/2026 (PR #266, run 32547865905), **16 erros de regra estavam dentro
+  desse ruído** e vinham sendo descartados junto com ele. Ruído explicado é pior que ruído
+  estranho: entrega uma justificativa pronta que dispensa olhar. Meça a parte que o CRLF não
+  cobre — a receita está em `~/.claude/mural/core_app_mkt/_REGRAS.md`, e ela é obrigatória para
+  arquivo **novo**, que nenhum atalho enxerga. Biome só reprova no CI (Linux), mas o que ele
+  reprova lá é medível aqui.
 
 ### Quanto da verificação pedir a um subagente
 
