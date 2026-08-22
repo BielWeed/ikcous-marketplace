@@ -302,7 +302,8 @@ export const AdminShippingView = memo(function AdminShippingView({
       setTestResult({
         success: false,
         message: mensagemAmigavelErroEdgeFunction(err, {
-          mensagemGenerica: "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+          mensagemGenerica:
+            "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
         }),
       });
       toast.error("Erro ao testar credenciais");
@@ -1265,23 +1266,22 @@ export const AdminShippingView = memo(function AdminShippingView({
                     // não conseguiu cotar precisa saber que o histórico não
                     // carregou, não achar que ele está genuinamente limpo.
                     <div className="py-4 text-center text-xs font-semibold text-red-400">
-                      Não foi possível carregar o histórico de cotações.
-                      Tente novamente em "Atualizar".
+                      Não foi possível carregar o histórico de cotações. Tente
+                      novamente em "Atualizar".
                     </div>
                   ) : logs.length === 0 &&
-                    (config?.shippingProvider || "flat_fee") ===
-                      "flat_fee" ? (
+                    (config?.shippingProvider || "flat_fee") === "flat_fee" ? (
                     // Com Taxa Única Fixa a edge function responde o frete
                     // na hora, sem consultar transportadora — por isso este
                     // histórico fica em zero por desenho, não porque
                     // ninguém tentou calcular frete. Ele volta a receber
                     // linhas se a loja trocar para Melhor Envio ou Frenet.
                     <p className="py-4 text-center text-xs text-zinc-400">
-                      Nenhuma cotação para mostrar: com a Taxa Única Fixa o
-                      app já responde o frete direto, sem consultar
-                      transportadora, então não existe cotação para
-                      registrar aqui. Este histórico passa a receber linhas
-                      se a loja trocar para Melhor Envio ou Frenet.
+                      Nenhuma cotação para mostrar: com a Taxa Única Fixa o app
+                      já responde o frete direto, sem consultar transportadora,
+                      então não existe cotação para registrar aqui. Este
+                      histórico passa a receber linhas se a loja trocar para
+                      Melhor Envio ou Frenet.
                     </p>
                   ) : logs.length === 0 ? (
                     <p className="py-4 text-center text-xs italic text-zinc-500">

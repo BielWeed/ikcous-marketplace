@@ -100,9 +100,9 @@ describe("AdminShippingView — erro ao testar credenciais de frete sai traduzid
   }
 
   function clicarTestar() {
-    const botaoTestar = Array.from(
-      hospedeiro.querySelectorAll("button"),
-    ).find((b) => b.textContent?.trim() === "Testar") as HTMLButtonElement;
+    const botaoTestar = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Testar",
+    ) as HTMLButtonElement;
     expect(botaoTestar).toBeTruthy();
     return act(async () => {
       botaoTestar.click();

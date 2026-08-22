@@ -75,11 +75,11 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
 
-import { mensagemAmigavelErroAtualizacaoStatus, useOrders } from "@/hooks/useOrders";
 import {
-  mensagemAmigavelErroProduto,
-  useProducts,
-} from "@/hooks/useProducts";
+  mensagemAmigavelErroAtualizacaoStatus,
+  useOrders,
+} from "@/hooks/useOrders";
+import { mensagemAmigavelErroProduto, useProducts } from "@/hooks/useProducts";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -180,9 +180,7 @@ describe("updateOrderStatus toasta a versão traduzida, nunca o err.message cru 
     });
     const { updateOrderStatus } = useOrders(false, true);
 
-    await expect(
-      updateOrderStatus("order-1", "shipping"),
-    ).rejects.toThrow();
+    await expect(updateOrderStatus("order-1", "shipping")).rejects.toThrow();
 
     expect(toast.error).toHaveBeenCalledTimes(1);
     const mensagemMostrada = String(vi.mocked(toast.error).mock.calls[0][0]);
