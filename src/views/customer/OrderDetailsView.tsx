@@ -1,10 +1,18 @@
+import { paymentStatusKey } from "@/components/admin/orders/OrderStatusBadge";
+import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { ReviewForm } from "@/components/ui/custom/ReviewForm";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrders } from "@/hooks/useOrders";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import type { Order, OrderItem, OrderStatus, View } from "@/types";
+import type {
+  Order,
+  OrderItem,
+  OrderStatus,
+  PaymentStatus,
+  View,
+} from "@/types";
 import { haptic } from "@/utils/haptic";
 import { motion } from "framer-motion";
 import {
@@ -80,6 +88,60 @@ const statusConfig: Record<
     description: "Este pedido foi cancelado e não seguirá para entrega.",
   },
 };
+
+/**
+ * Só o estado `pending` (esteira do pedido) muda de texto conforme o
+ * `payment_status` (se o dinheiro entrou) — processing/shipping/delivered/
+ * cancelled continuam com a description fixa do `statusConfig`, porque a
+ * esteira já avançou e a pergunta "o dinheiro entrou?" já foi respondida
+ * pela lojista. É por isso que este é um `switch` pequeno em cima de
+ * `paymentStatusKey` (a ÚNICA fonte que decide "null vira sem_cobranca"),
+ * não um segundo emaranhado de `if` dentro de `statusConfig`.
+ *
+ * `aguardando` e `sem_cobranca` caem no `default`: devolvem o texto que já
+ * estava certo, sem mudar uma vírgula.
+ */
+function pendingDescription(
+  paymentStatus: PaymentStatus | null | undefined,
+): string {
+  const key = paymentStatusKey(paymentStatus);
+  switch (key) {
+    case "pago":
+    case "pago_apos_expirar":
+      return "Pagamento confirmado. A loja vai iniciar a separação.";
+    case "recusado":
+      return "O pagamento não foi aprovado. Tente novamente ou fale com a loja.";
+    case "expirado":
+      return "O prazo de pagamento venceu. Fale com a loja para gerar um novo.";
+    case "estornado":
+      return "O pagamento foi estornado. Fale com a loja.";
+    default:
+      return statusConfig.pending.description;
+  }
+}
+
+/**
+ * `cancelled` (esteira) quase sempre significa "não seguirá para entrega",
+ * mas há um par real que a produção gera (rastreado no SQL,
+ * `20260810000000_confirmar_pagamento_guarda_status.sql`, ~118-120 e
+ * ~173-176): `pago` e `pago_apos_expirar` também aparecem com
+ * `status='cancelled'` quando o cliente pagou o PIX depois que a reserva
+ * venceu ou depois que a lojista cancelou. O estoque já voltou, o pedido está
+ * morto, mas o dinheiro está com a loja — a description fixa de "cancelado,
+ * não seguirá para entrega" escondia isso do comprador. Mesma forma de
+ * `pendingDescription`: função pequena em cima de `paymentStatusKey`, os
+ * demais casos de `cancelled` mantêm o texto de `statusConfig` sem mudar uma
+ * vírgula.
+ */
+function cancelledDescription(
+  paymentStatus: PaymentStatus | null | undefined,
+): string {
+  const key = paymentStatusKey(paymentStatus);
+  if (key === "pago" || key === "pago_apos_expirar") {
+    return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
+  }
+  return statusConfig.cancelled.description;
+}
 
 export function OrderDetailsView({
   orderId,
@@ -279,6 +341,12 @@ export function OrderDetailsView({
 
   const currentStatus = statusConfig[order.status as OrderStatus];
   const StatusIcon = currentStatus.icon;
+  const statusDescription =
+    order.status === "pending"
+      ? pendingDescription(order.paymentStatus)
+      : order.status === "cancelled"
+        ? cancelledDescription(order.paymentStatus)
+        : currentStatus.description;
 
   return (
     <div className="pb-customer min-h-full bg-zinc-50/50">
@@ -370,7 +438,7 @@ export function OrderDetailsView({
                 {currentStatus.label}
               </h3>
               <p className="text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
-                {currentStatus.description}
+                {statusDescription}
               </p>
             </div>
           </div>
@@ -573,21 +641,13 @@ export function OrderDetailsView({
               </div>
             )}
             <div className="my-3 h-px bg-zinc-100" />
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col">
-                <span className="mb-0.5 text-[8px] font-black uppercase tracking-wider text-zinc-400">
-                  Total Consolidado
-                </span>
-                <span className="text-xl font-black uppercase italic tracking-tight text-zinc-950">
-                  R$ {order.total.toFixed(2).replace(".", ",")}
-                </span>
-              </div>
-              <div className="text-emerald-750 inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-1.5">
-                <CheckCircle className="size-3.5 text-emerald-600" />
-                <span className="text-[8px] font-black uppercase tracking-wider text-emerald-700">
-                  Confirmado
-                </span>
-              </div>
+            <div className="flex flex-col">
+              <span className="mb-0.5 text-[8px] font-black uppercase tracking-wider text-zinc-400">
+                Total Consolidado
+              </span>
+              <span className="text-xl font-black uppercase italic tracking-tight text-zinc-950">
+                R$ {order.total.toFixed(2).replace(".", ",")}
+              </span>
             </div>
           </div>
         </motion.div>
@@ -638,12 +698,7 @@ export function OrderDetailsView({
                     ? "Cartão de Crédito"
                     : order.paymentMethod}
                 </p>
-                <div className="inline-flex items-center gap-1.5 rounded-full border border-zinc-100 bg-zinc-50 px-2.5 py-1">
-                  <div className="size-1 rounded-full bg-zinc-400" />
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">
-                    Confirmado via Gateway
-                  </span>
-                </div>
+                <CustomerPaymentBadge paymentStatus={order.paymentStatus} />
               </div>
             </div>
           </div>
