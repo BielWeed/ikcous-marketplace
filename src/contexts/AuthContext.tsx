@@ -357,8 +357,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             return prev;
           return profileData;
         });
-        if (profileData)
-          console.log("[Auth] Profile fetched:", profileData.full_name);
+        // O nome NAO entra no log: sao 540 `console.*` no projeto e quase
+        // nenhum sob guarda, entao isto ia para producao — qualquer pessoa que
+        // abrisse o console na loja lia o nome completo de quem acabara de
+        // entrar. Saber QUE o perfil chegou basta para depurar; saber de quem
+        // e' dado de cliente na tela de um estranho.
+        if (profileData && import.meta.env.DEV)
+          console.log("[Auth] Profile fetched");
       } else if (error) {
         console.error("[Auth] Error fetching profile:", error);
       }

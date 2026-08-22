@@ -1,0 +1,221 @@
+// @ts-nocheck
+/**
+ * Nenhum console.* imprime dado de pessoa — varredura de src/
+ *
+ * O DEFEITO QUE ESTE TESTE FECHA (reauditoria de 22/08/2026, achado R8):
+ * `src/contexts/AuthContext.tsx:361` fazia
+ *
+ *   console.log("[Auth] Profile fetched:", profileData.full_name);
+ *
+ * Isso vai para PRODUÇÃO: são 540 `console.*` no projeto e apenas 5 sob guarda
+ * `import.meta.env.DEV`. Qualquer pessoa que abrisse o console do navegador na
+ * loja lia o NOME COMPLETO do cliente que acabara de entrar. Não é log ruidoso:
+ * é dado de pessoa exposto a quem passar por ali.
+ *
+ * POR QUE UM TESTE DE VARREDURA, E NÃO UM TESTE DA TELA: o defeito é de CLASSE,
+ * não de instância. Consertar a linha 361 não impede a próxima pessoa de
+ * escrever `console.log("user:", u.email)` em outro arquivo na semana que vem.
+ * O que protege é a varredura, e ela custa milissegundos.
+ *
+ * A ARMADILHA QUE QUASE ME PEGOU, e por isso o teste de calibragem existe:
+ * o extrator ingênuo procura o nome do campo na linha inteira, e acusa
+ *
+ *   console.error("Error fetching orders by whatsapp:", err);   // useOrders.ts:1158
+ *
+ * que é código CORRETO — "whatsapp" está no TEXTO da mensagem, não é um valor.
+ * Um detector assim reprovaria trabalho bom e seria desligado no primeiro dia.
+ * Por isso a varredura **apaga as strings literais antes de procurar**: o que
+ * sobra é só expressão de verdade.
+ *
+ * Um detector precisa provar as DUAS coisas — que reage ao caso real e que
+ * discrimina o parecido. As duas provas estão no primeiro teste, e elas rodam
+ * na MESMA rodada da varredura: se algum dia o extrator quebrar e passar a
+ * devolver zero, o teste de calibragem cai junto, em vez de a varredura ficar
+ * verde por não estar medindo nada.
+ */
+import {
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
+
+// `fromFileUrl` e não `.pathname`: o caminho deste projeto tem espaços, e o
+// pathname devolve `%20` mais uma barra sobrando no Windows.
+const SRC = fromFileUrl(new URL("../src", import.meta.url));
+
+/**
+ * Campos que identificam uma pessoa. Não entra aqui o que é só id opaco
+ * (`user_id`, `order_id`): eles não dizem quem a pessoa é para quem lê o
+ * console, e incluí-los encheria a varredura de ruído até alguém desligá-la.
+ */
+const CAMPOS_DE_PESSOA = [
+  "full_name",
+  "fullName",
+  "email",
+  "phone",
+  "telefone",
+  "whatsapp",
+  "cpf",
+  "birth_date",
+  "customer_name",
+];
+
+/**
+ * Apaga o conteúdo de strings literais, preservando o comprimento da linha
+ * para que a coluna continue fazendo sentido em quem for ler o erro.
+ * Cobre aspas duplas, simples e template literal.
+ *
+ * O que sobra depois disto é expressão: `obj.email` sobrevive,
+ * `"erro de email"` vira `"            "`.
+ *
+ * A INTERPOLAÇÃO DE TEMPLATE LITERAL É PRESERVADA, e isso não é detalhe:
+ * `console.log(`perfil: ${p.email}`)` vaza exatamente igual à forma com
+ * vírgula. Apagar o miolo da crase inteiro deixaria passar metade das formas
+ * de vazar — o detector ficaria verde justamente onde o código é mais comum.
+ */
+export function apagarLiterais(linha: string): string {
+  let fora = "";
+  let aspa: string | null = null;
+  // profundidade de `${ ... }` dentro de template literal; 0 = texto puro
+  let interpolacao = 0;
+  for (let i = 0; i < linha.length; i++) {
+    const c = linha[i];
+    const anterior = i > 0 ? linha[i - 1] : "";
+    if (aspa === null) {
+      if (c === '"' || c === "'" || c === "`") aspa = c;
+      fora += c;
+      continue;
+    }
+    // dentro de template literal, `${` abre uma janela de expressão
+    if (aspa === "`" && c === "$" && linha[i + 1] === "{") {
+      interpolacao++;
+      fora += c;
+      continue;
+    }
+    if (interpolacao > 0) {
+      if (c === "}") interpolacao--;
+      fora += c; // expressão preservada
+      continue;
+    }
+    // barra invertida escapa a aspa e não fecha a string
+    if (c === aspa && anterior !== "\\") {
+      aspa = null;
+      fora += c;
+    } else {
+      fora += " ";
+    }
+  }
+  return fora;
+}
+
+/** Acha `.campo` como ACESSO A PROPRIEDADE, fora de string. */
+export function citaDadoDePessoa(linha: string): string | null {
+  const semTexto = apagarLiterais(linha);
+  if (!/console\.(log|warn|error|debug|info|trace)\s*\(/.test(semTexto)) {
+    return null;
+  }
+  for (const campo of CAMPOS_DE_PESSOA) {
+    // ponto obrigatório antes: queremos `algo.email`, nunca a palavra solta
+    const re = new RegExp("\\.\\s*" + campo + "\\b");
+    if (re.test(semTexto)) return campo;
+  }
+  return null;
+}
+
+function listarArquivos(dir: string): string[] {
+  const achados: string[] = [];
+  for (const entrada of Deno.readDirSync(dir)) {
+    const caminho = `${dir}/${entrada.name}`;
+    if (entrada.isDirectory) {
+      achados.push(...listarArquivos(caminho));
+    } else if (/\.(ts|tsx)$/.test(entrada.name)) {
+      achados.push(caminho);
+    }
+  }
+  return achados;
+}
+
+Deno.test("o detector reage ao caso real E discrimina o parecido", () => {
+  // CONTROLE POSITIVO — a forma que vazou de verdade, em AuthContext.tsx:361.
+  // Se isto não acusar, a varredura abaixo não está medindo nada.
+  assertEquals(
+    citaDadoDePessoa(
+      '          console.log("[Auth] Profile fetched:", profileData.full_name);',
+    ),
+    "full_name",
+  );
+
+  // CONTROLE NEGATIVO — código CORRETO de useOrders.ts:1158. A palavra
+  // "whatsapp" está no texto da mensagem; o valor logado é o erro, não a
+  // pessoa. Um detector que acusa isto reprova trabalho bom.
+  assertEquals(
+    citaDadoDePessoa(
+      '        console.error("Error fetching orders by whatsapp:", err);',
+    ),
+    null,
+  );
+
+  // A mensagem pode citar o campo desde que o VALOR não vá junto.
+  assertEquals(
+    citaDadoDePessoa('console.warn("email invalido informado pelo usuario");'),
+    null,
+  );
+
+  // Template literal interpolando o campo vaza IGUAL à forma com vírgula, e
+  // é a forma mais comum de escrever. Se isto voltar a devolver null, metade
+  // das maneiras de vazar passa direto.
+  assertEquals(
+    citaDadoDePessoa("console.log(`perfil: ${p.email}`);"),
+    "email",
+  );
+
+  // ...mas o mesmo campo escrito como TEXTO dentro da crase não é vazamento.
+  assertEquals(
+    citaDadoDePessoa("console.log(`falha ao validar email do cliente`);"),
+    null,
+  );
+
+  // Fora de console.*, não é problema desta varredura.
+  assertEquals(citaDadoDePessoa("const nome = profile.full_name;"), null);
+});
+
+Deno.test("apagarLiterais preserva expressão e apaga texto", () => {
+  const dentro = apagarLiterais('f("email do cliente", u.email)');
+  // o texto sumiu...
+  assertEquals(dentro.includes("email do cliente"), false);
+  // ...e a expressão ficou
+  assertStringIncludes(dentro, "u.email");
+  // o comprimento não muda, para a coluna continuar válida
+  assertEquals(dentro.length, 'f("email do cliente", u.email)'.length);
+});
+
+Deno.test("nenhum console.* em src/ imprime dado de pessoa", () => {
+  const ofensas: string[] = [];
+  const arquivos = listarArquivos(SRC);
+
+  // Âncora: se a listagem devolver quase nada, o resultado "0 ofensas" é
+  // do instrumento quebrado, não do código limpo.
+  if (arquivos.length < 50) {
+    throw new Error(
+      `varredura leu apenas ${arquivos.length} arquivos de src/ — ` +
+        `instrumento quebrado, nao codigo limpo`,
+    );
+  }
+
+  for (const arquivo of arquivos) {
+    const linhas = Deno.readTextFileSync(arquivo).split("\n");
+    linhas.forEach((linha, i) => {
+      const campo = citaDadoDePessoa(linha);
+      if (campo) {
+        const relativo = arquivo.slice(SRC.length + 1);
+        ofensas.push(`${relativo}:${i + 1} imprime "${campo}" -> ${linha.trim()}`);
+      }
+    });
+  }
+
+  assertEquals(
+    ofensas,
+    [],
+    `console.* imprimindo dado de pessoa (vai para producao):\n${ofensas.join("\n")}`,
+  );
+});
