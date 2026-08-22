@@ -32,6 +32,25 @@ const SHIPPING_RECALC_DEBOUNCE_MS = 700;
  */
 const SHIPPING_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 
+/**
+ * As duas frases que `calculateShipping` lança ANTES de chegar ao SDK de
+ * Edge Function (ver `catch` logo abaixo) — escritas pelo PRÓPRIO componente,
+ * já em português. `mensagemAmigavelErroEdgeFunction` (src/lib/mensagens-erro.ts)
+ * as reconhece por comparação de TEXTO EXATO via `mensagensSeguras` e as
+ * deixa passar direto, em vez de as trocar pelo genérico.
+ *
+ * Constantes, não dois literais soltos: até 22/08/2026 esta frase existia
+ * duas vezes no arquivo (aqui e na lista de `mensagensSeguras`), sem nada
+ * amarrando as duas — editar uma sem lembrar da outra fazia quem está
+ * OFFLINE ler "Não foi possível calcular o frete agora. Tente novamente em
+ * instantes." em vez do aviso de conexão, o conselho errado para quem não
+ * tem internet nenhuma. Usar a MESMA constante nos dois lugares torna essa
+ * divergência impossível de compilar, em vez de só impossível de passar num
+ * teste que alguém pode esquecer de rodar.
+ */
+const MENSAGEM_SEM_CONEXAO_FRETE = "Sem conexão com a internet.";
+const MENSAGEM_FALHA_AO_COTAR = "Falha ao cotar frete.";
+
 interface EnvelopeDeCacheDeFrete {
   /** Assinatura do carrinho que gerou esta cotação (mesmo formato de `cartSignature`). */
   assinatura: string;
@@ -227,7 +246,7 @@ export function ShippingCalculator({
 
       // 2. Fallback to Edge Function request
       if (isOffline) {
-        throw new Error("Sem conexão com a internet.");
+        throw new Error(MENSAGEM_SEM_CONEXAO_FRETE);
       }
 
       const { data, error: funcError } = await supabase.functions.invoke(
@@ -247,7 +266,7 @@ export function ShippingCalculator({
         throw funcError;
       }
       if (!data || !data.options) {
-        throw new Error("Falha ao cotar frete.");
+        throw new Error(MENSAGEM_FALHA_AO_COTAR);
       }
 
       const calculatedOptions: ShippingOption[] = data.options;
@@ -280,7 +299,10 @@ export function ShippingCalculator({
       console.error("Error calculating shipping:", err);
       setError(
         mensagemAmigavelErroEdgeFunction(err, {
-          mensagensSeguras: ["Sem conexão com a internet.", "Falha ao cotar frete."],
+          mensagensSeguras: [
+            MENSAGEM_SEM_CONEXAO_FRETE,
+            MENSAGEM_FALHA_AO_COTAR,
+          ],
           mensagemGenerica:
             "Não foi possível calcular o frete agora. Tente novamente em instantes.",
         }),
