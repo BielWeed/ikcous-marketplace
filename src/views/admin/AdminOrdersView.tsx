@@ -1432,7 +1432,10 @@ const AdminOrderCard = memo(function AdminOrderCard({
           </div>
           <div className="flex flex-col items-end gap-1.5">
             <OrderStatusBadge status={order.status} />
-            <PaymentStatusBadge paymentStatus={order.paymentStatus} />
+            <PaymentStatusBadge
+              paymentStatus={order.paymentStatus}
+              orderStatus={order.status}
+            />
           </div>
         </div>
 
@@ -1562,7 +1565,10 @@ const AdminOrderCard = memo(function AdminOrderCard({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <OrderStatusBadge status={order.status} />
-          <PaymentStatusBadge paymentStatus={order.paymentStatus} />
+          <PaymentStatusBadge
+            paymentStatus={order.paymentStatus}
+            orderStatus={order.status}
+          />
         </div>
       </div>
 

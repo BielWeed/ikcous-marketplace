@@ -171,7 +171,10 @@ function OrderHeader({
                 Pedido{" "}
                 <span className="text-admin-gold">#{orderId.slice(-6)}</span>
               </h1>
-              <PaymentStatusBadge paymentStatus={paymentStatus} />
+              <PaymentStatusBadge
+                paymentStatus={paymentStatus}
+                orderStatus={orderStatus}
+              />
             </div>
           </div>
         </div>
@@ -576,7 +579,10 @@ function OrderFinanceCard({ order }: Readonly<OrderFinanceCardProps>) {
                 <p className="text-[8px] font-black uppercase leading-none tracking-widest text-zinc-500">
                   Liquidação
                 </p>
-                <PaymentStatusBadge paymentStatus={order.paymentStatus} />
+                <PaymentStatusBadge
+                  paymentStatus={order.paymentStatus}
+                  orderStatus={order.status}
+                />
               </div>
               <p className="mt-1 truncate text-xs font-bold uppercase tracking-tight text-white">
                 {getPaymentMethodLabel(order.paymentMethod)}
