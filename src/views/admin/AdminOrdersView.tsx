@@ -535,6 +535,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     [orders, paymentFilter],
   );
 
+  // `silent` é código morto HOJE: o único chamador real é `OrderDetail`
+  // (`onStatusChange={handleStatusChange}` logo abaixo), e `OrderDetailProps.
+  // onStatusChange` (OrderDetail.tsx) tem assinatura de 2 argumentos, sem
+  // `silent` — nenhum clique de verdade passa `true` aqui. Mantido mesmo
+  // assim (não removido) porque `updateOrderStatus` do hook já aceita e usa
+  // esse parâmetro para outros chamadores (ex.: CheckoutView, no cancelamento
+  // automático) — se um dia esta view ganhar um caminho silencioso próprio
+  // (ex.: sincronização em lote), o guard do catch abaixo já cobre o caso sem
+  // precisar lembrar de adicioná-lo depois.
   const handleStatusChange = async (
     orderId: string,
     newStatus: OrderStatus,
