@@ -40,7 +40,8 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 export function AccountSettingsView() {
-  const { user, profile, fetchProfile, updateProfile } = useAuth();
+  const { user, profile, fetchProfile, updateProfile, updatePassword } =
+    useAuth();
   const [loading, setLoading] = useState(false);
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [activeTab, setActiveTab] = useState<"profile" | "security">("profile");
@@ -298,19 +299,51 @@ export function AccountSettingsView() {
 
     setUpdatingPassword(true);
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: passwordData.newPassword,
+      // A mensagem por causa (senha fraca, senha repetida, sessão pedindo
+      // login de novo etc.) já é traduzida dentro de `updatePassword`
+      // (AuthContext.tsx) — inclusive o toast de sucesso e o de erro. Chamar
+      // `supabase.auth.updateUser` direto aqui duplicava essa tradução e
+      // deixava a mensagem crua do GoTrue (`error.message` em inglês)
+      // vazar para quem só quer trocar a senha.
+      const success = await updatePassword(passwordData.newPassword);
+      if (success) {
+        setPasswordData({ newPassword: "", confirmPassword: "" });
+      }
+    } catch (error) {
+      // `updatePassword` (AuthContext.tsx) não tem try/catch próprio em
+      // volta de `supabase.auth.updateUser`: se o PUT no GoTrue tiver
+      // sucesso — a senha JÁ trocou no servidor — e só a gravação da
+      // sessão nova no storage falhar depois (ex.: `QuotaExceededError` do
+      // `localStorage`, comum no Safari/iOS com a cota cheia), a promessa
+      // REJEITA mesmo assim. Sem este `catch`, a rejeição virava promessa
+      // não tratada (React não trata o retorno de um handler de evento) e
+      // a pessoa não via nada — nem sucesso, nem erro — com a senha antiga
+      // já morta.
+      //
+      // A frase não pode dizer "não foi possível alterar": mentiria no
+      // caso em que a senha já mudou. Ela também não pode mandar "entrar
+      // novamente": a pessoa está LOGADA em Conta > Segurança, e sair é o
+      // movimento mais arriscado possível nesse estado — além de tirá-la da
+      // única tela onde a senha nova, ainda preenchida no formulário,
+      // continua visível.
+      //
+      // A saída verificada: tocar em "Atualizar Senha" de novo, com os
+      // campos como estão, resolve a ambiguidade em UMA tentativa, sem sair
+      // da conta e sem digitar nada. Confirmado nas duas pontas — doc do
+      // Supabase ("A user that is updating their password must use a
+      // different password than the one currently used") e
+      // @supabase/auth-js@2.110.1 (GoTrueClient.js:2829-2833: erro do
+      // servidor lança ANTES de `_saveSession`, então a segunda tentativa
+      // não pode cair no mesmo erro de storage) — e `AuthContext.tsx` já
+      // traduz `same_password` para "A nova senha precisa ser diferente da
+      // senha atual.": se a troca já tinha acontecido, é essa confirmação
+      // que a pessoa vê; se não tinha, a troca acontece agora.
+      console.error("Erro inesperado ao trocar senha:", error);
+      toast.error("Não conseguimos confirmar se a sua senha foi alterada.", {
+        description:
+          "Toque em Atualizar Senha de novo, sem mudar os campos: se aparecer que a nova senha precisa ser diferente da atual, é porque a troca já deu certo. Se precisar entrar de novo, use a senha nova — e, se ela não funcionar, a antiga.",
+        duration: 10000,
       });
-
-      if (error) throw error;
-
-      toast.success("Senha alterada com sucesso!");
-      setPasswordData({ newPassword: "", confirmPassword: "" });
-    } catch (error: any) {
-      console.error("Password update error:", error);
-      toast.error(
-        `Erro ao alterar senha: ${error.message || "Erro inesperado"}`,
-      );
     } finally {
       setUpdatingPassword(false);
     }

@@ -1,3 +1,8 @@
+import {
+  type LoginAudience,
+  MENSAGEM_ERRO_LOGIN_GENERICA,
+  MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA,
+} from "@/lib/mensagens-auth";
 import { supabase } from "@/lib/supabase";
 import type { Session, User } from "@supabase/supabase-js";
 import {
@@ -28,6 +33,16 @@ export interface ResetPasswordResult {
 // continua existindo, derivado: `adminStatus === "admin"`.
 export type AdminStatus = "unknown" | "admin" | "not-admin";
 
+// A1-fix4 — `MENSAGEM_ERRO_LOGIN_GENERICA`, `MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA`
+// e o tipo `LoginAudience` moraram aqui até este arquivo importar
+// `@/lib/supabase` (que instancia um cliente Supabase real em tempo de
+// import) arrastar essa dependência para todo teste que só queria ler uma
+// frase de texto — via este arquivo — e estourar "Web Worker is not
+// supported" no jsdom. Agora vivem em `@/lib/mensagens-auth.ts`, um módulo
+// sem nenhum import de runtime; o histórico de decisão de cada frase (por
+// que "fale com a loja" não serve para o lojista, por que `user_banned` é
+// 400 e não 403, por que `audience` é obrigatório sem default) está lá.
+
 interface AuthContextType {
   session: Session | null;
   user: User | null;
@@ -38,6 +53,7 @@ interface AuthContextType {
   login: (
     email: string,
     senha: string,
+    audience: LoginAudience,
   ) => Promise<{ success: boolean; error?: any }>;
   signUp: (
     email: string,
@@ -636,6 +652,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     async (
       email: string,
       senha: string,
+      audience: LoginAudience,
     ): Promise<{ success: boolean; error?: any }> => {
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -649,17 +666,42 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // precisam concordar, senão o usuário lê duas frases diferentes para
         // o mesmo erro. A ORDEM importa: o Supabase devolve status 400 tanto
         // para "Invalid login credentials" quanto para "Email not
-        // confirmed" (doc oficial), então o caso de e-mail não confirmado
-        // tem que ser checado ANTES do 400 genérico — checado depois nunca é
-        // alcançado.
+        // confirmed" quanto para "User is banned" (conferido na fonte do
+        // GoTrue), então os casos de e-mail não confirmado e de conta
+        // banida têm que ser checados ANTES do 400 genérico — checados
+        // depois nunca são alcançados.
         console.error("[Auth] Erro ao entrar:", error.message);
-        let message = "Não foi possível entrar. Tente novamente.";
+        // A1-fix2/A1-fix3 — o ramo genérico escolhe a frase pela AUDIÊNCIA
+        // de quem chamou (ver comentário de
+        // `MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA` em `@/lib/mensagens-auth.ts`,
+        // não mais aqui — A1-fix4 moveu as duas constantes). `audience` é
+        // OBRIGATÓRIO (sem default): AdminLoginView.tsx passa `"admin"`;
+        // AuthView.tsx (cliente) passa `"customer"` explicitamente.
+        let message =
+          audience === "admin"
+            ? MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA
+            : MENSAGEM_ERRO_LOGIN_GENERICA;
         if (
           error.code === "email_not_confirmed" ||
           error.message?.includes("Email not confirmed")
         ) {
           message =
             "Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada.";
+        } else if (
+          error.code === "user_banned" ||
+          error.message?.includes("User is banned")
+        ) {
+          // A1-fix3 (achado BLOQUEANTE) — PRECISA vir antes do `else if
+          // (error.status === 400 ...)` abaixo. `user_banned` é HTTP 400
+          // (conferido na fonte do GoTrue, ver comentário de
+          // `MENSAGEM_ERRO_LOGIN_GENERICA` em `@/lib/mensagens-auth.ts`, não
+          // mais aqui — A1-fix4 moveu a constante); sem este ramo explícito,
+          // o `status === 400` genérico capturava `user_banned` e a pessoa
+          // com a SENHA CERTA lia "E-mail ou senha incorretos" para sempre.
+          // `message` fica a genérica-por-audiência já atribuída acima —
+          // decisão tomada, não reabrir: o GoTrue já devolve `code:
+          // "user_banned"` no corpo da resposta (visível nas ferramentas do
+          // navegador), então a fronteira do vazamento é a API, não a tela.
         } else if (
           error.status === 400 ||
           error.message?.includes("Invalid login credentials")
@@ -811,11 +853,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             "Se este e-mail estiver cadastrado, enviamos um link de recuperação.",
         };
       } catch (err: any) {
+        // Este `catch` só roda quando `resetPasswordForEmail` LANÇA em vez de
+        // devolver `{ error }` — uma exceção fora do protocolo normal do
+        // GoTrue (o SDK normalmente captura falha de rede/servidor e devolve
+        // como `error`, nunca lança; ver AuthUnknownError em
+        // node_modules/@supabase/auth-js/dist/module/lib/errors.d.ts). Sem
+        // sinal nenhum para distinguir a causa, `err?.message` pode ser
+        // absolutamente qualquer coisa — inclusive detalhe interno do banco
+        // ou do servidor. Mesma frase do ramo `if (error)` logo acima: a
+        // causa é igualmente desconhecida, então não pode ganhar uma
+        // terceira frase inventada, e não pode ecoar `err.message` na tela.
         console.error("[Auth] Reset recovery exception:", err);
         return {
           success: false,
           status: "error",
-          message: err?.message || "Erro inesperado",
+          message:
+            "Não foi possível enviar o link de recuperação agora. Tente novamente em instantes.",
         };
       }
     },

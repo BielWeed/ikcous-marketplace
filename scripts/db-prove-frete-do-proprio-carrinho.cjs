@@ -173,7 +173,13 @@ async function estadoDasRpcs(client) {
             p.prosecdef,
             p.proconfig,
             pg_get_function_result(p.oid) AS retorno,
-            (p.prosrc ~ 'itens_da_cotacao') AS tem_trava
+            (p.prosrc ~ 'itens_da_cotacao') AS tem_trava,
+            -- 🔴 O CORPO INTEIRO, e nao so o marcador. Levantado pela revisao de
+            -- contexto limpo em 22/08/2026: coletar assinatura, prosecdef,
+            -- proconfig, retorno e um marcador NAO detecta uma reversao que
+            -- restaure um corpo MAIS ANTIGO — ela passaria nos 20 casos. Sem o
+            -- prosrc aqui, "voltou ao estado anterior" e afirmacao, nao medida.
+            p.prosrc
        FROM pg_proc p
        JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'public'
@@ -207,7 +213,12 @@ async function criarPedido(client, { rpc, itens, total }) {
   } catch (e) {
     await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
     await client.query(`RELEASE SAVEPOINT ${sp}`);
-    return { ok: false, erro: e.message };
+    // `e.detail` separado de `e.message` de proposito: o texto que a cliente le
+    // vem na MESSAGE e nao muda nesta migration; quem diz a quem depura POR QUE
+    // a venda caiu e' o DETAIL. Ate 22/08/2026 este script descartava o detail,
+    // e com isso a unica mudanca de texto da migration ficava sem assercao
+    // nenhuma — levantado pela revisao de contexto limpo.
+    return { ok: false, erro: e.message, detalhe: e.detail };
   }
 }
 
@@ -391,6 +402,15 @@ async function main() {
         recusouPorFrete(r),
         r.ok ? "o pedido foi criado" : r.erro,
       );
+      // A migration troca o DETAIL para dizer que a cotacao pode ter sido de
+      // OUTRO carrinho. E a unica mudanca de texto que ela faz, e e o unico
+      // lugar que conta a quem depura por que a venda caiu. Sem esta asserção,
+      // apagar essa troca nao derrubaria teste nenhum.
+      conferir(
+        `depois/${rpc.slice(-3)}: o DETAIL avisa que a cotacao pode ser de outro carrinho`,
+        typeof r.detalhe === "string" && /OUTRO carrinho/.test(r.detalhe),
+        `detail veio: ${JSON.stringify(r.detalhe)}`,
+      );
     }
 
     console.log("\n6. ORDEM DIFERENTE no cart_hash nao pode recusar ninguem");
@@ -458,6 +478,18 @@ async function main() {
       "depois de reverter: nenhuma RPC tem mais a trava",
       revertidas.every((r) => r.tem_trava === false),
     );
+    // 🔴 O CORPO, byte a byte, e nao "o marcador sumiu". Sem esta asserção uma
+    // reversão que restaurasse uma versão ANTIGA das funções — perdendo a
+    // correção de cupom ou a reserva de 30 min da v24 — passaria em tudo.
+    for (const v of ["v23", "v24"]) {
+      const a = antesDasRpcs.find((r) => r.assinatura.includes(`_${v}(`));
+      const d = revertidas.find((r) => r.assinatura.includes(`_${v}(`));
+      conferir(
+        `${v}: o corpo revertido e IDENTICO ao de antes, caractere a caractere`,
+        d.prosrc === a.prosrc,
+        `tamanhos: antes ${a.prosrc.length}, depois ${d.prosrc.length}`,
+      );
+    }
     conferir(
       "depois de reverter: assinaturas e atributos continuam intactos",
       JSON.stringify(revertidas.map((r) => r.assinatura)) ===
