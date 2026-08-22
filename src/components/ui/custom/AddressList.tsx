@@ -67,7 +67,7 @@ export const AddressList = memo(function AddressList({
                     {address.name}
                   </span>
                   {address.is_default && (
-                    <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-emerald-600">
+                    <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-emerald-700">
                       Principal
                     </span>
                   )}

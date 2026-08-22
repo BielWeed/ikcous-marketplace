@@ -468,11 +468,13 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
     expect(selo?.querySelector(".text-emerald-600")).toBeNull();
   });
 
-  // Prova de que o escopo realmente protege contra a colisão descrita acima:
-  // com o botão de ID no estado "Copiado!" (que usa text-emerald-600) visível
-  // ao lado do selo 'confirmado', a sentinela ESCOPADA continua correta —
-  // ela não pode nunca enxergar o emerald-600 do botão.
-  it("tom 'confirmado' com o botão de ID em 'Copiado!' (text-emerald-600) ao lado: a sentinela escopada não se confunde", async () => {
+  // Prova de que o escopo continua protegendo mesmo quando a colisão FICA
+  // MAIS FORTE: uma tarefa de contraste (AA) trocou o botão de ID em
+  // "Copiado!" de text-emerald-600 para text-emerald-700 — a MESMA classe
+  // que o selo 'confirmado' já usava, não mais uma classe diferente. Um
+  // escopo que aguenta a MESMA classe renderizada fora dele é mais provado
+  // do que um que só precisa distinguir classes diferentes.
+  it("tom 'confirmado' com o botão de ID em 'Copiado!' (agora também text-emerald-700) ao lado: a sentinela escopada não se confunde mesmo com a MESMA classe fora do selo", async () => {
     const { OrderList } = await import("@/components/ui/custom/OrderList");
     const order = pedidoComPagamento("pago");
 
@@ -487,9 +489,11 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
 
     // Confere que a armadilha está de fato presente antes de testar a defesa
     // contra ela: se o botão nunca entrar em "Copiado!", este teste não prova
-    // nada sobre a colisão.
+    // nada sobre a colisão. `elementoForaDoSelo` (definido abaixo, nesta
+    // mesma describe) é o que garante que o emerald-700 achado é o do
+    // BOTÃO, não o do próprio selo.
     expect(hospedeiro.textContent).toContain("Copiado!");
-    expect(hospedeiro.querySelector(".text-emerald-600")).not.toBeNull();
+    expect(elementoForaDoSelo(".text-emerald-700")).not.toBeNull();
 
     const selo = hospedeiro.querySelector(
       '[data-testid="customer-payment-badge"]',

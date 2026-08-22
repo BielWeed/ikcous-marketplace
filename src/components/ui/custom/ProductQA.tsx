@@ -258,7 +258,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                         {q.customerName}
                       </span>
                       {q.isVerified && (
-                        <span className="flex items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-600">
+                        <span className="flex items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700">
                           <Check className="size-2.5" />
                           Comprador
                         </span>
