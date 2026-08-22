@@ -13,7 +13,15 @@
 // arquivo reaproveita.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import type { Order, PaymentStatus } from "@/types";
 
@@ -264,6 +272,53 @@ describe("OrderDetailsView — pedido cancelado com pagamento que ficou com a lo
     );
   });
 
+  // Achado 1 da revisão: o SELO (CustomerPaymentBadge), não só a descrição
+  // acima, tem que deixar de mostrar "Pagamento confirmado" verde quando o
+  // pedido morreu com o dinheiro na loja. As duas telas (esta e OrderList)
+  // consomem o mesmo componente e têm que concordar sobre o mesmo dado.
+  //
+  // Rótulo mudou de "Pago — pedido cancelado" para "Pago — fale com a loja"
+  // numa revisão seguinte: o original quebra em duas linhas a 375px (achado
+  // de largura) e o novo orienta em vez de só informar.
+  it("status 'cancelled' + pago: o selo mostra 'Pago — fale com a loja', e NÃO o verde 'Pagamento confirmado' nem o rótulo antigo", async () => {
+    pedidoAtual = pedidoCanceladoComPagamento("pago");
+
+    await renderizar();
+
+    expect(hospedeiro.textContent).toContain("Pago — fale com a loja");
+    expect(hospedeiro.textContent).not.toContain("Pagamento confirmado");
+    expect(hospedeiro.textContent).not.toContain("Pago — pedido cancelado");
+  });
+
+  // Achado 1 (degrau 1): o par mais perigoso — pedido cancelado com o
+  // pagamento AINDA aguardando (o cliente cancelou um PIX que não pagou).
+  // `update_order_status_atomic` grava `status='cancelled'` e devolve o
+  // estoque, mas não toca em `payment_status` (continua 'aguardando'). Sem a
+  // correção, a description ficava com o texto fixo de "cancelado" — sem
+  // avisar nada — e o selo ao lado dizia "Aguardando pagamento", convidando o
+  // cliente a pagar um pedido morto.
+  it("status 'cancelled' + aguardando: a descrição avisa para NÃO pagar, sem a frase de cancelado sozinha", async () => {
+    pedidoAtual = pedidoCanceladoComPagamento("aguardando");
+
+    await renderizar();
+
+    expect(hospedeiro.textContent).toContain(
+      "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague — o pedido não será entregue.",
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "Este pedido foi cancelado e não seguirá para entrega.",
+    );
+  });
+
+  it("status 'cancelled' + aguardando: o selo mostra 'Cancelado — não pague', e NÃO 'Aguardando pagamento'", async () => {
+    pedidoAtual = pedidoCanceladoComPagamento("aguardando");
+
+    await renderizar();
+
+    expect(hospedeiro.textContent).toContain("Cancelado — não pague");
+    expect(hospedeiro.textContent).not.toContain("Aguardando pagamento");
+  });
+
   it("status 'cancelled' + recusado: mantém o texto original de cancelado (controle — não estendeu demais)", async () => {
     pedidoAtual = pedidoCanceladoComPagamento("recusado");
 
@@ -296,6 +351,19 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
+  beforeAll(() => {
+    // jsdom não implementa `navigator.clipboard`. Só é preciso aqui porque um
+    // teste desta suíte clica de verdade no botão de copiar ID (para simular
+    // o estado "Copiado!" e provar que a sentinela escopada não se confunde
+    // com ele) — `OrderList.tsx` chama `navigator.clipboard.writeText`
+    // incondicionalmente nesse fluxo, e sem o stub o clique lançaria antes de
+    // `setCopiedId` rodar.
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+  });
+
   beforeEach(() => {
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -318,5 +386,164 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
     });
 
     expect(hospedeiro.textContent).toContain("Pagamento confirmado");
+  });
+
+  // Achado 1: card de "Meus Pedidos" é a PRIMEIRA tela que o cliente abre.
+  // Antes da correção mostrava "CANCELADO" (esteira) e, logo abaixo, o selo
+  // verde "PAGAMENTO CONFIRMADO" — sem uma palavra sobre o cancelamento.
+  //
+  // Rótulo mudou de "Pago — pedido cancelado" para "Pago — fale com a loja"
+  // (achado de largura: o original quebra em duas linhas a 375px).
+  it("status 'cancelled' + pago: o card mostra 'Pago — fale com a loja', e NÃO o verde 'Pagamento confirmado' nem o rótulo antigo", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    const order: Order = {
+      ...pedidoComPagamento("pago"),
+      status: "cancelled",
+    };
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    expect(hospedeiro.textContent).toContain("Pago — fale com a loja");
+    expect(hospedeiro.textContent).not.toContain("Pagamento confirmado");
+    expect(hospedeiro.textContent).not.toContain("Pago — pedido cancelado");
+  });
+
+  // Controle: o pedido segue vivo (status 'pending'), mesmo pago. O selo tem
+  // que continuar exatamente como hoje — nada de "Pago — fale com a loja"
+  // vazando para fora do caso 'cancelled'.
+  it("status 'pending' + pago (controle): continua 'Pagamento confirmado', sem o texto de cancelado", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    const order = pedidoComPagamento("pago");
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    expect(hospedeiro.textContent).toContain("Pagamento confirmado");
+    expect(hospedeiro.textContent).not.toContain("Pago — fale com a loja");
+  });
+
+  // Achado 1 (degrau 1), na primeira tela que o cliente abre: pedido
+  // cancelado com pagamento ainda em aberto. Sem a correção, o card mostrava
+  // "CANCELADO" e, logo abaixo, o pill âmbar "AGUARDANDO PAGAMENTO" — a tela
+  // convidava a pagar um pedido morto.
+  it("status 'cancelled' + aguardando: o card mostra 'Cancelado — não pague', e NÃO 'Aguardando pagamento'", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    const order: Order = {
+      ...pedidoComPagamento("aguardando"),
+      status: "cancelled",
+    };
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    expect(hospedeiro.textContent).toContain("Cancelado — não pague");
+    expect(hospedeiro.textContent).not.toContain("Aguardando pagamento");
+  });
+
+  // Sentinelas de contraste — um teste por tom, escopadas ao selo
+  // (`[data-testid="customer-payment-badge"]`), nunca ao host inteiro.
+  // Achado do revisor: a sentinela antiga usava
+  // `hospedeiro.querySelector(".text-emerald-600")` sobre o documento
+  // inteiro, e `OrderList.tsx` usa exatamente essa classe no botão de ID
+  // quando o estado é "Copiado!" — hoje esse estado só aparece depois de um
+  // clique, mas a sentinela reprovaria por motivo alheio ao selo no dia em
+  // que ele renderizasse.
+  it("tom 'confirmado': o selo usa text-emerald-700 (contraste AA), não mais text-emerald-600", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    const order = pedidoComPagamento("pago");
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    const selo = hospedeiro.querySelector(
+      '[data-testid="customer-payment-badge"]',
+    );
+    expect(selo).not.toBeNull();
+    expect(selo?.querySelector(".text-emerald-700")).not.toBeNull();
+    expect(selo?.querySelector(".text-emerald-600")).toBeNull();
+  });
+
+  // Prova de que o escopo realmente protege contra a colisão descrita acima:
+  // com o botão de ID no estado "Copiado!" (que usa text-emerald-600) visível
+  // ao lado do selo 'confirmado', a sentinela ESCOPADA continua correta —
+  // ela não pode nunca enxergar o emerald-600 do botão.
+  it("tom 'confirmado' com o botão de ID em 'Copiado!' (text-emerald-600) ao lado: a sentinela escopada não se confunde", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    const order = pedidoComPagamento("pago");
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    const botaoId = hospedeiro.querySelector("button");
+    await act(async () => {
+      botaoId?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    // Confere que a armadilha está de fato presente antes de testar a defesa
+    // contra ela: se o botão nunca entrar em "Copiado!", este teste não prova
+    // nada sobre a colisão.
+    expect(hospedeiro.textContent).toContain("Copiado!");
+    expect(hospedeiro.querySelector(".text-emerald-600")).not.toBeNull();
+
+    const selo = hospedeiro.querySelector(
+      '[data-testid="customer-payment-badge"]',
+    );
+    expect(selo).not.toBeNull();
+    expect(selo?.querySelector(".text-emerald-700")).not.toBeNull();
+    expect(selo?.querySelector(".text-emerald-600")).toBeNull();
+  });
+
+  it("tom 'aguardando': o selo usa text-yellow-700 (contraste AA, e distinto do laranja de 'atencao'), não mais text-amber-700", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    const order = pedidoComPagamento("aguardando");
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    const selo = hospedeiro.querySelector(
+      '[data-testid="customer-payment-badge"]',
+    );
+    expect(selo).not.toBeNull();
+    expect(selo?.querySelector(".text-yellow-700")).not.toBeNull();
+    expect(selo?.querySelector(".text-amber-700")).toBeNull();
+  });
+
+  it("tom 'recusado': o selo usa text-rose-700 (contraste AA), não mais text-rose-600", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    const order = pedidoComPagamento("recusado");
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    const selo = hospedeiro.querySelector(
+      '[data-testid="customer-payment-badge"]',
+    );
+    expect(selo).not.toBeNull();
+    expect(selo?.querySelector(".text-rose-700")).not.toBeNull();
+    expect(selo?.querySelector(".text-rose-600")).toBeNull();
+  });
+
+  it("tom 'expirado': o selo usa text-zinc-600 (contraste AA), não mais text-zinc-500", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    const order = pedidoComPagamento("expirado");
+
+    await act(async () => {
+      raiz.render(<OrderList orders={[order]} onNavigate={() => {}} />);
+    });
+
+    const selo = hospedeiro.querySelector(
+      '[data-testid="customer-payment-badge"]',
+    );
+    expect(selo).not.toBeNull();
+    expect(selo?.querySelector(".text-zinc-600")).not.toBeNull();
+    expect(selo?.querySelector(".text-zinc-500")).toBeNull();
   });
 });

@@ -272,7 +272,10 @@ export const OrderList = memo(function OrderList({
                     />
                     {status.label}
                   </div>
-                  <CustomerPaymentBadge paymentStatus={order.paymentStatus} />
+                  <CustomerPaymentBadge
+                    paymentStatus={order.paymentStatus}
+                    orderStatus={order.status}
+                  />
                 </div>
               </div>
 

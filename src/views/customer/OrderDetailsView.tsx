@@ -132,6 +132,16 @@ function pendingDescription(
  * `pendingDescription`: função pequena em cima de `paymentStatusKey`, os
  * demais casos de `cancelled` mantêm o texto de `statusConfig` sem mudar uma
  * vírgula.
+ *
+ * `aguardando` é o par oposto, e o mais perigoso dos dois: o cliente cancelou
+ * um PIX que ainda NÃO pagou. `update_order_status_atomic` grava
+ * `status='cancelled'` e devolve o estoque, mas não toca em `payment_status`
+ * — rastreado em `20260812000000_reconciliar_pedido_cancelado.sql`
+ * (linhas 6-17). Sem este ramo, a description fixa de "cancelado" não avisava
+ * nada, e o selo ao lado (`CustomerPaymentBadge`) dizia "Aguardando
+ * pagamento" — a tela inteira convidava o cliente a pagar um pedido morto com
+ * o QR do PIX ainda aberto no banco dele. Não há estorno automático neste
+ * app.
  */
 function cancelledDescription(
   paymentStatus: PaymentStatus | null | undefined,
@@ -139,6 +149,9 @@ function cancelledDescription(
   const key = paymentStatusKey(paymentStatus);
   if (key === "pago" || key === "pago_apos_expirar") {
     return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
+  }
+  if (key === "aguardando") {
+    return "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague — o pedido não será entregue.";
   }
   return statusConfig.cancelled.description;
 }
@@ -698,7 +711,10 @@ export function OrderDetailsView({
                     ? "Cartão de Crédito"
                     : order.paymentMethod}
                 </p>
-                <CustomerPaymentBadge paymentStatus={order.paymentStatus} />
+                <CustomerPaymentBadge
+                  paymentStatus={order.paymentStatus}
+                  orderStatus={order.status}
+                />
               </div>
             </div>
           </div>
