@@ -84,9 +84,15 @@ function criarLocalStorageFake() {
 }
 
 interface Snapshot {
+  // A1-fix3 (R1) — `audience` é OBRIGATÓRIO no `login` real de AuthContext
+  // (sem default); este tipo local precisa exigi-lo também, senão o cast
+  // `ctx.login as Snapshot` (abaixo, em `Sonda`) esconde a mudança do
+  // typecheck e os 5 call sites deste arquivo continuariam compilando
+  // mesmo omitindo o argumento.
   login: (
     email: string,
     senha: string,
+    audience: "customer" | "admin",
   ) => Promise<{ success: boolean; error?: any }>;
   signUp: (
     email: string,
@@ -291,7 +297,7 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
       });
 
       await act(async () => {
-        await login("presa@example.com", "senha123");
+        await login("presa@example.com", "senha123", "customer");
       });
 
       const mensagem = (toast.error as ReturnType<typeof vi.fn>).mock
@@ -314,7 +320,7 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
       });
 
       await act(async () => {
-        await login("alguem@example.com", "senha-errada");
+        await login("alguem@example.com", "senha-errada", "customer");
       });
 
       const mensagem = (toast.error as ReturnType<typeof vi.fn>).mock
@@ -335,7 +341,7 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
       });
 
       await act(async () => {
-        await login("alguem@example.com", "senha-certa");
+        await login("alguem@example.com", "senha-certa", "customer");
       });
 
       const mensagem = (toast.error as ReturnType<typeof vi.fn>).mock
@@ -363,7 +369,7 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
       });
 
       await act(async () => {
-        await login("alguem@example.com", "senha-certa");
+        await login("alguem@example.com", "senha-certa", "customer");
       });
 
       const mensagem = (toast.error as ReturnType<typeof vi.fn>).mock
@@ -384,11 +390,52 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
 
       let resultado: { success: boolean; error?: any };
       await act(async () => {
-        resultado = await login("alguem@example.com", "senha-certa");
+        resultado = await login(
+          "alguem@example.com",
+          "senha-certa",
+          "customer",
+        );
       });
 
       expect(resultado!.success).toBe(false);
       expect(resultado!.error).toEqual(erroOriginal);
+    });
+
+    // A1-fix5 (revisão de contexto limpo) — C1: o `else if (user_banned)`
+    // que a A1-fix3 acrescentou em AuthContext.tsx tem corpo VAZIO e não
+    // tinha nenhum teste que o exercitasse diretamente — só existia
+    // cobertura indireta via AuthView (que simula `login` por inteiro e
+    // nunca chega a rodar este trecho). Prova por mutação: apagar este
+    // `else if` faz este teste cair (a mensagem voltaria a ser
+    // "incorretos", porque cairia no `status === 400` genérico logo abaixo).
+    it("conta banida (status 400, code user_banned, senha certa): mensagem genérica da audiência, nunca 'incorretos'", async () => {
+      const { supabase, toast, login } = await montar();
+      (
+        supabase.auth.signInWithPassword as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        data: {},
+        error: {
+          status: 400,
+          code: "user_banned",
+          message: "User is banned",
+        },
+      });
+
+      await act(async () => {
+        await login("banido@example.com", "senha-certa", "customer");
+      });
+
+      const mensagem = (toast.error as ReturnType<typeof vi.fn>).mock
+        .calls[0][0] as string;
+      expect(mensagem).toMatch(/não foi possível entrar agora/i);
+      expect(mensagem).not.toMatch(/incorretos/i);
+      // As DUAS constantes genéricas começam com a mesma frase ("Não foi
+      // possível entrar agora..."), então a asserção acima NÃO distingue a do
+      // cliente da do lojista. O discriminador é a cláusula de saída: só a do
+      // cliente diz "fale com a loja". Sem esta linha, trocar a constante por
+      // engano passaria com a suíte inteira verde.
+      expect(mensagem).toMatch(/fale com a loja/i);
+      expect(mensagem).not.toMatch(/user is banned/i);
     });
   });
 
@@ -731,6 +778,37 @@ describe("AdminLoginView — o erro deixa de virar sempre 'senha incorreta'", ()
       /email ou senha administrativos incorretos/i,
     );
     expect(hospedeiro.textContent).not.toMatch(/network request failed/i);
+  });
+
+  // A1-fix5 (revisão de contexto limpo) — C1: o ramo `user_banned` de
+  // `mensagemDeErroAdminLogin` (AdminLoginView.tsx) não tinha nenhum teste
+  // próprio. Prova por mutação: apagar este `if` faz este teste cair (a
+  // mensagem voltaria a ser "incorretos", porque cairia no `status === 400`
+  // genérico logo abaixo).
+  it("conta banida (status 400, code user_banned, senha certa): mensagem genérica do lojista, NUNCA 'incorretos'", async () => {
+    login.mockResolvedValue({
+      success: false,
+      error: {
+        status: 400,
+        code: "user_banned",
+        message: "User is banned",
+      },
+    });
+
+    await montarESubmeter();
+
+    expect(hospedeiro.textContent).toMatch(/não foi possível entrar agora/i);
+    // 🔴 O discriminador que faltava: as DUAS constantes genéricas abrem com a
+    // mesma frase, então a asserção acima casa com a do cliente TAMBÉM. Sem
+    // esta linha, trocar `MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA` pela do
+    // cliente (nomes vizinhos, um sufixo de diferença) mandaria o DONO da loja
+    // "falar com a loja" — o invariante que este lote existiu para fechar — e
+    // a suíte passaria inteira.
+    expect(hospedeiro.textContent).not.toMatch(/fale com a loja/i);
+    expect(hospedeiro.textContent).not.toMatch(
+      /email ou senha administrativos incorretos/i,
+    );
+    expect(hospedeiro.textContent).not.toMatch(/user is banned/i);
   });
 
   it("login bem-sucedido continua chamando onLogin (não regrediu o caminho feliz)", async () => {
