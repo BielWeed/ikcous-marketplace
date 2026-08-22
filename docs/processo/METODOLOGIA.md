@@ -168,10 +168,11 @@ E é exatamente no fluxo de dinheiro que a auditoria concentrou o estrago, e a O
 é quase inteira carrinho / cupom / frete / checkout.
 
 > **O número "66 abertos" era de 30/07/2026 e não vale mais para planejar.** A reauditoria de
-> 22/08/2026 mediu, no código de hoje, **51 dos 85 achados: 25 fechados e 26 abertos** — as
-> faixas 26-50 e os 9 de runtime ainda estavam sendo medidos quando isto foi escrito. O estado
-> por achado está em
+> 22/08/2026 já mediu os 85 achados por inteiro, achado a achado, no código de hoje. O placar
+> atual — e como ele foi obtido — está em
 > [`../auditoria/2026-08-22-reauditoria-de-julho.md`](../auditoria/2026-08-22-reauditoria-de-julho.md).
+> Não repetimos o número aqui de propósito: é exatamente repetir um placar em vários lugares
+> que o deixa velho sem ninguém perceber.
 
 **Como funciona para dois.** Exigir TDD em tudo hoje seria exigir uma suíte que não existe e
 um runner de front que ninguém instalou (`INFRA-150`). Então o começo é este, nesta ordem:

@@ -7,6 +7,12 @@ A resposta curta é a tabela do [placar](#placar-da-auditoria): dos 85 achados r
 resto do arquivo — semáforo por área, estado do banco, saúde da engenharia e o que o produto
 simplesmente não tem.
 
+> ⚠️ **Esse placar é de 30/07/2026 e não foi remedido desde então — não use para decidir o que
+> atacar.** O estado dos 85 achados, medido de novo no código de 22/08/2026, está em
+> [`../auditoria/2026-08-22-reauditoria-de-julho.md`](../auditoria/2026-08-22-reauditoria-de-julho.md):
+> **45 fechados, 38 abertos, 1 não se aplica, 1 indeterminado.** A tabela abaixo continua útil
+> pelo `arquivo:linha` de cada achado — só o "fechado ou aberto" que envelheceu.
+
 Vocabulário em [`04-GLOSSARIO.md`](04-GLOSSARIO.md), diretórios e abstrações em
 [`02-ARQUITETURA.md`](02-ARQUITETURA.md), panorama em [`01-VISAO-GERAL.md`](01-VISAO-GERAL.md).
 Aqui não se explica o que é `DataVault` nem onde mora cada pasta — aqui se diz **o que está de pé
@@ -148,6 +154,12 @@ Onde estão os 66 que ficaram:
 | 22 | Sync realtime grava banners truncados no DataVault | alto | ⚪ | Premissa refutada: `banners` tem **8 colunas** no banco (`id, image_url, title, link, position, active, order, created_at`), não 23; `select subtitle from banners` falha. O `mapRecord` de `realtimeSyncEngine.ts:74-86` mapeia tudo que existe. **Mas apareceu outro problema, maior:** `src/types/database.types.ts:145-170` declara 23 colunas e `useBanners.ts:300-327` / `:415-443` escrevem nelas — o PostgREST rejeita, e o modo "completo" do formulário de banners não salva |
 
 ### ❌ Os 66 que ainda estão de pé
+
+> Esta contagem de 66 é a de 30/07/2026 (ver aviso no topo do arquivo). O `arquivo:linha` de
+> cada linha abaixo segue valendo; o que mudou é quantas dessas 66 continuam abertas hoje —
+> confira em
+> [`../auditoria/2026-08-22-reauditoria-de-julho.md`](../auditoria/2026-08-22-reauditoria-de-julho.md)
+> antes de escolher uma para atacar.
 
 Ordenados por severidade **hoje**. Esta tabela é a resposta literal a "o que falta".
 
