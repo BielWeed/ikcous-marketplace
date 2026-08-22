@@ -594,7 +594,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         },
       });
       if (error) {
-        toast.error(`Erro ao cadastrar: ${error.message}`);
+        // Tradução por CAUSA verificada na doc oficial do Supabase Auth
+        // (https://supabase.com/docs/guides/auth/debugging/error-codes):
+        // `user_already_exists`/`email_exists` e `weak_password` têm causa
+        // única, e o limite de envio (429) não distingue conta existente de
+        // inexistente — nenhum dos três reabre enumeração. O que não bate em
+        // nenhum caso conhecido (validação de parâmetro, provedor
+        // desabilitado, rede) fica genérico: melhor honesto do que presumido.
+        console.error("[Auth] Erro ao cadastrar:", error.message);
+        let message = "Não foi possível concluir o cadastro. Tente novamente.";
+        if (
+          error.code === "email_exists" ||
+          error.code === "user_already_exists" ||
+          error.message?.includes("already registered")
+        ) {
+          message =
+            "Este e-mail já está cadastrado. Tente entrar ou recuperar sua senha.";
+        } else if (error.code === "weak_password") {
+          message =
+            // NÃO prescrever "mais caracteres": o `weak_password` do
+            // @supabase/auth-js tem TRÊS causas (lib/types.d.ts:138 —
+            // `["length", "characters", "pwned"]`), e em duas delas acrescentar
+            // caracteres falha de novo. `characters` pede outra CLASSE de
+            // caractere; `pwned` é senha vazada, e uma de 40 caracteres reprova
+            // igual. Prescrever a correção de uma causa para as três é o mesmo
+            // defeito que este lote existe para matar: a tela nomeando um
+            // conserto que não conserta.
+            "Senha muito fraca. Escolha outra senha.";
+        } else if (error.status === 429) {
+          message = "Muitas tentativas. Tente novamente em alguns minutos.";
+        }
+        toast.error(message);
         return false;
       }
       return true;
@@ -613,7 +643,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
       if (error) {
         // We keep the toast for global notification, but return the error for specific UI handling
-        toast.error(`Erro ao entrar: ${error.message}`);
+        //
+        // Mesma tradução por causa de AuthView.tsx (handleSubmit, ramo de
+        // erro de login) — o toast global e a mensagem inline da tela
+        // precisam concordar, senão o usuário lê duas frases diferentes para
+        // o mesmo erro. A ORDEM importa: o Supabase devolve status 400 tanto
+        // para "Invalid login credentials" quanto para "Email not
+        // confirmed" (doc oficial), então o caso de e-mail não confirmado
+        // tem que ser checado ANTES do 400 genérico — checado depois nunca é
+        // alcançado.
+        console.error("[Auth] Erro ao entrar:", error.message);
+        let message = "Não foi possível entrar. Tente novamente.";
+        if (
+          error.code === "email_not_confirmed" ||
+          error.message?.includes("Email not confirmed")
+        ) {
+          message =
+            "Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada.";
+        } else if (
+          error.status === 400 ||
+          error.message?.includes("Invalid login credentials")
+        ) {
+          message = "E-mail ou senha incorretos. Verifique suas credenciais.";
+        } else if (error.status === 429) {
+          // Verificado na doc oficial: o limite de login (token grant) é POR
+          // ENDEREÇO IP, não por usuário — não revela se a conta existe.
+          message = "Muitas tentativas. Tente novamente em alguns minutos.";
+        }
+        toast.error(message);
         return { success: false, error };
       }
       return { success: true };
@@ -629,7 +686,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // "logado" e o token do supabase-js continuava vivo no localStorage,
       // legível no DevTools. Terminamos deslogados MESMO ASSIM — o toast de
       // erro continua existindo, mas deixa de ser a única consequência.
-      toast.error(`Erro ao sair: ${error.message}`);
+      console.error("[Auth] Erro ao sair:", error.message);
+      // Genérico de propósito: rede caída e sessão já expirada dão o mesmo
+      // erro aqui, e não temos como distinguir uma causa da outra — mas as
+      // duas terminam com a sessão LOCAL limpa de qualquer forma (ver o
+      // resto deste bloco), então a mensagem só avisa que o servidor não
+      // confirmou, sem apontar uma causa que não foi verificada.
+      toast.error(
+        "Não foi possível confirmar a saída no servidor, mas sua sessão local foi encerrada.",
+      );
       // Revisão de contexto limpo do diff (achado 1) — sem isto, uma checagem
       // de admin (`checkAdmin`, RPC `is_admin`) que estivesse em voo no
       // momento do logout via `activeUserIdRef.current` ainda apontando para
@@ -672,7 +737,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         },
       });
       if (error) {
-        toast.error(`Erro ao reenviar e-mail: ${error.message}`);
+        // O limite de envio (429/`over_email_send_rate_limit`, doc oficial)
+        // é a única causa aqui com um sinal estável para distinguir — o
+        // resto (rede, provedor) cai no genérico de reenvio.
+        console.error("[Auth] Erro ao reenviar e-mail:", error.message);
+        const message =
+          error.status === 429 || error.code === "over_email_send_rate_limit"
+            ? "Muitas tentativas. Aguarde alguns minutos antes de pedir um novo e-mail."
+            : "Não foi possível reenviar o e-mail agora. Tente novamente em instantes.";
+        toast.error(message);
         return false;
       }
       toast.success("E-mail de confirmação reenviado!");
@@ -783,7 +856,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         password: newPassword,
       });
       if (error) {
-        toast.error(`Erro ao atualizar senha: ${error.message}`);
+        // Tradução por causa (doc oficial do Supabase Auth,
+        // https://supabase.com/docs/guides/auth/debugging/error-codes):
+        // `same_password` e `weak_password` têm causa única. Diferente do
+        // "faça login novamente" que já enganou este repositório antes,
+        // `reauthentication_needed` é um mecanismo PRÓPRIO do Supabase Auth
+        // para operação sensível — sempre resolve fazendo login de novo,
+        // não é um erro de RLS com causa dupla. O que sobra (validação de
+        // parâmetro, rede) fica genérico.
+        console.error("[Auth] Erro ao atualizar senha:", error.message);
+        let message = "Não foi possível atualizar sua senha. Tente novamente.";
+        if (error.code === "same_password") {
+          message = "A nova senha precisa ser diferente da senha atual.";
+        } else if (error.code === "weak_password") {
+          message =
+            // NÃO prescrever "mais caracteres": o `weak_password` do
+            // @supabase/auth-js tem TRÊS causas (lib/types.d.ts:138 —
+            // `["length", "characters", "pwned"]`), e em duas delas acrescentar
+            // caracteres falha de novo. `characters` pede outra CLASSE de
+            // caractere; `pwned` é senha vazada, e uma de 40 caracteres reprova
+            // igual. Prescrever a correção de uma causa para as três é o mesmo
+            // defeito que este lote existe para matar: a tela nomeando um
+            // conserto que não conserta.
+            "Senha muito fraca. Escolha outra senha.";
+        } else if (error.code === "reauthentication_needed") {
+          message =
+            "Por segurança, é preciso fazer login novamente antes de trocar a senha.";
+        }
+        toast.error(message);
         return false;
       }
       toast.success("Senha atualizada com sucesso!");
@@ -814,10 +914,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await fetchProfile();
         return true;
       } catch (err: any) {
+        // `update_my_profile_secure` não tem nenhum `RAISE EXCEPTION` (ver
+        // supabase/migrations/20260806000000_baseline_do_schema_vivo.sql,
+        // função `update_my_profile_secure`) — o único `WHERE id = auth.uid()`
+        // não gera erro nem quando não afeta linha nenhuma. Todo erro que
+        // chega aqui é de causa não distinguível (rede, restrição do banco),
+        // então a mensagem é sempre a mesma, sem depender de `err.message`
+        // como reserva — reserva com o texto cru é vazamento também.
         console.error("[Auth] Error updating profile:", err);
-        toast.error(
-          `Erro ao atualizar perfil: ${err.message || "Erro inesperado"}`,
-        );
+        toast.error("Não foi possível atualizar seu perfil. Tente novamente.");
         return false;
       }
     },

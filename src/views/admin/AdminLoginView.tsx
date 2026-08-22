@@ -13,6 +13,36 @@ interface AdminLoginViewProps {
 // Simple admin password - in production, this should be handled server-side
 // Password legacy removed
 
+// Defeito relatado: a tela desestruturava só `{ success }` do retorno de
+// `login` (AuthContext) e por isso só conseguia emitir UMA frase — inclusive
+// num bloqueio por excesso de tentativas (429), quando ela afirmava "senha
+// incorreta" com a senha CERTA e o lojista tentava de novo, estendendo o
+// próprio bloqueio. Mesma tradução por causa de AuthContext.login (doc
+// oficial do Supabase Auth: https://supabase.com/docs/guides/auth/debugging/error-codes),
+// copiada aqui porque a mensagem é específica desta tela ("administrativos").
+function mensagemDeErroAdminLogin(error: any): string {
+  if (
+    error?.code === "email_not_confirmed" ||
+    error?.message?.includes("Email not confirmed")
+  ) {
+    return "Este e-mail administrativo ainda não foi confirmado. Verifique a caixa de entrada.";
+  }
+  if (error?.status === 429) {
+    // Verificado na doc oficial: o limite de login é POR ENDEREÇO IP, não
+    // por usuário — não revela se a senha está certa ou errada.
+    return "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.";
+  }
+  if (
+    error?.status === 400 ||
+    error?.message?.includes("Invalid login credentials")
+  ) {
+    return "Email ou senha administrativos incorretos.";
+  }
+  // Causa não distinguível (rede, erro inesperado do servidor): nunca
+  // presumir "senha incorreta" sem confirmação.
+  return "Não foi possível entrar. Tente novamente.";
+}
+
 export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,11 +57,11 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
     setIsLoading(true);
 
     try {
-      const { success } = await login(email, password);
+      const { success, error: loginError } = await login(email, password);
       if (success) {
         onLogin();
       } else {
-        setError("Email ou senha administrativos incorretos.");
+        setError(mensagemDeErroAdminLogin(loginError));
       }
     } catch (err) {
       setError("Ocorreu um erro ao tentar fazer login.");
