@@ -85,7 +85,12 @@ describe("ShippingCalculator — cotação manual cancela o debounce pendente do
       return Promise.resolve({
         data: {
           options: [
-            { id: "melhorenvio-pac", name: "PAC", price: preco, deliveryDays: 7 },
+            {
+              id: "melhorenvio-pac",
+              name: "PAC",
+              price: preco,
+              deliveryDays: 7,
+            },
           ],
         },
         error: null,

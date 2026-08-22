@@ -164,7 +164,7 @@ function gerarCasos() {
   });
 
   // 4. Vários itens — a ordenação passa a importar de verdade.
-  for (let n of [2, 3, 5, 8]) {
+  for (const n of [2, 3, 5, 8]) {
     const itens = Array.from({ length: n }, () => ({
       product_id: uuid(rnd),
       variant_id: rnd() % 2 === 0 ? uuid(rnd) : null,
@@ -294,7 +294,9 @@ async function main() {
     // formato que eles produzem é o que está gravado em produção — para isso
     // só serve o dado real.
     // -----------------------------------------------------------------------
-    console.log("\n=== PARTE 2 — o que está GRAVADO em shipping_quotes_cache ===\n");
+    console.log(
+      "\n=== PARTE 2 — o que está GRAVADO em shipping_quotes_cache ===\n",
+    );
     const reais = await client.query(`
       SELECT cart_hash, created_at
         FROM public.shipping_quotes_cache
@@ -315,7 +317,8 @@ async function main() {
       // Validação por `split` em vez de uma regex com quantificador aninhado:
       // aquela forma dispara security/detect-unsafe-regex (ReDoS), e warning
       // novo reprova a catraca. Esta versão é linear e mais fácil de ler.
-      const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+      const UUID =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
       const pedacoValido = (p) => {
         const partes = p.split(":");
         if (partes.length !== 3) return false;
@@ -346,7 +349,7 @@ async function main() {
     await client.end().catch(() => {});
   }
 
-  console.log("\n" + "=".repeat(70));
+  console.log(`\n${"=".repeat(70)}`);
   console.log(`comparações feitas   : ${comparados}`);
   console.log(`divergências         : ${divergencias}`);
   console.log(

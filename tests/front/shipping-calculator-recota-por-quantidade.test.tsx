@@ -284,9 +284,7 @@ describe("ShippingCalculator — recota quando a QUANTIDADE muda, sem virar cham
     const corpoDaSegundaChamada = invoke.mock.calls[1][1] as {
       body: { cart: CartItem[] };
     };
-    expect(corpoDaSegundaChamada.body.cart[0]?.product?.id).toBe(
-      "prod-outro",
-    );
+    expect(corpoDaSegundaChamada.body.cart[0]?.product?.id).toBe("prod-outro");
   });
 
   it("controle negativo: re-renderizar com o MESMO carrinho (conteúdo idêntico, array novo) não dispara nada", async () => {
