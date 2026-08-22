@@ -69,6 +69,165 @@ interface StoreContextType {
   ) => number;
 }
 
+// ── Conferência do retorno de upsert_store_config (ADMIN-010 / #94, parte 2) ──
+//
+// A RPC tem lista fixa de colunas no INSERT e no ON CONFLICT DO UPDATE:
+// qualquer chave de `config_json` fora dela é descartada em silêncio, e a
+// função ainda faz `updated_at = now()` e devolve sucesso -- foi assim que
+// `home_sections` nunca gravou. O conserto de #94 já garantia "só declara
+// sucesso se a RPC não devolveu erro", mas isso confia no STATUS de quem
+// grava, não no que foi gravado. A RPC termina com
+// `RETURNING to_jsonb(public.store_config.*) INTO result`, ou seja, já
+// devolve a linha inteira como ficou -- e é isso que passamos a conferir.
+//
+// Tipo de cada coluna que a RPC aceita, para decidir COMO comparar o valor
+// enviado (JS) contra o valor devolvido (Postgres -> JSON -> JS). A
+// comparação atravessa essa fronteira, então igualdade estrita ingênua dá
+// falso positivo (numeric pode ter sido mandado como string; array e jsonb
+// não são `===`) -- e falso positivo aqui é pior que o defeito original: a
+// lojista grava certo e a tela diz que deu erro.
+type TipoColunaStoreConfig =
+  | "numeric"
+  | "boolean"
+  | "texto"
+  | "texto_array"
+  | "home_sections";
+
+// `Map`, não `Record` -- `chave` vem do banco (nome de coluna que a RPC
+// devolveu) e indexar objeto com string vinda de fora é exatamente o que
+// `security/detect-object-injection` aponta (o `in`/`[]` de baixo enxergam
+// o PROTÓTIPO do objeto, não só as chaves próprias). `Map.get` não confunde
+// chave com propriedade herdada.
+export const TIPO_DAS_COLUNAS_STORE_CONFIG = new Map<string, TipoColunaStoreConfig>([
+  ["free_shipping_min", "numeric"],
+  ["shipping_fee", "numeric"],
+  ["local_delivery_fee", "numeric"],
+  ["whatsapp_number", "texto"],
+  ["share_text", "texto"],
+  ["business_hours", "texto"],
+  ["enable_reviews", "boolean"],
+  ["enable_coupons", "boolean"],
+  ["logo_url", "texto"],
+  ["primary_color", "texto"],
+  ["theme_mode", "texto"],
+  ["real_time_sales_alerts", "boolean"],
+  ["push_marketing_enabled", "boolean"],
+  ["min_app_version", "texto"],
+  ["store_name", "texto"],
+  ["store_city", "texto"],
+  ["store_state", "texto"],
+  ["origin_cep", "texto"],
+  ["shipping_provider", "texto"],
+  ["enabled_shipping_methods", "texto_array"],
+  ["shipping_coverage", "texto"],
+  ["local_cep_range", "texto"],
+  ["home_sections", "home_sections"],
+]);
+
+// Normaliza um valor de `home_sections` para comparação POR VALOR: ordena
+// as chaves de OBJETO (o round-trip por `jsonb` pode reordenar objeto --
+// medido: enviou {id, title, active, type, maxItems, productIds, isCustom}
+// e voltou {id, type, title, active, isCustom, maxItems, productIds}) e
+// preserva a ORDEM de ARRAY (é a ordem das vitrines na home, e ela
+// importa). `Object.entries`/`Object.fromEntries` em vez de indexar com
+// `chave` -- mesmo motivo do Map acima.
+function normalizarHomeSections(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(normalizarHomeSections);
+  if (v && typeof v === "object") {
+    const entradasOrdenadas = Object.entries(v as Record<string, unknown>)
+      .sort(([chaveA], [chaveB]) => (chaveA < chaveB ? -1 : chaveA > chaveB ? 1 : 0))
+      .map(([chave, valor]) => [chave, normalizarHomeSections(valor)] as const);
+    return Object.fromEntries(entradasOrdenadas);
+  }
+  return v;
+}
+
+// `home_sections` carrega `productIds`, um ARRAY -- comparar por `===`
+// campo a campo compara REFERÊNCIA, e o array que a RPC devolve (saído do
+// JSON.parse da resposta) nunca é `===` ao array da tela, mesmo com o
+// mesmo conteúdo. `[] === []` é sempre `false`. Por isso a comparação
+// serializa o valor NORMALIZADO -- por valor, recursiva.
+function homeSectionsForamGravadas(enviado: unknown, gravado: unknown): boolean {
+  if (!Array.isArray(enviado) || !Array.isArray(gravado)) return false;
+  if (enviado.length !== gravado.length) return false;
+  return (
+    JSON.stringify(normalizarHomeSections(enviado)) ===
+    JSON.stringify(normalizarHomeSections(gravado))
+  );
+}
+
+// DECISÃO — o caso do COALESCE no ramo INSERT (linha nova) da RPC:
+//
+// upsert_store_config aplica COALESCE(..., default) em várias colunas só no
+// ramo de INSERT (primeira gravação, quando a linha id=1 ainda não existe).
+// Se alguém mandasse `null` explícito para uma dessas colunas nesse ramo, o
+// banco gravaria o default, não o `null` pedido -- e o comparador abaixo
+// trata isso como FALHA de propósito, porque o pedido não foi honrado.
+//
+// Hoje isso é inalcançável pelo app: (1) toda chave que algum ponto da UI
+// manda como `null` explícito hoje -- storeCity, storeState em
+// AdminSettingsView -- é coluna SEM COALESCE (grava null de verdade, sem
+// substituição); nenhum chamador de updateConfig() (AdminShippingView,
+// AdminWhatsAppConfigView, AdminCouponsView, AdminReviewsView, AdminPushView,
+// AdminCarouselsView) manda `null` para whatsapp_number, share_text,
+// business_hours, primary_color, theme_mode, enable_reviews, enable_coupons,
+// real_time_sales_alerts, push_marketing_enabled, shipping_provider,
+// shipping_coverage, free_shipping_min ou local_delivery_fee -- que são as
+// colunas com COALESCE. E (2) a linha id=1 já existe antes de qualquer save
+// ser alcançável: `fetchConfig` cria essa linha automaticamente (para admin)
+// assim que a tela carrega, então `updateConfig` nunca bate no ramo INSERT
+// na prática. Se isso um dia mudar, o comparador não finge sucesso.
+function valorFoiGravado(
+  tipo: TipoColunaStoreConfig,
+  enviado: unknown,
+  gravado: unknown,
+): boolean {
+  // `null` explícito ("a loja não disse" / "limpar campo") tem de continuar
+  // `null` -- exceto no caso do COALESCE-no-INSERT acima, que é um "não",
+  // de propósito, não um "sim" disfarçado.
+  if (enviado === null) return gravado === null;
+
+  switch (tipo) {
+    case "numeric": {
+      // `Number(null) === 0` e `Number("") === 0` -- coagir os DOIS lados
+      // pelo `Number(...)` abaixo faria o banco devolver `null` (= não
+      // gravou) ou a tela mandar string vazia (input limpo) passarem como
+      // confirmação de um `0` pedido/gravado. A assimetria é proposital:
+      // o que o banco devolveu é o FATO (nunca coagido); só o que a tela
+      // mandou pode vir em formato frouxo.
+      if (gravado === null || gravado === undefined) return false;
+      if (typeof enviado === "string" && enviado.trim() === "") return false;
+      // O front às vezes manda number, às vezes string (input não
+      // parseado); o banco sempre devolve number. Comparar pelo valor, não
+      // pelo tipo do JS.
+      const numEnviado = Number(enviado);
+      return !Number.isNaN(numEnviado) && Number(gravado) === numEnviado;
+    }
+    case "boolean":
+      // Comparação estrita: só bate se o valor gravado for exatamente o
+      // booleano pedido -- string "false" ou 0 não contam como confirmação.
+      return typeof gravado === "boolean" && gravado === enviado;
+    case "texto":
+      return gravado === enviado;
+    case "texto_array":
+      // Comparação por valor da lista inteira, em vez de indexar os dois
+      // arrays por `i` -- mesmo motivo do Map acima (evita
+      // `security/detect-object-injection`) e continua sensível a ORDEM
+      // (é como a comparação elemento a elemento original se comportava).
+      return (
+        Array.isArray(gravado) &&
+        Array.isArray(enviado) &&
+        gravado.length === enviado.length &&
+        JSON.stringify(gravado) === JSON.stringify(enviado)
+      );
+    case "home_sections":
+      return homeSectionsForamGravadas(enviado, gravado);
+    default:
+      // Coluna que este mapa não conhece: dúvida, nunca sucesso.
+      return false;
+  }
+}
+
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export function StoreProvider({
@@ -496,11 +655,55 @@ export function StoreProvider({
         if (updates.homeSections !== undefined)
           dbUpdates.home_sections = updates.homeSections;
 
-        const { error } = await (supabase.rpc as any)("upsert_store_config", {
-          config_json: dbUpdates,
-        });
+        const { data, error } = await (supabase.rpc as any)(
+          "upsert_store_config",
+          { config_json: dbUpdates },
+        );
 
         if (error) throw error;
+
+        // A RPC não errou, mas "não errou" não é "gravou o que pedimos" --
+        // ela tem lista fixa de colunas e descarta em silêncio o que não
+        // conhece. Falha fechado: retorno vazio, nulo ou de formato que não
+        // dá para avaliar é falha, nunca sucesso.
+        if (!data || typeof data !== "object" || Array.isArray(data)) {
+          console.error(
+            "[StoreContext] Update retornou em formato inesperado:",
+            data,
+          );
+          toast.error(
+            "Não foi possível confirmar que as configurações foram salvas. Tente novamente.",
+          );
+          return false;
+        }
+
+        const gravado = data as Record<string, unknown>;
+        // `Map`, não indexação de `gravado` por `chave` -- o operador `in`
+        // enxerga o PROTÓTIPO do objeto (`"constructor" in gravado` é
+        // `true` mesmo que o banco jamais tenha devolvido essa coluna), e
+        // `gravado[chave]`/`dbUpdates[chave]` são exatamente o padrão que
+        // `security/detect-object-injection` aponta. `Map.has`/`Map.get`
+        // olham só chave própria, nunca protótipo.
+        const gravadoMap = new Map(Object.entries(gravado));
+        const chavesNaoConfirmadas = Object.entries(dbUpdates)
+          .filter(([chave, valorEnviado]) => {
+            const tipo = TIPO_DAS_COLUNAS_STORE_CONFIG.get(chave);
+            if (!tipo || !gravadoMap.has(chave)) return true;
+            return !valorFoiGravado(tipo, valorEnviado, gravadoMap.get(chave));
+          })
+          .map(([chave]) => chave);
+
+        if (chavesNaoConfirmadas.length > 0) {
+          console.error(
+            "[StoreContext] Update não confirmado para:",
+            chavesNaoConfirmadas,
+            { enviado: dbUpdates, gravado },
+          );
+          toast.error(
+            "Não deu para confirmar que tudo foi salvo. Tente salvar de novo antes de sair da tela.",
+          );
+          return false;
+        }
 
         setConfig((prev) => {
           const newConfig = { ...prev, ...updates };
