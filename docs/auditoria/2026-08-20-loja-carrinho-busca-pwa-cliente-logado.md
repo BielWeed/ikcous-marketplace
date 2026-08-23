@@ -28,7 +28,15 @@ Os degraus são os do `docs/auditoria/2026-08-20-fila-unica-de-dor.md`. O que de
 
 ---
 
-# OS 11 ACHADOS
+# OS 12 ACHADOS (13 numerados — **o 12 foi RETRATADO**)
+
+*A numeração é ordem de DESCOBERTA, não de gravidade — os degraus é que ordenam. Os achados 12 e
+13 vieram do lote 4 (`CheckoutView`), acrescentado depois do fechamento original.*
+
+⚠️ **O achado 12 foi RETIRADO por medição minha, e o número foi mantido de propósito** — ele já
+tinha circulado no time, e apagar deixaria as mensagens antigas apontando para o vazio. **Ele está
+lá marcado como falso, com a medição que o derruba.** Se alguém te mandar consertar o achado 12,
+a resposta é: não há o que consertar.
 
 ## 1 · 🔴 Degrau 1 — O cliente pagou e a tela diz que a loja está esperando o pagamento
 
@@ -321,6 +329,109 @@ resolveu ali de propósito. Existe precedente na casa; isto é o descuido.
 
 ---
 
+# LOTE 4 — `CheckoutView.tsx` (cupom · convidado · falha no meio)
+
+*Acrescentado em 21/08/2026, depois de a CENTRAL liberar o arquivo com escopo. **Sem frete e sem
+cotação**, de propósito: o conserto do frete vai reescrever aquela fronteira, e auditar alvo em
+movimento gasta o trabalho à toa. O resto das 2.412 linhas continua **não aberto**.*
+
+## 12 · ❌ RETRATADO — ~~A tela manda o convidado "entrar na conta" para cancelar~~
+
+> 🔴 **ACHADO RETIRADO em 21/08/2026, por medição minha. Não é latente como o 11 — é FALSO, e
+> falso nos dois sentidos. NÃO CONSERTAR NADA POR CAUSA DELE.**
+>
+> **(1) A tela não renderiza para convidado.** `CheckoutView.tsx:523-527` tem um efeito que expulsa
+> `paymentMethod` de `"online"` sempre que não há sessão:
+> ```js
+> if (!authLoading && !user && paymentMethod === "online") setPaymentMethod("pix");
+> ```
+> E a cadeia até a tela do achado é: `:936 ehOnline = paymentMethod === "online"` →
+> `:957 if (ehOnline) setAguardandoPagamento(true)` → `:1142 {user ? <botão> : <a mensagem>}`.
+> **Sem conta, `ehOnline` nunca é verdadeiro, a tela nunca abre.** Confirmado também no backend:
+> `criar-pagamento/index.ts:459` recusa com `PAGAMENTO_ONLINE_EXIGE_CONTA`.
+>
+> **(2) No único caminho em que a mensagem aparece, ela está CERTA.** É o caso que o próprio
+> comentário do código nomeia: cliente **logado** escolhe pagamento online, o pedido é criado, e a
+> **sessão expira** com a tela aberta. Aí `user` cai para `null` e o ramo vira a mensagem de
+> convidado — **mas o pedido dele tem dono** (`user_id = auth.uid()`, gravado quando havia sessão).
+> Então *"entre na sua conta"* é exatamente o conselho certo para a única pessoa que lê aquilo.
+>
+> **O que a versão anterior afirmava:** que a frase era mentirosa, degrau 2, atingindo 57% dos
+> compradores (47 de 83 pedidos de convidado).
+>
+> **Por que eu errei, e não foi falta de medição.** O fato estava no relatório que eu li **no
+> começo desta sessão**: *"PIX de convidado: não é buraco (…) o pagamento online **exige conta**
+> (`PAGAMENTO_ONLINE_EXIGE_CONTA`), então não existe convidado esperando confirmação de PIX."*
+> Medi tudo o que estava dentro do arquivo que abri, e **não medi a premissa de que aquela tela
+> era alcançável**. O que me convenceu foi o `user ? … : …` no código — **ramo defensivo não é
+> prova de alcance.** Mesma família do resto do dia: instrumento certo, pergunta errada.
+>
+> **O que sobra de pé, medido e útil para OUTRAS frentes:** o pedido de convidado nasce sem dono e
+> nada o adota depois (**0 funções** em `pg_proc` escrevem `user_id` em `marketplace_orders`);
+> **47 de 83 pedidos (57%) são de convidado**; e, pela guarda acima, **todo pedido de convidado é
+> "na entrega"** — o que o CACA-FUNDO usou para agravar um achado dele sobre a varredura de
+> expiração. **Do lado da tela, não sobra achado nenhum.**
+
+<details>
+<summary>Texto original do achado retratado (mantido para quem já o leu)</summary>
+
+**O que a pessoa vê.** Comprou **sem conta**, o pagamento online falhou. Na tela de erro:
+
+> *"Como você não está com a conta aberta, não é possível cancelar por aqui. Se o pagamento não
+> sair em 30 minutos, o pedido é cancelado automaticamente e os itens voltam para o estoque.
+> **Para cancelar agora, entre na sua conta.**"*
+
+Ela entra na conta. **O pedido não está lá.** Não aparece em "Meus Pedidos", não há o que cancelar,
+não existe caminho para chegar nele. E ir para o login **desmonta a tela de pagamento** — ela perde
+também o que tinha na mão.
+
+**O que está errado.** O pedido de convidado nasce **sem dono, para sempre**:
+- `create_marketplace_order_v24` grava `user_id := auth.uid()` **no instante da criação**. Sem
+  sessão, grava `NULL`.
+- **Nenhuma função do banco adota pedido de convidado para uma conta depois** — varri `pg_proc`
+  inteiro procurando quem escreva `user_id` em `marketplace_orders`: **0 funções**.
+- Logo, entrar na conta não muda nada: a policy de leitura é `auth.uid() = user_id`, e `NULL` nunca
+  casa; `update_order_status_atomic` recusa com *"Você não tem permissão para alterar este pedido"*,
+  porque `NULL IS DISTINCT FROM <uuid>` é verdadeiro.
+
+**As duas primeiras frases são VERDADEIRAS** — a varredura de 30 minutos existe e funciona (27
+pedidos `expirado`, todos `cancelled`). **Só a última é falsa, e é a única que pede ação.** Não é
+uma tela mentirosa: é **uma frase mentirosa dentro de um aviso honesto**.
+
+**Quem sente, e o tamanho:** quem compra **sem conta** — que aqui é a maioria.
+```
+pedidos sem dono (convidado): 47
+pedidos com conta:            36
+                       total: 83     → 57% do historico e convidado
+```
+
+**Evidência:** `src/views/customer/CheckoutView.tsx:1160-1170` (o texto) e `:1142` (o botão real,
+condicionado a `user`); corpo vivo de `create_marketplace_order_v24`; `pg_policies` de
+`marketplace_orders`.
+
+⚠️ **A intenção está documentada em cima do defeito** — o comentário do código diz que o convidado
+*"precisa saber (…) que entrar na conta é a única forma de cancelar antes disso"*. **Quem escreveu
+acreditava que resolvia.** Um conserto anterior, feito para não deixar o convidado no escuro, criou
+a instrução falsa — e ela passou despercebida porque *parece* cuidadosa.
+
+~~**Escopo do conserto (decidido pela CENTRAL):** trocar a frase.~~ — **CANCELADO junto com o
+achado. Não há o que consertar.**
+
+</details>
+
+## 13 · ⚪ Degrau 4 — Na hora do pedido, todo motivo de recusa de cupom vira "inválido ou expirado"
+
+O `WHERE` de `create_marketplace_order_v24` junta código inexistente, inativo, vencido, limite
+estourado **e abaixo do mínimo** — e todos saem como
+`RAISE EXCEPTION 'Cupom % inválido ou expirado.'`. Na hora de **aplicar**, as mensagens são
+distintas (`validate_coupon_secure_v2` tem ramo próprio para `min_purchase`). Então um cupom
+perfeitamente válido que falhe por carrinho abaixo do mínimo é anunciado como inválido.
+
+⚠️ **Janela estreita, declarada:** sair do checkout desmonta a tela e zera o cupom aplicado, então
+o subtotal quase não muda entre aplicar e enviar. Por isso degrau 4 e não mais.
+
+---
+
 # O QUE FOI CONFERIDO E ESTÁ CERTO
 
 **Esta seção é o que impede o próximo de refazer.** Cada item abaixo foi uma hipótese que eu
@@ -338,6 +449,34 @@ persegui e **derrubei com evidência**.
 | 8 | `addToCart` não respeita estoque | Trava em `availableStock` **e** `MAX_ITEM_QUANTITY`, barra esgotado, avisa quando corta — `CartContext.tsx:544-600` |
 | 9 | **A busca da loja não trata acento** | **Ela trata.** Ver o alerta abaixo — este quase virou achado falso |
 | 10 | E-mail editável em Configurações da Conta fingindo que salva | É `disabled` com cadeado — `AccountSettingsView.tsx:594-604` |
+| 11 | **Cupom: furo de dinheiro no checkout** | **Não existe.** Ver o bloco abaixo — esta é a verificação mais valiosa do laudo, porque REBAIXOU um achado de outra frente |
+| 12 | Duplo toque cria dois pedidos | Trava **síncrona por ref ANTES do primeiro `await`** (`CheckoutView.tsx:846`) — `disabled={isSubmitting}` só vale no render seguinte. O comentário registra o dano que a motivou: estoque debitado 2×, cupom de uso único consumido 2× |
+| 13 | Pagamento online anunciado como sucesso antes de confirmar | Não é: `if (ehOnline) { setAguardandoPagamento(true); return; }` — sem confete, sem "sucesso". Quem confirma é o webhook |
+| 14 | Pedido criado + pagamento falho perde os itens do carrinho | Não perde: snapshot **antes** do `onClearCart()` (`:945`), restaurado no cancelamento *(só para quem tem conta — é o achado 12)* |
+| 15 | `onClearCart()` faz o Brick cobrar valor diferente do gravado | Não faz: o valor é **congelado no submit** (`valorDoPedido`) |
+| 16 | A tela confia no retorno do cancelamento para dizer "cancelado" | Não confia: **relê o status real** do pedido depois da RPC e só navega se a releitura disser `cancelled` — porque o ramo offline resolve sem lançar e a mensagem de guarda é a mesma para dois casos opostos |
+
+## 💰 O cupom: fui atrás de furo de dinheiro no checkout e NÃO existe
+
+Vale um bloco próprio porque esta verificação **rebaixou um achado de outra frente** — o
+CACA-FUNDO tinha medido que qualquer visitante lê todos os cupons ativos, e aquilo estava no
+degrau 1, competindo com o frete e o PIX.
+
+**O cliente NUNCA manda o valor do desconto** — manda só o código
+(`CheckoutView.tsx:930` → `couponCode`). O `discount` da tela é enfeite: entra no `p_total_amount`,
+que é **checksum**, não fonte.
+
+| Onde | O que faz |
+|---|---|
+| `validate_coupon_secure_v2` (ao aplicar) | ramo próprio para `min_purchase`; **limita o desconto ao subtotal** (comentário literal: `-- Cap discount at subtotal`) |
+| `create_marketplace_order_v24` (ao pedir) | **reconfere tudo do zero** contra o subtotal que ela mesma calcula — `AND (min_purchase IS NULL OR v_calculated_subtotal >= min_purchase)` —, recalcula o desconto, **limita de novo**, e fecha com `GREATEST(0, subtotal + frete - desconto)`. Só então incrementa `usage_count` |
+
+**Conclusão:** quem descobre um código só consegue usar cupom **genuinamente válido**. O dano do
+vazamento é **comercial** (o código promocional que a loja não anunciou), **não financeiro**.
+
+**Efeito na fila:** aquele achado saiu do degrau 1 e foi para o degrau 2. Continua valendo
+conserto; parou de competir com dinheiro de verdade. **Achado que encolhe por medição vale tanto
+quanto achado novo** — e vale mais quando encolhe no próprio terreno de quem mediu.
 
 ## 🔴 O quase-erro que vale mais que os achados
 

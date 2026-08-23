@@ -481,6 +481,117 @@ async function handler(
       readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
     );
 
+  // CORREÇÃO DOS TRÊS ELOS (achado de auditoria, 21/08/2026): `criar-pagamento`
+  // (index.ts:590) SEMPRE grava em `gateway_payment_id` o id da ORDER (ULID,
+  // prefixo "ORD") — mesmo quando o painel do MP está inscrito no tópico
+  // clássico e esta rota (`payment`) recebe do MP um id NUMÉRICO
+  // (`consulta.id`, acima). Os dois nunca batem: `confirmar_pagamento`
+  // (20260810000000_confirmar_pagamento_guarda_status.sql:52-55) devolve
+  // 'divergente' e nada é gravado — o pedido expira em 30 min, o estoque
+  // volta à prateleira, e o dinheiro já está no Mercado Pago.
+  //
+  // A API clássica (GET /v1/payments/{id}, doc oficial medida em 21/08/2026,
+  // 62 campos) não devolve NENHUM campo que aponte de volta para o id da
+  // order — não existe tradução possível a partir da resposta do MP. A saída
+  // é mandar para a RPC o valor que JÁ ESTÁ gravado no pedido, não o que o MP
+  // devolveu.
+  //
+  // ⚠️ Isto NÃO é "o mesmo padrão que `reconciliar-pagamentos/index.ts:262-
+  // 269` já usa" — é a mesma LINHA de código, não a mesma PROVA. Em
+  // `reconciliar`, o `p_payment_id` é o mesmo id pelo qual se PERGUNTOU ao
+  // MP: a resposta "pago" é sobre aquela cobrança exata, e a guarda (d) de
+  // `confirmar_pagamento` (id confere letra a letra) segue comparando duas
+  // fontes independentes. Aqui, pergunta-se ao MP sobre o pagamento
+  // NUMÉRICO e manda-se à RPC um id que o MP NUNCA VIU nesta conversa — o
+  // valor comparado é lido desta mesma linha do banco segundos antes, então
+  // a (d) é satisfeita PELA CONSTRUÇÃO do valor, não por verificação: ela
+  // DEIXA DE TER VALOR PROBATÓRIO nesta rota — este ajuste não a toca, mas
+  // também não pode se apoiar nela para nada.
+  //
+  // ⚠️ Precisão (achado de revisão, 21/08/2026): a (c) NÃO protege contra
+  // confirmar o PEDIDO errado — protege contra confirmar um pedido SEM
+  // cobrança nossa (`gateway_payment_id IS NOT NULL`). Quem protege contra o
+  // PEDIDO errado é a invariante nº 1 deste arquivo: o `orderId` sai sempre
+  // do `external_reference` da RESPOSTA AUTENTICADA do MP (linhas 467-475),
+  // nunca do corpo do webhook — é essa disciplina, não uma guarda do banco,
+  // que barra o corpo forjado (teste "corpo hostil não decide o pedido —
+  // p_order_id vem SEMPRE da resposta do MP", index_test.ts). Quem for
+  // procurar "onde mora a defesa contra creditar o pedido errado" e achar só
+  // a RPC corre o risco de afrouxar essa disciplina no handler achando que a
+  // rede de proteção está do outro lado — não está.
+  //
+  // ⚠️ Silêncio que esta correção não fecha: o VALOR pago não é comparado
+  // com o `total` do pedido em lugar nenhum deste fluxo — e isso NUNCA foi
+  // diferente nesta rota (`payment`): não é uma conferência que se perdeu
+  // com esta correção, é o estado de sempre. A guarda (d) da RPC nunca deu
+  // essa conferência de graça aqui: o `gateway_payment_id` gravado é sempre
+  // o id da ORDER ("ORD...") e o que esta rota recebe do MP é o id CLÁSSICO
+  // numérico — os dois só coincidem em cobranças criadas antes da migração
+  // para a Orders API. Não há exploit construído hoje — o
+  // `external_reference` só é escrito por nós, e o PIX da Orders API tem um
+  // único pagamento por order — mas é uma checagem de valor que nunca
+  // existiu nesta rota e continua sem existir, até alguém decidir se vale a
+  // pena construí-la.
+  //
+  // 🔒 É POR ISSO que o bloco abaixo é restrito a `rota === "payment"`: na
+  // rota `order` a (d) ainda compara duas fontes de verdade INDEPENDENTES (o
+  // `order.id` que o MP devolveu contra o `ORD…` gravado no banco) — foi
+  // essa comparação que já pegou o defeito real de gravar `payments[0].id`
+  // no lugar de `order.id` (`index_test.ts:43-49`). Estender este bloco para
+  // a rota `order` anularia a (d) no fluxo vivo e principal de hoje.
+  //
+  // A alternativa mais forte — e que NÃO está sendo feita agora, por escopo
+  // mínimo deliberado — é usar o `ORD…` que o código já tem na mão para
+  // perguntar ao MP por ELE (`consultarOrder`, já existe neste arquivo),
+  // reconstruindo o elo inteiro ("a cobrança que registramos está paga") e
+  // devolvendo à (d) o seu valor de prova, ao custo de uma chamada HTTP.
+  // 🔒 GATILHO para deixar de ser opcional: religar cartão (Fase 3.5,
+  // `criar-pagamento/index.ts:688`, hoje desligado por `metodo !== "pix"`)
+  // ou qualquer relaxamento da trava de uma-cobrança-por-pedido.
+  //
+  // Só entra quando o valor gravado NÃO tem forma de id clássico
+  // (`idEhClassico`, `_shared/mercadopago.ts`): se os dois lados já falam a
+  // mesma língua (cobrança criada ANTES desta migração, ou um clone que não
+  // migrou), nada muda, e o aviso abaixo não dispara — é o controle negativo
+  // que prova que este ramo não fica sempre ligado.
+  //
+  // Falha ao LER esse valor NÃO pode virar "seguir com o id que o MP
+  // devolveu": se o gravado for o ORD e o código seguir com o numérico, a
+  // guarda (d) recusa do mesmo jeito que hoje — só que sem o log que explica
+  // por quê, e arriscar um palpite não tem vantagem nenhuma sobre tentar de
+  // novo. Por isso a falha de leitura devolve 500 (evento mantido na fila do
+  // MP, que reenvia) — o mesmo padrão que este handler já usa para toda
+  // falha de banco (abaixo, "confirmar_pagamento falhou").
+  if (rota === "payment") {
+    const { data: pedidoParaGatewayId, error: erroLeituraGatewayId } = await supabase
+      .from("marketplace_orders")
+      .select("gateway_payment_id")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (erroLeituraGatewayId) {
+      console.error(
+        "webhook-mercadopago: falha ao ler gateway_payment_id do pedido antes de confirmar — evento mantido na fila do MP",
+        orderId,
+        erroLeituraGatewayId,
+      );
+      return json({ error: "Erro ao consultar o pedido." }, 500);
+    }
+
+    const idGravadoNoBanco = (pedidoParaGatewayId as Record<string, unknown> | null)?.gateway_payment_id;
+    if (
+      typeof idGravadoNoBanco === "string" &&
+      idGravadoNoBanco.length > 0 &&
+      !idEhClassico(idGravadoNoBanco)
+    ) {
+      console.warn(
+        "webhook-mercadopago: gateway_payment_id gravado não é um id clássico — a rota `payment` do MP devolveu um id que nunca bateria com o valor gravado (cobrança criada pela Orders API, painel provavelmente inscrito no tópico clássico). Enviando à RPC o valor GRAVADO NO BANCO, não o que o MP devolveu.",
+        { orderId, idDevolvidoPeloMp: idParaRpc, idGravadoNoBanco },
+      );
+      idParaRpc = idGravadoNoBanco;
+    }
+  }
+
   let resultado: string;
   try {
     const { data, error: erroRpc } = await supabase.rpc("confirmar_pagamento", {

@@ -43,6 +43,12 @@ function criarOrdersCountBuilder() {
     contagemDevolvidaPeloBanco = CONTAGEM_AMPLA_IGUAL_AO_CARTAO;
     return builder;
   });
+  // O query builder do Supabase É thenable por desenho — é isso que faz
+  // `await supabase.from(...).select(...)` funcionar sem um `.execute()`. O
+  // mock precisa desta propriedade para imitar o objeto real; tirá-la deixaria
+  // o teste passando contra um duplo que não se parece com o que a produção
+  // usa, que é pior que o aviso da regra.
+  // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase, ver acima
   builder.then = (resolve: any, reject?: any) =>
     Promise.resolve({ count: contagemDevolvidaPeloBanco, error: null }).then(
       resolve,

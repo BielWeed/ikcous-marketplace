@@ -206,6 +206,213 @@ export function escolherRecargaDeReconexao(deps: {
     );
 }
 
+/**
+ * Traduz a recusa crua da CRIAÇÃO do pedido (create_marketplace_order_v23/
+ * v24, supabase/migrations/20260821000200_cupom_sem_limite_e_ilimitado.sql)
+ * numa mensagem que quem está comprando entende. Exportada porque
+ * CheckoutView.tsx recebe o MESMO erro relançado por `createOrder` (abaixo)
+ * e precisa da MESMA tradução — duplicar aqui e lá divergiria assim que a
+ * RPC mudasse.
+ *
+ * Toda saída, fora do ramo P0001, é string ESTÁTICA: nome de coluna,
+ * restrição ou stack trace não pode chegar à tela. O erro completo segue
+ * vivo no console.error de quem chamou.
+ *
+ * O DEFAULT FALHA FECHADO (achado B da revisão de 22/08/2026): só o que
+ * está COMPROVADAMENTE revertido pode dizer "tente de novo" sem ressalva.
+ * Tudo o mais herda a ressalva de duplicidade, inclusive causa nunca vista
+ * antes.
+ *
+ * A REGRA POR FORMATO, não por lista (achado da revisão de 22/08/2026,
+ * A2-fix2 — substitui a lista fixa de 5 códigos que existia aqui antes):
+ *
+ *   `code` no formato de SQLSTATE — 5 caracteres, cada um dígito ou letra
+ *   maiúscula ([0-9A-Z]{5}) — é o formato de TODO código de erro que o
+ *   próprio Postgres emite (RAISE com ERRCODE explícito ou implícito,
+ *   deadlock, violação de restrição, timeout, esgotamento de conexão etc.),
+ *   catalogado ou não. Medido nas RPCs vivas create_marketplace_order_v23/
+ *   v24 com sonda somente-leitura (22/08/2026): 0 bloco EXCEPTION WHEN, 10
+ *   RAISE EXCEPTION POR FUNÇÃO (20 somando as duas), 0 USING ERRCODE — ou
+ *   seja, cada chamada de RPC do PostgREST é UMA transação sem nada que
+ *   engula erro no meio do caminho.
+ *   Logo, se um erro com SQLSTATE chega ao cliente, é porque o statement
+ *   abortou dentro do Postgres, e aborto de statement reverte a transação
+ *   inteira. O pedido NÃO foi criado — sem precisar manter uma lista fixa
+ *   que fica sub-inclusiva a cada causa nova (deadlock 40P01, lock timeout
+ *   55P03, violação de restrição 23505/23514/23502, conexões esgotadas
+ *   53300, e qualquer SQLSTATE ainda não visto).
+ *
+ *   Duas exceções tratadas à parte, porque NÃO são SQLSTATE:
+ *   - "P0001" (RAISE EXCEPTION dentro da própria função — endereço
+ *     inválido, quantidade inválida, produto indisponível, estoque
+ *     insuficiente, entrega local fora da faixa, cotação de frete expirada,
+ *     cupom inválido/expirado, valores do pedido mudaram): TEM formato
+ *     SQLSTATE, mas ganha tratamento especial porque a própria função
+ *     escreve o texto já em português — usa-se o texto real em vez da
+ *     frase genérica.
+ *   - "PGRST202" (PostgREST: função não existe no cache de schema),
+ *     "PGRST301" (JWT inválido ou expirado) e "PGRST302" (papel anônimo
+ *     desabilitado, sem sessão): nenhum tem formato SQLSTATE (8 caracteres,
+ *     prefixo do PostgREST) — são código do PostgREST, e os três acontecem
+ *     na fase de autenticação, ANTES de qualquer requisição chegar ao
+ *     Postgres (confirmado na doc oficial:
+ *     docs.postgrest.org/en/v12/references/errors.html) — a chamada nunca
+ *     chega a invocar a função.
+ *
+ *   QUALQUER OUTRA COISA — code ausente ou vazio (falha de rede: "Failed to
+ *   fetch", formato real de postgrest-js quando o fetch lança; ou resposta
+ *   que não é JSON — 502/504/524 de gateway, que postgrest-js devolve como
+ *   `{ message: <corpo> }` SEM `code` nenhum), ou code que não bate o
+ *   formato (minúsculo, tamanho diferente de 5 — não pode ter vindo do
+ *   Postgres) — NÃO permite concluir que o pedido foi criado ou não.
+ *   Mandar "tente de novo" sem ressalva aqui é o que duplica pedido —
+ *   estoque debitado duas vezes, cupom de uso único consumido duas vezes.
+ */
+const FORMATO_SQLSTATE = /^[0-9A-Z]{5}$/;
+// Códigos do PostgREST (nunca SQLSTATE) sobre os quais se pode afirmar que a
+// chamada nem chegou a invocar a função no Postgres — ver docstring acima.
+const CODIGOS_POSTGREST_REVERTIDO_COMPROVADO = new Set([
+  "PGRST202",
+  "PGRST301",
+  "PGRST302",
+]);
+
+export const mensagemAmigavelErroPedido = (error: unknown): string => {
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
+  const textoOriginal =
+    typeof detalhes.message === "string" ? detalhes.message : "";
+
+  if (codigo === "P0001" && textoOriginal) {
+    return textoOriginal;
+  }
+
+  if (
+    CODIGOS_POSTGREST_REVERTIDO_COMPROVADO.has(codigo) ||
+    FORMATO_SQLSTATE.test(codigo)
+  ) {
+    return "Não foi possível criar seu pedido agora. Tente novamente em instantes.";
+  }
+
+  // DEFAULT FALHA FECHADO: code ausente, vazio, ou fora do formato de
+  // SQLSTATE não permite concluir que o pedido NÃO foi criado. Isso já
+  // cobre falha de rede sozinho — postgrest-js nunca preenche `code` para
+  // erro de fetch ou gateway (ver node_modules/@supabase/postgrest-js/
+  // dist/index.cjs:359 e :432) — então não há ramo separado para detectar
+  // "failed to fetch" por texto: ele cairia aqui de qualquer forma, e um
+  // ramo próprio só duplicaria a mesma frase (achado A da revisão de
+  // 22/08/2026 — o ramo antigo devolvia byte a byte o mesmo texto deste
+  // default).
+  return "Não conseguimos confirmar se o pedido foi enviado. Verifique se ele já apareceu antes de tentar de novo.";
+};
+
+/**
+ * Traduz a recusa crua da CONSULTA do pedido por código (get_orders_by_
+ * otp_v1) para quem está acompanhando sem conta.
+ *
+ * 🔴 ESTADO DE BANCO NÃO MORA EM COMENTÁRIO DE CÓDIGO. Várias migrations
+ * definem esta função ao longo do tempo (a mais recente delas foi escrita
+ * para acrescentar `payment_status` ao JSON — ver `src/lib/mappers.ts:246`
+ * — e o nome do arquivo descreve o que ela resolve: rastreio por código
+ * volta a mostrar o pagamento). QUAL migration está VIVA no banco muda a
+ * qualquer hora — inclusive enquanto este arquivo continua aberto na sua
+ * tela, se outra frente aplicar uma migration nesse meio-tempo. Antes de
+ * copiar QUALQUER corpo desta função para escrever uma migration nova,
+ * confirme a definição viva de novo — não confie no que uma versão antiga
+ * deste comentário disse:
+ *
+ *   1. Sonda somente-leitura (é o corpo que ela devolver que manda, nunca
+ *      o que está escrito aqui):
+ *      `BEGIN READ ONLY; SELECT pg_get_functiondef(oid) FROM pg_proc
+ *      WHERE proname = 'get_orders_by_otp_v1'; ROLLBACK;`
+ *   2. Confirme que nenhuma migration mais nova sobre esta função está
+ *      pendente: `node scripts/db-reconcilia-ledger.cjs
+ *      --listar-pendentes`.
+ *
+ * Copiar o corpo errado faz um `CREATE OR REPLACE` apagar `payment_status`
+ * do JSON de novo — a tela de rastreio por código volta a mostrar todo
+ * pedido como se não houvesse cobrança nenhuma, inclusive um já pago.
+ *
+ * Essa função NUNCA dá RAISE: toda recusa de código (errado, expirado,
+ * bloqueado por excesso de tentativas) já volta em português dentro de
+ * `data.ok === false`, tratada ANTES de qualquer coisa chegar aqui (ver
+ * fetchOrdersByOtp abaixo). Ou seja: tudo que cai nesta função é falha em
+ * CHEGAR à verificação — nunca o código em si —, e usar "Código inválido ou
+ * expirado" para essas causas mentiria e mandaria a pessoa pedir um código
+ * novo à toa.
+ */
+export const mensagemAmigavelErroOtp = (error: unknown): string => {
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
+  const textoOriginal =
+    typeof detalhes.message === "string" ? detalhes.message : "";
+  const pista = `${codigo} ${textoOriginal}`.toLowerCase();
+
+  if (
+    pista.includes("failed to fetch") ||
+    pista.includes("networkerror") ||
+    pista.includes("network request failed") ||
+    pista.includes("load failed")
+  ) {
+    return "Sem conexão com o servidor. Verifique sua internet e tente novamente.";
+  }
+
+  return "Não conseguimos verificar seu código agora. Tente novamente em instantes.";
+};
+
+/**
+ * Traduz a recusa crua de `update_order_status_atomic` (RPC chamada por
+ * `updateOrderStatus`, abaixo — supabase/migrations/20260901000000_
+ * devolver_uso_de_cupom_ao_desfazer_pedido.sql tem a definição viva) para o
+ * que quem mexe no pedido lê na tela.
+ *
+ * Confirmado na fonte, não presumido: a função inteira não tem NENHUM
+ * `RAISE ... USING ERRCODE` — todo `RAISE EXCEPTION` dela (sessão ausente,
+ * pedido não encontrado, permissão negada, transição de status não
+ * permitida) sai com o SQLSTATE padrão do plpgsql (`P0001`, raise_exception)
+ * e texto JÁ em português, iguais aos de `mensagemAmigavelErroPedido` acima.
+ * Por isso o mesmo tratamento: `code === "P0001"` é a RPC falando por conta
+ * própria — passa direto.
+ *
+ * Sem a ressalva de duplicidade de `mensagemAmigavelErroPedido`: repetir uma
+ * atualização de status não duplica efeito nenhum. A própria função é
+ * idempotente na única operação com efeito colateral (a restituição de
+ * estoque do cancelamento só roda `IF v_old_status IS DISTINCT FROM
+ * 'cancelled'` — reenviar o mesmo cancelamento não devolve estoque duas
+ * vezes), então "tente novamente" é seguro para QUALQUER causa que não seja
+ * P0001, sem precisar distinguir formato de SQLSTATE.
+ */
+export const mensagemAmigavelErroAtualizacaoStatus = (
+  error: unknown,
+): string => {
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
+  const textoOriginal =
+    typeof detalhes.message === "string" ? detalhes.message : "";
+
+  // `validateStatusUpdate` (topo deste arquivo) lança ANTES de qualquer
+  // chamada de rede, com uma das duas frases fixas abaixo — já em
+  // português, escritas pelo próprio app. Ela já dispara o SEU PRÓPRIO
+  // `toast.error` com o mesmo texto (quando `!silent`); sem este
+  // passthrough, este catch trocaria essa segunda leitura por uma frase
+  // genérica diferente, o que pareceria dois erros DIFERENTES para o mesmo
+  // clique. Comparação por texto exato — e não "sem `code`" — porque uma
+  // falha de rede pura (ex.: `TypeError: Failed to fetch`) também chega sem
+  // `code`, e essa SIM precisa cair no genérico.
+  if (
+    textoOriginal === "Usuários só podem cancelar pedidos" ||
+    textoOriginal === "Apenas pedidos pendentes podem ser cancelados"
+  ) {
+    return textoOriginal;
+  }
+
+  if (codigo === "P0001" && textoOriginal) {
+    return textoOriginal;
+  }
+
+  return "Não foi possível atualizar o status do pedido agora. Tente novamente em instantes.";
+};
+
 export function useOrders(
   enabled = true,
   isAdmin = false,
@@ -905,7 +1112,7 @@ export function useOrders(
           const cacheKey = `ikcous_orders_cache_${user.id}`;
           localStorage.setItem(cacheKey, JSON.stringify(originalOrders));
         }
-        if (!silent) toast.error(err.message || "Erro ao atualizar status");
+        if (!silent) toast.error(mensagemAmigavelErroAtualizacaoStatus(err));
         throw err;
       }
     },
@@ -1118,7 +1325,7 @@ export function useOrders(
         };
       } catch (err: any) {
         console.error("Error creating order:", err);
-        toast.error(err.message || "Erro ao processar pedido");
+        toast.error(mensagemAmigavelErroPedido(err));
         throw err;
       }
     },
@@ -1310,17 +1517,41 @@ export function useOrders(
             );
             return [];
           }
-          return (((data as any).orders as any[]) || []).map((item) =>
+          const orders = (((data as any).orders as any[]) || []).map((item) =>
             mapOrderFromDB(item),
           );
+          if (orders.length === 0) {
+            // B2 da revisão de 22/08/2026: a verificação deu certo
+            // (`data.ok === true`) mas não sobrou pedido para devolver. A
+            // ÚNICA causa viva disso é uma corrida DENTRO desta própria
+            // chamada de RPC — o pedido foi apagado entre o SELECT que acha
+            // o código e o RETURN que monta o JSON (a FK de
+            // otp_verifications.order_id é NOT NULL + ON DELETE CASCADE:
+            // fora dessa janela estreita a linha do OTP já teria sido
+            // apagada junto, e cairia no ramo `!data.ok` acima). Este é o
+            // ÚNICO lugar onde essa causa é conhecida — por isso o toast
+            // mora aqui, e não em OrderSearch.tsx.
+            toast.error(
+              "Seu código foi verificado, mas esse pedido não está mais disponível. Fale com a loja.",
+            );
+          }
+          return orders;
         }
 
-        // Resposta no formato antigo (array cru): acontece se o front subir
-        // antes da migration. Continua funcionando em vez de quebrar a tela.
+        // Ramo defensivo, hoje MORTO contra o banco vivo: resposta no
+        // formato antigo (array cru), sem o envelope `{ ok, orders }`. Toda
+        // versão de get_orders_by_otp_v1 desde a AUTH-010 (#118) — inclusive
+        // a que está viva agora, ver docstring de mensagemAmigavelErroOtp
+        // acima sobre COMO confirmar qual é — devolve SEMPRE o envelope com
+        // `ok`, então o `if (data && "ok" in data)` logo acima captura toda
+        // resposta real, e este `return` nunca executa hoje. Mantido como
+        // salvaguarda contra uma versão anterior da função (rollback, ou
+        // downgrade de schema); se a função nunca mais voltar ao formato de
+        // array cru, este ramo pode ser removido com segurança.
         return ((data as any[]) || []).map((item) => mapOrderFromDB(item));
       } catch (err: any) {
         console.error("Error fetching orders by OTP:", err);
-        toast.error(err.message || "Código inválido ou expirado");
+        toast.error(mensagemAmigavelErroOtp(err));
         return [];
       } finally {
         setLoading(false);

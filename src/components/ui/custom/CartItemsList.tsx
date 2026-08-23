@@ -121,7 +121,7 @@ const CartItemCard = memo(function CartItemCard({
                             ?.toFixed(2)
                             .replace(".", ",")}
                         </span>
-                        <span className="py-0.25 rounded bg-emerald-50 px-1 text-[8px] font-black uppercase text-emerald-600">
+                        <span className="py-0.25 rounded bg-emerald-50 px-1 text-[8px] font-black uppercase text-emerald-700">
                           -
                           {Math.round(
                             ((item.product.originalPrice! - price) /

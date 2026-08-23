@@ -2066,6 +2066,11 @@ const AppContent = () => {
           <PreloadedOrLazy
             component={ProductView}
             props={{
+              // Sem esta `key` o React reaproveita a MESMA instância do
+              // ProductView ao trocar de produto pela faixa "você também pode
+              // gostar" — e a variação, a quantidade e a foto do produto
+              // anterior atravessam para a tela do novo.
+              key: `product-detail-${product.id}`,
               product: product,
               isFavorite: favorites.some((f) => f.id === product.id),
               onToggleFavorite: () => handleToggleFavorite(product),
@@ -2203,6 +2208,7 @@ const AppContent = () => {
               initialQuery: searchQuery,
               onBack: () => handleNavigate("home"),
               selectedProductId: selectedProductId || undefined,
+              onQueryChange: setSearchQuery,
             }}
           />
         );

@@ -1,3 +1,4 @@
+import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { cn } from "@/lib/utils";
 import type { Order, OrderStatus, PaymentMethod, View } from "@/types";
 import { motion } from "framer-motion";
@@ -16,6 +17,14 @@ import {
 import { memo, useState } from "react";
 import { toast } from "sonner";
 
+// O texto de `color` e o `desc` (abaixo, ~386) rodam a 8px — bem abaixo do
+// limiar de "texto grande" do WCAG —, então o mínimo AA é 4,5:1. Medido
+// (Tailwind v3) contra o fundo REAL do pill: `bg` é a cor `*-50/50` (50% de
+// opacidade) sobre o card branco, não a cor `*-50` pura.
+//   processing (amber-600/amber-50 a 50%):  3,13 → amber-700:   4,93
+//   delivered  (emerald-600/emerald-50 a 50%): 3,67 → emerald-700: 5,35
+//   cancelled  (rose-600/rose-50 a 50%):    4,48 → rose-700:    6,00
+// `pending` (4,97) e `shipping` (5,97) já passavam e não mudam.
 const statusConfig: Record<
   OrderStatus,
   { label: string; color: string; bg: string; dot: string; desc: string }
@@ -29,7 +38,7 @@ const statusConfig: Record<
   },
   processing: {
     label: "Em Separação",
-    color: "text-amber-600",
+    color: "text-amber-700",
     bg: "bg-amber-50/50",
     dot: "bg-amber-500",
     desc: "Preparando seu envio",
@@ -43,14 +52,14 @@ const statusConfig: Record<
   },
   delivered: {
     label: "Entregue",
-    color: "text-emerald-600",
+    color: "text-emerald-700",
     bg: "bg-emerald-50/50",
     dot: "bg-emerald-500",
     desc: "Entregue com sucesso!",
   },
   cancelled: {
     label: "Cancelado",
-    color: "text-rose-600",
+    color: "text-rose-700",
     bg: "bg-rose-50/50",
     dot: "bg-rose-500",
     desc: "Pedido cancelado",
@@ -226,7 +235,7 @@ export const OrderList = memo(function OrderList({
                     className={cn(
                       "flex items-center gap-1 px-1.5 py-0.5 rounded-md border transition-all duration-200 group/id",
                       copiedId === order.id
-                        ? "bg-emerald-50 text-emerald-600 border-emerald-200/60"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
                         : "bg-zinc-50/50 border-zinc-100/80 hover:bg-zinc-100/50 text-zinc-500",
                     )}
                   >
@@ -246,29 +255,35 @@ export const OrderList = memo(function OrderList({
                       </>
                     )}
                   </button>
-                  <span className="font-mono text-[8.5px] font-semibold tracking-tight text-zinc-400/90">
+                  <span className="font-mono text-[8.5px] font-semibold tracking-tight text-zinc-500">
                     {date.toLocaleDateString("pt-BR")}
                   </span>
                 </div>
 
-                <div
-                  className={cn(
-                    "px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border border-current/10 flex items-center gap-1",
-                    status.color,
-                    status.bg,
-                    // Utiliza dinamicamente a borda baseada na cor do status
-                  )}
-                >
-                  <span
+                <div className="flex flex-col items-end gap-1">
+                  <div
                     className={cn(
-                      "w-1 h-1 rounded-full",
-                      status.dot,
-                      (order.status === "shipping" ||
-                        order.status === "pending") &&
-                        "animate-pulse",
+                      "px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border border-current/10 flex items-center gap-1",
+                      status.color,
+                      status.bg,
+                      // Utiliza dinamicamente a borda baseada na cor do status
                     )}
+                  >
+                    <span
+                      className={cn(
+                        "w-1 h-1 rounded-full",
+                        status.dot,
+                        (order.status === "shipping" ||
+                          order.status === "pending") &&
+                          "animate-pulse",
+                      )}
+                    />
+                    {status.label}
+                  </div>
+                  <CustomerPaymentBadge
+                    paymentStatus={order.paymentStatus}
+                    orderStatus={order.status}
                   />
-                  {status.label}
                 </div>
               </div>
 
@@ -303,7 +318,7 @@ export const OrderList = memo(function OrderList({
                     </h4>
 
                     {/* Condensed Metadata Row */}
-                    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[8px] font-bold uppercase tracking-wide text-zinc-400">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[8px] font-bold uppercase tracking-wide text-zinc-500">
                       <div className="flex items-center gap-0.5">
                         <Package className="size-2.5 stroke-[2.5] text-zinc-300" />
                         <span>
@@ -350,11 +365,11 @@ export const OrderList = memo(function OrderList({
 
                 {/* Right side: Price */}
                 <div className="flex-shrink-0 self-center text-right">
-                  <span className="mb-0.5 block text-[7px] font-black uppercase tracking-widest text-zinc-300">
+                  <span className="mb-0.5 block text-[7px] font-black uppercase tracking-widest text-zinc-500">
                     Total
                   </span>
                   <div className="flex items-baseline justify-end leading-none">
-                    <span className="mr-0.5 text-[8px] font-extrabold text-zinc-400">
+                    <span className="mr-0.5 text-[8px] font-extrabold text-zinc-500">
                       R$
                     </span>
                     <span className="text-sm font-black tracking-tight text-zinc-950">
@@ -375,7 +390,7 @@ export const OrderList = memo(function OrderList({
                       status.dot,
                     )}
                   />
-                  <span className="max-w-[160px] truncate text-[8px] font-bold uppercase tracking-wider text-zinc-400">
+                  <span className="max-w-[160px] truncate text-[8px] font-bold uppercase tracking-wider text-zinc-500">
                     {status.desc}
                   </span>
                 </div>

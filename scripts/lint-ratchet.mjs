@@ -7,7 +7,8 @@
  *
  * Por que não é só `eslint .` no CI: este repositório entrou na dupla com
  * dívida pré-existente (7 erros e 553 warnings de eslint, 31 erros de biome,
- * medidos no CI em 30/07/2026). Um job que reprova por causa dela ficaria
+ * medidos no CI em 30/07/2026 — números HISTÓRICOS, e a dívida caiu desde
+ * então; os tetos vivos são os de `.lint-baseline.json`, sempre). Um job que reprova por causa dela ficaria
  * vermelho em todo PR desde o primeiro dia, e o resultado conhecido disso é
  * a equipe aprender a ignorar o CI inteiro — inclusive os jobs que importam.
  *

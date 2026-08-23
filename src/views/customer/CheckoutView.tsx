@@ -14,7 +14,7 @@ import { useCart } from "@/hooks/useCart";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { useOrders } from "@/hooks/useOrders";
+import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
 import { supabase } from "@/lib/supabase";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
@@ -973,14 +973,17 @@ export function CheckoutView({
       });
     } catch (error: any) {
       console.error("Error creating order:", error);
-      const errorMessage =
-        error.message || "Ocorreu um erro ao processar seu pedido.";
-      toast.error(`Falha no Pedido: ${errorMessage}`);
-      // Fallback alert if toast fails or for critical notice
-      if (!error.message)
-        globalThis.alert(
-          "Ocorreu um erro ao criar o pedido. Por favor, tente novamente.",
-        );
+      // Este catch recebe o MESMO erro que useOrders.ts (createOrder) já
+      // relança depois do próprio toast interno — mesma tradução aqui, para
+      // não haver dois textos diferentes para a mesma falha.
+      //
+      // O alert() de emergência que existia aqui foi removido: a condição
+      // era `if (!error.message)`, ou seja, disparava só quando NÃO havia
+      // texto cru — quanto mais incompreensível o erro, MENOS aviso o
+      // comprador recebia. Agora mensagemAmigavelErroPedido NUNCA devolve
+      // vazio, então o toast sempre carrega uma frase utilizável e o alerta
+      // deixou de ter um gatilho útil.
+      toast.error(`Falha no Pedido: ${mensagemAmigavelErroPedido(error)}`);
     } finally {
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();

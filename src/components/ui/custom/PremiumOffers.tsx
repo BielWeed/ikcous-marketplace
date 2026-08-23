@@ -203,7 +203,6 @@ export const PremiumOffers = React.memo(function PremiumOffers({
                   onQuickBuy={onQuickBuy}
                   onMouseEnter={handlePrefetchProductDetail}
                   onTouchStart={handlePrefetchProductDetail}
-                  isEligibleForFreeShipping={config.freeShippingMin > 0}
                   showRating={config.enableReviews}
                 />
               </div>
@@ -247,10 +246,8 @@ interface HeroOfferCardProps {
   onQuickBuy?: (product: Product) => void;
   onMouseEnter?: () => void;
   onTouchStart?: () => void;
-  isEligibleForFreeShipping: boolean;
   /** ADMIN-091 (#202): espelha `config.enableReviews`, lido uma vez pelo
-   * `PremiumOffers` pai e repassado aqui -- mesmo padrão de
-   * `isEligibleForFreeShipping`. */
+   * `PremiumOffers` pai e repassado aqui. */
   showRating: boolean;
 }
 
@@ -264,7 +261,6 @@ function HeroOfferCard({
   onQuickBuy,
   onMouseEnter,
   onTouchStart,
-  isEligibleForFreeShipping,
   showRating,
 }: HeroOfferCardProps) {
   const [cartStatus, setCartStatus] = useState<"idle" | "loading" | "success">(
@@ -283,8 +279,20 @@ function HeroOfferCard({
     onProductClick(product.id);
   };
 
+  // A faixa de ofertas tem a PRÓPRIA cópia da lógica de adicionar/comprar --
+  // não passa pelo ProductCard.tsx -- e tinha o mesmo defeito nos dois
+  // botões: com variação ATIVA (Tamanho, Cor...), nenhum dos dois pode
+  // adicionar ou ir direto para o checkout sem a escolha obrigatória.
+  const hasActiveVariant = product.variants?.some((v) => v.active) ?? false;
+
   const handleAddToCartClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    if (hasActiveVariant) {
+      onProductClick(product.id);
+      return;
+    }
+
     if (cartStatus !== "idle") return;
 
     haptic.medium();
@@ -302,6 +310,12 @@ function HeroOfferCard({
 
   const handleQuickBuyClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    if (hasActiveVariant) {
+      onProductClick(product.id);
+      return;
+    }
+
     haptic.heavy();
     onQuickBuy?.(product);
   };
@@ -385,7 +399,9 @@ function HeroOfferCard({
               <span className="rounded-md border border-secondary/20 bg-secondary/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-primary">
                 {product.category}
               </span>
-              {(product.freeShipping || isEligibleForFreeShipping) && (
+              {/* O selo só pode afirmar o que é verdade PARA ESTE produto --
+                  ver o comentário equivalente em ProductCard.tsx. */}
+              {product.freeShipping && (
                 <div className="flex items-center gap-1 rounded-md border border-emerald-100/40 bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold text-emerald-800">
                   <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
                   <span>Frete Grátis</span>
@@ -487,11 +503,13 @@ function HeroOfferCard({
               <span>
                 {product.stock <= 0
                   ? "Esgotado"
-                  : cartStatus === "idle"
-                    ? "Adicionar"
-                    : cartStatus === "loading"
-                      ? "Adicionando..."
-                      : "Adicionado!"}
+                  : hasActiveVariant
+                    ? "Escolher opções"
+                    : cartStatus === "idle"
+                      ? "Adicionar"
+                      : cartStatus === "loading"
+                        ? "Adicionando..."
+                        : "Adicionado!"}
               </span>
             </button>
 
@@ -505,7 +523,7 @@ function HeroOfferCard({
                   : "bg-secondary/10 hover:bg-secondary/20 text-primary border-secondary/20",
               )}
             >
-              Comprar
+              {hasActiveVariant ? "Escolher opções" : "Comprar"}
             </button>
           </div>
         </div>

@@ -29,7 +29,10 @@ import { branding } from "@/config/branding";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { useOrders } from "@/hooks/useOrders";
+import {
+  mensagemAmigavelErroAtualizacaoStatus,
+  useOrders,
+} from "@/hooks/useOrders";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { mapOrderFromDB } from "@/lib/mappers";
@@ -532,6 +535,32 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     [orders, paymentFilter],
   );
 
+  // Achado 2 do lote 1 (caça-defeitos): `currentPage` vem do localStorage e
+  // sobrevive entre sessões. Se a lojista fechou o painel na página 2 e, até
+  // reabrir, os pedidos que a preenchiam saíram do filtro (entregues,
+  // cancelados, separados), `totalPages` encolhe e a página salva fica fora
+  // do intervalo — como o bloco de paginação só existe quando
+  // `totalPages > 1`, não sobra nenhum botão para voltar. Este é o ÚNICO dos
+  // `setCurrentPage(0)` deste arquivo que roda sem clique nenhum da lojista.
+  // Espera `isLoaded` (carregamento assentado) antes de agir: durante a
+  // busca, `totalPages` pode valer 0 ou 1 momentaneamente com o valor
+  // provisório do cache, e resetar ali derrubaria uma navegação legítima.
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (currentPage > 0 && currentPage >= totalPages) {
+      setCurrentPage(0);
+    }
+  }, [isLoaded, currentPage, totalPages, setCurrentPage]);
+
+  // `silent` é código morto HOJE: o único chamador real é `OrderDetail`
+  // (`onStatusChange={handleStatusChange}` logo abaixo), e `OrderDetailProps.
+  // onStatusChange` (OrderDetail.tsx) tem assinatura de 2 argumentos, sem
+  // `silent` — nenhum clique de verdade passa `true` aqui. Mantido mesmo
+  // assim (não removido) porque `updateOrderStatus` do hook já aceita e usa
+  // esse parâmetro para outros chamadores (ex.: CheckoutView, no cancelamento
+  // automático) — se um dia esta view ganhar um caminho silencioso próprio
+  // (ex.: sincronização em lote), o guard do catch abaixo já cobre o caso sem
+  // precisar lembrar de adicioná-lo depois.
   const handleStatusChange = async (
     orderId: string,
     newStatus: OrderStatus,
@@ -555,11 +584,25 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     } catch (err: any) {
       haptic.error();
       console.error("[handleStatusChange] Erro ao avançar status:", err);
-      toast.error("Erro ao atualizar status do pedido", {
-        description:
-          err?.message ||
-          "Verifique sua conexão ou se possui permissões de administrador.",
-      });
+      // `useOrders.updateOrderStatus` (catch de useOrders.ts, por volta da
+      // linha 1115) já mostra o PRÓPRIO toast traduzido via
+      // `mensagemAmigavelErroAtualizacaoStatus` sempre que `!silent` — mostrar
+      // de novo aqui, mesmo traduzido, empilharia um SEGUNDO aviso para o
+      // mesmo clique. Antes deste conserto o segundo aviso lia `err?.message`
+      // cru (achado 1 da revisão do commit ec4cbdd): a lojista via a frase
+      // amigável e, por cima, o texto bruto do Postgres/RPC (ex.:
+      // "duplicate key value violates unique constraint
+      // \"marketplace_order_history_pkey\"").
+      //
+      // O toast AQUI só dispara quando `silent` é `true` — a única situação
+      // em que o hook ficou CALADO de propósito, e por isso este seria o
+      // ÚNICO aviso visível. Sem esta ressalva, o caminho `silent` ficaria
+      // sem nenhum aviso de erro.
+      if (silent) {
+        toast.error("Erro ao atualizar status do pedido", {
+          description: mensagemAmigavelErroAtualizacaoStatus(err),
+        });
+      }
       throw err;
     }
 
@@ -638,7 +681,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         });
         return;
       }
-      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${order.id.slice(-6)} foi atualizado.\nStatus: ${statusConfig[order.status].label}\n\nObrigado por comprar na ${branding.appName}!`;
+      // O CHECK do banco aceita SEIS status (inclui 'new', histórico —
+      // migrado para 'pending' pela 20260327000003, 0 pedidos hoje), o
+      // `statusConfig` (OrderStatusBadge.tsx) só conhece os CINCO do type
+      // `OrderStatus`. Sem o `|| statusConfig.pending` (mesma guarda de
+      // OrderStatusBadge.tsx:68 e OrderList.tsx:209) o botão quebra. E
+      // NUNCA `?.label || newStatus` aqui (como a linha 520 acima): isso
+      // botaria o valor cru do banco, em inglês, dentro da mensagem que a
+      // lojista manda para a cliente.
+      const statusMsg = statusConfig[order.status] || statusConfig.pending;
+      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${order.id.slice(-6)} foi atualizado.\nStatus: ${statusMsg.label}\n\nObrigado por comprar na ${branding.appName}!`;
 
       let phone = (order.customer?.whatsapp || "").replace(/\D/g, "");
       if (phone.length === 11 || phone.length === 10) {
@@ -1165,14 +1217,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   // de um pedido que existe.
                   <>
                     <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-                      Nenhum pedido corresponde ao que está sendo mostrado
-                      agora
+                      Nenhum pedido corresponde ao que está sendo mostrado agora
                     </h3>
                     <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
                       Pode ser o filtro de status, a busca ou o período
-                      aplicado. Toque em "Todos", no fim da fileira de
-                      filtros, ou limpe a busca e o período para ver todos os
-                      pedidos.
+                      aplicado. Toque em "Todos", no fim da fileira de filtros,
+                      ou limpe a busca e o período para ver todos os pedidos.
                     </p>
                   </>
                 ) : (
@@ -1432,7 +1482,10 @@ const AdminOrderCard = memo(function AdminOrderCard({
           </div>
           <div className="flex flex-col items-end gap-1.5">
             <OrderStatusBadge status={order.status} />
-            <PaymentStatusBadge paymentStatus={order.paymentStatus} />
+            <PaymentStatusBadge
+              paymentStatus={order.paymentStatus}
+              orderStatus={order.status}
+            />
           </div>
         </div>
 
@@ -1562,7 +1615,10 @@ const AdminOrderCard = memo(function AdminOrderCard({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <OrderStatusBadge status={order.status} />
-          <PaymentStatusBadge paymentStatus={order.paymentStatus} />
+          <PaymentStatusBadge
+            paymentStatus={order.paymentStatus}
+            orderStatus={order.status}
+          />
         </div>
       </div>
 

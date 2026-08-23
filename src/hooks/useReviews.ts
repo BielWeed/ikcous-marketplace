@@ -55,6 +55,81 @@ const bc =
     ? new BroadcastChannel("ikcous_reviews_sync")
     : null;
 
+/**
+ * Traduz a recusa crua do Postgres/PostgREST numa mensagem que o comprador
+ * entende. Toda saída é string ESTÁTICA: nenhum trecho de error.message pode
+ * chegar à tela, porque nome de tabela, política ou restrição descreve a
+ * estrutura interna do banco para quem está sondando a loja de fora. O erro
+ * completo segue vivo no console.error de quem chamou.
+ */
+const mensagemAmigavelErroAvaliacao = (error: unknown): string => {
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
+  const textoOriginal =
+    typeof detalhes.message === "string" ? detalhes.message : "";
+  const pista = `${codigo} ${textoOriginal}`.toLowerCase();
+
+  // A rede caiu antes de a gravação chegar ao banco.
+  //
+  // Estreitado às substrings de rede — sem `error instanceof TypeError` solto
+  // (achado de revisão): o try inteiro também cobre o refresh que roda DEPOIS
+  // da gravação já ter dado certo (getReviewsByProduct, chamado logo abaixo),
+  // e um `TypeError` genérico ali (por exemplo um bug futuro de acesso a
+  // propriedade) seria rotulado erradamente como "sem conexão". As três
+  // checagens de substring abaixo já cobrem o caso real de rede — mensagem de
+  // rede sempre carrega um desses textos — então a condição não precisa do
+  // tipo do objeto lançado.
+  if (
+    pista.includes("failed to fetch") ||
+    pista.includes("networkerror") ||
+    pista.includes("network request failed") ||
+    pista.includes("load failed")
+  ) {
+    return "Sem conexão com o servidor. Verifique sua internet e tente novamente.";
+  }
+
+  // Violação de chave única: já existe avaliação desta pessoa para este produto.
+  //
+  // Achado de revisão: hoje NÃO existe nenhuma restrição UNIQUE em
+  // (user_id, product_id) na tabela reviews — só a chave primária em `id`,
+  // dois índices não-únicos e duas FKs (conferido em todas as migrations,
+  // inclusive as arquivadas). A checagem equivalente no hook está comentada
+  // logo abaixo de addReview até hoje. Ou seja, este ramo é código
+  // preparado, não uma regra que o banco aplica agora: mantido porque a
+  // frase é honesta SE algum dia a restrição existir (aí o Postgres passa a
+  // devolver 23505 de verdade para essa causa), e porque remover perderia a
+  // intenção de negócio registrada aqui e no comentário abaixo. Até lá, este
+  // ramo é praticamente inalcançável — 23505 só dispararia por colisão de
+  // chave primária, algo que uma UUID gerada pelo banco não produz na prática.
+  if (codigo === "23505" || pista.includes("duplicate key")) {
+    return "Você já avaliou este produto.";
+  }
+
+  // Sessão inválida ou expirada: só aqui é seguro instruir novo login, porque
+  // só aqui reautenticar tem chance real de resolver.
+  if (codigo === "PGRST301" || pista.includes("jwt")) {
+    return "Não foi possível registrar sua avaliação. Faça login novamente e tente de novo.";
+  }
+
+  // Recusa de política de acesso (RLS) ou permissão SEM sinal específico de
+  // sessão (42501, "row-level security", "permission denied"): achado de
+  // revisão — o Postgres devolve exatamente este código e esta família de
+  // mensagem em DUAS situações que reviews_insert_policy cobre (ver
+  // supabase/migrations/20260812020000_reviews_insert_respeita_enable_reviews.sql,
+  // WITH CHECK): (1) auth.uid() != user_id, sessão inválida — login resolve;
+  // (2) enable_reviews desligado pelo lojista no painel — login NUNCA
+  // resolve, e mandar a pessoa repetir o login a faria tentar para sempre
+  // sem descobrir a causa real. Não dá para diferenciar as duas pela
+  // mensagem (a policy não distingue qual cláusula do WITH CHECK falhou), e
+  // errar para a frase genérica é seguro nas duas causas — por isso este
+  // ramo cai direto na frase honesta e genérica do fim da função, sem
+  // devolver nada aqui.
+
+  // Qualquer outra recusa (inclusive RLS/permissão sem sinal de sessão,
+  // acima): frase honesta e genérica, sem texto do banco.
+  return "Não foi possível enviar sua avaliação agora. Tente novamente em instantes.";
+};
+
 export function useReviews() {
   const { user, isAdmin } = useAuth();
   const { isLeader } = useLeaderElection();
@@ -101,6 +176,7 @@ export function useReviews() {
         verified: item.verified,
         helpful: item.helpful,
         createdAt: item.created_at,
+        merchantReply: item.merchant_reply,
       }));
 
       if (latestProductIdRef.current === productId) {
@@ -163,7 +239,7 @@ export function useReviews() {
         return data;
       } catch (error: any) {
         console.error("Error adding review:", error);
-        toast.error(`Erro ao enviar avaliação: ${error.message}`);
+        toast.error(mensagemAmigavelErroAvaliacao(error));
         return null;
       }
     },

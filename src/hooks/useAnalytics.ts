@@ -139,6 +139,61 @@ export function clearAnalyticsCache() {
   lastCategoryFetchTime = 0;
 }
 
+/**
+ * Traduz um erro bruto do banco/rede para a frase que a lojista lê no painel.
+ *
+ * REGRA DE OURO: cada ramo abaixo só promete uma causa quando dá para
+ * DISTINGUIR essa causa de todas as outras que caem no mesmo ponto — os
+ * quatro catch deste hook recebem erros da mesma fonte (RPC via
+ * callRpcWithRetry), então qualquer erro que não bata num padrão inequívoco
+ * fica na frase genérica. Errar para a genérica é seguro; instrução
+ * específica errada ("faça login" quando logar não resolve) não é.
+ *
+ * O texto original do erro NÃO se perde: quem chama SEMPRE registra o erro
+ * completo no console.error junto desta frase.
+ */
+function mensagemParaLojista(erro: unknown, acaoQueFalhou: string): string {
+  const sinal =
+    typeof erro === "object" && erro !== null
+      ? (erro as { code?: unknown; message?: unknown })
+      : {};
+  const codigo = typeof sinal.code === "string" ? sinal.code : "";
+  const texto = typeof sinal.message === "string" ? sinal.message : "";
+
+  // Sessão: só quando o próprio token diz que venceu/é inválido (PGRST301 é
+  // o código do PostgREST para JWT problemático). Um 401 genérico NÃO entra
+  // aqui — pode ser chave de API errada, e "entre novamente" não resolveria.
+  if (
+    /\bjwt\b/i.test(texto) ||
+    /session expired/i.test(texto) ||
+    codigo === "PGRST301"
+  ) {
+    return "Sua sessão expirou. Entre novamente com sua conta e tente de novo.";
+  }
+  // Permissão: recusa do Postgres (42501) ou negação de RLS. Não promete que
+  // logar resolve — pode ser configuração de acesso no servidor.
+  if (
+    codigo === "42501" ||
+    /permission denied/i.test(texto) ||
+    /row-level security/i.test(texto)
+  ) {
+    return "Sem permissão para acessar estes dados agora. Confirme que você entrou com a conta de administradora da loja.";
+  }
+  // Rede: textos canônicos de fetch falhado nos principais navegadores
+  // (Chrome/Firefox/Safari/Node). Sem conexão, nenhuma consulta sai do lugar.
+  if (
+    /failed to fetch|networkerror|fetch failed|load failed|network request failed/i.test(
+      texto,
+    )
+  ) {
+    return "Sem conexão com o servidor. Verifique sua internet e tente de novo.";
+  }
+  // Tudo o resto (função RPC inexistente, erro 5xx, timeout, erro sem
+  // mensagem): sem como nomear a causa com o que chegou — frase honesta que
+  // dita a ação que costuma resolver.
+  return `Não foi possível ${acaoQueFalhou} agora. Tente atualizar a página; se continuar, tente mais tarde.`;
+}
+
 export function useAnalytics() {
   const { isAdmin } = useAuth();
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -308,7 +363,7 @@ export function useAnalytics() {
         return cachedStats;
       } catch (err: any) {
         console.error("Error fetching executive summary:", err);
-        setError(err.message || "Error fetching executive summary");
+        setError(mensagemParaLojista(err, "carregar o resumo do painel"));
         return null;
       } finally {
         setSummaryLoading(false);
@@ -379,7 +434,9 @@ export function useAnalytics() {
             );
             if (err) {
               console.error("Background fetch category failed:", err);
-              setCategoryError(err.message || "Erro ao atualizar categorias");
+              setCategoryError(
+                mensagemParaLojista(err, "atualizar os dados de categorias"),
+              );
               return;
             }
             if (data) {
@@ -401,7 +458,9 @@ export function useAnalytics() {
             }
           } catch (e: any) {
             console.error("Background fetch category failed:", e);
-            setCategoryError(e?.message || "Erro ao atualizar categorias");
+            setCategoryError(
+              mensagemParaLojista(e, "atualizar os dados de categorias"),
+            );
           }
         })();
         return cachedCategoryData;
@@ -435,7 +494,9 @@ export function useAnalytics() {
         return data;
       } catch (err: any) {
         console.error("Error fetching category analytics:", err);
-        setCategoryError(err?.message || "Erro ao carregar categorias");
+        setCategoryError(
+          mensagemParaLojista(err, "carregar os dados de categorias"),
+        );
         return null;
       } finally {
         setCategoryLoading(false);

@@ -6,7 +6,9 @@
 // quebrou" de "consulta OK, zero linhas". Estes três testes provam que o
 // hook passa a expor `categoryError`:
 //
-//   1. falha da RPC direta (sem cache) seta `categoryError` com a mensagem;
+//   1. falha da RPC direta (sem cache) seta `categoryError` com uma frase
+//      legível para a lojista (a tradução do erro cru é tarefa de
+//      use-analytics-erro-cru-do-banco-nao-vaza-no-painel.test.tsx);
 //   2. um novo fetch com sucesso limpa o `categoryError` anterior;
 //   3. a revalidação em segundo plano (que hoje SILENCIA o erro — só
 //      confere `if (data)` e nunca olha o `error` de retorno) também expõe
@@ -122,7 +124,11 @@ describe("useAnalytics — categoryError (#104)", () => {
       );
     });
 
-    expect(textoDoErro(hospedeiro)).toBe("RPC de categoria quebrada");
+    // O erro deste mock não tem pista de causa (não é sessão, permissão nem
+    // rede), então a frase exibida é a genérica honesta da tradução.
+    expect(textoDoErro(hospedeiro)).toBe(
+      "Não foi possível carregar os dados de categorias agora. Tente atualizar a página; se continuar, tente mais tarde.",
+    );
   });
 
   it("um fetch com sucesso limpa o categoryError de uma falha anterior", async () => {
@@ -172,7 +178,9 @@ describe("useAnalytics — categoryError (#104)", () => {
         true,
       );
     });
-    expect(textoDoErro(hospedeiro)).toBe("RPC de categoria quebrada");
+    expect(textoDoErro(hospedeiro)).toBe(
+      "Não foi possível carregar os dados de categorias agora. Tente atualizar a página; se continuar, tente mais tarde.",
+    );
 
     await act(async () => {
       await fetchFn(
@@ -258,7 +266,7 @@ describe("useAnalytics — categoryError (#104)", () => {
     });
 
     expect(textoDoErro(hospedeiro)).toBe(
-      "RPC de categoria quebrada em segundo plano",
+      "Não foi possível atualizar os dados de categorias agora. Tente atualizar a página; se continuar, tente mais tarde.",
     );
   });
 });

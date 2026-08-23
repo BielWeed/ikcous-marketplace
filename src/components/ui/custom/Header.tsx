@@ -130,7 +130,6 @@ export const Header = memo(function Header({
             <Info className="size-3.5" />
           </div>
         );
-      case "success":
       default:
         return (
           <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/25 text-emerald-300 ring-1 ring-emerald-400/40">

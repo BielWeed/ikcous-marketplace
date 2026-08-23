@@ -5,6 +5,18 @@ interface OrderReceiptProps {
   order: Order;
 }
 
+// O recibo e o unico documento desta tela que sai IMPRESSO e vai para a mao
+// da cliente. Ate aqui ele misturava duas notacoes -- `R$ 100.00` com ponto
+// nas linhas antigas e `R$ 10,00` com virgula na linha de desconto -- e duas
+// notacoes na mesma folha parecem erro para quem le. Um formatador so, em
+// pt-BR, para todas as linhas.
+function reais(valor: number): string {
+  return (valor || 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 export const OrderReceipt = memo(function OrderReceipt({
   order,
 }: OrderReceiptProps) {
@@ -40,7 +52,7 @@ export const OrderReceipt = memo(function OrderReceipt({
                   {item.quantity}x {item.name}
                 </span>
                 <span>
-                  R$ {((item.price || 0) * (item.quantity || 0)).toFixed(2)}
+                  R$ {reais((item.price || 0) * (item.quantity || 0))}
                 </span>
               </div>
             ))}
@@ -50,15 +62,27 @@ export const OrderReceipt = memo(function OrderReceipt({
         <div className="mb-4 border-t border-dashed border-black pt-4">
           <div className="flex justify-between">
             <span>Subtotal</span>
-            <span>R$ {(order?.subtotal || 0).toFixed(2)}</span>
+            <span>R$ {reais(order?.subtotal || 0)}</span>
           </div>
           <div className="flex justify-between">
             <span>Frete</span>
-            <span>R$ {(order?.shipping || 0).toFixed(2)}</span>
+            <span>R$ {reais(order?.shipping || 0)}</span>
           </div>
+          {(order?.discount || 0) > 0 && (
+            // Achado 1 do lote 1 (caça-defeitos): sem esta linha, a conta do
+            // papel não fechava — subtotal + frete não batia com o TOTAL, e
+            // quem responde "por que não bate?" para a cliente é a lojista.
+            // Mesma condição e mesmo rótulo da ficha na tela
+            // (OrderDetail.tsx:530-547), formatação de dinheiro igual à dela
+            // (toLocaleString pt-BR com 2 casas).
+            <div className="flex justify-between">
+              <span>Desconto</span>
+              <span>- R$ {reais(order.discount || 0)}</span>
+            </div>
+          )}
           <div className="mt-2 flex justify-between border-t border-black pt-2 text-lg font-bold">
             <span>TOTAL</span>
-            <span>R$ {(order?.total || 0).toFixed(2)}</span>
+            <span>R$ {reais(order?.total || 0)}</span>
           </div>
         </div>
 

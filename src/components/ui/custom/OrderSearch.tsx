@@ -127,11 +127,29 @@ export function OrderSearch({
         if (onOrdersFound) {
           onOrdersFound(foundOrders);
         }
-      } else {
-        toast.error(
-          "Nenhum pedido encontrado. Verifique se o código OTP está correto.",
-        );
       }
+      // Achado C da revisão de 22/08/2026, fechado pelo B2 da revisão de
+      // A2-fix3 (22/08/2026): NENHUM toast fixo aqui quando `foundOrders`
+      // vem vazio. `fetchOrdersByOtp` (useOrders.ts) mostra o toast certo
+      // para TODA causa que devolve `[]` — código errado (com a contagem de
+      // tentativas restantes), bloqueio por excesso de tentativas, falha em
+      // CHEGAR à verificação (rede caiu, servidor fora do ar —
+      // `mensagemAmigavelErroOtp`), e também o caso raro de a verificação
+      // ter dado certo sem sobrar pedido (corrida dentro da própria RPC —
+      // ver o comentário no ramo `data.ok === true` de fetchOrdersByOtp).
+      // Um segundo toast fixo aqui, sempre "verifique o código", era
+      // CONTRADITÓRIO na falha de rede: mandava conferir um código que
+      // nunca chegou a ser verificado. Um terceiro caso — o ramo defensivo
+      // de useOrders.ts (resposta em formato de array cru, sem o envelope
+      // `{ ok, orders }`) — está MORTO contra o banco vivo hoje: nenhuma FK
+      // nem contrato de schema garante isso para sempre, então "morto hoje"
+      // não é "morto para sempre"; quem for reabrir essa possibilidade tem
+      // de reabrir o toast junto.
+      // Nenhum teste do par prova as duas metades juntas (que o hook toasta
+      // E que a tela não duplica) na mesma execução —
+      // order-search-nao-repete-toast-de-erro-que-ja-foi-avisado.test.tsx
+      // mocka `fetchOrdersByOtp` inteiro, então o toast interno do hook
+      // nunca roda ali; ele prova só a metade "não duplica".
     } catch (error) {
       console.error(error);
     } finally {

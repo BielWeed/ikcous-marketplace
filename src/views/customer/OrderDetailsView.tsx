@@ -1,10 +1,18 @@
+import { paymentStatusKey } from "@/components/admin/orders/OrderStatusBadge";
+import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { ReviewForm } from "@/components/ui/custom/ReviewForm";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrders } from "@/hooks/useOrders";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import type { Order, OrderItem, OrderStatus, View } from "@/types";
+import type {
+  Order,
+  OrderItem,
+  OrderStatus,
+  PaymentStatus,
+  View,
+} from "@/types";
 import { haptic } from "@/utils/haptic";
 import { motion } from "framer-motion";
 import {
@@ -81,6 +89,73 @@ const statusConfig: Record<
   },
 };
 
+/**
+ * Só o estado `pending` (esteira do pedido) muda de texto conforme o
+ * `payment_status` (se o dinheiro entrou) — processing/shipping/delivered/
+ * cancelled continuam com a description fixa do `statusConfig`, porque a
+ * esteira já avançou e a pergunta "o dinheiro entrou?" já foi respondida
+ * pela lojista. É por isso que este é um `switch` pequeno em cima de
+ * `paymentStatusKey` (a ÚNICA fonte que decide "null vira sem_cobranca"),
+ * não um segundo emaranhado de `if` dentro de `statusConfig`.
+ *
+ * `aguardando` e `sem_cobranca` caem no `default`: devolvem o texto que já
+ * estava certo, sem mudar uma vírgula.
+ */
+function pendingDescription(
+  paymentStatus: PaymentStatus | null | undefined,
+): string {
+  const key = paymentStatusKey(paymentStatus);
+  switch (key) {
+    case "pago":
+    case "pago_apos_expirar":
+      return "Pagamento confirmado. A loja vai iniciar a separação.";
+    case "recusado":
+      return "O pagamento não foi aprovado. Tente novamente ou fale com a loja.";
+    case "expirado":
+      return "O prazo de pagamento venceu. Fale com a loja para gerar um novo.";
+    case "estornado":
+      return "O pagamento foi estornado. Fale com a loja.";
+    default:
+      return statusConfig.pending.description;
+  }
+}
+
+/**
+ * `cancelled` (esteira) quase sempre significa "não seguirá para entrega",
+ * mas há um par real que a produção gera (rastreado no SQL,
+ * `20260810000000_confirmar_pagamento_guarda_status.sql`, ~118-120 e
+ * ~173-176): `pago` e `pago_apos_expirar` também aparecem com
+ * `status='cancelled'` quando o cliente pagou o PIX depois que a reserva
+ * venceu ou depois que a lojista cancelou. O estoque já voltou, o pedido está
+ * morto, mas o dinheiro está com a loja — a description fixa de "cancelado,
+ * não seguirá para entrega" escondia isso do comprador. Mesma forma de
+ * `pendingDescription`: função pequena em cima de `paymentStatusKey`, os
+ * demais casos de `cancelled` mantêm o texto de `statusConfig` sem mudar uma
+ * vírgula.
+ *
+ * `aguardando` é o par oposto, e o mais perigoso dos dois: o cliente cancelou
+ * um PIX que ainda NÃO pagou. `update_order_status_atomic` grava
+ * `status='cancelled'` e devolve o estoque, mas não toca em `payment_status`
+ * — rastreado em `20260812000000_reconciliar_pedido_cancelado.sql`
+ * (linhas 6-17). Sem este ramo, a description fixa de "cancelado" não avisava
+ * nada, e o selo ao lado (`CustomerPaymentBadge`) dizia "Aguardando
+ * pagamento" — a tela inteira convidava o cliente a pagar um pedido morto com
+ * o QR do PIX ainda aberto no banco dele. Não há estorno automático neste
+ * app.
+ */
+function cancelledDescription(
+  paymentStatus: PaymentStatus | null | undefined,
+): string {
+  const key = paymentStatusKey(paymentStatus);
+  if (key === "pago" || key === "pago_apos_expirar") {
+    return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
+  }
+  if (key === "aguardando") {
+    return "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague — o pedido não será entregue.";
+  }
+  return statusConfig.cancelled.description;
+}
+
 export function OrderDetailsView({
   orderId,
   onBack,
@@ -103,8 +178,27 @@ export function OrderDetailsView({
 
   const handleCancelOrder = async () => {
     if (!order) return;
+    // O botão "Cancelar Pedido" aparece para TODO pedido 'pending' com
+    // usuário logado, sem olhar o pagamento — e este app não tem estorno
+    // automático em lugar nenhum. Quem já pagou (`pago` ou
+    // `pago_apos_expirar`, via `paymentStatusKey` — a ÚNICA fonte que decide
+    // "null vira sem_cobranca") precisa saber, ANTES de confirmar, que o
+    // dinheiro fica com a loja até alguém devolver à mão. Quem ainda não
+    // pagou (aguardando/recusado/expirado/estornado/nulo) continua vendo o
+    // texto original: cancelar ali é inofensivo, e falar em dinheiro
+    // assustaria à toa.
+    // `===` e nao `.includes()`: o array seria inferido como `string[]` e
+    // aceitaria qualquer coisa, entao um rename futuro de `PaymentStatus`
+    // quebraria os dois `switch` deste arquivo e passaria calado AQUI —
+    // `pagamentoJaEntrou` viraria `false` para sempre e quem pagou voltaria
+    // a ler o texto generico. Com `===` o TypeScript reprova (TS2678).
+    const chavePagamento = paymentStatusKey(order.paymentStatus);
+    const pagamentoJaEntrou =
+      chavePagamento === "pago" || chavePagamento === "pago_apos_expirar";
     const confirmCancel = globalThis.confirm(
-      "Tem certeza que deseja cancelar este pedido? Esta ação não pode ser desfeita.",
+      pagamentoJaEntrou
+        ? "Você já pagou este pedido. Se cancelar, ele não será entregue e o dinheiro NÃO volta automaticamente — você vai precisar falar com a loja para pedir a devolução. Tem certeza?"
+        : "Tem certeza que deseja cancelar este pedido? Esta ação não pode ser desfeita.",
     );
     if (!confirmCancel) return;
 
@@ -277,8 +371,24 @@ export function OrderDetailsView({
     );
   }
 
-  const currentStatus = statusConfig[order.status as OrderStatus];
+  // O CHECK do banco (marketplace_orders_status_check, baseline
+  // 20260806000000:3981) aceita SEIS status: pending, processing, shipping,
+  // delivered, cancelled, new. Este `statusConfig` (linha 43) só conhece os
+  // CINCO do type `OrderStatus` — falta 'new'. A migration
+  // 20260327000003_sync_order_status_constraint.sql migrou todo pedido
+  // 'new' para 'pending' (linhas 20-24) e manteve 'new' no CHECK só por
+  // compatibilidade histórica: hoje há 0 pedidos nesse estado, mas o banco
+  // continua aceitando o valor, e sem o `|| statusConfig.pending` esta tela
+  // fica em branco se um chegar. Mesma guarda de OrderList.tsx:209.
+  const currentStatus =
+    statusConfig[order.status as OrderStatus] || statusConfig.pending;
   const StatusIcon = currentStatus.icon;
+  const statusDescription =
+    order.status === "pending"
+      ? pendingDescription(order.paymentStatus)
+      : order.status === "cancelled"
+        ? cancelledDescription(order.paymentStatus)
+        : currentStatus.description;
 
   return (
     <div className="pb-customer min-h-full bg-zinc-50/50">
@@ -370,7 +480,7 @@ export function OrderDetailsView({
                 {currentStatus.label}
               </h3>
               <p className="text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
-                {currentStatus.description}
+                {statusDescription}
               </p>
             </div>
           </div>
@@ -573,21 +683,13 @@ export function OrderDetailsView({
               </div>
             )}
             <div className="my-3 h-px bg-zinc-100" />
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col">
-                <span className="mb-0.5 text-[8px] font-black uppercase tracking-wider text-zinc-400">
-                  Total Consolidado
-                </span>
-                <span className="text-xl font-black uppercase italic tracking-tight text-zinc-950">
-                  R$ {order.total.toFixed(2).replace(".", ",")}
-                </span>
-              </div>
-              <div className="text-emerald-750 inline-flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-1.5">
-                <CheckCircle className="size-3.5 text-emerald-600" />
-                <span className="text-[8px] font-black uppercase tracking-wider text-emerald-700">
-                  Confirmado
-                </span>
-              </div>
+            <div className="flex flex-col">
+              <span className="mb-0.5 text-[8px] font-black uppercase tracking-wider text-zinc-400">
+                Total Consolidado
+              </span>
+              <span className="text-xl font-black uppercase italic tracking-tight text-zinc-950">
+                R$ {order.total.toFixed(2).replace(".", ",")}
+              </span>
             </div>
           </div>
         </motion.div>
@@ -638,12 +740,10 @@ export function OrderDetailsView({
                     ? "Cartão de Crédito"
                     : order.paymentMethod}
                 </p>
-                <div className="inline-flex items-center gap-1.5 rounded-full border border-zinc-100 bg-zinc-50 px-2.5 py-1">
-                  <div className="size-1 rounded-full bg-zinc-400" />
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">
-                    Confirmado via Gateway
-                  </span>
-                </div>
+                <CustomerPaymentBadge
+                  paymentStatus={order.paymentStatus}
+                  orderStatus={order.status}
+                />
               </div>
             </div>
           </div>

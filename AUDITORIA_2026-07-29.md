@@ -2,6 +2,16 @@
 
 **Data:** 29/07/2026 · **Commit base:** `ef7b099` (branch `main`, árvore limpa) · **Escopo:** 174 arquivos TS/TSX (~72.600 linhas) + 38 migrations SQL + 3 edge functions
 
+> ⚠️ **Este documento NÃO carrega estado, e nunca carregou.** Ele é o retrato de 29/07/2026.
+> Desde então caíram **mais de 200 commits**, e boa parte destes achados já foi corrigida — mas
+> nada aqui diz qual.
+>
+> **O estado medido está em [`docs/auditoria/2026-08-22-reauditoria-de-julho.md`](docs/auditoria/2026-08-22-reauditoria-de-julho.md)**,
+> conferido no código de 22/08/2026 (`HEAD = 10830e6`). Ele cobre os 76 achados numerados **e**
+> os 9 de runtime (`R1`-`R9`), que somam os 85 citados no onboarding.
+>
+> **Não use o número "66 abertos" para planejar.** Ele é de 30/07 e não foi medido desde então.
+
 ## Como esta auditoria foi feita
 
 | Etapa | O que foi feito |

@@ -169,6 +169,98 @@ function fireAndForget(query: PromiseLike<unknown>, label: string): void {
     )
 }
 
+/**
+ * O oposto do `fireAndForget` acima: espera a gravação terminar e devolve o
+ * erro, se houve.
+ *
+ * Duas formas de falhar precisam sair pelo mesmo lugar — o PostgREST devolve
+ * `{ error }` sem rejeitar, e rede/permissão rejeitam a promessa. As duas
+ * viram um valor de retorno, e NENHUMA vira exceção: se a exceção subisse, o
+ * `catch` de topo desta função a converteria num preço de contingência com
+ * status 200 — ou seja, o preço sairia mesmo sem a cotação gravada, que é
+ * exatamente o defeito que este caminho existe para fechar.
+ *
+ * Recebe uma função (e não o builder já criado) porque o builder do
+ * supabase-js é lazy: assim a query só é disparada aqui dentro, com o
+ * `try/catch` já em volta.
+ */
+async function gravarCotacao(gravar: () => PromiseLike<unknown>): Promise<unknown | null> {
+    try {
+        const resultado = await gravar()
+        const erro = (resultado as { error?: unknown } | null)?.error
+        if (erro) {
+            console.error('Failed to cache shipping options:', erro)
+            return erro
+        }
+        return null
+    } catch (err) {
+        console.error('Failed to cache shipping options:', err)
+        return err ?? new Error('Falha desconhecida ao gravar a cotação')
+    }
+}
+
+/**
+ * Texto legível de um erro que pode ser exceção (`Error`) ou objeto do
+ * PostgREST (`{ message, code }`) — as duas formas que `gravarCotacao`
+ * devolve. Só vai para `shipping_calculation_logs`, que é tabela de admin;
+ * nunca para o corpo que a cliente recebe.
+ */
+function mensagemDoErro(erro: unknown): string {
+    const mensagem = (erro as { message?: unknown } | null)?.message
+    if (typeof mensagem === 'string' && mensagem.length > 0) return mensagem
+    return String(erro)
+}
+
+/**
+ * A RPC que valida o pedido resolve o preço de ALGUMAS opções direto da
+ * `store_config`, sem olhar `shipping_quotes_cache`. Estas são elas.
+ *
+ * São DUAS RPCs, e o checkout escolhe entre elas em `useOrders.ts:1060`:
+ * `create_marketplace_order_v24` no pagamento online e
+ * `create_marketplace_order_v23` no resto. Um classificador só serve para as
+ * duas porque os ramos de frete delas são hoje IDÊNTICOS — conferido linha a
+ * linha na definição viva, `20260821000200_cupom_sem_limite_e_ilimitado.sql`
+ * (v23 a partir de :138, v24 a partir de :383). Se uma `v25` chegar com ramo
+ * diferente, nada aqui avisa: é preciso reconferir esta lista à mão.
+ *
+ * A cópia literal dos ramos:
+ *
+ *   ELSIF p_shipping_option_id LIKE 'flat-fee-%'   -> store_config.shipping_fee
+ *   ELSIF p_shipping_option_id = 'local-delivery'  -> store_config.local_delivery_fee
+ *   ELSIF p_destination_cep IS NOT NULL            -> SELECT em shipping_quotes_cache
+ *
+ * Ou seja: `melhor-envio-*` e `frenet-*` caem no SELECT do cache e são
+ * recusadas sem a linha gravada; as duas de cima passam do mesmo jeito.
+ *
+ * ⚠️ A cópia é literal sobre QUAL ramo a RPC toma, não sobre QUANTO ela
+ * cobra: casar o ramo NÃO BASTA, porque o preço que vai valer é o da
+ * `store_config` (`COALESCE(shipping_fee, 0)` / `local_delivery_fee`). Opção
+ * cujo preço é CALCULADO não pode entrar neste classificador nem que o id
+ * case com o prefixo — é o caso de `flat-fee-contingency`, que sai de
+ * `calculateSmartFallback` e só é inofensiva hoje porque nasce no ramo em que
+ * a gravação nem chega a ser tentada; movida para o `else`, ela faria a
+ * cliente ver um preço que a RPC não vai honrar — e o pedido nem chega a
+ * fechar pelo da `store_config`, porque as duas RPCs comparam o total que o
+ * carrinho mandou com o que elas mesmas recalculam e RECUSAM a divergência
+ * acima de cinco centavos (`ABS(v_calculated_total - p_total_amount) > 0.05`
+ * -> `RAISE EXCEPTION`, v23 em :212 e v24 em :457 de
+ * `20260821000200_cupom_sem_limite_e_ilimitado.sql`). O prejuízo, portanto,
+ * não é sangria silenciosa do bolso da lojista: é venda perdida no último
+ * clique, sem que nada apareça deste lado.
+ *
+ * Por isso a falha de gravação não pode derrubar a resposta inteira: ela só
+ * pode derrubar o que a validação do pedido realmente recusaria.
+ *
+ * Casa por igualdade e por prefixo exatamente como o SQL (`=` e `LIKE
+ * 'flat-fee-%'`). Qualquer id que não se encaixe nesses dois ramos conta como
+ * "precisa do cache" — o lado seguro é recusar, nunca vender por um preço que
+ * o banco vai rejeitar no último clique.
+ */
+export function precoResolvidoSemCache(id: unknown): boolean {
+    if (typeof id !== 'string') return false
+    return id === 'local-delivery' || id.startsWith('flat-fee-')
+}
+
 // Helper to check if destination is a local CEP
 export function isLocalCep(originCep: string, destCep: string, localCepRange?: string): boolean {
     const cleanOrigin = originCep.replace(/\D/g, '')
@@ -292,8 +384,20 @@ async function verifyIsAdmin(authHeader: string | null, supabaseUrl: string, ser
 }
 
 const isTesting = Deno.mainModule.endsWith("_test.ts") || Deno.mainModule.endsWith("_test.js") || Deno.mainModule.includes("index_test");
-if (!isTesting) {
-serve(async (req: Request) => {
+
+/**
+ * Costura de teste, a mesma que `criar-pagamento` e `reconciliar-pagamentos`
+ * já usam: o handler é uma função exportada e o cliente do Supabase pode ser
+ * substituído por um dublê. Sem isso, o corpo do handler ficava dentro de
+ * `serve(...)` e NENHUM teste conseguia exercitar a resposta HTTP — só as
+ * funções puras do topo do arquivo. Em produção nada muda: `deps` chega vazio
+ * e o cliente real é criado como sempre.
+ */
+export type CalculateShippingDeps = {
+    supabase?: any
+}
+
+export async function handler(req: Request, deps: CalculateShippingDeps = {}): Promise<Response> {
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
@@ -313,7 +417,7 @@ serve(async (req: Request) => {
         // Initialize Supabase clients
         const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
         const supabaseServiceRole = readKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY')
-        const supabaseClient = createClient(supabaseUrl, supabaseServiceRole)
+        const supabaseClient = deps.supabase ?? createClient(supabaseUrl, supabaseServiceRole)
 
         // ROUTE: test_credentials
         if (action === 'test_credentials') {
@@ -532,7 +636,8 @@ serve(async (req: Request) => {
                             deliveryDays: 1,
                             provider: 'local'
                         }
-                    ]
+                    ],
+                    cotacaoIncompleta: false
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
@@ -580,7 +685,8 @@ serve(async (req: Request) => {
                             deliveryDays: 3,
                             provider: 'free'
                         }
-                    ]
+                    ],
+                    cotacaoIncompleta: false
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
@@ -589,7 +695,7 @@ serve(async (req: Request) => {
         // 4. If provider is flat_fee, return immediately
         if (provider === 'flat_fee' || !cart || !Array.isArray(cart) || cart.length === 0) {
             return new Response(
-                JSON.stringify({ options: getFlatFeeResponse() }),
+                JSON.stringify({ options: getFlatFeeResponse(), cotacaoIncompleta: false }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
@@ -624,7 +730,7 @@ serve(async (req: Request) => {
             )
 
             return new Response(
-                JSON.stringify({ options: cachedQuote.options }),
+                JSON.stringify({ options: cachedQuote.options, cotacaoIncompleta: false }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
@@ -644,7 +750,7 @@ serve(async (req: Request) => {
                 credsError
             )
             return new Response(
-                JSON.stringify({ options: getFlatFeeResponse() }),
+                JSON.stringify({ options: getFlatFeeResponse(), cotacaoIncompleta: false }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
@@ -668,7 +774,8 @@ serve(async (req: Request) => {
                             deliveryDays: 3,
                             provider: 'free'
                         }
-                    ]
+                    ],
+                    cotacaoIncompleta: false
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
@@ -836,6 +943,20 @@ serve(async (req: Request) => {
             shippingOptions = [localOption, ...shippingOptions.filter(opt => opt.id !== 'local-delivery')]
         }
 
+        // A lista devolvida é a lista INTEIRA? Só deixa de ser quando a
+        // gravação da cotação falha e opções que dependiam dela são removidas
+        // (ver abaixo). O campo viaja nas SETE rotas normais de 200 — as seis
+        // saídas antecipadas mais o `return` final —, inclusive quando é
+        // `false`: campo que só aparece quando é verdadeiro é campo que quem
+        // consome esquece de checar, e a tela passa a "funcionar" por omissão.
+        //
+        // A oitava rota que responde 200 com `options` NÃO leva o campo: a
+        // contingência do `catch` de topo, que já se identifica por
+        // `fallback: true`. É o caminho de exceção inesperada, deixado como
+        // está de propósito — mas quem consome não pode presumir o campo
+        // presente em toda resposta com preço.
+        let cotacaoIncompleta = false
+
         // If no options returned (or API failed), use smart fallback
         if (shippingOptions.length === 0) {
             const fallbackPrice = calculateSmartFallback(originCep, cleanCep, flatFee)
@@ -863,33 +984,102 @@ serve(async (req: Request) => {
                 'Failed to log contingency:',
             )
         } else {
-            // Save to cache
-            fireAndForget(
-                supabaseClient.from('shipping_quotes_cache').insert({
+            // Save to cache — AGUARDANDO, e a resposta sai daqui.
+            //
+            // Esta linha é a cotação que a validação do pedido vai exigir na
+            // hora de fechar a compra. Enquanto ela era `fireAndForget`, o
+            // preço ia para o navegador com a gravação ainda em voo — e a doc
+            // do Supabase é explícita: promessa não aguardada pode morrer no
+            // encerramento da instância (`EarlyDrop`). A cliente então
+            // preenchia endereço, escolhia pagamento, clicava em finalizar, e
+            // só ali era recusada. Falhar aqui custa um clique; falhar lá
+            // custa a compra inteira.
+            const erroDeGravacao = await gravarCotacao(
+                () => supabaseClient.from('shipping_quotes_cache').insert({
                     origin_cep: originCep,
                     destination_cep: cleanCep,
                     cart_hash: cartHash,
                     options: shippingOptions
                 }),
-                'Failed to cache shipping options:',
             )
 
-            // Log success
-            fireAndForget(
+            // Log — DEPOIS de saber se a gravação deu certo, e derivado dela.
+            //
+            // `shipping_calculation_logs` é a única janela da lojista para o
+            // frete, e o painel pinta `status === 'success'` de verde
+            // "Sucesso". Enquanto a resposta era 200 com preço, gravar
+            // 'success' aqui era verdade. Com a recusa abaixo, deixou de ser:
+            // numa loja em que a gravação esteja falhando, ninguém compra e o
+            // único lugar onde ela veria a quebra afirmaria que está tudo bem.
+            //
+            // A query é materializada numa Promise de verdade porque o ramo
+            // que responde 503 precisa AGUARDÁ-LA (ver abaixo), e o builder do
+            // supabase-js é lazy: chamar `.then` nele duas vezes gravaria duas
+            // linhas. `Promise.resolve` dispara a query UMA vez, e o
+            // `fireAndForget` logo abaixo recebe a Promise já pronta — para
+            // ele, `Promise.resolve` de uma Promise nativa é identidade.
+            const logEmVoo = Promise.resolve(
                 supabaseClient.from('shipping_calculation_logs').insert({
                     origin_cep: originCep,
                     destination_cep: cleanCep,
                     provider: provider,
                     cart_items: cart,
                     response_time_ms: latency,
-                    status: 'success'
+                    status: erroDeGravacao ? 'error' : 'success',
+                    error_message: erroDeGravacao
+                        ? `Falha ao gravar a cotação: ${mensagemDoErro(erroDeGravacao)}`
+                        : null,
                 }),
-                'Failed to log success:',
             )
+            fireAndForget(logEmVoo, 'Failed to log shipping calculation:')
+
+            if (erroDeGravacao) {
+                // Sem a linha gravada, cai a opção cujo preço a validação do
+                // pedido buscaria NO CACHE. O que a RPC resolve pela
+                // `store_config` continua válido e continua vendável — ver
+                // `precoResolvidoSemCache`. Recusar essas junto era perder uma
+                // venda que o checkout teria aceitado.
+                const opcoesQueDispensamOCache = shippingOptions.filter(opt => precoResolvidoSemCache(opt?.id))
+
+                if (opcoesQueDispensamOCache.length === 0) {
+                    // Aqui a recusa é a resposta certa: todo preço restante
+                    // dependia da linha que não foi gravada. Responder erro
+                    // AGORA é a forma barata de falhar — a cliente reaperta
+                    // "calcular"; falhar no último clique custa a compra.
+                    //
+                    // E o log espera AQUI, pelo mesmo motivo que a gravação da
+                    // cotação virou `await`: promessa não aguardada pode morrer
+                    // no encerramento da instância. Neste ramo a linha do log é
+                    // a ÚNICA coisa que a lojista recebe — e a falha é
+                    // correlacionada, porque a mesma causa que derruba o insert
+                    // do cache derruba o insert do log. Sem esperar, o sintoma
+                    // dela é "ninguém compra" sem linha nenhuma no painel, nem
+                    // verde nem vermelha. Custo zero: aqui não há preço para
+                    // entregar, então atrasar a resposta não tira nada de
+                    // ninguém — o mesmo não vale para o 200 acima.
+                    //
+                    // O `catch` vazio é obrigatório: `fireAndForget` já
+                    // registrou o erro no console, e uma exceção solta aqui
+                    // subiria ao `catch` de topo, que a converteria num 200 com
+                    // preço de contingência — exatamente o que esta recusa
+                    // existe para impedir.
+                    await logEmVoo.catch(() => {})
+
+                    return new Response(
+                        JSON.stringify({ error: 'Não foi possível registrar a cotação de frete. Tente calcular novamente.' }),
+                        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    )
+                }
+
+                // Incompleta é sobre o que FOI TIRADO, não sobre ter havido
+                // erro: se nada precisava do cache, a lista continua inteira.
+                cotacaoIncompleta = opcoesQueDispensamOCache.length < shippingOptions.length
+                shippingOptions = opcoesQueDispensamOCache
+            }
         }
 
         return new Response(
-            JSON.stringify({ options: shippingOptions }),
+            JSON.stringify({ options: shippingOptions, cotacaoIncompleta }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
 
@@ -931,5 +1121,8 @@ serve(async (req: Request) => {
             )
         }
     }
-})
 }
+
+// `(req) => handler(req)`, e não `serve(handler)` direto: o `serve` do std
+// passa um segundo argumento (ConnInfo) que cairia em `deps`.
+if (!isTesting) serve((req: Request) => handler(req));

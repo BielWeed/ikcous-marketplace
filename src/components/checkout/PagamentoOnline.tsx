@@ -250,7 +250,10 @@ export function montarBrick({
                 });
               }
             } catch (err: any) {
-              // As quatro mensagens de criarPagamento (useOrders.ts:974-980)
+              // As quatro mensagens de criarPagamento (`useOrders.ts`, na
+              // função `criarPagamento` — âncora por NOME, não por linha: a
+              // citação anterior apontava para :974-980 e o arquivo já
+              // andou 178 linhas desde então)
               // só chegam ao cliente se saírem por aqui — sem este catch, a
               // rejeição desaparece dentro do próprio SDK e a tela fica muda.
               //
@@ -275,6 +278,52 @@ export function montarBrick({
               // ar, corpo de erro genérico — é recuperável por padrão.
               const terminal =
                 err instanceof ErroPagamentoTerminal || err?.terminal === true;
+              // Ponto fechado (censo do lote, item 8): esta linha estava
+              // marcada "a verificar — o vizinho é deliberado". Verificação
+              // feita: DIFERENTE do catch de `montarBrick` (o que envolve
+              // `carregarSdkMercadoPago()` e `mp.bricks().create()`, e cujo
+              // comentário proíbe `err?.message` por causa do texto do
+              // bundle do MP), este envolve só o `onSubmit` — que o SDK só
+              // chama DEPOIS de `create()` ter resolvido, então são caminhos
+              // que não se cruzam.
+              //
+              // As fontes que chegam aqui são texto curado em português,
+              // nunca o SDK/rede/navegador crus. A regra que sustenta isso é
+              // mais forte que a lista: só um corpo JSON com a chave exata
+              // `error` sobrepõe o literal padrão, e a única coisa que emite
+              // essa chave neste caminho é a nossa própria edge function.
+              // Enumeração:
+              // 1) os quatro `throw new ErroPagamentoTerminal(...)` acima
+              //    (recusado/expirado/estornado/status desconhecido) e o
+              //    `throw new Error("Não foi possível gerar o QR code do
+              //    PIX.")` — literais fixos deste arquivo;
+              // 2) `criarPagamento` (useOrders.ts) só lança
+              //    `Object.assign(new Error(mensagem), { terminal })`, onde
+              //    `mensagem` é OU o literal "Não foi possível gerar a
+              //    cobrança." OU `corpo.error` lido do 409/502/etc. da edge
+              //    function — e todo `error:` que
+              //    supabase/functions/criar-pagamento/index.ts devolve é uma
+              //    string curada; o corpo cru do Mercado Pago fica preso no
+              //    console do servidor (_shared/mercadopago.ts, comentário
+              //    "NUNCA para o cliente"), nunca no corpo da resposta;
+              // 3) falha de rede pura (`FunctionsFetchError` do
+              //    supabase-js) também não vaza: seu `.context` é o `Error`
+              //    de fetch, sem método `.json`, então `corpo` fica
+              //    `undefined` e a mensagem cai no literal padrão acima —
+              //    `criarPagamento` nunca lê `error.message` diretamente.
+              // 4) `controlador?.unmount()` é a única chamada a código de
+              //    terceiro dentro deste `try`. Fica de fora da conta porque
+              //    o cenário que a faria lançar (desmontagem dupla) está
+              //    fechado pelo `controlador = null` da limpeza somado ao
+              //    `?.`. Não foi possível sustentar NEM refutar que o SDK
+              //    lance ali — ele vem de CDN e não está em node_modules —
+              //    então isto fica declarado, não varrido para debaixo de um
+              //    "todas as fontes".
+              // Por isso, ao contrário do catch de `montarBrick`, aqui NÃO dá para
+              // trocar por uma frase fixa única: cada `throw` já é
+              // específico e verdadeiro para o caso, e um genérico jogaria
+              // fora informação que o cliente precisa (ex.: PIX vencido vs.
+              // pagamento recusado pedem ações diferentes).
               onErro(
                 err?.message ?? "Não foi possível gerar a cobrança.",
                 terminal ? "terminal" : "recuperavel",

@@ -70,6 +70,17 @@ const itemVariants: Variants = {
   },
 };
 
+// Sem avaliação nenhuma a taxa é INDEFINIDA, não zero e não cem — o "—" marca isso.
+// Com avaliação, zero medido continua sendo "0%" (não vira "—").
+function formatRate(
+  count: number,
+  total: number,
+): { text: string; width: number } {
+  if (total <= 0) return { text: "—", width: 0 };
+  const percent = Math.round((count / total) * 100);
+  return { text: `${percent}%`, width: percent };
+}
+
 export const AdminReviewsView = memo(function AdminReviewsView({
   active = true,
   onSetDirty,
@@ -242,14 +253,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   const avgRating = averageRating;
 
   // Global Dynamic metrics for display
-  const verifiedRate =
-    totalReviews > 0
-      ? Math.round((globalVerifiedCount / totalReviews) * 100)
-      : 100;
-  const responseRate =
-    totalReviews > 0
-      ? Math.round((globalRepliedCount / totalReviews) * 100)
-      : 0;
+  const verifiedRate = formatRate(globalVerifiedCount, totalReviews);
+  const responseRate = formatRate(globalRepliedCount, totalReviews);
 
   const handleDelete = async (id: string) => {
     if (isOffline) {
@@ -360,13 +365,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         iconBg: "bg-sky-500/10 border-sky-500/20",
         hoverBorder:
           "hover:border-sky-500/30 hover:shadow-[0_0_30px_rgba(14,165,233,0.05)]",
-        value: `${responseRate}%`,
+        value: responseRate.text,
         accent: "text-sky-400",
         content: (
           <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-900 animate-in fade-in">
             <div
               className="h-full rounded-full bg-sky-500 transition-all duration-500"
-              style={{ width: `${responseRate}%` }}
+              style={{ width: `${responseRate.width}%` }}
             />
           </div>
         ),
@@ -380,13 +385,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         iconBg: "bg-purple-500/10 border-purple-500/20",
         hoverBorder:
           "hover:border-purple-500/30 hover:shadow-[0_0_30px_rgba(168,85,247,0.05)]",
-        value: `${verifiedRate}%`,
+        value: verifiedRate.text,
         accent: "text-purple-400",
         content: (
           <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-900 animate-in fade-in">
             <div
               className="bg-purple-550 h-full rounded-full transition-all duration-500"
-              style={{ width: `${verifiedRate}%` }}
+              style={{ width: `${verifiedRate.width}%` }}
             />
           </div>
         ),
