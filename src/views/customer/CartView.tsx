@@ -58,6 +58,7 @@ export function CartView({
     shippingFee: ctxShippingFee,
     updateQuantity,
     removeFromCart,
+    clearCart,
     selectedShippingOption,
     setSelectedShippingOption,
     setShippingCep,
@@ -291,9 +292,7 @@ export function CartView({
 
   const handleClearCart = () => {
     if (globalThis.confirm("Deseja realmente limpar todo o carrinho?")) {
-      onRemove("all");
-      sessionStorage.clear();
-      globalThis.location.reload();
+      clearCart();
     }
   };
 

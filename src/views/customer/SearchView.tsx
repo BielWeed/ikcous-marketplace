@@ -173,11 +173,12 @@ export const SearchView = React.memo(function SearchView({
   ];
 
   const handleClearFilters = useCallback(() => {
+    setQuery("");
     setCategory("Todas");
     setMinPrice("");
     setMaxPrice("");
     setSort("newest");
-  }, [setCategory, setMinPrice, setMaxPrice, setSort]);
+  }, [setQuery, setCategory, setMinPrice, setMaxPrice, setSort]);
 
   // Initialize query from props if needed
   useEffect(() => {

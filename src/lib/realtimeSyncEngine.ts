@@ -813,6 +813,19 @@ export const RealtimeSyncEngine = {
         if (deletedIds.length > 0) {
           await vault.setLastSync("products");
           await vault.setLastSync("product_variants");
+
+          // Sem isto, o `bc.postMessage` acima avisa as OUTRAS abas, mas a
+          // própria aba que rodou o catchUp (a única, no celular) nunca sabe
+          // que o cofre esvaziou -- a vitrine continua exibindo o produto
+          // que a lojista pausou/excluiu até alguém recarregar a página.
+          const event: SyncEvent = {
+            table: "produtos",
+            store: "products",
+            eventType: "UPDATE",
+          };
+          for (const cb of _listeners) {
+            cb(event);
+          }
         }
 
         // Find updated or new items
