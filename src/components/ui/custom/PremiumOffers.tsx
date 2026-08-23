@@ -203,7 +203,6 @@ export const PremiumOffers = React.memo(function PremiumOffers({
                   onQuickBuy={onQuickBuy}
                   onMouseEnter={handlePrefetchProductDetail}
                   onTouchStart={handlePrefetchProductDetail}
-                  isEligibleForFreeShipping={config.freeShippingMin > 0}
                   showRating={config.enableReviews}
                 />
               </div>
@@ -247,10 +246,8 @@ interface HeroOfferCardProps {
   onQuickBuy?: (product: Product) => void;
   onMouseEnter?: () => void;
   onTouchStart?: () => void;
-  isEligibleForFreeShipping: boolean;
   /** ADMIN-091 (#202): espelha `config.enableReviews`, lido uma vez pelo
-   * `PremiumOffers` pai e repassado aqui -- mesmo padrão de
-   * `isEligibleForFreeShipping`. */
+   * `PremiumOffers` pai e repassado aqui. */
   showRating: boolean;
 }
 
@@ -264,7 +261,6 @@ function HeroOfferCard({
   onQuickBuy,
   onMouseEnter,
   onTouchStart,
-  isEligibleForFreeShipping,
   showRating,
 }: HeroOfferCardProps) {
   const [cartStatus, setCartStatus] = useState<"idle" | "loading" | "success">(
@@ -385,7 +381,9 @@ function HeroOfferCard({
               <span className="rounded-md border border-secondary/20 bg-secondary/10 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-primary">
                 {product.category}
               </span>
-              {(product.freeShipping || isEligibleForFreeShipping) && (
+              {/* O selo só pode afirmar o que é verdade PARA ESTE produto --
+                  ver o comentário equivalente em ProductCard.tsx. */}
+              {product.freeShipping && (
                 <div className="flex items-center gap-1 rounded-md border border-emerald-100/40 bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold text-emerald-800">
                   <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
                   <span>Frete Grátis</span>

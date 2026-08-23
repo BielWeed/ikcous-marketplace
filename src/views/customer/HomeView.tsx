@@ -20,8 +20,8 @@ import { PremiumOffers } from "@/components/ui/custom/PremiumOffers";
 import { ProductCarousel } from "@/components/ui/custom/ProductCarousel";
 import { ProductList } from "@/components/ui/custom/ProductList";
 import { branding } from "@/config/branding";
-import { haptic } from "@/utils/haptic";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
+import { haptic } from "@/utils/haptic";
 
 interface HomeViewProps {
   products: Product[];
@@ -112,9 +112,19 @@ export const HomeView = React.memo(function HomeView({
 
   // Removed derived uniqueCategories logic in favor of useCategories hook
 
+  // A lojista pausa um produto para tirá-lo da prateleira (`ativo = false` no
+  // banco). Sem este filtro ele continua na vitrine, com preço e estoque, dando
+  // para clicar -- e a MESMA tela já se contradiz, porque a busca
+  // (SearchBar.tsx:119 e :173) sempre filtrou. Um ponto só: as listas abaixo
+  // derivam desta, então nenhuma pode esquecer o filtro.
+  const produtosAVenda = useMemo(
+    () => products.filter((p) => p.isActive),
+    [products],
+  );
+
   const filteredProducts = useMemo(() => {
     // Precise filtering logic
-    let result = [...products];
+    let result = [...produtosAVenda];
 
     // Filter by category
     if (selectedCategory && selectedCategory !== "Todas") {
@@ -158,17 +168,17 @@ export const HomeView = React.memo(function HomeView({
       }
     });
 
-    if (result.length !== products.length || searchQuery) {
+    if (result.length !== produtosAVenda.length || searchQuery) {
       console.log(
-        `[HomeView] Filtered: ${result.length}/${products.length} products`,
+        `[HomeView] Filtered: ${result.length}/${produtosAVenda.length} products`,
       );
     }
 
     return result;
-  }, [products, selectedCategory, searchQuery, sortBy]);
+  }, [produtosAVenda, selectedCategory, searchQuery, sortBy]);
 
   const newArrivals = useMemo(() => {
-    return [...products]
+    return [...produtosAVenda]
       .sort((a, b) => {
         const aAvailable = a.stock > 0 ? 1 : 0;
         const bAvailable = b.stock > 0 ? 1 : 0;
@@ -178,10 +188,10 @@ export const HomeView = React.memo(function HomeView({
         return (b.createdTime ?? 0) - (a.createdTime ?? 0);
       })
       .slice(0, 6);
-  }, [products]);
+  }, [produtosAVenda]);
 
   const offerProducts = useMemo(() => {
-    return products
+    return produtosAVenda
       .filter((p) => p.originalPrice && p.originalPrice > p.price)
       .sort((a, b) => {
         const aAvailable = a.stock > 0 ? 1 : 0;
@@ -189,10 +199,10 @@ export const HomeView = React.memo(function HomeView({
         return bAvailable - aAvailable;
       })
       .slice(0, 10);
-  }, [products]);
+  }, [produtosAVenda]);
 
   const bestsellerProducts = useMemo(() => {
-    return products
+    return produtosAVenda
       .filter((p) => p.isBestseller)
       .sort((a, b) => {
         const aAvailable = a.stock > 0 ? 1 : 0;
@@ -200,7 +210,7 @@ export const HomeView = React.memo(function HomeView({
         return bAvailable - aAvailable;
       })
       .slice(0, 10);
-  }, [products]);
+  }, [produtosAVenda]);
 
   const sortOptions: {
     value: SortOption;
@@ -234,7 +244,9 @@ export const HomeView = React.memo(function HomeView({
   const homeLogo = `${globalThis.location.origin}/branding/logo.png`;
 
   useDocumentMeta({
-    title: cidadeLoja ? `${branding.appName} | ${cidadeLoja}` : branding.appName,
+    title: cidadeLoja
+      ? `${branding.appName} | ${cidadeLoja}`
+      : branding.appName,
     names: {
       // "Entrega ultrarrápida" e "troca garantida" saíram: não existe fluxo
       // de troca (issues #46 e #108, ambas abertas) nem entrega ultrarrápida
@@ -270,7 +282,6 @@ export const HomeView = React.memo(function HomeView({
 
   return (
     <div className="pb-customer min-h-full">
-
       {/* Top Banners - Full Width */}
       {!searchQuery &&
         selectedCategory === "Todas" &&
@@ -314,7 +325,10 @@ export const HomeView = React.memo(function HomeView({
 
           let secProducts: typeof products = [];
           if (section.productIds && section.productIds.length > 0) {
-            const productMap = new Map(products.map((p) => [p.id, p]));
+            // Um produto pausado escolhido para uma seção configurável também
+            // não pode aparecer -- por isso o mapa vem de `produtosAVenda`,
+            // não de `products`.
+            const productMap = new Map(produtosAVenda.map((p) => [p.id, p]));
             secProducts = section.productIds
               .map((id) => productMap.get(id))
               .filter((p): p is (typeof products)[0] => Boolean(p))

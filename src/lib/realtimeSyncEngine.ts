@@ -433,12 +433,33 @@ export const RealtimeSyncEngine = {
     raw: any,
     old: any,
   ): Promise<void> {
+    // A exclusão de produto deste app é *soft-delete*: `useProducts` grava
+    // `deleted_at` com um UPDATE, então a exclusão chega aqui como UPDATE. Sem
+    // esta checagem o `case "UPDATE"` daria `vault.put` e gravaria de volta no
+    // cofre o produto que a lojista acabou de excluir -- ele reapareceria na
+    // vitrine com preço e estoque. Tratar como DELETE (em vez de só pular o
+    // `put`) é o que apaga a cópia velha, que já estava no cofre de antes da
+    // exclusão. Genérico de propósito: em tabela sem a coluna, `deleted_at` é
+    // `undefined` e nada muda.
+    const foiExcluidoPorSoftDelete =
+      eventType !== "DELETE" && raw?.deleted_at != null;
+    const eventoEfetivo: RealtimeEventType = foiExcluidoPorSoftDelete
+      ? "DELETE"
+      : eventType;
+
+    // O log conta o que o motor FEZ, não o que chegou: numa exclusão o que
+    // chega é UPDATE e o que acontece é um apagamento. Sem isto, quem for
+    // investigar "por que este produto sumiu" procura um DELETE no console,
+    // não acha nenhum, e conclui que o motor não encostou no produto.
+    const eventoNoLog = foiExcluidoPorSoftDelete
+      ? `${eventType}→DELETE (soft-delete)`
+      : eventType;
     console.log(
-      `[RealtimeSyncEngine] Applying ${eventType} on ${config.table} (id: ${raw?.id || old?.id})`,
+      `[RealtimeSyncEngine] Applying ${eventoNoLog} on ${config.table} (id: ${raw?.id || old?.id})`,
     );
 
     try {
-      switch (eventType) {
+      switch (eventoEfetivo) {
         case "INSERT":
         case "UPDATE": {
           if (raw?.id) {
@@ -493,7 +514,9 @@ export const RealtimeSyncEngine = {
           break;
         }
         case "DELETE": {
-          const deleteId = old?.id;
+          // Num DELETE de verdade o id só vem no `old`; num soft-delete o
+          // registro inteiro vem no `raw`.
+          const deleteId = old?.id ?? raw?.id;
           if (deleteId) {
             let productId: string | undefined;
             if (config.store === "product_variants") {
@@ -552,19 +575,21 @@ export const RealtimeSyncEngine = {
     } catch (err) {
       console.error(
         "[RealtimeSyncEngine] Failed to apply eventType on table:",
-        eventType,
+        eventoNoLog,
         config.table,
         err,
       );
     }
 
     // Notify all React callbacks
+    // No soft-delete a interface é avisada no mesmo formato de um DELETE de
+    // verdade: aquele registro não existe mais para quem lê o cofre.
     const event: SyncEvent = {
       table: config.table,
       store: config.store,
-      eventType,
-      newRecord: raw,
-      oldRecord: old,
+      eventType: eventoEfetivo,
+      newRecord: foiExcluidoPorSoftDelete ? undefined : raw,
+      oldRecord: foiExcluidoPorSoftDelete ? raw : old,
     };
 
     for (const cb of _listeners) {
@@ -813,10 +838,21 @@ export const RealtimeSyncEngine = {
         }
 
         if (outOfDateIds.length > 0) {
-          const { data: rawProducts } = await supabase
+          // Espelha o filtro que `productsQuery` já aplica na consulta de
+          // RESUMO, no começo deste mesmo método. Entre as duas idas à rede
+          // existe uma janela: se um produto for excluído (soft-delete) nesse
+          // intervalo, buscar sem este filtro traz de volta um registro já com
+          // `deleted_at` preenchido -- e o `putMany` o grava no cofre como se
+          // estivesse vivo. A view `vw_produtos_public` já filtra por conta
+          // própria e não expõe a coluna, então o filtro só entra no ramo admin.
+          let detailQuery = supabase
             .from(isAdmin ? "produtos" : ("vw_produtos_public" as any))
             .select("*, product_variants(*)")
             .in("id", outOfDateIds);
+          if (isAdmin) {
+            detailQuery = detailQuery.is("deleted_at", null);
+          }
+          const { data: rawProducts } = await detailQuery;
 
           if (rawProducts) {
             const variantRecord = TABLE_CONFIGS.find(

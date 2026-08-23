@@ -22,7 +22,8 @@ type PushSubscribeErrorOrigin =
   | "permissao_negada"
   | "permissao_pendente"
   | "navegador"
-  | "banco";
+  | "banco"
+  | "sem_conta";
 
 // A frase de "banco" honra o que o `postgrest-js` realmente garante: ele
 // devolve `{ error }` em vez de lançar (`shouldThrowOnError: false`), então
@@ -60,6 +61,14 @@ function mensagemDaOrigem(origin: PushSubscribeErrorOrigin): string {
       return "Não foi possível ativar as notificações neste navegador. Tente novamente ou use um navegador atualizado.";
     case "banco":
       return "Não conseguimos confirmar que sua inscrição foi salva. Tente novamente em instantes.";
+    case "sem_conta":
+      // A checagem que gera esta origem roda ANTES de
+      // `Notification.requestPermission()` — de propósito: se lançasse
+      // depois de pedir a permissão, o balão do navegador já teria sido
+      // respondido e sumiria do banner nos próximos carregamentos mesmo
+      // sem a pessoa nunca ter recebido nada. Lançando antes, a permissão
+      // continua PENDENTE e ela pode tentar de novo depois de entrar.
+      return "Para receber os avisos, entre na sua conta primeiro — é assim que a loja sabe para qual aparelho enviar.";
   }
 }
 
@@ -126,6 +135,17 @@ export function usePushNotifications() {
         return;
       }
 
+      // Precisa ser ANTES de pedir a permissão do navegador: se a pessoa
+      // não tem conta, pedir agora e lançar DEPOIS deixaria a permissão já
+      // concedida — o balão só aparece enquanto ela está pendente, então
+      // ele sumiria do banner sem ela nunca ter recebido nada.
+      if (!user) {
+        throw new PushSubscribeError(
+          "sem_conta",
+          new Error("Sem sessão de usuário para a inscrição"),
+        );
+      }
+
       const result = await Notification.requestPermission();
       setPermission(result);
 
@@ -176,11 +196,9 @@ export function usePushNotifications() {
         throw new PushSubscribeError("navegador", subscribeError);
       }
 
-      // ZENITH v21.7: Rely on AuthContext's verified user
-      if (!user) {
-        console.warn("[Push] No user session for subscription.");
-        return;
-      }
+      // `user` já foi garantido acima, antes de pedir a permissão —
+      // capturado no fechamento desta chamada e imutável durante a
+      // execução (closure de `useCallback`), então segue não-nulo aqui.
       const subJSON = newSubscription.toJSON();
 
       const { error } = await (
@@ -190,7 +208,7 @@ export function usePushNotifications() {
           endpoint: subJSON.endpoint,
           p256dh: subJSON.keys?.p256dh,
           auth: subJSON.keys?.auth,
-          user_id: user?.id || null,
+          user_id: user.id,
         },
         { onConflict: "endpoint" },
       );

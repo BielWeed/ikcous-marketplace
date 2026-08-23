@@ -607,9 +607,26 @@ export function useBanners(adminMode = false) {
     ["banners"],
     useCallback(async () => {
       if (vaultRef.current) {
-        const fresh = await vaultRef.current.getAll<Banner>("banners");
-        if (fresh.length > 0) {
+        // SEM guarda de "lista vazia": ela engolia o caso em que a lista
+        // ficou vazia, e a tela seguia mostrando o banner excluído até
+        // alguém recarregar a página.
+        //
+        // Mas lista vazia tem DOIS significados: pode ser a lojista
+        // excluindo o ÚLTIMO banner em outro dispositivo (esvaziar é o
+        // certo) OU uma leitura que falhou (conexão fechada por outra aba
+        // durante um purge, store ausente...) -- o `catch` de `getAll`
+        // resolve `[]` nos dois casos. Por isso `getAllOrThrow`, que
+        // REJEITA em vez de mascarar a falha como "vazio de verdade".
+        try {
+          const fresh = await vaultRef.current.getAllOrThrow<Banner>("banners");
           setBanners(fresh);
+        } catch (err) {
+          // Leitura do cofre falhou -- manter o que já está na tela é
+          // melhor que esvaziar a lista por causa de uma falha de leitura.
+          console.warn(
+            "[useBanners] Falha ao reler o cofre; mantendo a lista atual:",
+            err,
+          );
         }
       }
     }, []),

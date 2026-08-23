@@ -790,10 +790,28 @@ export function StoreProvider({
     useCallback(async () => {
       // Re-read products from DataVault when Realtime updates them
       if (vaultRef.current) {
-        const freshProducts =
-          await vaultRef.current.getAll<Product>("products");
-        if (freshProducts.length > 0) {
+        // SEM guarda de "lista vazia": ela engolia o caso em que a lista
+        // ficou vazia, e a vitrine seguia mostrando o produto excluído --
+        // com preço e estoque -- até alguém recarregar a página.
+        //
+        // Mas lista vazia tem DOIS significados: pode ser a lojista
+        // excluindo o ÚLTIMO produto em outro dispositivo (esvaziar é o
+        // certo) OU uma leitura que falhou (conexão fechada por outra aba
+        // durante um purge, store ausente...) -- o `catch` de `getAll`
+        // resolve `[]` nos dois casos. Por isso `getAllOrThrow`, que
+        // REJEITA em vez de mascarar a falha como "vazio de verdade".
+        try {
+          const freshProducts =
+            await vaultRef.current.getAllOrThrow<Product>("products");
           setProducts(freshProducts);
+        } catch (err) {
+          // Leitura do cofre falhou -- manter o que já está na tela é
+          // melhor que esvaziar a vitrine por causa de uma falha de
+          // leitura.
+          console.warn(
+            "[StoreContext] Falha ao reler o cofre; mantendo a lista atual:",
+            err,
+          );
         }
       }
     }, []),

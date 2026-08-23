@@ -215,6 +215,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       let query = supabase
         .from("cart_items")
         .delete()
+        .select("id")
         .eq("user_id", userId)
         .eq("product_id", productId);
 
@@ -224,9 +225,30 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         query = query.is("variant_id", null);
       }
 
-      const { error } = await query;
+      const { data, error } = await query;
 
       if (error) throw error;
+
+      // A policy de DELETE de `cart_items` não tem `is_admin()` (só
+      // `auth.uid() = user_id`), diferente da de SELECT. Quando a lojista
+      // apaga o carrinho de outra pessoa, o Postgres descarta todas as
+      // linhas e o PostgREST responde sucesso com ZERO linhas — sem
+      // `.select()` isso passava batido pelo `if (error) throw` e a tela
+      // comemorava uma remoção que não aconteceu.
+      if (!data || data.length === 0) {
+        // Zero linhas tem DOIS motivos possiveis, e a frase precisa caber
+        // nos dois: a policy barrou (carrinho de outra pessoa) OU o item
+        // ja tinha saido do carrinho -- que acontece na propria ficha da
+        // lojista, onde a policy LIBERA. Afirmar so a permissao mentiria
+        // sobre o carrinho dela mesma.
+        toast.error(
+          "Nada foi removido. O item pode já ter saído do carrinho, ou o app não tem permissão para alterar o carrinho de outra pessoa.",
+        );
+        // Relê mesmo na falha: no caso "já saiu", é isto que tira da tela a
+        // linha fantasma. No caso da policy é uma ida à rede a mais, barata.
+        fetchUserData();
+        return;
+      }
 
       toast.success("Item removido com sucesso!");
       fetchUserData();
@@ -248,12 +270,25 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       return;
     }
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("cart_items")
         .delete()
+        .select("id")
         .eq("user_id", userId);
 
       if (error) throw error;
+
+      // Mesmo defeito do item único: policy de DELETE sem `is_admin()`
+      // descarta as linhas de outro usuário e o PostgREST devolve sucesso
+      // com ZERO linhas. `.select()` é o que revela isso.
+      if (!data || data.length === 0) {
+        // Mesmos dois motivos do item unico -- ver o comentario la em cima.
+        toast.error(
+          "Nada foi removido. O carrinho pode já estar vazio, ou o app não tem permissão para alterar o carrinho de outra pessoa.",
+        );
+        fetchUserData();
+        return;
+      }
 
       toast.success("Carrinho limpo com sucesso!");
       fetchUserData();
@@ -788,7 +823,16 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                   key={order.id}
                                   className="cursor-pointer border-none border-zinc-800 transition-colors hover:bg-zinc-800/40"
                                   onClick={() =>
-                                    onNavigate("order-details", order.id)
+                                    // "order-details" é a tela do CLIENTE
+                                    // (App.tsx) e busca em `fetchUserOrders()`
+                                    // filtrado por `user_id` do usuário
+                                    // logado — nunca acha o pedido de outra
+                                    // pessoa. O painel abre pedido avulso por
+                                    // "admin-orders" (AdminOrdersView), que
+                                    // recebe o id como `selectedOrderId` e
+                                    // busca em `marketplace_orders` sem esse
+                                    // filtro.
+                                    onNavigate("admin-orders", order.id)
                                   }
                                 >
                                   <TableCell className="px-6 py-4 font-mono text-[11px] font-bold text-zinc-300">

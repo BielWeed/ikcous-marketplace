@@ -237,6 +237,36 @@ export class DataVault {
   }
 
   /**
+   * Get all records from a store, but REJECT on failure instead of
+   * resolving to `[]`.
+   *
+   * `getAll` swallows a broken read (transaction throw, store missing,
+   * connection closed by another tab's `onversionchange`) and resolves an
+   * empty array — indistinguishable from "the store really is empty". A
+   * caller that needs to tell those two cases apart (e.g. a realtime
+   * listener deciding whether to blank out the UI) must use this method
+   * instead.
+   */
+  async getAllOrThrow<T>(store: StoreName): Promise<T[]> {
+    return new Promise((resolve, reject) => {
+      try {
+        const tx = this.db.transaction(store, "readonly");
+        const objectStore = tx.objectStore(store);
+        const request = objectStore.getAll();
+
+        request.onsuccess = () => resolve(request.result as T[]);
+        request.onerror = () =>
+          reject(
+            request.error ?? new Error(`getAllOrThrow('${store}') failed`),
+          );
+      } catch (err) {
+        console.error("[DataVault] getAllOrThrow('%s') failed:", store, err);
+        reject(err);
+      }
+    });
+  }
+
+  /**
    * Get a single record by its primary key.
    */
   async getById<T>(store: StoreName, id: string): Promise<T | undefined> {
