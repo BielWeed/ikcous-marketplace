@@ -6,6 +6,56 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NotificationContext } from "./NotificationContextCore";
 
+// Notificação de campanha ("Todos os Clientes", AdminPushView) grava UMA
+// linha só, com usuario_id NULO — vista por toda cliente. As policies de
+// UPDATE/DELETE de `notificacoes` exigem `auth.uid() = usuario_id`
+// (supabase/migrations/20260806000000_baseline_do_schema_vivo.sql), então
+// essa linha nunca pode ser marcada como lida nem apagada no banco por uma
+// cliente comum — o Postgrest simplesmente ignora a linha, sem erro. "Lida"
+// e "dispensada" para esse tipo de aviso só podem valer NESTE aparelho,
+// guardadas localmente por usuário.
+function chaveEstadoLocalDaCampanha(userId: string): string {
+  return `notificacoes-campanha-estado:${userId}`;
+}
+
+interface EstadoLocalDaCampanha {
+  lidas: Set<string>;
+  ocultas: Set<string>;
+}
+
+function lerEstadoLocalDaCampanha(userId: string): EstadoLocalDaCampanha {
+  try {
+    const bruto = localStorage.getItem(chaveEstadoLocalDaCampanha(userId));
+    const dados = bruto ? JSON.parse(bruto) : null;
+    return {
+      lidas: new Set(Array.isArray(dados?.lidas) ? dados.lidas : []),
+      ocultas: new Set(Array.isArray(dados?.ocultas) ? dados.ocultas : []),
+    };
+  } catch {
+    // localStorage indisponível (modo privado, quota etc.) — sem estado
+    // local, a marcação de leitura/dispensa fica só nesta sessão em memória.
+    return { lidas: new Set(), ocultas: new Set() };
+  }
+}
+
+function persistirEstadoLocalDaCampanha(
+  userId: string,
+  estado: EstadoLocalDaCampanha,
+): void {
+  try {
+    localStorage.setItem(
+      chaveEstadoLocalDaCampanha(userId),
+      JSON.stringify({
+        lidas: Array.from(estado.lidas),
+        ocultas: Array.from(estado.ocultas),
+      }),
+    );
+  } catch {
+    // Mesma ressalva de lerEstadoLocalDaCampanha: falha em silêncio, a tela
+    // continua funcionando só sem persistir entre sessões.
+  }
+}
+
 export function NotificationProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -14,11 +64,16 @@ export function NotificationProvider({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const lastFetchRef = useRef<number>(0);
+  // ids da última busca cujo usuario_id era nulo (aviso de campanha) — é o
+  // que diferencia, em markAsRead/markAllAsRead/deleteNotification, uma
+  // linha que o UPDATE/DELETE do banco alcança de uma que a policy ignora.
+  const campanhaIdsRef = useRef<Set<string>>(new Set());
 
   const fetchNotifications = useCallback(
     async (force = false) => {
       if (!user) {
         setNotifications([]);
+        campanhaIdsRef.current = new Set();
         setLoading(false);
         return;
       }
@@ -38,18 +93,29 @@ export function NotificationProvider({
 
         if (error) throw error;
 
-        const mappedData: Notification[] = (data || []).map((item) => ({
-          id: item.id,
-          title: item.titulo,
-          message: item.mensagem || "",
-          type: (item.tipo as any) || "system",
-          read: !!item.lida,
-          created_at: item.created_at,
-          action_url:
-            (item.acao as any)?.url || (item.dados as any)?.action_url,
-          order_id: (item.dados as any)?.order_id,
-        }));
+        const estadoLocal = lerEstadoLocalDaCampanha(user.id);
+        const campanhaIds = new Set<string>();
 
+        const mappedData: Notification[] = (data || [])
+          .filter((item) => !estadoLocal.ocultas.has(item.id))
+          .map((item) => {
+            const isCampanha = item.usuario_id === null;
+            if (isCampanha) campanhaIds.add(item.id);
+            return {
+              id: item.id,
+              title: item.titulo,
+              message: item.mensagem || "",
+              type: (item.tipo as any) || "system",
+              read:
+                !!item.lida || (isCampanha && estadoLocal.lidas.has(item.id)),
+              created_at: item.created_at,
+              action_url:
+                (item.acao as any)?.url || (item.dados as any)?.action_url,
+              order_id: (item.dados as any)?.order_id,
+            };
+          });
+
+        campanhaIdsRef.current = campanhaIds;
         setNotifications(mappedData);
       } catch (err) {
         console.error("[Notifications] Fetch error:", err);
@@ -60,21 +126,36 @@ export function NotificationProvider({
     [user],
   );
 
-  const markAsRead = useCallback(async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from("notificacoes")
-        .update({ lida: true })
-        .eq("id", id);
+  const markAsRead = useCallback(
+    async (id: string) => {
+      if (user && campanhaIdsRef.current.has(id)) {
+        // Aviso de campanha: o UPDATE do banco não alcança essa linha (RLS
+        // exige auth.uid() = usuario_id). "Lida" só pode valer aqui.
+        const estadoLocal = lerEstadoLocalDaCampanha(user.id);
+        estadoLocal.lidas.add(id);
+        persistirEstadoLocalDaCampanha(user.id, estadoLocal);
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+        );
+        return;
+      }
 
-      if (error) throw error;
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
-      );
-    } catch (err) {
-      console.error("[Notifications] Mark as read error:", err);
-    }
-  }, []);
+      try {
+        const { error } = await supabase
+          .from("notificacoes")
+          .update({ lida: true })
+          .eq("id", id);
+
+        if (error) throw error;
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+        );
+      } catch (err) {
+        console.error("[Notifications] Mark as read error:", err);
+      }
+    },
+    [user],
+  );
 
   const markAllAsRead = useCallback(async () => {
     if (!user) return;
@@ -86,25 +167,55 @@ export function NotificationProvider({
         .eq("lida", false);
 
       if (error) throw error;
+
+      // O UPDATE acima só alcança as linhas da própria cliente. Os avisos de
+      // campanha (usuario_id nulo) que ainda estavam não lidos ficam de fora
+      // da policy — a leitura deles é registrada localmente, para o contador
+      // e a lista concordarem com o que a tela acabou de afirmar.
+      const idsDeCampanhaNaoLidos = notifications
+        .filter((n) => !n.read && campanhaIdsRef.current.has(n.id))
+        .map((n) => n.id);
+
+      if (idsDeCampanhaNaoLidos.length > 0) {
+        const estadoLocal = lerEstadoLocalDaCampanha(user.id);
+        for (const id of idsDeCampanhaNaoLidos) estadoLocal.lidas.add(id);
+        persistirEstadoLocalDaCampanha(user.id, estadoLocal);
+      }
+
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch (err) {
       console.error("[Notifications] Mark all as read error:", err);
     }
-  }, [user]);
+  }, [user, notifications]);
 
-  const deleteNotification = useCallback(async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from("notificacoes")
-        .delete()
-        .eq("id", id);
+  const deleteNotification = useCallback(
+    async (id: string) => {
+      if (user && campanhaIdsRef.current.has(id)) {
+        // O DELETE do banco também exige auth.uid() = usuario_id — dispensar
+        // um aviso de campanha só pode significar "sumir dele neste
+        // aparelho", nunca apagar a linha (que é de todas as clientes).
+        const estadoLocal = lerEstadoLocalDaCampanha(user.id);
+        estadoLocal.ocultas.add(id);
+        estadoLocal.lidas.delete(id);
+        persistirEstadoLocalDaCampanha(user.id, estadoLocal);
+        setNotifications((prev) => prev.filter((n) => n.id !== id));
+        return;
+      }
 
-      if (error) throw error;
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
-    } catch (err) {
-      console.error("[Notifications] Delete error:", err);
-    }
-  }, []);
+      try {
+        const { error } = await supabase
+          .from("notificacoes")
+          .delete()
+          .eq("id", id);
+
+        if (error) throw error;
+        setNotifications((prev) => prev.filter((n) => n.id !== id));
+      } catch (err) {
+        console.error("[Notifications] Delete error:", err);
+      }
+    },
+    [user],
+  );
 
   useEffect(() => {
     const bc =

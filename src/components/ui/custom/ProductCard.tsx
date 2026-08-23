@@ -85,8 +85,22 @@ export const ProductCard = memo(function ProductCard({
     }
   }
 
+  // O card não pode deixar comprar sem escolher a variação.
+  // Com variação ATIVA (Tamanho, Cor...), o botão não adiciona -- ele leva
+  // para a tela do produto, que é onde a escolha é obrigatória
+  // (ProductView.tsx). Sem isso o pedido nascia com `variant_id = NULL` no
+  // banco, cobrando o preço do produto (ignorando `price_override`) e
+  // decrementando só `produtos.estoque`, nunca a variação escolhida.
+  const hasActiveVariant = product.variants?.some((v) => v.active) ?? false;
+
   const handleAddToCartClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    if (hasActiveVariant) {
+      onClick(product.id);
+      return;
+    }
+
     if (cartStatus !== "idle") return;
 
     setCartStatus("loading");
@@ -340,11 +354,13 @@ export const ProductCard = memo(function ProductCard({
             <span className="truncate">
               {product.stock <= 0
                 ? "Esgotado"
-                : cartStatus === "idle"
-                  ? "Carrinho"
-                  : cartStatus === "loading"
-                    ? "Salvando..."
-                    : "Salvo!"}
+                : hasActiveVariant
+                  ? "Escolher opções"
+                  : cartStatus === "idle"
+                    ? "Carrinho"
+                    : cartStatus === "loading"
+                      ? "Salvando..."
+                      : "Salvo!"}
             </span>
           </button>
         </div>

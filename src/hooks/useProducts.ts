@@ -1238,9 +1238,21 @@ export function useProducts({ autoFetch = true } = {}) {
 
   const getFreeShippingEligibleProducts = useCallback(
     (cartProductIds: string[], limit = 10) => {
+      // A faixa "falta X para o frete grátis" (ShippingProgress) tem um
+      // "Adicionar" próprio que não passa pela tela do produto -- diferente
+      // do ProductCard, que já recusa adicionar produto com variação ativa
+      // sem escolha. Em vez de sugerir e barrar (três toques a mais para a
+      // cliente), a lista nem oferece produto que exigiria escolha: o
+      // mesmo critério do ProductCard (`variants?.some(v => v.active)`).
       const res: Product[] = [];
       for (const p of products) {
-        if (!cartProductIds.includes(p.id) && p.isActive && p.stock > 0) {
+        const hasActiveVariant = p.variants?.some((v) => v.active) ?? false;
+        if (
+          !cartProductIds.includes(p.id) &&
+          p.isActive &&
+          p.stock > 0 &&
+          !hasActiveVariant
+        ) {
           res.push(p);
           if (res.length >= limit) break;
         }

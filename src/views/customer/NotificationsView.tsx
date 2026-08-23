@@ -17,7 +17,7 @@ interface NotificationsViewProps {
   readonly onNavigate?: (view: any, id?: string) => void;
 }
 
-type TabType = "todas" | "pedidos" | "promocoes" | "avisos";
+type TabType = "todas" | "avisos";
 
 export function NotificationsView({ onNavigate }: NotificationsViewProps) {
   const { notifications, markAllAsRead, deleteNotification, markAsRead } =
@@ -132,9 +132,6 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
     const unread = notifications.filter((n) => !n.read);
     return {
       todas: unread.length,
-      pedidos: unread.filter((n) => n.type === "order" || n.type === "delivery")
-        .length,
-      promocoes: unread.filter((n) => n.type === "promotion").length,
       avisos: unread.filter(
         (n) =>
           n.type === "system" || n.type === "aviso" || n.type === "sucesso",
@@ -145,12 +142,6 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
   // Filtered notifications based on active tab
   const filteredNotifications = useMemo(() => {
     switch (activeTab) {
-      case "pedidos":
-        return notifications.filter(
-          (n) => n.type === "order" || n.type === "delivery",
-        );
-      case "promocoes":
-        return notifications.filter((n) => n.type === "promotion");
       case "avisos":
         return notifications.filter(
           (n) =>
@@ -213,16 +204,6 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
 
   const emptyStateConfig = useMemo(() => {
     switch (activeTab) {
-      case "pedidos":
-        return {
-          title: "Nenhum status de pedido",
-          desc: "Suas atualizações de entrega, confirmações e status de rastreamento aparecerão nesta aba.",
-        };
-      case "promocoes":
-        return {
-          title: "Nenhuma oferta ativa",
-          desc: "Fique de olho! Cupons exclusivos e promoções relâmpago serão enviados para você aqui.",
-        };
       case "avisos":
         return {
           title: "Sem avisos ou comunicados",
@@ -231,7 +212,13 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
       default:
         return {
           title: "Sua caixa está limpa!",
-          desc: "Tudo em ordem. Avisaremos você sobre promoções, cupons e atualizações dos seus pedidos aqui.",
+          // A frase antiga prometia "promoções, cupons e atualizações dos seus
+          // pedidos" -- as MESMAS três coisas que as abas removidas prometiam e
+          // que o banco proíbe: o CHECK de `notificacoes` não aceita esses tipos,
+          // e o único escritor do produto grava sempre "aviso". Este é o estado
+          // vazio da aba PADRÃO, então era a primeira frase que toda cliente nova
+          // lia -- mais visível que as abas que saíram.
+          desc: "Tudo em ordem. Quando a loja enviar um aviso ou comunicado, ele aparece aqui.",
         };
     }
   }, [activeTab]);
@@ -279,8 +266,6 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
           {(
             [
               { id: "todas", label: "Todas" },
-              { id: "pedidos", label: "Pedidos" },
-              { id: "promocoes", label: "Ofertas" },
               { id: "avisos", label: "Avisos" },
             ] as const
           ).map((tab) => {

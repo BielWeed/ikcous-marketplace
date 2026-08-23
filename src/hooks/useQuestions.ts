@@ -528,7 +528,7 @@ export function useQuestions() {
     async (questionId: string, options?: { silent?: boolean }) => {
       if (!isAdmin) {
         if (!options?.silent) toast.error("Permissão negada");
-        return;
+        return false;
       }
       try {
         const { error } = await supabase
@@ -539,9 +539,11 @@ export function useQuestions() {
         if (error) throw error;
         setQuestions((prev) => prev.filter((q) => q.id !== questionId));
         if (!options?.silent) toast.success("Pergunta removida.");
+        return true;
       } catch (error) {
         console.error("Error deleting question:", error);
         if (!options?.silent) toast.error("Erro ao remover pergunta.");
+        return false;
       }
     },
     [isAdmin],

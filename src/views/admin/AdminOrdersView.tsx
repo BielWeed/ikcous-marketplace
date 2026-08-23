@@ -535,6 +535,23 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     [orders, paymentFilter],
   );
 
+  // Achado 2 do lote 1 (caça-defeitos): `currentPage` vem do localStorage e
+  // sobrevive entre sessões. Se a lojista fechou o painel na página 2 e, até
+  // reabrir, os pedidos que a preenchiam saíram do filtro (entregues,
+  // cancelados, separados), `totalPages` encolhe e a página salva fica fora
+  // do intervalo — como o bloco de paginação só existe quando
+  // `totalPages > 1`, não sobra nenhum botão para voltar. Este é o ÚNICO dos
+  // `setCurrentPage(0)` deste arquivo que roda sem clique nenhum da lojista.
+  // Espera `isLoaded` (carregamento assentado) antes de agir: durante a
+  // busca, `totalPages` pode valer 0 ou 1 momentaneamente com o valor
+  // provisório do cache, e resetar ali derrubaria uma navegação legítima.
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (currentPage > 0 && currentPage >= totalPages) {
+      setCurrentPage(0);
+    }
+  }, [isLoaded, currentPage, totalPages, setCurrentPage]);
+
   // `silent` é código morto HOJE: o único chamador real é `OrderDetail`
   // (`onStatusChange={handleStatusChange}` logo abaixo), e `OrderDetailProps.
   // onStatusChange` (OrderDetail.tsx) tem assinatura de 2 argumentos, sem

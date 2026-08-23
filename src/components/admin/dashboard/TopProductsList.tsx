@@ -43,7 +43,7 @@ export const TopProductsList = memo(function TopProductsList({
 
   return (
     <div className="space-y-3">
-      <SectionTitle title="top 5 produtos mais lucrativos" icon={Trophy} />
+      <SectionTitle title="top 5 produtos que mais faturaram" icon={Trophy} />
 
       <div className="relative">
         {/* Decorative background element */}

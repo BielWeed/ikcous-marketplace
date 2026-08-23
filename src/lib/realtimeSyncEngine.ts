@@ -464,6 +464,34 @@ export const RealtimeSyncEngine = {
         case "UPDATE": {
           if (raw?.id) {
             const mapped = config.mapRecord ? config.mapRecord(raw) : raw;
+
+            // O payload de INSERT/UPDATE em `produtos` é a linha PURA da
+            // tabela -- sem `product_variants` embutido, diferente da
+            // `vw_produtos_public` que `fetchProducts`/`catchUp` usam. Sem
+            // preservar o que já está no cofre, qualquer edição da lojista
+            // (mudar nome, preço, o que for) apaga as variações do produto
+            // na vitrine: o card volta a permitir "Carrinho" sem escolher
+            // variação. Só entra quando o PAYLOAD não trouxe as variações
+            // (se um dia vier, o que veio manda) e só há o que preservar se
+            // o cofre já tinha o produto -- produto novo grava como veio.
+            if (
+              config.store === "products" &&
+              !Array.isArray((raw as any)?.product_variants)
+            ) {
+              const produtoExistente = await vault.getById<Product>(
+                "products",
+                mapped.id,
+              );
+              if (produtoExistente?.variants?.length) {
+                mapped.variants = produtoExistente.variants;
+                mapped.stock = mapped.variants.reduce(
+                  (acc: number, v: any) =>
+                    acc + (v.active ? Number(v.stockIncrement) || 0 : 0),
+                  0,
+                );
+              }
+            }
+
             await vault.put(config.store, mapped);
             await vault.setLastSync(config.store);
 
