@@ -458,5 +458,15 @@ describe("SearchView — Limpar Tudo limpa a busca de verdade", () => {
 
     // A regressão que este teste impede: os filtros somem, o TERMO fica.
     expect(input.value).toBe("vestido");
+
+    // E os filtros SOMEM de verdade. Sem esta linha, apagar o corpo inteiro
+    // de `handleClearFilters` passava nos seis casos: o botao do painel podia
+    // virar no-op e ninguem via. O botao so e desenhado quando ha filtro
+    // ativo, entao ele desaparecer E a prova de que o reset aconteceu.
+    expect(
+      Array.from(hospedeiro.querySelectorAll("button")).find(
+        (b) => b.textContent === "Limpar Tudo",
+      ),
+    ).toBeUndefined();
   });
 });
