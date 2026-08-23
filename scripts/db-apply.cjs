@@ -396,6 +396,50 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // Herda TODOS os marcadores da 20260960 — ela reescreve as mesmas duas
+  // funcoes a partir do texto daquela. A entrada da 20260960 nasceu com 5 de 7
+  // marcadores herdados e um truncado, e so uma leitura humana pegou; por isso
+  // esta lista foi conferida marcador a marcador contra o corpo antes de entrar.
+  "20260961000000_busca_de_pedido_por_telefone.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        // A CORRECAO EM SI: o telefone tem de ir para a COLUNA, nao so para o
+        // jsonb. Se `customer_phone` sumir da lista do INSERT no REPLACE, a
+        // busca do painel volta a nao achar pedido por telefone -- e nada na
+        // tela avisa, porque a busca continua funcionando para nome e ID.
+        "customer_phone",
+        "p_customer_phone",
+        // Daqui para baixo: o que tem de SOBREVIVER ao REPLACE.
+        "variant_id ausente em produto com variacao ativa",
+        "Escolha uma varia",
+        "itens_da_cotacao",
+        "OUTRO carrinho",
+        "FOR UPDATE;",
+        "usage_limit IS NULL OR usage_limit <= 0 OR usage_count < usage_limit",
+        "Os valores do pedido mudaram",
+        "Estoque insuficiente para o produto",
+        "UPDATE public.coupons SET usage_count = usage_count + 1",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        "customer_phone",
+        "p_customer_phone",
+        "variant_id ausente em produto com variacao ativa",
+        "Escolha uma varia",
+        "itens_da_cotacao",
+        "OUTRO carrinho",
+        "FOR UPDATE;",
+        "usage_limit IS NULL OR usage_limit <= 0 OR usage_count < usage_limit",
+        "Os valores do pedido mudaram",
+        "Estoque insuficiente para o produto",
+        "UPDATE public.coupons SET usage_count = usage_count + 1",
+        "'aguardando', now() + interval '30 minutes'",
+      ],
+    },
+  ],
   "20260960000000_variacao_obrigatoria_no_servidor.sql": [
     {
       funcao: "create_marketplace_order_v23",
