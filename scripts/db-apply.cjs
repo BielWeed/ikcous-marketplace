@@ -396,6 +396,58 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20260960000000_variacao_obrigatoria_no_servidor.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        // A CORRECAO EM SI: sem este DETAIL a mensagem de recusa nao conta
+        // POR QUE o pedido caiu — fica indistinguivel de "produto sem
+        // estoque" ou "produto indisponivel" pra quem depura o log depois.
+        "variant_id ausente em produto com variacao ativa",
+        // O texto que a CLIENTE ve na tela. Se sumir no REPLACE, o item sem
+        // variacao volta a ser aceito calado — preco de `preco_venda` em vez
+        // do `price_override`, e a baixa cai no `estoque` agregado em vez do
+        // `stock_increment` da variacao escolhida.
+        "Escolha uma varia",
+        // Daqui para baixo: o que tem de SOBREVIVER ao REPLACE, porque esta
+        // migration reescreve as duas funcoes inteiras a partir do texto da
+        // 20260951 — herdado da entrada dela, mesmo cenario ruim de cada um.
+        "itens_da_cotacao",
+        "OUTRO carrinho",
+        "FOR UPDATE;",
+        // Limite 0 volta a significar ilimitado. Se a forma completa cair
+        // para so' "usage_limit IS NULL OR usage_limit <= 0" no REPLACE, a
+        // cliente aplica o cupom no checkout e leva "Cupom invalido" ao
+        // finalizar -- e este marcador truncado nao pegaria a queda.
+        "usage_limit IS NULL OR usage_limit <= 0 OR usage_count < usage_limit",
+        "Os valores do pedido mudaram",
+        // Se sumir no REPLACE, pedido com estoque insuficiente e aceito
+        // mesmo assim -- a lojista vende o que nao tem.
+        "Estoque insuficiente para o produto",
+        // Se sumir no REPLACE, o cupom de uso unico deixa de ser consumido:
+        // o mesmo codigo pode ser reaplicado indefinidamente.
+        "UPDATE public.coupons SET usage_count = usage_count + 1",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        "variant_id ausente em produto com variacao ativa",
+        "Escolha uma varia",
+        "itens_da_cotacao",
+        "OUTRO carrinho",
+        "FOR UPDATE;",
+        "usage_limit IS NULL OR usage_limit <= 0 OR usage_count < usage_limit",
+        "Os valores do pedido mudaram",
+        "Estoque insuficiente para o produto",
+        "UPDATE public.coupons SET usage_count = usage_count + 1",
+        // A UNICA coisa que separa a v24 da v23: a reserva com prazo do
+        // pagamento online. Se sumir no REPLACE, o PIX deixa de expirar e o
+        // pg_cron nunca devolve o estoque a prateleira.
+        "'aguardando', now() + interval '30 minutes'",
+      ],
+    },
+  ],
   "20260822000100_analitico_conta_so_dinheiro_reconhecido.sql": [
     {
       funcao: "get_admin_analytics_v2",

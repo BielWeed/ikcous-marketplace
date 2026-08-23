@@ -1,53 +1,84 @@
--- O frete cobrado passa a ser o do carrinho que esta sendo comprado.
+-- Comprar sem escolher a variacao para de ser possivel PELO SERVIDOR.
 --
--- 🔴 ANTES DE APLICAR ESTA SOZINHA: confira se
--- `20260960000000_variacao_obrigatoria_no_servidor.sql` ja esta aplicada
--- neste banco. Se estiver, aplicar SO esta migration DESFAZ a guarda de
--- variacao obrigatoria EM SILENCIO -- o `CREATE OR REPLACE` desta instala de
--- volta o corpo ANTERIOR aquela guarda -- e `scripts/db-apply.cjs` ainda
--- imprime VERIFICADO, porque os marcadores da entrada desta migration sao
--- todos dela mesma e continuam presentes no corpo antigo. Se a 20260960 ja
--- estiver aplicada: nao aplique esta isolada, ou reaplique a 20260960 logo
--- depois desta.
+-- O DEFEITO, em uma frase: quando o item chega com `variant_id: null`, as duas
+-- RPCs leem preco e estoque direto de `produtos` SEM NUNCA PERGUNTAR se aquele
+-- produto tem variacao. Entao um produto de tamanhos podia ser comprado sem
+-- tamanho nenhum, e o pedido nascia valido.
 --
--- O DEFEITO, em uma frase: o banco confere se EXISTE cotacao de frete para
--- aquele CEP nas ultimas 24h, mas nao confere se ela era DO CARRINHO que esta
--- sendo comprado. Da para cotar o frete com um carrinho pequeno, encher o
--- carrinho e fechar o pedido pagando o frete do pequeno; a diferenca sai do
--- bolso da lojista.
+-- 🔴 O ESTRAGO NAO E "pedido sem tamanho". Sao tres, e dois sao de dinheiro:
+--   1. PRECO ERRADO -- usa `preco_venda` em vez do `price_override` daquela
+--      variacao. Se a variacao custa mais caro, a diferenca sai da lojista.
+--   2. ESTOQUE ERRADO -- a baixa cai no `estoque` agregado de `produtos`, e o
+--      `stock_increment` da variacao NUNCA desce. O tamanho que acabou continua
+--      a venda, e a loja vende o que nao tem.
+--   3. Pedido sem o que separar -- a lojista precisa ligar para a cliente para
+--      descobrir o tamanho, ou manda errado.
 --
--- 🔴 SAO DUAS RPCs, e consertar UMA so deixa metade do caminho do dinheiro
--- aberto: `create_marketplace_order_v23` e `v24`, escolhidas em
--- `src/hooks/useOrders.ts:1060` (v24 no pagamento online). Medido em
--- 22/08/2026 contra o BANCO VIVO: as duas sao identicas fora do INSERT (v24
--- acrescenta payment_status/expires_at), o ramo do frete comeca na mesma linha
--- nas duas, e a condicao nova entra no mesmo lugar, com a mesma indentacao.
+-- 🔴 POR QUE ISSO NAO E TRABALHO DE TELA: hoje quem segura sao QUATRO copias de
+-- um `if` no cliente. Cada tela nova reabre o buraco, e NENHUMA delas alcanca
+-- quem chama a RPC diretamente. Regra de integridade mora onde ela nao pode ser
+-- contornada -- e este era o unico ponto do caminho do dinheiro onde ela nao
+-- morava.
 --
--- 🔴 A TRAVA ANTI-ADULTERACAO DE 5 CENTAVOS NAO COBRE ISTO. Ela recusa quando
--- o PRECO diverge. Aqui o preco nao diverge: o carrinho trocado devolve o preco
--- daquela cotacao, internamente consistente. Sao duas perguntas diferentes.
+-- 🔴 SAO DUAS RPCs, e consertar UMA so deixa metade aberta:
+-- `create_marketplace_order_v23` e `v24` (v24 e a do pagamento online), como ja
+-- registrou a 20260951000000. A guarda entra nas DUAS, no mesmo lugar do laco
+-- de validacao, com a mesma indentacao.
+--
+-- 🔴 A GUARDA VAI NO LACO DE VALIDACAO, NAO NO DE BAIXA DE ESTOQUE. O laco de
+-- validacao roda ANTES de qualquer escrita e ja e o lugar onde item invalido e
+-- recusado. Recusando ali, a execucao nunca chega ao laco de baixa -- e a
+-- correcao fica com o escopo minimo, que e o que se quer numa trava.
+--
+-- 🔴 SOBRE A BASE DESTE ARQUIVO, e isto importa mais que o resto:
+-- os corpos abaixo NAO saem de `pg_get_functiondef()` do banco vivo, ao
+-- contrario do que fez a 20260951000000 -- e a razao e medida. Em 23/08/2026,
+-- `node scripts/db-reconcilia-ledger.cjs --listar-pendentes` devolveu:
+--
+--     20260940000000_home_sections_em_store_config.sql
+--     20260951000000_frete_do_pedido_e_do_proprio_carrinho.sql
+--
+-- ou seja, a 20260951 esta no codigo e NAO no banco. Puxar do vivo aqui teria
+-- trazido o corpo ANTERIOR a ela e REVERTIDO EM SILENCIO a trava do frete pelo
+-- carrinho -- um defeito de dinheiro desfeito por um arquivo que fala de outra
+-- coisa. A base correta e o TEXTO da 20260951, e e dele que estes corpos saem,
+-- com a guarda inserida programaticamente para nao redigitar 600 linhas.
+--
+-- CONSEQUENCIA DE ORDEM, escrita para quem for aplicar: esta migration e
+-- SUPERCONJUNTO da 20260951 -- os corpos abaixo JA incluem a trava do frete
+-- pelo carrinho, herdada do texto dela. Mesmo assim, APLIQUE AS DUAS, NESTA
+-- ORDEM: 20260951 primeiro, depois 20260960. E' a ordem natural do ledger, e
+-- e' ela que registra a 20260951 em `supabase_migrations.schema_migrations`
+-- e tira ela da lista de `--listar-pendentes` -- nao aplicar a 20260951
+-- deixa ela pendente para sempre, mesmo com o efeito dela ja presente aqui.
+--
+-- NADA GARANTE ORDEM NESTE REPOSITORIO. `scripts/db-apply.cjs` aplica
+-- exatamente os arquivos que recebe no argv, na ordem do argv, sem comparar
+-- com o ledger nem recusar versao mais antiga que a ultima aplicada; e
+-- `supabase db push` e' proibido pelo CLAUDE.md. Numeracao crescente NAO e'
+-- garantia em nenhuma ferramenta deste repositorio -- e' so' a convencao que
+-- a leitura humana do ledger espera.
+--
+-- O CENARIO RUIM: alguem aplica so' esta migration (20260960) hoje. Semanas
+-- depois, outra sessao trabalha a lista de pendentes e aplica a 20260951
+-- sozinha -- o `CREATE OR REPLACE` dela instala o corpo ANTERIOR a esta
+-- guarda, a trava de variacao obrigatoria some em silencio, e o
+-- `scripts/db-apply.cjs` imprime VERIFICADO mesmo assim, porque os
+-- marcadores da entrada da 20260951 sao todos dela mesma e continuam
+-- presentes no corpo antigo.
 --
 -- 🔴 CREATE OR REPLACE E SUBSTITUICAO: atributo que nao for repetido por
--- extenso SOME EM SILENCIO. Por isso os corpos abaixo NAO foram redigitados --
--- sairam de `pg_get_functiondef()` do banco vivo, que ja emite `RETURNS uuid`,
--- `LANGUAGE plpgsql`, `SECURITY DEFINER` e `SET search_path TO 'public'`.
--- Se SECURITY DEFINER cair, a funcao que grava pedido e movimenta estoque passa
--- a rodar com a permissao de QUEM CHAMA -- o navegador da cliente.
---
--- Assinatura identica nas duas: 12 parametros, zero com DEFAULT. Parametro a
--- mais nao substitui: cria uma SEGUNDA funcao (ha uma quebrada neste banco por
--- isso, `get_retention_analytics`, erro 42725).
---
--- ⚠️ MUDANCA DE DIAGNOSTICO, deliberada: o DETAIL da excecao passa a dizer que
--- a cotacao pode ter sido de OUTRO CARRINHO. A mensagem que a cliente le nao
--- muda. Sem isso, toda recusa por carrinho trocado apareceria no log como
--- 'sem cotacao nas ultimas 24h' -- um diagnostico que afirma uma causa que
--- ninguem conferiu, e que mandaria quem depura procurar no lugar errado.
+-- extenso SOME EM SILENCIO. `RETURNS uuid`, `LANGUAGE plpgsql`,
+-- `SECURITY DEFINER` e `SET search_path TO 'public'` estao por extenso nos dois
+-- corpos abaixo, herdados do texto da 20260951, que por sua vez os tirou do
+-- `pg_get_functiondef()`. Se `SECURITY DEFINER` cair, a funcao que grava pedido
+-- e movimenta estoque passa a rodar com a permissao de QUEM CHAMA -- o
+-- navegador da cliente.
 --
 -- SEM BEGIN/COMMIT: com eles o ROLLBACK do script de prova vira no-op e a
 -- mudanca fica gravada mesmo assim.
 --
--- Prova: scripts/db-prove-frete-do-proprio-carrinho.cjs
+-- Prova: scripts/db-prove-variacao-obrigatoria.cjs
 
 CREATE OR REPLACE FUNCTION public.create_marketplace_order_v23(p_items jsonb, p_total_amount numeric, p_shipping_cost numeric, p_payment_method text, p_address_id uuid, p_coupon_code text, p_customer_name text, p_customer_phone text, p_observation text, p_address_data jsonb, p_destination_cep text, p_shipping_option_id text)
  RETURNS uuid
@@ -110,11 +141,57 @@ BEGIN
               AND v.active = true AND p.ativo = true
             FOR NO KEY UPDATE OF v;
         ELSE
+            -- A trava de linha vem PRIMEIRO: o SELECT abaixo ja exige
+            -- `ativo = true` e trava a linha com `FOR NO KEY UPDATE`, entao a
+            -- guarda que vem depois nao tem janela de corrida contra um
+            -- UPDATE concorrente em `produtos.ativo`. Com a guarda ANTES (a
+            -- forma anterior, com EXISTS + JOIN em `produtos`), ela e o
+            -- SELECT tomavam SNAPSHOTS DIFERENTES sob READ COMMITTED: se a
+            -- lojista republicasse o produto e commitasse ENTRE os dois
+            -- comandos, a guarda nao disparava (produto estava inativo no
+            -- primeiro snapshot) e o SELECT achava o produto ativo no
+            -- segundo -- o item era vendido pelo preco/estoque do produto
+            -- base mesmo tendo variacao ativa. Nesta ordem nao ha segundo
+            -- snapshot: os dois leem a MESMA linha, ja travada.
             SELECT preco_venda, estoque, nome, frete_gratis
             INTO v_db_price, v_db_stock, v_item_name, v_frete_gratis
             FROM public.produtos
             WHERE id = v_product_id AND ativo = true
             FOR NO KEY UPDATE;
+
+            -- 🔴 A GUARDA QUE FALTAVA. Sem ela, `variant_id: null` num produto
+            -- QUE TEM variacao caia aqui e era aceito: preco de `preco_venda`
+            -- em vez de `price_override`, e baixa no `estoque` agregado em vez
+            -- do `stock_increment` da variacao escolhida. O pedido nascia sem
+            -- tamanho, a lojista nao tinha o que separar, e o estoque daquele
+            -- tamanho nunca descia -- vendendo de novo o que ja acabou.
+            --
+            -- Ate hoje quem segurava isso eram QUATRO copias de um `if` no
+            -- cliente. Cada tela nova reabre o buraco, e nenhuma delas alcanca
+            -- quem chama a RPC direto.
+            --
+            -- `v_db_price IS NOT NULL` e o teste de "produto ativo" -- substitui
+            -- o JOIN com `produtos` que a guarda tinha antes de mudar de lugar.
+            -- Se o SELECT acima nao achou linha (produto inativo), v_db_price
+            -- fica NULL, a guarda nem dispara (curto-circuito do AND), e quem
+            -- recusa e o `IF v_db_price IS NULL` logo abaixo, com "Produto %
+            -- nao disponivel" -- a mensagem certa para um produto fora da
+            -- vitrine, nao "Escolha uma variacao" (instrucao impossivel de
+            -- seguir para quem nao pode comprar aquele produto de jeito
+            -- nenhum). `v.active = true` sozinho, sem JOIN em `produtos`, e o
+            -- mesmo predicado que o ramo de cima usa para ACEITAR uma
+            -- variacao -- produto cujas variacoes foram TODAS desativadas
+            -- continua vendavel pelo produto base.
+            IF v_db_price IS NOT NULL AND EXISTS (
+                SELECT 1
+                FROM public.product_variants v
+                WHERE v.product_id = v_product_id
+                  AND v.active = true
+            ) THEN
+                RAISE EXCEPTION 'Escolha uma variação para o produto %.',
+                    COALESCE((SELECT nome FROM public.produtos WHERE id = v_product_id), 'selecionado')
+                    USING DETAIL = 'variant_id ausente em produto com variacao ativa; o item foi recusado no servidor.';
+            END IF;
         END IF;
 
         IF v_db_price IS NULL THEN RAISE EXCEPTION 'Produto % não disponível.', COALESCE(v_item_name, 'não encontrado'); END IF;
@@ -389,11 +466,57 @@ BEGIN
               AND v.active = true AND p.ativo = true
             FOR NO KEY UPDATE OF v;
         ELSE
+            -- A trava de linha vem PRIMEIRO: o SELECT abaixo ja exige
+            -- `ativo = true` e trava a linha com `FOR NO KEY UPDATE`, entao a
+            -- guarda que vem depois nao tem janela de corrida contra um
+            -- UPDATE concorrente em `produtos.ativo`. Com a guarda ANTES (a
+            -- forma anterior, com EXISTS + JOIN em `produtos`), ela e o
+            -- SELECT tomavam SNAPSHOTS DIFERENTES sob READ COMMITTED: se a
+            -- lojista republicasse o produto e commitasse ENTRE os dois
+            -- comandos, a guarda nao disparava (produto estava inativo no
+            -- primeiro snapshot) e o SELECT achava o produto ativo no
+            -- segundo -- o item era vendido pelo preco/estoque do produto
+            -- base mesmo tendo variacao ativa. Nesta ordem nao ha segundo
+            -- snapshot: os dois leem a MESMA linha, ja travada.
             SELECT preco_venda, estoque, nome, frete_gratis
             INTO v_db_price, v_db_stock, v_item_name, v_frete_gratis
             FROM public.produtos
             WHERE id = v_product_id AND ativo = true
             FOR NO KEY UPDATE;
+
+            -- 🔴 A GUARDA QUE FALTAVA. Sem ela, `variant_id: null` num produto
+            -- QUE TEM variacao caia aqui e era aceito: preco de `preco_venda`
+            -- em vez de `price_override`, e baixa no `estoque` agregado em vez
+            -- do `stock_increment` da variacao escolhida. O pedido nascia sem
+            -- tamanho, a lojista nao tinha o que separar, e o estoque daquele
+            -- tamanho nunca descia -- vendendo de novo o que ja acabou.
+            --
+            -- Ate hoje quem segurava isso eram QUATRO copias de um `if` no
+            -- cliente. Cada tela nova reabre o buraco, e nenhuma delas alcanca
+            -- quem chama a RPC direto.
+            --
+            -- `v_db_price IS NOT NULL` e o teste de "produto ativo" -- substitui
+            -- o JOIN com `produtos` que a guarda tinha antes de mudar de lugar.
+            -- Se o SELECT acima nao achou linha (produto inativo), v_db_price
+            -- fica NULL, a guarda nem dispara (curto-circuito do AND), e quem
+            -- recusa e o `IF v_db_price IS NULL` logo abaixo, com "Produto %
+            -- nao disponivel" -- a mensagem certa para um produto fora da
+            -- vitrine, nao "Escolha uma variacao" (instrucao impossivel de
+            -- seguir para quem nao pode comprar aquele produto de jeito
+            -- nenhum). `v.active = true` sozinho, sem JOIN em `produtos`, e o
+            -- mesmo predicado que o ramo de cima usa para ACEITAR uma
+            -- variacao -- produto cujas variacoes foram TODAS desativadas
+            -- continua vendavel pelo produto base.
+            IF v_db_price IS NOT NULL AND EXISTS (
+                SELECT 1
+                FROM public.product_variants v
+                WHERE v.product_id = v_product_id
+                  AND v.active = true
+            ) THEN
+                RAISE EXCEPTION 'Escolha uma variação para o produto %.',
+                    COALESCE((SELECT nome FROM public.produtos WHERE id = v_product_id), 'selecionado')
+                    USING DETAIL = 'variant_id ausente em produto com variacao ativa; o item foi recusado no servidor.';
+            END IF;
         END IF;
 
         IF v_db_price IS NULL THEN RAISE EXCEPTION 'Produto % não disponível.', COALESCE(v_item_name, 'não encontrado'); END IF;
