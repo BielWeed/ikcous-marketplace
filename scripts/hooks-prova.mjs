@@ -24,19 +24,49 @@
  *   0. EM USO     os TRÊS hooks que o git VAI executar nesta árvore
  *                 (`pre-commit`, `commit-msg` e `pre-push`) têm as
  *                 propriedades que a config ATUAL gera?
- *   1. POSITIVO   segredo falso staged  -> commit RECUSADO e o secretlint é
+ *   1. POSITIVO   senha de banco staged -> commit RECUSADO e o secretlint é
  *                                          nomeado na saída
+ *  1b. POSITIVO   JWT `service_role` staged -> commit RECUSADO. Não é o
+ *                 (JWT)      controle 1 de novo: são FORMATOS diferentes,
+ *                            pegos por REGRAS diferentes. A senha cai no
+ *                            preset-recommend; o JWT só cai na regra de
+ *                            padrão, acrescentada ao `.secretlintrc.json` em
+ *                            20/08/2026 justamente porque o preset é cego
+ *                            para ele.
+ *  1c. POSITIVO   chave `sb_secret_` staged -> commit RECUSADO. Mesma REGRA
+ *                 (sb_secret_) que pega o JWT (1b) — a de padrão —, mas outro
+ *                            padrão dentro dela: `sb_secret_...` é o formato
+ *                            NOVO da chave secreta do Supabase, sucessor do
+ *                            `service_role`, também ignora RLS, e o preset
+ *                            recomendado é cego para ele igual era para o JWT.
+ *  1d. POSITIVO   a MESMA chave `sb_secret_` de 1c, mas dentro de um `.ps1`
+ *                 (PS1)      -> commit RECUSADO. Até 21/08/2026 o
+ *                            `.secretlintignore` tinha `*.ps1` e `*.bat` na
+ *                            lista de exceções: a regra de padrão (1c prova
+ *                            que ela está certa) nunca chegava a rodar contra
+ *                            um arquivo com essa extensão. O terminal deste
+ *                            projeto é PowerShell, e há 4 arquivos `.ps1` e
+ *                            `.bat` versionados aqui — era nessa casca que
+ *                            a trava ficava cega.
  *   2. NEGATIVO   o MESMO arquivo limpo -> commit PASSA, e o secretlint
  *                                          continua sendo nomeado (senão um
  *                                          hook que não roda nada "aprova")
- *      (1 e 2 rodam de dentro de um `git worktree`, que é onde a trava estava
- *      desligada; o caminho absoluto deles tem espaços, como o do projeto.)
+ *      (1, 1b, 1c, 1d e 2 rodam de dentro de um `git worktree`, que é onde a
+ *      trava estava desligada; o caminho absoluto deles tem espaços, como o
+ *      do projeto.)
  *   3. ANTES      shim gerado da MESMA config, só sem as duas chaves de topo,
  *                 com o lefthook fora de alcance -> exit 0  (o bug histórico)
  *   4. DEPOIS     shim gerado da config ATUAL, mesmo cenário -> exit != 0
  *   5. ESPAÇO     shim com `--git-common-dir` mas SEM `--path-format=relative`,
  *                 rodado de um worktree -> quebra, porque o lefthook emite o
  *                 valor sem aspas e o caminho absoluto tem espaço
+ *
+ * POR QUE `1b` E NÃO UMA RENUMERAÇÃO: o `lefthook.yml` aponta para "controles
+ * 3 e 4" pelo NÚMERO, ao explicar a atribuição de causa das duas chaves de
+ * topo. Empurrar ANTES/DEPOIS para 4 e 5 deixaria aquele comentário apontando
+ * para a coisa errada — num arquivo cujo assunto é justamente essa trava. O
+ * controle novo entra ao lado do irmão dele e os ponteiros existentes ficam
+ * de pé. Quem acrescentar o próximo: mesma regra, ou conserte os ponteiros.
  *
  * O controle 3 é o que dá lastro ao 4: sem ele, "exit != 0" poderia ser
  * qualquer coisa quebrada, e não a trava funcionando.
@@ -68,6 +98,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
@@ -116,7 +147,7 @@ function exige(cmd, args, opcoes = {}) {
 }
 
 /**
- * O PATH sem `node_modules` é o que dá validade aos controles 1 e 2.
+ * O PATH sem `node_modules` é o que dá validade aos controles 1, 1b e 2.
  *
  * `npm run` põe `<projeto>/node_modules/.bin` no PATH do processo. Com isso o
  * ramo `lefthook.exe -h` do shim acha o binário sozinho e o hook funciona
@@ -181,24 +212,100 @@ function acharSh() {
 }
 
 // --------------------------------------------------------------------------
-// O segredo falso. Gerado aqui, nunca lido de arquivo: um script de prova que
-// carrega credencial de verdade é o próprio incidente que ele deveria pegar.
+// Os segredos falsos. Gerados aqui, nunca lidos de arquivo: um script de prova
+// que carrega credencial de verdade é o próprio incidente que ele deveria
+// pegar. Também não existem como literal no fonte — o que está escrito é a
+// receita, não a isca.
 //
-// O formato é uma URL de conexão PostgreSQL com senha — que é exatamente o
-// que já foi commitado neste repositório (ver .gitignore, regra `*.bak`).
-// A regra que pega é @secretlint/secretlint-rule-database-connection-string.
+// São TRÊS formatos, e caem em DUAS regras — uma pode ceder sem a outra:
 //
-// ATENÇÃO, medido em 20/08/2026: um JWT no formato `service_role` do Supabase
-// NÃO é detectado pelo preset-recommend (secretlint 13.0.4) — testado, saiu
-// com exit 0. A trava pega senha de banco, não pega chave de Supabase. Isso é
-// buraco de cobertura do secretlint, não deste script, e está fora do escopo
-// desta tarefa; a prova usa um formato que o preset REALMENTE detecta, senão
-// o controle positivo estaria provando o próprio instrumento quebrado.
+//   senha de banco  URL de conexão PostgreSQL com senha, que é exatamente o
+//                   que já foi commitado neste repositório. Pega pelo
+//                   @secretlint/secretlint-rule-database-connection-string,
+//                   que vem no preset-recommend.
+//   JWT             chave `service_role`/`anon` do Supabase, formato LEGADO
+//                   (`eyJ...`). Medido em 20/08/2026: o preset-recommend
+//                   (secretlint 13.0.4) é CEGO para este formato — a isca
+//                   saía com 0 achados e o commit passava.
+//   sb_secret_      chave secreta do Supabase, formato NOVO. Medido em
+//                   21/08/2026: também cega para o preset-recommend, e a doc
+//                   oficial do Supabase diz que o formato legado (linha
+//                   acima) será descontinuado até o fim de 2026 — o dia em
+//                   que o formato novo virar o único em uso é o dia em que
+//                   este controle passa a ser o único que ainda pega a chave
+//                   secreta.
+//
+//   JWT e `sb_secret_` são ambos pegos pelo @secretlint/secretlint-rule-pattern,
+//   acrescentado ao `.secretlintrc.json` — como DOIS padrões dentro da MESMA
+//   regra. `service_role`/`sb_secret_` são as credenciais mais perigosas
+//   deste projeto, porque ignoram RLS. Se a regra de padrão sumir da config,
+//   OS DOIS controles (1b e 1c) acendem juntos; se só um dos dois padrões
+//   sumir de dentro dela, só o controle correspondente acende — é por isso
+//   que os dois existem separados, e não um só cobrindo "a regra de padrão".
+//
+// Nenhuma das três é canônica de documentação: isca de exemplo costuma estar
+// em allowlist do próprio detector, e aí "não pegou" vira indistinguível de
+// furo real.
 // --------------------------------------------------------------------------
 
 function segredoFalso() {
   const senha = `senhaFalsaDeTeste${Date.now().toString(36)}`;
   return `DATABASE_URL=postgresql://postgres:${senha}@db.exemplo-que-nao-existe.supabase.co:5432/postgres`;
+}
+
+/**
+ * Um JWT sintético bem formado, no molde que o Supabase emite.
+ *
+ * Bem formado NÃO é detalhe: um `ghp_` com 34 caracteres em vez de 36 sai
+ * limpo do secretlint, e um controle positivo montado com isca torta prova o
+ * contrário do que parece provar. Os três segmentos aqui são base64url de
+ * verdade, e a assinatura vem do gerador criptográfico — nunca de um literal.
+ */
+function jwtFalso() {
+  const b64url = (o) =>
+    Buffer.from(JSON.stringify(o), "utf8").toString("base64url");
+  const cabecalho = b64url({ alg: "HS256", typ: "JWT" });
+  const corpo = b64url({
+    iss: "supabase",
+    ref: "projetoquenaoexiste",
+    role: "service_role",
+    iat: 1700000000,
+    exp: 2000000000,
+  });
+  const assinatura = randomBytes(32).toString("base64url");
+  return `SUPABASE_SERVICE_ROLE_KEY=${cabecalho}.${corpo}.${assinatura}`;
+}
+
+/**
+ * Uma chave `sb_secret_` sintética, com formato realista.
+ *
+ * `{16,}` no `.secretlintrc.json` é o que separa chave de placeholder de
+ * documentação (`sb_secret_...`, `sb_secret_xxx`) — por isso o sufixo aqui
+ * tem bem mais que 16 caracteres, do mesmo alfabeto `[A-Za-z0-9_-]` que o
+ * padrão aceita. A doc oficial do Supabase não publica o alfabeto nem o
+ * comprimento reais dessas chaves; isto é a isca, não a especificação.
+ */
+function sbSecretFalso() {
+  const alfabeto =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
+  const sufixo = Array.from(
+    randomBytes(40),
+    (b) => alfabeto[b % alfabeto.length],
+  ).join("");
+  return `SUPABASE_SECRET_KEY=sb_secret_${sufixo}`;
+}
+
+/**
+ * A mesma chave `sb_secret_` sintética de `sbSecretFalso`, só que formatada
+ * como um script PowerShell atribuiria a variável de ambiente — a forma que
+ * um script de setup em PowerShell escreveria. O padrão
+ * que o secretlint casa é o mesmo (o regex não olha para `$env:`/aspas); o
+ * que muda é a CASCA — e é a casca (a extensão `.ps1`) que o buraco do
+ * `.secretlintignore` explorava até 21/08/2026.
+ */
+function sbSecretComoScriptPs1() {
+  const [, chave] = sbSecretFalso().split("=");
+  return `$env:SUPABASE_SECRET_KEY = "${chave}"`;
 }
 
 const LINHA_LIMPA =
@@ -455,7 +562,7 @@ const SEM_PATH_FORMAT = (yml) => yml.replace("--path-format=relative ", "");
 
 /** @type {{nome: string, estado: "PASSOU"|"FALHOU"|"INDETERMINADO", detalhe: string}[]} */
 const resultados = [];
-const CONTROLES_ESPERADOS = 6;
+const CONTROLES_ESPERADOS = 9;
 
 function registrar(nome, estado, detalhe) {
   resultados.push({ nome, estado, detalhe });
@@ -594,7 +701,9 @@ Rode \`npm install\` na árvore principal do projeto.`,
   }
 
   // ----------------------------------------------------------------------
-  secao("1 e 2. Commit de verdade, de dentro de um worktree (config ATUAL)");
+  secao(
+    "1, 1b e 2. Commit de verdade, de dentro de um worktree (config ATUAL)",
+  );
 
   const atual = montarRepo("atual", (yml) => yml);
 
@@ -610,45 +719,129 @@ Rode \`npm install\` na árvore principal do projeto.`,
     );
   }
 
-  const arquivo = join(atual.wt, "credencial-de-teste.txt");
+  /**
+   * Grava a isca no arquivo `nomeRelativo` (relativo ao worktree), confere
+   * que ela chegou ao índice e tenta commitar.
+   *
+   * O `staged` é assertado de propósito: um `git add` que não pegou nada faria
+   * o commit passar por motivo nenhum, e o controle leria isso como "a trava
+   * aprovou". Arranjo é premissa, e premissa se mede antes do veredito.
+   *
+   * Generalizado para aceitar o nome do arquivo (e não só o conteúdo) porque
+   * o controle 1d precisa de uma EXTENSÃO diferente (`.ps1`) — é a extensão,
+   * não o conteúdo, que o buraco do `.secretlintignore` explorava.
+   *
+   * `git reset` ANTES do `add`: cada chamada tem de partir de um índice
+   * LIMPO. Quando a trava recusa um commit (o caso comum aqui), o arquivo
+   * fica staged e não sai do índice sozinho — e como os controles 1, 1b e 1c
+   * reusam o MESMO nome (`credencial-de-teste.txt`), a reentrada não somava
+   * (era o mesmo caminho se sobrescrevendo). O controle 1d usa outro nome
+   * (`script-de-teste.ps1`) e por isso o índice passava a ter DUAS entradas,
+   * disparando o `throw` abaixo por um motivo que não tinha nada a ver com o
+   * que o controle mede. `git reset` (sem argumento, sem `--hard`) só move o
+   * ÍNDICE de volta para o HEAD deste repositório descartável — não toca no
+   * working tree e não é o `reset` proibido na árvore compartilhada, que é
+   * outra árvore. A asserção abaixo continua EXATA de propósito: um `add`
+   * frouxo que "pegasse algo" faria o commit passar por motivo nenhum.
+   */
+  const commitarArquivo = (nomeRelativo, conteudo, mensagem) => {
+    gitExige(["reset"], atual.wt);
+    writeFileSync(join(atual.wt, nomeRelativo), `${conteudo}\n`);
+    gitExige(["add", nomeRelativo], atual.wt);
+    const staged = gitExige(
+      ["diff", "--cached", "--name-only"],
+      atual.wt,
+    ).saida.trim();
+    if (staged !== nomeRelativo) {
+      throw new Error(`arranjo furado: staged = "${staged}"`);
+    }
+    const r = git(["commit", "-m", mensagem], atual.wt);
+    return { ...r, nomeouSecretlint: /secretlint/i.test(r.saida) };
+  };
 
-  // --- 1. POSITIVO --------------------------------------------------------
-  writeFileSync(arquivo, `${segredoFalso()}\n`);
-  gitExige(["add", "credencial-de-teste.txt"], atual.wt);
-  const staged = gitExige(
-    ["diff", "--cached", "--name-only"],
-    atual.wt,
-  ).saida.trim();
-  if (staged !== "credencial-de-teste.txt") {
-    throw new Error(`arranjo furado: staged = "${staged}"`);
-  }
-  const comSegredo = git(["commit", "-m", "test: segredo falso"], atual.wt);
-  const nomeouSecretlint = /secretlint/i.test(comSegredo.saida);
-  classificar("1. POSITIVO — commit com segredo falso é RECUSADO", {
+  const tentarCommit = (conteudo, mensagem) =>
+    commitarArquivo("credencial-de-teste.txt", conteudo, mensagem);
+
+  /** Recusado só conta quando o secretlint aparece na saída como o motivo. */
+  const observadoNaRecusa = (r) =>
+    r.code !== 0 && r.nomeouSecretlint
+      ? "recusado"
+      : r.code === 0
+        ? "aprovado"
+        : "inesperado";
+
+  const detalheDaRecusa = (r) =>
+    `exit=${r.code}, a saída nomeia o secretlint: ` +
+    `${r.nomeouSecretlint ? "sim" : "NÃO"}`;
+
+  // --- 1. POSITIVO: senha de banco (preset-recommend) ---------------------
+  const comSenha = tentarCommit(segredoFalso(), "test: senha de banco falsa");
+  classificar("1. POSITIVO — commit com senha de banco é RECUSADO", {
     esperado: "recusado",
-    observado:
-      comSegredo.code !== 0 && nomeouSecretlint
-        ? "recusado"
-        : comSegredo.code === 0
-          ? "aprovado"
-          : "inesperado",
-    detalhe:
-      `exit=${comSegredo.code}, a saída nomeia o secretlint: ` +
-      `${nomeouSecretlint ? "sim" : "NÃO"}`,
+    observado: observadoNaRecusa(comSenha),
+    detalhe: detalheDaRecusa(comSenha),
   });
-  console.log(indentar(comSegredo.saida));
+  console.log(indentar(comSenha.saida));
+
+  // --- 1b. POSITIVO: JWT do Supabase (regra de padrão) ---------------------
+  // Este controle é a razão de o `.secretlintrc.json` ter mais do que o
+  // preset. Até 20/08/2026 esta mesma isca era commitada sem um pio: o
+  // preset-recommend não tem regra de JWT, e `service_role` ignora RLS. Se
+  // alguém tirar a regra de padrão da config, é AQUI que aparece.
+  const comJwt = tentarCommit(jwtFalso(), "test: jwt service_role falso");
+  classificar("1b. POSITIVO — commit com JWT `service_role` é RECUSADO", {
+    esperado: "recusado",
+    observado: observadoNaRecusa(comJwt),
+    detalhe: detalheDaRecusa(comJwt),
+  });
+  console.log(indentar(comJwt.saida));
+
+  // --- 1c. POSITIVO: sb_secret_ do Supabase (regra de padrão) -------------
+  // Segundo padrão dentro da MESMA regra de padrão que o 1b. A doc oficial do
+  // Supabase diz que o formato JWT (legado) será descontinuado até o fim de
+  // 2026 em favor deste — se alguém tirar SÓ este padrão da config (e deixar
+  // o JWT), o 1b continua verde e é este controle que acende sozinho.
+  const comSbSecret = tentarCommit(sbSecretFalso(), "test: sb_secret_ falso");
+  classificar("1c. POSITIVO — commit com chave `sb_secret_` é RECUSADO", {
+    esperado: "recusado",
+    observado: observadoNaRecusa(comSbSecret),
+    detalhe: detalheDaRecusa(comSbSecret),
+  });
+  console.log(indentar(comSbSecret.saida));
+
+  // --- 1d. POSITIVO: sb_secret_ dentro de um `.ps1` -----------------------
+  // SEGUNDO buraco na mesma trava, fechado em 21/08/2026: até então o
+  // `.secretlintignore` tinha `*.ps1` (e `*.bat`) na lista de exceções — a
+  // MESMA credencial do controle 1c, só que dentro de um script PowerShell,
+  // nunca chegava a ser varrida pela regra de padrão (que o 1c já prova
+  // certa). O terminal deste projeto é PowerShell e há 4 arquivos `.ps1` e
+  // `.bat` versionados aqui — era nessa casca que a trava ficava cega.
+  // Se alguém puser `*.ps1` de volta no
+  // `.secretlintignore`, é este controle que acende sozinho.
+  const comSbSecretPs1 = commitarArquivo(
+    "script-de-teste.ps1",
+    sbSecretComoScriptPs1(),
+    "test: sb_secret_ falso dentro de .ps1",
+  );
+  classificar(
+    "1d. POSITIVO — commit com `sb_secret_` dentro de um `.ps1` é RECUSADO",
+    {
+      esperado: "recusado",
+      observado: observadoNaRecusa(comSbSecretPs1),
+      detalhe: detalheDaRecusa(comSbSecretPs1),
+    },
+  );
+  console.log(indentar(comSbSecretPs1.saida));
 
   // --- 2. NEGATIVO --------------------------------------------------------
-  writeFileSync(arquivo, `${LINHA_LIMPA}\n`);
-  gitExige(["add", "credencial-de-teste.txt"], atual.wt);
-  const semSegredo = git(
-    ["commit", "-m", "test: mesmo arquivo, sem segredo"],
-    atual.wt,
+  const semSegredo = tentarCommit(
+    LINHA_LIMPA,
+    "test: mesmo arquivo, sem segredo",
   );
   // Exigir o nome do secretlint aqui também não é preciosismo: um hook que não
   // roda NADA aprova o arquivo limpo com exit 0 e satisfaria este controle
   // sozinho. "Passou" só vale se a trava tiver de fato olhado o arquivo.
-  const nomeouSecretlintLimpo = /secretlint/i.test(semSegredo.saida);
+  const nomeouSecretlintLimpo = semSegredo.nomeouSecretlint;
   const registrou =
     semSegredo.code === 0 &&
     git(["log", "--oneline", "-1"], atual.wt).saida.includes("sem segredo");
@@ -790,7 +983,9 @@ if (aprovado) {
   console.log(
     "  TRAVA LIGADA E FECHADA. Os três hooks que o git executa NESTA árvore\n" +
       "  (pre-commit, commit-msg e pre-push) são o que esta configuração gera;\n" +
-      "  commit com senha de banco é recusado de dentro de um worktree; arquivo\n" +
+      "  commit com senha de banco, com JWT `service_role`, com chave\n" +
+      "  `sb_secret_` do Supabase (formato legado e formato novo, inclusive\n" +
+      "  dentro de um `.ps1`) são recusados de dentro de um worktree; arquivo\n" +
       "  limpo passa pelo secretlint; e o shim sai com erro — não com sucesso —\n" +
       "  quando não acha o lefthook.",
   );

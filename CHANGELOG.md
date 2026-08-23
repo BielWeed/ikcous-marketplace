@@ -7,6 +7,177 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.6.1] — 2026-08-21
+
+Release de ferramental: **a trava que impede uma credencial de ser gravada no
+repositório deixa de ter pontos cegos.** Quatro entregas (#256, #261, #262, #263).
+
+**Nada muda para quem COMPRA nem para quem VENDE.** Nenhum arquivo de `src/`
+foi tocado, nenhuma migration, nenhuma edge function — o aplicativo que vai ao
+ar é byte a byte o mesmo da `1.6.0`. Por isso o número sobe só o último dígito.
+
+### O que muda no MOLDE
+
+O `secretlint` roda no hook de pre-commit e é a **única** proteção deste
+repositório contra credencial gravada no git — e o histórico dele já teve
+`service_role` e senha de banco commitadas. Ele tinha três cegueiras, e todas
+foram medidas antes e depois, com controle positivo na mesma rodada:
+
+- **A chave do Supabase no formato legado** (`eyJ...`, um JWT) passava direto.
+  Agora é recusada (#256).
+- **A chave no formato novo** (`sb_secret_...`) também passava — e essa é a
+  sucessora da `service_role`, que ignora RLS e tem acesso total aos dados. A
+  documentação do Supabase descontinua o formato legado até o fim de 2026, então
+  a trava estava protegendo justamente o formato que vai deixar de existir (#261).
+- **Qualquer credencial dentro de um `.ps1` ou `.bat`** escapava, porque as duas
+  extensões estavam na lista de exceções. O terminal deste projeto é PowerShell
+  e há quatro arquivos desses versionados aqui (#262).
+- **O `package-lock.json`** era pulado. Hoje não há nada sensível nele — as 1.381
+  dependências vêm todas do registro público — mas a exceção não pagava nada e
+  criava um ponto cego que vale no dia em que o projeto usar um registro
+  **privado** de pacotes, o único caminho pelo qual credencial cai num lockfile
+  (#263).
+
+A `sb_publishable_` **não** é bloqueada, e isso é deliberado: a documentação
+oficial do Supabase diz que ela é feita para ser pública. Bloqueá-la seria falso
+positivo por construção — e falso positivo em trava de segurança é o que faz
+alguém arrancar a trava inteira. A justificativa mora num caso de teste que
+reprova quem acrescentar o padrão sem pensar.
+
+### Como isso foi provado
+
+O `scripts/hooks-prova.mjs` ganhou três controles e passou de 6 para **9**. Ele
+não simula: monta um repositório descartável, instala os hooks reais e faz
+`git commit` de verdade com a credencial dentro.
+
+```
+controles executados: 9 de 9, todos PASSOU
+  1b. commit com JWT `service_role` é RECUSADO
+  1c. commit com chave `sb_secret_` é RECUSADO
+  1d. commit com `sb_secret_` dentro de um `.ps1` é RECUSADO
+  2.  o MESMO arquivo, limpo, PASSA
+```
+
+E cinco mutações individuais derrubam **exatamente** o controle que cada uma
+cobre, nenhum outro — nenhum controle passa de carona no estado do anterior.
+
+### Sabido e não corrigido
+
+- **A cota mensal do GitHub Actions se esgotou em 20/08/2026.** Desde então toda
+  execução do CI morre em 3-6 segundos sem rodar um passo, e **o CI não tem
+  veredito** sobre nada desta release. Toda a verificação foi local e está dita
+  como local em cada PR.
+- O `.secretlintignore` mantém `node_modules/`, `dist/`, `.ship-safe/`,
+  `.vercel/`, `.git/` e as quatro extensões de imagem. Nenhuma delas é formato
+  onde credencial em texto se esconde.
+- O pre-commit **não roda a partir de um worktree em outro caminho**: o shim do
+  lefthook resolve o binário por caminho relativo à árvore principal. Pré-existente,
+  e o motivo de os commits desta release terem sido criados pela API do GitHub,
+  com o `secretlint` rodado à mão sobre cada diff em compensação.
+
+## [1.6.0] — 2026-08-21
+
+Release de correção: **o painel para de afirmar o que não sabe**. Três frentes de
+auditoria varreram as telas do administrador, a fila de dor resultante foi consertada
+em lotes, e o ferramental de verificação que deixava defeito passar foi fechado junto.
+55 mudanças sem merge — 29 correções (17 delas em `src/`), 20 de documentação,
+3 de formatação, 2 reversões e 1 teste — mais 5 migrations.
+
+O padrão que se repete em quase todos os itens, e que dá o título à release: **a tela
+mostrava um número que ela não tinha como saber, e o mostrava com a mesma confiança de
+um número real.** Zero de "não consegui medir" era desenhado igual a zero de verdade.
+
+### O que muda para quem COMPRA
+
+- **Cupom de uso único deixa de ser perdido — e deixa de poder ser gasto duas vezes.**
+  Quando o pedido que usou o cupom morre de vez (expira ou é cancelado), a vaga volta e
+  o cupom pode ser usado de novo. Enquanto o PIX ainda for pagável, a vaga fica presa:
+  sem isso o mesmo cupom seria devolvido, gasto num pedido novo, e o pedido original
+  ainda assim seria pago com desconto. Levou quatro rodadas até fechar nos dois sentidos.
+
+### O que muda para quem VENDE
+
+O painel administrativo é a superfície inteira desta release.
+
+**Dinheiro deixa de ser contado errado**
+
+- **O LTV do cliente conta só o dinheiro que entrou**, e não mais o que foi apenas pedido.
+- **Quem é "cliente frequente" também conta só dinheiro reconhecido.**
+- **O Ticket Médio de Clientes lê a mesma fonte do Dashboard**, em vez de ter conta
+  própria — antes os dois batiam por coincidência, e parariam de bater sem aviso.
+- **Produto sem custo cadastrado para de posar como o mais lucrativo.** Sem custo, a
+  margem calculada era 100%.
+- **Os KPIs de dinheiro da tela de Produtos param de congelar** no primeiro valor lido.
+- **O cartão de pedidos totais conta como o dashboard conta.**
+
+**Pedidos**
+
+- **A tela de Pedidos abre no que precisa de ação**, em vez de abrir num filtro que
+  escondia trabalho — e **para de negar pedido que existe**.
+- **A ficha para de chamar de cancelado o pedido que foi devolvido.** São duas coisas
+  diferentes e o dinheiro delas é diferente.
+- **O histórico de frete para de dizer que ninguém tentou cotar** quando houve tentativa.
+
+**Produtos e estoque**
+
+- **O painel para de anunciar "Em Operação" para produto que acabou.**
+- **O painel para de precificar um estoque que ele não mostra.**
+
+**Notificações**
+
+- **A tela de Push para de anunciar público que não existe.**
+- **O histórico para de carimbar entrega que não houve** — envio despachado não é
+  envio recebido.
+- **O quinto contador para de fingir zero**, e **o total de aparelhos não finge zero
+  quando não conseguiu medir.** Zero passa a significar zero.
+
+**Avisos e contagens**
+
+- **O painel para de contar duas coisas com o mesmo nome e de avisar duas vezes.**
+- **O aviso fala só do que ele observou**, sem estender a conclusão ao que não olhou.
+- **A tela para de prometer o que o sistema não faz.**
+- **A checagem de erro chega nos quatro inserts, não só num** — antes, três falhas
+  silenciosas eram possíveis.
+
+### O que muda no MOLDE
+
+Nada disto aparece na loja, e tudo isto decide se um defeito chega nela.
+
+- **O `db-apply` para de dizer "verificado" para migration que ele não conferiu.** A
+  fronteira sem teste que deixava isso acontecer de novo foi fechada junto.
+- **A varredura de segredo para de ficar verde sem ter varrido nada** — um verde de
+  ferramenta que não rodou é pior que vermelho, porque encerra a checagem.
+- **A trava de segredo para de aprovar em silêncio dentro de worktree.**
+- **A guarda de push volta a olhar o DESTINO do push, não o branch local.**
+- **A suíte do front para de reprovar teste que ninguém quebrou.**
+- **Cinco migrations** acompanham as correções de dinheiro e de filtro: LTV e cliente
+  frequente contando só dinheiro reconhecido, devolução do uso de cupom, o KPI usando o
+  mesmo estoque que a tela, e o filtro de pedidos em aberto passando a filtrar no banco.
+  Todas já estavam aplicadas no banco antes desta promoção (ledger: 123 arquivos, 123
+  casadas, 0 pendentes).
+
+### Sobre a verificação desta release
+
+**A cota mensal do GitHub Actions da conta se esgotou em 20/08/2026**, e desde então
+toda execução do CI morre em 3-6 segundos sem rodar um passo sequer. Os sete comandos
+foram rodados na máquina local antes da promoção: `typecheck` 0, `test:edge` 294/294,
+`test:unit` 66/66, `test:front` 485/485 em 90 arquivos (com `VITE_PAGAMENTO_ONLINE=false`
+sobreposto — sem a sobreposição a máquina local dá 484/485, por causa de um `.env.local`
+que não existe na Vercel), `build` 0, `lint:links` 0, `lint:ratchet` 0 (eslint 0 erros,
+551 warnings, ambos no teto) e `size` 0.
+
+**A prova é local e está dita como local.** O Biome, que o CI mede no Linux, não é
+mensurável de forma confiável no Windows; nos arquivos alterados desde o último CI verde
+há 4 apontamentos reais, todos em `scripts/` e `tests/`, nenhum em `src/`.
+
+### Sabido e não corrigido
+
+- **Nove achados do lote seguinte** continuam em conserto por outra frente e não entram
+  nesta release.
+- **A promoção 1.5.0 → produção foi feita por merge direto `develop` → `main`**, sem
+  branch de release, e por isso o app ficou no ar identificado como `1.5.0` por algumas
+  horas enquanto já servia este conteúdo. Esta entrada corrige o registro.
+
 ## [1.5.0] — 2026-08-20
 
 Release de correção: **o app para de falar por uma loja que ele não conhece**.
