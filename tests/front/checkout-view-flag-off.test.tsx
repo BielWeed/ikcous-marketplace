@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Prova da garantia central da Task 5: com PAGAMENTO_ONLINE_LIGADO desligada
-// (nenhuma VITE_PAGAMENTO_ONLINE setada no ambiente de teste — mesma leitura
+// (VITE_PAGAMENTO_ONLINE fixada em "false" pelo beforeEach — mesma leitura
 // de import.meta.env que o build usa), o CheckoutView tem que continuar
 // idêntico ao de hoje: sem a opção "Pagar agora" na lista de meios de
 // pagamento, sempre chamando a v23 (via createOrder(..., { comPagamentoOnline:
@@ -142,6 +142,26 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO desligada", () => {
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    // A PREMISSA DESTE ARQUIVO, FIXADA EM VEZ DE TORCIDA POR ELA.
+    //
+    // `PAGAMENTO_ONLINE_LIGADO` é calculada no topo de `src/lib/flags.ts`, a
+    // partir de `import.meta.env.VITE_PAGAMENTO_ONLINE`. O Vite monta esse
+    // objeto a partir dos arquivos `.env*` da raiz — inclusive `.env.local`,
+    // que é ignorado pelo git e existe só na máquina de quem desenvolve.
+    //
+    // Medido em 23/08/2026: com `VITE_PAGAMENTO_ONLINE=true` no `.env.local`
+    // desta máquina, este teste reprovava ("expected ... not to contain
+    // 'Pagar agora'") enquanto o CI, que não tem `.env.local`, passava verde.
+    // A suíte ficava vermelha por causa de um arquivo que o repositório nem
+    // versiona — e o mesmo mecanismo poderia, no sentido contrário, deixar
+    // este teste passar por acaso.
+    //
+    // O `stubEnv` roda ANTES do `await import("@/views/customer/CheckoutView")`
+    // do corpo do teste, que é quando `flags.ts` é avaliado pela primeira vez.
+    // Por isso o módulo REAL continua no caminho: o que se prova aqui ainda é
+    // a leitura de verdade de `import.meta.env`, e não um dublê de `flags.ts`
+    // como fazem os arquivos irmãos de flag LIGADA.
+    vi.stubEnv("VITE_PAGAMENTO_ONLINE", "false");
     createOrder.mockClear();
     clearCart.mockClear();
     // O jsdom desta versão não expõe `window.localStorage` como Storage de
@@ -168,6 +188,10 @@ describe("CheckoutView com PAGAMENTO_ONLINE_LIGADO desligada", () => {
     });
     hospedeiro.remove();
     vi.unstubAllGlobals();
+    // `restoreAllMocks` NÃO desfaz `stubEnv` — são registros separados no
+    // Vitest. Sem esta linha o valor fixado vazaria para qualquer teste que
+    // viesse depois neste mesmo arquivo.
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
