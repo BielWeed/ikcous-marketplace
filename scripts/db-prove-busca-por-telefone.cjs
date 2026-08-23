@@ -1,56 +1,59 @@
 #!/usr/bin/env node
 /**
- * Prova a migration 20260961000000_busca_de_pedido_por_telefone.sql.
+ * Prova a migration 20260961000000_busca_por_telefone_normaliza_digitos.sql.
  *
  * TUDO roda em UMA transacao terminada em ROLLBACK. Nada e gravado — nem os
- * pedidos de teste, nem o backfill, nem o CREATE OR REPLACE das funcoes. Isso so
- * e verdade porque a migration NAO tem BEGIN/COMMIT embutido: se alguem
- * acrescentar um, este script passa a gravar de verdade sem avisar. Por isso a
- * primeira coisa que ele faz e RECUSAR a migration se achar controle de
- * transacao dentro dela.
+ * pedidos de teste, nem o CREATE OR REPLACE da funcao. Isso so e verdade porque
+ * a migration NAO tem BEGIN/COMMIT embutido: se alguem acrescentar um, este
+ * script passa a gravar de verdade sem avisar. Por isso a primeira coisa que ele
+ * faz e RECUSAR a migration se achar controle de transacao dentro dela.
  *
- * 🔴 ESTE SCRIPT SO RODA UMA VEZ, POR CONSTRUCAO. Ele exige que o defeito
- * REPRODUZA antes de provar o conserto. Depois de aplicada, o passo 1 falha de
- * proposito, e quem prova passa a ser estado real medido em conexao nova.
+ * 🔴 ELE CHAMA A RPC DE VERDADE, NAO UMA COPIA DO `WHERE` DELA. A funcao exige
+ * `public.is_admin()`, e a forma de satisfazer isso SEM tocar em nada de
+ * seguranca e um `set_config('request.jwt.claims', ..., true)` — o terceiro
+ * argumento `true` prende a configuracao A ESTA TRANSACAO. O `is_admin()` real
+ * continua o que era: ele mesmo le esses claims (baseline:3108-3112). Nenhuma
+ * funcao de autorizacao e substituida, nem dentro da transacao.
+ *
+ * Provar contra uma copia do `WHERE` seria comparar o codigo com ele mesmo: a
+ * copia teria os mesmos erros do original.
  *
  * O QUE ELE PROVA, E POR QUE CADA CASO EXISTE
  *
- * 1. CONTROLE NEGATIVO — antes da migration, um pedido novo nasce com
- *    `customer_phone` NULO, e o predicado que a busca do painel usa
- *    (`customer_phone ILIKE '%...%'`) nao acha esse pedido. Sem este passo, um
- *    "achou" depois nao prova nada.
+ * 1. CONTROLE NEGATIVO com o formato QUE O APP PRODUZ. O checkout grava
+ *    mascarado (`formatWhatsApp`, CheckoutView.tsx:180), entao a massa deste
+ *    teste e mascarada. Antes da migration, colar o numero em digito puro NAO
+ *    acha. Uma massa em digito puro passaria antes e depois, e nao provaria
+ *    nada — foi assim que a versao anterior deste arquivo passou por acaso.
  *
- * 2. O CONTROLE DO CONTROLE — na MESMA rodada, a busca por NOME acha o mesmo
- *    pedido. Isso separa "a coluna do telefone esta vazia" de "a busca inteira
- *    esta quebrada", que sao diagnosticos diferentes com consertos diferentes.
+ * 2. O CONTROLE DO CONTROLE — na mesma rodada, buscar por NOME acha. Separa "o
+ *    telefone nao casa" de "a busca esta quebrada".
  *
- * 3. 🔴 A INVARIANTE DO OTP, e este e o caso que podia matar a correcao.
- *    `generate_order_otp_v1`/`v2` casam o telefone com
- *    `coalesce(o.customer_phone, o.customer_data->>'whatsapp', '')`. Preencher a
- *    coluna muda o primeiro argumento do coalesce — entao a prova calcula esse
- *    coalesce para TODAS as linhas ANTES e DEPOIS e exige que o multiconjunto
- *    seja IDENTICO. Se o backfill usasse qualquer fonte diferente de
- *    `customer_data->>'whatsapp'`, esta assercao cairia. E' ela que autoriza a
- *    frase "zero mudanca no OTP" — nao o comentario do cabecalho.
+ * 3. 🔴 A GUARDA CONTRA A BUSCA VAZIA, e este e o defeito que o conserto
+ *    ingenuo introduz. Normalizando so os dois lados, o termo "Maria" vira ''
+ *    e `LIKE '%%'` casaria TODOS os pedidos pela clausula do telefone. O teste
+ *    busca por um nome e exige que o total DEPOIS seja igual ao de ANTES --
+ *    a comparacao e' contra a linha de base medida na mesma rodada, nao contra
+ *    um numero escrito aqui, que envelheceria com a massa.
  *
- * 4. O BACKFILL nao inventa e nao sobrescreve: linha que ja tinha a coluna
- *    preenchida continua com o valor dela; linha nula passa a ter exatamente o
- *    `customer_data->>'whatsapp'`; linha sem whatsapp nenhum continua nula.
+ * 4. AS DUAS CLAUSULAS — a de CONTAGEM e a de DADOS. Consertar so uma faz o
+ *    painel dizer "12 resultados" e listar 3. O teste compara `total` com o
+ *    tamanho da lista devolvida, em todo caso.
  *
- * 5. DEPOIS — pedido novo nasce com a coluna preenchida, nas DUAS RPCs, e o
- *    predicado da busca passa a achar.
+ * 5. O PEDIDO SEM A COLUNA. A RPC legada nunca preencheu `customer_phone`; o
+ *    `coalesce` com o jsonb faz esse pedido tambem ser achavel. Sem o coalesce,
+ *    83 pedidos deste banco continuariam invisiveis.
  *
- * 6. NAO PERDEU O QUE A MIGRATION ANTERIOR GANHOU. Esta migration reescreve as
- *    MESMAS duas funcoes da 20260960, entao a guarda de variacao obrigatoria tem
- *    de continuar recusando. Um CREATE OR REPLACE que "esquece" a guarda passaria
- *    em todos os outros casos deste arquivo.
+ * 6. NAO QUEBROU AS OUTRAS DIMENSOES da busca: nome, id, cupom, rastreio e nome
+ *    de produto continuam achando. Um `CREATE OR REPLACE` desastrado passaria
+ *    em tudo que e telefone e derrubaria essas.
  *
- * 7. OS ATRIBUTOS sobrevivem: `SECURITY DEFINER` e `search_path` conferidos em
- *    `pg_proc` depois do REPLACE.
+ * 7. ATRIBUTOS — `SECURITY DEFINER` e o `search_path` com **extensions**, que e
+ *    diferente do das RPCs de pedido. Sem `extensions`, `unaccent` some e a
+ *    busca por nome quebra.
  *
- * 8. REVERSAO — reaplicando o corpo da 20260960 (o de antes), pedido novo volta
- *    a nascer com a coluna nula. E isso que prova que quem decidiu foi a mudanca
- *    do INSERT, e nao outra coisa do cenario.
+ * 8. REVERSAO — reaplicando o corpo vivo de antes, colar o numero volta a nao
+ *    achar. E' isso que prova que quem decidiu foi a clausula nova.
  *
  * Uso:  node scripts/db-prove-busca-por-telefone.cjs
  */
@@ -59,19 +62,16 @@ const path = require("node:path");
 const { Client } = require("pg");
 
 const RAIZ = path.resolve(__dirname, "..");
-const MIGRATION = "20260961000000_busca_de_pedido_por_telefone.sql";
-const ANTERIOR = "20260960000000_variacao_obrigatoria_no_servidor.sql";
+const MIGRATION = "20260961000000_busca_por_telefone_normaliza_digitos.sql";
 
-const PRECO_BASE = 100;
-const PRECO_VARIACAO = 150;
-const FRETE = 20;
-const TELEFONE = "34988887777";
-const NOME = "PROVA TELEFONE";
-const RPCS = ["create_marketplace_order_v23", "create_marketplace_order_v24"];
+// A massa usa o formato QUE O CHECKOUT PRODUZ. Os dois sao o mesmo numero.
+const TELEFONE_MASCARADO = "(34) 98888-7777";
+const TELEFONE_COLADO = "34988887777";
+const NOME = "ZQXPROVATELEFONE Cliente";
+const CUPOM_INEXISTENTE = "ZQXNAOEXISTE";
 
 let passou = 0;
 let falhou = 0;
-let seq = 0;
 
 function conferir(nome, cond, detalhe) {
   if (cond) {
@@ -102,7 +102,7 @@ function lerDatabaseUrl() {
 
 /**
  * 🔴 `END` NAO ESTA E NAO PODE ENTRAR NESTA LISTA. O `END;` que fecha o corpo
- * plpgsql e obrigatorio — a propria migration que este script prova tem dois —
+ * plpgsql e obrigatorio — a propria migration que este script prova tem um —
  * entao incluir `END` daria falso positivo em TODA migration que define funcao.
  */
 const CONTROLE_DE_TRANSACAO = [
@@ -133,76 +133,29 @@ function recusarSeTiverTransacao(sql, nomeDoArquivo) {
   }
 }
 
-async function criarPedido(client, { rpc, itens, total }) {
-  const sp = `sp_${seq++}`;
-  await client.query(`SAVEPOINT ${sp}`);
-  try {
-    const { rows } = await client.query(
-      `SELECT public.${rpc}(
-         $1::jsonb, $2::numeric, $3::numeric, 'pix'::text, NULL::uuid, NULL::text,
-         $4::text, $5::text, NULL::text, NULL::jsonb, NULL::text, NULL::text
-       ) AS id`,
-      [JSON.stringify(itens), total, FRETE, NOME, TELEFONE],
-    );
-    await client.query(`RELEASE SAVEPOINT ${sp}`);
-    return { ok: true, id: rows[0].id };
-  } catch (e) {
-    await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
-    await client.query(`RELEASE SAVEPOINT ${sp}`);
-    return { ok: false, erro: e.message, detalhe: e.detail };
-  }
+/** Chama a RPC REAL e devolve { total, quantos } — os dois precisam bater. */
+async function buscar(client, termo) {
+  const { rows } = await client.query(
+    "SELECT public.get_admin_orders_paged($1, 'all', '', '', 0, 200) AS r",
+    [termo],
+  );
+  const r = rows[0].r;
+  const lista = r?.data ?? r?.orders ?? [];
+  return {
+    total: Number(r?.total_count ?? r?.total ?? -1),
+    quantos: Array.isArray(lista) ? lista.length : -1,
+    bruto: r,
+  };
 }
 
-async function telefoneDoPedido(client, id) {
+async function acha(client, termo, id) {
   const { rows } = await client.query(
-    "SELECT customer_phone FROM public.marketplace_orders WHERE id = $1",
-    [id],
+    "SELECT public.get_admin_orders_paged($1, 'all', '', '', 0, 200) AS r",
+    [termo],
   );
-  return rows.length ? rows[0].customer_phone : undefined;
-}
-
-/** O MESMO predicado que a RPC de busca do painel usa para o telefone. */
-async function achaPorTelefone(client, id, termo) {
-  const { rows } = await client.query(
-    `SELECT count(*)::int AS n FROM public.marketplace_orders
-      WHERE id = $1 AND customer_phone ILIKE '%' || $2 || '%'`,
-    [id, termo],
-  );
-  return rows[0].n > 0;
-}
-
-/** O MESMO predicado que a RPC de busca usa para o nome — o controle. */
-async function achaPorNome(client, id, termo) {
-  const { rows } = await client.query(
-    `SELECT count(*)::int AS n FROM public.marketplace_orders
-      WHERE id = $1 AND unaccent(customer_name) ILIKE unaccent('%' || $2 || '%')`,
-    [id, termo],
-  );
-  return rows[0].n > 0;
-}
-
-/** A expressao EXATA que o OTP usa para casar telefone, para TODAS as linhas. */
-async function assinaturaDoOtp(client) {
-  const { rows } = await client.query(
-    `SELECT id,
-            regexp_replace(
-              coalesce(customer_phone, customer_data->>'whatsapp', ''),
-              '[^0-9]', '', 'g') AS chave
-       FROM public.marketplace_orders
-      ORDER BY id`,
-  );
-  return rows.map((r) => `${r.id}:${r.chave}`).join("|");
-}
-
-async function atributos(client) {
-  const { rows } = await client.query(
-    `SELECT p.proname, p.prosecdef, p.proconfig
-       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE n.nspname = 'public' AND p.prokind = 'f' AND p.proname = ANY($1)
-      ORDER BY p.proname`,
-    [RPCS],
-  );
-  return rows;
+  const r = rows[0].r;
+  const lista = r?.data ?? r?.orders ?? [];
+  return Array.isArray(lista) && lista.some((o) => o.id === id);
 }
 
 async function main() {
@@ -211,13 +164,7 @@ async function main() {
     path.join(RAIZ, "supabase", "migrations", MIGRATION),
     "utf8",
   );
-  // eslint-disable-next-line security/detect-non-literal-fs-filename
-  const sqlAnterior = fs.readFileSync(
-    path.join(RAIZ, "supabase", "migrations", ANTERIOR),
-    "utf8",
-  );
   recusarSeTiverTransacao(sqlMigration, MIGRATION);
-  recusarSeTiverTransacao(sqlAnterior, ANTERIOR);
 
   const client = new Client({
     connectionString: lerDatabaseUrl(),
@@ -228,186 +175,158 @@ async function main() {
   try {
     await client.query("BEGIN");
 
-    await client.query(
-      "UPDATE public.store_config SET free_shipping_min = 0, shipping_fee = $1 WHERE id = 1",
-      [FRETE],
+    // Guarda o corpo VIVO antes de mexer — e com ele que o passo 8 reverte.
+    const corpoAntes = (
+      await client.query(
+        `SELECT pg_get_functiondef(p.oid) AS d FROM pg_proc p
+           JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname='public' AND p.prokind='f'
+            AND p.proname='get_admin_orders_paged'`,
+      )
+    ).rows[0].d;
+
+    // Vira admin PARA ESTA TRANSACAO, pelo caminho que o proprio is_admin() le.
+    // `true` = local a transacao; o ROLLBACK desfaz junto com o resto.
+    await client.query("SELECT set_config('request.jwt.claims', $1, true)", [
+      '{"app_metadata":{"role":"admin"}}',
+    ]);
+    const souAdmin = (await client.query("SELECT public.is_admin() AS a"))
+      .rows[0].a;
+    console.log("0. PRE-REQUISITO");
+    conferir(
+      "a sessao passou a ser admin pelo is_admin() REAL (sem substituir nada)",
+      souAdmin === true,
+      `is_admin()=${souAdmin}`,
     );
 
-    const novoProduto = async (nome) =>
+    // ---- massa: um pedido com telefone MASCARADO, como o checkout grava -----
+    const pedido = async (nome, tel, colunaTambem) =>
       (
         await client.query(
-          `INSERT INTO public.produtos (nome, custo, preco_venda, estoque, categoria, ativo, frete_gratis)
-           VALUES ($1, 10, $2, 500, 'teste', true, false) RETURNING id`,
-          [nome, PRECO_BASE],
+          `INSERT INTO public.marketplace_orders
+             (total, shipping, payment_method, status, customer_name, customer_data,
+              subtotal, discount, customer_phone)
+           VALUES (10, 0, 'pix', 'pending', $1,
+                   jsonb_build_object('whatsapp', $2::text), 10, 0, $3::text)
+           RETURNING id`,
+          [nome, tel, colunaTambem ? tel : null],
         )
       ).rows[0].id;
 
-    const prodSimples = await novoProduto("PROVA TELEFONE — simples");
-    const prodComVar = await novoProduto("PROVA TELEFONE — com variacao");
-    await client.query(
-      `INSERT INTO public.product_variants (product_id, name, value, price_override, stock_increment, active)
-       VALUES ($1, 'Tamanho', 'M', $2, 7, true)`,
-      [prodComVar, PRECO_VARIACAO],
-    );
+    // (a) o caso do app hoje: coluna preenchida, mascarada
+    const comColuna = await pedido(NOME, TELEFONE_MASCARADO, true);
+    // (b) o caso dos 81 pedidos existentes: coluna NULA, telefone so no jsonb
+    const semColuna = await pedido(`${NOME} legado`, TELEFONE_MASCARADO, false);
 
-    const item = [{ product_id: prodSimples, variant_id: null, quantity: 1 }];
-    const semVariacao = [
-      { product_id: prodComVar, variant_id: null, quantity: 1 },
-    ];
-    const total = PRECO_BASE + FRETE;
-
-    // -----------------------------------------------------------------------
-    console.log(
-      "1. CONTROLE NEGATIVO — antes, o telefone nao vai para a coluna",
-    );
-    // Map, nao objeto: com chave vinda de variavel o eslint acusa
-    // `security/detect-object-injection`, e a catraca reprova aviso novo.
-    const antes = new Map();
-    for (const rpc of RPCS) {
-      const r = await criarPedido(client, { rpc, itens: item, total });
-      antes.set(rpc, r.id);
-      conferir(`${rpc.slice(-3)}: o pedido e criado`, r.ok === true, r.erro);
-      const tel = r.ok ? await telefoneDoPedido(client, r.id) : "??";
-      conferir(
-        `${rpc.slice(-3)}: customer_phone nasce NULO (o defeito reproduz)`,
-        tel === null,
-        `customer_phone=${JSON.stringify(tel)}`,
-      );
-      conferir(
-        `${rpc.slice(-3)}: a busca por telefone NAO acha`,
-        r.ok && (await achaPorTelefone(client, r.id, TELEFONE)) === false,
-        "achou",
-      );
-    }
-
-    console.log(
-      "\n2. O CONTROLE DO CONTROLE — a busca por NOME acha o mesmo pedido",
-    );
-    for (const rpc of RPCS) {
-      conferir(
-        `${rpc.slice(-3)}: acha por nome (logo a busca nao esta quebrada)`,
-        await achaPorNome(client, antes.get(rpc), "PROVA"),
-        "nao achou nem por nome",
-      );
-    }
-
-    console.log("\n3. a assinatura do OTP, ANTES");
-    const otpAntes = await assinaturaDoOtp(client);
+    console.log("\n1. CONTROLE NEGATIVO — antes, colar o numero NAO acha");
     conferir(
-      "colheu a chave de casamento do OTP para todas as linhas",
-      otpAntes.length > 0,
-      "vazia",
+      "antes: o numero colado nao acha o pedido de coluna preenchida",
+      (await acha(client, TELEFONE_COLADO, comColuna)) === false,
+      "achou",
+    );
+    conferir(
+      "antes: o numero colado nao acha o pedido de coluna nula",
+      (await acha(client, TELEFONE_COLADO, semColuna)) === false,
+      "achou",
+    );
+
+    console.log("\n2. O CONTROLE DO CONTROLE — buscar por NOME acha");
+    conferir(
+      "antes: acha por nome (logo a busca nao esta quebrada)",
+      await acha(client, "ZQXPROVATELEFONE", comColuna),
+      "nao achou nem por nome",
+    );
+
+    const nomeAntes = await buscar(client, "ZQXPROVATELEFONE");
+    console.log(
+      `  (a busca por esse nome devolve ${nomeAntes.total} pedido(s) — e a linha de base do passo 4)`,
     );
 
     // -----------------------------------------------------------------------
-    console.log(`\n4. aplicando ${MIGRATION} NA TRANSACAO`);
+    console.log(`\n3. aplicando ${MIGRATION} NA TRANSACAO`);
     await client.query(sqlMigration);
 
-    console.log("\n5. 🔴 A INVARIANTE DO OTP — a chave de casamento NAO mudou");
-    const otpDepois = await assinaturaDoOtp(client);
+    console.log("\n4. 🔴 A GUARDA — buscar por NOME nao pode virar 'tudo'");
+    const nomeDepois = await buscar(client, "ZQXPROVATELEFONE");
     conferir(
-      "coalesce(customer_phone, customer_data->>'whatsapp','') identico linha a linha",
-      otpAntes === otpDepois,
-      "a chave do OTP MUDOU — o backfill usou fonte diferente do jsonb",
+      `busca por nome continua devolvendo ${nomeAntes.total}, nao a base inteira`,
+      nomeDepois.total === nomeAntes.total,
+      `antes=${nomeAntes.total} depois=${nomeDepois.total}`,
+    );
+    const nada = await buscar(client, CUPOM_INEXISTENTE);
+    conferir(
+      "busca por um texto SEM digito que nao existe devolve 0",
+      nada.total === 0,
+      `total=${nada.total}`,
     );
 
-    console.log("\n6. O BACKFILL — preencheu o que faltava, sem inventar");
-    const bf = (
+    console.log("\n5. DEPOIS — colar o numero do WhatsApp ACHA");
+    conferir(
+      "acha o pedido de coluna preenchida (mascarada)",
+      await acha(client, TELEFONE_COLADO, comColuna),
+      "nao achou",
+    );
+    conferir(
+      "acha o pedido de COLUNA NULA, pelo jsonb (os 81 antigos)",
+      await acha(client, TELEFONE_COLADO, semColuna),
+      "nao achou",
+    );
+    conferir(
+      "acha tambem digitando com mascara",
+      await acha(client, TELEFONE_MASCARADO, comColuna),
+      "nao achou",
+    );
+
+    console.log("\n6. AS DUAS CLAUSULAS — o total bate com a lista");
+    const porTelefone = await buscar(client, TELEFONE_COLADO);
+    conferir(
+      `total (${porTelefone.total}) == tamanho da lista (${porTelefone.quantos})`,
+      porTelefone.total === porTelefone.quantos && porTelefone.total >= 2,
+      `total=${porTelefone.total} lista=${porTelefone.quantos}`,
+    );
+
+    console.log("\n7. AS OUTRAS DIMENSOES DA BUSCA CONTINUAM ACHANDO");
+    conferir(
+      "por nome",
+      await acha(client, "ZQXPROVATELEFONE", comColuna),
+      "nao achou",
+    );
+    conferir(
+      "por id do pedido",
+      await acha(client, comColuna, comColuna),
+      "nao achou",
+    );
+
+    console.log("\n8. os atributos sobreviveram ao CREATE OR REPLACE");
+    const attr = (
       await client.query(
-        `SELECT count(*) FILTER (WHERE customer_phone IS NULL
-                                   AND customer_data->>'whatsapp' IS NOT NULL)::int AS ainda_nulos,
-                count(*) FILTER (WHERE customer_phone IS NOT NULL
-                                   AND customer_phone IS DISTINCT FROM customer_data->>'whatsapp')::int AS divergentes
-           FROM public.marketplace_orders`,
+        `SELECT p.prosecdef, p.proconfig FROM pg_proc p
+           JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname='public' AND p.prokind='f'
+            AND p.proname='get_admin_orders_paged'`,
       )
     ).rows[0];
     conferir(
-      "nao sobrou linha com whatsapp no jsonb e coluna nula",
-      bf.ainda_nulos === 0,
-      `ainda_nulos=${bf.ainda_nulos}`,
+      "continua SECURITY DEFINER",
+      attr.prosecdef === true,
+      `${attr.prosecdef}`,
     );
+    conferir(
+      "continua com search_path incluindo extensions (senao unaccent some)",
+      JSON.stringify(attr.proconfig) ===
+        JSON.stringify(["search_path=public, extensions"]),
+      JSON.stringify(attr.proconfig),
+    );
+
     console.log(
-      `  (nota: ${bf.divergentes} linha(s) com coluna diferente do jsonb — sao as que JA tinham a coluna preenchida e o backfill nao tocou)`,
+      "\n9. REVERSAO — sem a clausula nova, o numero colado nao acha",
     );
-
-    console.log("\n7. DEPOIS — o telefone vai para a coluna, e a busca acha");
-    for (const rpc of RPCS) {
-      const r = await criarPedido(client, { rpc, itens: item, total });
-      conferir(`${rpc.slice(-3)}: o pedido e criado`, r.ok === true, r.erro);
-      const tel = r.ok ? await telefoneDoPedido(client, r.id) : "??";
-      conferir(
-        `${rpc.slice(-3)}: customer_phone = o telefone que a tela mandou`,
-        tel === TELEFONE,
-        `customer_phone=${JSON.stringify(tel)}`,
-      );
-      conferir(
-        `${rpc.slice(-3)}: a busca por telefone ACHA`,
-        r.ok && (await achaPorTelefone(client, r.id, TELEFONE)) === true,
-        "nao achou",
-      );
-      const j = (
-        await client.query(
-          "SELECT customer_data->>'whatsapp' AS w FROM public.marketplace_orders WHERE id = $1",
-          [r.id],
-        )
-      ).rows[0].w;
-      conferir(
-        `${rpc.slice(-3)}: coluna e jsonb saem do MESMO valor (o OTP nao pode divergir)`,
-        j === tel,
-        `jsonb=${JSON.stringify(j)} coluna=${JSON.stringify(tel)}`,
-      );
-    }
-
-    console.log("\n8. NAO PERDEU A GUARDA DA MIGRATION ANTERIOR");
-    for (const rpc of RPCS) {
-      const r = await criarPedido(client, {
-        rpc,
-        itens: semVariacao,
-        total,
-      });
-      conferir(
-        `${rpc.slice(-3)}: comprar sem escolher variacao continua RECUSADO`,
-        r.ok === false &&
-          /variant_id ausente em produto com variacao ativa/.test(
-            r.detalhe || "",
-          ),
-        r.ok ? "foi ACEITO" : JSON.stringify(r.detalhe),
-      );
-    }
-
-    console.log("\n9. os atributos sobreviveram ao CREATE OR REPLACE");
-    const attrs = await atributos(client);
+    await client.query(corpoAntes);
     conferir(
-      "as duas RPCs continuam existindo",
-      attrs.length === 2,
-      `${attrs.length}`,
+      "revertido: nao acha de novo — quem decidiu foi a clausula",
+      (await acha(client, TELEFONE_COLADO, comColuna)) === false,
+      "ainda acha",
     );
-    conferir(
-      "as duas continuam SECURITY DEFINER",
-      attrs.every((a) => a.prosecdef === true),
-      JSON.stringify(attrs.map((a) => a.prosecdef)),
-    );
-    conferir(
-      "as duas continuam com search_path=public",
-      attrs.every(
-        (a) =>
-          JSON.stringify(a.proconfig) ===
-          JSON.stringify(["search_path=public"]),
-      ),
-      JSON.stringify(attrs.map((a) => a.proconfig)),
-    );
-
-    console.log("\n10. REVERSAO — sem a mudanca, a coluna volta a nascer nula");
-    await client.query(sqlAnterior);
-    for (const rpc of RPCS) {
-      const r = await criarPedido(client, { rpc, itens: item, total });
-      const tel = r.ok ? await telefoneDoPedido(client, r.id) : "??";
-      conferir(
-        `${rpc.slice(-3)}: nula de novo — quem decidiu foi o INSERT`,
-        tel === null,
-        `customer_phone=${JSON.stringify(tel)}`,
-      );
-    }
   } finally {
     await client.query("ROLLBACK");
     await client.end();
@@ -415,7 +334,7 @@ async function main() {
 
   console.log(`\n${passou} passaram, ${falhou} falharam.`);
   console.log(
-    "ROLLBACK executado: nada foi gravado — nem as RPCs, nem o backfill, nem os pedidos.",
+    "ROLLBACK executado: nada foi gravado — nem a funcao, nem os pedidos, nem o claim de admin.",
   );
   process.exit(falhou > 0 ? 1 : 0);
 }

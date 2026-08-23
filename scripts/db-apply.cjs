@@ -396,47 +396,47 @@ const VERIFICACOES = {
       ],
     },
   ],
-  // Herda TODOS os marcadores da 20260960 — ela reescreve as mesmas duas
-  // funcoes a partir do texto daquela. A entrada da 20260960 nasceu com 5 de 7
-  // marcadores herdados e um truncado, e so uma leitura humana pegou; por isso
-  // esta lista foi conferida marcador a marcador contra o corpo antes de entrar.
-  "20260961000000_busca_de_pedido_por_telefone.sql": [
+  // 🔴 MARCADOR TEM DE SER UM BLOCO QUE SO EXISTE **COM** A CORRECAO.
+  // A primeira versao desta entrada usava `"customer_phone"` e
+  // `"p_customer_phone"` como marcadores "da correcao" -- e os dois ja apareciam
+  // 4 vezes na definicao SEM a correcao, porque `pg_get_functiondef` devolve a
+  // ASSINATURA junto com o corpo (`p_customer_phone text`) e o
+  // `jsonb_build_object` cita o parametro. Resultado: a entrada trocaria um
+  // PULADA barulhento por um VERIFICADO falso -- pior que nao ter entrada
+  // nenhuma. Levantado por revisao de contexto limpo em 23/08/2026.
+  //
+  // A regra que fica: conferir o marcador contra a definicao ANTERIOR e exigir
+  // ZERO ocorrencia la. "Existe no corpo novo" e' so metade da regua; a outra
+  // metade e' "NAO existe no corpo velho".
+  "20260961000000_busca_por_telefone_normaliza_digitos.sql": [
     {
-      funcao: "create_marketplace_order_v23",
+      funcao: "get_admin_orders_paged",
       esperado: [
-        // A CORRECAO EM SI: o telefone tem de ir para a COLUNA, nao so para o
-        // jsonb. Se `customer_phone` sumir da lista do INSERT no REPLACE, a
-        // busca do painel volta a nao achar pedido por telefone -- e nada na
-        // tela avisa, porque a busca continua funcionando para nome e ID.
-        "customer_phone",
-        "p_customer_phone",
-        // Daqui para baixo: o que tem de SOBREVIVER ao REPLACE.
-        "variant_id ausente em produto com variacao ativa",
-        "Escolha uma varia",
-        "itens_da_cotacao",
-        "OUTRO carrinho",
-        "FOR UPDATE;",
-        "usage_limit IS NULL OR usage_limit <= 0 OR usage_count < usage_limit",
-        "Os valores do pedido mudaram",
-        "Estoque insuficiente para o produto",
-        "UPDATE public.coupons SET usage_count = usage_count + 1",
-      ],
-    },
-    {
-      funcao: "create_marketplace_order_v24",
-      esperado: [
-        "customer_phone",
-        "p_customer_phone",
-        "variant_id ausente em produto com variacao ativa",
-        "Escolha uma varia",
-        "itens_da_cotacao",
-        "OUTRO carrinho",
-        "FOR UPDATE;",
-        "usage_limit IS NULL OR usage_limit <= 0 OR usage_count < usage_limit",
-        "Os valores do pedido mudaram",
-        "Estoque insuficiente para o produto",
-        "UPDATE public.coupons SET usage_count = usage_count + 1",
-        "'aguardando', now() + interval '30 minutes'",
+        // A CORRECAO: a variavel nova e o calculo dela. Conferido: 0 ocorrencia
+        // na definicao anterior. Se sumir, a busca volta a comparar texto cru e
+        // colar o numero do WhatsApp deixa de achar -- sem nada na tela avisar,
+        // porque nome e id continuam funcionando.
+        "v_search_digitos := regexp_replace(v_clean_search, '[^0-9]', '', 'g');",
+        // A GUARDA contra o termo sem digito. Sem ela, buscar por um NOME casa
+        // TODOS os pedidos pela clausula do telefone -- medido: 85 em vez de 2.
+        // O marcador cruza quebra de linha de proposito, para casar o bloco e
+        // nao um identificador solto.
+        "v_search_digitos <> ''\n            AND regexp_replace(",
+        // O coalesce com o jsonb: e ele que faz os pedidos de coluna nula (a
+        // RPC legada nunca preencheu) serem achaveis. 0 ocorrencia na anterior.
+        "coalesce(o.customer_phone, o.customer_data->>'whatsapp', ''),",
+        // Daqui para baixo: o que tem de SOBREVIVER ao REPLACE. Estes aparecem
+        // na definicao anterior TAMBEM, e isso e o certo para a classe deles.
+        //
+        // `extensions` no search_path: `unaccent` mora la. Se encolher para so
+        // 'public', a busca por nome quebra com "function unaccent(text) does
+        // not exist" -- e o painel para de achar qualquer coisa por texto.
+        "SET search_path TO 'public', 'extensions'",
+        "unaccent(o.customer_name)",
+        "unaccent(oi.product_name)",
+        // A trava de autorizacao. Se sumir, a busca de pedidos do painel passa
+        // a responder para qualquer pessoa autenticada.
+        "IF NOT public.is_admin() THEN",
       ],
     },
   ],
