@@ -279,8 +279,20 @@ function HeroOfferCard({
     onProductClick(product.id);
   };
 
+  // A faixa de ofertas tem a PRÓPRIA cópia da lógica de adicionar/comprar --
+  // não passa pelo ProductCard.tsx -- e tinha o mesmo defeito nos dois
+  // botões: com variação ATIVA (Tamanho, Cor...), nenhum dos dois pode
+  // adicionar ou ir direto para o checkout sem a escolha obrigatória.
+  const hasActiveVariant = product.variants?.some((v) => v.active) ?? false;
+
   const handleAddToCartClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    if (hasActiveVariant) {
+      onProductClick(product.id);
+      return;
+    }
+
     if (cartStatus !== "idle") return;
 
     haptic.medium();
@@ -298,6 +310,12 @@ function HeroOfferCard({
 
   const handleQuickBuyClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    if (hasActiveVariant) {
+      onProductClick(product.id);
+      return;
+    }
+
     haptic.heavy();
     onQuickBuy?.(product);
   };
@@ -485,11 +503,13 @@ function HeroOfferCard({
               <span>
                 {product.stock <= 0
                   ? "Esgotado"
-                  : cartStatus === "idle"
-                    ? "Adicionar"
-                    : cartStatus === "loading"
-                      ? "Adicionando..."
-                      : "Adicionado!"}
+                  : hasActiveVariant
+                    ? "Escolher opções"
+                    : cartStatus === "idle"
+                      ? "Adicionar"
+                      : cartStatus === "loading"
+                        ? "Adicionando..."
+                        : "Adicionado!"}
               </span>
             </button>
 
@@ -503,7 +523,7 @@ function HeroOfferCard({
                   : "bg-secondary/10 hover:bg-secondary/20 text-primary border-secondary/20",
               )}
             >
-              Comprar
+              {hasActiveVariant ? "Escolher opções" : "Comprar"}
             </button>
           </div>
         </div>
