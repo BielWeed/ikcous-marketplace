@@ -187,6 +187,40 @@ describe("realtimeSyncEngine — evento de produto não apaga as variações já
     expect(gravado.stock).toBe(4);
   });
 
+  // Achado da revisao, e e o caso que mais dói: TODO produto simples esta no
+  // cofre com `variants: []` (o mapeamento sempre grava esse campo). Sem o
+  // `?.length` na guarda, cada edicao da lojista recalcularia o estoque desses
+  // produtos somando uma lista VAZIA -- zero -- e a loja inteira viraria
+  // "Esgotado" a cada salvamento. A mutacao que tira o `?.length` sobrevivia
+  // aos quatro casos anteriores.
+  it("produto sem variacao no cofre continua com o estoque que veio no evento", async () => {
+    const config = configDe("produtos");
+    const vault = criarDubleVault({
+      id: "prod-simples",
+      name: "Caneca",
+      variants: [],
+      stock: 9,
+    });
+
+    await RealtimeSyncEngine._applyChangeAndNotify(
+      vault as any,
+      config,
+      "UPDATE",
+      {
+        id: "prod-simples",
+        nome: "Caneca",
+        preco_venda: 19.9,
+        estoque: 4,
+        ativo: true,
+      },
+      {},
+    );
+
+    const [, gravado] = vault.put.mock.calls[0];
+    expect(gravado.variants).toEqual([]);
+    expect(gravado.stock).toBe(4);
+  });
+
   it("variação inativa não entra na conta do estoque preservado", async () => {
     const config = configDe("produtos");
     const produtoNoCofre = {
