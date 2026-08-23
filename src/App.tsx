@@ -2208,6 +2208,7 @@ const AppContent = () => {
               initialQuery: searchQuery,
               onBack: () => handleNavigate("home"),
               selectedProductId: selectedProductId || undefined,
+              onQueryChange: setSearchQuery,
             }}
           />
         );

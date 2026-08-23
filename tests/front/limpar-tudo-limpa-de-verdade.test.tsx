@@ -22,11 +22,20 @@
 // não um vi.fn() espionado: a asserção é sobre o CARRINHO FICAR VAZIO na
 // árvore renderizada (EmptyCart aparece), nunca sobre "a função foi
 // chamada" — é essa a diferença que prova o efeito, não a intenção.
-import { act, useCallback, useState } from "react";
+import {
+  act,
+  cloneElement,
+  createContext,
+  isValidElement,
+  useCallback,
+  useContext,
+  useState,
+} from "react";
+import type { ReactElement, ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CartItem } from "@/types";
+import type { CartItem, Product } from "@/types";
 
 const itemNoCarrinho: CartItem = {
   product: {
@@ -52,9 +61,35 @@ vi.mock("@/contexts/StoreContext", () => ({
   }),
 }));
 
+// Único produto do catálogo de teste, usado só pelo achado 2 (o botão
+// "Limpar Tudo" do painel "Refinar Busca"): precisa de uma categoria
+// diferente de "Todas" para o painel ter algo para filtrar.
+const produtoVestido: Product = {
+  id: "prod-vestido",
+  name: "Vestido Floral",
+  description: "",
+  price: 150,
+  images: [],
+  category: "Vestidos",
+  stock: 5,
+  sold: 0,
+  isActive: true,
+  isBestseller: false,
+  freeShipping: false,
+  createdAt: new Date(0).toISOString(),
+};
+
+// `let` (não `const`) de propósito: o teste do achado 2 troca o catálogo
+// para ter uma categoria para filtrar, e o teste de "zero resultados"
+// precisa do catálogo VAZIO — CartView não usa `products` (só
+// `getFreeShippingEligibleProducts`, mocado à parte abaixo), então mudar
+// isto não afeta os testes do carrinho. Resetado no beforeEach do describe
+// da SearchView.
+let mockedProducts: Product[] = [];
+
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
-    products: [],
+    products: mockedProducts,
     getFreeShippingEligibleProducts: () => [],
   }),
 }));
@@ -140,6 +175,52 @@ vi.mock("@/hooks/useFavorites", () => ({
 }));
 vi.mock("@/hooks/usePrefetchOnHover", () => ({
   usePrefetchOnHover: () => ({ prefetchView: vi.fn() }),
+}));
+
+// O painel "Refinar Busca" (achado 2) vive dentro de um Sheet — mesmo padrão
+// de painel-avisa-pedido-pago-e-cancelado.test.tsx: o Radix real de
+// Dialog/Sheet depende de PointerEvent/ResizeObserver que o jsdom deste
+// projeto não implementa. O dublê preserva o CONTRATO (open/onOpenChange no
+// Sheet, SheetTrigger abre, SheetContent só existe quando aberto) sem
+// depender do Radix — e sem Portal, então o painel aparece na própria árvore
+// renderizada, achável por hospedeiro.querySelectorAll como o resto.
+const SheetOpenContext = createContext<{
+  open: boolean;
+  onOpenChange?: (open: boolean) => void;
+}>({ open: false });
+
+vi.mock("@/components/ui/sheet", () => ({
+  Sheet: ({
+    open,
+    onOpenChange,
+    children,
+  }: {
+    open: boolean;
+    onOpenChange?: (open: boolean) => void;
+    children: ReactNode;
+  }) => (
+    <SheetOpenContext.Provider value={{ open, onOpenChange }}>
+      {children}
+    </SheetOpenContext.Provider>
+  ),
+  SheetTrigger: ({
+    children,
+  }: {
+    asChild?: boolean;
+    children: ReactNode;
+  }) => {
+    const { onOpenChange } = useContext(SheetOpenContext);
+    if (!isValidElement(children)) return children;
+    return cloneElement(children as ReactElement<{ onClick?: () => void }>, {
+      onClick: () => onOpenChange?.(true),
+    });
+  },
+  SheetContent: ({ children }: { children: ReactNode }) => {
+    const { open } = useContext(SheetOpenContext);
+    return open ? <div>{children}</div> : null;
+  },
+  SheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão de
@@ -238,6 +319,7 @@ describe("SearchView — Limpar Tudo limpa a busca de verdade", () => {
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
+    mockedProducts = [];
   });
 
   afterEach(() => {
@@ -277,5 +359,104 @@ describe("SearchView — Limpar Tudo limpa a busca de verdade", () => {
     });
 
     expect(input.value).toBe("");
+  });
+
+  // Achado 1 da revisão: SearchView só limpava a CÓPIA LOCAL do termo.
+  // A barra de busca do Header (fora desta árvore) tem a dela própria, e só
+  // sabe que o termo sumiu se o SearchView avisar — por isso o teste mede a
+  // CHAMADA do callback, não a caixa (já coberto pelo teste anterior).
+  it("com termo digitado e zero resultados, Limpar Tudo avisa o pai para limpar a busca também", async () => {
+    const { SearchView } = await import("@/views/customer/SearchView");
+    const onQueryChange = vi.fn();
+    await act(async () => {
+      raiz.render(
+        <SearchView
+          onNavigate={() => {}}
+          onBack={() => {}}
+          initialQuery="brinco dourado"
+          onQueryChange={onQueryChange}
+        />,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent === "Limpar Tudo",
+    );
+    if (!botao) throw new Error('Botão "Limpar Tudo" não encontrado na busca');
+
+    expect(onQueryChange).not.toHaveBeenCalled();
+
+    await act(async () => {
+      botao.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onQueryChange).toHaveBeenCalledWith("");
+  });
+
+  // Achado 2 da revisão, e o mais importante: handleClearFilters virou o
+  // handler dos DOIS botões "Limpar Tudo" — o do estado vazio (alvo do
+  // commit a015e8a) e o do painel "Refinar Busca", cujo trabalho SEMPRE foi
+  // só resetar filtro, preservando o termo. Este teste é o controle que
+  // impede essa regressão de voltar: filtra por categoria, limpa pelo
+  // painel, e o termo tem que continuar na caixa.
+  it("o 'Limpar Tudo' do painel Refinar Busca reseta os filtros e preserva o termo digitado", async () => {
+    mockedProducts = [produtoVestido];
+    const { SearchView } = await import("@/views/customer/SearchView");
+    await act(async () => {
+      raiz.render(
+        <SearchView
+          onNavigate={() => {}}
+          onBack={() => {}}
+          initialQuery="vestido"
+        />,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const input = hospedeiro.querySelector<HTMLInputElement>("#search-input");
+    if (!input) throw new Error("Caixa de busca não encontrada");
+    expect(input.value).toBe("vestido");
+    // Confirma que NÃO é o estado vazio (senão o "Limpar Tudo" achado seria
+    // o do commit a015e8a, não o do painel — os dois têm o mesmo texto).
+    expect(hospedeiro.textContent).not.toContain("Ué, nenhum resultado?");
+
+    const botaoFiltros = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.startsWith("Filtros"),
+    );
+    if (!botaoFiltros) throw new Error('Botão "Filtros" não encontrado');
+    await act(async () => {
+      botaoFiltros.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const botaoCategoria = Array.from(
+      hospedeiro.querySelectorAll("button"),
+    ).find((b) => b.textContent === "Vestidos");
+    if (!botaoCategoria) throw new Error('Categoria "Vestidos" não encontrada');
+    await act(async () => {
+      botaoCategoria.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    // Com filtro ativo, o painel revela seu próprio "Limpar Tudo" — o único
+    // com esse texto nesta árvore agora, porque o de estado vazio não
+    // renderiza com resultado na tela.
+    const botaoLimparPainel = Array.from(
+      hospedeiro.querySelectorAll("button"),
+    ).find((b) => b.textContent === "Limpar Tudo");
+    if (!botaoLimparPainel)
+      throw new Error('Botão "Limpar Tudo" do painel não encontrado');
+
+    await act(async () => {
+      botaoLimparPainel.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+
+    // A regressão que este teste impede: os filtros somem, o TERMO fica.
+    expect(input.value).toBe("vestido");
   });
 });

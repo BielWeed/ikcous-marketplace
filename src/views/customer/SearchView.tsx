@@ -35,6 +35,10 @@ interface SearchViewProps {
   initialQuery?: string;
   onBack: () => void;
   selectedProductId?: string;
+  /** Avisa quem montou a tela que o termo de busca mudou — sem isso, quem
+   * segura a cópia "dona" do termo (a barra do Header) nunca fica sabendo
+   * que o "Limpar Tudo" do estado vazio zerou a busca aqui dentro. */
+  onQueryChange?: (query: string) => void;
 }
 
 interface SearchInputProps {
@@ -79,6 +83,7 @@ export const SearchView = React.memo(function SearchView({
   initialQuery = "",
   onBack,
   selectedProductId,
+  onQueryChange,
 }: SearchViewProps) {
   const { config } = useStore();
   const { prefetchView } = usePrefetchOnHover();
@@ -172,13 +177,24 @@ export const SearchView = React.memo(function SearchView({
     ...Array.from(new Set(allProducts.map((p) => p.category))),
   ];
 
+  // Só filtros — categoria, preço e ordenação. É o handler do "Limpar Tudo"
+  // do painel "Refinar Busca", e o trabalho dele sempre foi esse: preservar
+  // o termo digitado (BUSCA-011).
   const handleClearFilters = useCallback(() => {
-    setQuery("");
     setCategory("Todas");
     setMinPrice("");
     setMaxPrice("");
     setSort("newest");
-  }, [setQuery, setCategory, setMinPrice, setMaxPrice, setSort]);
+  }, [setCategory, setMinPrice, setMaxPrice, setSort]);
+
+  // Filtros E termo — é o handler do "Limpar Tudo" do estado vazio ("Ué,
+  // nenhum resultado?"). Avisa o pai (onQueryChange) porque a cópia "dona"
+  // do termo mora fora desta tela, na barra de busca do Header.
+  const handleClearSearch = useCallback(() => {
+    handleClearFilters();
+    setQuery("");
+    onQueryChange?.("");
+  }, [handleClearFilters, setQuery, onQueryChange]);
 
   // Initialize query from props if needed
   useEffect(() => {
@@ -380,7 +396,7 @@ export const SearchView = React.memo(function SearchView({
               </p>
               <Button
                 variant="outline"
-                onClick={handleClearFilters}
+                onClick={handleClearSearch}
                 className="mt-8 h-12 rounded-2xl border-zinc-200 px-8 text-[10px] font-black uppercase tracking-widest text-zinc-900"
               >
                 Limpar Tudo
