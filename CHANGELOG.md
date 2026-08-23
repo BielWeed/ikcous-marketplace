@@ -7,6 +7,98 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.7.0] — 2026-08-23
+
+**A maior release desde o GitFlow: 113 commits, 67 correcoes.** Ao contrario da
+`1.6.1`, esta muda MUITO para quem compra e para quem vende — e por isso o
+numero do meio sobe.
+
+O tema e um so: **o app parou de prometer o que nao cumpria.** Quase toda
+correcao aqui e uma tela que afirmava um fato que o sistema nao tinha realizado,
+ou um caminho que aceitava algo que deveria recusar.
+
+### 🔴 O caminho do dinheiro
+
+- **Comprar sem escolher a variacao virou impossivel PELO SERVIDOR.** Antes,
+  um item sem tamanho/cor era aceito e cobrado pelo preco BASE, com a baixa
+  caindo no estoque agregado — o tamanho que acabou continuava a venda. Ate
+  entao quem segurava isso eram QUATRO copias de um `if` no cliente, e nenhuma
+  alcancava quem chama a API direto. Medido: R$ 120 em vez de R$ 170 no cenario
+  da prova, e o estoque da variacao parado.
+- **O frete cobrado passou a ser o do carrinho que esta sendo comprado.** Dava
+  para cotar com um carrinho pequeno, encher o carrinho e fechar o pedido
+  pagando o frete do pequeno.
+- **A tela do frete recota quando a quantidade muda**, e o frete guardado no
+  navegador deixou de valer para outro carrinho.
+- **A loja parou de oferecer frete que o pedido ia recusar** — a cotacao so
+  chega a tela depois de gravada.
+- **O PIX pago pela rota classica parou de sumir e devolver o estoque.**
+- **Quem ja pagou e avisado sobre o dinheiro antes de cancelar**, e a tela parou
+  de convidar o cliente a pagar um pedido cancelado.
+
+### O catalogo parou de mentir
+
+- **Produto pausado sai da vitrine** — a busca da mesma tela ja fazia isso; a
+  prateleira nao.
+- **Produto excluido parou de voltar** para o cache e sumir so no recarregamento
+  seguinte (duas portas fechadas), e excluir o ultimo item de uma aba parou de
+  poder esvaziar a loja por engano.
+- **Trocar de produto parou de trazer a variacao e a foto do anterior.**
+- **O selo "Frete Gratis" parou de aparecer em produto que paga frete.**
+- **O evento de tempo real parou de apagar as variacoes do produto no cache.**
+
+### O painel parou de afirmar o que nao aconteceu
+
+- **Tres telas** diziam ter feito o que nao fizeram; **tres numeros e um botao**
+  apontavam para o lugar errado; **dois numeros** nao tinham como ser conferidos.
+- **O painel dizia ter removido o item do carrinho da cliente sem ter removido.**
+- **A lojista passou a ver quando um pedido PAGO foi cancelado.**
+- **A falha de consulta parou de virar "Fila Limpa"** no cartao de Perguntas.
+- **As vitrines da home passaram a gravar de verdade.**
+- **A ficha do pedido parou de ficar branca** num status que o banco aceita.
+- **Duplicar de banner saiu do painel** — era a unica porta para apagar imagem
+  publicada.
+
+### O erro cru do banco parou de chegar a quem usa a loja
+
+Em seis pontos do frete, no login, no checkout, na ficha do pedido e no painel.
+Quem compra lia mensagem de banco de dados; agora le portugues.
+
+### Privacidade
+
+- **O nome do cliente parou de aparecer no console do navegador.**
+- **Quem tem a conta bloqueada parou de ler que errou a senha** — a mensagem
+  antiga distinguia os dois casos e servia para descobrir se um e-mail existe.
+
+### Notificacoes e conta
+
+- **O sino parou de prometer o que o banco proibe**, e "marcar como lida" passou
+  a valer.
+- **"Quero Receber!" parou de calar quando nao ha conta.**
+- **Trocar a senha parou de falhar em silencio.**
+- **A resposta da lojista a uma avaliacao passou a chegar ao cliente.**
+
+### Legibilidade
+
+**Seis selos verdes de "deu certo"** voltaram a ser legiveis — reprovavam o
+contraste minimo de acessibilidade sobre fundo verde-claro.
+
+### Ferramental
+
+- `lint:rapido` para trabalhar; **`lint:ratchet` continua sendo a prova**.
+- A trava de segredo, o mapa de verificacao do `db-apply` e o teto do Biome
+  foram endurecidos (ver `1.6.1` para o inicio dessa linha).
+
+### ⚠️ O que esta release NAO inclui
+
+- **A busca de pedido por telefone no painel continua nao achando.** A correcao
+  existe, esta provada e aguarda revisao — nao entrou aqui de proposito.
+- **Duas migrations desta release ja estavam aplicadas no banco de
+  desenvolvimento antes do deploy** (`20260951`, `20260960`). Isso criou uma
+  janela em que o servidor recusava o que a tela publicada ainda oferecia; esta
+  release fecha essa janela. A licao — medir o que esta publicado ANTES de
+  aplicar migration — ficou registrada.
+
 ## [1.6.1] — 2026-08-21
 
 Release de ferramental: **a trava que impede uma credencial de ser gravada no
