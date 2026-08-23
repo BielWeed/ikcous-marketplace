@@ -45,11 +45,27 @@
 -- com a guarda inserida programaticamente para nao redigitar 600 linhas.
 --
 -- CONSEQUENCIA DE ORDEM, escrita para quem for aplicar: esta migration e
--- SUPERCONJUNTO da 20260951. Aplicar as duas na ordem e o certo; aplicar so
--- esta tambem entrega a trava do frete, e nunca a guarda sozinha. O que NAO
--- pode acontecer e aplicar a 20260951 DEPOIS desta -- ai a guarda seria
--- desfeita. Numeracao crescente ja garante isso em qualquer ferramenta que
--- respeite a ordem do ledger.
+-- SUPERCONJUNTO da 20260951 -- os corpos abaixo JA incluem a trava do frete
+-- pelo carrinho, herdada do texto dela. Mesmo assim, APLIQUE AS DUAS, NESTA
+-- ORDEM: 20260951 primeiro, depois 20260960. E' a ordem natural do ledger, e
+-- e' ela que registra a 20260951 em `supabase_migrations.schema_migrations`
+-- e tira ela da lista de `--listar-pendentes` -- nao aplicar a 20260951
+-- deixa ela pendente para sempre, mesmo com o efeito dela ja presente aqui.
+--
+-- NADA GARANTE ORDEM NESTE REPOSITORIO. `scripts/db-apply.cjs` aplica
+-- exatamente os arquivos que recebe no argv, na ordem do argv, sem comparar
+-- com o ledger nem recusar versao mais antiga que a ultima aplicada; e
+-- `supabase db push` e' proibido pelo CLAUDE.md. Numeracao crescente NAO e'
+-- garantia em nenhuma ferramenta deste repositorio -- e' so' a convencao que
+-- a leitura humana do ledger espera.
+--
+-- O CENARIO RUIM: alguem aplica so' esta migration (20260960) hoje. Semanas
+-- depois, outra sessao trabalha a lista de pendentes e aplica a 20260951
+-- sozinha -- o `CREATE OR REPLACE` dela instala o corpo ANTERIOR a esta
+-- guarda, a trava de variacao obrigatoria some em silencio, e o
+-- `scripts/db-apply.cjs` imprime VERIFICADO mesmo assim, porque os
+-- marcadores da entrada da 20260951 sao todos dela mesma e continuam
+-- presentes no corpo antigo.
 --
 -- 🔴 CREATE OR REPLACE E SUBSTITUICAO: atributo que nao for repetido por
 -- extenso SOME EM SILENCIO. `RETURNS uuid`, `LANGUAGE plpgsql`,
@@ -136,14 +152,25 @@ BEGIN
             -- cliente. Cada tela nova reabre o buraco, e nenhuma delas alcanca
             -- quem chama a RPC direto.
             --
-            -- `active = true` e o mesmo predicado que o ramo de cima usa para
-            -- aceitar uma variacao. Tem de ser o mesmo, senao aparece o estado
-            -- em que NENHUM dos dois ramos serve: produto cujas variacoes foram
-            -- todas desativadas passa a ser vendavel pelo produto base, que e o
-            -- comportamento de hoje e continua valendo.
+            -- `v.active = true AND p.ativo = true` e o MESMO predicado que o
+            -- ramo de cima usa para aceitar uma variacao. Tem de ser o
+            -- mesmo, por duas razoes:
+            --   1. produto cujas variacoes foram TODAS desativadas fica
+            --      vendavel pelo produto base (comportamento de hoje, e
+            --      continua valendo) -- so' `v.active = true` cobre isso;
+            --   2. produto INATIVO com variacao ativa nao pode cair aqui e
+            --      receber "Escolha uma variacao": o produto saiu da
+            --      vitrine, a instrucao seria impossivel de seguir, e a
+            --      recusa certa e' a de produto indisponivel (a checagem
+            --      `IF v_db_price IS NULL` logo abaixo) -- so' `p.ativo =
+            --      true` cobre isso.
             IF EXISTS (
-                SELECT 1 FROM public.product_variants v
-                WHERE v.product_id = v_product_id AND v.active = true
+                SELECT 1
+                FROM public.product_variants v
+                JOIN public.produtos p ON p.id = v.product_id
+                WHERE v.product_id = v_product_id
+                  AND v.active = true
+                  AND p.ativo = true
             ) THEN
                 RAISE EXCEPTION 'Escolha uma variação para o produto %.',
                     COALESCE((SELECT nome FROM public.produtos WHERE id = v_product_id), 'selecionado')
@@ -440,14 +467,25 @@ BEGIN
             -- cliente. Cada tela nova reabre o buraco, e nenhuma delas alcanca
             -- quem chama a RPC direto.
             --
-            -- `active = true` e o mesmo predicado que o ramo de cima usa para
-            -- aceitar uma variacao. Tem de ser o mesmo, senao aparece o estado
-            -- em que NENHUM dos dois ramos serve: produto cujas variacoes foram
-            -- todas desativadas passa a ser vendavel pelo produto base, que e o
-            -- comportamento de hoje e continua valendo.
+            -- `v.active = true AND p.ativo = true` e o MESMO predicado que o
+            -- ramo de cima usa para aceitar uma variacao. Tem de ser o
+            -- mesmo, por duas razoes:
+            --   1. produto cujas variacoes foram TODAS desativadas fica
+            --      vendavel pelo produto base (comportamento de hoje, e
+            --      continua valendo) -- so' `v.active = true` cobre isso;
+            --   2. produto INATIVO com variacao ativa nao pode cair aqui e
+            --      receber "Escolha uma variacao": o produto saiu da
+            --      vitrine, a instrucao seria impossivel de seguir, e a
+            --      recusa certa e' a de produto indisponivel (a checagem
+            --      `IF v_db_price IS NULL` logo abaixo) -- so' `p.ativo =
+            --      true` cobre isso.
             IF EXISTS (
-                SELECT 1 FROM public.product_variants v
-                WHERE v.product_id = v_product_id AND v.active = true
+                SELECT 1
+                FROM public.product_variants v
+                JOIN public.produtos p ON p.id = v.product_id
+                WHERE v.product_id = v_product_id
+                  AND v.active = true
+                  AND p.ativo = true
             ) THEN
                 RAISE EXCEPTION 'Escolha uma variação para o produto %.',
                     COALESCE((SELECT nome FROM public.produtos WHERE id = v_product_id), 'selecionado')

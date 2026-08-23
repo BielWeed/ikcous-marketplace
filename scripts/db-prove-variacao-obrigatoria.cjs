@@ -46,6 +46,13 @@
  *    que a cliente le E o DETAIL que quem depura le, os dois assertados. Texto
  *    de excecao sem assercao e comentario: some na primeira edicao.
  *
+ * 4b. PRODUTO INATIVO com variacao ativa (passo 5b): a guarda dispara ANTES
+ *    do teste de produto disponivel, entao ela precisa exigir tambem
+ *    `p.ativo = true` — senao um produto FORA da vitrine recebe "Escolha uma
+ *    variacao", instrucao impossivel de seguir. A recusa certa e' a de
+ *    sempre, "produto nao disponivel", e o teste confere que NAO e' a
+ *    mensagem da guarda.
+ *
  * 5. AS DUAS RPCs. `v23` e `v24` (a do pagamento online) tem o mesmo caminho de
  *    validacao. Consertar uma so deixa metade do caminho do dinheiro aberto,
  *    entao todo caso roda contra as duas.
@@ -138,7 +145,9 @@ function recusarSeTiverTransacao(sql, nomeDoArquivo) {
   const achados = sql
     .split(/\r?\n/)
     .map((l, i) => [i + 1, l.trim().toUpperCase()])
-    .filter(([, l]) => CONTROLE_DE_TRANSACAO.some((c) => l === c));
+    // startsWith, nao ===: `COMMIT; -- fecha` escapava da igualdade exata e a
+    // trava inteira de "nada foi gravado" dependia dela.
+    .filter(([, l]) => CONTROLE_DE_TRANSACAO.some((c) => l.startsWith(c)));
   if (achados.length > 0) {
     const lista = achados.map(([n, l]) => `   linha ${n}: ${l}`).join("\n");
     console.error(
@@ -259,12 +268,12 @@ async function main() {
       [FRETE],
     );
 
-    const novoProduto = async (nome) =>
+    const novoProduto = async (nome, ativo = true) =>
       (
         await client.query(
           `INSERT INTO public.produtos (nome, custo, preco_venda, estoque, categoria, ativo, frete_gratis)
-           VALUES ($1, 10, $2, $3, 'teste', true, false) RETURNING id`,
-          [nome, PRECO_BASE, ESTOQUE_PRODUTO],
+           VALUES ($1, 10, $2, $3, 'teste', $4, false) RETURNING id`,
+          [nome, PRECO_BASE, ESTOQUE_PRODUTO, ativo],
         )
       ).rows[0].id;
 
@@ -284,6 +293,15 @@ async function main() {
     const prodSemVar = await novoProduto("PROVA VARIACAO — sem variacao");
     const prodInativa = await novoProduto("PROVA VARIACAO — variacao inativa");
     await novaVariacao(prodInativa, "M", false);
+    // ANOTADO 1 da revisao: a guarda dispara ANTES do teste de produto
+    // disponivel — sem o `p.ativo = true` dela, produto FORA da vitrine com
+    // variacao ativa recebia "Escolha uma variacao", uma instrucao
+    // impossivel de seguir. Este produto e o morador desse estado.
+    const prodInativoComVarAtiva = await novoProduto(
+      "PROVA VARIACAO — produto inativo, variacao ativa",
+      false,
+    );
+    await novaVariacao(prodInativoComVarAtiva, "M", true);
 
     const semVariacao = (id) => [
       { product_id: id, variant_id: null, quantity: 1 },
@@ -410,6 +428,34 @@ async function main() {
             r.detalhe || "",
           ),
         JSON.stringify(r.detalhe),
+      );
+    }
+
+    console.log(
+      "\n5b. PRODUTO INATIVO com variacao ativa — a guarda NAO intercepta",
+    );
+    // ANOTADO 1: antes deste diff, a guarda perguntava so por `v.active =
+    // true` e disparava aqui, dando "Escolha uma variacao" para um produto
+    // que nem esta na vitrine. Com `p.ativo = true` na guarda, ela e' pulada
+    // e a recusa volta a ser a de produto indisponivel — a mesma de antes
+    // deste commit inteiro.
+    for (const rpc of RPCS) {
+      const r = await criarPedido(client, {
+        rpc,
+        itens: semVariacao(prodInativoComVarAtiva),
+        total: totalPeloBase,
+      });
+      conferir(
+        `depois/${rpc.slice(-3)}: produto INATIVO com variacao ativa e recusado`,
+        r.ok === false,
+        "foi aceito",
+      );
+      conferir(
+        `depois/${rpc.slice(-3)}: a recusa e' de produto INDISPONIVEL, nao "Escolha uma variacao"`,
+        r.ok === false &&
+          /n.o dispon.vel/.test(r.erro || "") &&
+          !/Escolha uma varia/.test(r.erro || ""),
+        JSON.stringify(r.erro),
       );
     }
 
