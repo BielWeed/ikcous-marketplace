@@ -569,9 +569,11 @@ export const ProductView = React.memo(function ProductView({
       )
     : 0;
 
-  // Um produto é elegível para frete grátis se o frete grátis estiver habilitado na loja
-  const isEligibleForFreeShipping =
-    config.freeShippingMin > 0 || product.freeShipping;
+  // O selo/aviso de frete grátis desta tela só pode afirmar o que é
+  // verdade PARA ESTE produto: `config.freeShippingMin` é a regra por
+  // valor de compra da loja inteira (carrinho + login), não uma garantia
+  // deste produto isolado -- ver o mesmo raciocínio em ProductCard.tsx.
+  const isEligibleForFreeShipping = product.freeShipping;
 
   const handleAddToCart = (e?: React.MouseEvent<HTMLButtonElement>) => {
     if (cartStatus !== "idle") return;

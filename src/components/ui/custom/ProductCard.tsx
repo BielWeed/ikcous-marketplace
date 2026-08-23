@@ -26,17 +26,16 @@ interface ProductCardProps {
   onTouchStart?: (productId: string) => void;
   className?: string;
   priority?: boolean;
-  isEligibleForFreeShipping?: boolean;
   selectedProductId?: string;
   /**
    * ADMIN-091 (#202): espelha `config.enableReviews` do StoreContext. Vem
    * por prop, não por `useStore()` direto aqui dentro, porque ProductCard é
    * renderizado aos dezenas numa grade (ProductList, SearchView,
    * FavoritesView, ProductCarousel) -- cada um desses já chama `useStore()`
-   * uma vez só e repassa `isEligibleForFreeShipping` do mesmo jeito. Ler o
-   * contexto em cada card assinaria a árvore inteira do StoreContext (que
-   * muda a cada `fetchProducts`) em cada instância, mesmo protegida por
-   * `memo`, porque `useContext` força re-render independente de memo.
+   * uma vez só e repassa `showRating` do mesmo jeito. Ler o contexto em cada
+   * card assinaria a árvore inteira do StoreContext (que muda a cada
+   * `fetchProducts`) em cada instância, mesmo protegida por `memo`, porque
+   * `useContext` força re-render independente de memo.
    * **Obrigatório de propósito, sem default.** A primeira versão desta
    * correção usava `showRating = true`, e foi exatamente isso que deixou
    * `ProductView` (produtos relacionados, no rodapé) continuar publicando a
@@ -61,7 +60,6 @@ export const ProductCard = memo(function ProductCard({
   onTouchStart,
   className,
   priority = false,
-  isEligibleForFreeShipping = false,
   selectedProductId,
   showRating,
 }: Readonly<ProductCardProps>) {
@@ -215,7 +213,13 @@ export const ProductCard = memo(function ProductCard({
             <p className="max-w-[80%] truncate text-[9px] font-bold uppercase tracking-widest text-slate-400">
               {product.category}
             </p>
-            {(isEligibleForFreeShipping || product.freeShipping) && (
+            {/* O selo só pode afirmar o que é verdade PARA ESTE produto: o
+                card não conhece o subtotal do carrinho nem se a cliente
+                está logada, então não tem como saber se ela cumpre o
+                mínimo da loja (`config.freeShippingMin`) -- só o próprio
+                `product.freeShipping` é verdade aqui, sempre. A promessa
+                por valor de compra mora no `FreeShippingBlock` (Home). */}
+            {product.freeShipping && (
               <div className="flex shrink-0 items-center gap-1 rounded-md border border-emerald-100/50 bg-emerald-50 px-1.5 py-0.5 text-[8px] font-black text-emerald-800">
                 <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
                 <span className="truncate">Frete Grátis</span>
@@ -226,7 +230,9 @@ export const ProductCard = memo(function ProductCard({
             {product.name}
           </h3>
           <div className="flex flex-wrap items-center gap-2 pt-0.5">
-            {showRating && <StarRating rating={product.rating || 5} size={11} />}
+            {showRating && (
+              <StarRating rating={product.rating || 5} size={11} />
+            )}
             {/*
               ADMIN-091 (#202): com `showRating=false` a linha fica só com o
               indicador de estoque. Em vez de deixar a linha "pobre" (o que
