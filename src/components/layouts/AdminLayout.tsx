@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { branding } from "@/config/branding";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { useConnectionDiagnostics } from "@/hooks/useOnlineStatus";
 import { useOrders } from "@/hooks/useOrders";
@@ -34,7 +35,6 @@ import {
   Users,
 } from "lucide-react";
 import React from "react";
-import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 
 /**
  * Pedidos que ainda exigem ação do lojista — espelha o predicado de
@@ -388,6 +388,21 @@ export function AdminLayout({
     { icon: Users, label: "Clientes", view: "admin-customers" },
     { icon: Settings, label: "Ajustes", view: "admin-settings" },
   ];
+
+  /**
+   * Para onde o sino de notificações leva ao ser clicado. Ele pisca vermelho
+   * quando há pedido pendente OU pergunta sem resposta (mesmo crachá vermelho
+   * abaixo), mas os dois disparam o mesmo ponto e só um destino cabe no
+   * clique — pedido pendente tem prioridade porque afeta dinheiro e prazo de
+   * entrega. Sem nenhum dos dois pendente, o sino continua levando para o
+   * envio de push, que é a função original dele.
+   */
+  const notificationBellTarget: View =
+    pendingOrdersCount > 0
+      ? "admin-orders"
+      : pendingQuestionsCount > 0
+        ? "admin-qa"
+        : "admin-push";
 
   const { isOffline, latency, quality } = useConnectionDiagnostics();
   const [showSyncFlash, setShowSyncFlash] = React.useState(false);
@@ -857,9 +872,9 @@ export function AdminLayout({
                   className="relative size-7 transform-gpu rounded-full border border-white/5 bg-zinc-900 hover:bg-zinc-800 active:scale-95"
                   onClick={() => {
                     haptic.light();
-                    onNavigate("admin-push");
+                    onNavigate(notificationBellTarget);
                   }}
-                  onMouseEnter={() => handleMouseEnter("admin-push")}
+                  onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
                   onMouseLeave={handleMouseLeave}
                 >
                   <Bell className="size-3.5 text-admin-gold" />
