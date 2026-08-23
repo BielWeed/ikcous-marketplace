@@ -141,6 +141,24 @@ BEGIN
               AND v.active = true AND p.ativo = true
             FOR NO KEY UPDATE OF v;
         ELSE
+            -- A trava de linha vem PRIMEIRO: o SELECT abaixo ja exige
+            -- `ativo = true` e trava a linha com `FOR NO KEY UPDATE`, entao a
+            -- guarda que vem depois nao tem janela de corrida contra um
+            -- UPDATE concorrente em `produtos.ativo`. Com a guarda ANTES (a
+            -- forma anterior, com EXISTS + JOIN em `produtos`), ela e o
+            -- SELECT tomavam SNAPSHOTS DIFERENTES sob READ COMMITTED: se a
+            -- lojista republicasse o produto e commitasse ENTRE os dois
+            -- comandos, a guarda nao disparava (produto estava inativo no
+            -- primeiro snapshot) e o SELECT achava o produto ativo no
+            -- segundo -- o item era vendido pelo preco/estoque do produto
+            -- base mesmo tendo variacao ativa. Nesta ordem nao ha segundo
+            -- snapshot: os dois leem a MESMA linha, ja travada.
+            SELECT preco_venda, estoque, nome, frete_gratis
+            INTO v_db_price, v_db_stock, v_item_name, v_frete_gratis
+            FROM public.produtos
+            WHERE id = v_product_id AND ativo = true
+            FOR NO KEY UPDATE;
+
             -- 🔴 A GUARDA QUE FALTAVA. Sem ela, `variant_id: null` num produto
             -- QUE TEM variacao caia aqui e era aceito: preco de `preco_venda`
             -- em vez de `price_override`, e baixa no `estoque` agregado em vez
@@ -152,36 +170,28 @@ BEGIN
             -- cliente. Cada tela nova reabre o buraco, e nenhuma delas alcanca
             -- quem chama a RPC direto.
             --
-            -- `v.active = true AND p.ativo = true` e o MESMO predicado que o
-            -- ramo de cima usa para aceitar uma variacao. Tem de ser o
-            -- mesmo, por duas razoes:
-            --   1. produto cujas variacoes foram TODAS desativadas fica
-            --      vendavel pelo produto base (comportamento de hoje, e
-            --      continua valendo) -- so' `v.active = true` cobre isso;
-            --   2. produto INATIVO com variacao ativa nao pode cair aqui e
-            --      receber "Escolha uma variacao": o produto saiu da
-            --      vitrine, a instrucao seria impossivel de seguir, e a
-            --      recusa certa e' a de produto indisponivel (a checagem
-            --      `IF v_db_price IS NULL` logo abaixo) -- so' `p.ativo =
-            --      true` cobre isso.
-            IF EXISTS (
+            -- `v_db_price IS NOT NULL` e o teste de "produto ativo" -- substitui
+            -- o JOIN com `produtos` que a guarda tinha antes de mudar de lugar.
+            -- Se o SELECT acima nao achou linha (produto inativo), v_db_price
+            -- fica NULL, a guarda nem dispara (curto-circuito do AND), e quem
+            -- recusa e o `IF v_db_price IS NULL` logo abaixo, com "Produto %
+            -- nao disponivel" -- a mensagem certa para um produto fora da
+            -- vitrine, nao "Escolha uma variacao" (instrucao impossivel de
+            -- seguir para quem nao pode comprar aquele produto de jeito
+            -- nenhum). `v.active = true` sozinho, sem JOIN em `produtos`, e o
+            -- mesmo predicado que o ramo de cima usa para ACEITAR uma
+            -- variacao -- produto cujas variacoes foram TODAS desativadas
+            -- continua vendavel pelo produto base.
+            IF v_db_price IS NOT NULL AND EXISTS (
                 SELECT 1
                 FROM public.product_variants v
-                JOIN public.produtos p ON p.id = v.product_id
                 WHERE v.product_id = v_product_id
                   AND v.active = true
-                  AND p.ativo = true
             ) THEN
                 RAISE EXCEPTION 'Escolha uma variação para o produto %.',
                     COALESCE((SELECT nome FROM public.produtos WHERE id = v_product_id), 'selecionado')
                     USING DETAIL = 'variant_id ausente em produto com variacao ativa; o item foi recusado no servidor.';
             END IF;
-
-            SELECT preco_venda, estoque, nome, frete_gratis
-            INTO v_db_price, v_db_stock, v_item_name, v_frete_gratis
-            FROM public.produtos
-            WHERE id = v_product_id AND ativo = true
-            FOR NO KEY UPDATE;
         END IF;
 
         IF v_db_price IS NULL THEN RAISE EXCEPTION 'Produto % não disponível.', COALESCE(v_item_name, 'não encontrado'); END IF;
@@ -456,6 +466,24 @@ BEGIN
               AND v.active = true AND p.ativo = true
             FOR NO KEY UPDATE OF v;
         ELSE
+            -- A trava de linha vem PRIMEIRO: o SELECT abaixo ja exige
+            -- `ativo = true` e trava a linha com `FOR NO KEY UPDATE`, entao a
+            -- guarda que vem depois nao tem janela de corrida contra um
+            -- UPDATE concorrente em `produtos.ativo`. Com a guarda ANTES (a
+            -- forma anterior, com EXISTS + JOIN em `produtos`), ela e o
+            -- SELECT tomavam SNAPSHOTS DIFERENTES sob READ COMMITTED: se a
+            -- lojista republicasse o produto e commitasse ENTRE os dois
+            -- comandos, a guarda nao disparava (produto estava inativo no
+            -- primeiro snapshot) e o SELECT achava o produto ativo no
+            -- segundo -- o item era vendido pelo preco/estoque do produto
+            -- base mesmo tendo variacao ativa. Nesta ordem nao ha segundo
+            -- snapshot: os dois leem a MESMA linha, ja travada.
+            SELECT preco_venda, estoque, nome, frete_gratis
+            INTO v_db_price, v_db_stock, v_item_name, v_frete_gratis
+            FROM public.produtos
+            WHERE id = v_product_id AND ativo = true
+            FOR NO KEY UPDATE;
+
             -- 🔴 A GUARDA QUE FALTAVA. Sem ela, `variant_id: null` num produto
             -- QUE TEM variacao caia aqui e era aceito: preco de `preco_venda`
             -- em vez de `price_override`, e baixa no `estoque` agregado em vez
@@ -467,36 +495,28 @@ BEGIN
             -- cliente. Cada tela nova reabre o buraco, e nenhuma delas alcanca
             -- quem chama a RPC direto.
             --
-            -- `v.active = true AND p.ativo = true` e o MESMO predicado que o
-            -- ramo de cima usa para aceitar uma variacao. Tem de ser o
-            -- mesmo, por duas razoes:
-            --   1. produto cujas variacoes foram TODAS desativadas fica
-            --      vendavel pelo produto base (comportamento de hoje, e
-            --      continua valendo) -- so' `v.active = true` cobre isso;
-            --   2. produto INATIVO com variacao ativa nao pode cair aqui e
-            --      receber "Escolha uma variacao": o produto saiu da
-            --      vitrine, a instrucao seria impossivel de seguir, e a
-            --      recusa certa e' a de produto indisponivel (a checagem
-            --      `IF v_db_price IS NULL` logo abaixo) -- so' `p.ativo =
-            --      true` cobre isso.
-            IF EXISTS (
+            -- `v_db_price IS NOT NULL` e o teste de "produto ativo" -- substitui
+            -- o JOIN com `produtos` que a guarda tinha antes de mudar de lugar.
+            -- Se o SELECT acima nao achou linha (produto inativo), v_db_price
+            -- fica NULL, a guarda nem dispara (curto-circuito do AND), e quem
+            -- recusa e o `IF v_db_price IS NULL` logo abaixo, com "Produto %
+            -- nao disponivel" -- a mensagem certa para um produto fora da
+            -- vitrine, nao "Escolha uma variacao" (instrucao impossivel de
+            -- seguir para quem nao pode comprar aquele produto de jeito
+            -- nenhum). `v.active = true` sozinho, sem JOIN em `produtos`, e o
+            -- mesmo predicado que o ramo de cima usa para ACEITAR uma
+            -- variacao -- produto cujas variacoes foram TODAS desativadas
+            -- continua vendavel pelo produto base.
+            IF v_db_price IS NOT NULL AND EXISTS (
                 SELECT 1
                 FROM public.product_variants v
-                JOIN public.produtos p ON p.id = v.product_id
                 WHERE v.product_id = v_product_id
                   AND v.active = true
-                  AND p.ativo = true
             ) THEN
                 RAISE EXCEPTION 'Escolha uma variação para o produto %.',
                     COALESCE((SELECT nome FROM public.produtos WHERE id = v_product_id), 'selecionado')
                     USING DETAIL = 'variant_id ausente em produto com variacao ativa; o item foi recusado no servidor.';
             END IF;
-
-            SELECT preco_venda, estoque, nome, frete_gratis
-            INTO v_db_price, v_db_stock, v_item_name, v_frete_gratis
-            FROM public.produtos
-            WHERE id = v_product_id AND ativo = true
-            FOR NO KEY UPDATE;
         END IF;
 
         IF v_db_price IS NULL THEN RAISE EXCEPTION 'Produto % não disponível.', COALESCE(v_item_name, 'não encontrado'); END IF;

@@ -415,8 +415,18 @@ const VERIFICACOES = {
         "itens_da_cotacao",
         "OUTRO carrinho",
         "FOR UPDATE;",
-        "usage_limit IS NULL OR usage_limit <= 0",
+        // Limite 0 volta a significar ilimitado. Se a forma completa cair
+        // para so' "usage_limit IS NULL OR usage_limit <= 0" no REPLACE, a
+        // cliente aplica o cupom no checkout e leva "Cupom invalido" ao
+        // finalizar -- e este marcador truncado nao pegaria a queda.
+        "usage_limit IS NULL OR usage_limit <= 0 OR usage_count < usage_limit",
         "Os valores do pedido mudaram",
+        // Se sumir no REPLACE, pedido com estoque insuficiente e aceito
+        // mesmo assim -- a lojista vende o que nao tem.
+        "Estoque insuficiente para o produto",
+        // Se sumir no REPLACE, o cupom de uso unico deixa de ser consumido:
+        // o mesmo codigo pode ser reaplicado indefinidamente.
+        "UPDATE public.coupons SET usage_count = usage_count + 1",
       ],
     },
     {
@@ -427,8 +437,10 @@ const VERIFICACOES = {
         "itens_da_cotacao",
         "OUTRO carrinho",
         "FOR UPDATE;",
-        "usage_limit IS NULL OR usage_limit <= 0",
+        "usage_limit IS NULL OR usage_limit <= 0 OR usage_count < usage_limit",
         "Os valores do pedido mudaram",
+        "Estoque insuficiente para o produto",
+        "UPDATE public.coupons SET usage_count = usage_count + 1",
         // A UNICA coisa que separa a v24 da v23: a reserva com prazo do
         // pagamento online. Se sumir no REPLACE, o PIX deixa de expirar e o
         // pg_cron nunca devolve o estoque a prateleira.

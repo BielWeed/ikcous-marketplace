@@ -1,5 +1,15 @@
 -- O frete cobrado passa a ser o do carrinho que esta sendo comprado.
 --
+-- 🔴 ANTES DE APLICAR ESTA SOZINHA: confira se
+-- `20260960000000_variacao_obrigatoria_no_servidor.sql` ja esta aplicada
+-- neste banco. Se estiver, aplicar SO esta migration DESFAZ a guarda de
+-- variacao obrigatoria EM SILENCIO -- o `CREATE OR REPLACE` desta instala de
+-- volta o corpo ANTERIOR aquela guarda -- e `scripts/db-apply.cjs` ainda
+-- imprime VERIFICADO, porque os marcadores da entrada desta migration sao
+-- todos dela mesma e continuam presentes no corpo antigo. Se a 20260960 ja
+-- estiver aplicada: nao aplique esta isolada, ou reaplique a 20260960 logo
+-- depois desta.
+--
 -- O DEFEITO, em uma frase: o banco confere se EXISTE cotacao de frete para
 -- aquele CEP nas ultimas 24h, mas nao confere se ela era DO CARRINHO que esta
 -- sendo comprado. Da para cotar o frete com um carrinho pequeno, encher o
