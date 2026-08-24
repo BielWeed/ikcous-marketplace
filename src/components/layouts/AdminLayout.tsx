@@ -87,6 +87,7 @@ export function AdminLayout({
 
   const [pendingOrdersCount, setPendingOrdersCount] = React.useState(0);
   const [pendingQuestionsCount, setPendingQuestionsCount] = React.useState(0);
+  const [pendingReviewsCount, setPendingReviewsCount] = React.useState(0);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -123,6 +124,19 @@ export function AdminLayout({
 
         if (!qErr && qData && isMounted) {
           setPendingQuestionsCount(qData.total_count || 0);
+        }
+
+        // Avaliação sem resposta também acende o sino: ela entra na lista da
+        // tela de Notificações e é trabalho parado esperando pelo lojista.
+        // `.is(null)` é o mesmo critério de `useAvisosDoLojista` — duas
+        // contagens diferentes para a mesma pergunta seria pior que nenhuma.
+        const { count: reviewsCount, error: reviewsErr } = await supabase
+          .from("reviews")
+          .select("*", { count: "exact", head: true })
+          .is("merchant_reply", null);
+
+        if (!reviewsErr && reviewsCount !== null && isMounted) {
+          setPendingReviewsCount(reviewsCount);
         }
       } catch (err) {
         console.error("[AdminLayout] Error fetching initial counts:", err);
@@ -391,19 +405,12 @@ export function AdminLayout({
   ];
 
   /**
-   * Para onde o sino de notificações leva ao ser clicado. Ele pisca vermelho
-   * quando há pedido pendente OU pergunta sem resposta (mesmo crachá vermelho
-   * abaixo), mas os dois disparam o mesmo ponto e só um destino cabe no
-   * clique — pedido pendente tem prioridade porque afeta dinheiro e prazo de
-   * entrega. Sem nenhum dos dois pendente, o sino continua levando para o
-   * envio de push, que é a função original dele.
+   * Para onde o sino do cabeçalho leva: sempre a tela de Notificações, onde
+   * os avisos ficam listados. Não há escolha de destino aqui de propósito —
+   * o sino é a porta da tela, e quem decide o que olhar primeiro é o lojista
+   * lendo a lista, não um `if` adivinhando qual alerta ele quis ver.
    */
-  const notificationBellTarget: View =
-    pendingOrdersCount > 0
-      ? "admin-orders"
-      : pendingQuestionsCount > 0
-        ? "admin-qa"
-        : "admin-push";
+  const notificationBellTarget: View = "admin-notifications";
 
   const { isOffline, latency, quality } = useConnectionDiagnostics();
   const [showSyncFlash, setShowSyncFlash] = React.useState(false);
@@ -877,7 +884,9 @@ export function AdminLayout({
                   onMouseLeave={handleMouseLeave}
                 >
                   <Bell className="size-3.5 text-admin-gold" />
-                  {(pendingOrdersCount > 0 || pendingQuestionsCount > 0) && (
+                  {(pendingOrdersCount > 0 ||
+                    pendingQuestionsCount > 0 ||
+                    pendingReviewsCount > 0) && (
                     <span className="absolute right-1 top-1 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
                   )}
                 </Button>
