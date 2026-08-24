@@ -583,9 +583,15 @@ export const ProductView = React.memo(function ProductView({
     );
 
     if (missingVariations.length > 0) {
-      toast.warning(`Por favor, selecione: ${missingVariations.join(", ")}`, {
-        description:
-          "Selecione todas as opções de variação antes de adicionar ao carrinho.",
+      // O título fica curto e fixo para nunca truncar -- o nome do grupo
+      // que falta mora na descrição, que tem espaço de sobra e quebra em
+      // várias linhas. Antes era o contrário: o grupo ficava no fim de um
+      // título que cortava com reticências, e a pessoa nunca descobria o
+      // que faltava escolher.
+      const artigoEOpcao =
+        missingVariations.length === 1 ? "a opção de" : "as opções de";
+      toast.warning("Falta escolher", {
+        description: `Escolha ${artigoEOpcao} ${missingVariations.join(", ")} antes de adicionar ao carrinho.`,
       });
       return;
     }
