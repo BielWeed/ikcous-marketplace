@@ -230,6 +230,33 @@ describe("AdminNotificationsView", () => {
     expect(todosOsAvisos()).toHaveLength(3);
   });
 
+  it("com fonte com falha e lista vazia, NAO diz 'Tudo em dia'", async () => {
+    FONTES_COM_FALHA = ["avaliacao"];
+    AVISOS = [];
+
+    const raizDom = await montar();
+
+    // "Tudo em dia" afirma que nada esta esperando — e a tela nao conferiu
+    // nada. O proprio hook ja escolheu dizer a verdade ("nao consegui
+    // conferir X"), e a tela nao pode desmentir a fonte dela na linha de
+    // baixo. As duas pontas na mesma rodada: o recado fica E a mentira sai.
+    expect(raizDom.textContent).not.toContain("Tudo em dia");
+    expect(raizDom.textContent).toContain("avaliações");
+  });
+
+  it("durante a carga, NAO pisca 'Tudo em dia' antes da lista chegar", async () => {
+    CARREGANDO = true;
+    AVISOS = [];
+
+    const raizDom = await montar();
+
+    // A guarda `!carregando` da tela existe para isto. Sem este caso ela e
+    // mutante sobrevivente: quem apagar o `!carregando` faz "Tudo em dia"
+    // piscar em TODA primeira carga e a suite inteira continua verde.
+    expect(raizDom.textContent).not.toContain("Tudo em dia");
+    expect(todosOsAvisos()).toHaveLength(0);
+  });
+
   it("o botao de atualizar chama recarregar do hook", async () => {
     await montar();
 

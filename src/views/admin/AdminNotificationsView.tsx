@@ -112,7 +112,7 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
   );
 });
 
-const Bloco = memo(function Bloco({
+function Bloco({
   nome,
   titulo,
   legenda,
@@ -142,7 +142,7 @@ const Bloco = memo(function Bloco({
       ))}
     </section>
   );
-});
+}
 
 /**
  * A tela de Notificacoes do lojista: o que esta esperando por ele.
@@ -226,7 +226,15 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
           onNavigate={onNavigate}
         />
 
-        {avisos.length === 0 && !carregando && (
+        {/*
+          As tres condicoes sao necessarias, e a terceira e a que faltava:
+          "Tudo em dia" AFIRMA que nada esta esperando. Com uma fonte caida a
+          tela nao conferiu aquilo — e o recado ambar logo acima ja diz isso.
+          Sem esta guarda o lojista lia, em duas linhas seguidas, "nao consegui
+          conferir avaliacoes" e "nenhuma avaliacao esperando por voce". O hook
+          escolheu dizer a verdade; a tela nao pode desmentir a fonte dela.
+        */}
+        {avisos.length === 0 && !carregando && fontesComFalha.length === 0 && (
           <div className="flex flex-col items-center gap-2 rounded-2xl border border-white/5 bg-zinc-950/40 px-6 py-12 text-center">
             <div className="flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
               <CheckCircle2 className="size-5" />
