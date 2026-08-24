@@ -408,6 +408,16 @@ const VERIFICACOES = {
   // A regra que fica: conferir o marcador contra a definicao ANTERIOR e exigir
   // ZERO ocorrencia la. "Existe no corpo novo" e' so metade da regua; a outra
   // metade e' "NAO existe no corpo velho".
+  //
+  // 🔴 VERIFICADO AQUI NAO QUER DIZER "as DUAS clausulas conferidas". Esta
+  // funcao tem duas clausulas de telefone IDENTICAS (uma na consulta de
+  // CONTAGEM, outra na de DADOS), e a checagem abaixo e' `includes()`: uma
+  // ocorrencia ja basta para marcar o marcador como presente. Reverter SO
+  // uma das duas clausulas ainda sai VERIFICADO aqui -- e' limite desta
+  // ferramenta, nao bug dela. Quem garante as DUAS e' o passo 4/6 de
+  // scripts/db-prove-busca-por-telefone.cjs, que compara `total` (da
+  // CONTAGEM) com `quantos` (dos DADOS) e cai se so uma clausula tiver a
+  // correcao.
   "20260961000000_busca_por_telefone_normaliza_digitos.sql": [
     {
       funcao: "get_admin_orders_paged",
@@ -417,11 +427,12 @@ const VERIFICACOES = {
         // colar o numero do WhatsApp deixa de achar -- sem nada na tela avisar,
         // porque nome e id continuam funcionando.
         "v_search_digitos := regexp_replace(v_clean_search, '[^0-9]', '', 'g');",
-        // A GUARDA contra o termo sem digito. Sem ela, buscar por um NOME casa
-        // TODOS os pedidos pela clausula do telefone -- medido: 85 em vez de 2.
-        // O marcador cruza quebra de linha de proposito, para casar o bloco e
-        // nao um identificador solto.
-        "v_search_digitos <> ''\n            AND regexp_replace(",
+        // A GUARDA por quantidade de digito. Sem ela (ou com `<> ''`),
+        // termo de poucos digitos casa quase toda a base pela clausula do
+        // telefone -- medido: "3d" de 15 para 60 resultados. O marcador
+        // cruza quebra de linha de proposito, para casar o bloco e nao um
+        // identificador solto.
+        "length(v_search_digitos) >= 4\n            AND regexp_replace(",
         // O coalesce com o jsonb: e ele que faz os pedidos de coluna nula (a
         // RPC legada nunca preencheu) serem achaveis. 0 ocorrencia na anterior.
         "coalesce(o.customer_phone, o.customer_data->>'whatsapp', ''),",

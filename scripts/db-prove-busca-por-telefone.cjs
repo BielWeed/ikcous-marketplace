@@ -36,17 +36,33 @@
  *    a comparacao e' contra a linha de base medida na mesma rodada, nao contra
  *    um numero escrito aqui, que envelheceria com a massa.
  *
+ * 3b. 🔴 A GUARDA CONTRA POUCOS DIGITOS -- vazio nao e o unico jeito de casar
+ *    "tudo". Um termo de 1-3 digitos passa pela guarda `<> ''` e a clausula do
+ *    telefone casa qualquer pedido cujo telefone CONTENHA aquele digito --
+ *    MEDIDO no catalogo real: "3d" foi de 15 para 60 resultados. O teste busca
+ *    por um termo com 1 digito (que ESTA no telefone da massa) e exige total
+ *    ZERO: com o limiar `length(v_search_digitos) >= 4`, a clausula do
+ *    telefone nem chega a rodar.
+ *
  * 4. AS DUAS CLAUSULAS — a de CONTAGEM e a de DADOS. Consertar so uma faz o
  *    painel dizer "12 resultados" e listar 3. O teste compara `total` com o
- *    tamanho da lista devolvida, em todo caso.
+ *    tamanho da lista devolvida (o campo `quantos`), em todo caso -- inclusive
+ *    nos casos 3 e 3b, onde antes so' `total` era assertado.
  *
  * 5. O PEDIDO SEM A COLUNA. A RPC legada nunca preencheu `customer_phone`; o
  *    `coalesce` com o jsonb faz esse pedido tambem ser achavel. Sem o coalesce,
  *    83 pedidos deste banco continuariam invisiveis.
  *
- * 6. NAO QUEBROU AS OUTRAS DIMENSOES da busca: nome, id, cupom, rastreio e nome
- *    de produto continuam achando. Um `CREATE OR REPLACE` desastrado passaria
- *    em tudo que e telefone e derrubaria essas.
+ * 6. NAO QUEBROU AS OUTRAS DIMENSOES da busca: nome, id e nome de produto
+ *    continuam achando -- nome de produto e' a dimensao que o BLOQUEIO 1
+ *    (guarda deixando poucos digitos casarem quase toda a base) quebrava
+ *    de verdade, porque produto com "3d" no nome sumia no meio de pedidos
+ *    achados so' pelo digito "3" do telefone. Um `CREATE OR REPLACE`
+ *    desastrado passaria em tudo que e telefone e derrubaria essas.
+ *    Cupom e rastreio NAO tem caso aqui: a massa deste script nao grava
+ *    `coupon_code` nem `tracking_code` nos pedidos de teste, entao testar
+ *    essas colunas exigiria massa nova -- fica para quem tocar essas
+ *    colunas depois.
  *
  * 7. ATRIBUTOS — `SECURITY DEFINER` e o `search_path` com **extensions**, que e
  *    diferente do das RPCs de pedido. Sem `extensions`, `unaccent` some e a
@@ -69,6 +85,11 @@ const TELEFONE_MASCARADO = "(34) 98888-7777";
 const TELEFONE_COLADO = "34988887777";
 const NOME = "ZQXPROVATELEFONE Cliente";
 const CUPOM_INEXISTENTE = "ZQXNAOEXISTE";
+const PRODUTO_NOME = "ZQXPROVATELEFONE Produto";
+// So' 1 digito depois do regexp_replace ('3') -- abaixo do limiar de 4. Os
+// "x" garantem que nome/id/produto/cupom/rastreio desta massa nao casam por
+// acidente (nao sao hex nem aparecem em nenhum texto usado aqui).
+const TERMO_POUCOS_DIGITOS = "xx3xx";
 
 let passou = 0;
 let falhou = 0;
@@ -218,6 +239,15 @@ async function main() {
     // (b) o caso dos 81 pedidos existentes: coluna NULA, telefone so no jsonb
     const semColuna = await pedido(`${NOME} legado`, TELEFONE_MASCARADO, false);
 
+    // item com nome de produto proprio -- serve ao passo 7, a dimensao que o
+    // BLOQUEIO 1 quebrava de verdade (produto com poucos digitos no nome).
+    await client.query(
+      `INSERT INTO public.marketplace_order_items
+         (order_id, product_name, quantity, price)
+       VALUES ($1, $2, 1, 10)`,
+      [comColuna, PRODUTO_NOME],
+    );
+
     console.log("\n1. CONTROLE NEGATIVO — antes, colar o numero NAO acha");
     conferir(
       "antes: o numero colado nao acha o pedido de coluna preenchida",
@@ -253,11 +283,50 @@ async function main() {
       nomeDepois.total === nomeAntes.total,
       `antes=${nomeAntes.total} depois=${nomeDepois.total}`,
     );
+    // 🔴 CAMPO COLETADO NAO E CAMPO ASSERTADO: `total` sai da consulta de
+    // CONTAGEM e `quantos` da consulta de DADOS -- sao DUAS clausulas
+    // identicas no corpo da funcao. Uma correcao aplicada em so uma delas
+    // deixa `total` certo e `quantos` errado (ou vice-versa), e so cai se
+    // as DUAS forem comparadas. `buscar()` ja coleta `quantos`; ate aqui
+    // ninguem assertava.
+    conferir(
+      `a LISTA por nome tambem continua com ${nomeAntes.quantos} item(ns), nao a base inteira`,
+      nomeDepois.quantos === nomeAntes.quantos,
+      `antes.quantos=${nomeAntes.quantos} depois.quantos=${nomeDepois.quantos}`,
+    );
     const nada = await buscar(client, CUPOM_INEXISTENTE);
     conferir(
       "busca por um texto SEM digito que nao existe devolve 0",
       nada.total === 0,
       `total=${nada.total}`,
+    );
+    conferir(
+      "busca por um texto SEM digito que nao existe devolve LISTA vazia tambem",
+      nada.quantos === 0,
+      `quantos=${nada.quantos}`,
+    );
+
+    console.log(
+      "\n4b. 🔴 O LIMIAR DE DIGITOS — POUCOS digitos nao pode achar pelo TELEFONE",
+    );
+    // TERMO_POUCOS_DIGITOS so' tem 1 digito depois do regexp_replace ('3'),
+    // que ESTA nos telefones desta massa (TELEFONE_COLADO comeca com "3").
+    // Com a guarda antiga (`<> ''`) isso bastava para casar TODO pedido
+    // cujo telefone contivesse "3" -- e' o defeito medido no BLOQUEIO 1
+    // ("3d" foi de 15 para 60 resultados no catalogo real). Os "x" nao sao
+    // hex nem aparecem em nome/id/produto desta massa, entao nenhuma OUTRA
+    // clausula pode casar por acidente: se a phone-clause disparar, o
+    // total sai de 0.
+    const poucosDigitos = await buscar(client, TERMO_POUCOS_DIGITOS);
+    conferir(
+      "termo com 1 digito nao acha NADA pela clausula do telefone (abaixo do limiar de 4)",
+      poucosDigitos.total === 0,
+      `total=${poucosDigitos.total} quantos=${poucosDigitos.quantos}`,
+    );
+    conferir(
+      "total e lista batem tambem neste caso",
+      poucosDigitos.total === poucosDigitos.quantos,
+      `total=${poucosDigitos.total} quantos=${poucosDigitos.quantos}`,
     );
 
     console.log("\n5. DEPOIS — colar o numero do WhatsApp ACHA");
@@ -294,6 +363,11 @@ async function main() {
     conferir(
       "por id do pedido",
       await acha(client, comColuna, comColuna),
+      "nao achou",
+    );
+    conferir(
+      "por nome de produto (a dimensao que o BLOQUEIO 1 quebrava)",
+      await acha(client, PRODUTO_NOME, comColuna),
       "nao achou",
     );
 

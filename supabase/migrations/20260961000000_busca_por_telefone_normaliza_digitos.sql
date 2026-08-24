@@ -46,11 +46,18 @@
 --   A correcao menor e a que nao abre a calculadora. A anterior foi descartada
 --   inteira, nao adaptada.
 --
--- 🔴 A GUARDA `v_search_digitos <> ''` E A PARTE QUE O CONSERTO INGENUO ERRA.
+-- 🔴 A GUARDA E A PARTE QUE O CONSERTO INGENUO ERRA -- E NAO E SO "vazio".
 -- Normalizar so os dois lados faria o termo "Maria" virar '', e `LIKE '%%'`
 -- casaria TODOS os pedidos pela clausula do telefone -- o painel mostraria a
 -- lista inteira para qualquer busca por texto. A prova tem caso proprio para
 -- isso, e a mutacao que tira a guarda derruba exatamente ele.
+--
+-- E POUCOS DIGITOS TEM O MESMO EFEITO PRATICO. `<> ''` deixa passar termo de
+-- 1 digito, e a clausula do telefone casa qualquer pedido cujo telefone
+-- CONTENHA aquele digito -- MEDIDO em 23/08/2026 com o catalogo real: "3d"
+-- ia de 15 para 60 resultados, "caneta 3d" de 7 para 59. A guarda virou
+-- `length(v_search_digitos) >= 4`: 4 e a convencao ja usada neste schema
+-- (`get_orders_by_whatsapp_v3` exige o mesmo minimo, ver a clausula abaixo).
 --
 -- 🔴 SAO DUAS CLAUSULAS, uma na consulta de CONTAGEM e outra na de DADOS.
 -- Consertar so uma faria o painel dizer "12 resultados" e listar 3.
@@ -115,16 +122,32 @@ BEGIN
             -- WhatsApp. Normalizando os dois lados com o MESMO
             -- regexp_replace que o OTP ja usa, mascara deixa de importar.
             --
-            -- 🔴 A GUARDA `v_search_digitos <> ''` NAO E DETALHE: sem ela,
-            -- buscar por um NOME (que nao tem digito) reduz o termo a ''
-            -- e `LIKE '%%'` casaria TODOS os pedidos por esta clausula --
-            -- o painel passaria a mostrar a lista inteira para qualquer
-            -- texto. E' o defeito que o conserto ingenuo introduz.
+            -- 🔴 A GUARDA POR QUANTIDADE DE DIGITO NAO E DETALHE. Com
+            -- `<> ''`, um termo de POUCOS digitos casava quase toda a
+            -- base pela clausula do telefone -- MEDIDO em 23/08/2026 com
+            -- o catalogo real: "3d" ia de 15 para 60 resultados, "caneta
+            -- 3d" de 7 para 59, e "kit de adesivos 3d de microcenas" de 0
+            -- para 59 -- porque o digito "3" sozinho aparece em 59 dos 84
+            -- telefones deste banco (e "9" aparece em 84).
+            --
+            -- O LIMIAR E 4, NAO 6: com 6 a busca perde o caso de lembrar
+            -- so os 4 ultimos digitos do telefone (ex.: "7777"), que e
+            -- como se lembra um numero de cabeca -- MEDIDO acima. E 4 ja
+            -- e a convencao deste schema: `get_orders_by_whatsapp_v3` em
+            -- 20260323000002_repair_missing_rpcs_v25.sql:147 exige "pelo
+            -- menos 4 dígitos" pelo mesmo motivo.
+            --
+            -- E A GUARDA CONTINUA NECESSARIA, so' com outro limiar: sem
+            -- NENHUMA guarda, um termo sem digito (um NOME) reduz o termo
+            -- a '' e `LIKE '%%'` casaria TODOS os pedidos por esta
+            -- clausula -- o painel passaria a mostrar a lista inteira
+            -- para qualquer texto. E' o defeito que o conserto ingenuo
+            -- introduz.
             --
             -- O `coalesce` com o jsonb e o MESMO de
             -- `generate_order_otp_v1`/`v2`: pedido gravado pela RPC legada
             -- (que nunca preencheu a coluna) tambem passa a ser achavel.
-            v_search_digitos <> ''
+            length(v_search_digitos) >= 4
             AND regexp_replace(
                   coalesce(o.customer_phone, o.customer_data->>'whatsapp', ''),
                   '[^0-9]', '', 'g'
@@ -200,16 +223,32 @@ BEGIN
             -- WhatsApp. Normalizando os dois lados com o MESMO
             -- regexp_replace que o OTP ja usa, mascara deixa de importar.
             --
-            -- 🔴 A GUARDA `v_search_digitos <> ''` NAO E DETALHE: sem ela,
-            -- buscar por um NOME (que nao tem digito) reduz o termo a ''
-            -- e `LIKE '%%'` casaria TODOS os pedidos por esta clausula --
-            -- o painel passaria a mostrar a lista inteira para qualquer
-            -- texto. E' o defeito que o conserto ingenuo introduz.
+            -- 🔴 A GUARDA POR QUANTIDADE DE DIGITO NAO E DETALHE. Com
+            -- `<> ''`, um termo de POUCOS digitos casava quase toda a
+            -- base pela clausula do telefone -- MEDIDO em 23/08/2026 com
+            -- o catalogo real: "3d" ia de 15 para 60 resultados, "caneta
+            -- 3d" de 7 para 59, e "kit de adesivos 3d de microcenas" de 0
+            -- para 59 -- porque o digito "3" sozinho aparece em 59 dos 84
+            -- telefones deste banco (e "9" aparece em 84).
+            --
+            -- O LIMIAR E 4, NAO 6: com 6 a busca perde o caso de lembrar
+            -- so os 4 ultimos digitos do telefone (ex.: "7777"), que e
+            -- como se lembra um numero de cabeca -- MEDIDO acima. E 4 ja
+            -- e a convencao deste schema: `get_orders_by_whatsapp_v3` em
+            -- 20260323000002_repair_missing_rpcs_v25.sql:147 exige "pelo
+            -- menos 4 dígitos" pelo mesmo motivo.
+            --
+            -- E A GUARDA CONTINUA NECESSARIA, so' com outro limiar: sem
+            -- NENHUMA guarda, um termo sem digito (um NOME) reduz o termo
+            -- a '' e `LIKE '%%'` casaria TODOS os pedidos por esta
+            -- clausula -- o painel passaria a mostrar a lista inteira
+            -- para qualquer texto. E' o defeito que o conserto ingenuo
+            -- introduz.
             --
             -- O `coalesce` com o jsonb e o MESMO de
             -- `generate_order_otp_v1`/`v2`: pedido gravado pela RPC legada
             -- (que nunca preencheu a coluna) tambem passa a ser achavel.
-            v_search_digitos <> ''
+            length(v_search_digitos) >= 4
             AND regexp_replace(
                   coalesce(o.customer_phone, o.customer_data->>'whatsapp', ''),
                   '[^0-9]', '', 'g'
@@ -234,4 +273,4 @@ BEGIN
         'total_count', v_total_count
     );
 END;
-$function$
+$function$;
