@@ -87,6 +87,21 @@ describe("paiDaTelaDoAdmin", () => {
     expect(paiDaTelaDoAdmin("home" as never, null, false)).toBe("profile");
   });
 
+  it("admin-notifications e' tela de topo — o pai e' 'profile', nao uma subtela", () => {
+    // A tela nova NAO entra na tabela de `paiDaTelaDoAdmin` de proposito: ela
+    // e' tela de topo do painel, alcancada pelo sino de qualquer lugar. O
+    // `default` do switch ja devolve "profile", que e' o certo — e este caso
+    // existe para PRENDER isso: quem no futuro acrescentar a tela na tabela
+    // (ou copiar o tratamento especial do "admin-push" para ela) derruba este
+    // teste em vez de descobrir pelo botao Voltar levando para o lugar errado.
+    expect(paiDaTelaDoAdmin("admin-notifications", null, false)).toBe(
+      "profile",
+    );
+    expect(paiDaTelaDoAdmin("admin-notifications", "admin-orders", false)).toBe(
+      "profile",
+    );
+  });
+
   it("PRECEDÊNCIA: sub-view de detalhe de pedido vence tudo, mesmo com view admin-push e origem admin-customers", () => {
     expect(paiDaTelaDoAdmin("admin-push", "admin-customers", true)).toBe(
       "admin-orders",

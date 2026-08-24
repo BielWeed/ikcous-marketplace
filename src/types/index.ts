@@ -310,6 +310,7 @@ export type View =
   | "admin-customers"
   | "admin-user-detail"
   | "admin-push"
+  | "admin-notifications"
   | "admin-whatsapp-config"
   | "admin-sros"
   | "referral"
