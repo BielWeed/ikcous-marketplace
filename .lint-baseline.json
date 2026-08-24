@@ -65,15 +65,30 @@
     "assim que a variante por `--stdin-file-path` quase virou padrão (ela acusa",
     "tudo, e com --fix corrompe emoji: ⚠️ vira !).",
     "",
+    "24/08/2026 — eslint de 551 para 550 e biome de 28 para 23. Medido no CI,",
+    "run 32778221216 (PR #303, contraste do verde): 'eslint warnings 550 / teto",
+    "551 — baixou -1' e 'biome errors 23 / teto 28 — baixou -5'.",
+    "",
+    "A queda NÃO veio do PR #303, e isso foi conferido em vez de suposto: o CI do",
+    "release 1.8.0 (run 32766286888, PR #301), medido HORAS ANTES daquele PR",
+    "existir, ja' reportava exatamente 550 e 23. Veio da develop — as 22 entregas",
+    "acumuladas desde a 1.7.0. O #303 nao abaixou divida nenhuma e tambem nao",
+    "subiu nenhuma.",
+    "",
+    "O teto foi abaixado SO' DEPOIS do CI, de proposito. A catraca local (Windows)",
+    "tambem dizia 550, mas as duas quedas anteriores registradas aqui vieram",
+    "medidas no CI, e contagem de Windows nao e' a contagem que reprova o PR —",
+    "abaixar com base nela arriscaria reprovar o proximo por 1.",
+    "",
     "Os números vivos são os campos abaixo, nunca os citados na prosa acima:",
     "a prosa registra o histórico datado de cada mudança."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 551
+    "warnings": 550
   },
   "biome": {
-    "errors": 28,
+    "errors": 23,
     "warnings": 1
   }
 }

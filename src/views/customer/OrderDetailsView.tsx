@@ -617,7 +617,7 @@ export function OrderDetailsView({
                     config.enableReviews &&
                     order.status === "delivered" &&
                     (reviewedProductIds.has(item.productId) ? (
-                      <span className="flex select-none items-center gap-1 rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-600 duration-300 animate-in fade-in">
+                      <span className="flex select-none items-center gap-1 rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-700 duration-300 animate-in fade-in">
                         <Check className="size-2.5" />
                         Avaliado
                       </span>
@@ -667,7 +667,7 @@ export function OrderDetailsView({
               <span
                 className={cn(
                   order.shipping === 0
-                    ? "text-emerald-600 font-extrabold"
+                    ? "text-emerald-700 font-extrabold"
                     : "text-zinc-900",
                 )}
               >
@@ -677,7 +677,7 @@ export function OrderDetailsView({
               </span>
             </div>
             {order.discount > 0 && (
-              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-emerald-600">
+              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-emerald-700">
                 <span>Benefício / Cupom</span>
                 <span>- R$ {order.discount.toFixed(2).replace(".", ",")}</span>
               </div>

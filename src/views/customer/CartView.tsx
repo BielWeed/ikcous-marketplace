@@ -584,7 +584,7 @@ export function CartView({
                         </span>
                       </div>
                       {shipping === 0 && (
-                        <span className="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-emerald-600">
+                        <span className="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-emerald-700">
                           Economizou {formatCurrency(savings)}
                         </span>
                       )}

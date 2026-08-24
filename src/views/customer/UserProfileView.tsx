@@ -450,7 +450,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                           )}
 
                           {rev.verified && (
-                            <div className="mt-1 flex items-center gap-0.5 text-[8px] font-bold uppercase tracking-widest text-emerald-600">
+                            <div className="mt-1 flex items-center gap-0.5 text-[8px] font-bold uppercase tracking-widest text-emerald-700">
                               <Check className="size-2.5" />
                               Compra verificada
                             </div>
