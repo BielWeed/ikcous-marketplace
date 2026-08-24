@@ -21,6 +21,7 @@ import {
   prefetchReviewsData,
 } from "@/utils/admin_cache";
 import { haptic } from "@/utils/haptic";
+import { paiDaTelaDoAdmin } from "@/utils/pai-da-tela-do-admin";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
@@ -519,31 +520,29 @@ export function AdminLayout({
     globalThis.location &&
     new URLSearchParams(globalThis.location.search).has("id");
 
-  const getParentView = (view: View): View | "profile" => {
-    if (isOrderDetailsSubView) {
-      return "admin-orders";
+  // Guarda a view ANTERIOR a `currentView`, para o botão "Voltar" de
+  // "admin-push" saber de onde a pessoa veio (sino, sidebar, menu do
+  // cliente, banner...) em vez de sempre cair em "admin-settings". Só
+  // atualiza quando a view muda de fato — a origem tem que continuar
+  // apontando para a tela anterior enquanto "admin-push" está em foco.
+  //
+  // `origemDaView` fica em estado, não em ref: `getParentView` é chamado
+  // durante a renderização (aqui embaixo, e dentro dos dois `navItems.map`
+  // da sidebar), e a regra `react-hooks/refs` do eslint proíbe ler
+  // `ref.current` em render — só em efeito ou handler. O `useRef` que o
+  // efeito usa para lembrar a view anterior fica isolado dentro do próprio
+  // `useEffect`, nunca lido em render.
+  const [origemDaView, setOrigemDaView] = React.useState<View | null>(null);
+  const viewAnteriorRef = React.useRef<View>(currentView);
+  React.useEffect(() => {
+    if (viewAnteriorRef.current !== currentView) {
+      setOrigemDaView(viewAnteriorRef.current);
+      viewAnteriorRef.current = currentView;
     }
-    switch (view) {
-      case "admin-coupon-form":
-        return "admin-coupons";
-      case "admin-product-form":
-      case "admin-coupons":
-      case "admin-shipping":
-        return "admin-products";
-      case "admin-user-detail":
-        return "admin-customers";
-      case "admin-push":
-      case "admin-banners":
-      case "admin-carousels":
-      case "admin-whatsapp-config":
-        return "admin-settings";
-      case "admin-reviews":
-      case "admin-qa":
-        return "admin-orders";
-      default:
-        return "profile";
-    }
-  };
+  }, [currentView]);
+
+  const getParentView = (view: View): View | "profile" =>
+    paiDaTelaDoAdmin(view, origemDaView, !!isOrderDetailsSubView);
 
   const parentView = getParentView(currentView);
   const isSubView = parentView !== "profile" || isOrderDetailsSubView;
