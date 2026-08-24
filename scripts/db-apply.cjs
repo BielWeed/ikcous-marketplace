@@ -396,6 +396,61 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 🔴 MARCADOR TEM DE SER UM BLOCO QUE SO EXISTE **COM** A CORRECAO.
+  // A primeira versao desta entrada usava `"customer_phone"` e
+  // `"p_customer_phone"` como marcadores "da correcao" -- e os dois ja apareciam
+  // 4 vezes na definicao SEM a correcao, porque `pg_get_functiondef` devolve a
+  // ASSINATURA junto com o corpo (`p_customer_phone text`) e o
+  // `jsonb_build_object` cita o parametro. Resultado: a entrada trocaria um
+  // PULADA barulhento por um VERIFICADO falso -- pior que nao ter entrada
+  // nenhuma. Levantado por revisao de contexto limpo em 23/08/2026.
+  //
+  // A regra que fica: conferir o marcador contra a definicao ANTERIOR e exigir
+  // ZERO ocorrencia la. "Existe no corpo novo" e' so metade da regua; a outra
+  // metade e' "NAO existe no corpo velho".
+  //
+  // 🔴 VERIFICADO AQUI NAO QUER DIZER "as DUAS clausulas conferidas". Esta
+  // funcao tem duas clausulas de telefone IDENTICAS (uma na consulta de
+  // CONTAGEM, outra na de DADOS), e a checagem abaixo e' `includes()`: uma
+  // ocorrencia ja basta para marcar o marcador como presente. Reverter SO
+  // uma das duas clausulas ainda sai VERIFICADO aqui -- e' limite desta
+  // ferramenta, nao bug dela. Quem garante as DUAS e' o passo 4/6 de
+  // scripts/db-prove-busca-por-telefone.cjs, que compara `total` (da
+  // CONTAGEM) com `quantos` (dos DADOS) e cai se so uma clausula tiver a
+  // correcao.
+  "20260961000000_busca_por_telefone_normaliza_digitos.sql": [
+    {
+      funcao: "get_admin_orders_paged",
+      esperado: [
+        // A CORRECAO: a variavel nova e o calculo dela. Conferido: 0 ocorrencia
+        // na definicao anterior. Se sumir, a busca volta a comparar texto cru e
+        // colar o numero do WhatsApp deixa de achar -- sem nada na tela avisar,
+        // porque nome e id continuam funcionando.
+        "v_search_digitos := regexp_replace(v_clean_search, '[^0-9]', '', 'g');",
+        // A GUARDA por quantidade de digito. Sem ela (ou com `<> ''`),
+        // termo de poucos digitos casa quase toda a base pela clausula do
+        // telefone -- medido: "3d" de 15 para 60 resultados. O marcador
+        // cruza quebra de linha de proposito, para casar o bloco e nao um
+        // identificador solto.
+        "length(v_search_digitos) >= 4\n            AND regexp_replace(",
+        // O coalesce com o jsonb: e ele que faz os pedidos de coluna nula (a
+        // RPC legada nunca preencheu) serem achaveis. 0 ocorrencia na anterior.
+        "coalesce(o.customer_phone, o.customer_data->>'whatsapp', ''),",
+        // Daqui para baixo: o que tem de SOBREVIVER ao REPLACE. Estes aparecem
+        // na definicao anterior TAMBEM, e isso e o certo para a classe deles.
+        //
+        // `extensions` no search_path: `unaccent` mora la. Se encolher para so
+        // 'public', a busca por nome quebra com "function unaccent(text) does
+        // not exist" -- e o painel para de achar qualquer coisa por texto.
+        "SET search_path TO 'public', 'extensions'",
+        "unaccent(o.customer_name)",
+        "unaccent(oi.product_name)",
+        // A trava de autorizacao. Se sumir, a busca de pedidos do painel passa
+        // a responder para qualquer pessoa autenticada.
+        "IF NOT public.is_admin() THEN",
+      ],
+    },
+  ],
   "20260960000000_variacao_obrigatoria_no_servidor.sql": [
     {
       funcao: "create_marketplace_order_v23",
