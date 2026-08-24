@@ -583,6 +583,9 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
     });
 
     expect(elementoForaDoSelo(".text-amber-700")).not.toBeNull();
+    // Guarda contra um portador NOVO de "-600" fora do selo (hoje: zero).
+    // Se cair por regressão do pill, é a asserção acima que estoura antes;
+    // se cair por um ÍCONE (3:1, não 4,5:1), estreite o seletor, não apague.
     expect(elementoForaDoSelo(".text-amber-600")).toBeNull();
   });
 
@@ -607,6 +610,9 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
     expect(selo?.querySelector(".text-emerald-700")).not.toBeNull();
 
     expect(elementoForaDoSelo(".text-emerald-700")).not.toBeNull();
+    // Guarda contra um portador NOVO de "-600" fora do selo (hoje: zero).
+    // Se cair por regressão do pill, é a asserção acima que estoura antes;
+    // se cair por um ÍCONE (3:1, não 4,5:1), estreite o seletor, não apague.
     expect(elementoForaDoSelo(".text-emerald-600")).toBeNull();
   });
 
@@ -631,6 +637,9 @@ describe("OrderList — o card do cliente também mostra o selo de pagamento", (
     expect(selo?.querySelector(".text-rose-700")).not.toBeNull();
 
     expect(elementoForaDoSelo(".text-rose-700")).not.toBeNull();
+    // Guarda contra um portador NOVO de "-600" fora do selo (hoje: zero).
+    // Se cair por regressão do pill, é a asserção acima que estoura antes;
+    // se cair por um ÍCONE (3:1, não 4,5:1), estreite o seletor, não apague.
     expect(elementoForaDoSelo(".text-rose-600")).toBeNull();
   });
 

@@ -2162,7 +2162,7 @@ function SuccessView({
           </p>
         </div>
         {appliedCoupon && (
-          <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-100/50 bg-emerald-50 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-600">
+          <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-100/50 bg-emerald-50 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700">
             Vantagem Ativa: R$ {discount.toFixed(2).replace(".", ",")} OFF
           </div>
         )}
@@ -2225,7 +2225,7 @@ function PagamentoConfirmadoView({
             #{orderId.slice(-6).toUpperCase()}
           </span>
         </p>
-        <p className="text-lg font-black text-emerald-600">
+        <p className="text-lg font-black text-emerald-700">
           R$ {valor.toFixed(2).replace(".", ",")} recebido
         </p>
         <div className="mx-auto max-w-[300px]">

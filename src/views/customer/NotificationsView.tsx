@@ -186,7 +186,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
           borderClass: "border-emerald-100 dark:border-emerald-950/40",
           cardBg: "bg-emerald-50/10 dark:bg-emerald-950/5",
           dotColor: "bg-emerald-500",
-          accentColor: "text-emerald-600 dark:text-emerald-400",
+          accentColor: "text-emerald-700 dark:text-emerald-400",
           actionText: "Ver Detalhes",
         };
       default:
