@@ -5,11 +5,14 @@ import type { View } from "@/types";
  * (`view`). Extraída de `getParentView` (antes só uma tabela fixa) para
  * ganhar uma regra sensível à ORIGEM real da navegação.
  *
- * Existem cinco caminhos até "admin-push" (sino da barra superior, botão
- * "Push" da sidebar, menu do cliente em duas variações, banner do painel) e
+ * Existem quatro caminhos até "admin-push" (botão "Avisar clientes" da
+ * barra lateral, menu do cliente em duas variações, banner do painel) e
  * todos caíam sempre em "admin-settings", porque a tabela antiga não sabia
- * de onde a pessoa tinha vindo. O sino aparece em TODA tela do admin, então
- * esse caminho errado era o normal, não a exceção.
+ * de onde a pessoa tinha vindo.
+ *
+ * O sino da barra superior era o quinto caminho e saiu desta lista: hoje ele
+ * leva a "admin-notifications", a tela onde o lojista RECEBE avisos, e não à
+ * tela que ENVIA push para clientes.
  *
  * Ordem de precedência:
  *   1. `ehSubViewDeDetalheDePedido` — vence tudo, igual ao comportamento de

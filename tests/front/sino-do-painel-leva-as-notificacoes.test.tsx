@@ -248,4 +248,50 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     await esperarAte(() => sino.querySelector("span") !== null);
     expect(sino.querySelector("span")).toBeTruthy();
   });
+  it("no computador, a barra lateral tem porta para as Notificações", async () => {
+    const { onNavigate } = await montarPainel();
+
+    // A `<aside>` e a barra lateral do computador: ela nasce com
+    // `hidden ... lg:flex`, ou seja, so existe a partir de 1024px. O sino
+    // mora no cabecalho `lg:hidden`, que e o OPOSTO — entao uma porta que so
+    // exista no sino deixa esta tela inalcancavel no computador. Foi
+    // exatamente esse o defeito que a revisao de contexto limpo pegou: zero
+    // portas visiveis acima de 1024px.
+    const barraLateral = hospedeiro.querySelector("aside");
+    expect(barraLateral).toBeTruthy();
+
+    const porta = Array.from(
+      (barraLateral as HTMLElement).querySelectorAll("button"),
+    ).find((b) => b.textContent?.includes("Notificações"));
+    expect(porta).toBeTruthy();
+
+    await act(async () => {
+      (porta as HTMLButtonElement).dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+
+    expect(onNavigate).toHaveBeenCalledWith("admin-notifications");
+  });
+
+  it("só com pergunta sem resposta, a bolinha vermelha do sino acende", async () => {
+    PERGUNTAS_PENDENTES = 6;
+
+    const { sino } = await montarPainel();
+
+    // Este caso veio do teste apagado e voltou de proposito: sem ele, apagar
+    // `pendingQuestionsCount > 0` da condicao da bolinha passa na suite
+    // inteira, e o lojista fica com pergunta esperando e o sino apagado.
+    await esperarAte(() => sino.querySelector("span") !== null);
+    expect(sino.querySelector("span")).toBeTruthy();
+  });
+
+  it("com tudo zerado, a bolinha do sino fica APAGADA", async () => {
+    const { sino } = await montarPainel();
+    await esperarContagensChegarem();
+
+    // Controle negativo da bolinha: os outros casos so provam que ela ACENDE.
+    // Uma bolinha acesa sem condicao nenhuma passaria em todos eles.
+    expect(sino.querySelector("span")).toBeNull();
+  });
 });

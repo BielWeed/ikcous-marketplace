@@ -29,6 +29,7 @@ import {
   Bell,
   Layers,
   LayoutGrid,
+  Megaphone,
   Package,
   Plus,
   Settings,
@@ -143,6 +144,13 @@ export function AdminLayout({
       }
     };
 
+    // LIMITACAO CONHECIDA, de proposito: nao ha canal de tempo real para
+    // `reviews`. A contagem de avaliacoes sem resposta so e' lida na busca
+    // inicial e nas revalidacoes de `visibilitychange` — uma avaliacao que
+    // chegue com o painel aberto so acende a bolinha na proxima vez que a
+    // aba voltar ao foco. Assinar mais uma tabela mexe na eleicao de lider e
+    // no ciclo de vida dos canais, que e' onde moram os defeitos de
+    // concorrencia deste arquivo; o atraso ate o proximo foco custa menos.
     const subscribe = () => {
       if (ordersChannel || questionsChannel) return; // already subscribed
 
@@ -412,6 +420,17 @@ export function AdminLayout({
    */
   const notificationBellTarget: View = "admin-notifications";
 
+  /**
+   * A bolinha vermelha acende quando ha algo esperando pelo lojista. Uma
+   * constante so, e nao a condicao repetida em cada porta: sao dois lugares
+   * que levam a mesma tela (o sino do celular e a barra lateral do
+   * computador), e duas copias da mesma regra e' onde elas divergem depois.
+   */
+  const temAvisoNoSino =
+    pendingOrdersCount > 0 ||
+    pendingQuestionsCount > 0 ||
+    pendingReviewsCount > 0;
+
   const { isOffline, latency, quality } = useConnectionDiagnostics();
   const [showSyncFlash, setShowSyncFlash] = React.useState(false);
   const prevOfflineRef = React.useRef(isOffline);
@@ -528,8 +547,10 @@ export function AdminLayout({
     new URLSearchParams(globalThis.location.search).has("id");
 
   // Guarda a view ANTERIOR a `currentView`, para o botão "Voltar" de
-  // "admin-push" saber de onde a pessoa veio (sino, sidebar, menu do
-  // cliente, banner...) em vez de sempre cair em "admin-settings". Só
+  // "admin-push" saber de onde a pessoa veio (sidebar, menu do cliente,
+  // banner...) em vez de sempre cair em "admin-settings". O sino NÃO está
+  // mais nessa lista: ele leva às Notificações do lojista, não ao envio para
+  // clientes. Só
   // atualiza quando a view muda de fato — a origem tem que continuar
   // apontando para a tela anterior enquanto "admin-push" está em foco.
   //
@@ -739,8 +760,39 @@ export function AdminLayout({
             <ArrowLeft className="size-4 text-zinc-400" />{" "}
             <span>{isSubView ? "Voltar" : "Perfil"}</span>
           </Button>
+          {/*
+            A porta das Notificações no COMPUTADOR. O sino mora no cabeçalho
+            `lg:hidden` e esta `<aside>` é `hidden ... lg:flex`: são larguras
+            opostas, então uma porta só no sino deixaria a tela inalcançável
+            acima de 1024px. Foi exatamente esse o defeito que a revisão de
+            contexto limpo pegou — zero portas visíveis no computador.
+          */}
           <Button
             variant="ghost"
+            aria-label="Notificações"
+            onClick={() => {
+              haptic.light();
+              onNavigate(notificationBellTarget);
+            }}
+            onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
+            onMouseLeave={handleMouseLeave}
+            className="relative flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
+          >
+            <Bell className="size-4 text-admin-gold" />{" "}
+            <span>Notificações</span>
+            {temAvisoNoSino && (
+              <span className="absolute right-4 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
+            )}
+          </Button>
+          {/*
+            "Avisar clientes" é a tela que ENVIA push para quem compra — o
+            oposto da tela de cima, que só RECEBE. O rótulo "Push" dizia o
+            mecanismo e não o efeito, e com dois sinos no mesmo bloco os dois
+            botões se confundiriam: por isso o megafone.
+          */}
+          <Button
+            variant="ghost"
+            aria-label="Avisar clientes"
             onClick={() => {
               haptic.light();
               onNavigate("admin-push");
@@ -749,7 +801,8 @@ export function AdminLayout({
             onMouseLeave={handleMouseLeave}
             className="flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
           >
-            <Bell className="size-4 text-admin-gold" /> <span>Push</span>
+            <Megaphone className="size-4 text-admin-gold" />{" "}
+            <span>Avisar clientes</span>
           </Button>
         </div>
       </aside>
@@ -875,6 +928,7 @@ export function AdminLayout({
                 <Button
                   variant="ghost"
                   size="icon"
+                  aria-label="Notificações"
                   className="relative size-7 transform-gpu rounded-full border border-white/5 bg-zinc-900 hover:bg-zinc-800 active:scale-95"
                   onClick={() => {
                     haptic.light();
@@ -884,9 +938,7 @@ export function AdminLayout({
                   onMouseLeave={handleMouseLeave}
                 >
                   <Bell className="size-3.5 text-admin-gold" />
-                  {(pendingOrdersCount > 0 ||
-                    pendingQuestionsCount > 0 ||
-                    pendingReviewsCount > 0) && (
+                  {temAvisoNoSino && (
                     <span className="absolute right-1 top-1 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
                   )}
                 </Button>
