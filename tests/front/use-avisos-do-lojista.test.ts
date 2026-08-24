@@ -251,6 +251,67 @@ describe("useAvisosDoLojista", () => {
     expect(atual().fontesComFalha).toEqual([]);
   });
 
+  it("a rodada velha nao sobrescreve a nova, mesmo respondendo depois", async () => {
+    // O `loadProducts` real ABORTA a consulta anterior quando uma nova comeca,
+    // e devolve `null` para a abortada — que aqui significa "falha da fonte
+    // estoque". Sem token de rodada, a rodada velha termina por ultimo, com a
+    // falha, e apaga o resultado bom da rodada nova: a tela acende "nao
+    // consegui conferir produtos" com a rede inteira saudavel.
+    let responderPrimeira: (() => void) | null = null;
+    const primeira = new Promise<null>((resolve) => {
+      responderPrimeira = () => resolve(null);
+    });
+    loadProductsFalso.mockImplementationOnce(() => primeira);
+
+    const { atual } = await montarSonda();
+
+    // Rodada 2: responde na hora, com a lista boa.
+    await act(async () => {
+      atual().recarregar();
+    });
+    await act(async () => {});
+
+    // Só agora a rodada 1 responde — velha, e com a falha.
+    await act(async () => {
+      responderPrimeira?.();
+    });
+    await act(async () => {});
+
+    expect(atual().fontesComFalha).toEqual([]);
+    expect(atual().avisos.map((a) => a.tipo)).toContain("estoque");
+    expect(atual().carregando).toBe(false);
+  });
+
+  it("catalogo maior que o teto conta como falha da fonte de estoque", async () => {
+    // 250 produtos no total e so 1 na resposta: a varredura NAO viu o
+    // catalogo inteiro. Dizer "nenhum produto acabando" seria mentira sobre
+    // 249 produtos que ninguem olhou.
+    RESPOSTA_PRODUTOS = { products: [produtoDeExemplo()], total: 250 };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual(["estoque"]);
+    // E o que ELA viu continua valendo: aviso incompleto e honesto e melhor
+    // que lista vazia.
+    expect(atual().avisos.map((a) => a.tipo)).toContain("estoque");
+  });
+
+  it("estoqueMinimo zero e escolha legitima, nao ausencia de limiar", async () => {
+    // `?? null` e nao `|| null`: zero quer dizer "nunca me avise por este
+    // produto". Com `||`, o zero viraria `null` na fronteira do hook, o
+    // limiar padrao (5) entraria no lugar e o produto com 3 em estoque
+    // geraria um aviso que o lojista desligou de proposito.
+    RESPOSTA_PRODUTOS = {
+      products: [produtoDeExemplo({ stock: 3, estoqueMinimo: 0 })],
+      total: 1,
+    };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("estoque");
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
   it("recarregar dispara as consultas de novo", async () => {
     const { atual } = await montarSonda();
 

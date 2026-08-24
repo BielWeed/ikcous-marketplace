@@ -16,6 +16,12 @@ import {
 /**
  * Quantos produtos a tela varre atras de estoque baixo. Nao ha paginacao aqui
  * de proposito: a tela e "o que falta fazer", nao um relatorio de catalogo.
+ *
+ * O que o teto NAO pode fazer e virar piso silencioso: numa loja com mais
+ * produtos que isto, o 201o nunca seria olhado e a tela diria "nenhum produto
+ * acabando" sem ter visto. Por isso a leitura devolve `truncou`, e truncar
+ * conta como FALHA da fonte de estoque — "nao consegui conferir produtos" e
+ * verdade; "tudo em dia" seria mentira.
  */
 const TETO_DE_PRODUTOS = 200;
 
@@ -73,6 +79,11 @@ async function buscarPerguntasPendentes(): Promise<number> {
   return data?.total_count ?? 0;
 }
 
+// `.is(null)` e nao "null ou string vazia": o SQL do painel trata resposta em
+// branco como pendente, mas o app nunca grava uma — as duas telas de resposta
+// barram com `if (!replyText.trim()) return` (AdminReviewsView) antes de
+// chamar a RPC. Alargar a consulta por um caso que o proprio app nao produz
+// custaria um `.or` e nenhuma verdade a mais.
 async function buscarAvaliacoesSemResposta(): Promise<AvaliacaoCrua[]> {
   const { data, error } = await supabase
     .from("reviews")
@@ -83,13 +94,19 @@ async function buscarAvaliacoesSemResposta(): Promise<AvaliacaoCrua[]> {
   return (data ?? []) as unknown as AvaliacaoCrua[];
 }
 
+interface LeituraDeProdutos {
+  produtos: ProdutoComEstoque[];
+  /** O catalogo era maior que o teto: esta varredura NAO viu tudo. */
+  truncou: boolean;
+}
+
 async function buscarProdutosComEstoqueBaixo(
   carregar: (
     pagina?: number,
     tamanho?: number,
     filtros?: Record<string, unknown>,
   ) => Promise<{ products: Product[]; total: number } | null>,
-): Promise<ProdutoComEstoque[]> {
+): Promise<LeituraDeProdutos> {
   const resultado = await carregar(0, TETO_DE_PRODUTOS, { silent: true });
 
   // `loadProducts` engole o erro e devolve `null`. `null` NAO e "zero
@@ -97,21 +114,23 @@ async function buscarProdutosComEstoqueBaixo(
   // tela diria "nenhum produto acabando" sem ter olhado.
   if (!resultado) throw new Error("nao consegui listar os produtos");
 
-  return (
-    resultado.products
-      // Produto desativado nao esta a venda: avisar que ele "esta acabando"
-      // e alarme falso sobre uma decisao que o lojista ja tomou.
-      .filter((produto) => produto.isActive)
-      .map((produto) => ({
-        id: produto.id,
-        name: produto.name,
-        // `stock` ja e o estoque efetivo (soma das variantes ativas quando
-        // existem) porque veio do `mapProductFromDB` — a mesma conta do KPI.
-        stock: produto.stock,
-        estoqueMinimo: produto.estoqueMinimo ?? null,
-        created_at: produto.createdAt,
-      }))
-  );
+  const produtos = resultado.products
+    // Produto desativado nao esta a venda: avisar que ele "esta acabando"
+    // e alarme falso sobre uma decisao que o lojista ja tomou.
+    .filter((produto) => produto.isActive)
+    .map((produto) => ({
+      id: produto.id,
+      name: produto.name,
+      // `stock` ja e o estoque efetivo (soma das variantes ativas quando
+      // existem) porque veio do `mapProductFromDB` — a mesma conta do KPI.
+      stock: produto.stock,
+      estoqueMinimo: produto.estoqueMinimo ?? null,
+      created_at: produto.createdAt,
+    }));
+
+  // A comparacao e com a lista CRUA, nao com a filtrada: o `.filter` acima e
+  // decisao nossa, o teto e limite da consulta.
+  return { produtos, truncou: resultado.total > resultado.products.length };
 }
 
 /**
@@ -130,8 +149,16 @@ export function useAvisosDoLojista(): AvisosDoLojista {
   const [carregando, setCarregando] = useState(true);
 
   const ativoRef = useRef(true);
+  // Numero da rodada. Sem ele, quem termina por ultimo vence — e o
+  // `loadProducts` garante que a rodada VELHA termine por ultimo e mal: ele
+  // aborta a consulta anterior e devolve `null` para ela, que aqui vira
+  // "falha da fonte estoque". Resultado sem o token: o lojista toca duas
+  // vezes em atualizar (ou o StrictMode monta duas vezes em desenvolvimento)
+  // e a tela acende "nao consegui conferir produtos" com a rede saudavel.
+  const rodadaRef = useRef(0);
 
   const buscar = useCallback(async () => {
+    const rodada = ++rodadaRef.current;
     setCarregando(true);
 
     const [rPedidos, rPerguntas, rAvaliacoes, rProdutos] =
@@ -146,7 +173,9 @@ export function useAvisosDoLojista(): AvisosDoLojista {
         ),
       ]);
 
-    if (!ativoRef.current) return;
+    // Componente desmontado, ou rodada atropelada por outra mais nova: em
+    // ambos os casos esta resposta nao tem mais tela para ir.
+    if (!ativoRef.current || rodada !== rodadaRef.current) return;
 
     const falhas: TipoDeAviso[] = [];
 
@@ -161,8 +190,14 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       rAvaliacoes.status === "fulfilled" ? rAvaliacoes.value : [];
     if (rAvaliacoes.status === "rejected") falhas.push("avaliacao");
 
-    const produtos = rProdutos.status === "fulfilled" ? rProdutos.value : [];
-    if (rProdutos.status === "rejected") falhas.push("estoque");
+    const leituraDeProdutos =
+      rProdutos.status === "fulfilled" ? rProdutos.value : null;
+    const produtos = leituraDeProdutos?.produtos ?? [];
+    // Truncar conta como falha: a lista de estoque que veio e verdadeira, mas
+    // incompleta, e a tela precisa dizer isso em vez de "tudo em dia".
+    if (rProdutos.status === "rejected" || leituraDeProdutos?.truncou) {
+      falhas.push("estoque");
+    }
 
     // O nome do produto vem da lista de produtos, nao de um join: se a fonte
     // de produtos caiu, a avaliacao continua aparecendo com o rotulo

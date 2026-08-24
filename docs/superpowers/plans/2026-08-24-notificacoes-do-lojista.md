@@ -57,8 +57,8 @@ Crie `tests/front/avisos-do-lojista.test.ts`:
 import { describe, expect, it } from "vitest";
 
 import {
-  LIMIAR_PADRAO_DE_ESTOQUE,
   type EntradaDeAvisos,
+  LIMIAR_PADRAO_DE_ESTOQUE,
   montarAvisos,
   precisaDeReposicao,
 } from "@/utils/avisos-do-lojista";
