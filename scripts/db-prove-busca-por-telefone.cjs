@@ -90,6 +90,17 @@ const PRODUTO_NOME = "ZQXPROVATELEFONE Produto";
 // "x" garantem que nome/id/produto/cupom/rastreio desta massa nao casam por
 // acidente (nao sao hex nem aparecem em nenhum texto usado aqui).
 const TERMO_POUCOS_DIGITOS = "xx3xx";
+// TRES digitos ("349", o comeco de 34988887777). Tem de FICAR ABAIXO do
+// limiar. Sem esta constante, trocar o limiar para >= 2 ou >= 3 passava na
+// suite inteira -- e ">= 2" reabre quase todo o BLOQUEIO 1 (medido: "34" casa
+// 59 dos 84 pedidos deste banco).
+const TERMO_TRES_DIGITOS = "xx349xx";
+// QUATRO digitos tirados do MEIO do telefone da massa (34988887777). Tem de
+// ACHAR. E' o controle POSITIVO do limiar: sem ele, trocar 4 por 5 ou 6 -- ou
+// deixar as duas clausulas com limiares DIFERENTES -- passava 20/0. O commit
+// que escolheu o 4 gastava um paragrafo justificando "4 e nao 6" e nenhuma
+// linha provando que 4 funciona.
+const TERMO_QUATRO_DIGITOS = "8887";
 
 let passou = 0;
 let falhou = 0;
@@ -327,6 +338,32 @@ async function main() {
       "total e lista batem tambem neste caso",
       poucosDigitos.total === poucosDigitos.quantos,
       `total=${poucosDigitos.total} quantos=${poucosDigitos.quantos}`,
+    );
+
+    // TRES digitos: ainda abaixo do limiar. Mata `>= 2` e `>= 3`.
+    const tresDigitos = await buscar(client, TERMO_TRES_DIGITOS);
+    conferir(
+      "termo com 3 digitos tambem NAO acha (o limiar e 4, nao 2 nem 3)",
+      tresDigitos.total === 0 && tresDigitos.quantos === 0,
+      `total=${tresDigitos.total} quantos=${tresDigitos.quantos}`,
+    );
+
+    // 🔴 O CONTROLE POSITIVO DO LIMIAR. Os dois casos acima provam que o
+    // limiar RECUSA; nenhum provava que ele ACEITA. Sem esta assercao,
+    // trocar 4 por 5 ou 6 -- ou deixar as duas clausulas com limiares
+    // DIFERENTES -- passava a suite inteira, e a divergente reabre o
+    // sintoma do BLOQUEIO 2: a contagem aceita, a lista recusa, e o painel
+    // diz "1 pedido" mostrando nada.
+    const quatroDigitos = await buscar(client, TERMO_QUATRO_DIGITOS);
+    conferir(
+      "termo com 4 digitos ACHA pelo telefone (o limiar aceita no piso)",
+      await acha(client, TERMO_QUATRO_DIGITOS, comColuna),
+      `total=${quatroDigitos.total} quantos=${quatroDigitos.quantos}`,
+    );
+    conferir(
+      "e no piso do limiar o total continua batendo com a lista",
+      quatroDigitos.total === quatroDigitos.quantos,
+      `total=${quatroDigitos.total} quantos=${quatroDigitos.quantos}`,
     );
 
     console.log("\n5. DEPOIS — colar o numero do WhatsApp ACHA");
