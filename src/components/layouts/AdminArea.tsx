@@ -87,6 +87,12 @@ const AdminPush = lazyWithPreload(() =>
   })),
 );
 
+const AdminNotifications = lazyWithPreload(() =>
+  import("@/views/admin/AdminNotificationsView").then((m) => ({
+    default: m.AdminNotificationsView,
+  })),
+);
+
 function DeferredTabContent({
   active,
   children,
@@ -164,7 +170,8 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
   else if (view === "admin-shipping") title = "Frete";
   else if (view === "admin-reviews") title = "Avaliações";
   else if (view === "admin-qa") title = "Suporte Q&A";
-  else if (view === "admin-push") title = "Notificações";
+  else if (view === "admin-push") title = "Avisar clientes";
+  else if (view === "admin-notifications") title = "Notificações";
   else if (view === "admin-product-form") title = "Produto";
   else if (view === "admin-user-detail") title = "Detalhes";
 
@@ -653,6 +660,17 @@ export function AdminArea({
                             onNavigate: onNavigate,
                             targetUserId: selectedProductId || undefined,
                             onSetDirty: setIsAdminDirty,
+                          }}
+                        />
+                      </LocalErrorBoundary>
+                    );
+                  case "admin-notifications":
+                    return (
+                      <LocalErrorBoundary key="admin-notifications">
+                        <PreloadedOrLazy
+                          component={AdminNotifications}
+                          props={{
+                            onNavigate: onNavigate,
                           }}
                         />
                       </LocalErrorBoundary>

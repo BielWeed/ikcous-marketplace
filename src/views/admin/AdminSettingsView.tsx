@@ -540,10 +540,16 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               saiu da tela de Clientes: ZERO portas visiveis para `admin-push`
               no Painel, em Ajustes e em Clientes. O botao "Push" da barra
               lateral nao conta — o `aside` e' `lg:flex` e some abaixo de
-              1024px. E o sino do topo so leva as Notificacoes com ZERO pedido
-              e ZERO pergunta pendentes; com pendencia ele leva a Pedidos, de
-              proposito (`notificationBellTarget`, em AdminLayout.tsx). Sobrava
-              um caminho de quatro toques por dentro do menu de um cliente.
+              1024px. E o sino do topo, naquele dia, so levava aqui com ZERO
+              pedido e ZERO pergunta pendentes; com pendencia ia a Pedidos, de
+              proposito. Sobrava um caminho de quatro toques por dentro do
+              menu de um cliente.
+
+              Desde entao o sino deixou de escolher destino: ele leva SEMPRE
+              as Notificacoes do lojista, que sao outra tela — a que RECEBE
+              aviso. Esta aqui e a que ENVIA, e por isso o cartao se chama
+              "Avisar clientes": duas telas nao podem dividir o mesmo nome no
+              mesmo painel.
 
               Ajustes e' o lugar certo por dois motivos que ja existiam: as
               telas irmas (Banners, Carrosseis) moram aqui, e o Voltar de
@@ -584,7 +590,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                         Engajamento
                       </span>
                       <h3 className="text-base font-black leading-tight tracking-tight text-white">
-                        Notificações
+                        Avisar clientes
                       </h3>
                       <p className="mt-1 text-xs text-zinc-500">
                         Envie avisos no celular dos clientes — para todos, para

@@ -178,6 +178,7 @@ const VIEW_COMPONENTS = {
   "admin-customers": AdminArea,
   "admin-user-detail": AdminArea,
   "admin-push": AdminArea,
+  "admin-notifications": AdminArea,
   "admin-whatsapp-config": AdminArea,
   "address-form": AddressFormView,
   "admin-login": AdminLogin,
@@ -379,6 +380,7 @@ const getNavigationDirection = (
     admin: 0,
     "admin-dashboard": 0,
     "admin-push": 0.5,
+    "admin-notifications": 0.3,
     "admin-orders": 1,
     "admin-reviews": 1.4,
     "admin-qa": 1.6,
@@ -1492,6 +1494,7 @@ const AppContent = () => {
         "admin-customers",
         "admin-user-detail",
         "admin-push",
+        "admin-notifications",
         "admin-whatsapp-config",
         "address-form",
         "admin-login",
@@ -2240,6 +2243,7 @@ const AppContent = () => {
       "admin-customers",
       "admin-user-detail",
       "admin-push",
+      "admin-notifications",
       "admin-whatsapp-config",
     ];
 

@@ -8,10 +8,15 @@
 //     tela Painel .............. 0
 //     tela Ajustes ............. 0
 //     tela Clientes ............ 0
-//     sino do topo ............. vai para /admin-orders, nao para as
-//                                Notificacoes — ele so abre admin-push com
-//                                ZERO pedido e ZERO pergunta pendentes
-//                                (AdminLayout.tsx, `notificationBellTarget`)
+//     sino do topo ............. vai para /admin-orders, nao para ca — ele
+//                                so abria admin-push com ZERO pedido e ZERO
+//                                pergunta pendentes
+//
+// DESDE ENTAO o sino parou de escolher destino: ele leva SEMPRE a tela de
+// Notificacoes do lojista (`admin-notifications`), que e' a tela que RECEBE
+// aviso. Isso NAO devolve uma porta para `admin-push`, que e' a tela que
+// ENVIA — pelo contrario, tira a ultima que existia por acaso. Esta porta em
+// Ajustes, hoje rotulada "Avisar clientes", virou a unica no celular.
 //
 // Ou seja: a remocao do cartao repetido custou a ULTIMA porta visivel no
 // celular. Sobrava so um caminho de quatro toques, por dentro do menu de um

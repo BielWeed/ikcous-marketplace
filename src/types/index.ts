@@ -14,6 +14,13 @@ export interface Product {
   images: string[];
   category: string;
   stock: number;
+  /**
+   * Limiar de "estoque baixo" deste produto. Nulo significa "use o padrao do
+   * projeto" (5), a mesma regra do KPI Estoque Baixo do painel. ZERO e' uma
+   * escolha valida do lojista, nao ausencia — por isso `number | null`, e por
+   * isso quem le usa `??`, nunca `||`.
+   */
+  estoqueMinimo?: number | null;
   sold: number;
   isActive: boolean;
   isBestseller: boolean;
@@ -303,6 +310,7 @@ export type View =
   | "admin-customers"
   | "admin-user-detail"
   | "admin-push"
+  | "admin-notifications"
   | "admin-whatsapp-config"
   | "admin-sros"
   | "referral"

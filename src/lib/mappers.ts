@@ -117,6 +117,10 @@ export function mapProductFromDB(
       images,
       category,
       stock: variantStock,
+      estoqueMinimo:
+        row.estoque_minimo === undefined
+          ? null
+          : (row.estoque_minimo as number | null),
       sold: Number(row.sold) || 0,
       isActive,
       isBestseller,
