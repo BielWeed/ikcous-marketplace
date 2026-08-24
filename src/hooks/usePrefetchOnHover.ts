@@ -47,6 +47,7 @@ const VIEW_PREFETCH_MAP: Record<string, () => Promise<unknown>> = {
   "admin-customers": () => import("@/views/admin/AdminCustomersView"),
   "admin-user-detail": () => import("@/views/admin/AdminUserDetailView"),
   "admin-push": () => import("@/views/admin/AdminPushView"),
+  "admin-notifications": () => import("@/views/admin/AdminNotificationsView"),
   "admin-login": () => import("@/views/admin/AdminLoginView"),
 };
 

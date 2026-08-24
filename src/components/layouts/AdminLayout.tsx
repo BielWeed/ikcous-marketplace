@@ -21,6 +21,7 @@ import {
   prefetchReviewsData,
 } from "@/utils/admin_cache";
 import { haptic } from "@/utils/haptic";
+import { paiDaTelaDoAdmin } from "@/utils/pai-da-tela-do-admin";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
@@ -28,6 +29,7 @@ import {
   Bell,
   Layers,
   LayoutGrid,
+  Megaphone,
   Package,
   Plus,
   Settings,
@@ -86,6 +88,7 @@ export function AdminLayout({
 
   const [pendingOrdersCount, setPendingOrdersCount] = React.useState(0);
   const [pendingQuestionsCount, setPendingQuestionsCount] = React.useState(0);
+  const [pendingReviewsCount, setPendingReviewsCount] = React.useState(0);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -123,11 +126,31 @@ export function AdminLayout({
         if (!qErr && qData && isMounted) {
           setPendingQuestionsCount(qData.total_count || 0);
         }
+
+        // Avaliação sem resposta também acende o sino: ela entra na lista da
+        // tela de Notificações e é trabalho parado esperando pelo lojista.
+        // `.is(null)` é o mesmo critério de `useAvisosDoLojista` — duas
+        // contagens diferentes para a mesma pergunta seria pior que nenhuma.
+        const { count: reviewsCount, error: reviewsErr } = await supabase
+          .from("reviews")
+          .select("*", { count: "exact", head: true })
+          .is("merchant_reply", null);
+
+        if (!reviewsErr && reviewsCount !== null && isMounted) {
+          setPendingReviewsCount(reviewsCount);
+        }
       } catch (err) {
         console.error("[AdminLayout] Error fetching initial counts:", err);
       }
     };
 
+    // LIMITACAO CONHECIDA, de proposito: nao ha canal de tempo real para
+    // `reviews`. A contagem de avaliacoes sem resposta so e' lida na busca
+    // inicial e nas revalidacoes de `visibilitychange` — uma avaliacao que
+    // chegue com o painel aberto so acende a bolinha na proxima vez que a
+    // aba voltar ao foco. Assinar mais uma tabela mexe na eleicao de lider e
+    // no ciclo de vida dos canais, que e' onde moram os defeitos de
+    // concorrencia deste arquivo; o atraso ate o proximo foco custa menos.
     const subscribe = () => {
       if (ordersChannel || questionsChannel) return; // already subscribed
 
@@ -390,19 +413,23 @@ export function AdminLayout({
   ];
 
   /**
-   * Para onde o sino de notificações leva ao ser clicado. Ele pisca vermelho
-   * quando há pedido pendente OU pergunta sem resposta (mesmo crachá vermelho
-   * abaixo), mas os dois disparam o mesmo ponto e só um destino cabe no
-   * clique — pedido pendente tem prioridade porque afeta dinheiro e prazo de
-   * entrega. Sem nenhum dos dois pendente, o sino continua levando para o
-   * envio de push, que é a função original dele.
+   * Para onde o sino do cabeçalho leva: sempre a tela de Notificações, onde
+   * os avisos ficam listados. Não há escolha de destino aqui de propósito —
+   * o sino é a porta da tela, e quem decide o que olhar primeiro é o lojista
+   * lendo a lista, não um `if` adivinhando qual alerta ele quis ver.
    */
-  const notificationBellTarget: View =
-    pendingOrdersCount > 0
-      ? "admin-orders"
-      : pendingQuestionsCount > 0
-        ? "admin-qa"
-        : "admin-push";
+  const notificationBellTarget: View = "admin-notifications";
+
+  /**
+   * A bolinha vermelha acende quando ha algo esperando pelo lojista. Uma
+   * constante so, e nao a condicao repetida em cada porta: sao dois lugares
+   * que levam a mesma tela (o sino do celular e a barra lateral do
+   * computador), e duas copias da mesma regra e' onde elas divergem depois.
+   */
+  const temAvisoNoSino =
+    pendingOrdersCount > 0 ||
+    pendingQuestionsCount > 0 ||
+    pendingReviewsCount > 0;
 
   const { isOffline, latency, quality } = useConnectionDiagnostics();
   const [showSyncFlash, setShowSyncFlash] = React.useState(false);
@@ -519,31 +546,31 @@ export function AdminLayout({
     globalThis.location &&
     new URLSearchParams(globalThis.location.search).has("id");
 
-  const getParentView = (view: View): View | "profile" => {
-    if (isOrderDetailsSubView) {
-      return "admin-orders";
+  // Guarda a view ANTERIOR a `currentView`, para o botão "Voltar" de
+  // "admin-push" saber de onde a pessoa veio (sidebar, menu do cliente,
+  // banner...) em vez de sempre cair em "admin-settings". O sino NÃO está
+  // mais nessa lista: ele leva às Notificações do lojista, não ao envio para
+  // clientes. Só
+  // atualiza quando a view muda de fato — a origem tem que continuar
+  // apontando para a tela anterior enquanto "admin-push" está em foco.
+  //
+  // `origemDaView` fica em estado, não em ref: `getParentView` é chamado
+  // durante a renderização (aqui embaixo, e dentro dos dois `navItems.map`
+  // da sidebar), e a regra `react-hooks/refs` do eslint proíbe ler
+  // `ref.current` em render — só em efeito ou handler. O `useRef` que o
+  // efeito usa para lembrar a view anterior fica isolado dentro do próprio
+  // `useEffect`, nunca lido em render.
+  const [origemDaView, setOrigemDaView] = React.useState<View | null>(null);
+  const viewAnteriorRef = React.useRef<View>(currentView);
+  React.useEffect(() => {
+    if (viewAnteriorRef.current !== currentView) {
+      setOrigemDaView(viewAnteriorRef.current);
+      viewAnteriorRef.current = currentView;
     }
-    switch (view) {
-      case "admin-coupon-form":
-        return "admin-coupons";
-      case "admin-product-form":
-      case "admin-coupons":
-      case "admin-shipping":
-        return "admin-products";
-      case "admin-user-detail":
-        return "admin-customers";
-      case "admin-push":
-      case "admin-banners":
-      case "admin-carousels":
-      case "admin-whatsapp-config":
-        return "admin-settings";
-      case "admin-reviews":
-      case "admin-qa":
-        return "admin-orders";
-      default:
-        return "profile";
-    }
-  };
+  }, [currentView]);
+
+  const getParentView = (view: View): View | "profile" =>
+    paiDaTelaDoAdmin(view, origemDaView, !!isOrderDetailsSubView);
 
   const parentView = getParentView(currentView);
   const isSubView = parentView !== "profile" || isOrderDetailsSubView;
@@ -733,8 +760,39 @@ export function AdminLayout({
             <ArrowLeft className="size-4 text-zinc-400" />{" "}
             <span>{isSubView ? "Voltar" : "Perfil"}</span>
           </Button>
+          {/*
+            A porta das Notificações no COMPUTADOR. O sino mora no cabeçalho
+            `lg:hidden` e esta `<aside>` é `hidden ... lg:flex`: são larguras
+            opostas, então uma porta só no sino deixaria a tela inalcançável
+            acima de 1024px. Foi exatamente esse o defeito que a revisão de
+            contexto limpo pegou — zero portas visíveis no computador.
+          */}
           <Button
             variant="ghost"
+            aria-label="Notificações"
+            onClick={() => {
+              haptic.light();
+              onNavigate(notificationBellTarget);
+            }}
+            onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
+            onMouseLeave={handleMouseLeave}
+            className="relative flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
+          >
+            <Bell className="size-4 text-admin-gold" />{" "}
+            <span>Notificações</span>
+            {temAvisoNoSino && (
+              <span className="absolute right-4 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
+            )}
+          </Button>
+          {/*
+            "Avisar clientes" é a tela que ENVIA push para quem compra — o
+            oposto da tela de cima, que só RECEBE. O rótulo "Push" dizia o
+            mecanismo e não o efeito, e com dois sinos no mesmo bloco os dois
+            botões se confundiriam: por isso o megafone.
+          */}
+          <Button
+            variant="ghost"
+            aria-label="Avisar clientes"
             onClick={() => {
               haptic.light();
               onNavigate("admin-push");
@@ -743,7 +801,8 @@ export function AdminLayout({
             onMouseLeave={handleMouseLeave}
             className="flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
           >
-            <Bell className="size-4 text-admin-gold" /> <span>Push</span>
+            <Megaphone className="size-4 text-admin-gold" />{" "}
+            <span>Avisar clientes</span>
           </Button>
         </div>
       </aside>
@@ -869,6 +928,7 @@ export function AdminLayout({
                 <Button
                   variant="ghost"
                   size="icon"
+                  aria-label="Notificações"
                   className="relative size-7 transform-gpu rounded-full border border-white/5 bg-zinc-900 hover:bg-zinc-800 active:scale-95"
                   onClick={() => {
                     haptic.light();
@@ -878,7 +938,7 @@ export function AdminLayout({
                   onMouseLeave={handleMouseLeave}
                 >
                   <Bell className="size-3.5 text-admin-gold" />
-                  {(pendingOrdersCount > 0 || pendingQuestionsCount > 0) && (
+                  {temAvisoNoSino && (
                     <span className="absolute right-1 top-1 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
                   )}
                 </Button>

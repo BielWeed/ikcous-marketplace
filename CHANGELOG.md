@@ -7,6 +7,54 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.8.0] — 2026-08-24
+
+**O sino do painel passou a ter para onde levar.** Vinte e duas entregas desde a
+`1.7.0`, e a maior delas é uma tela que não existia: a de **Notificações do
+lojista**. O número do meio sobe porque muda o que quem VENDE consegue fazer.
+
+### Para quem VENDE
+
+- **Tela de Notificações, nova.** Ela junta os quatro assuntos que antes só
+  apareciam se a lojista fosse procurar tela por tela: **pedido esperando
+  resposta**, **pergunta de cliente sem resposta**, **avaliação sem resposta** e
+  **produto acabando no estoque**. Os avisos vêm ordenados por urgência, e cada
+  um leva para a tela onde aquilo se resolve.
+- **O sino do topo do painel abre essa tela.** Antes ele levava para a tela de
+  envio de push — que é outro assunto: falar com o cliente, e não ser avisado
+  pela loja. Essa tela continua existindo, agora com o nome que descreve o que
+  ela faz: **"Avisar clientes"**.
+- **A tela tem porta no celular e no computador.** A entrada pelos Ajustes tinha
+  sumido do celular, e no computador não existia nenhuma.
+- **A tela parou de dizer "Tudo em dia" antes de ter conferido.** Enquanto os
+  dados carregavam, ela já afirmava que não havia nada pendente — e podia haver.
+- **A rodada velha de avisos parou de apagar a nova.** Duas cargas em sequência
+  podiam terminar fora de ordem, e a resposta antiga sobrescrevia a recente.
+- **O Voltar devolve para a tela de onde a pessoa veio**, não para um lugar fixo.
+- **A tela de Clientes parou de repetir a porta das Notificações.**
+- **A busca de pedido por telefone passou a achar.** Ela não achava; agora acha,
+  aceita o telefone **colado do WhatsApp** (com +55, parênteses e traços) e parou
+  de responder a um dígito solto, que trazia meia loja de volta.
+- **O painel parou de deixar criar produto com dois tipos de variação** (tamanho
+  E cor, por exemplo). O banco guarda uma combinação por item, então esse produto
+  nascia impossível de comprar — e o defeito só aparecia lá na frente, no
+  carrinho do cliente.
+- **O limiar de "estoque baixo" de cada produto chega ao app**, em vez de a loja
+  inteira usar o mesmo número.
+
+### Para quem COMPRA
+
+- **Em tela larga, dois carrinhos apareciam ao mesmo tempo.** Agora é um só.
+- **O carrinho mostra a opção escolhida, não o nome do grupo.** Onde se lia
+  "Cor", agora se lê "Azul" — o que a pessoa de fato escolheu.
+
+### Ambiente desta release
+
+Uma migration (`20260961000000`, a da busca por telefone), **já aplicada antes do
+merge** — migration não sobe com a Vercel. Nenhuma edge function tocada. A
+produção aponta para o mesmo banco do desenvolvimento (`cafkrminfnokvgjqtkle`),
+medido no site publicado antes de subir, e é nele que a migration está.
+
 ## [1.7.0] — 2026-08-23
 
 **A maior release desde o GitFlow: 113 commits, 67 correcoes.** Ao contrario da

@@ -1,0 +1,110 @@
+import { paiDaTelaDoAdmin } from "@/utils/pai-da-tela-do-admin";
+import { describe, expect, it } from "vitest";
+
+/**
+ * src/utils/pai-da-tela-do-admin.ts — para onde o botão "Voltar" do
+ * `AdminLayout` leva, a partir da tela atual.
+ *
+ * Existiam CINCO entradas para a tela "admin-push" (sino da barra superior,
+ * botão "Push" da sidebar, menu do cliente em duas variações, banner do
+ * painel) e todas caíam em "admin-settings" — a tabela fixa de
+ * `getParentView` não sabia de onde a pessoa tinha vindo. Quem abria Push
+ * pelo sino (o caminho mais comum, porque o sino aparece em toda tela do
+ * admin) apertava Voltar e caía em Configurações, longe de onde estava.
+ *
+ * Esta função recebe a ORIGEM (a view anterior, guardada num `useRef` no
+ * `AdminLayout`) e, só para "admin-push", devolve a origem em vez da tabela
+ * fixa — desde que a origem seja uma tela do admin diferente da própria
+ * "admin-push". As outras entradas da tabela ("admin-banners",
+ * "admin-carousels", "admin-whatsapp-config") continuam batendo sempre em
+ * "admin-settings": elas só são alcançadas por Configurações, então mudar
+ * isso não resolve bug nenhum e está fora do escopo desta correção.
+ */
+describe("paiDaTelaDoAdmin", () => {
+  it("admin-push com origem admin-customers volta para admin-customers", () => {
+    expect(paiDaTelaDoAdmin("admin-push", "admin-customers", false)).toBe(
+      "admin-customers",
+    );
+  });
+
+  it("admin-push com origem admin-orders volta para admin-orders", () => {
+    expect(paiDaTelaDoAdmin("admin-push", "admin-orders", false)).toBe(
+      "admin-orders",
+    );
+  });
+
+  it("admin-push com origem admin-dashboard volta para admin-dashboard", () => {
+    expect(paiDaTelaDoAdmin("admin-push", "admin-dashboard", false)).toBe(
+      "admin-dashboard",
+    );
+  });
+
+  it("admin-push com origem null cai no fallback admin-settings", () => {
+    expect(paiDaTelaDoAdmin("admin-push", null, false)).toBe("admin-settings");
+  });
+
+  it("admin-push com origem admin-push nunca volta para si mesma — cai em admin-settings", () => {
+    expect(paiDaTelaDoAdmin("admin-push", "admin-push", false)).toBe(
+      "admin-settings",
+    );
+  });
+
+  it('admin-push com origem de FORA do admin ("home") cai em admin-settings', () => {
+    expect(paiDaTelaDoAdmin("admin-push", "home", false)).toBe(
+      "admin-settings",
+    );
+  });
+
+  it("admin-banners com origem admin-customers NÃO herda o comportamento novo — continua admin-settings", () => {
+    expect(paiDaTelaDoAdmin("admin-banners", "admin-customers", false)).toBe(
+      "admin-settings",
+    );
+  });
+
+  it("admin-carousels com origem admin-orders continua admin-settings", () => {
+    expect(paiDaTelaDoAdmin("admin-carousels", "admin-orders", false)).toBe(
+      "admin-settings",
+    );
+  });
+
+  it("admin-whatsapp-config com origem admin-orders continua admin-settings", () => {
+    expect(
+      paiDaTelaDoAdmin("admin-whatsapp-config", "admin-orders", false),
+    ).toBe("admin-settings");
+  });
+
+  it("a tabela antiga continua de pé para as demais views", () => {
+    expect(paiDaTelaDoAdmin("admin-coupon-form", null, false)).toBe(
+      "admin-coupons",
+    );
+    expect(paiDaTelaDoAdmin("admin-product-form", null, false)).toBe(
+      "admin-products",
+    );
+    expect(paiDaTelaDoAdmin("admin-user-detail", null, false)).toBe(
+      "admin-customers",
+    );
+    expect(paiDaTelaDoAdmin("admin-qa", null, false)).toBe("admin-orders");
+    expect(paiDaTelaDoAdmin("home" as never, null, false)).toBe("profile");
+  });
+
+  it("admin-notifications e' tela de topo — o pai e' 'profile', nao uma subtela", () => {
+    // A tela nova NAO entra na tabela de `paiDaTelaDoAdmin` de proposito: ela
+    // e' tela de topo do painel, alcancada pelo sino de qualquer lugar. O
+    // `default` do switch ja devolve "profile", que e' o certo — e este caso
+    // existe para PRENDER isso: quem no futuro acrescentar a tela na tabela
+    // (ou copiar o tratamento especial do "admin-push" para ela) derruba este
+    // teste em vez de descobrir pelo botao Voltar levando para o lugar errado.
+    expect(paiDaTelaDoAdmin("admin-notifications", null, false)).toBe(
+      "profile",
+    );
+    expect(paiDaTelaDoAdmin("admin-notifications", "admin-orders", false)).toBe(
+      "profile",
+    );
+  });
+
+  it("PRECEDÊNCIA: sub-view de detalhe de pedido vence tudo, mesmo com view admin-push e origem admin-customers", () => {
+    expect(paiDaTelaDoAdmin("admin-push", "admin-customers", true)).toBe(
+      "admin-orders",
+    );
+  });
+});

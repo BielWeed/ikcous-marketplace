@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   Info,
   OctagonX,
-  ShoppingCart,
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { SearchBar } from "./SearchBar";
@@ -19,7 +18,6 @@ import { SearchBar } from "./SearchBar";
 import { branding } from "@/config/branding";
 import { useNotificationCenter } from "@/contexts/NotificationContextCore";
 import { useStore } from "@/contexts/StoreContext";
-import { useCartState } from "@/hooks/useCart";
 
 interface HeaderProps {
   onNavigate: (view: View, id?: string) => void;
@@ -43,7 +41,6 @@ export const Header = memo(function Header({
   scrollProgress = 0,
 }: Readonly<HeaderProps>) {
   const { config } = useStore();
-  const { cartCount } = useCartState();
   const { unreadCount } = useNotificationCenter();
   const isScrolled = scrollProgress > 20;
 
@@ -333,23 +330,15 @@ export const Header = memo(function Header({
                 }}
                 className="flex items-center gap-2"
               >
-                <button
-                  id="header-cart"
-                  onClick={() => {
-                    haptic.light();
-                    onNavigate("cart");
-                  }}
-                  className="relative hidden size-9 items-center justify-center rounded-full bg-zinc-50 transition-colors hover:bg-zinc-100 active:scale-90 xs:size-10 md:flex"
-                  aria-label="Carrinho"
-                >
-                  <ShoppingCart className="size-4.5 text-zinc-700 xs:size-5" />
-                  {cartCount > 0 && (
-                    <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white shadow-sm">
-                      {cartCount}
-                    </span>
-                  )}
-                </button>
-
+                {/*
+                  O carrinho do topo saiu em 24/08/2026. Ele era `hidden ...
+                  md:flex`, entao em tela larga aparecia AO MESMO TEMPO que o
+                  da barra de baixo — dois carrinhos, medidos vivos em 1280px
+                  nas posicoes (1176, 6) e (663, 716). A barra de baixo nunca
+                  some (em `md` ela so vira flutuante), logo o do topo era o
+                  que sobrava. Quem depende disto: `cartAnimation.ts`, que
+                  mira `#bottom-nav-cart` sempre.
+                */}
                 <button
                   onClick={() => {
                     haptic.light();

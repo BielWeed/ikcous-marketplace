@@ -8,6 +8,7 @@ import {
   Palette,
   RefreshCw,
   Save,
+  Send,
 } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -524,6 +525,76 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       <p className="mt-1 text-xs text-zinc-500">
                         Customize títulos, reordene posições e ative ou desative
                         carrosséis de produtos.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/*
+              A porta das Notificacoes mora AQUI desde 24/08/2026, e antes nao
+              morava em lugar nenhum que o celular alcancasse.
+
+              Medido no painel rodando, em 375px, depois que o cartao repetido
+              saiu da tela de Clientes: ZERO portas visiveis para `admin-push`
+              no Painel, em Ajustes e em Clientes. O botao "Push" da barra
+              lateral nao conta — o `aside` e' `lg:flex` e some abaixo de
+              1024px. E o sino do topo, naquele dia, so levava aqui com ZERO
+              pedido e ZERO pergunta pendentes; com pendencia ia a Pedidos, de
+              proposito. Sobrava um caminho de quatro toques por dentro do
+              menu de um cliente.
+
+              Desde entao o sino deixou de escolher destino: ele leva SEMPRE
+              as Notificacoes do lojista, que sao outra tela — a que RECEBE
+              aviso. Esta aqui e a que ENVIA, e por isso o cartao se chama
+              "Avisar clientes": duas telas nao podem dividir o mesmo nome no
+              mesmo painel.
+
+              Ajustes e' o lugar certo por dois motivos que ja existiam: as
+              telas irmas (Banners, Carrosseis) moram aqui, e o Voltar de
+              `admin-push` ja apontava para ca. A tela tinha o pai sem ter o
+              filho.
+            */}
+            <div className="space-y-3 delay-100 duration-300 animate-in fade-in slide-in-from-bottom-2">
+              <h2 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                Clientes &amp; Avisos
+              </h2>
+              <div className="grid grid-cols-1 gap-3">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onNavigate("admin-push")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onNavigate("admin-push");
+                    }
+                  }}
+                  className="group relative cursor-pointer overflow-hidden rounded-3xl border border-white/5 bg-zinc-950/40 p-5 shadow-xl transition-all duration-500 hover:border-blue-500/30 hover:bg-zinc-900/30 active:scale-[0.98]"
+                >
+                  {/* Ambient glow */}
+                  <div className="absolute -bottom-6 -right-6 size-24 rounded-full bg-blue-500/5 blur-2xl transition-all duration-700 group-hover:bg-blue-500/15" />
+
+                  <div className="relative flex h-full flex-col justify-between gap-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-blue-500/20 bg-blue-500/10 text-blue-400 transition-colors duration-300 group-hover:bg-blue-500 group-hover:text-black">
+                        <Send className="size-5" />
+                      </div>
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5 text-zinc-400 transition-all duration-300 group-hover:border-transparent group-hover:bg-blue-500 group-hover:text-black">
+                        <ArrowUpRight className="size-4 stroke-[2.5]" />
+                      </div>
+                    </div>
+                    <div>
+                      <span className="mb-1 block text-[9px] font-black uppercase tracking-widest text-blue-500">
+                        Engajamento
+                      </span>
+                      <h3 className="text-base font-black leading-tight tracking-tight text-white">
+                        Avisar clientes
+                      </h3>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Envie avisos no celular dos clientes — para todos, para
+                        quem compra sempre ou para uma pessoa só.
                       </p>
                     </div>
                   </div>
