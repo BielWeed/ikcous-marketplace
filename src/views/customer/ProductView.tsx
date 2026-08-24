@@ -890,7 +890,7 @@ export const ProductView = React.memo(function ProductView({
                     ? "text-zinc-500"
                     : isLowStock
                       ? "text-rose-600"
-                      : "text-emerald-600"
+                      : "text-emerald-700"
                 }
               >
                 {isOutOfStock

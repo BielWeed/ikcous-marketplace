@@ -91,7 +91,7 @@ export function ShippingProgress({
           <p
             className={cn(
               "text-[10px] font-bold uppercase tracking-widest mt-0.5",
-              shipping === 0 ? "text-emerald-600/70" : "text-zinc-400",
+              shipping === 0 ? "text-emerald-700" : "text-zinc-400",
             )}
           >
             {shipping === 0 ? "Premium Service Ativado" : "Benefício exclusivo"}
@@ -100,10 +100,10 @@ export function ShippingProgress({
 
         {savings > 0 && (
           <div className="flex flex-col items-end text-right animate-in fade-in slide-in-from-right-4">
-            <span className="mb-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-600/70">
+            <span className="mb-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-700">
               Economia
             </span>
-            <span className="shrink-0 rounded-lg bg-emerald-100/50 px-2 py-0.5 text-xs font-black tracking-tighter text-emerald-600 sm:text-sm">
+            <span className="shrink-0 rounded-lg bg-emerald-100/50 px-2 py-0.5 text-xs font-black tracking-tighter text-emerald-700 sm:text-sm">
               + {formatCurrency(savings)}
             </span>
           </div>
@@ -116,7 +116,7 @@ export function ShippingProgress({
           <span
             className={cn(
               "text-sm font-black tracking-tighter transition-colors",
-              shipping === 0 ? "text-emerald-600" : "text-zinc-900",
+              shipping === 0 ? "text-emerald-700" : "text-zinc-900",
             )}
           >
             {Math.floor(progressPercent)}%

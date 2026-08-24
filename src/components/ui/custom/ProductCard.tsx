@@ -277,7 +277,7 @@ export const ProductCard = memo(function ProductCard({
                     ? "text-zinc-500"
                     : product.stock <= 5
                       ? "text-rose-600"
-                      : "text-emerald-600"
+                      : "text-emerald-700"
                 }
               >
                 {product.stock <= 0
