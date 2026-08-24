@@ -7,6 +7,47 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.8.1] — 2026-08-24
+
+**Texto verde que ninguém conseguia ler volta a ser legível, em 14 pontos.**
+Segunda release do dia; sobe só o último dígito porque **nenhum comportamento
+muda** — o que muda é conseguir enxergar o que a tela já dizia.
+
+### Para quem COMPRA
+
+Todo texto pequeno em verde media **3,58** de contraste sobre o fundo
+verde-claro e **3,77** sobre branco. O mínimo para texto pequeno ser legível é
+**4,5**. Agora mede **5,21** e **5,48**. O que volta a se ler:
+
+- **"Estoque: N"** no card da prateleira e na página do produto.
+- **"Economizou R$ X"** no carrinho, e o **"Grátis"** da linha do frete.
+- **"Vantagem Ativa"** e o valor recebido, no fim do checkout.
+- **"Avaliado"** e a linha de desconto/cupom, na ficha do pedido.
+- **"Compra verificada"** no perfil, e o aviso de sucesso nas notificações.
+- Quatro trechos da **barra de frete grátis** — e esses eram os piores da loja,
+  em **2,40**.
+
+### O detalhe que quase passou
+
+Na barra de frete o texto não era só claro demais: ele tinha **transparência**.
+Com ela, **nenhum verde da paleta alcança o mínimo** — nem o mais escuro que
+existe, que para em 4,16. Uma correção que trocasse só o tom teria deixado os
+dois piores pontos da loja reprovando, e o registro diria que consertou. Ali a
+transparência saiu.
+
+### O que NÃO mudou, de propósito
+
+Seis pontos continuam no verde antigo: são **ícone**, e a régua de ícone é mais
+folgada (3:1, não 4,5:1) porque não é texto para ler. Os seis passam. Trocá-los
+seria mexer no desenho sem defeito medido.
+
+### Ambiente desta release
+
+**Nenhuma** migration e **nenhuma** edge function entre a `1.8.0` e esta —
+só arquivos de tela e o teto de dívida de lint, que foi abaixado para o número
+que o CI mediu (eslint 551→550, biome 28→23; a queda veio da develop, conferida
+contra o CI do release anterior, não suposta).
+
 ## [1.8.0] — 2026-08-24
 
 **O sino do painel passou a ter para onde levar.** Vinte e duas entregas desde a
