@@ -30,6 +30,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
+import { temGrupoDemais, travaDeUmGrupoSo } from "@/utils/um-grupo-de-variacao";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -366,14 +367,19 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     }));
   };
 
+  // Um produto so pode ter UM grupo de variacao -- ver `um-grupo-de-variacao.ts`.
+  // Enquanto nao ha nenhuma variante, sugerir os grupos comuns ajuda; a partir
+  // da primeira, sugerir "Tamanho" a quem ja escolheu "Cor" seria convidar
+  // para o estado que a trava logo abaixo recusa.
+  const gruposJaUsados = formData.variants.map((v) => v.name).filter(Boolean);
   const suggestedAttributes = Array.from(
-    new Set([
-      "Cor",
-      "Tamanho",
-      "Voltagem",
-      ...formData.variants.map((v) => v.name),
-    ]),
+    new Set(
+      gruposJaUsados.length > 0
+        ? gruposJaUsados
+        : ["Cor", "Tamanho", "Voltagem"],
+    ),
   ).filter(Boolean);
+  const produtoTemGrupoDemais = temGrupoDemais(formData.variants);
 
   useEffect(() => {
     formData.images.forEach((url) => {
@@ -919,6 +925,26 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     }
     if (!variantFormData.value.trim()) {
       toast.error("O valor do atributo (ex: Espacial Grey) é obrigatório.");
+      return;
+    }
+
+    // Um grupo por produto. Com dois, o estoque passa a ser somado em dobro, o
+    // carrinho funde combinacoes diferentes numa linha so e o pedido guarda
+    // metade da escolha -- quem compra um P e um M recebe dois P. O porque
+    // inteiro, medido, esta em `src/utils/um-grupo-de-variacao.ts`.
+    const trava = travaDeUmGrupoSo(
+      formData.variants,
+      editingVariant?.id ?? null,
+      variantFormData.name,
+    );
+    if (trava.bloqueia) {
+      toast.error(`Este produto já usa "${trava.grupoEmUso}"`, {
+        description:
+          "Cada produto aceita um tipo de variação só. Para vender cor e " +
+          "tamanho juntos, crie as opções combinadas dentro do mesmo tipo " +
+          '(ex: "Rosa P", "Rosa M") — assim o estoque e o pedido saem certos.',
+        duration: 10000,
+      });
       return;
     }
 
@@ -2237,6 +2263,28 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             </button>
           </div>
 
+          {/* O produto ja esta no estado que mente: dois grupos de variacao.
+              A trava impede chegar aqui, mas produto antigo pode ja estar --
+              e nesse caso o numero de estoque na tela acima esta errado. Dizer
+              isso e' melhor que somar em silencio. */}
+          {produtoTemGrupoDemais && (
+            <div className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+              <p className="text-[11px] font-black uppercase tracking-widest text-amber-400">
+                Este produto tem tipos de variação demais
+              </p>
+              <p className="text-[10px] font-medium leading-relaxed text-amber-200/80">
+                Cada produto aceita <b>um tipo só</b> de variação. Com mais de
+                um, o estoque mostrado acima soma as opções em dobro e o pedido
+                do cliente guarda só metade da escolha — quem pedir um P e um M
+                recebe dois P.
+              </p>
+              <p className="text-[10px] font-medium leading-relaxed text-amber-200/80">
+                Para consertar, edite as variações abaixo e junte tudo num tipo
+                só, com as opções combinadas (ex: <i>Rosa P</i>, <i>Rosa M</i>).
+              </p>
+            </div>
+          )}
+
           {/* Variants Guide Section */}
           <AnimatePresence>
             {expandedHelp.productVariants && (
@@ -2254,7 +2302,10 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4">
                   <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
                     Variações permitem vender o mesmo produto com diferentes
-                    opções de cor, tamanho, voltagem, etc.
+                    opções — cor, tamanho, voltagem. Cada produto aceita{" "}
+                    <b className="text-zinc-350">um tipo só</b>: para vender cor
+                    e tamanho juntos, combine os dois no valor da opção (ex:
+                    Nome: <i>Modelo</i>, Valores: <i>Rosa P</i>, <i>Rosa M</i>).
                   </p>
                   <ul className="list-none space-y-2 pl-0 text-[10px] font-medium text-zinc-500">
                     <li className="flex items-start gap-2.5">
@@ -3271,7 +3322,10 @@ const VariantItem = React.memo(function VariantItem({
         )}
         <div>
           <div className="mb-1 flex items-center gap-2">
-            <span className="text-xs font-black uppercase italic tracking-tight text-white">
+            <span
+              data-testid="variante-cadastrada"
+              className="text-xs font-black uppercase italic tracking-tight text-white"
+            >
               {variant.name}: {variant.value}
             </span>
             {!variant.active && (
