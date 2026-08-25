@@ -58,7 +58,7 @@ describe("mapRecord de banners (realtimeSyncEngine) não empobrece o cache", () 
     const config = TABLE_CONFIGS.find((c) => c.table === "banners");
     expect(config).toBeDefined();
 
-    const mapeado: Record<string, unknown> = config!.mapRecord(
+    const mapeado: Record<string, unknown> = config!.mapRecord!(
       LINHA_CRUA,
     ) as Record<string, unknown>;
 
@@ -89,7 +89,7 @@ describe("mapRecord de banners (realtimeSyncEngine) não empobrece o cache", () 
   it("default honesto: showTextOverlay ausente vira true (o desenho não some calado)", () => {
     const config = TABLE_CONFIGS.find((c) => c.table === "banners");
     const { show_text_overlay: _omitido, ...semOverlay } = LINHA_CRUA;
-    const mapeado = config!.mapRecord(semOverlay) as Record<string, unknown>;
+    const mapeado = config!.mapRecord!(semOverlay) as Record<string, unknown>;
     expect(mapeado.showTextOverlay).toBe(true);
   });
 });
