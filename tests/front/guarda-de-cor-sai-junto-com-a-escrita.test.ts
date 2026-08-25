@@ -47,7 +47,8 @@ const PADRAO_ESCRITA =
 // Ocorrências ESPERADAS por arquivo, todas medidas com o padrão acima em
 // 25/08 (furo 2 da 1315: whitelist por arquivo INTEIRO escondia 27
 // ocorrências, 10 delas no próprio StoreContext — o caminho de escrita).
-// Ocorrência NOVA em arquivo listado = o teste CAI e alguém decide:
+// Ocorrência NOVA ou REMOVIDA em arquivo listado = o teste CAI e alguém
+// decide (a contagem é bidirecional desde a revisão final de 25/08):
 //   - é LEITURA legítima? atualiza o `n` aqui com o motivo;
 //   - é ESCRITA? tira a guarda do corPrimariaEfetiva junto com ela e
 //     INVERTE o teste (e) de cor-da-loja-vem-do-banco.
@@ -104,7 +105,10 @@ describe("acoplamento guarda x escrita de primaryColor (revisões 1255 + 1315)",
       // usuário — injeção por aqui é impossível por construção.
       // eslint-disable-next-line security/detect-object-injection
       const esperado = LEITURAS_CONHECIDAS[relativo]?.n ?? 0;
-      if (achados > esperado) {
+      // Bidirecional (revisão final de 25/08): comparar só `>` deixa uma
+      // leitura que SUMIU num refactor baixar o real sem baixar o n — vagas
+      // grátis para escrita nova entrar calada depois.
+      if (achados !== esperado) {
         problemas.push(
           `${relativo}: ${achados} ocorrência(s) do padrão, esperava ${esperado}`,
         );
@@ -113,7 +117,7 @@ describe("acoplamento guarda x escrita de primaryColor (revisões 1255 + 1315)",
 
     if (problemas.length > 0) {
       throw new Error(
-        `Escrita de primaryColor surgiu (ou contagem subiu): ${problemas.join("; ")}. ` +
+        `Escrita de primaryColor surgiu (ou a contagem do arquivo MUDOU — pra mais ou pra menos): ${problemas.join("; ")}. ` +
           "Se for LEITURA legítima, atualize o n em LEITURAS_CONHECIDAS com o motivo. " +
           "Se for ESCRITA: a guarda temporária do corPrimariaEfetiva (#000000 → " +
           "semente) precisa SAIR JUNTO com ela — preto passa a ser escolha de " +
