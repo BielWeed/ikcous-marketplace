@@ -37,8 +37,12 @@ const FONTES = import.meta.glob<string>("/src/**/*.{ts,tsx}", {
 //     no banco — hoje deve ser zero.
 // O lookbehind `(?<!\.)` exclui leitura com ponto (`config.primaryColor`),
 // e o lookahead não casa os terminadores de leitura (`)`, `.`).
+// A flag `g` NÃO é detalhe (furo 2 vivo, canal #73): sem ela o `match`
+// devolve no máximo UM resultado e a contagem vira 0/1 — os números
+// esperados ficam decorativos, desconectados da comparação, e nenhum
+// arquivo listado dispara por mais escrita que apareça nele.
 const PADRAO_ESCRITA =
-  /(?<!\.)\bprimaryColor\s*(?=[:=,}\s]|$)|\bprimary_color\b/;
+  /(?<!\.)\bprimaryColor\s*(?=[:=,}\s]|$)|\bprimary_color\b/g;
 
 // Ocorrências ESPERADAS por arquivo, todas medidas com o padrão acima em
 // 25/08 (furo 2 da 1315: whitelist por arquivo INTEIRO escondia 27
