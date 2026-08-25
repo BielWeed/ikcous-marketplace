@@ -423,16 +423,20 @@ export const StrategicIntelligenceBlocks = React.memo(
 
             {/*
               #104: legenda da divergência entre bases. O total deste
-              gráfico soma `get_category_analytics` (itens + frete, SEM
-              subtrair desconto); o card "Volume Total" (KpiSummaryCards) usa
-              `SUM(marketplace_orders.total)`, já líquido de desconto. Com
-              qualquer pedido com cupom os dois números divergem — decisão do
-              brief da Trilha 4/#104 é não mudar o cálculo, só explicitar a
-              diferença aqui.
+              gráfico soma `get_category_analytics` — SÓ itens, SEM
+              subtrair desconto e SEM frete (a linha sintética 'Frete'
+              saiu na migration 20261003000000; antes ela entrava aqui).
+              O card "Volume Total" (KpiSummaryCards) usa
+              `SUM(marketplace_orders.total)`, já líquido de desconto.
+              Com qualquer pedido com cupom os dois números divergem —
+              decisão do brief da Trilha 4/#104 é não mudar o cálculo,
+              só explicitar a diferença aqui. Par da frase guardado por
+              tests/front/grafico-de-categorias-nao-promete-frete.test.tsx.
             */}
             <p className="relative z-10 mb-3 text-[9px] font-medium normal-case leading-snug text-zinc-600 sm:mb-5">
-              Total deste gráfico = itens + frete, sem desconto. Pode divergir
-              do card "Volume Total" (já líquido de desconto).
+              Total deste gráfico = itens, sem desconto e sem frete. Pode
+              divergir do card "Volume Total" (líquido de desconto — e com
+              frete).
             </p>
 
             {/* CONTAINER DO GRÁFICO E DA LEGENDA DETALHADA */}
