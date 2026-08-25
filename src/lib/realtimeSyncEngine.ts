@@ -77,6 +77,13 @@ export const TABLE_CONFIGS: TableConfig[] = [
   {
     table: "banners",
     store: "banners",
+    // COMPLETO (conserto 5, revisão 20260825-2115): este mapRecord alimenta
+    // o syncAll, que faz replaceAll da loja inteira de banners no DataVault
+    // — mapear só as 8 colunas antigas empobrecia o cache depois que a
+    // migration 20261000000000 tornou as outras 15 reais: banner salvo com
+    // subtitulo/selo/modelo voltava SEM eles no offline/cache frio.
+    // Conversões idênticas às do useBanners (Number na opacidade, datas
+    // como vêm em ISO, showTextOverlay com default true).
     mapRecord: (raw: any) => ({
       id: raw.id,
       imageUrl: raw.image_url || raw.imagem_url,
@@ -85,6 +92,24 @@ export const TABLE_CONFIGS: TableConfig[] = [
       position: raw.position,
       active: raw.active ?? raw.ativo ?? true,
       order: raw.order || 0,
+      subtitle: raw.subtitle || "",
+      subtitleColor: raw.subtitle_color || "",
+      titleColor: raw.title_color || "",
+      buttonText: raw.button_text || "",
+      buttonBgColor: raw.button_bg_color || "",
+      buttonTextColor: raw.button_text_color || "",
+      fontFamily: raw.font_family || "",
+      overlayColor: raw.overlay_color || "",
+      overlayOpacity:
+        raw.overlay_opacity !== null && raw.overlay_opacity !== undefined
+          ? Number(raw.overlay_opacity)
+          : undefined,
+      badgeText: raw.badge_text || "",
+      templateType: raw.template_type || "default",
+      productId: raw.product_id || undefined,
+      startDate: raw.start_date || null,
+      endDate: raw.end_date || null,
+      showTextOverlay: raw.show_text_overlay ?? true,
     }),
   },
   {
