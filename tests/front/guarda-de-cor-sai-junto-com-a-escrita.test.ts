@@ -1,5 +1,6 @@
 // TRIPWIRE do acoplamento guarda x escrita de cor (condição da revisão
-// 20260825-1255 para ACEITAR a guarda temporária do corPrimariaEfetiva).
+// 20260825-1255 para ACEITAR a guarda temporária do corPrimariaEfetiva;
+// furos 1-3 corrigidos conforme a revisão 20260825-1315).
 //
 // O contrato, nas duas direções:
 //   1. ENQUANTO nenhum caminho do app escrever `primaryColor`, a guarda
@@ -26,43 +27,91 @@ const FONTES = import.meta.glob<string>("/src/**/*.{ts,tsx}", {
   eager: true,
 });
 
-// Arquivos onde `primaryColor` aparece como LEITURA, declaração de tipo ou
-// construção da config a partir do banco — não são caminhos de ESCRITA pelo
-// usuário. Novo uso legítimo de leitura? Adicione aqui COM o motivo.
-const LEITURAS_CONHECIDAS: Record<string, string> = {
-  "src/config/cor-da-loja.ts": "a guarda em si + o default sem reserva",
-  "src/contexts/StoreContext.tsx": "lê do banco (mapConfig) e aplica em runtime",
-  "src/types/index.ts": "declaração do tipo (primaryColor?: string)",
-  "src/views/admin/AdminBannersView.tsx": "lê config.primaryColor como sugestão de paleta",
-  "src/config/branding.ts": "declarações do branding de build (tipos/leitura da semente)",
-  "src/lib/realtimeSyncEngine.ts": "destrutura primaryColor para LEITURA do cache offline",
-  "src/types/database.types.ts": "declaração do schema do banco (tipos gerados)",
-  "src/types/supabase.ts": "declaração do schema do banco (tipos gerados)",
+// Padrões que indicam ESCRITA (ou forma ambígua que merece revisão):
+//   - `primaryColor:` chave de objeto, `primaryColor =` atribuição;
+//   - shorthand com OU sem vírgula — `{ primaryColor }` e
+//     `{ ...config, primaryColor }` são as formas mais prováveis de um
+//     handler de React nascer (furo 1 da 1315: exigir vírgula escapava
+//     exatamente as duas mais prováveis);
+//   - qualquer `primary_color` (snake) em src/ é payload de escrita direta
+//     no banco — hoje deve ser zero.
+// O lookbehind `(?<!\.)` exclui leitura com ponto (`config.primaryColor`),
+// e o lookahead não casa os terminadores de leitura (`)`, `.`).
+const PADRAO_ESCRITA =
+  /(?<!\.)\bprimaryColor\s*(?=[:=,}\s]|$)|\bprimary_color\b/;
+
+// Ocorrências ESPERADAS por arquivo, todas medidas com o padrão acima em
+// 25/08 (furo 2 da 1315: whitelist por arquivo INTEIRO escondia 27
+// ocorrências, 10 delas no próprio StoreContext — o caminho de escrita).
+// Ocorrência NOVA em arquivo listado = o teste CAI e alguém decide:
+//   - é LEITURA legítima? atualiza o `n` aqui com o motivo;
+//   - é ESCRITA? tira a guarda do corPrimariaEfetiva junto com ela e
+//     INVERTE o teste (e) de cor-da-loja-vem-do-banco.
+const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
+  "src/contexts/StoreContext.tsx": {
+    n: 10,
+    porque: "lê do banco (mapConfig) e aplica em runtime — inclusive updateConfig",
+  },
+  "src/types/database.types.ts": {
+    n: 6,
+    porque: "declaração do schema do banco (tipos gerados)",
+  },
+  "src/types/supabase.ts": {
+    n: 6,
+    porque: "declaração do schema do banco (tipos gerados)",
+  },
+  "src/lib/realtimeSyncEngine.ts": {
+    n: 2,
+    porque: "destrutura primaryColor para LEITURA do cache offline",
+  },
+  "src/config/cor-da-loja.ts": {
+    n: 1,
+    porque: "a guarda em si + o default sem reserva",
+  },
+  "src/views/admin/AdminBannersView.tsx": {
+    n: 1,
+    porque: "lê config.primaryColor como sugestão de paleta (tem seletor: ligá-lo ao primaryColor conta como NOVA e cai aqui)",
+  },
+  "src/config/branding.ts": {
+    n: 1,
+    porque: "declarações do branding de build (tipos/leitura da semente)",
+  },
+  "src/types/index.ts": {
+    n: 0,
+    porque: "tipo opcional (primaryColor?: string) — o `?` não casa o padrão; zero esperado",
+  },
 };
 
-// Padrões que indicam ESCRITA: chave em objeto (primaryColor: v), atribuição
-// (primaryColor =) e shorthand (primaryColor,). E qualquer primary_color
-// (snake) em src/ é payload de escrita direta no banco — hoje deve ser zero.
-const PADRAO_ESCRITA = /\bprimaryColor\s*[:=]|\bprimaryColor\s*,|\bprimary_color\b/;
+describe("acoplamento guarda x escrita de primaryColor (revisões 1255 + 1315)", () => {
+  it("a varredura não é vazia (furo 3 da 1315: verde compatível com glob vazio não é evidência)", () => {
+    // Hoje: 198 arquivos .ts/.tsx em src/. Se o glob um dia devolver vazio
+    // (mudança de root do vite, padrão do glob, migração do ?raw), a direção
+    // 1 morreria sem sinal — esta linha transforma "a sabotagem provou uma
+    // vez" em "o teste prova toda rodada".
+    expect(Object.keys(FONTES).length).toBeGreaterThan(150);
+  });
 
-describe("acoplamento guarda x escrita de primaryColor (revisão 20260825-1255)", () => {
   it("a guarda existe enquanto (e somente enquanto) nenhuma escrita de cor existe", () => {
-    const escritas: string[] = [];
+    const problemas: string[] = [];
     for (const [caminhoAbsoluto, texto] of Object.entries(FONTES)) {
       const relativo = caminhoAbsoluto.replace(/^\/src\//, "src/");
-      if (LEITURAS_CONHECIDAS[relativo]) continue;
-      if (PADRAO_ESCRITA.test(texto)) {
-        escritas.push(relativo);
+      const achados = texto.match(PADRAO_ESCRITA)?.length ?? 0;
+      const esperado = LEITURAS_CONHECIDAS[relativo]?.n ?? 0;
+      if (achados > esperado) {
+        problemas.push(
+          `${relativo}: ${achados} ocorrência(s) do padrão, esperava ${esperado}`,
+        );
       }
     }
 
-    if (escritas.length > 0) {
+    if (problemas.length > 0) {
       throw new Error(
-        `Escrita de primaryColor surgiu em: ${escritas.join(", ")}. ` +
-          "A guarda temporária do corPrimariaEfetiva (#000000 → semente) " +
-          "precisa SAIR JUNTO com esta escrita — preto passa a ser escolha " +
-          "de lojista. Remova a comparação em src/config/cor-da-loja.ts " +
-          "(bloco SOBRE #000000) e INVERTA o teste (e) de " +
+        `Escrita de primaryColor surgiu (ou contagem subiu): ${problemas.join("; ")}. ` +
+          "Se for LEITURA legítima, atualize o n em LEITURAS_CONHECIDAS com o motivo. " +
+          "Se for ESCRITA: a guarda temporária do corPrimariaEfetiva (#000000 → " +
+          "semente) precisa SAIR JUNTO com ela — preto passa a ser escolha de " +
+          "lojista. Remova a comparação em src/config/cor-da-loja.ts (bloco " +
+          "SOBRE #000000) e INVERTA o teste (e) de " +
           "cor-da-loja-vem-do-banco.test.tsx. Depois atualize a whitelist " +
           "deste tripwire com o novo caminho de escrita.",
       );
