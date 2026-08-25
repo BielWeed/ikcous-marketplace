@@ -1,3 +1,5 @@
+import { branding } from "@/config/branding";
+import { useStore } from "@/contexts/StoreContext";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
@@ -18,6 +20,9 @@ export function PushNotificationBanner({
 }: PushNotificationBannerProps) {
   const { isSupported, permission, subscription, subscribe } =
     usePushNotifications();
+  // Nome da loja em runtime: banco (config.storeName) com fallback no branding do build
+  const { config } = useStore();
+  const appName = config.storeName ?? branding.appName;
   const [isVisible, setIsVisible] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
 
@@ -117,11 +122,11 @@ export function PushNotificationBanner({
               </div>
             </div>
 
-            {/* Conteudo do banner de notificacoes da IKCOUS */}
+            {/* Conteudo do banner de notificacoes da loja */}
             <div className="flex-1 space-y-1">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <h4 className="text-xs font-black uppercase tracking-wider text-white">
-                  IKCOUS Novidades 🔔
+                  {appName} Novidades 🔔
                 </h4>
               </div>
               <p className="text-[11px] leading-snug text-zinc-300">

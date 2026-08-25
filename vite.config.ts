@@ -19,6 +19,8 @@ let branding = {
     secondary: "#18181b",
     accent: "#6366F1",
   },
+  city: "Monte Carmelo",
+  state: "MG",
   supportContact: "",
 };
 
@@ -34,6 +36,20 @@ try {
 // https://vite.dev/config/
 export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), "");
+
+  // Identidade do build: env (se configurada) > branding.json > default.
+  // Sem nenhuma env de identidade definida, o resultado é idêntico ao build
+  // anterior (tudo cai no branding.json).
+  const appName =
+    env.VITE_APP_NAME || branding.appName || "IKCOUS Marketplace";
+  const brandPrimary =
+    env.VITE_BRAND_PRIMARY || branding.theme?.primary || "#18181b";
+  const brandSecondary =
+    env.VITE_BRAND_SECONDARY || branding.theme?.secondary || "#18181b";
+  const brandAccent =
+    env.VITE_BRAND_ACCENT || branding.theme?.accent || "#6366F1";
+  const storeCity = env.VITE_STORE_CITY || branding.city || "Monte Carmelo";
+  const storeState = env.VITE_STORE_STATE || branding.state || "MG";
 
   const isDev = mode === "development";
 
@@ -123,9 +139,9 @@ export default defineConfig(({ mode, command }) => {
     };
   }
 
-  const rgbPrimary = hexToRgb(branding.theme?.primary || "#18181b");
-  const rgbSecondary = hexToRgb(branding.theme?.secondary || "#18181b");
-  const rgbAccent = hexToRgb(branding.theme?.accent || "#6366F1");
+  const rgbPrimary = hexToRgb(brandPrimary);
+  const rgbSecondary = hexToRgb(brandSecondary);
+  const rgbAccent = hexToRgb(brandAccent);
 
   return {
     base: "/",
@@ -154,7 +170,6 @@ export default defineConfig(({ mode, command }) => {
       {
         name: "html-branding-transform",
         transformIndexHtml(html: string) {
-          const appName = branding.appName || "IKCOUS Marketplace";
           const firstLetter = appName.trim().charAt(0).toUpperCase();
           const shortAppName = appName.split(" - ")[0].trim();
 
@@ -172,16 +187,23 @@ export default defineConfig(({ mode, command }) => {
 
           let customizedHtml = html;
 
-          // Substitui title
+          // Substitui title (cidade/estado: env > branding.json > default)
           customizedHtml = customizedHtml.replace(
             /<title>.*?<\/title>/g,
-            `<title>${appName} | Monte Carmelo, MG</title>`,
+            `<title>${appName} | ${storeCity}, ${storeState}</title>`,
           );
 
           // Substitui description
           customizedHtml = customizedHtml.replace(
             /<meta name="description" content=".*?" \/>/g,
             `<meta name="description" content="${description}" />`,
+          );
+
+          // Substitui theme-color com a cor primária efetiva (env > branding.json).
+          // O runtime cobre as mudanças vindas do banco depois.
+          customizedHtml = customizedHtml.replace(
+            /<meta name="theme-color" content=".*?" \/>/g,
+            `<meta name="theme-color" content="${brandPrimary}" />`,
           );
 
           // Substitui apple-mobile-web-app-title
@@ -261,9 +283,9 @@ export default defineConfig(({ mode, command }) => {
           const styleTag = `
   <style id="dynamic-branding-style">
     :root {
-      --primary-color: ${branding.theme?.primary || "#18181b"};
-      --secondary-color: ${branding.theme?.secondary || "#18181b"};
-      --accent-color: ${branding.theme?.accent || "#6366F1"};
+      --primary-color: ${brandPrimary};
+      --secondary-color: ${brandSecondary};
+      --accent-color: ${brandAccent};
       --orb-1-color: rgba(${rgbPrimary.r}, ${rgbPrimary.g}, ${rgbPrimary.b}, 0.25);
       --orb-2-color: rgba(${rgbSecondary.r}, ${rgbSecondary.g}, ${rgbSecondary.b}, 0.20);
       --orb-3-color: rgba(${rgbAccent.r}, ${rgbAccent.g}, ${rgbAccent.b}, 0.20);
@@ -291,13 +313,13 @@ export default defineConfig(({ mode, command }) => {
           "offline.html",
         ],
         manifest: {
-          name: branding.appName,
-          short_name: branding.appName.split(" - ")[0].trim(),
+          name: appName,
+          short_name: appName.split(" - ")[0].trim(),
           description:
             (branding as any).description ||
-            `${branding.appName} - O seu shopping local completo`,
-          theme_color: branding.theme?.primary || "#18181b",
-          background_color: branding.theme?.primary || "#18181b",
+            `${appName} - O seu shopping local completo`,
+          theme_color: brandPrimary,
+          background_color: brandPrimary,
           display: "standalone",
           orientation: "portrait",
           scope: "/",

@@ -240,20 +240,21 @@ export const HomeView = React.memo(function HomeView({
   const homeDescription = cidadeLoja
     ? `Descubra produtos exclusivos com frete grátis em ${cidadeLoja}.`
     : "Descubra produtos exclusivos.";
-  const homeSocialTitle = `${branding.appName} - Seu Shopping Local`;
+  // Mesma preferência do Header: o nome que o lojista gravou no banco vem
+  // antes do branding.json estático.
+  const nomeDaLoja = config.storeName?.trim() || branding.appName;
+  const homeSocialTitle = `${nomeDaLoja} - Seu Shopping Local`;
   const homeLogo = `${globalThis.location.origin}/branding/logo.png`;
 
   useDocumentMeta({
-    title: cidadeLoja
-      ? `${branding.appName} | ${cidadeLoja}`
-      : branding.appName,
+    title: cidadeLoja ? `${nomeDaLoja} | ${cidadeLoja}` : nomeDaLoja,
     names: {
       // "Entrega ultrarrápida" e "troca garantida" saíram: não existe fluxo
       // de troca (issues #46 e #108, ambas abertas) nem entrega ultrarrápida
       // — é a mesma mentira que o PR #225 já tinha tirado do carrinho.
       description: cidadeLoja
-        ? `O marketplace online de ${cidadeLoja} - ${branding.appName}`
-        : `O marketplace online - ${branding.appName}`,
+        ? `O marketplace online de ${cidadeLoja} - ${nomeDaLoja}`
+        : `O marketplace online - ${nomeDaLoja}`,
       "twitter:card": "summary_large_image",
       "twitter:title": homeSocialTitle,
       "twitter:description": homeDescription,
@@ -269,7 +270,7 @@ export const HomeView = React.memo(function HomeView({
     jsonLd: {
       "@context": "https://schema.org",
       "@type": "WebSite",
-      name: branding.appName,
+      name: nomeDaLoja,
       url: globalThis.location.origin,
       potentialAction: {
         "@type": "SearchAction",

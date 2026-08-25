@@ -238,6 +238,24 @@ function valorFoiGravado(
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
+// Contrato de identidade do shareText (só na LEITURA, não é migration): o
+// texto default histórico ("Olha que achei na IKCOUS!", nunca customizado
+// pela loja) cita o nome da loja QUANDO o banco tem um (store_name). Sem
+// store_name, o texto volta cru: a igualdade byte a byte com o default é o
+// que impede o mount de gravar config "nova" no DataVault sem nada ter
+// mudado (medido: compor com branding.appName quebrava essa igualdade e
+// disparava um put a cada primeiro carregamento). Texto customizado nunca
+// é sobrescrito; o default gravado NO BANCO (dbInsert) segue o histórico.
+function componhaShareText(
+  bruto: string | undefined,
+  storeName: string | undefined,
+): string {
+  const texto = bruto ?? defaultStoreConfig.shareText;
+  if (texto !== defaultStoreConfig.shareText) return texto;
+  if (!storeName) return texto;
+  return `Olha que achei na ${storeName}!`;
+}
+
 export function StoreProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -265,6 +283,12 @@ export function StoreProvider({
         if (cachedConfig && !cancelled) {
           const { id: _id, ...configData } = cachedConfig;
           const merged = { ...defaultStoreConfig, ...configData };
+          // shareText com nome efetivo — mesmo contrato do mapConfig (o
+          // cache pode ter texto cru gravado pelo realtimeSyncEngine).
+          merged.shareText = componhaShareText(
+            merged.shareText,
+            merged.storeName,
+          );
           setConfig(merged);
           setIsLoaded(true);
           // Apply branding immediately
@@ -343,10 +367,19 @@ export function StoreProvider({
   // efeito de loadFromVault acima) — App.tsx já reage a `config.themeMode`
   // pelo mesmo contexto, então remover a duplicata aqui não deixa nenhum
   // dos três valores de themeMode (light/dark/glass) sem quem aplique.
+  //
+  // CONTRATO DE COR — precedência: o branding do build (applyBranding em
+  // main.tsx) é a semente anti-flash no :root; o primary_color do BANCO vence
+  // quando a config chega OU muda. O default DE CÓDIGO (#000000, estado
+  // inicial antes de qualquer dado) não veio do banco: aplicá-lo aqui pisaria
+  // a semente do build durante o mount, na janela em que o banco ainda não
+  // respondeu. Os caminhos que recebem config de verdade (fetch, cache,
+  // updateConfig, realtime) aplicam a cor direto; este efeito garante a
+  // re-aplicação em qualquer mudança posterior do valor.
   useEffect(() => {
-    if (config.primaryColor) {
-      applyBranding(config.primaryColor);
-    }
+    if (!config.primaryColor) return;
+    if (config.primaryColor === defaultStoreConfig.primaryColor) return;
+    applyBranding(config.primaryColor);
   }, [config.primaryColor, applyBranding]);
 
   const mapConfig = useCallback((data: any): StoreConfig => {
@@ -371,6 +404,7 @@ export function StoreProvider({
       "localDeliveryFee",
       defaultStoreConfig.localDeliveryFee,
     );
+    const storeName = getVal("store_name", "storeName", undefined);
 
     return {
       freeShippingMin: Number(freeMin),
@@ -380,10 +414,9 @@ export function StoreProvider({
         "whatsappNumber",
         defaultStoreConfig.whatsappNumber,
       ),
-      shareText: getVal(
-        "share_text",
-        "shareText",
-        defaultStoreConfig.shareText,
+      shareText: componhaShareText(
+        getVal("share_text", "shareText", defaultStoreConfig.shareText),
+        storeName,
       ),
       businessHours: getVal(
         "business_hours",
@@ -422,7 +455,7 @@ export function StoreProvider({
         defaultStoreConfig.pushMarketingEnabled,
       ),
       minAppVersion: getVal("min_app_version", "minAppVersion", undefined),
-      storeName: getVal("store_name", "storeName", undefined),
+      storeName,
       storeCity: getVal("store_city", "storeCity", undefined),
       storeState: getVal("store_state", "storeState", undefined),
       originCep: getVal("origin_cep", "originCep", undefined),

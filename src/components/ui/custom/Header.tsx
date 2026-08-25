@@ -63,8 +63,13 @@ export const Header = memo(function Header({
     logoSrc = "/branding/logo.png";
   }
 
-  const appName = branding.appName || "IKCOUS Marketplace";
-  const parts = appName.split(/[|-]/);
+  // O nome vem do banco primeiro (o que o lojista configurou em
+  // `store_name`); `branding.appName` é fallback — a mesma preferência que
+  // a logo (`config.logoUrl`) já segue neste componente. Sem separador
+  // "|" ou "-", o nome inteiro vira o título e o subtítulo some.
+  const nomeDaLoja =
+    config.storeName?.trim() || branding.appName || "IKCOUS Marketplace";
+  const parts = nomeDaLoja.split(/[|-]/);
   const mainName = parts[0]?.trim() || "IKCOUS";
   const subName =
     parts[1]?.trim() || (parts[0]?.includes(" ") ? "" : "imports");
@@ -183,7 +188,7 @@ export const Header = memo(function Header({
               <div className="flex h-8 max-w-[100px] items-center overflow-hidden rounded-[8px] xs:max-w-[120px]">
                 <img
                   src={logoSrc}
-                  alt={branding.appName || "Store Logo"}
+                  alt={nomeDaLoja || "Store Logo"}
                   className="size-full object-contain"
                   onError={() => {
                     if (logoState === "db") {

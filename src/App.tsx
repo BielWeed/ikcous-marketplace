@@ -48,6 +48,7 @@ const UserProfileView = lazyWithPreload(() =>
 
 import { destinoPosLogin } from "@/lib/destinoPosLogin";
 import { supabase } from "@/lib/supabase";
+import { applyThemeColor, branding } from "@/config/branding";
 // --- LAZY LOADED ADMIN VIEWS ---
 import { cn } from "@/lib/utils";
 import { PreloadedOrLazy, lazyWithPreload } from "@/utils/lazyWithPreload";
@@ -512,7 +513,7 @@ const AppContent = () => {
     toggleFavorite,
     loading: favoritesLoading,
   } = useFavorites();
-  const { config } = useStore();
+  const { config, isLoaded } = useStore();
 
   const [currentView, setCurrentView] = useState<View>("home");
   const [isStandalone, setIsStandalone] = useState(false);
@@ -571,6 +572,20 @@ const AppContent = () => {
       }
     }
   }, [currentView, config?.themeMode]);
+
+  // CONTRATO DE COR (ver src/config/branding.ts e StoreContext): o meta
+  // theme-color acompanha a cor primária EFETIVA — a do banco quando a config
+  // já chegou (isLoaded), senão a semente do build (que applyBranding já
+  // deixou no meta na janela pré-React). Efeito próprio, separado do
+  // themeMode acima, porque a cor muda sem o tema mudar (ex.: lojista salva
+  // só a cor primária).
+  useEffect(() => {
+    const corEfetiva =
+      isLoaded && config?.primaryColor
+        ? config.primaryColor
+        : branding.theme.primary;
+    applyThemeColor(corEfetiva);
+  }, [config?.primaryColor, isLoaded]);
 
   const currentViewRef = useRef<View>(currentView);
   const selectedProductIdRef = useRef<string | null>(selectedProductId);

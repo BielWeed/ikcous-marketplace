@@ -1,3 +1,5 @@
+import { branding } from "@/config/branding";
+import { useStore } from "@/contexts/StoreContext";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Rocket } from "lucide-react";
@@ -20,6 +22,9 @@ export function UpdateNotification({
   currentVersion,
   newVersion,
 }: UpdateNotificationProps) {
+  // Nome da loja em runtime: banco (config.storeName) com fallback no branding do build
+  const { config } = useStore();
+  const appName = config.storeName ?? branding.appName;
   const [isUpdating, setIsUpdating] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -83,8 +88,8 @@ export function UpdateNotification({
                   Nova Versão Disponível
                 </h3>
                 <p className="text-xs leading-relaxed text-zinc-300">
-                  Uma nova atualização do IKCOUS Marketplace está pronta para
-                  ser instalada com melhorias de desempenho.
+                  Uma nova atualização do {appName} está pronta para ser
+                  instalada com melhorias de desempenho.
                 </p>
               </div>
 
