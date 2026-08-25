@@ -1,10 +1,12 @@
 -- ROLLBACK MANUAL de 20261001000000_top5_lucrativos_de_verdade.sql
 --
 -- Restaura a definicao anterior VERBATIM (a de 20260902000000): top-5 de
--- volta a ordenar por faturamento puro. Custo declarado do rollback: o
--- rótulo "mais lucrativos" volta a mentir (o defeito do achado 2
--- retorna) - nada mais muda, o historico e os KPIs sao os mesmos da
--- definicao vigente.
+-- volta a ordenar por faturamento puro. ATENCAO ao par (revisao
+-- 20260825-2145): rollback SO COERENTE com o front revertido junto - o
+-- rotulo da tela passou a dizer "mais lucrativos" (commit do par), e com
+-- a RPC antiga ele voltaria a mentir. Rollback do banco = reverter o
+-- commit do front no mesmo passo; nao existe rollback so do meio.
+-- Nada mais muda: historico e KPIs sao os mesmos da definicao vigente.
 
 CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2(p_limit_days integer DEFAULT 90)
  RETURNS json

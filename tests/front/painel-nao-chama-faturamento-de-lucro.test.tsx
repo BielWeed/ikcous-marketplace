@@ -76,7 +76,7 @@ describe("TopProductsList — o título não promete lucro que a RPC não calcul
     vi.unstubAllGlobals();
   });
 
-  it("não usa mais 'lucrativos' — o bloco ordena por faturamento, não por lucro", async () => {
+  it("diz 'lucrativos' — a RPC ordena por lucro (migration 20261001000000), nunca por faturamento", async () => {
     await act(async () => {
       raiz.render(
         <TopProductsList
@@ -89,9 +89,13 @@ describe("TopProductsList — o título não promete lucro que a RPC não calcul
 
     const textoDoTitulo = hospedeiro.querySelector("h2")?.textContent ?? "";
 
-    // Controle negativo: se o título ainda contivesse "lucrativos", este
-    // teste tem que cair — é ele que prova que a asserção discrimina.
-    expect(textoDoTitulo.toLowerCase()).not.toContain("lucrativ");
-    expect(textoDoTitulo.toLowerCase()).toContain("fatur");
+    // O PAR completo (revisão 20260825-2145): a migration 20261001000000
+    // faz a RPC ordenar por LUCRO (SUM(qty*(price-custo))); este teste é a
+    // outra metade — o rótulo volta a dizer "lucrativos", agora VERDADE.
+    // Controle negativo: título dizendo "faturaram" faz cair — é ele que
+    // prova que a asserção discrimina (e impediu o par incompleto: label
+    // de faturamento em cima de dados de lucro).
+    expect(textoDoTitulo.toLowerCase()).toContain("lucrativ");
+    expect(textoDoTitulo.toLowerCase()).not.toContain("fatur");
   });
 });

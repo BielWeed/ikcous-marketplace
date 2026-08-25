@@ -43,7 +43,12 @@ export const TopProductsList = memo(function TopProductsList({
 
   return (
     <div className="space-y-3">
-      <SectionTitle title="top 5 produtos que mais faturaram" icon={Trophy} />
+      {/* PAR com a migration 20261001000000 (revisão 20260825-2145): a RPC
+          ordena por LUCRO (preço menos custo) — o rótulo "mais lucrativos"
+          é verdade desde a migration. As duas metades aplicam juntas
+          (branch com o front primeiro, clique da migration logo depois);
+          sozinha, qualquer uma delas faz a tela mentir. */}
+      <SectionTitle title="top 5 produtos mais lucrativos" icon={Trophy} />
 
       <div className="relative">
         {/* Decorative background element */}
