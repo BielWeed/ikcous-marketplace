@@ -247,12 +247,12 @@ export function useReviews() {
   );
 
   const markHelpful = useCallback(
-    async (reviewId: string) => {
+    async (reviewId: string): Promise<boolean> => {
       try {
         // ZENITH v21.7: Rely on AuthContext's verified user
         if (!user) {
           toast.error("Faça login para marcar como útil.");
-          return;
+          return false;
         }
 
         // Optimistic update
@@ -292,9 +292,14 @@ export function useReviews() {
           });
           throw error;
         }
+        // O retorno diz ao card se o voto VALEU: quem chama só trava o
+        // botão quando o banco gravou de verdade — travar no erro deixava o
+        // contador revertido e o botão morto até remontar a tela.
+        return true;
       } catch (error) {
         console.error("Error marking helpful:", error);
         toast.error("Erro ao marcar como útil.");
+        return false;
       }
     },
     [user],

@@ -38,7 +38,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
-import { cn } from "@/lib/utils";
+import { cn, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
 import {
@@ -666,10 +666,11 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   const filteredProducts = useMemo(() => {
     if (!productSearch) return products;
+    // Busca sem acento acha produto acentuado ("maquina" acha "Máquina") —
+    // mesma regra (normalizeText) da busca da loja.
+    const q = normalizeText(productSearch);
     return products.filter(
-      (p) =>
-        p.id === formData.productId ||
-        p.name.toLowerCase().includes(productSearch.toLowerCase()),
+      (p) => p.id === formData.productId || normalizeText(p.name).includes(q),
     );
   }, [products, productSearch, formData.productId]);
 
@@ -723,16 +724,15 @@ export const AdminBannersView = memo(function AdminBannersView({
   const filteredBannersList = useMemo(() => {
     const now = new Date();
     return banners.filter((b) => {
+      // Busca sem acento acha banner acentuado — mesma regra (normalizeText)
+      // da busca da loja.
+      const q = normalizeText(searchQueryList);
       const matchesSearch =
         !searchQueryList ||
-        (b.title || "").toLowerCase().includes(searchQueryList.toLowerCase()) ||
-        (b.subtitle || "")
-          .toLowerCase()
-          .includes(searchQueryList.toLowerCase()) ||
-        (b.badgeText || "")
-          .toLowerCase()
-          .includes(searchQueryList.toLowerCase()) ||
-        (b.link || "").toLowerCase().includes(searchQueryList.toLowerCase());
+        normalizeText(b.title).includes(q) ||
+        normalizeText(b.subtitle).includes(q) ||
+        normalizeText(b.badgeText).includes(q) ||
+        normalizeText(b.link).includes(q);
 
       let matchesStatus = true;
       if (statusFilter === "active") {
