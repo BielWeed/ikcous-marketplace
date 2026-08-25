@@ -70,6 +70,10 @@ let linhaDoBanco: Record<string, unknown> = { id: 1 };
 // Quando true, o builder devolve um thenable que nunca resolve — simula a
 // janela anti-flash em que o banco ainda não respondeu.
 let fetchPendente = false;
+// Quando true, o builder REJEITA — simula o banco respondendo com FALHA
+// (rede caiu, Supabase fora). É o quarto quadrante do contrato de cor: o
+// `finally` de fetchConfig liga isLoaded com a config intacta no default.
+let fetchFalha = false;
 
 // Builder encadeável e "thenable" — cobre `.from().select().single()` (usado
 // por fetchConfig) e `.from().select().is().limit().order()` (fetchProducts)
@@ -99,18 +103,41 @@ function construtorQueNaoResolve(): any {
         return (resolve: (v: unknown) => void) =>
           new Promise<never>(() => {}).then(resolve);
       }
-      return () => construtorQueNaoResolve();
+      return construtorQueNaoResolve();
     },
     apply: () => construtorQueNaoResolve(),
   });
 }
 
+// Cadeia que REJEITA no primeiro `await` — o banco respondeu, com falha.
+// Rejeita chamando o `reject` do awaiter direto, SEM promessa intermediária:
+// `Promise.reject().then(...)` deixa promessa órfã e vira "unhandled
+// rejection" no vitest (medido ao rodar este arquivo).
+function construtorQueRejeita(): any {
+  const alvo: any = () => construtorQueRejeita();
+  return new Proxy(alvo, {
+    get(_t, prop) {
+      if (prop === "then") {
+        return (
+          _resolve: (v: unknown) => void,
+          reject: (e: unknown) => void,
+        ) => {
+          if (reject) reject(new Error("supabase fora do ar (dublê)"));
+        };
+      }
+      return construtorQueRejeita();
+    },
+    apply: () => construtorQueRejeita(),
+  });
+}
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: () =>
-      fetchPendente
-        ? construtorQueNaoResolve()
-        : construtorEncadeavel({ data: linhaDoBanco, error: null }),
+    from: () => {
+      if (fetchFalha) return construtorQueRejeita();
+      if (fetchPendente) return construtorQueNaoResolve();
+      return construtorEncadeavel({ data: linhaDoBanco, error: null });
+    },
     rpc: () => construtorEncadeavel({ data: null, error: null }),
   },
 }));
@@ -268,6 +295,7 @@ let hospedeiro: HTMLDivElement;
 beforeEach(() => {
   linhaDoBanco = { id: 1 };
   fetchPendente = false;
+  fetchFalha = false;
   stubsDeBrowser();
   vi.stubGlobal("localStorage", criarStorageFake());
   vi.stubGlobal("sessionStorage", criarStorageFake());
@@ -363,5 +391,32 @@ describe("App — o meta theme-color acompanha a cor primária efetiva (banco > 
     });
 
     expect(metaThemeColor()?.getAttribute("content")).toBe(COR_DO_BANCO);
+  });
+
+  // O QUARTO QUADRANTE, que faltava (revisão cruzada 20260825-1015 — o
+  // defeito real do b531ca9 morava exatamente aqui): o fetch da config
+  // REJEITOU (rede caiu, Supabase fora). `isLoaded` vira true no `finally`
+  // e `config.primaryColor` segue o default de código (#000000), que é
+  // truthy. O contrato manda: default de código não é cor de banco — o meta
+  // fica na semente do build, não em #000000 (barra preta com o app na cor
+  // da marca). A regra hoje mora em corPrimariaEfetiva (StoreContext).
+  it("(d) fetch da config FALHANDO: isLoaded=true + config no default → meta fica na semente do build, não em #000000", async () => {
+    fetchFalha = true;
+
+    await act(async () => {
+      raiz.render(<App />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(metaThemeColor()?.getAttribute("content")).toBe(
+      branding.theme.primary,
+    );
+    // A asserção que caça o defeito de volta: o meta NÃO pode ter virado o
+    // default de código. Se este teste um dia falhar em silêncio, é a barra
+    // do celular voltando a ficar preta no caminho de falha.
+    expect(metaThemeColor()?.getAttribute("content")).not.toBe("#000000");
   });
 });

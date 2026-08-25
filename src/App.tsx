@@ -340,6 +340,7 @@ import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { CartProvider } from "@/contexts/CartContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { StoreProvider, useStore } from "@/contexts/StoreContext";
+import { corPrimariaEfetiva } from "@/config/cor-da-loja";
 import { useCartActions, useCartState } from "@/hooks/useCart";
 import { useRealtimeUpdate } from "@/hooks/useRealtimeUpdate";
 import type { Product, SortOption, View } from "@/types";
@@ -513,7 +514,7 @@ const AppContent = () => {
     toggleFavorite,
     loading: favoritesLoading,
   } = useFavorites();
-  const { config, isLoaded } = useStore();
+  const { config } = useStore();
 
   const [currentView, setCurrentView] = useState<View>("home");
   const [isStandalone, setIsStandalone] = useState(false);
@@ -574,18 +575,20 @@ const AppContent = () => {
   }, [currentView, config?.themeMode]);
 
   // CONTRATO DE COR (ver src/config/branding.ts e StoreContext): o meta
-  // theme-color acompanha a cor primária EFETIVA — a do banco quando a config
-  // já chegou (isLoaded), senão a semente do build (que applyBranding já
-  // deixou no meta na janela pré-React). Efeito próprio, separado do
-  // themeMode acima, porque a cor muda sem o tema mudar (ex.: lojista salva
-  // só a cor primária).
+  // theme-color acompanha a cor primária EFETIVA — a do banco quando ela é
+  // real, senão a semente do build (que applyBranding já deixou no meta na
+  // janela pré-React). Efeito próprio, separado do themeMode acima, porque a
+  // cor muda sem o tema mudar (ex.: lojista salva só a cor primária).
+  //
+  // A REGRA mora em corPrimariaEfetiva (StoreContext) — dono único. Aqui é
+  // só reflexo. Foi exatamente aqui que o b531ca9 introduziu defeito
+  // (revisão 20260825-1015): com o fetch da config FALHANDO, isLoaded vira
+  // true no finally e o default de CÓDIGO (#000000) é truthy — a barra do
+  // celular ficava PRETA com o app na cor da marca. corPrimariaEfetiva
+  // devolve null para o default, e a semente do build sobrevive.
   useEffect(() => {
-    const corEfetiva =
-      isLoaded && config?.primaryColor
-        ? config.primaryColor
-        : branding.theme.primary;
-    applyThemeColor(corEfetiva);
-  }, [config?.primaryColor, isLoaded]);
+    applyThemeColor(corPrimariaEfetiva(config) ?? branding.theme.primary);
+  }, [config?.primaryColor]);
 
   const currentViewRef = useRef<View>(currentView);
   const selectedProductIdRef = useRef<string | null>(selectedProductId);

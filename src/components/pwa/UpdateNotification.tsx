@@ -24,7 +24,10 @@ export function UpdateNotification({
 }: UpdateNotificationProps) {
   // Nome da loja em runtime: banco (config.storeName) com fallback no branding do build
   const { config } = useStore();
-  const appName = config.storeName ?? branding.appName;
+  // Mesma regra das outras quatro telas (revisao 20260825-1015, achado 2):
+  // string VAZIA tambem e "sem nome" — `??` devolveria "" e a frase
+  // sairia com buraco (" Novidades..."). `?.trim() ||` cai no fallback.
+  const appName = config.storeName?.trim() || branding.appName;
   const [isUpdating, setIsUpdating] = useState(false);
   const [progress, setProgress] = useState(0);
 

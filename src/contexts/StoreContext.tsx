@@ -17,32 +17,15 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
-const defaultStoreConfig: StoreConfig = {
-  freeShippingMin: 350,
-  shippingFee: 15,
-  whatsappNumber: "34999999999",
-  shareText: "Olha que achei na IKCOUS!",
-  businessHours: "Seg-Sáb: 9h às 18h",
-  enableReviews: true,
-  enableCoupons: true,
-  primaryColor: "#000000",
-  themeMode: "light",
-  realTimeSalesAlerts: true,
-  pushMarketingEnabled: false,
-  // originCep NÃO tem reserva de propósito. Ele valia "38500-000", e isso fazia
-  // toda loja que nunca informou de onde despacha calcular frete a partir de
-  // Monte Carmelo, calada. Sem valor = a loja não disse, e quem consome trata isso.
-  shippingProvider: "flat_fee",
-  enabledShippingMethods: ["sedex", "pac"],
-  shippingCoverage: "national",
-  localDeliveryFee: 10,
-  localCepRange: "",
-  homeSections: [
-    { id: "new_arrivals", title: "Últimos Lançamentos", active: true },
-    { id: "offers", title: "Ofertas Imperdíveis", active: true },
-    { id: "bestsellers", title: "Destaques em Alta", active: true },
-  ],
-};
+// Exportado porque a regra de cor efetiva (abaixo) é o dono único do contrato:
+// quem precisa decidir "cor do banco x semente do build" pergunta aqui —
+// App.tsx (meta theme-color) e o efeito de --primary deste arquivo.
+// (definição movida para src/config/cor-da-loja.ts — ver motivo lá)
+import {
+  corPrimariaEfetiva,
+  defaultStoreConfig,
+} from "@/config/cor-da-loja";
+export { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 
 interface StoreContextType {
   config: StoreConfig;
@@ -321,7 +304,7 @@ export function StoreProvider({
           err,
         );
         try {
-          const vault = vaultRef.current || (await DataVault.init());
+          const vault = await DataVault.init();
           if (vault) {
             const stores: import("@/lib/dataVault").StoreName[] = [
               "products",
@@ -377,9 +360,14 @@ export function StoreProvider({
   // updateConfig, realtime) aplicam a cor direto; este efeito garante a
   // re-aplicação em qualquer mudança posterior do valor.
   useEffect(() => {
-    if (!config.primaryColor) return;
-    if (config.primaryColor === defaultStoreConfig.primaryColor) return;
-    applyBranding(config.primaryColor);
+    // Regra mora em corPrimariaEfetiva — dono único (o meta theme-color do
+    // App.tsx consulta o mesmo lugar).
+    const cor = corPrimariaEfetiva(config);
+    if (cor) applyBranding(cor);
+    // `config` inteiro não entra de propósito: a única entrada reativa da
+    // regra é `config.primaryColor` (a comparação com o default é contra
+    // constante estável). A regra não enxerga dentro da helper.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.primaryColor, applyBranding]);
 
   const mapConfig = useCallback((data: any): StoreConfig => {
@@ -561,9 +549,21 @@ export function StoreProvider({
             return (mapped as any)[k] === (prev as any)[k];
           });
           if (isIdentical) return prev;
-          vaultRef.current
-            ?.put("store_config", { id: "singleton", ...mapped })
-            .catch(() => {});
+          // Sempre pelo singleton: após um onversionchange (outra aba subiu a
+          // versão) a conexão que vaultRef segurava está FECHADA — init()
+          // devolve a viva/reaberta. Erro LOGADO: escrita engolida calada é
+          // como o cache offline morreu invisível (defeito confirmado na
+          // revisão cruzada 20260825-1050).
+          DataVault.init()
+            .then((vault) =>
+              vault.put("store_config", { id: "singleton", ...mapped }),
+            )
+            .catch((err) =>
+              console.warn(
+                "[StoreContext] config não gravada no cache offline:",
+                err,
+              ),
+            );
           return mapped;
         });
         applyBranding(mapped.primaryColor);
@@ -623,12 +623,20 @@ export function StoreProvider({
         setProducts((prev) => {
           if (JSON.stringify(prev) === JSON.stringify(mapped)) return prev;
           // Persist to DataVault (non-blocking)
-          vaultRef.current
-            ?.replaceAll("products", mapped)
-            .then(() => {
-              vaultRef.current?.setLastSync("products");
+          // Pelo singleton e com erro logado — mesma regra dos puts de config
+          // (revisão 20260825-1050): conexão fechada por upgrade de outra aba
+          // reabre no init(), e falha de escrita não pode ser silêncio.
+          DataVault.init()
+            .then(async (vault) => {
+              await vault.replaceAll("products", mapped);
+              await vault.setLastSync("products");
             })
-            .catch(() => {});
+            .catch((err) =>
+              console.warn(
+                "[StoreContext] produtos não gravados no cache offline:",
+                err,
+              ),
+            );
           return mapped;
         });
       } else {
@@ -749,9 +757,17 @@ export function StoreProvider({
         setConfig((prev) => {
           const newConfig = { ...prev, ...updates };
           // Persist to DataVault
-          vaultRef.current
-            ?.put("store_config", { id: "singleton", ...newConfig })
-            .catch(() => {});
+          // Pelo singleton e com erro logado (revisão 20260825-1050).
+          DataVault.init()
+            .then((vault) =>
+              vault.put("store_config", { id: "singleton", ...newConfig }),
+            )
+            .catch((err) =>
+              console.warn(
+                "[StoreContext] config não gravada no cache offline:",
+                err,
+              ),
+            );
           return newConfig;
         });
         if (updates.primaryColor) applyBranding(updates.primaryColor);
@@ -821,31 +837,34 @@ export function StoreProvider({
   useSyncListener(
     ["products"],
     useCallback(async () => {
-      // Re-read products from DataVault when Realtime updates them
-      if (vaultRef.current) {
-        // SEM guarda de "lista vazia": ela engolia o caso em que a lista
-        // ficou vazia, e a vitrine seguia mostrando o produto excluído --
-        // com preço e estoque -- até alguém recarregar a página.
-        //
-        // Mas lista vazia tem DOIS significados: pode ser a lojista
-        // excluindo o ÚLTIMO produto em outro dispositivo (esvaziar é o
-        // certo) OU uma leitura que falhou (conexão fechada por outra aba
-        // durante um purge, store ausente...) -- o `catch` de `getAll`
-        // resolve `[]` nos dois casos. Por isso `getAllOrThrow`, que
-        // REJEITA em vez de mascarar a falha como "vazio de verdade".
-        try {
-          const freshProducts =
-            await vaultRef.current.getAllOrThrow<Product>("products");
-          setProducts(freshProducts);
-        } catch (err) {
-          // Leitura do cofre falhou -- manter o que já está na tela é
-          // melhor que esvaziar a vitrine por causa de uma falha de
-          // leitura.
-          console.warn(
-            "[StoreContext] Falha ao reler o cofre; mantendo a lista atual:",
-            err,
-          );
-        }
+      // Re-read products from DataVault when Realtime updates them.
+      // Pelo singleton (revisão 20260825-1050): se outra aba subiu a versão
+      // do banco, a conexão antiga está fechada — init() reabre e a releitura
+      // deste listener volta a funcionar sem recarregar a página.
+      //
+      // SEM guarda de "lista vazia": ela engolia o caso em que a lista
+      // ficou vazia, e a vitrine seguia mostrando o produto excluído --
+      // com preço e estoque -- até alguém recarregar a página.
+      //
+      // Mas lista vazia tem DOIS significados: pode ser a lojista
+      // excluindo o ÚLTIMO produto em outro dispositivo (esvaziar é o
+      // certo) OU uma leitura que falhou (conexão fechada por outra aba
+      // durante um purge, store ausente...) -- o `catch` de `getAll`
+      // resolve `[]` nos dois casos. Por isso `getAllOrThrow`, que
+      // REJEITA em vez de mascarar a falha como "vazio de verdade".
+      try {
+        const vault = await DataVault.init();
+        const freshProducts =
+          await vault.getAllOrThrow<Product>("products");
+        setProducts(freshProducts);
+      } catch (err) {
+        // Leitura do cofre falhou -- manter o que já está na tela é
+        // melhor que esvaziar a vitrine por causa de uma falha de
+        // leitura.
+        console.warn(
+          "[StoreContext] Falha ao reler o cofre; mantendo a lista atual:",
+          err,
+        );
       }
     }, []),
   );

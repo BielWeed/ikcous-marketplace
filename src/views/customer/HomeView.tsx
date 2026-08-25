@@ -20,6 +20,7 @@ import { PremiumOffers } from "@/components/ui/custom/PremiumOffers";
 import { ProductCarousel } from "@/components/ui/custom/ProductCarousel";
 import { ProductList } from "@/components/ui/custom/ProductList";
 import { branding } from "@/config/branding";
+import { LIMITE_MAX_ITENS_CARROSSEL } from "@/config/carrossel";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { haptic } from "@/utils/haptic";
 
@@ -187,7 +188,10 @@ export const HomeView = React.memo(function HomeView({
         }
         return (b.createdTime ?? 0) - (a.createdTime ?? 0);
       })
-      .slice(0, 6);
+      // LIMITE_MAX_ITENS_CARROSSEL, nunca literal: o 6 fixo travava a vitrine
+      // abaixo do que o seletor de maxItems promete (defeito 20260825-1050).
+      // O corte real por seção continua no render, pelo `max` escolhido.
+      .slice(0, LIMITE_MAX_ITENS_CARROSSEL);
   }, [produtosAVenda]);
 
   const offerProducts = useMemo(() => {
@@ -198,7 +202,7 @@ export const HomeView = React.memo(function HomeView({
         const bAvailable = b.stock > 0 ? 1 : 0;
         return bAvailable - aAvailable;
       })
-      .slice(0, 10);
+      .slice(0, LIMITE_MAX_ITENS_CARROSSEL);
   }, [produtosAVenda]);
 
   const bestsellerProducts = useMemo(() => {
@@ -209,7 +213,7 @@ export const HomeView = React.memo(function HomeView({
         const bAvailable = b.stock > 0 ? 1 : 0;
         return bAvailable - aAvailable;
       })
-      .slice(0, 10);
+      .slice(0, LIMITE_MAX_ITENS_CARROSSEL);
   }, [produtosAVenda]);
 
   const sortOptions: {
