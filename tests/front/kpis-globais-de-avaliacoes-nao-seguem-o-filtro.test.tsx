@@ -215,11 +215,18 @@ describe("KPIs globais de Avaliações (par com a migration 20261002000000)", ()
       await Promise.resolve();
     });
 
-    const texto = hospedeiro.textContent ?? "";
-    // "—" nos cartões globais — zero antes do apply é indistinguível de
-    // loja vazia, e a lista embaixo tem 43.
-    expect(texto).toContain("—");
-    expect(texto).not.toContain("0.0");
+    // L1 da revisão final: o "—" tem que estar DENTRO do cartão "Total
+    // Recebido" — as taxas já renderizam "—" sozinhas com total 0, então
+    // um toContain no host inteiro passa com o cartão mostrando 0.
+    // Localizador forte: o MENOR elemento que contém o rótulo exato.
+    const rotulo = Array.from(hospedeiro.querySelectorAll("*"))
+      .filter((el) => el.textContent?.trim() === "Total Recebido")
+      .at(-1);
+    expect(rotulo).toBeDefined();
+    const areaDoCartao = rotulo!.parentElement?.parentElement?.parentElement;
+    expect(areaDoCartao?.textContent ?? "").toContain("—");
+    expect(areaDoCartao?.textContent ?? "").not.toMatch(/(^|[^\d])0(\.0)?([^\d]|$)/);
+    expect(hospedeiro.textContent).not.toContain("0.0");
     h.retorno = anterior;
   });
 });

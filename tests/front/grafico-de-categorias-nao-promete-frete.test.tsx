@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 //
 // Item 4 da fila 1935: a nota de rodapé do gráfico de categorias dizia
-// "Total deste gráfico = itens + frete, sem desconto" — verdade até a
-// migration 20260980000000... até a 20261003000000 REMOVER a linha
-// sintética 'Frete' da get_category_analytics. Desde então o total do
-// gráfico é SÓ itens: a frase continuou prometendo frete que não está
-// mais ali — a frase mentirosa que a 20261003 deixa.
+// "Total deste gráfico = itens + frete, sem desconto" — verdade enquanto
+// a get_category_analytics fazia UNION ALL da linha sintética 'Frete'.
+// A migration 20261003000000 REMOVEU essa linha: desde então o total do
+// gráfico é SÓ itens, e a frase continuou prometendo frete que não está
+// mais ali — a frase mentirosa que a 20261003 deixou.
 //
 // Este teste guarda o par frase x migration: a nota tem que dizer que o
 // total é SEM frete (verdade desde a 20261003) e não pode afirmar

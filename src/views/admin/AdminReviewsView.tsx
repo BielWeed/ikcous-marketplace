@@ -187,7 +187,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           setTotalReviews(result.total);
           setGlobalVerifiedCount(result.globalVerifiedCount || 0);
           setGlobalRepliedCount(result.globalRepliedCount || 0);
-          setGlobaisDisponiveis(result.globaisDisponiveis !== false);
+          // L4: default PESSIMISTA - caminho sem o campo (fallback
+          // nao-admin, catch) e "nao sei", nunca zero confiante.
+          setGlobaisDisponiveis(result.globaisDisponiveis === true);
           setGlobalTotal(result.globalTotal || 0);
           setGlobalAvgRating(
             result.globalAverageRating?.toFixed(1) || "0.0",
@@ -432,7 +434,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       // certas é o que o salvará). averageRating/totalReviews saíram:
       // os cartões não leem mais as métricas FILTRADAS desde o conserto 3.
       globalAvgRating,
-      globalTotal,
+      // B2 da revisao final (3a vez nesta peca): os TRES valores lidos no
+      // memo entram nas deps; globalTotal sai (nao e lido aqui desde que
+      // mediaGlobalExibida/totalGlobalExibido nasceram).
+      globaisDisponiveis,
+      mediaGlobalExibida,
+      totalGlobalExibido,
     ],
   );
 
@@ -541,7 +548,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   <span className="text-[9px] font-black tracking-widest text-white sm:text-[10px]">
                     {/* CORRIGE 1 da revisao 2305: o title diz "Média
                       global" — o valor é o GLOBAL, nunca o filtrado. */}
-                    {globaisDisponiveis ? globalAvgRating : "—"}
+                    {mediaGlobalExibida}
                   </span>
                   <span className="hidden text-[8px] font-bold text-zinc-500 sm:inline">
                     MÉDIA
