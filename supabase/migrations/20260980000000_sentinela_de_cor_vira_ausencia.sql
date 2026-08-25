@@ -35,6 +35,17 @@
 -- Faixa 20260980* a 20260989*, reservada no _REGRAS.md ANTES de existir.
 -- NAO aplicar sem prova de ROLLBACK (inteira E interrompida no meio) e sem
 -- o Gabriel autorizar NESTA sessao.
+--
+-- FICHA DE VERIFICACAO pos-aplicacao, POR BANCO (revisao 20260825-1255):
+-- a verificacao NAO pode ser pela tela — a guarda temporaria do app torna
+-- uma loja com #000000 e uma loja com NULL identicas na renderizacao, e a
+-- tela ficaria "bonita de qualquer jeito" (aplicada, pela metade ou nem
+-- rodada). Verifica-se na COLUNA:
+--   SELECT count(*) FROM store_config WHERE primary_color = '#000000';
+--     -> espera 0
+--   SELECT count(*) FROM _retrato_primary_color_20260980;
+--     -> espera exatamente o numero de linhas que eram '#000000' antes
+--        (confira contra o valor anotado na ficha da loja ANTES de aplicar)
 
 ALTER TABLE public.store_config ALTER COLUMN primary_color DROP DEFAULT;
 
