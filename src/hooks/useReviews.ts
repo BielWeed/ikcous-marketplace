@@ -341,6 +341,12 @@ export function useReviews() {
           // cartões "Global/no total" não seguem o filtro. Os campos
           // total_verified/total_replied antigos eram FILTRADOS vestindo
           // nome de global — o par RPC+front corrige a fonte.
+          // CORRIGE 2 da revisao 2305: a PRESENCA da chave e o unico sinal de
+          // que a RPC nova esta no ar. Number(undefined) || 0 devolve o MESMO
+          // zero de loja vazia — zero antes do apply seria lido como "a loja
+          // nao tem avaliacao NENHUMA" com a lista cheia embaixo.
+          const globaisDisponiveis =
+            rpcData != null && "global_total_count" in rpcData;
           const globalTotal = Number(rpcData?.global_total_count) || 0;
           const globalAverageRating =
             Number(rpcData?.global_average_rating) || 0;
@@ -375,6 +381,7 @@ export function useReviews() {
             globalRepliedCount,
             globalTotal,
             globalAverageRating,
+            globaisDisponiveis,
           };
         }
 

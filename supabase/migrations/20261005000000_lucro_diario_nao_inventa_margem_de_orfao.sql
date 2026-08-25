@@ -1,17 +1,27 @@
 -- Lucro diario para de inventar margem de item orfao.
 --
--- Item 6 da fila 1935 (achado da rodada GLM): no daily_items da
--- get_admin_analytics_v2, o LEFT JOIN em produtos fazia item cujo produto
--- nao existe mais (hard delete) contar custo ZERO via COALESCE - lucro
--- igual ao preco cheio, margem de 100% inventada para coisa sem custo
--- conhecivel. Medido: 1 de 89 itens e orfao, inflando o grafico diario
--- de lucro.
+-- Item 6 da fila 1935 (achado da rodada GLM; CAUSA corrigida pela
+-- revisao 2340, medida no banco): no daily_items da
+-- get_admin_analytics_v2, o LEFT JOIN em produtos fazia item orfao
+-- contar custo ZERO via COALESCE - lucro igual ao preco cheio. O orfao
+-- NAO e produto apagado: a FK marketplace_order_items_product_id_fkey e
+-- NO ACTION (hard delete levanta 23503). O orfao real e
+-- product_id IS NULL - medido: 1 de 89 itens, sem variant_id, sem custo
+-- recuperavel por lugar nenhum (R$ 119,90 de receita).
 --
--- A correcao segue a convencao QUE A PROPRIA FUNCAO JA USA no top-5
--- (JOIN interno desde sempre - orfos ja nao contam ali): o daily_items
--- passa a JOIN interno. A RECEITA do dia nao muda (vem de o.total, na
--- daily_orders - o dinheiro entrou de verdade); o que muda e lucro e
--- cost_sold pararem de fabricar margem para item sem produto.
+-- O daily_items passa a JOIN interno (mesma SEMANTICA do top-5; os
+-- conjuntos NAO sao identicos - o top-5 tambem filtra deleted_at, o
+-- historico nao, e esta certo: venda passada de produto depois
+-- soft-deletado continua contando). AS TRES VERDADES (revisao 2340):
+-- (1) a RECEITA do dia nao muda - vem de o.total na daily_orders; o
+-- dinheiro do orfao segue contando; (2) o LUCRO passa a EXCLUIR o item
+-- inteiro - a margem implicita dele vai de 100% (custo zero inventado)
+-- para 0% (custo = preco cheio): NAO e correcao, e TROCA DE VIES
+-- deliberadamente conservadora - errar lucro para baixo faz a lojista
+-- achar que a loja rende menos; errar para cima a faz gastar dinheiro
+-- que nao existe; (3) quando a margem real do orfao passar de 50%, o
+-- erro absoluto CRESCE - e o preco de nunca inventar margem para item
+-- sem custo conhecivel.
 --
 -- DEPENDENCIA DE ORDEM: esta file substitui a definicao que a
 -- 20261001000000 instala - aplicar DEPOIS dela. Definicao base: a da
@@ -21,13 +31,14 @@
 -- SEM BEGIN/COMMIT. Faixa 20261000* (cacador-b-dorso, _REGRAS.md).
 -- NAO aplicar sem prova de ROLLBACK e sem o Gabriel autorizar NESTA sessao.
 --
--- FICHA DE VERIFICACAO pos-aplicacao (por consulta, nunca por tela):
+-- FICHA DE VERIFICACAO pos-aplicacao (por consulta, nunca por tela; o
+-- NOT LIKE e a ASSERCAO PRINCIPAL - o LIKE positivo era tautologico e
+-- casaria ate na versao COM o defeito, apontado pela revisao 2340):
 --   SELECT pg_get_functiondef('get_admin_analytics_v2(integer)'::regprocedure)
---    LIKE '%JOIN public.produtos p ON oi.product_id = p.id%';
---     -> true, e o LIKE por 'LEFT JOIN public.produtos p ON oi.product_id'
---     -> false (controle negativo: o LEFT era o furo)
---   E o dia do item orfao: profit cai para o valor sem a margem inventada;
---   revenue do dia INALTERADO.
+--    NOT LIKE '%LEFT JOIN public.produtos p ON oi.product_id%';
+--     -> true (o LEFT era o furo; e o UNICO que discrimina)
+--   E o dia do item orfao: profit cai o valor da margem inventada;
+--   revenue do dia INALTERADO (o item segue na receita).
 
 CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2(p_limit_days integer DEFAULT 90)
  RETURNS json

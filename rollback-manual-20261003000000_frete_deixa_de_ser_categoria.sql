@@ -4,6 +4,10 @@
 -- 'Frete' volta a entrar na rosca de categorias. Custo declarado: o
 -- rotulo volta a mentir que frete e categoria de produto (o defeito do
 -- achado 9 retorna). Sem dado envolvido - so o retorno da linha calculada.
+-- NOTA DE PAR (revisao 2350): o front do par e o 94b36a1 (nota do
+-- grafico). Este rollback SEM o front revertido junto religa a mentira
+-- NA DIRECAO OPOSTA - a nota "sem frete" negaria a fatia Frete desenhada
+-- ao lado. Rollback do banco so com o front revertido junto.
 
 -- CORRECAO (fila 1935, item 1/2): CREATE OR REPLACE, nunca CREATE cru
 -- nem DROP+CREATE - a funcao JA EXISTE no banco (CREATE falharia no

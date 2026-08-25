@@ -83,13 +83,24 @@ describe("nota do gráfico de categorias (par com a 20261003000000)", () => {
         vi.advanceTimersByTime(250);
       });
 
-      const texto = hospedeiro.textContent ?? "";
+      // SUJEITO AMARRADO AO PREDICADO (revisao 2350: "sem frete" solto no
+      // textContent inteiro casa na cláusula ERRADA — o mutante que move a
+      // frase para o Volume Total passava). A nota é localizada pelo seu
+      // sujeito ("Total deste gráfico") e as DUAS cláusulas conferidas
+      // dentro dela.
+      const notas = Array.from(
+        hospedeiro.querySelectorAll("p"),
+      ).map((p) => p.textContent ?? "");
+      const nota = notas.find((tx) => tx.includes("Total deste gráfico"));
+      expect(nota).toBeDefined();
 
-      // A mentira proibida: prometer frete no total que não está mais lá.
-      expect(texto).not.toContain("itens + frete");
+      // Cláusula do GRAFICO: itens, sem desconto E SEM FRETE — a frase
+      // inteira, amarrada: mutante que solta o "sem frete" daqui cai.
+      expect(nota).toContain("itens, sem desconto e sem frete");
 
-      // A verdade desde a 20261003: o total é só itens, sem frete.
-      expect(texto).toContain("sem frete");
+      // Cláusula do VOLUME TOTAL: COM frete (o oposto, na mesma nota).
+      expect(nota).toContain("com frete");
+      expect(nota).not.toContain("itens + frete");
     } finally {
       vi.useRealTimers();
     }

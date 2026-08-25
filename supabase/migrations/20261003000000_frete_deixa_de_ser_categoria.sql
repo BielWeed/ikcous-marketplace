@@ -23,6 +23,14 @@
 -- SEM BEGIN/COMMIT. Faixa 20261000* (cacador-b-dorso, _REGRAS.md).
 -- NAO aplicar sem prova de ROLLBACK e sem o Gabriel autorizar NESTA sessao.
 --
+-- NOTA DE PAR (revisao 2350 — a convencao do rollback-manual da 20261002,
+-- agora dos DOIS lados): o front deste par e o commit 94b36a1 (a nota do
+-- grafico dizendo "sem frete"). A frase nova e FALSA contra o banco vivo
+-- ate ESTA file aplicar - e a frase velha voltaria a ser falsa se esta
+-- file for revertida sem o front junto. Rollback do banco so com o front
+-- revertido junto; merge do front so com o clique desta file no mesmo
+-- passo.
+--
 -- FICHA DE VERIFICACAO pos-aplicacao (por consulta, nunca por tela):
 --   SELECT count(*) FROM get_category_analytics(...) WHERE name = 'Frete'
 --     -> espera 0

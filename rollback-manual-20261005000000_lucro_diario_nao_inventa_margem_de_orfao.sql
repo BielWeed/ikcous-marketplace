@@ -3,7 +3,12 @@
 -- Restaura o LEFT JOIN no daily_items (definicao da 20261001, verbatim).
 -- CUSTO DECLARADO: o grafico diario volta a inflar lucro com margem
 -- inventada de item orfao (o defeito do item 6 retorna). Receita nao e
--- tocada em nenhum dos lados.
+- tocada em nenhum dos lados.
+-- FIEL A UMA CONDICAO (revisao 2340): restaura a definicao da 20261001,
+-- nao "o que estava vivo antes". Com a ordem respeitada (20261001 e
+-- depois 20261005), restaurar E isto; aplicar a 20261001 DEPOIS da
+-- 20261005 reinstalaria o LEFT em silencio - o perigo real e a ordem
+-- INVERSA, nao a falta de antecedencia.
 
 CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2(p_limit_days integer DEFAULT 90)
  RETURNS json

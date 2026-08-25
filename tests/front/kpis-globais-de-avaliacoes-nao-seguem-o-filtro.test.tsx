@@ -55,21 +55,29 @@ vi.mock("@/contexts/StoreContext", () => ({
   }),
 }));
 
+// Estado COMPARTILHADO (o vizinho avaliacoes-sem-dado usa o mesmo padrão):
+// a factory cria novo vi.fn a cada chamada do hook — mockResolvedValueOnce
+// numa instância não afeta a que o componente usa. O dublê lê este objeto.
+const h = vi.hoisted(() => ({
+  retorno: {
+    reviews: [] as unknown[],
+    total: 0,
+    averageRating: 0,
+    // Filtro vazio; globais de verdade povoados (7 no total, média 4.4,
+    // 3 verificadas = 43%, 2 respondidas).
+    globalVerifiedCount: 3,
+    globalRepliedCount: 2,
+    globalTotal: 7,
+    globalAverageRating: 4.4,
+    globaisDisponiveis: true,
+  },
+}));
+
 vi.mock("@/hooks/useReviews", () => ({
   useReviews: () => ({
     adminReviews: [],
     loading: false,
-    // Filtro devolvendo ZERO resultados; globais de verdade povoados
-    // (7 avaliações no total, média 4.4, 3 verificadas = 43%, 2 respondidas).
-    getAllReviews: vi.fn().mockResolvedValue({
-      reviews: [],
-      total: 0,
-      averageRating: 0,
-      globalVerifiedCount: 3,
-      globalRepliedCount: 2,
-      globalTotal: 7,
-      globalAverageRating: 4.4,
-    }),
+    getAllReviews: vi.fn(async () => h.retorno),
     deleteReview: vi.fn(),
     toggleVerified: vi.fn(),
     addMerchantReply: vi.fn(),
@@ -163,5 +171,55 @@ describe("KPIs globais de Avaliações (par com a migration 20261002000000)", ()
     // A armadilha do achado: "100%" com zero no total. 3 de 7 = 43%.
     expect(texto).not.toContain("100%");
     expect(texto).toContain("43%");
+  });
+
+  it("CORRIGE 1 da 2305: nenhum elemento rotulado 'global' mostra o filtrado — o badge do topo incluso", async () => {
+    await act(async () => {
+      raiz.render(<AdminReviewsView active={true} onNavigate={vi.fn()} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // O badge sticky cujo title promete "Média global de estrelas" tem que
+    // mostrar o GLOBAL (4.4) — nunca o filtrado (0.0 do dublê).
+    const badge = hospedeiro.querySelector(
+      '[title="Média global de estrelas"]',
+    );
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toContain("4.4");
+    expect(badge!.textContent).not.toContain("0.0");
+  });
+
+  it("CORRIGE 2 da 2305: RPC antiga (sem chaves global_*) com lista cheia — cartões mostram '—', nunca zero", async () => {
+    // A RPC ANTIGA em ação: lista cheia (43 no total filtrado) e NENHUMA
+    // chave global_* — nem globaisDisponiveis.
+    const anterior = h.retorno;
+    h.retorno = {
+      ...anterior,
+      reviews: [{ id: "r1" }, { id: "r2" }],
+      total: 43,
+      globalVerifiedCount: 0,
+      globalRepliedCount: 0,
+      globalTotal: 0,
+      globalAverageRating: 0,
+      globaisDisponiveis: false,
+    };
+
+    await act(async () => {
+      raiz.render(<AdminReviewsView active={true} onNavigate={vi.fn()} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const texto = hospedeiro.textContent ?? "";
+    // "—" nos cartões globais — zero antes do apply é indistinguível de
+    // loja vazia, e a lista embaixo tem 43.
+    expect(texto).toContain("—");
+    expect(texto).not.toContain("0.0");
+    h.retorno = anterior;
   });
 });
