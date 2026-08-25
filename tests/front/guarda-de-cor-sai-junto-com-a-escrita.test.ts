@@ -41,6 +41,10 @@ const FONTES = import.meta.glob<string>("/src/**/*.{ts,tsx}", {
 // devolve no máximo UM resultado e a contagem vira 0/1 — os números
 // esperados ficam decorativos, desconectados da comparação, e nenhum
 // arquivo listado dispara por mais escrita que apareça nele.
+// ARMADILHA FUTURA (canal #75): regex com `g` guarda `lastIndex` — se este
+// MESMO objeto um dia for usado com `.test()` ou `.exec()`, o resultado
+// alterna entre verdadeiro e falso a cada chamada. Este arquivo usa só
+// `String.match` (que ignora `lastIndex`), e é assim que tem de ficar.
 const PADRAO_ESCRITA =
   /(?<!\.)\bprimaryColor\s*(?=[:=,}\s]|$)|\bprimary_color\b/g;
 
