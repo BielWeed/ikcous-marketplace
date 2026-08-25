@@ -96,6 +96,9 @@ describe("acoplamento guarda x escrita de primaryColor (revisões 1255 + 1315)",
     for (const [caminhoAbsoluto, texto] of Object.entries(FONTES)) {
       const relativo = caminhoAbsoluto.replace(/^\/src\//, "src/");
       const achados = texto.match(PADRAO_ESCRITA)?.length ?? 0;
+      // Chave vem do glob local das fontes do repo, não de entrada de
+      // usuário — injeção por aqui é impossível por construção.
+      // eslint-disable-next-line security/detect-object-injection
       const esperado = LEITURAS_CONHECIDAS[relativo]?.n ?? 0;
       if (achados > esperado) {
         problemas.push(
