@@ -11,12 +11,20 @@ import type { StoreConfig } from "@/types";
 // `primaryColor` não tem reserva no default (mesmo tratamento do originCep):
 // ausente = o banco ainda não disse nada (inclusive quando o fetch FALHOU,
 // isLoaded=true no finally com a config intacta), e quem consome fica com a
-// semente do build — no --primary e no meta theme-color. Um valor PRESENTE é
-// sempre real, INCLUSIVE #000000: preto é escolha de marca legítima, e usar
-// uma cor válida como sentinela ignorava o lojista que escolhe preto de
-// propósito. Legado conhecido: linhas antigas podem ter `#000000` gravado
-// pelo próprio app (o dbInsert parou de gravá-lo); esses passam a significar
-// preto de verdade — o admin troca se quiser outra.
+// semente do build — no --primary e no meta theme-color.
+//
+// SOBRE #000000 — guarda temporária com condição de saída escrita (revisão
+// 20260825-1305 + migration 20260980000000): enquanto NÃO existir tela de
+// escrever cor no app, um `#000000` no banco só pode ser (a) resíduo da
+// fábrica antiga (DEFAULT da coluna + COALESCE da RPC, que a migration
+// desliga e limpa) num banco onde ela ainda não rodou, ou (b) escrita
+// manual no editor SQL. Nenhum dos dois é escolha de marca — nenhum lojista
+// consegue escolher preto pelo app hoje. A janela entre código novo
+// deployado e migration aplicada ao banco deixaria a fábrica viva mostrando
+// preto como marca; esta guarda fecha a janela no lado do app.
+// **SAÍDA DA GUARDA:** no dia em que a tela de escrever cor existir (pedido
+// 004, item de escrita), esta comparação sai — e #000000 passa a significar
+// preto escolhido, porque alguém poderá tê-lo escolhido.
 export const defaultStoreConfig: StoreConfig = {
   freeShippingMin: 350,
   shippingFee: 15,
@@ -54,5 +62,10 @@ export const defaultStoreConfig: StoreConfig = {
 // Único juiz de "tem cor ou não tem" — nenhum caminho aplica valor cru por
 // fora daqui (quatro atalhos faziam isso; revisão 20260825, msg #25).
 export function corPrimariaEfetiva(config: StoreConfig | null): string | null {
-  return config?.primaryColor || null;
+  if (!config?.primaryColor) return null;
+  if (config.primaryColor === "#000000") return null;
+  // Guarda temporária — ver bloco "SOBRE #000000" acima para a condição
+  // de saída. Enquanto não existe tela de escrever cor, preto no banco é
+  // resíduo de fábrica ou escrita manual: mostra a semente do build.
+  return config.primaryColor;
 }
