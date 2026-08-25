@@ -26,7 +26,12 @@
 --     -> os DOIS devem devolver o MESMO numero (o global nao segue filtro)
 --   E controle negativo: total_count continua DIFERINDO entre as chamadas.
 
-CREATE FUNCTION public.get_admin_reviews_paged("p_search" "text" DEFAULT ''::"text", "p_rating" "text" DEFAULT 'all'::"text", "p_page" integer DEFAULT 0, "p_page_size" integer DEFAULT 10) RETURNS "jsonb"
+-- CORRECAO (fila 1935, item 1/2): CREATE OR REPLACE, nunca CREATE cru
+-- nem DROP+CREATE - a funcao JA EXISTE no banco (CREATE falharia no
+-- apply) e o OR REPLACE preserva os grants de EXECUTE (anon/authenticated)
+-- que um DROP+CREATE perderia em silencio.
+
+CREATE OR REPLACE FUNCTION public.get_admin_reviews_paged("p_search" "text" DEFAULT ''::"text", "p_rating" "text" DEFAULT 'all'::"text", "p_page" integer DEFAULT 0, "p_page_size" integer DEFAULT 10) RETURNS "jsonb"
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public', 'extensions'
     AS $$

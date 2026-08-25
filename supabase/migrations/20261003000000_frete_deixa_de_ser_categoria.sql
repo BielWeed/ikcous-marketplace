@@ -30,7 +30,12 @@
 --   E as categorias REAIS mantem exatamente os mesmos values/orders
 --   (a remocao nao toca nelas - diff de conjunto so remove a linha Frete).
 
-CREATE FUNCTION public.get_category_analytics("start_date" timestamp with time zone, "end_date" timestamp with time zone) RETURNS TABLE("name" "text", "value" numeric, "orders" bigint, "avg_ticket" numeric)
+-- CORRECAO (fila 1935, item 1/2): CREATE OR REPLACE, nunca CREATE cru
+-- nem DROP+CREATE - a funcao JA EXISTE no banco (CREATE falharia no
+-- apply) e o OR REPLACE preserva os grants de EXECUTE (anon/authenticated)
+-- que um DROP+CREATE perderia em silencio.
+
+CREATE OR REPLACE FUNCTION public.get_category_analytics("start_date" timestamp with time zone, "end_date" timestamp with time zone) RETURNS TABLE("name" "text", "value" numeric, "orders" bigint, "avg_ticket" numeric)
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
     AS $$
