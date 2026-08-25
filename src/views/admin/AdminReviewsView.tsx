@@ -151,6 +151,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   const [averageRating, setAverageRating] = useState("0.0");
   const [globalVerifiedCount, setGlobalVerifiedCount] = useState(0);
   const [globalRepliedCount, setGlobalRepliedCount] = useState(0);
+  // Globais de verdade (achado 5 + migration 20261002000000): média e total
+  // que NÃO seguem o filtro — os cartões "Global/no total" leem daqui.
+  const [globalTotal, setGlobalTotal] = useState(0);
+  const [globalAvgRating, setGlobalAvgRating] = useState("0.0");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [viewMode, setViewMode] = useLocalStorage<"detailed" | "compact">(
     "admin_reviews_view_mode",
@@ -181,6 +185,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           setAverageRating(result.averageRating?.toFixed(1) || "0.0");
           setGlobalVerifiedCount(result.globalVerifiedCount || 0);
           setGlobalRepliedCount(result.globalRepliedCount || 0);
+          setGlobalTotal(result.globalTotal || 0);
+          setGlobalAvgRating(
+            result.globalAverageRating?.toFixed(1) || "0.0",
+          );
 
           const maxPage = Math.max(0, Math.ceil(result.total / pageSize) - 1);
           if (pageToFetch > maxPage) {
@@ -253,8 +261,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   const avgRating = averageRating;
 
   // Global Dynamic metrics for display
-  const verifiedRate = formatRate(globalVerifiedCount, totalReviews);
-  const responseRate = formatRate(globalRepliedCount, totalReviews);
+  // Denominadores GLOBAIS (achado 5): as taxas usam o total sem filtro —
+  // filtro vazio nunca mais fabrica "100%" de zero.
+  const verifiedRate = formatRate(globalVerifiedCount, globalTotal);
+  const responseRate = formatRate(globalRepliedCount, globalTotal);
 
   const handleDelete = async (id: string) => {
     if (isOffline) {
@@ -328,11 +338,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         iconBg: "bg-admin-gold/10 border-admin-gold/20",
         hoverBorder:
           "hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)]",
-        value: averageRating,
+        // Global de verdade (achado 5): a média do cartão "Média Global"
+        // não segue o filtro — lê o campo global da RPC (20261002000000).
+        value: globalAvgRating,
         accent: "text-admin-gold",
         content: (
           <div className="mt-2 flex items-center gap-1.5 animate-in fade-in">
-            {renderStars(Math.round(Number(averageRating) || 0))}
+            {renderStars(Math.round(Number(globalAvgRating) || 0))}
           </div>
         ),
         footer: "Satisfação dos compradores",
@@ -345,7 +357,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         iconBg: "bg-emerald-500/10 border-emerald-500/20",
         hoverBorder:
           "hover:border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.05)]",
-        value: totalReviews,
+        // Global de verdade (achado 5): "Total Recebido" é o total sem
+        // filtro — o filtrado continua governando o paginador.
+        value: globalTotal,
         accent: "text-emerald-400",
         content: (
           <div className="mt-3 flex items-center gap-1.5 animate-in fade-in">

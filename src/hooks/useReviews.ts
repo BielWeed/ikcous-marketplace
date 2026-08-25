@@ -337,8 +337,17 @@ export function useReviews() {
           const reviewsList = rpcData?.data || [];
           const totalCount = rpcData?.total_count || 0;
           const averageRating = Number(rpcData?.average_rating) || 0;
-          const globalVerifiedCount = Number(rpcData?.total_verified) || 0;
-          const globalRepliedCount = Number(rpcData?.total_replied) || 0;
+          // Globais de VERDADE (achado 5 + migration 20261002000000): os
+          // cartões "Global/no total" não seguem o filtro. Os campos
+          // total_verified/total_replied antigos eram FILTRADOS vestindo
+          // nome de global — o par RPC+front corrige a fonte.
+          const globalTotal = Number(rpcData?.global_total_count) || 0;
+          const globalAverageRating =
+            Number(rpcData?.global_average_rating) || 0;
+          const globalVerifiedCount =
+            Number(rpcData?.global_total_verified) || 0;
+          const globalRepliedCount =
+            Number(rpcData?.global_total_replied) || 0;
 
           const formatted: AdminReview[] = reviewsList.map((item: any) => ({
             id: item.id,
@@ -364,6 +373,8 @@ export function useReviews() {
             averageRating,
             globalVerifiedCount,
             globalRepliedCount,
+            globalTotal,
+            globalAverageRating,
           };
         }
 
