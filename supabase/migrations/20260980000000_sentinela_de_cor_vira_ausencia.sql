@@ -36,16 +36,37 @@
 -- NAO aplicar sem prova de ROLLBACK (inteira E interrompida no meio) e sem
 -- o Gabriel autorizar NESTA sessao.
 --
--- FICHA DE VERIFICACAO pos-aplicacao, POR BANCO (revisao 20260825-1255):
+-- FICHA DE VERIFICACAO pos-aplicacao, POR BANCO (revisao 20260825-1255;
+-- ANTES e passos 1-2 entraram na revisao final de 25/08):
 -- a verificacao NAO pode ser pela tela — a guarda temporaria do app torna
 -- uma loja com #000000 e uma loja com NULL identicas na renderizacao, e a
 -- tela ficaria "bonita de qualquer jeito" (aplicada, pela metade ou nem
--- rodada). Verifica-se na COLUNA:
+-- rodada). Verifica-se na COLUNA.
+--
+-- ANTES de aplicar, rodar e ANOTAR o numero (a consulta do passo 3 compara
+-- com ELE; sem anotar, "espera N" degrada para "a tabela existe"):
+--   SELECT count(*) FROM public.store_config WHERE primary_color = '#000000';
+--
+-- POS-aplicacao, na ordem dos passos. Os passos 1 e 2 sao a fabrica de
+-- preto morrendo: sem consulta propria, os passos 3 e 4 passam verde mesmo
+-- se a aplicacao parar no meio com a RPC ainda fabricando #000000 (psql sem
+-- ON_ERROR_STOP nao para no erro; o editor SQL do painel envolve tudo numa
+-- transacao e desfaz — a ficha nao pode depender de qual caminho rodou):
+--   passo 1 (DROP DEFAULT):
+--   SELECT column_default FROM information_schema.columns
+--    WHERE table_schema='public' AND table_name='store_config'
+--      AND column_name='primary_color';
+--     -> espera NULL
+--   passo 2 (RPC sem COALESCE):
+--   SELECT pg_get_functiondef('public.upsert_store_config(jsonb)'::regprocedure)
+--     LIKE '%COALESCE(config_json->>''primary_color''%' AS ainda_coalesceia;
+--     -> espera false
+--   passo 3 (retrato):
+--   SELECT count(*) FROM _retrato_primary_color_20260980;
+--     -> espera exatamente o numero ANOTADO no ANTES
+--   passo 4 (limpeza):
 --   SELECT count(*) FROM store_config WHERE primary_color = '#000000';
 --     -> espera 0
---   SELECT count(*) FROM _retrato_primary_color_20260980;
---     -> espera exatamente o numero de linhas que eram '#000000' antes
---        (confira contra o valor anotado na ficha da loja ANTES de aplicar)
 
 ALTER TABLE public.store_config ALTER COLUMN primary_color DROP DEFAULT;
 
@@ -196,6 +217,13 @@ $function$;
 CREATE TABLE IF NOT EXISTS public._retrato_primary_color_20260980 AS
   SELECT id, primary_color FROM public.store_config
   WHERE primary_color = '#000000';
+
+-- RLS sem policy (revisao final de 25/08): so o dono e o SECURITY DEFINER
+-- alcancam o retrato — artefato de rollback nao e leitura de app. Sem esta
+-- linha, o advisor do Supabase marca rls_disabled_in_public como ERROR em
+-- toda loja clonada, permanente ate o contract derrubar a tabela
+-- (precedente: _ninja_migrations precisou de migration propria).
+ALTER TABLE public._retrato_primary_color_20260980 ENABLE ROW LEVEL SECURITY;
 
 -- Passo 4: limpeza. Os pretos de fabrica materializados voltam ao estado
 -- "a loja nunca escolheu" (NULL = semente do build no runtime).
