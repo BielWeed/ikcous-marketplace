@@ -11,7 +11,12 @@ import * as z from "zod";
 
 const addressSchema = z.object({
   name: z.string().min(1, "Nome/Apelido é obrigatório"),
-  cep: z.string().min(8, "CEP inválido"),
+  // A máscara devolve "12345-67" para 7 dígitos — 8 CARACTERES contando o
+  // hífen, o que passava num min(8) e gravava CEP incompleto como endereço
+  // de entrega. O que valida CEP é a contagem de DÍGITOS: sempre 8.
+  cep: z
+    .string()
+    .refine((v) => v.replace(/\D/g, "").length === 8, "CEP inválido"),
   street: z.string().min(1, "Logradouro é obrigatório"),
   number: z.string().min(1, "Número é obrigatório"),
   complement: z.string().optional().or(z.literal("")),
