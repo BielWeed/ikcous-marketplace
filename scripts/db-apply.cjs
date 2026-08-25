@@ -942,6 +942,36 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20260990000000_fecha_custo_e_fornecedor_do_security_definer.sql": {
+    funcao: "get_product_recommendations",
+    esperado: [
+      // A CORRECAO EM SI: custo e fornecedor_id saem NULOS do corpo da
+      // funcao, em vez do valor real da tabela (SELECT * antigo). Sao os
+      // dois marcadores que provam que a porta fechou NESTA funcao — sem
+      // eles a migration poderia ter aplicado em qualquer outro lugar e a
+      // verificacao passaria do mesmo jeito.
+      "NULL::numeric(10,2),  -- custo: nunca sai desta funcao",
+      "NULL::uuid,           -- fornecedor_id: nunca sai desta funcao",
+      // Os dois marcadores acima tambem existem no corpo PRE-migration (o
+      // texto "p.tags && v_tags" que morava aqui antes era so' do WHERE, e
+      // sobrevivia sem mudanca nenhuma no corpo — nao provava a correcao
+      // sozinho). Este terceiro marcador e' CONTIGUO, atravessa o
+      // NULL::uuid e so' existe na forma NOVA (SELECT <lista de colunas>
+      // sem ROW(...)::public.produtos em volta): se alguem reverter para
+      // SELECT * (por engano) ou recolocar o embrulho ROW(...)::produtos,
+      // esta faixa exata deixa de casar.
+      `        p.estoque_minimo,
+        NULL::uuid,           -- fornecedor_id: nunca sai desta funcao
+        p.ativo,`,
+    ],
+  },
+  // NOTA: get_active_products_internal nao entra aqui. A correcao dela nesta
+  // migration e' um REVOKE EXECUTE, e o db-apply so sabe conferir marcador
+  // dentro de CORPO DE FUNCAO (pg_get_functiondef) -- grant/revoke sai
+  // sempre como PULADA, por desenho (ver cabecalho deste arquivo). A prova
+  // de que o EXECUTE saiu de anon/authenticated e manual, por
+  // has_function_privilege(...) -- receita no cabecalho da propria
+  // migration (20260990000000_fecha_custo_e_fornecedor_do_security_definer.sql).
 };
 
 function lerDatabaseUrl() {
