@@ -313,6 +313,69 @@ Em `src/lib/mappers.ts`, junto de `trackingCode`:
 
 - [ ] **Step 6: Verificação** — `npm run typecheck` e o arquivo de teste. **Não commite.**
 
+#### 🔴 Task 3b: as 17 fixtures que o campo obrigatório quebra
+
+**Lacuna do plano, encontrada na execução em 24/08/2026 e corrigida aqui.** Eu escrevi
+`cancelledAfterShipping: boolean` (obrigatório) sem prever que **17 arquivos de teste montam
+objetos `Order` literais** para testar telas que não têm nada a ver com cancelamento. Todos
+passam a reprovar o `typecheck` com `TS2741`.
+
+**Decisão da sessão principal: o campo continua OBRIGATÓRIO, e as 17 fixtures ganham
+`cancelledAfterShipping: false,`.** O motivo, e não é gosto:
+
+- a coluna do banco é `NOT NULL DEFAULT false`, e o tipo do app deve espelhar o banco;
+- **nenhum código de produção monta `Order` do zero** — medido: só o mapper (que sempre preenche
+  os dois campos) e as fixtures. O único ponto que constrói um `Order` fora do mapper é
+  `AdminOrdersView.tsx:515`, e ele usa conversão forçada (`payload.new as Order`), que passaria
+  por cima do tipo com campo opcional **ou** obrigatório;
+- campo opcional inventaria `undefined` como terceiro estado para algo que nunca é indefinido em
+  dado real — e este repositório tem histórico medido de "o zero que quer dizer *não sei*"
+  passando por auditoria.
+
+O que essa decisão sacrifica: um diff maior, com 17 arquivos fora do assunto. Por isso eles vão
+em **commit próprio**, rotulado como consequência do campo novo, para a revisão poder separar o
+que é a feature do que é a maré que ela levantou.
+
+- [ ] **Step 1: `npm run typecheck`** e trabalhe pela saída dele — as linhas podem ter andado.
+- [ ] **Step 2:** acrescente `cancelledAfterShipping: false,` em cada `Order` literal acusado. Nada mais.
+- [ ] **Step 3: `npm run typecheck`** de novo; sem nenhuma saída = sem erro.
+
+---
+
+### 🔴 Dois caminhos que fazem o campo novo chegar ERRADO — Tasks 4 e 5 têm de fechá-los
+
+Achados da revisão de contexto limpo da Task 3 (24/08/2026). **Nenhum é defeito daquele diff**:
+hoje o campo tem **zero consumidores**, medido por grep. Eles viram defeito no minuto em que a
+Task 4 ou a 5 acender a primeira tela que lê `cancelledAfterShipping` — que é o padrão "cada peça
+passa e o conjunto não".
+
+**(a) O cache do `localStorage` devolve `Order[]` sem passar pelo mapper.**
+`src/hooks/useOrders.ts:432-434` e `:463-465` fazem `JSON.parse` e devolvem direto, tipado como
+`Order[]`. Um cliente com cache gravado pela versão que está no ar hoje abre o app e o primeiro
+paint (ou o app inteiro, se estiver offline) tem `cancelledAfterShipping === undefined`. Cura-se
+sozinho no primeiro fetch, mas a janela existe em toda abertura offline.
+
+**(b) Os merges parciais copiam só `status`.**
+`src/hooks/useOrders.ts:681-685` e `:1036-1053` fazem `{ ...o, status, trackingCode }`. Cenário
+concreto: o cliente está com o app aberto, a lojista cancela um pedido **já enviado**, o evento
+de realtime chega com `cancelled_after_shipping: true` — e o merge ignora. Em memória o pedido
+fica "cancelado" com `cancelledAfterShipping: false`, **e a linha `:690` regrava esse estado
+errado no `localStorage`**. A tela mostraria "cancelado antes do envio" para um pedido que saiu.
+
+**O que a Task 4 e a Task 5 devem fazer com isso:**
+
+1. **Nunca comparar contra `false`.** `if (pedido.cancelledAfterShipping === false)` manda o
+   pedido vindo do cache velho para o ramo errado. Use a forma positiva
+   (`if (pedido.cancelledAfterShipping)`), que trata `undefined` como "não enviado" — que é o
+   lado seguro.
+2. **Fechar (b) no merge:** os dois pontos de merge parcial passam a copiar também
+   `cancelledAfterShipping` e `returnedToSellerAt` do payload. Sem isso, o realtime mente.
+3. **Cada uma com teste próprio**, e o de (b) tem de falhar se o merge voltar a copiar só
+   `status`.
+
+⚠️ **A saída errada seria tornar o campo opcional.** Isso não fecharia buraco nenhum — só
+legalizaria o `undefined` e tiraria o aviso do compilador. O tipo continua obrigatório.
+
 ---
 
 ### Task 4: A tela do cliente segue a regra
@@ -436,6 +499,23 @@ Perguntas que só ele faz: o conjunto ainda é a regra que o Gabriel decidiu? As
 🔴 Esta tarefa nasce escrita junto com as outras, e não lembrada no fim — é a trava contra "cada peça passou e o todo deixou de ser o pedido".
 
 ---
+
+## 🔴 A ordem de aplicação, e ela NÃO é negociável
+
+Achado da revisão Opus da Task 1 (24/08/2026): **a migration torna a RPC
+`confirmar_retorno_do_produto` obrigatória para o estoque voltar.**
+
+Hoje, quando a **própria lojista** cancela um pedido `shipping`, o estoque volta na hora. Depois
+desta migration, não volta mais — ele fica esperando alguém confirmar que o produto retornou. Se
+a tela que chama essa RPC (Task 5) não existir, **o estoque de todo pedido cancelado-após-envio
+fica fora do catálogo para sempre**, sem nenhum caminho pela interface para recuperá-lo.
+
+**Consequência prática:** a migration só pode ser aplicada no banco **depois** que a Task 5
+estiver entregue e no ar. Aplicar antes troca um defeito (estoque que volta cedo demais) por
+outro pior (estoque que não volta nunca, e some do catálogo sem ninguém entender por quê).
+
+Isto não é zelo: é a mesma família de erro que este repositório já pagou — banco novo com tela
+velha **liga** o defeito em vez de desligar.
 
 ## O que este plano deliberadamente NÃO faz
 
