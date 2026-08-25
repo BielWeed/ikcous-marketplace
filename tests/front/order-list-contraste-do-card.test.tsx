@@ -44,6 +44,7 @@ const pedidoBase: Order = {
   status: "pending",
   createdAt: new Date(0).toISOString(),
   updatedAt: new Date(0).toISOString(),
+  cancelledAfterShipping: false,
 };
 
 // @ts-expect-error flag interna do React, sem tipo público.

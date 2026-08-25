@@ -43,6 +43,7 @@ function pedidoBase(overrides: Partial<Order> = {}): Order {
     status: "pending",
     createdAt: new Date("2026-08-20T10:00:00Z").toISOString(),
     updatedAt: new Date("2026-08-20T10:00:00Z").toISOString(),
+    cancelledAfterShipping: false,
     ...overrides,
   };
 }
