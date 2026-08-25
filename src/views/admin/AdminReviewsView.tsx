@@ -413,12 +413,16 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       },
     ],
     [
-      averageRating,
-      totalReviews,
       responseRate,
       globalRepliedCount,
       verifiedRate,
       globalVerifiedCount,
+      // Conserto 5 da catraca (fila 1935, item 3) — e correção real: sem
+      // estas deps o memo devolvia cartões VELHOS quando os globais
+      // mudassem sozinhos. averageRating/totalReviews saíram: os cartões
+      // não leem mais as métricas FILTRADAS desde o conserto 3.
+      globalAvgRating,
+      globalTotal,
     ],
   );
 
