@@ -7,10 +7,16 @@ import type { StoreConfig } from "@/types";
 // dublam o contexto não quebrem por causa dela (medido: mock do StoreContext
 // derrubava o App quando a regra morava lá).
 //
-// CONTRATO: o default DE CÓDIGO (#000000) é o estado "banco ainda não disse
-// nada" — inclusive quando o fetch FALHOU (isLoaded=true no finally com a
-// config intacta no default). Ele nunca pode pisar a semente do build, nem no
-// --primary nem no meta theme-color.
+// CONTRATO: sentinela de "sem valor" é AUSÊNCIA, nunca uma cor válida.
+// `primaryColor` não tem reserva no default (mesmo tratamento do originCep):
+// ausente = o banco ainda não disse nada (inclusive quando o fetch FALHOU,
+// isLoaded=true no finally com a config intacta), e quem consome fica com a
+// semente do build — no --primary e no meta theme-color. Um valor PRESENTE é
+// sempre real, INCLUSIVE #000000: preto é escolha de marca legítima, e usar
+// uma cor válida como sentinela ignorava o lojista que escolhe preto de
+// propósito. Legado conhecido: linhas antigas podem ter `#000000` gravado
+// pelo próprio app (o dbInsert parou de gravá-lo); esses passam a significar
+// preto de verdade — o admin troca se quiser outra.
 export const defaultStoreConfig: StoreConfig = {
   freeShippingMin: 350,
   shippingFee: 15,
@@ -19,7 +25,11 @@ export const defaultStoreConfig: StoreConfig = {
   businessHours: "Seg-Sáb: 9h às 18h",
   enableReviews: true,
   enableCoupons: true,
-  primaryColor: "#000000",
+  // primaryColor NÃO tem reserva de propósito (como o originCep abaixo).
+  // Valia "#000000", e isso fazia duas coisas ruins ao mesmo tempo: o app
+  // gravava preto no banco de toda loja que inicializava, calado, e a regra
+  // ignorava lojista que escolhesse preto de propósito. Sem valor = a loja
+  // não disse; preto = preto.
   themeMode: "light",
   realTimeSalesAlerts: true,
   pushMarketingEnabled: false,
@@ -38,11 +48,11 @@ export const defaultStoreConfig: StoreConfig = {
   ],
 };
 
-// Devolve a cor do banco quando ela é real, senão `null` (quem consome fica
+// Devolve a cor da loja quando ela EXISTE, senão `null` (quem consome fica
 // com a semente do build). Tolerante a `config` nula: consumidor de contexto
 // dublado pode entregar null, e a resposta certa continua sendo "semente".
+// Único juiz de "tem cor ou não tem" — nenhum caminho aplica valor cru por
+// fora daqui (quatro atalhos faziam isso; revisão 20260825, msg #25).
 export function corPrimariaEfetiva(config: StoreConfig | null): string | null {
-  if (!config?.primaryColor) return null;
-  if (config.primaryColor === defaultStoreConfig.primaryColor) return null;
-  return config.primaryColor;
+  return config?.primaryColor || null;
 }

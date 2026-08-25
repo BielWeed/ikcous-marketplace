@@ -274,11 +274,14 @@ export function StoreProvider({
           );
           setConfig(merged);
           setIsLoaded(true);
-          // Apply branding immediately
-          if (merged.primaryColor) {
+          // Apply branding immediately — também pela REGRA (dono único): o
+          // cache pode carregar config sem cor (ou o lojista escolheu preto,
+          // que é real e passa). Nada aplica valor cru por fora daqui.
+          const corCache = corPrimariaEfetiva(merged);
+          if (corCache) {
             document.documentElement.style.setProperty(
               "--primary",
-              hexToTailwindHsl(merged.primaryColor),
+              hexToTailwindHsl(corCache),
             );
           }
           // ADMIN-100 (#102): a classe `dark` (e o atributo `data-theme-mode`)
@@ -336,7 +339,7 @@ export function StoreProvider({
     };
   }, []);
 
-  const applyBranding = useCallback((primaryColor?: string) => {
+  const applyBranding = useCallback((primaryColor?: string | null) => {
     if (primaryColor) {
       document.documentElement.style.setProperty(
         "--primary",
@@ -353,12 +356,12 @@ export function StoreProvider({
   //
   // CONTRATO DE COR — precedência: o branding do build (applyBranding em
   // main.tsx) é a semente anti-flash no :root; o primary_color do BANCO vence
-  // quando a config chega OU muda. O default DE CÓDIGO (#000000, estado
-  // inicial antes de qualquer dado) não veio do banco: aplicá-lo aqui pisaria
-  // a semente do build durante o mount, na janela em que o banco ainda não
-  // respondeu. Os caminhos que recebem config de verdade (fetch, cache,
-  // updateConfig, realtime) aplicam a cor direto; este efeito garante a
-  // re-aplicação em qualquer mudança posterior do valor.
+  // quando a config chega OU muda — e vence SEMPRE pela regra de
+  // corPrimariaEfetiva, em TODOS os caminhos (cache, fetch, updateConfig,
+  // realtime). Sentinela de "sem valor" é AUSÊNCIA: sem primary_color nem no
+  // default nem gravado pelo app, ausente = fica a semente do build; um valor
+  // presente é sempre real, inclusive #000000 (preto é escolha legítima).
+  // Este efeito garante a re-aplicação em qualquer mudança posterior.
   useEffect(() => {
     // Regra mora em corPrimariaEfetiva — dono único (o meta theme-color do
     // App.tsx consulta o mesmo lugar).
@@ -422,11 +425,7 @@ export function StoreProvider({
         defaultStoreConfig.enableCoupons,
       ),
       logoUrl: getVal("logo_url", "logoUrl", undefined),
-      primaryColor: getVal(
-        "primary_color",
-        "primaryColor",
-        defaultStoreConfig.primaryColor,
-      ),
+      primaryColor: getVal("primary_color", "primaryColor", undefined),
       themeMode: getVal(
         "theme_mode",
         "themeMode",
@@ -497,7 +496,10 @@ export function StoreProvider({
             business_hours: defaultStoreConfig.businessHours,
             enable_reviews: defaultStoreConfig.enableReviews,
             enable_coupons: defaultStoreConfig.enableCoupons,
-            primary_color: defaultStoreConfig.primaryColor,
+            // primary_color NÃO vai no insert de propósito: gravar o default
+            // calava a escolha futura do lojista (toda loja nascia com preto
+            // "oficial" sem ninguém ter decidido). Sem valor = ausente; a
+            // coluna é nullable.
             theme_mode: defaultStoreConfig.themeMode,
             real_time_sales_alerts: defaultStoreConfig.realTimeSalesAlerts,
             push_marketing_enabled: defaultStoreConfig.pushMarketingEnabled,
@@ -533,7 +535,7 @@ export function StoreProvider({
                 .catch(() => {});
               return mapped;
             });
-            applyBranding(mapped.primaryColor);
+            applyBranding(corPrimariaEfetiva(mapped));
           }
         }
       } else if (data) {
@@ -566,7 +568,7 @@ export function StoreProvider({
             );
           return mapped;
         });
-        applyBranding(mapped.primaryColor);
+        applyBranding(corPrimariaEfetiva(mapped));
       }
     } catch (err) {
       console.error("[StoreContext] Config error:", err);
@@ -770,7 +772,12 @@ export function StoreProvider({
             );
           return newConfig;
         });
-        if (updates.primaryColor) applyBranding(updates.primaryColor);
+        // Aplica pela REGRA também no caminho do admin: valor explícito do
+        // formulário passa (inclusive #000000 = preto escolhido); ausente
+        // não pinta nada. Nenhum caminho aplica cru por fora do dono único.
+        applyBranding(
+          corPrimariaEfetiva({ primaryColor: updates.primaryColor } as StoreConfig),
+        );
         toast.success("Configurações salvas");
         return true;
       } catch (err) {
@@ -827,7 +834,7 @@ export function StoreProvider({
             );
           }
           setConfig(mapped);
-          applyBranding(mapped.primaryColor);
+          applyBranding(corPrimariaEfetiva(mapped));
         }
       },
       [mapConfig, applyBranding, config.minAppVersion],
