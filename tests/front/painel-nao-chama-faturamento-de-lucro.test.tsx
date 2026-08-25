@@ -2,17 +2,25 @@ import { TopProductsList } from "@/components/admin/dashboard/TopProductsList";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 // @vitest-environment jsdom
 //
-// Defeito 1 (lote fix/caca-defeitos-lote-1): o bloco "TOP 5 PRODUTOS MAIS
-// LUCRATIVOS" do Painel ordena e exibe `SUM(oi.quantity * oi.price)` — ver
-// `supabase/migrations/20260822000100_analitico_conta_so_dinheiro_reconhecido.sql`,
-// linhas 247-262. Isso é receita bruta, sem descontar custo nenhum: um
-// produto de giro alto e margem magra encabeça a lista de "mais lucrativos"
-// mesmo perdendo dinheiro. A lojista usa essa lista para decidir o que
-// repor, e o rótulo mente sobre o que está ali.
+// HISTÓRIA COMPLETA (para quem abrir este arquivo amanhã):
 //
-// Este teste prova o título: ele não pode mais afirmar "lucrativos" (a RPC
-// não desconta custo), e tem que dizer o que a lista realmente é —
-// faturamento/vendas em R$.
+// 1. Defeito original (auditoria de 20/08): o bloco ordenava por
+//    `SUM(oi.quantity * oi.price)` — faturamento — com rótulo "mais
+//    lucrativos". A lojista decide reposição por essa lista.
+// 2. Paliativo de 23/08 (`de3fa05`): trocou o RÓTULO para "que mais
+//    faturaram" e deixou por escrito o passo que faltava: "ordenar por
+//    lucro de verdade exige mudar a RPC, e isso é banco".
+// 3. O passo 2 chegou: a migration `20261001000000` faz a RPC ordenar e
+//    exibir `SUM(qty * (price - COALESCE(custo, 0)))` — LUCRO. O par
+//    completo (rotulo voltou a "mais lucrativos" + RPC de lucro) é o
+//    commit `0de59ae` + `9980271`; a ORDEM de aplicação (front mergeia
+//    primeiro, clique da migration depois) está no comentário do
+//    TopProductsList e na revisão 20260825-2145.
+//
+// Este teste guarda a METADE FRONT do par: o título tem que afirmar
+// "lucrativos" (verdade desde a migration) e NÃO pode voltar a
+// "faturaram" (mentiria sobre o número exibido). A metade RPC é guardada
+// pela ficha por consulta no cabeçalho da própria migration.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -57,7 +65,7 @@ function statsComUmProduto(): DashboardStats {
   };
 }
 
-describe("TopProductsList — o título não promete lucro que a RPC não calcula", () => {
+describe("TopProductsList — o título diz 'lucrativos' porque a RPC (20261001000000) calcula lucro", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
