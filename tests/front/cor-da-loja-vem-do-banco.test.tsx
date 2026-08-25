@@ -396,10 +396,10 @@ describe("App — o meta theme-color acompanha a cor primária efetiva (banco > 
   // O QUARTO QUADRANTE, que faltava (revisão cruzada 20260825-1015 — o
   // defeito real do b531ca9 morava exatamente aqui): o fetch da config
   // REJEITOU (rede caiu, Supabase fora). `isLoaded` vira true no `finally`
-  // e `config.primaryColor` segue o default de código (#000000), que é
-  // truthy. O contrato manda: default de código não é cor de banco — o meta
-  // fica na semente do build, não em #000000 (barra preta com o app na cor
-  // da marca). A regra hoje mora em corPrimariaEfetiva (StoreContext).
+  // e `config.primaryColor` fica AUSENTE (o default de código não tem mais
+  // reserva de cor — sentinela é ausência). O contrato manda: sem cor não se
+  // pinta — o meta fica na semente do build (barra preta com o app na cor da
+  // marca era o defeito original). A regra mora em corPrimariaEfetiva.
   it("(d) fetch da config FALHANDO: isLoaded=true + config no default → meta fica na semente do build, não em #000000", async () => {
     fetchFalha = true;
 
@@ -418,5 +418,61 @@ describe("App — o meta theme-color acompanha a cor primária efetiva (banco > 
     // default de código. Se este teste um dia falhar em silêncio, é a barra
     // do celular voltando a ficar preta no caminho de falha.
     expect(metaThemeColor()?.getAttribute("content")).not.toBe("#000000");
+  });
+
+  // QUINTO quadrante (revisão 20260825-1305 — por que o 498ccea BLOQUEAVA):
+  // o FIXTURE REALISTA. Linha com `primary_color = '#000000'` vinda do banco,
+  // que é o que o schema ainda produz em banco onde a 20260980000000 não
+  // rodou e o que linhas antigas carregam. A MANCHETE do design confirmado
+  // (resposta GLM 1249, endossada no confirm do Claude): este fixture mostra
+  // a SEMENTE do build — guarda temporária no corPrimariaEfetiva: sem tela
+  // de escrever cor, preto no banco é resíduo de fábrica ou escrita manual,
+  // escolha de lojista não é. Os DOIS consumidores concordam (nenhum pinta),
+  // que é a consistência que o 1305 exigia — divergência nenhuma, preto
+  // lugar nenhum. Quando a tela de escrever cor existir (pedido 004), a
+  // guarda SAI e este teste INVERTE de propósito: preto passa a ser escolha.
+  it("(e) linha do banco COM primary_color '#000000' (fixture realista): semente do build nos DOIS consumidores — guarda temporária", async () => {
+    linhaDoBanco = { id: 1, primary_color: "#000000" };
+
+    await act(async () => {
+      raiz.render(<App />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe(
+      "",
+    );
+    expect(metaThemeColor()?.getAttribute("content")).toBe(
+      branding.theme.primary,
+    );
+    expect(metaThemeColor()?.getAttribute("content")).not.toBe("#000000");
+  });
+
+  // SEXTO quadrante — o estado que só a migration 20260980000000 torna
+  // alcançável em produção: linha SEM primary_color (NULL/ausente) chegando
+  // com sucesso. Ausente é ausente: NENHUM consumidor pinta — o --primary
+  // continua como o build semeou (aqui: ninguém seta) e o meta fica na
+  // semente. Se um dia voltar a fabricar cor para loja sem escolha, este
+  // teste cai primeiro.
+  it("(f) linha do banco SEM primary_color (pós-migration): nada pinta — semente do build nos dois", async () => {
+    linhaDoBanco = { id: 1 };
+
+    await act(async () => {
+      raiz.render(<App />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      document.documentElement.style.getPropertyValue("--primary"),
+    ).toBe("");
+    expect(metaThemeColor()?.getAttribute("content")).toBe(
+      branding.theme.primary,
+    );
   });
 });
