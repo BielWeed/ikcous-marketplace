@@ -82,7 +82,7 @@ BEGIN
     COALESCE(config_json->>'business_hours', 'Seg-Sáb: 9h às 18h'),
     COALESCE((config_json->>'enable_reviews')::boolean, true),
     COALESCE((config_json->>'enable_coupons')::boolean, true),
-    config_json->>'primary_color'  -- sentinela removida: ausente grava NULL,
+    config_json->>'primary_color',  -- sentinela removida: ausente grava NULL
     COALESCE(config_json->>'theme_mode', 'light'),
     config_json->>'logo_url',
     COALESCE((config_json->>'real_time_sales_alerts')::boolean, true),
