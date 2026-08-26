@@ -236,6 +236,13 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      # TEMPORÁRIO — sai no próximo commit. Existe para uma pergunta só: o
+      # eslint conta 550 no Windows e 551 aqui, e nenhuma hipótese testada
+      # localmente (colisão de maiúscula, arquivo ausente, cache) explicou a
+      # diferença. Reproduzir o CI na máquina do dev já falhou três vezes; ler
+      # o número onde ele acontece resolve em um ciclo.
+      - name: (temporário) onde estão os warnings de eslint
+        run: npx eslint . -f json > /tmp/es.json || true; node -e "const d=require('/tmp/es.json');const p=d.filter(r=>r.warningCount>0).map(r=>[r.filePath.replace(process.cwd()+'/',''),r.warningCount]).sort((a,b)=>b[1]-a[1]);console.log('TOTAL',p.reduce((s,x)=>s+x[1],0));for(const [f,n] of p)console.log(n,f)"
       - name: Compara com o teto de dívida
         run: npm run lint:ratchet
 
