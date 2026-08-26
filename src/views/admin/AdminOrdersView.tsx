@@ -213,6 +213,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  // B1 da 2a revisao: inferir erro de !selectedOrder mostrava a tela de
+  // erro NO PRIMEIRO QUADRO de toda abertura de pedido (efeito passivo
+  // roda depois do paint). detailError so e true quando o catch rodou.
+  const [detailError, setDetailError] = useState(false);
   const prevSelectedOrderRef = useRef<Order | null>(null);
   const {
     ref: viewRef,
@@ -398,6 +402,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     let isCurrent = true;
     const fetchSingleOrder = async () => {
       setLoadingDetail(true);
+      setDetailError(false);
       try {
         const { data, error } = await supabase
           .from("marketplace_orders")
@@ -417,6 +422,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       } catch (err) {
         console.error("Error fetching single order:", err);
         toast.error("Erro ao carregar detalhes do pedido");
+        setDetailError(true);
       } finally {
         if (isCurrent) setLoadingDetail(false);
       }
@@ -739,7 +745,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     );
   }
 
-  if (selectedOrderId && !loadingDetail && !selectedOrder) {
+  if (selectedOrderId && !loadingDetail && detailError) {
     // PAINEL-03: fetch concluiu sem resultado — erro de rede, id inválido,
     // ou sessão expirou. Antes: spinner eterno; agora: erro + voltar.
     return (

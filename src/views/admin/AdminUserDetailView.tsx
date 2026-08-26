@@ -93,7 +93,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const handleCopy = (text: string, field: "id" | "email" | "whatsapp") => {
     haptic.light();
     navigator.clipboard.writeText(text).then(() => {
-      toast.success("E-mail copiado com sucesso!");
+
     }).catch(() => {
       toast.error("Não foi possível copiar. Copie manualmente.");
     });

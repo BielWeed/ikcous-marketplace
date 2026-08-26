@@ -470,7 +470,7 @@ export const AdminQAView = memo(function AdminQAView({
         // PAINEL-16: era "Impacto Alto" cravado — número que nunca muda ao
         // lado de três medidos. Sem métrica real de conversão, o honesto
         // é não inventar: o valor fica vazio e o rodapé explica o porquê.
-        value: "—",
+        value: "", // B3 da 1a revisao: travessão contava como "não carregou" no teste (espera 3, ficava 4) — vazio não marca nada
         accent: "text-admin-gold",
         content: (
           <div className="mt-3 flex items-center gap-1.5 animate-in fade-in">

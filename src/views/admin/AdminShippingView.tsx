@@ -1138,6 +1138,11 @@ export const AdminShippingView = memo(function AdminShippingView({
                     <div className="flex gap-2">
                       <input
                         type="password"
+                        // B1 da 1a revisao: sem esta trava, o campo ficava
+                        // editavel quando a carga falhou — o lojista digitava
+                        // o token de novo e o save silenciosamente o descartava
+                        // (a guarda credsLoaded pulava o upsert) com toast verde.
+                        disabled={!credsLoaded && formData.shippingProvider !== "flat_fee"}
                         value={
                           shippingCreds[formData.shippingProvider]?.token || ""
                         }
