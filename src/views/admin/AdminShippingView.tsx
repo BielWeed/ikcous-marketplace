@@ -77,6 +77,12 @@ export const AdminShippingView = memo(function AdminShippingView({
   // do token real — perda de dado com toast de sucesso. `credsLoaded` so
   // vira true quando o fetch devolveu dados de verdade.
   const [credsLoaded, setCredsLoaded] = useState(false);
+  // Achado 2 da auditoria rodada 2 (26/08/2026): sem este estado, a falha do
+  // fetch só existia no console. `credsLoaded` ficava false para sempre, os
+  // `disabled` da correção anterior travavam a seção inteira, e a tela dizia
+  // "Recarregando…" para um movimento que nunca aconteceria. Erro que a tela
+  // não conta é erro que a pessoa não tem como contornar.
+  const [credsError, setCredsError] = useState(false);
 
   // Connection Test State
   const [isTestingCreds, setIsTestingCreds] = useState(false);
@@ -100,6 +106,10 @@ export const AdminShippingView = memo(function AdminShippingView({
   // Fetch shipping credentials from Supabase
   const fetchShippingCreds = useCallback(async () => {
     setLoadingCreds(true);
+    // Limpa o erro da rodada anterior no início de CADA busca — senão uma
+    // falha antiga fica grudada na tela depois de um "Tentar de novo" que deu
+    // certo. (Mesmo padrão que `fetchLogs` já usa para `logsError`.)
+    setCredsError(false);
     try {
       const { data, error } = await supabase
         .from("store_shipping_credentials")
@@ -116,9 +126,11 @@ export const AdminShippingView = memo(function AdminShippingView({
         // PAINEL-01: falha no fetch NAO pode deixar o save sobrescrever o
         // token real com vazio — a guarda `credsLoaded` no handleSave usa isto.
         console.error("[AdminShippingView] Credenciais não carregaram:", error);
+        setCredsError(true);
       }
     } catch (err) {
       console.error("Error fetching shipping credentials:", err);
+      setCredsError(true);
     } finally {
       setLoadingCreds(false);
     }
@@ -147,9 +159,31 @@ export const AdminShippingView = memo(function AdminShippingView({
     }
   }, []);
 
+  // ── Achado 3 da auditoria rodada 2 (26/08/2026) ──────────────────────────
+  // O efeito abaixo redispara quando `active` volta a `true` (a view do painel
+  // nunca desmonta) e quando a identidade de `config` muda (realtime, outra
+  // aba, save em outra tela). Sem guarda, ele reescrevia o formulário inteiro
+  // e jogava fora o que o lojista tinha acabado de digitar, sem aviso.
+  //
+  // A guarda NÃO pode ser só "está sujo": `formData` nasce com valores neutros
+  // (`freeShippingMin: 0`, `originCep: ""`), então numa loja configurada o
+  // formulário já é "sujo" contra o config ANTES da primeira sincronização —
+  // e a tela abriria eternamente vazia. Por isso são duas condições, e a
+  // primeira carga sempre passa.
+  const jaSincronizouRef = useRef(false);
+  const isFormDirtyRef = useRef(false);
+
   // Sync state on load or activation
   useEffect(() => {
     if (isLoaded && config) {
+      if (jaSincronizouRef.current && isFormDirtyRef.current) {
+        // Há trabalho não salvo na tela. Nem o formulário nem as credenciais
+        // são recarregados: `fetchShippingCreds` sobrescreveria um token
+        // recém-digitado pelo mesmo caminho (`isFormDirty` cobre token e
+        // sandbox, ver o useMemo abaixo).
+        return;
+      }
+      jaSincronizouRef.current = true;
       setFormData({
         freeShippingMin: Number(config.freeShippingMin ?? 0),
         shippingFee: Number(config.shippingFee ?? 0),
@@ -260,6 +294,11 @@ export const AdminShippingView = memo(function AdminShippingView({
   // Report dirty state to AdminLayout
   useEffect(() => {
     onSetDirty?.(isFormDirty);
+    // Achado 3: o espelho que o efeito de sincronização lê. Ele é declarado
+    // ANTES deste na ordem do componente, então lê o valor do commit anterior
+    // — que é exatamente a pergunta certa: "a pessoa já tinha mexido quando
+    // esta config nova chegou?".
+    isFormDirtyRef.current = isFormDirty;
   }, [isFormDirty, onSetDirty]);
 
   // Test connection credentials
@@ -1105,6 +1144,35 @@ export const AdminShippingView = memo(function AdminShippingView({
                 {/* API Token & Credentials Box */}
                 {formData.shippingProvider !== "flat_fee" && (
                   <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-3.5 space-y-3 animate-in fade-in duration-200">
+                    {/* Achado 2 da auditoria rodada 2: a leitura das chaves
+                        falhou. Sem este bloco a seção inteira ficava travada
+                        pelos `disabled` abaixo, sem uma palavra de explicação e
+                        sem nenhuma forma de sair do estado morto a não ser
+                        recarregar a página na mão. */}
+                    {credsError && (
+                      <div className="flex flex-col gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="mt-px size-3.5 shrink-0 text-red-400" />
+                          <p className="text-[11px] font-semibold leading-snug text-red-300">
+                            Não foi possível carregar as chaves de frete.
+                            <span className="mt-0.5 block font-normal text-red-300/70">
+                              O token e o modo Sandbox ficam bloqueados até a
+                              leitura funcionar — assim nada é gravado por cima
+                              do que já está salvo.
+                            </span>
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            fetchShippingCreds();
+                          }}
+                          className="self-start rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:border-amber-500/30"
+                        >
+                          Tentar de novo
+                        </button>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-xs font-bold text-white">
                         <Lock className="size-3.5 text-amber-400" />
@@ -1122,29 +1190,34 @@ export const AdminShippingView = memo(function AdminShippingView({
                             Sandbox
                           </span>
                           {!credsLoaded ? (
+                            // Achado 2: enquanto a busca está MESMO em curso, a
+                            // tela diz que está carregando. Quando ela falhou,
+                            // quem fala é o aviso com o botão de tentar de novo
+                            // (acima) — e não uma palavra que promete um
+                            // movimento automático que nunca vem.
                             <span className="text-[9px] font-bold uppercase tracking-widest text-amber-500">
-                              Recarregando…
+                              {credsError ? "Indisponível" : "Carregando…"}
                             </span>
                           ) : (
-                          <Switch
-                            checked={!!shippingCreds.melhor_envio?.sandbox}
-                            // B3 da 3a revisao: mesma trava do token — sem
-                            // isto, mudar Sandbox com carga falhada era
-                            // descartado em silencio com toast verde (a loja
-                            // seguia em modo de teste achando que estava em
-                            // producao).
-                            disabled={!credsLoaded}
-                            onCheckedChange={(checked) => {
-                              setShippingCreds((prev) => ({
-                                ...prev,
-                                melhor_envio: {
-                                  ...prev.melhor_envio,
-                                  sandbox: checked,
-                                },
-                              }));
-                            }}
-                            className="scale-75 data-[state=checked]:bg-amber-500"
-                          />
+                            <Switch
+                              checked={!!shippingCreds.melhor_envio?.sandbox}
+                              // B3 da 3a revisao: mesma trava do token — sem
+                              // isto, mudar Sandbox com carga falhada era
+                              // descartado em silencio com toast verde (a loja
+                              // seguia em modo de teste achando que estava em
+                              // producao).
+                              disabled={!credsLoaded}
+                              onCheckedChange={(checked) => {
+                                setShippingCreds((prev) => ({
+                                  ...prev,
+                                  melhor_envio: {
+                                    ...prev.melhor_envio,
+                                    sandbox: checked,
+                                  },
+                                }));
+                              }}
+                              className="scale-75 data-[state=checked]:bg-amber-500"
+                            />
                           )}
                         </div>
                       )}
