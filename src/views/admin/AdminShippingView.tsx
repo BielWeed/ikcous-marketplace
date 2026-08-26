@@ -72,6 +72,11 @@ export const AdminShippingView = memo(function AdminShippingView({
     [key: string]: any;
   }>({});
   const [, setLoadingCreds] = useState(false);
+  // PAINEL-01 da auditoria: sem esta guarda, o save com creds nao carregadas
+  // (fetch falhou ou nao resolveu a tempo) grava `credentials: {}` por cima
+  // do token real — perda de dado com toast de sucesso. `credsLoaded` so
+  // vira true quando o fetch devolveu dados de verdade.
+  const [credsLoaded, setCredsLoaded] = useState(false);
 
   // Connection Test State
   const [isTestingCreds, setIsTestingCreds] = useState(false);
@@ -106,6 +111,11 @@ export const AdminShippingView = memo(function AdminShippingView({
         });
         setShippingCreds(credsMap);
         setOriginalShippingCreds(JSON.parse(JSON.stringify(credsMap)));
+        setCredsLoaded(true); // PAINEL-01: so libera o save de creds com dados de verdade
+      } else if (error) {
+        // PAINEL-01: falha no fetch NAO pode deixar o save sobrescrever o
+        // token real com vazio — a guarda `credsLoaded` no handleSave usa isto.
+        console.error("[AdminShippingView] Credenciais não carregaram:", error);
       }
     } catch (err) {
       console.error("Error fetching shipping credentials:", err);
@@ -349,8 +359,12 @@ export const AdminShippingView = memo(function AdminShippingView({
       }
 
       // 2. Save credentials in database if not flat_fee
+      // PAINEL-01: só gravar creds que CARREGARAM — se o fetch falhou ou não
+      // resolveu, `shippingCreds` está vazio e o upsert destruiria o token
+      // real com `credentials: {}`. As configurações GERAIS seguem salvando;
+      // só a credencial fica de fora até a próxima leitura bem-sucedida.
       const provider = formData.shippingProvider;
-      if (provider !== "flat_fee") {
+      if (provider !== "flat_fee" && credsLoaded) {
         const creds = shippingCreds[provider] || {};
         const { error: credsError } = await supabase
           .from("store_shipping_credentials")
