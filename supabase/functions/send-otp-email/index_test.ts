@@ -73,3 +73,32 @@ Deno.test("mascarar: o log nunca carrega o endereco inteiro de quem compra", () 
   assertEquals(mascarar("ab@teste.com"), "***@teste.com");
   assertEquals(mascarar("sem-arroba"), "***");
 });
+
+// --- PEDIDO-07 (auditoria de 26/08/2026): migração para readKey ---
+//
+// A logica de requisicao real fica dentro de `if (!emTeste) { serve(...) }`
+// — nao ha um `handler` exportado como em criar-pagamento/index.ts (ver o
+// comentario grande de `deps` la, sobre por que essa costura existe). Sem
+// extrair um seam novo (refatoracao maior que o pedido desta correcao, e
+// fora do escopo: so' a troca da chave foi pedida), a chamada a
+// createClient() dentro do serve() nao e' alcancavel por teste de
+// comportamento. A prova possivel, honesta sobre o que prova, e' textual:
+// confirma que o codigo fonte migrou para o MESMO padrao que
+// webhook-mercadopago, reconciliar-pagamentos, notify-new-order e send-push
+// ja usam, e que a leitura DIRETA da chave legada (o sintoma do defeito —
+// no dia em que SUPABASE_SERVICE_ROLE_KEY for desligada, createClient(url,
+// undefined) lanca e o login por codigo de e-mail para) nao sobrevive ao
+// lado dela.
+
+Deno.test("index.ts usa readKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY') para montar o client — não lê a chave legada direto", async () => {
+  const fonte = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+
+  assertStringIncludes(
+    fonte,
+    'readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY")',
+  );
+
+  // A leitura direta da variável legada é o sintoma do defeito original —
+  // ela não pode sobreviver ao lado da chamada nova acima.
+  assertEquals(fonte.includes('Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")'), false);
+});

@@ -63,6 +63,12 @@ import {
   montarCorpoCartao,
   montarCorpoPixOrders,
 } from "../_shared/mercadopago.ts";
+// PEDIDO-07 (INFRA-260, #126): mesma migração que webhook-mercadopago,
+// reconciliar-pagamentos, notify-new-order e send-push já fizeram — lê a
+// chave NOVA (SUPABASE_SECRET_KEYS) e cai para a LEGADA
+// (SUPABASE_SERVICE_ROLE_KEY) enquanto as duas coexistirem. Sem isto, no dia
+// em que a legada for desligada, esta function (a do checkout) para junto.
+import { readKey } from "../_shared/webpush.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -274,12 +280,38 @@ async function handler(
     return json({ error: "Pagamento indisponível." }, 503);
   }
 
-  const supabase =
-    deps.supabase ??
-    createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
+  // PEDIDO-07 (auditoria de 26/08/2026): este createClient PRECISA ficar
+  // dentro de um try — readKey nunca lança (devolve "" quando nenhuma das
+  // duas variáveis existe, ver o comentário dela em _shared/webpush.ts), mas
+  // createClient sim: "supabaseKey is required." Antes desta correção essa
+  // chamada ficava fora de qualquer try/catch, e o throw escapava o handler
+  // inteiro — 500 cru, sem JSON nenhum que o front reconheça.
+  //
+  // O QUE ESTA CORREÇÃO NÃO MUDA, DE PROPÓSITO: o laço de "Tentar de novo"
+  // do cliente continua existindo depois dela, igual a antes. useOrders.ts
+  // só para de tentar quando o CORPO da resposta traz `terminal: true`, e
+  // este 503 não traz — é da MESMA categoria recuperável que
+  // "MP_ACCESS_TOKEN ausente", checado poucas linhas acima (mesmo par
+  // status/mensagem), e index_test.ts documenta por quê: falta de env var
+  // no servidor não é um problema DO PEDIDO, é corrigível por um operador
+  // ajustando a variável dentro dos 30 minutos de vida do PIX — retentar é
+  // exatamente o comportamento certo aqui. O que esta correção resolve é só
+  // o throw cru escapando sem mensagem nenhuma; o cliente sempre continuou
+  // (e deve continuar) tentando de novo depois de "Pagamento indisponível.".
+  let supabase: ReturnType<typeof createClient>;
+  if (deps.supabase) {
+    supabase = deps.supabase;
+  } else {
+    try {
+      supabase = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+      );
+    } catch (err) {
+      console.error("criar-pagamento: falha ao criar o client do Supabase", err);
+      return json({ error: "Pagamento indisponível." }, 503);
+    }
+  }
 
   const { data: pedido, error } = await supabase
     .from("marketplace_orders")
