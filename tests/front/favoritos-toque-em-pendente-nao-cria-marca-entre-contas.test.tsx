@@ -22,8 +22,8 @@
 // porque não existe mais marca nenhuma, de espécie alguma, para consumir.
 import type { Context } from "react";
 import { act } from "react";
-import { type Root, createRoot } from "react-dom/client";
 import { useContext, useEffect } from "react";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product } from "@/types";
@@ -254,9 +254,7 @@ describe("FavoritesContext — tocar um pendente não planta marca nenhuma que s
     });
     // Ainda sem flush completo — o(s) upsert(s) de p1 continuam presos.
 
-    expect(chamadasDelete.filter((d) => d.product_id === "p1")).toHaveLength(
-      0,
-    );
+    expect(chamadasDelete.filter((d) => d.product_id === "p1")).toHaveLength(0);
 
     // 4. B loga DIRETO, sem A passar por logout — a mesma transição crítica
     // que AuthContext.tsx faz sem passar por `null` quando o id muda. B já
@@ -282,15 +280,11 @@ describe("FavoritesContext — tocar um pendente não planta marca nenhuma que s
     // O que importa: nenhum DELETE jamais atingiu B. No código antigo, o
     // sucesso do upsert de B consumiria a marca deixada por A (mesmo
     // product_id, sem checar dono) e apagaria a própria linha de B.
-    expect(
-      chamadasDelete.filter((d) => d.user_id === "userB"),
-    ).toHaveLength(0);
+    expect(chamadasDelete.filter((d) => d.user_id === "userB")).toHaveLength(0);
     expect(dbRows.has("userB|p1")).toBe(true);
 
     // E o favorito de A também não foi apagado por engano.
-    expect(
-      chamadasDelete.filter((d) => d.user_id === "userA"),
-    ).toHaveLength(0);
+    expect(chamadasDelete.filter((d) => d.user_id === "userA")).toHaveLength(0);
     expect(dbRows.has("userA|p1")).toBe(true);
   });
 });

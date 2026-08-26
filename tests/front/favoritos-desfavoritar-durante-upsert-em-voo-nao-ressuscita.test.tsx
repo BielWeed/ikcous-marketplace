@@ -29,8 +29,8 @@
 // gravação de fato confirma.
 import type { Context } from "react";
 import { act } from "react";
-import { type Root, createRoot } from "react-dom/client";
 import { useContext, useEffect } from "react";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product } from "@/types";
@@ -279,9 +279,7 @@ describe("FavoritesContext — pendente não é tocável: tocar o coração nunc
     // favorito em lugar nenhum — nem na lista, nem em `isFavorite`. Sem
     // isso não haveria nada para provar (o coração já estaria "cheio").
     expect(ctxMidVoo?.isFavorite("p1")).toBe(false);
-    expect((ctxMidVoo?.favorites ?? []).map((p) => p.id)).not.toContain(
-      "p1",
-    );
+    expect((ctxMidVoo?.favorites ?? []).map((p) => p.id)).not.toContain("p1");
 
     // 3. Ela toca no coração de p1 mesmo assim — ainda com o upsert em voo.
     const ctx = ultimoContexto as {
@@ -297,9 +295,7 @@ describe("FavoritesContext — pendente não é tocável: tocar o coração nunc
     // `addToFavorites` — uma segunda tentativa de gravação, não uma
     // remoção. É essa ausência de caminho que torna a corrida antiga
     // (marca de cancelamento + DELETE compensatório) inalcançável.
-    expect(chamadasDelete.filter((d) => d.product_id === "p1")).toHaveLength(
-      0,
-    );
+    expect(chamadasDelete.filter((d) => d.product_id === "p1")).toHaveLength(0);
     // A segunda tentativa usa `upsert` (idempotente), então mais uma
     // chamada de upsert para p1 é esperada — prova que o toque tentou
     // ADICIONAR, não remover.
@@ -313,9 +309,7 @@ describe("FavoritesContext — pendente não é tocável: tocar o coração nunc
 
     // Nunca houve DELETE para p1 em NENHUM momento — não existe "ressuscitar"
     // porque nunca houve uma remoção real para desfazer.
-    expect(chamadasDelete.filter((d) => d.product_id === "p1")).toHaveLength(
-      0,
-    );
+    expect(chamadasDelete.filter((d) => d.product_id === "p1")).toHaveLength(0);
     expect(dbRows.has("userA|p1")).toBe(true);
 
     // Controle positivo: p2 (não tocado) sincronizou normalmente e

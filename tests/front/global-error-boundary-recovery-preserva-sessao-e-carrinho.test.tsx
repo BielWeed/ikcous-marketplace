@@ -70,12 +70,13 @@ function criarStorageComChavesEnumeraveis(): Storage {
     Reflect.deleteProperty(store, chave);
   }) as never);
   metodo("clear", (() => {
-    for (const chave of armazem.keys())
-      Reflect.deleteProperty(store, chave);
+    for (const chave of armazem.keys()) Reflect.deleteProperty(store, chave);
     armazem.clear();
   }) as never);
-  metodo("key", ((index: number) =>
-    Array.from(armazem.keys()).at(index) ?? null) as never);
+  metodo(
+    "key",
+    ((index: number) => Array.from(armazem.keys()).at(index) ?? null) as never,
+  );
   Object.defineProperty(store, "length", {
     get: () => armazem.size,
     enumerable: false,

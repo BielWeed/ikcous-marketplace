@@ -34,7 +34,10 @@ const validateStatusUpdate = (
     // assunto. Espelha a mesma trava do servidor
     // (update_order_status_atomic, supabase/migrations/20260970000000_
     // cancelamento_respeita_o_envio.sql).
-    if (order && !["pending", "processing", "shipping"].includes(order.status)) {
+    if (
+      order &&
+      !["pending", "processing", "shipping"].includes(order.status)
+    ) {
       const errorMsg = "Este pedido não pode mais ser cancelado";
       if (!silent) toast.error(errorMsg);
       throw new Error(errorMsg);

@@ -749,10 +749,7 @@ export function CheckoutView({
       parado = true;
       clearInterval(intervalId);
       if (typeof document !== "undefined") {
-        document.removeEventListener(
-          "visibilitychange",
-          aoVoltarAFicarVisivel,
-        );
+        document.removeEventListener("visibilitychange", aoVoltarAFicarVisivel);
       }
     };
   }, [aguardandoPagamento, orderId, statusPagamentoPix, user?.id]);
@@ -1795,8 +1792,8 @@ export function CheckoutView({
                   Aviso de Região
                 </h4>
                 <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
-                  Nossos serviços de entrega premium estão ativos
-                  exclusivamente em{" "}
+                  Nossos serviços de entrega premium estão ativos exclusivamente
+                  em{" "}
                   <span className="font-black text-slate-900">
                     {config.storeCity}
                     {config.storeState ? `, ${config.storeState}` : ""}
@@ -2112,7 +2109,9 @@ export function CheckoutView({
                           </span>
                         )}
                         {cart.length > 0 && (
-                          <span className="sr-only">, toque para ver os itens</span>
+                          <span className="sr-only">
+                            , toque para ver os itens
+                          </span>
                         )}
                       </button>
 
@@ -2121,7 +2120,9 @@ export function CheckoutView({
                           haptic.medium();
                           handleSubmitEvent();
                         }}
-                        disabled={!isValid || isSubmitting || semFreteSelecionado}
+                        disabled={
+                          !isValid || isSubmitting || semFreteSelecionado
+                        }
                         className={cn(
                           "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
                           !isValid || isSubmitting || semFreteSelecionado
@@ -2274,8 +2275,7 @@ function PagamentoConfirmadoView({
         </p>
         <div className="mx-auto max-w-[300px]">
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
-            Seu pagamento foi confirmado e a loja já está preparando seu
-            pedido.
+            Seu pagamento foi confirmado e a loja já está preparando seu pedido.
           </p>
         </div>
       </div>

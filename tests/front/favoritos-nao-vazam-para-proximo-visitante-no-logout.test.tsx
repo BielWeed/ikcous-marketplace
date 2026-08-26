@@ -37,8 +37,8 @@
 // vê) reprovaria.
 import type { Context } from "react";
 import { act } from "react";
-import { type Root, createRoot } from "react-dom/client";
 import { useContext, useEffect } from "react";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product } from "@/types";

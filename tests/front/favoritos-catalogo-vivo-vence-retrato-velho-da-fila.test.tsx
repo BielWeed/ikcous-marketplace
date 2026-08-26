@@ -22,8 +22,8 @@
 // item.
 import type { Context } from "react";
 import { act } from "react";
-import { type Root, createRoot } from "react-dom/client";
 import { useContext, useEffect } from "react";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product } from "@/types";
@@ -164,7 +164,9 @@ describe("FavoritesContext — a fila pendente nunca entra em `favorites`, nem c
     // 1. Visitante favorita p1 sem conta, com o retrato ANTIGO (preço/nome).
     storageFake.setItem(
       FAVORITES_KEY,
-      JSON.stringify([{ id: "p1", name: "Camisa VELHA", price: 10, images: [] }]),
+      JSON.stringify([
+        { id: "p1", name: "Camisa VELHA", price: 10, images: [] },
+      ]),
     );
 
     const { FavoritesProvider, FavoritesContext } = await import(
@@ -206,9 +208,7 @@ describe("FavoritesContext — a fila pendente nunca entra em `favorites`, nem c
     // O que importa: `favorites` tem exatamente UM p1 (nunca dois, nunca o
     // retrato velho) — vindo só do catálogo vivo, porque a fila pendente
     // nunca é lida para render.
-    const ocorrenciasDeP1 = (ctx?.favorites ?? []).filter(
-      (p) => p.id === "p1",
-    );
+    const ocorrenciasDeP1 = (ctx?.favorites ?? []).filter((p) => p.id === "p1");
     expect(ocorrenciasDeP1).toHaveLength(1);
     expect(ocorrenciasDeP1[0].name).toBe("Camisa NOVA");
     expect(ocorrenciasDeP1[0].price).toBe(25);

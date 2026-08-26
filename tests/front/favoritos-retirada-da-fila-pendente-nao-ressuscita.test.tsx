@@ -29,8 +29,8 @@
 // passo 3.
 import type { Context } from "react";
 import { act } from "react";
-import { type Root, createRoot } from "react-dom/client";
 import { useContext, useEffect } from "react";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product } from "@/types";
@@ -48,7 +48,9 @@ vi.mock("@/hooks/useLeaderElection", () => ({
 
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
-    products: [{ id: "p1", name: "Produto p1", price: 10, images: [] }] as unknown as Product[],
+    products: [
+      { id: "p1", name: "Produto p1", price: 10, images: [] },
+    ] as unknown as Product[],
     loading: false,
   }),
 }));

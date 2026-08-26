@@ -146,8 +146,7 @@ describe("UserProfileView — falha de rede não é 'usuário foi removido'", ()
       (el) => el.textContent?.trim() === "Avaliações",
     );
     expect(rotuloAvaliacoes).toBeDefined();
-    const numero =
-      rotuloAvaliacoes!.previousElementSibling?.textContent ?? "";
+    const numero = rotuloAvaliacoes!.previousElementSibling?.textContent ?? "";
     expect(numero.trim()).toBe("—");
   });
 });

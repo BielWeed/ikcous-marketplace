@@ -21,8 +21,8 @@
 // caminho enquanto a retentativa estava presa.
 import type { Context } from "react";
 import { act } from "react";
-import { type Root, createRoot } from "react-dom/client";
 import { useContext, useEffect } from "react";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product } from "@/types";
@@ -40,7 +40,9 @@ vi.mock("@/hooks/useLeaderElection", () => ({
 
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
-    products: [{ id: "p1", name: "Produto p1", price: 10, images: [] }] as unknown as Product[],
+    products: [
+      { id: "p1", name: "Produto p1", price: 10, images: [] },
+    ] as unknown as Product[],
     loading: false,
   }),
 }));
@@ -255,9 +257,7 @@ describe("FavoritesContext — a corrida: retirada concorrente sobrevive a uma d
 
     // Controle: a retentativa de fato começou (2ª chamada registrada) e
     // está presa — ainda não resolveu.
-    expect(chamadasUpsert.filter((c) => c.product_id === "p1")).toHaveLength(
-      2,
-    );
+    expect(chamadasUpsert.filter((c) => c.product_id === "p1")).toHaveLength(2);
     expect(resolverRetentativaPresa).not.toBeNull();
 
     // 3. ENQUANTO ela está presa, um toque manual (3ª chamada) sincroniza

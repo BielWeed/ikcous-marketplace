@@ -76,7 +76,9 @@ const pedidoEmMemoria: Order = {
  * checkout manda `addressData: null` — então `customer_data.address` é
  * `null` na linha real, não um objeto com `street`/`number`/etc.
  */
-function linhaRealtimeDePagamentoConfirmado(overrides: Record<string, any> = {}) {
+function linhaRealtimeDePagamentoConfirmado(
+  overrides: Record<string, any> = {},
+) {
   return {
     id: "pedido-1",
     // Colunas de marketplace_orders (database.types.ts) que este teste não

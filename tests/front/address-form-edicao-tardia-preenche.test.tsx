@@ -79,9 +79,7 @@ describe("AddressForm — endereço que chega DEPOIS do mount preenche a ediçã
     // O instante do defeito: isLoaded já true, endereços ainda não chegaram
     // — o pai monta o form de edição com initialData indefinido.
     await act(async () => {
-      raiz.render(
-        <AddressForm onSubmit={vi.fn()} onCancel={vi.fn()} />,
-      );
+      raiz.render(<AddressForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
     });
 
     // O fetch completou: o pai re-renderiza AGORA com o endereço achado.

@@ -320,10 +320,9 @@ export function AccountSettingsView() {
     // aconteceu — nunca sobrescreve o cadastro real com o estado inicial
     // vazio.
     if (profileLoadState !== "loaded") {
-      toast.error(
-        "Aguarde os dados carregarem antes de salvar.",
-        { description: "Ainda não conseguimos confirmar seus dados atuais." },
-      );
+      toast.error("Aguarde os dados carregarem antes de salvar.", {
+        description: "Ainda não conseguimos confirmar seus dados atuais.",
+      });
       return;
     }
 

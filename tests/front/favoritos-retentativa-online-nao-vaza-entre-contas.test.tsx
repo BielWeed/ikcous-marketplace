@@ -40,8 +40,8 @@
 // fechamento é exatamente o que ainda aponta para a fila stale de A.
 import type { Context } from "react";
 import { act } from "react";
-import { type Root, createRoot } from "react-dom/client";
 import { useContext, useEffect } from "react";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product } from "@/types";
@@ -264,10 +264,7 @@ describe("FavoritesContext — retentativa no evento online não vaza entre cont
     // que AuthContext.tsx faz sem passar por `null` quando o id muda. B já
     // tinha uma pendência PRÓPRIA neste aparelho (pB, de uma tentativa
     // anterior) — isso faz o sync de B ficar "em voo" de verdade.
-    storageFake.setItem(
-      pendingKeyDe("userB"),
-      JSON.stringify([produto("pB")]),
-    );
+    storageFake.setItem(pendingKeyDe("userB"), JSON.stringify([produto("pB")]));
     segurarProduto.add("pB");
     usuarioDaVez = { id: "userB" };
     const registrosAntesDoLoginDeB = addEventListenerSpy.mock.calls.length;
@@ -304,7 +301,8 @@ describe("FavoritesContext — retentativa no evento online não vaza entre cont
 
     const upsertsDoFechamentoCapturado = chamadasUpsert.filter(
       (c) =>
-        c.user_id === "userB" && (c.product_id === "p1" || c.product_id === "p2"),
+        c.user_id === "userB" &&
+        (c.product_id === "p1" || c.product_id === "p2"),
     );
     expect(upsertsDoFechamentoCapturado).toEqual([]);
 
@@ -324,7 +322,8 @@ describe("FavoritesContext — retentativa no evento online não vaza entre cont
     // vazaram para a conta de B — nem tentaram ser gravados lá.
     const upsertsDeAsobB = chamadasUpsert.filter(
       (c) =>
-        c.user_id === "userB" && (c.product_id === "p1" || c.product_id === "p2"),
+        c.user_id === "userB" &&
+        (c.product_id === "p1" || c.product_id === "p2"),
     );
     expect(upsertsDeAsobB).toEqual([]);
 

@@ -22,8 +22,8 @@
 // reprovaria.
 import type { Context } from "react";
 import { act } from "react";
-import { type Root, createRoot } from "react-dom/client";
 import { useContext, useEffect } from "react";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product } from "@/types";
@@ -40,7 +40,9 @@ vi.mock("@/hooks/useLeaderElection", () => ({
 
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
-    products: [{ id: "pA", name: "Produto de A", price: 10, images: [] }] as unknown as Product[],
+    products: [
+      { id: "pA", name: "Produto de A", price: 10, images: [] },
+    ] as unknown as Product[],
     loading: false,
   }),
 }));
@@ -201,7 +203,9 @@ describe("FavoritesContext — a troca de conta A->B zera dbFavoriteIds/pendingF
     dbRows.add("userA|pA");
     storageFake.setItem(
       pendingKeyDe("userA"),
-      JSON.stringify([{ id: "pAP", name: "Pendente de A", price: 5, images: [] }]),
+      JSON.stringify([
+        { id: "pAP", name: "Pendente de A", price: 5, images: [] },
+      ]),
     );
 
     const { FavoritesProvider, FavoritesContext } = await import(

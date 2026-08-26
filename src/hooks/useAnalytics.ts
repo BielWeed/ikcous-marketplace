@@ -462,7 +462,7 @@ export function useAnalytics() {
             }
             if (data) {
               cachedCategoryData = data;
-            cachedCategoryRange = rangeKey; // PAINEL-10
+              cachedCategoryRange = rangeKey; // PAINEL-10
               lastCategoryFetchTime = Date.now();
               setCategoryData(data);
               setCategoryError(null);

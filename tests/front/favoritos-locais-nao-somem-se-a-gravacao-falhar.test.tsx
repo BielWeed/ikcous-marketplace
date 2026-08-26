@@ -33,8 +33,8 @@
 // "o que falhou continua salvo" e "toast.success não dispara com erro
 // pendente" reprovariam contra ele.
 import { act } from "react";
-import { type Root, createRoot } from "react-dom/client";
 import { useContext } from "react";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FavoritesContext } from "@/contexts/FavoritesContext";

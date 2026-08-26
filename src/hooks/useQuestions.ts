@@ -659,10 +659,10 @@ export function useQuestions() {
         if (bc) {
           listener = (event: MessageEvent) => {
             if (
-              event.data?.type === "questions_change" &&
-              // PAINEL-11: answers chegam SEM productId (canal sem filtro) —
-              // aceitar tanto com (questions, filtrado) quanto sem (answers)
-              event.data?.productId === undefined ||
+              (event.data?.type === "questions_change" &&
+                // PAINEL-11: answers chegam SEM productId (canal sem filtro) —
+                // aceitar tanto com (questions, filtrado) quanto sem (answers)
+                event.data?.productId === undefined) ||
               event.data?.productId === productId
             ) {
               console.log(

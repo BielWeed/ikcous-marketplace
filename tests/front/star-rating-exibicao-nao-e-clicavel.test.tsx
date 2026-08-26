@@ -81,9 +81,7 @@ describe("StarRating — exibição não parece campo de entrada por padrão (LO
     });
 
     const estrelas = hospedeiro.querySelectorAll("svg.lucide-star");
-    expect(estrelas[0].getAttribute("class") ?? "").toContain(
-      "cursor-pointer",
-    );
+    expect(estrelas[0].getAttribute("class") ?? "").toContain("cursor-pointer");
 
     await act(async () => {
       estrelas[2].dispatchEvent(new MouseEvent("click", { bubbles: true }));

@@ -1301,15 +1301,26 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
         <div className="flex size-16 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10">
-          <svg className="size-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          <svg
+            className="size-8 text-red-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+            />
           </svg>
         </div>
         <p className="mt-6 text-[10px] font-black uppercase tracking-[0.2em] text-red-400">
           Não foi possível carregar este produto
         </p>
         <p className="mt-1 text-[9px] text-zinc-500">
-          Verifique a conexão — o formulário fica bloqueado para proteger os dados
+          Verifique a conexão — o formulário fica bloqueado para proteger os
+          dados
         </p>
         <button
           onClick={() => window.location.reload()}

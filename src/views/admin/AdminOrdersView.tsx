@@ -760,8 +760,18 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
         <div className="flex size-16 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10">
-          <svg className="size-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          <svg
+            className="size-8 text-red-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+            />
           </svg>
         </div>
         <div className="mt-6 flex flex-col items-center gap-1.5 text-center">

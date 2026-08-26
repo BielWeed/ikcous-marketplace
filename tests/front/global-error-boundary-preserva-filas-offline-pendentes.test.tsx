@@ -63,12 +63,13 @@ function criarStorageComChavesEnumeraveis(): Storage {
     Reflect.deleteProperty(store, chave);
   }) as never);
   metodo("clear", (() => {
-    for (const chave of armazem.keys())
-      Reflect.deleteProperty(store, chave);
+    for (const chave of armazem.keys()) Reflect.deleteProperty(store, chave);
     armazem.clear();
   }) as never);
-  metodo("key", ((index: number) =>
-    Array.from(armazem.keys()).at(index) ?? null) as never);
+  metodo(
+    "key",
+    ((index: number) => Array.from(armazem.keys()).at(index) ?? null) as never,
+  );
   Object.defineProperty(store, "length", {
     get: () => armazem.size,
     enumerable: false,
@@ -121,9 +122,7 @@ function clicarRecovery() {
 
 describe("GlobalErrorBoundary — recovery preserva escrita pendente do lojista", () => {
   it("preserva as filas offline de pedidos e produtos, e o rascunho do banner; apaga o resto", async () => {
-    const filaPedidos = JSON.stringify([
-      { orderId: "o1", status: "shipped" },
-    ]);
+    const filaPedidos = JSON.stringify([{ orderId: "o1", status: "shipped" }]);
     const filaProdutos = JSON.stringify([{ id: "p1", price: 42 }]);
     const rascunhoBanner = JSON.stringify({ title: "Promoção de agosto" });
 

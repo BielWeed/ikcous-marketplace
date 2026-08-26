@@ -158,8 +158,8 @@ describe("AccountSettingsView — carga que falha não apaga o cadastro", () => 
     });
 
     await montar();
-    await esperarAte(() =>
-      hospedeiro.textContent?.includes("carregar") ?? false,
+    await esperarAte(
+      () => hospedeiro.textContent?.includes("carregar") ?? false,
     );
 
     expect(hospedeiro.textContent).toContain("Não conseguimos carregar");
@@ -186,8 +186,8 @@ describe("AccountSettingsView — carga que falha não apaga o cadastro", () => 
     });
 
     await montar();
-    await esperarAte(() =>
-      hospedeiro.textContent?.includes("Tentar de novo") ?? false,
+    await esperarAte(
+      () => hospedeiro.textContent?.includes("Tentar de novo") ?? false,
     );
 
     rpc.mockImplementation((nome: string) => {

@@ -343,7 +343,11 @@ describe("processarMensagemBroadcast — a saúde do socket da aba NÃO-LÍDER �
       { type: "conn_status_request", channelId: "c1" },
       "c1",
       true,
-      { onEvent: vi.fn(), definirStatus: vi.fn(), responderStatusAtual: responder },
+      {
+        onEvent: vi.fn(),
+        definirStatus: vi.fn(),
+        responderStatusAtual: responder,
+      },
     );
     expect(responder).toHaveBeenCalledTimes(1);
   });
@@ -354,7 +358,11 @@ describe("processarMensagemBroadcast — a saúde do socket da aba NÃO-LÍDER �
       { type: "conn_status_request", channelId: "c1" },
       "c1",
       false,
-      { onEvent: vi.fn(), definirStatus: vi.fn(), responderStatusAtual: responder },
+      {
+        onEvent: vi.fn(),
+        definirStatus: vi.fn(),
+        responderStatusAtual: responder,
+      },
     );
     expect(responder).not.toHaveBeenCalled();
   });
@@ -385,7 +393,11 @@ describe("processarMensagemBroadcast — a saúde do socket da aba NÃO-LÍDER �
     const definirStatus = vi.fn();
     const onEvent = vi.fn();
     processarMensagemBroadcast(
-      { type: "conn_status", channelId: "canal-de-outra-aba", status: "conectado" },
+      {
+        type: "conn_status",
+        channelId: "canal-de-outra-aba",
+        status: "conectado",
+      },
       "c1",
       false,
       { onEvent, definirStatus, responderStatusAtual: vi.fn() },
@@ -414,7 +426,11 @@ describe("processarMensagemBroadcast — a saúde do socket da aba NÃO-LÍDER �
   it("order_change do não-líder continua chamando onEvent — não regride", () => {
     const onEvent = vi.fn();
     processarMensagemBroadcast(
-      { type: "order_change", channelId: "c1", payload: { eventType: "UPDATE" } },
+      {
+        type: "order_change",
+        channelId: "c1",
+        payload: { eventType: "UPDATE" },
+      },
       "c1",
       false,
       { onEvent, definirStatus: vi.fn(), responderStatusAtual: vi.fn() },
@@ -425,7 +441,11 @@ describe("processarMensagemBroadcast — a saúde do socket da aba NÃO-LÍDER �
   it("order_change do LÍDER é ignorado pelo próprio broadcast — ele já recebeu o evento direto do canal, não pelo BroadcastChannel", () => {
     const onEvent = vi.fn();
     processarMensagemBroadcast(
-      { type: "order_change", channelId: "c1", payload: { eventType: "UPDATE" } },
+      {
+        type: "order_change",
+        channelId: "c1",
+        payload: { eventType: "UPDATE" },
+      },
       "c1",
       true,
       { onEvent, definirStatus: vi.fn(), responderStatusAtual: vi.fn() },
