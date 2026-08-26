@@ -46,6 +46,7 @@ const UserProfileView = lazyWithPreload(() =>
   })),
 );
 
+import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
 import { applyThemeColor, branding } from "@/config/branding";
 import { destinoPosLogin } from "@/lib/destinoPosLogin";
 import { supabase } from "@/lib/supabase";
@@ -53,51 +54,14 @@ import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { PreloadedOrLazy, lazyWithPreload } from "@/utils/lazyWithPreload";
 
-const AdminArea = React.lazy(async () => {
-  try {
-    const { data, error } = await supabase.rpc("is_admin");
-    if (error || !data) {
-      return {
-        default: function AdminUnauthorized() {
-          React.useEffect(() => {
-            import("sonner").then(({ toast }) => {
-              toast.error("Acesso restrito a administradores.");
-            });
-            window.location.href = "/";
-          }, []);
-          return (
-            <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
-              <div className="size-12 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
-              <p className="animate-pulse font-medium text-muted-foreground">
-                Verificando permissões...
-              </p>
-            </div>
-          );
-        },
-      };
-    }
-  } catch (e) {
-    console.error("[App] Admin verification error:", e);
-    return {
-      default: function AdminError() {
-        React.useEffect(() => {
-          window.location.href = "/";
-        }, []);
-        return (
-          <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
-            <div className="size-12 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
-            <p className="animate-pulse font-medium text-muted-foreground">
-              Verificando permissões...
-            </p>
-          </div>
-        );
-      },
-    };
-  }
-  return import("@/components/layouts/AdminArea").then((m) => ({
-    default: m.AdminArea,
-  }));
-});
+// O portao do painel mora em `@/components/layouts/AdminAreaGate`. Ele saiu de
+// dentro de um `React.lazy` aqui (achado 1 da auditoria de 26/08/2026): o
+// carregador tratava "o servidor disse que voce nao e admin" e "o servidor nao
+// respondeu" como o mesmo caso, e os dois expulsavam com
+// `window.location.href`. O motivo inteiro esta escrito no arquivo do portao.
+// O nome `AdminArea` fica porque e assim que VIEW_COMPONENTS e o render abaixo
+// o chamam.
+const AdminArea = AdminAreaGate;
 
 const AdminLogin = lazyWithPreload(() =>
   import("@/views/admin/AdminLoginView").then((m) => ({
@@ -2764,6 +2728,7 @@ const AppContent = () => {
                   handleAdminUserDetailBack={handleAdminUserDetailBack}
                   backOverride={backOverride}
                   isTransitionSupported={isTransitionSupported}
+                  fallback={<AdminRouteLoading />}
                 />
               ) : (
                 <AdminAccessDenied onNavigate={handleNavigate} />
