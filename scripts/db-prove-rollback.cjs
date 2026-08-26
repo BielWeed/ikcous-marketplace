@@ -288,8 +288,24 @@ function detectarTransacaoExplicita(sqlLimpo) {
   };
 }
 
-/** Recusa estática. Não precisa de banco — é o coração da testabilidade. */
-function avaliarFase0({ sqlMigration, temRollback }) {
+/**
+ * Recusa estática. Não precisa de banco — é o coração da testabilidade.
+ *
+ * ITEM 1 (VOLTA): o rollback-manual roda dentro da MESMA transação da prova
+ * (ver `provarPar`), então a família de controle de transação vale para ele
+ * também — não só para a migration. Um rollback com `BEGIN;`/`COMMIT;` de
+ * nível superior encerra a transação da prova exatamente como a migration
+ * encerraria, e por isso precisa ser recusado ANTES de conectar, nunca só
+ * detectado depois em runtime. `sqlRollback` é opcional (retrocompatível com
+ * chamadas que só querem avaliar a migration isolada, sem o par completo) —
+ * quando ausente, nenhuma checagem adicional roda sobre o rollback além de
+ * "existe o arquivo?" (`temRollback`).
+ *
+ * `CREATE FUNCTION` sem `OR REPLACE` continua sendo checado SÓ na migration:
+ * num rollback-manual, recriar uma função do zero (sem `OR REPLACE`) é
+ * legítimo — o rollback pode estar desfazendo a própria criação da função.
+ */
+function avaliarFase0({ sqlMigration, sqlRollback, temRollback }) {
   const motivos = [];
 
   let limpo;
@@ -297,7 +313,10 @@ function avaliarFase0({ sqlMigration, temRollback }) {
     limpo = removerRuido(sqlMigration);
   } catch (e) {
     if (e instanceof SqlMalformadoError) {
-      return { recusado: true, motivos: [`SQL malformado: ${e.message}`] };
+      return {
+        recusado: true,
+        motivos: [`SQL malformado (migration): ${e.message}`],
+      };
     }
     throw e;
   }
@@ -318,6 +337,26 @@ function avaliarFase0({ sqlMigration, temRollback }) {
 
   if (!temRollback) {
     motivos.push("rollback-manual correspondente não encontrado");
+  } else if (typeof sqlRollback === "string") {
+    let limpoRollback;
+    try {
+      limpoRollback = removerRuido(sqlRollback);
+    } catch (e) {
+      if (e instanceof SqlMalformadoError) {
+        motivos.push(`SQL malformado (rollback-manual): ${e.message}`);
+        limpoRollback = null;
+      } else {
+        throw e;
+      }
+    }
+    if (limpoRollback !== null) {
+      const transacaoRollback = detectarTransacaoExplicita(limpoRollback);
+      if (transacaoRollback.achados.length > 0) {
+        motivos.push(
+          `rollback-manual contém controle de transação em nível superior (${transacaoRollback.achados.join("/")}) — invalida o ROLLBACK da prova`,
+        );
+      }
+    }
   }
 
   return { recusado: motivos.length > 0, motivos };
@@ -606,6 +645,76 @@ async function estaEmTransacao(client, xidEsperado) {
 }
 
 /**
+ * ITEM 3 (falso positivo): `aclitem[]` não tem ordem semântica, mas
+ * `c.relacl::text`/`p.proacl::text` renderizam o array na ordem física de
+ * armazenamento — que MUDA quando um grantee some inteiro do array (ex.:
+ * `REVOKE ... FROM anon, authenticated`) e volta depois com um `GRANT`
+ * seguinte. Sem normalizar, o mesmo conjunto de quatro grants em ordem
+ * diferente vira "divergência" e o controle negativo reprova por ruído.
+ *
+ * Faz o parse de um array de texto do Postgres respeitando aspas duplas
+ * (`"..."`, com escape por backslash — formato de `aclitem`/identificador
+ * quotado dentro de um array), separa por vírgula NO NÍVEL SUPERIOR e devolve
+ * a lista de itens (ainda com as aspas, se houver).
+ */
+function parseArrayTextoPostgres(texto) {
+  const interno = texto.slice(1, -1);
+  if (interno.length === 0) return [];
+  const itens = [];
+  let atual = "";
+  let dentroDeAspas = false;
+  for (let i = 0; i < interno.length; i += 1) {
+    const ch = interno[i];
+    if (dentroDeAspas) {
+      if (ch === "\\" && i + 1 < interno.length) {
+        atual += ch + interno[i + 1];
+        i += 1;
+        continue;
+      }
+      if (ch === '"') {
+        dentroDeAspas = false;
+        atual += ch;
+        continue;
+      }
+      atual += ch;
+      continue;
+    }
+    if (ch === '"') {
+      dentroDeAspas = true;
+      atual += ch;
+      continue;
+    }
+    if (ch === ",") {
+      itens.push(atual);
+      atual = "";
+      continue;
+    }
+    atual += ch;
+  }
+  itens.push(atual);
+  return itens;
+}
+
+/**
+ * Normaliza a ORDEM de um ACL lido como texto (`relacl::text`/`proacl::text`)
+ * sem apagar a distinção entre os TRÊS estados possíveis — a armadilha que
+ * fazia isto ser perigoso de "corrigir" errado: `NULL` (privilégio padrão —
+ * dono tem tudo, mais ninguém) e `'{}'` (tudo revogado, inclusive do dono)
+ * são estados DIFERENTES um do outro e de um ACL povoado, e um rollback que
+ * esquece de restaurar grants precisa continuar reprovando. Por isso `NULL`
+ * e `'{}'` passam direto, sem tocar — só um ACL populado é reordenado (em
+ * JS, depois de ler, nunca no SQL: fazer isso com `array_agg(... ORDER BY
+ * ...)` sobre `unnest()` transformaria os dois casos vazios no mesmo `NULL`
+ * de saída, criando um falso NEGATIVO onde hoje existe um falso positivo).
+ */
+function normalizarAcl(aclTexto) {
+  if (aclTexto === null || aclTexto === undefined) return aclTexto;
+  if (aclTexto === "{}") return aclTexto;
+  const itens = parseArrayTextoPostgres(aclTexto).sort();
+  return `{${itens.join(",")}}`;
+}
+
+/**
  * Fotografa TODO o schema `public` de uma vez: tabelas, views, matviews e
  * sequences (`relkind IN ('r','p','v','m','S')` — antes só `('r','p')`, o
  * que deixava view e matview INVISÍVEIS nos dois lados da comparação: uma
@@ -642,12 +751,26 @@ async function tirarFotoCompleta(client) {
     )
   ).rows;
 
+  // ITEM 2 (VOLTA): `information_schema.columns.data_type` normaliza o
+  // MODIFICADOR do tipo para fora — `varchar(10)` e `varchar(255)` são os
+  // dois `character varying`, `numeric(10,2)` e `numeric(18,6)` são os dois
+  // `numeric`. Um `ALTER COLUMN ... TYPE` que só muda precisão/tamanho
+  // passava por esta foto como "nada mudou". `format_type(a.atttypid,
+  // a.atttypmod)`, lido de `pg_attribute`, resolve o tipo INTEIRO numa
+  // string (`numeric(18,6)`) — o JOIN mantém a consulta ainda apoiada em
+  // `information_schema.columns` para `is_nullable`/`column_default`, só o
+  // campo `data_type` passa a vir de `pg_attribute`.
   const colunas = (
     await client.query(
-      `SELECT table_name, column_name, data_type, is_nullable, column_default
-         FROM information_schema.columns
-        WHERE table_schema = 'public'
-        ORDER BY table_name, column_name`,
+      `SELECT c.table_name, c.column_name,
+              format_type(a.atttypid, a.atttypmod) AS data_type,
+              c.is_nullable, c.column_default
+         FROM information_schema.columns c
+         JOIN pg_namespace n ON n.nspname = c.table_schema
+         JOIN pg_class cl ON cl.relnamespace = n.oid AND cl.relname = c.table_name
+         JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attname = c.column_name
+        WHERE c.table_schema = 'public'
+        ORDER BY c.table_name, c.column_name`,
     )
   ).rows;
 
@@ -711,7 +834,7 @@ async function tirarFotoCompleta(client) {
       relkind: t.relkind,
       relrowsecurity: t.relrowsecurity,
       relforcerowsecurity: t.relforcerowsecurity,
-      acl: t.acl,
+      acl: normalizarAcl(t.acl),
       owner: t.owner,
       viewdef: t.viewdef,
       colunas: [],
@@ -730,7 +853,11 @@ async function tirarFotoCompleta(client) {
 
   for (const f of funcoesRaw) {
     if (!foto.funcoes[f.nome]) foto.funcoes[f.nome] = [];
-    foto.funcoes[f.nome].push({ def: f.def, acl: f.acl, owner: f.owner });
+    foto.funcoes[f.nome].push({
+      def: f.def,
+      acl: normalizarAcl(f.acl),
+      owner: f.owner,
+    });
   }
 
   return foto;
@@ -813,6 +940,9 @@ const DIMENSOES_NAO_MEDIDAS = [
   "definição completa de sequences (start/increment/min/max/cycle)",
   "objetos fora do schema public (extensions, outros schemas, storage)",
   "comportamento em runtime de função/trigger — só a DEFINIÇÃO é comparada, nunca o resultado de uma chamada real",
+  "COMMENT ON (comentário de tabela/coluna/função) — invisível para esta foto",
+  "tipo próprio (enum/domain/composite) fora da foto — só o nome do tipo aparece embutido em colunas que o usam",
+  "ACL de coluna (pg_attribute.attacl) — só ACL de tabela/view/matview/sequence/função entra",
 ];
 
 function textoDimensoes() {
@@ -829,6 +959,26 @@ function textoDimensoes() {
 function sair(estado, mensagem) {
   console.log(`\n=== ${estado} ===${mensagem ? `\n${mensagem}` : ""}`);
   process.exit(codigoDeSaida(estado));
+}
+
+/**
+ * ITEM 1 (VOLTA), sub-cenário: um comando com `COMMIT;` seguido de uma linha
+ * com erro de SQL (`DROP COLUMN zzz; COMMIT; DROP COLUMN nao_existe;`) cai no
+ * `catch` do `client.query`, e a checagem de xid de runtime vivia atrás de um
+ * `!abortou &&` — nunca rodava, então o veredito saía `FALHOU` sem uma
+ * palavra sobre o `COMMIT` ter gravado tudo até ali em definitivo. Esta
+ * função roda a MESMA checagem de xid dentro do próprio `catch`: se a query
+ * que verifica o xid também falhar (a transação pode estar simplesmente
+ * "abortada" por dentro, sem nenhum `COMMIT` real no meio — caso comum de
+ * erro de SQL comum), devolve `false` e o veredito de erro comum (`FALHOU`)
+ * permanece — o silêncio aqui é honesto: não há evidência de gravação.
+ */
+async function transacaoFoiEncerradaApesarDoErro(client, xidTransacao) {
+  try {
+    return !(await estaEmTransacao(client, xidTransacao));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -875,6 +1025,12 @@ async function provarPar(client, { sqlMigration, sqlRollback }) {
     veredito = "FALHOU";
     detalhe = `migration falhou ao aplicar: ${e.message}`;
     abortou = true;
+    // ITEM 1b: mesmo no caminho de erro, a checagem de xid roda — um
+    // `COMMIT` real antes da linha que falhou já grava tudo até ali.
+    if (await transacaoFoiEncerradaApesarDoErro(client, xidTransacao)) {
+      veredito = "INSTRUMENTO_QUEBRADO";
+      detalhe = `${detalhe} — a transação foi ENCERRADA (COMMIT/END/ROLLBACK/ABORT/START TRANSACTION escondido, ou forma equivalente) ANTES do erro acima: o que rodou da migration até ali JÁ ESTÁ GRAVADA no banco, de forma permanente. O ROLLBACK final deste script é NO-OP para essa parte.`;
+    }
   }
 
   if (!abortou && !(await estaEmTransacao(client, xidTransacao))) {
@@ -911,6 +1067,13 @@ async function provarPar(client, { sqlMigration, sqlRollback }) {
       veredito = "FALHOU";
       detalhe = `rollback-manual falhou ao aplicar: ${e.message}`;
       abortou = true;
+      // ITEM 1b: mesma checagem, agora no rollback-manual — o cenário do
+      // cabeçalho da tarefa (`DROP COLUMN zzz; COMMIT; DROP COLUMN
+      // nao_existe;`) acontece exatamente aqui.
+      if (await transacaoFoiEncerradaApesarDoErro(client, xidTransacao)) {
+        veredito = "INSTRUMENTO_QUEBRADO";
+        detalhe = `${detalhe} — a transação foi ENCERRADA (COMMIT/END/ROLLBACK/ABORT/START TRANSACTION escondido, ou forma equivalente) ANTES do erro acima: a migration (e a parte do rollback-manual já executada até ali) JÁ ESTÁ GRAVADA no banco, de forma permanente.`;
+      }
     }
 
     if (!abortou && !(await estaEmTransacao(client, xidTransacao))) {
@@ -986,6 +1149,13 @@ async function main() {
   const rollbackPath = resolverCaminhoRollback(migrationPath, rollbackArg);
   const sqlMigration = fs.readFileSync(migrationPath, "utf8");
   const temRollback = fs.existsSync(rollbackPath);
+  // ITEM 1: o conteúdo do rollback-manual é lido ANTES da Fase 0, para que a
+  // família de controle de transação seja avaliada nele também — recusar o
+  // arquivo antes de rodar uma linha sequer vale para os dois lados do par,
+  // não só para a migration.
+  const sqlRollback = temRollback
+    ? fs.readFileSync(rollbackPath, "utf8")
+    : null;
 
   console.log(`migration: ${migrationPath}`);
   console.log(
@@ -993,14 +1163,12 @@ async function main() {
   );
 
   // --- Fase 0 — sem banco -------------------------------------------------
-  const fase0 = avaliarFase0({ sqlMigration, temRollback });
+  const fase0 = avaliarFase0({ sqlMigration, sqlRollback, temRollback });
   if (fase0.recusado) {
     sair("RECUSADO", fase0.motivos.map((m) => `  - ${m}`).join("\n"));
     return;
   }
   console.log("\nFase 0: nenhuma recusa estática.");
-
-  const sqlRollback = fs.readFileSync(rollbackPath, "utf8");
 
   // --- A partir daqui, precisa de banco ------------------------------------
   const databaseUrl = lerDatabaseUrl();
@@ -1075,6 +1243,9 @@ module.exports = {
   particionarPorAlvo,
   capturarXid,
   estaEmTransacao,
+  transacaoFoiEncerradaApesarDoErro,
+  parseArrayTextoPostgres,
+  normalizarAcl,
   tirarFotoCompleta,
   provarPar,
   codigoDeSaida,

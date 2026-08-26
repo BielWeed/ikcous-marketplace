@@ -49,6 +49,7 @@ const {
   particionarPorAlvo,
   capturarXid,
   estaEmTransacao,
+  normalizarAcl,
   tirarFotoCompleta,
   provarPar,
   codigoDeSaida,
@@ -312,6 +313,59 @@ Deno.test("avaliarFase0 recusa quando não há rollback-manual", () => {
   });
   assert(r.recusado);
   assert(r.motivos.some((m) => /rollback-manual/.test(m)));
+});
+
+// ---------------------------------------------------------------------------
+// ITEM 1 (VOLTA) — o rollback-manual passa pela MESMA Fase 0 que a
+// migration, porque ele roda dentro da mesma transação da prova: um
+// `BEGIN;`/`COMMIT;` de nível superior no rollback encerra a transação da
+// prova exatamente como no arquivo da migration.
+// ---------------------------------------------------------------------------
+
+Deno.test("avaliarFase0 recusa um ROLLBACK-MANUAL com controle de transação de nível superior, não só a migration (item 1a)", () => {
+  const r = avaliarFase0({
+    sqlMigration: MIGRATION_REAL_OK,
+    sqlRollback: MIGRATION_TRANSACAO_CRUA, // tem BEGIN;/COMMIT; reais
+    temRollback: true,
+  });
+  assert(r.recusado, "deveria recusar o par por causa do rollback-manual");
+  assert(
+    r.motivos.some((m) =>
+      /rollback-manual contém controle de transação/.test(m),
+    ),
+    `motivos não citam o rollback-manual: ${r.motivos.join("; ")}`,
+  );
+});
+
+Deno.test("avaliarFase0 recusa o par quando o ROLLBACK-MANUAL tem um dollar-quote malformado", () => {
+  const r = avaliarFase0({
+    sqlMigration: MIGRATION_REAL_OK,
+    sqlRollback: MIGRATION_DOLLAR_QUOTE_SEM_FECHAMENTO,
+    temRollback: true,
+  });
+  assert(r.recusado);
+  assert(r.motivos.some((m) => /malformado \(rollback-manual\)/.test(m)));
+});
+
+Deno.test("avaliarFase0 NÃO recusa CREATE FUNCTION sem OR REPLACE quando está no ROLLBACK — só a migration é recusada por isso, no rollback é legítimo", () => {
+  const r = avaliarFase0({
+    sqlMigration: MIGRATION_REAL_OK,
+    sqlRollback: MIGRATION_FUNCTION_CRUA,
+    temRollback: true,
+  });
+  assertEquals(
+    r.recusado,
+    false,
+    `recusa falsa: motivos: ${r.motivos.join("; ")}`,
+  );
+});
+
+Deno.test("avaliarFase0 continua funcionando quando sqlRollback não é informado (retrocompatibilidade: só avalia temRollback)", () => {
+  const r = avaliarFase0({
+    sqlMigration: MIGRATION_REAL_OK,
+    temRollback: true,
+  });
+  assertEquals(r.recusado, false, `motivos: ${r.motivos.join("; ")}`);
 });
 
 // ---------------------------------------------------------------------------
@@ -970,7 +1024,7 @@ Deno.test("tirarFotoCompleta carrega os campos dos quais a fidelidade depende (f
   });
 });
 
-Deno.test("tirarFotoCompleta consulta pg_class incluindo view, matview e sequence no relkind (fecha o B2 na FONTE, não só na montagem — clientFalsoCatalogo por si só não pegaria uma regressão no WHERE)", async () => {
+Deno.test("tirarFotoCompleta consulta pg_class incluindo view, matview e sequence no relkind, DENTRO do WHERE (fecha o B2 na FONTE — e o item 4: a asserção antiga procurava a string no texto inteiro, e 'v'/'m' também aparecem na cláusula CASE WHEN de viewdef, que é outro lugar)", async () => {
   let sqlDaConsultaDeTabelas = "";
   const client = {
     async query(sql) {
@@ -982,12 +1036,64 @@ Deno.test("tirarFotoCompleta consulta pg_class incluindo view, matview e sequenc
     },
   };
   await tirarFotoCompleta(client);
+  // ITEM 4: extrai a lista de dentro do WHERE (nunca "includes" no texto
+  // inteiro) — um mutante que restringisse só o WHERE para
+  // `relkind IN ('r','p','S')`, deixando view/matview invisíveis de novo,
+  // sobrevivia à asserção antiga porque 'v'/'m' continuavam presentes na
+  // cláusula `CASE WHEN c.relkind IN ('v', 'm')` (medido pelo revisor: 41
+  // passed, idêntico ao controle).
+  const match = /WHERE[\s\S]*?relkind\s+IN\s*\(([^)]+)\)/i.exec(
+    sqlDaConsultaDeTabelas,
+  );
+  assert(
+    match,
+    "não encontrou 'WHERE ... relkind IN (...)' na query de pg_class",
+  );
+  const listaDoWhere = match[1];
   for (const relkind of ["'r'", "'p'", "'v'", "'m'", "'S'"]) {
     assert(
-      sqlDaConsultaDeTabelas.includes(relkind),
-      `a query de pg_class não inclui o relkind ${relkind} — view/matview/sequence ficariam invisíveis`,
+      listaDoWhere.includes(relkind),
+      `o WHERE da query de pg_class não inclui o relkind ${relkind} — view/matview/sequence ficariam invisíveis`,
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// ITEM 2 (VOLTA) — a foto de colunas passa a resolver o TIPO COMPLETO
+// (`format_type(a.atttypid, a.atttypmod)`, de `pg_attribute`), não só o nome
+// nu que `information_schema.columns.data_type` devolve — `varchar(10)` e
+// `varchar(255)` são os dois `character varying`; `numeric(10,2)` e
+// `numeric(18,6)` são os dois `numeric`; um rollback que esquece de
+// devolver a precisão/tamanho original passava como "nada mudou".
+// ---------------------------------------------------------------------------
+
+Deno.test("tirarFotoCompleta lê o tipo de coluna via format_type/atttypmod (pg_attribute), não só data_type puro (item 2)", async () => {
+  let sqlDaConsultaDeColunas = "";
+  const client = {
+    async query(sql) {
+      if (/information_schema\.columns/.test(sql)) {
+        sqlDaConsultaDeColunas = sql;
+        return { rows: [] };
+      }
+      return { rows: [] };
+    },
+  };
+  await tirarFotoCompleta(client);
+  assertStringIncludes(
+    sqlDaConsultaDeColunas,
+    "format_type",
+    "a query de colunas não usa format_type — o modificador de tipo (precisão/tamanho) continua invisível",
+  );
+  assertStringIncludes(
+    sqlDaConsultaDeColunas,
+    "atttypmod",
+    "format_type sem atttypmod não resolve o modificador do tipo",
+  );
+  assertStringIncludes(
+    sqlDaConsultaDeColunas,
+    "pg_attribute",
+    "o tipo completo precisa vir de pg_attribute, não só de information_schema.columns",
+  );
 });
 
 Deno.test("B2 — rollback que restaura a coluna mas esquece uma view infiel dá FALHOU, não sucesso (tirarFotoCompleta + particionarPorAlvo + compararFotos, sem banco)", async () => {
@@ -1050,6 +1156,70 @@ Deno.test("B2 — rollback que restaura a coluna mas esquece uma view infiel dá
       "invisível dos dois lados (relkind IN ('r','p') só)",
   );
   assertStringIncludes(fidelidade.diferencas.join("\n"), "viewdef");
+});
+
+// ---------------------------------------------------------------------------
+// ITEM 3 (falso positivo) — normalizarAcl. `aclitem[]` não tem ordem
+// semântica, mas `relacl::text`/`proacl::text` renderizam na ordem física de
+// armazenamento, que muda quando um grantee some do array inteiro e volta
+// depois (REVOKE seguido de re-GRANT). A armadilha: normalizar tem que
+// preservar a distinção entre os TRÊS estados — NULL (privilégio padrão),
+// '{}' (tudo revogado) e um ACL povoado — senão um rollback que esquece de
+// restaurar grants vira falso NEGATIVO em vez do falso POSITIVO de hoje.
+// ---------------------------------------------------------------------------
+
+Deno.test("normalizarAcl", async (t) => {
+  await t.step("NULL continua NULL (privilégio padrão)", () => {
+    assertEquals(normalizarAcl(null), null);
+  });
+
+  await t.step(
+    "undefined continua undefined (mesmo tratamento de NULL)",
+    () => {
+      assertEquals(normalizarAcl(undefined), undefined);
+    },
+  );
+
+  await t.step("'{}' continua '{}' (tudo revogado, inclusive do dono)", () => {
+    assertEquals(normalizarAcl("{}"), "{}");
+  });
+
+  await t.step(
+    "o MESMO conjunto de grants em ordem diferente normaliza para o mesmo valor (o falso positivo do 20260990)",
+    () => {
+      const antes =
+        "{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}";
+      const depois =
+        "{postgres=X/postgres,service_role=X/postgres,anon=X/postgres,authenticated=X/postgres}";
+      assertEquals(normalizarAcl(antes), normalizarAcl(depois));
+    },
+  );
+
+  await t.step(
+    "um grant a MENOS continua sendo detectado depois de normalizar (não virou cego)",
+    () => {
+      const completo = "{postgres=X/postgres,anon=X/postgres}";
+      const soDono = "{postgres=X/postgres}";
+      assert(normalizarAcl(completo) !== normalizarAcl(soDono));
+    },
+  );
+
+  await t.step(
+    "os três estados (NULL, '{}', povoado) continuam distinguíveis entre si depois de normalizar — a armadilha do array_agg com unnest colapsaria NULL e '{}' no mesmo valor",
+    () => {
+      const povoado = normalizarAcl("{postgres=X/postgres}");
+      const distintos = new Set([
+        normalizarAcl(null),
+        normalizarAcl("{}"),
+        povoado,
+      ]);
+      assertEquals(
+        distintos.size,
+        3,
+        "dois dos três estados colapsaram no mesmo valor depois de normalizar",
+      );
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -1134,6 +1304,17 @@ function bancoSimulado(catalogoInicial) {
       if (/pg_trigger/.test(sql)) return { rows: catalogo.triggers };
 
       // A partir daqui, `sql` é a migration ou o rollback-manual simulados.
+      // ITEM 1b: `__ENCERRA_E_FALHA__` simula exatamente o sub-cenário do
+      // cabeçalho da tarefa — `DROP COLUMN zzz; COMMIT; DROP COLUMN
+      // nao_existe;` — um COMMIT real seguido de um erro de SQL NA MESMA
+      // chamada. Checado ANTES de `__FALHA__` (que por si só não encerra a
+      // transação) para o catch de `provarPar` ver os dois efeitos juntos.
+      if (sql.includes("__ENCERRA_E_FALHA__")) {
+        emTransacaoExplicita = false;
+        throw new Error(
+          "erro de sintaxe simulado depois de um COMMIT escondido (SQLSTATE 42601)",
+        );
+      }
       if (sql.includes("__FALHA__")) {
         throw new Error("erro de sintaxe simulado (SQLSTATE 42601)");
       }
@@ -1187,6 +1368,50 @@ Deno.test("provarPar: erro real do Postgres ao aplicar o rollback-manual vira FA
   });
   assertEquals(r.veredito, "FALHOU");
   assertStringIncludes(r.detalhe, "rollback-manual falhou ao aplicar");
+});
+
+// ---------------------------------------------------------------------------
+// ITEM 1b (VOLTA) — o sub-cenário onde nem o aviso saía: um COMMIT real
+// escondido seguido de um erro de SQL na MESMA aplicação. Antes da correção
+// o `catch` marcava `abortou = true` e a checagem de xid, presa atrás de
+// `!abortou &&`, nunca rodava — o veredito saía FALHOU comum, sem uma
+// palavra sobre a gravação. Agora a checagem roda TAMBÉM dentro do catch.
+// ---------------------------------------------------------------------------
+
+Deno.test("provarPar: erro na migration DEPOIS de um COMMIT escondido vira INSTRUMENTO_QUEBRADO, não FALHOU mudo (item 1b)", async () => {
+  const client = bancoSimulado(catalogoBase(["id"]));
+  const r = await provarPar(client, {
+    sqlMigration: "-- __ENCERRA_E_FALHA__",
+    sqlRollback: "-- nunca deveria rodar",
+  });
+  assertEquals(r.veredito, "INSTRUMENTO_QUEBRADO");
+  assertStringIncludes(r.detalhe, "migration falhou ao aplicar");
+  assertStringIncludes(r.detalhe, "JÁ ESTÁ GRAVADA");
+});
+
+Deno.test("provarPar: erro no rollback-manual DEPOIS de um COMMIT escondido também vira INSTRUMENTO_QUEBRADO (item 1b, segunda metade)", async () => {
+  const client = bancoSimulado(catalogoBase(["id"]));
+  const r = await provarPar(client, {
+    sqlMigration:
+      "ALTER TABLE public.produtos ADD COLUMN novo text; -- __MUDA_COLUNA__",
+    sqlRollback: "-- __ENCERRA_E_FALHA__",
+  });
+  assertEquals(r.veredito, "INSTRUMENTO_QUEBRADO");
+  assertStringIncludes(r.detalhe, "rollback-manual falhou ao aplicar");
+  assertStringIncludes(r.detalhe, "JÁ ESTÁ GRAVADA");
+});
+
+Deno.test("provarPar: erro COMUM (sem COMMIT escondido) continua FALHOU, não vira INSTRUMENTO_QUEBRADO por engano (controle negativo do item 1b)", async () => {
+  const client = bancoSimulado(catalogoBase(["id"]));
+  const r = await provarPar(client, {
+    sqlMigration: "-- __FALHA__",
+    sqlRollback: "-- nunca deveria rodar",
+  });
+  assertEquals(
+    r.veredito,
+    "FALHOU",
+    "um erro de SQL comum, sem transação encerrada por baixo, não deveria virar INSTRUMENTO_QUEBRADO",
+  );
 });
 
 Deno.test("provarPar: par fiel dá o veredito de sucesso NOVO, com as dimensões medidas e não medidas na saída", async () => {
