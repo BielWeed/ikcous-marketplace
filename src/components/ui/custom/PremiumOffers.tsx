@@ -414,14 +414,16 @@ function HeroOfferCard({
             </h3>
 
             <div className="mb-3 flex flex-wrap items-center gap-1.5 sm:gap-2">
-              {showRating && (
+              {/* LOJA-01 (auditoria 26/08/2026): mesmo raciocínio de
+                  ProductCard.tsx -- `produtos.rating` nasce com DEFAULT 5 e
+                  nunca é recalculado, então só `reviewCount > 0` diz se
+                  existe avaliação de verdade por trás do número. */}
+              {showRating && (product.reviewCount ?? 0) > 0 && (
                 <>
-                  <StarRating rating={product.rating || 5} size={12} />
-                  {product.reviewCount && product.reviewCount > 0 && (
-                    <span className="text-[11px] font-bold text-slate-400">
-                      ({product.reviewCount})
-                    </span>
-                  )}
+                  <StarRating rating={product.rating ?? 0} size={12} />
+                  <span className="text-[11px] font-bold text-slate-400">
+                    ({product.reviewCount})
+                  </span>
                   {/* Separador só faz sentido com a estrela antes dele --
                       some junto (ADMIN-091, #202). O selo "Alta Procura"
                       abaixo é um sinal de demanda que a loja já tinha,

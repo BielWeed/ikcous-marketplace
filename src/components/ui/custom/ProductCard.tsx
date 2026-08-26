@@ -244,8 +244,14 @@ export const ProductCard = memo(function ProductCard({
             {product.name}
           </h3>
           <div className="flex flex-wrap items-center gap-2 pt-0.5">
-            {showRating && (
-              <StarRating rating={product.rating || 5} size={11} />
+            {/* LOJA-01 (auditoria 26/08/2026): `produtos.rating` nasce com
+                DEFAULT 5 e nada recalcula esse campo a partir das
+                avaliações -- sem `reviewCount > 0` não existe avaliação de
+                verdade por trás do número, e mostrar a estrela seria
+                inventar nota. Calcular a nota certa é outra tarefa
+                (migration com gatilho); esta só impede a mentira. */}
+            {showRating && (product.reviewCount ?? 0) > 0 && (
+              <StarRating rating={product.rating ?? 0} size={11} />
             )}
             {/*
               ADMIN-091 (#202): com `showRating=false` a linha fica só com o

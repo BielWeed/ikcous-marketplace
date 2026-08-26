@@ -2,6 +2,7 @@ import { ProductCard } from "@/components/ui/custom/ProductCard";
 import { ProductCardSkeleton } from "@/components/ui/custom/ProductCardSkeleton";
 import { useStore } from "@/contexts/StoreContext";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
+import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import type { Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -31,6 +32,10 @@ export const FavoritesView = React.memo(function FavoritesView({
 }: FavoritesViewProps) {
   const { config, products } = useStore();
   const { prefetchView } = usePrefetchOnHover();
+  // A LISTA continua vindo por props (App.tsx é o dono do fluxo); o estado
+  // de ERRO do fetch vem direto do contexto — falha de consulta não pode
+  // renderizar o mesmo "lista vazia" de quem nunca favoritou nada.
+  const { erro: favoritosErro, refresh: favoritosRefresh } = useFavorites();
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(380);
 
@@ -75,6 +80,28 @@ export const FavoritesView = React.memo(function FavoritesView({
             ))}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (favoritosErro && favorites.length === 0) {
+    return (
+      <div className="pb-customer flex min-h-full flex-col items-center justify-center px-4 py-16 text-center">
+        <div className="mb-5 flex size-20 items-center justify-center rounded-3xl bg-amber-50 dark:bg-amber-950/40">
+          <Heart className="size-9 text-amber-500" />
+        </div>
+        <h2 className="mb-2 text-base font-black uppercase tracking-wider text-zinc-800 dark:text-zinc-200">
+          Não conseguimos carregar
+        </h2>
+        <p className="mb-7 max-w-xs text-xs font-semibold leading-relaxed text-zinc-400 dark:text-zinc-500">
+          {favoritosErro} Verifique sua conexão e tente de novo.
+        </p>
+        <button
+          onClick={() => favoritosRefresh()}
+          className="rounded-2xl bg-zinc-900 px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all hover:bg-zinc-800 hover:shadow-lg active:scale-95 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+        >
+          Tentar de novo
+        </button>
       </div>
     );
   }

@@ -620,9 +620,24 @@ export const ProductView = React.memo(function ProductView({
   const handleShare = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
     e?.preventDefault();
+    // O texto de compartilhar vem dos presets da tela de Atendimento
+    // (AdminWhatsAppConfigView), que vendem mensagem pronta com [nome],
+    // [preco] e [link]. Texto COM marcador é mensagem completa da lojista:
+    // substitui e não gruda o sufixo padrão; texto SEM marcador (o default)
+    // mantém o comportamento de sempre — nome e preço colados na frente.
+    const temMarcador = /\[(nome|preco|link)\]/i.test(config.shareText);
+    const textoDoShare = temMarcador
+      ? config.shareText
+          .replace(/\[nome\]/gi, product.name)
+          .replace(
+            /\[preco\]/gi,
+            `R$ ${product.price.toFixed(2).replace(".", ",")}`,
+          )
+          .replace(/\[link\]/gi, globalThis.location.href)
+      : `${config.shareText} ${product.name} por R$${product.price.toFixed(2)}`;
     const shareData = {
       title: product.name,
-      text: `${config.shareText} ${product.name} por R$${product.price.toFixed(2)}`,
+      text: textoDoShare,
       url: globalThis.location.href,
     };
 
@@ -633,7 +648,11 @@ export const ProductView = React.memo(function ProductView({
         console.log("Share cancelled");
       }
     } else {
-      navigator.clipboard.writeText(`${shareData.text} - ${shareData.url}`);
+      // Com marcador, o link já está dentro do texto substituído; sem
+      // marcador, o link continua entrando como sufixo, como sempre entrou.
+      navigator.clipboard.writeText(
+        temMarcador ? textoDoShare : `${textoDoShare} - ${shareData.url}`,
+      );
       toast.success("Link copiado!", {
         description:
           "O link do produto foi copiado para a área de transferência.",
@@ -830,6 +849,7 @@ export const ProductView = React.memo(function ProductView({
           </button>
           <button
             onClick={handleShare}
+            aria-label="Compartilhar"
             className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
           >
             <Share2 className="size-4.5 text-zinc-600" />
