@@ -383,7 +383,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         subValue: searchTerm ? "Resultados da busca" : "Catálogo Geral",
       },
     ],
-    [financialStats, totalProducts],
+    [financialStats, totalProducts, searchTerm], // C2 da 1a revisao: +1 warning sem esta dep
   );
 
   // Achado 7 da auditoria de 20/08/2026
