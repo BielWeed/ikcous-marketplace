@@ -1068,7 +1068,11 @@ export const AdminPushView = memo(function AdminPushView({
                       name="destType"
                       value={destType}
                       onValueChange={handleDestTypeChange}
-                      disabled={isOffline || loading}
+                      // PAINEL-07: sem o loadingProducts aqui, escolher
+                      // "Produto" antes da lista carregar gerava um URL
+                      // '/product-detail' sem id — que o efeito de
+                      // sincronização reinterpretava como "custom page".
+                      disabled={isOffline || loading || loadingProducts}
                     >
                       <SelectTrigger
                         id="push-destination"
