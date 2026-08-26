@@ -80,6 +80,13 @@ export function NotificationProvider({
         setNotifications([]);
         campanhaIdsRef.current = new Set();
         setLoading(false);
+        // Este ramo NÃO é o caminho do logout (o efeito lá embaixo é, e a
+        // limpeza que resolve o defeito mora lá). Ele é alcançado pelo
+        // `refresh()` — o botão "Tentar de novo" da tela, tocado por quem não
+        // tem sessão. Sem sessão não há o que buscar, mas também não há erro
+        // a exibir: limpar aqui é o que faz esse botão deixar de ser um
+        // clique que não produz nada.
+        setErro(null);
         return;
       }
 
@@ -293,6 +300,15 @@ export function NotificationProvider({
     }
     setNotifications([]);
     setLoading(false);
+    // ESTE é o caminho do logout — o efeito não chama `fetchNotifications`
+    // quando `user` some, então limpar `erro` lá dentro não alcança aqui.
+    // `erro` descreve a falha de UMA consulta logada e não pode sobreviver à
+    // sessão que o criou: o sino do topo abre para qualquer pessoa, e sem
+    // esta linha a falha de quem deslogou virava "Não conseguimos carregar"
+    // permanente para o visitante seguinte no mesmo aparelho, com o "Tentar
+    // de novo" incapaz de limpá-la. Regressão introduzida por mim em 9142182,
+    // apontada pela revisão cruzada do parceiro (laudo da rodada 2, #5).
+    setErro(null);
     bc?.close();
   }, [user, fetchNotifications, isLeader]);
 

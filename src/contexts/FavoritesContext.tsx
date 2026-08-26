@@ -263,6 +263,15 @@ export function FavoritesProvider({
       setDbFavoriteIds([]);
       setPendingFavorites([]);
       setLoading(false);
+      // `erro` descreve a falha de UMA consulta logada, então ele morre junto
+      // com a sessão que o produziu. Sem esta linha o estado tinha ciclo de
+      // vida maior do que a sessão: quem deslogasse depois de um fetch que
+      // falhou deixava "Não conseguimos carregar" grudado na aba Favoritos
+      // para o VISITANTE seguinte no mesmo aparelho — e para sempre, porque
+      // `fetchDbFavorites` retorna cedo sem sessão e o botão "Tentar de novo"
+      // não tinha como limpar nada. Regressão introduzida por mim em bd79351
+      // e apontada pela revisão cruzada do parceiro (laudo da rodada 2, #4).
+      setErro(null);
       return;
     }
 
@@ -279,6 +288,9 @@ export function FavoritesProvider({
     if (trocouDeConta) {
       setDbFavoriteIds([]);
       setPendingFavorites([]);
+      // Mesma razão do bloco acima, no caminho que NÃO passa por `null`: a
+      // falha da consulta de A não pode aparecer na tela de B.
+      setErro(null);
     }
 
     const syncFavorites = async () => {
