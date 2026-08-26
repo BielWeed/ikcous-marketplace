@@ -112,7 +112,7 @@ export const AdminPushView = memo(function AdminPushView({
   // segmento seguinte. `null` é "ainda não medi este segmento, ou não
   // consegui".
   const [predictedReach, setPredictedReach] = useState<ContagemMedida>(null);
-  const [history, setHistory] = useState<any[]>([]);
+  const [history, setHistory] = useState<any[] | null>(null);
   const [targetUserName, setTargetUserName] = useState<string | null>(null);
   const [destType, setDestType] = useState<string>("home");
   const [selectedProductId, setSelectedProductId] = useState<string>("");
@@ -250,7 +250,10 @@ export const AdminPushView = memo(function AdminPushView({
       .order("sent_at", { ascending: false })
       .limit(20);
 
-    if (!error && data) setHistory(data);
+    // PAINEL-08: `null` em falha — `history` nasce `[]` e o render
+    // exibia "Nenhuma mensagem enviada" para uma falha de rede. O
+    // subCount ao lado (linha 244) já usava null; o histórico não.
+    setHistory(error || !data ? null : data);
   }, []);
 
   // Achado 6 da auditoria de 20/08/2026: dos quatro botões de público, só o
@@ -1360,7 +1363,13 @@ export const AdminPushView = memo(function AdminPushView({
               </div>
 
               <div className="max-h-[350px] overflow-y-auto pr-1 space-y-2 scrollbar-thin scrollbar-thumb-zinc-700">
-                {history.length === 0 ? (
+                {history === null ? (
+                  <div className="py-6 text-center italic text-zinc-600">
+                    <p className="text-[9px] font-bold uppercase tracking-widest">
+                      Não foi possível carregar o histórico
+                    </p>
+                  </div>
+                ) : history.length === 0 ? (
                   <div className="py-6 text-center italic text-zinc-600">
                     <p className="text-[9px] font-bold uppercase tracking-widest">
                       Nenhuma mensagem enviada até o momento
