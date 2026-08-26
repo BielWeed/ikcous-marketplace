@@ -713,7 +713,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
   // Removed early return loading block to prevent visual layout shifts
 
-  if (selectedOrderId && (loadingDetail || !selectedOrder)) {
+  // PAINEL-03: a guarda antiga `(loadingDetail || !selectedOrder)` mantinha o
+  // spinner PARA SEMPRE quando o fetch falhava — `selectedOrder` ficava null e
+  // `loadingDetail` já tinha voltado a false. Agora: loading = spinner; fetch
+  // concluído sem resultado = tela de erro com botão de voltar.
+  if (selectedOrderId && loadingDetail) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
         <div className="relative size-16">
@@ -730,6 +734,34 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           <p className="text-[9px] font-bold uppercase leading-none tracking-widest text-zinc-500">
             Aguarde um instante
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (selectedOrderId && !loadingDetail && !selectedOrder) {
+    // PAINEL-03: fetch concluiu sem resultado — erro de rede, id inválido,
+    // ou sessão expirou. Antes: spinner eterno; agora: erro + voltar.
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
+        <div className="flex size-16 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10">
+          <svg className="size-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          </svg>
+        </div>
+        <div className="mt-6 flex flex-col items-center gap-1.5 text-center">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-red-400">
+            Não foi possível carregar
+          </p>
+          <p className="max-w-[240px] text-[9px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+            Verifique a conexão e tente novamente
+          </p>
+          <button
+            onClick={() => setSelectedOrderId(null)}
+            className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white transition-colors hover:border-amber-500/30 hover:bg-amber-500/10"
+          >
+            Voltar aos pedidos
+          </button>
         </div>
       </div>
     );
