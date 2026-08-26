@@ -73,6 +73,7 @@ function pedidoComDoisItens(): Order {
     status: "pending",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    cancelledAfterShipping: false,
   };
 }
 

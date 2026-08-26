@@ -206,6 +206,7 @@ function pedidoFake(id: string, paymentStatus: PaymentStatus | null): Order {
     paymentStatus,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    cancelledAfterShipping: false,
   };
 }
 

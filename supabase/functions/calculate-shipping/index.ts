@@ -72,6 +72,15 @@ export function calculateSmartFallback(origin: string, dest: string, baseFee: nu
  * lojista configurou no painel — número dela, escolhido por ela.
  *
  * @returns o preço em reais, ou `null` quando não há como cotar honestamente.
+ *
+ * ⚠️ DESLIGADA DO `catch` DE TOPO EM 25/08/2026: a escada por região que ela
+ * devolve não bate com o que a RPC do checkout cobra para um id `flat-fee-%`
+ * (`store_config.shipping_fee`, sempre — ver `precoResolvidoSemCache`
+ * abaixo). O `catch` de topo agora mostra `taxaDaLoja` direto quando
+ * `taxaDaLojaConfigurada` é `true`, e falha fechado quando não é — nunca mais
+ * a estimativa por distância. Esta função continua exportada e testada
+ * porque descreve, isolada, um comportamento que já existiu em produção;
+ * nenhum caminho do `handler` a chama mais.
  */
 export function precoDeContingenciaDoTopo(
     originCep?: string,
@@ -403,12 +412,26 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         return new Response('ok', { headers: corsHeaders })
     }
 
-    // Espelho das tres coisas que a contingencia de topo precisa saber para
-    // cotar. Elas nascem `const` dentro do `try` -- o `catch` nao as enxerga,
-    // e era por isso que ele so' sabia devolver um numero cravado.
-    let cepDeDestino = ''
-    let cepDeOrigem = ''
+    // Espelho do que a contingencia de topo precisa saber para cotar. Nasce
+    // `const` dentro do `try` -- o `catch` nao os enxerga -- e por isso a
+    // contingência de baixo (a que faltava, até 18/08/2026) só sabia devolver
+    // um número cravado.
+    //
+    // `taxaDaLoja` sozinho não basta: até 25/08/2026 a contingência de topo
+    // usava `precoDeContingenciaDoTopo` (a escada por região de
+    // `calculateSmartFallback`) e precisava dos CEPs para calcular a
+    // distância. Essa escada foi retirada — ver o `catch` de topo abaixo —
+    // porque o preço que ela inventava divergia do que a RPC realmente
+    // cobra para qualquer id `flat-fee-%` (`store_config.shipping_fee`).
+    // `taxaDaLojaConfigurada` é o que resta: sem ele, `taxaDaLoja` não diz se
+    // é uma taxa REAL configurada pela loja ou o `0` que nasce de
+    // `Number(null)` quando o provedor não é `flat_fee` e nada foi
+    // configurado (ver `flatFeeConfigurada` acima). É essa distinção que
+    // decide, nos dois fallbacks abaixo, entre mostrar a taxa fixa de
+    // verdade ou falhar fechado — os CEPs deixaram de ser necessários porque
+    // uma taxa FIXA não depende de distância nenhuma.
     let taxaDaLoja: number | undefined
+    let taxaDaLojaConfigurada = false
 
     try {
         const body = await req.json()
@@ -546,7 +569,6 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
         // Clean CEP (only digits)
         const cleanCep = cep.replace(/\D/g, '')
-        cepDeDestino = cleanCep
         if (cleanCep.length !== 8) {
             return new Response(
                 JSON.stringify({ error: 'CEP inválido' }),
@@ -579,8 +601,8 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
         const originCep = storeConfig.origin_cep.replace(/\D/g, '')
         const flatFee = Number(storeConfig.shipping_fee)
-        cepDeOrigem = originCep
         taxaDaLoja = flatFee
+        taxaDaLojaConfigurada = flatFeeConfigurada(storeConfig.shipping_fee)
         const enabledMethods = storeConfig.enabled_shipping_methods || ['sedex', 'pac']
         
         const shippingCoverage = storeConfig.shipping_coverage || 'national'
@@ -957,32 +979,88 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         // presente em toda resposta com preço.
         let cotacaoIncompleta = false
 
-        // If no options returned (or API failed), use smart fallback
+        // Transportadora falhou ou não devolveu nenhuma opção habilitada.
+        //
+        // ATÉ 25/08/2026 este ramo inventava um preço por `calculateSmartFallback`
+        // (estimativa por REGIÃO de CEP) e o devolvia com id `flat-fee-contingency`.
+        // A RPC que valida o pedido ignora esse preço para QUALQUER id
+        // `flat-fee-%` e cobra `COALESCE(store_config.shipping_fee, 0)` — ver
+        // `precoResolvidoSemCache` acima e
+        // `20260960000000_variacao_obrigatoria_no_servidor.sql:223-224`. Como a
+        // estimativa por região quase nunca bate com a taxa fixa da loja, a
+        // cliente preenchia endereço e pagamento, clicava em Finalizar, e a RPC
+        // recusava por divergência de total — venda perdida no último clique,
+        // sem nada aparecer deste lado.
+        //
+        // A regra que fecha o buraco: só mostrar um preço que a RPC REALMENTE
+        // vai cobrar. Isso só existe quando a loja configurou uma taxa fixa de
+        // verdade (`flatFeeConfigurada`) — nesse caso `getFlatFeeResponse()`
+        // devolve exatamente essa taxa, idêntica ao que a RPC vai ler de
+        // `store_config`. Sem taxa fixa configurada não há preço honesto: a
+        // função falha fechado, e o carrinho volta a usar a taxa que a própria
+        // loja definiu no painel (ver `ShippingCalculator.tsx`).
         if (shippingOptions.length === 0) {
-            const fallbackPrice = calculateSmartFallback(originCep, cleanCep, flatFee)
-            shippingOptions = [
-                {
-                    id: 'flat-fee-contingency',
-                    name: 'Entrega Padrão (Contingência)',
-                    price: fallbackPrice,
-                    deliveryDays: 3,
-                    provider: 'flat_fee'
-                }
-            ]
+            // A guarda é o que `getFlatFeeResponse()` REALMENTE devolve, não
+            // `flatFeeConfigurada` sozinha: `getFlatFeeResponse()` também
+            // entrega `local-delivery` quando `isLocal`, campo que
+            // `flatFeeConfigurada(storeConfig.shipping_fee)` nem olha. Hoje o
+            // bloco que faz o prepend de `local-delivery` (acima) já garante
+            // `shippingOptions.length >= 1` sempre que `isLocal` é `true`,
+            // então este ramo só é alcançado com `isLocal` falso — mas
+            // autenticar o resultado de verdade, em vez de um campo que só
+            // por coincidência concorda com ele hoje, é o que impede a guarda
+            // de voltar a divergir se aquele bloco for reordenado.
+            const opcoesDeContingencia = getFlatFeeResponse()
+            if (opcoesDeContingencia.length > 0) {
+                shippingOptions = opcoesDeContingencia
 
-            // Log contingency
-            fireAndForget(
-                supabaseClient.from('shipping_calculation_logs').insert({
-                    origin_cep: originCep,
-                    destination_cep: cleanCep,
-                    provider: provider,
-                    cart_items: cart,
-                    response_time_ms: latency,
-                    status: 'contingency',
-                    error_message: apiError || 'Nenhum método de envio retornado.'
-                }),
-                'Failed to log contingency:',
-            )
+                // Log contingency — não precisa aguardar: já existe um preço
+                // válido para entregar, então atrasar a resposta não evita
+                // nenhum prejuízo (ao contrário do ramo de erro logo abaixo).
+                fireAndForget(
+                    supabaseClient.from('shipping_calculation_logs').insert({
+                        origin_cep: originCep,
+                        destination_cep: cleanCep,
+                        provider: provider,
+                        cart_items: cart,
+                        response_time_ms: latency,
+                        status: 'contingency',
+                        error_message: apiError || 'Nenhum método de envio retornado.'
+                    }),
+                    'Failed to log contingency:',
+                )
+            } else {
+                // Sem taxa fixa configurada, todo preço aqui seria chute. O log
+                // é AGUARDADO pelo mesmo motivo do 503 mais abaixo: aqui não há
+                // preço para entregar, então esperar não tira nada de ninguém, e
+                // é a ÚNICA janela que a lojista tem para essa falha.
+                //
+                // O status é 'error', não 'contingency': este ramo não entrega
+                // NENHUM preço — a resposta é 503 e ninguém compra. O painel
+                // (`AdminShippingView.tsx`) pinta 'contingency' de âmbar,
+                // reservado a "deu certo pelo plano B", e só 'error' de
+                // vermelho. O irmão deste ramo, logo acima, entrega preço de
+                // verdade e por isso continua 'contingency' com razão — aqui
+                // não há razão nenhuma.
+                const logEmVoo = Promise.resolve(
+                    supabaseClient.from('shipping_calculation_logs').insert({
+                        origin_cep: originCep,
+                        destination_cep: cleanCep,
+                        provider: provider,
+                        cart_items: cart,
+                        response_time_ms: latency,
+                        status: 'error',
+                        error_message: apiError || 'Nenhum método de envio retornado.'
+                    }),
+                )
+                fireAndForget(logEmVoo, 'Failed to log contingency:')
+                await logEmVoo.catch(() => {})
+
+                return new Response(
+                    JSON.stringify({ error: 'Não foi possível calcular o frete agora. Tente novamente em instantes.' }),
+                    { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
         } else {
             // Save to cache — AGUARDANDO, e a resposta sai daqui.
             //
@@ -1085,16 +1163,26 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
     } catch (err) {
         console.error('[calculate-shipping] Top-level Edge Function Error:', err)
-        
-        // Contingência de último recurso, pela escada de região — nunca mais um
-        // preço cravado. Ver `precoDeContingenciaDoTopo` no topo do arquivo.
-        try {
-            const preco = precoDeContingenciaDoTopo(cepDeOrigem, cepDeDestino, taxaDaLoja)
 
-            // Sem os dois CEPs não há distância, e sem distância todo preço é
-            // chute. Responder erro faz o carrinho aplicar a taxa que a lojista
-            // configurou, em vez de a gente inventar uma barata por ela.
-            if (preco === null) {
+        // MESMO DEFEITO DO OUTRO FALLBACK, NUM SEGUNDO LUGAR: até 25/08/2026
+        // esta contingência de último recurso usava `precoDeContingenciaDoTopo`
+        // — a escada por região de `calculateSmartFallback` — e devolvia a
+        // estimativa com id `flat-fee-fallback`. A RPC que valida o pedido
+        // ignora esse preço para qualquer id `flat-fee-%` e cobra
+        // `COALESCE(store_config.shipping_fee, 0)` (ver `precoResolvidoSemCache`
+        // acima). A escada quase nunca bate com a taxa fixa real da loja, então
+        // mostrar a estimativa aqui também levava ao "os valores do pedido
+        // mudaram" no último clique.
+        //
+        // A correção é a mesma: só mostrar um preço que a RPC vai honrar. Isso
+        // só existe quando `store_config` já foi lida com sucesso (senão nem
+        // `taxaDaLojaConfigurada` teria como ser `true`) E a loja tem uma taxa
+        // fixa configurada de verdade — nesse caso o preço mostrado é
+        // `taxaDaLoja`, o MESMO valor que a RPC vai ler de
+        // `store_config.shipping_fee`, sem passar pela escada. Sem isso, não há
+        // preço honesto: falha fechado, exatamente como quando faltam os CEPs.
+        try {
+            if (!taxaDaLojaConfigurada) {
                 return new Response(
                     JSON.stringify({ error: err.message }),
                     { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -1105,7 +1193,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 {
                     id: 'flat-fee-fallback',
                     name: 'Entrega Padrão (Contingência)',
-                    price: preco,
+                    price: taxaDaLoja,
                     deliveryDays: 2,
                     provider: 'flat_fee'
                 }

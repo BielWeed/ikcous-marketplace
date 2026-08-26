@@ -252,6 +252,10 @@ export function mapOrderFromDB(
     notes: row.notes || undefined,
     couponCode: row.coupon_code || undefined,
     trackingCode: row.tracking_code || undefined,
+    // Colunas da migration 20260970000000 (Task 1, em paralelo): ainda não
+    // regeneradas em database.types.ts, por isso o cast — igual ao total_amount acima.
+    cancelledAfterShipping: (row as any).cancelled_after_shipping === true,
+    returnedToSellerAt: (row as any).returned_to_seller_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

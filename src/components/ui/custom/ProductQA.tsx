@@ -44,15 +44,32 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
 
   const handleAsk = async () => {
     if (!newQuestion.trim()) return;
-    await addQuestion({ productId, question: newQuestion });
-    setNewQuestion("");
+    // addQuestion devolve null quando o envio falha (o hook trata o erro
+    // com toast e NÃO lança): limpar o campo incondicionalmente apagaria o
+    // texto que a cliente acabou de escrever — em rede fraca ela perdia a
+    // pergunta junto com o toast que some em segundos. Só limpa em sucesso,
+    // o mesmo contrato que ReviewForm já usa.
+    const enviada = await addQuestion({
+      productId,
+      question: newQuestion,
+    });
+    if (enviada) {
+      setNewQuestion("");
+    }
   };
 
   const handleReply = async (questionId: string) => {
     if (!replyText.trim()) return;
-    await addAnswer({ questionId, answer: replyText });
-    setReplyText("");
-    setReplyingTo(null);
+    // Mesma regra do handleAsk: addAnswer devolve false na falha — fechar
+    // a caixa e limpar a resposta aí seria jogar fora o texto digitado.
+    const respondida = await addAnswer({
+      questionId,
+      answer: replyText,
+    });
+    if (respondida) {
+      setReplyText("");
+      setReplyingTo(null);
+    }
     getQuestionsByProduct(productId);
   };
 

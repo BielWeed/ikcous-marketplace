@@ -665,21 +665,48 @@ const VERIFICACOES = {
         // soltos passaram com uma chamada apagada): aqui o texto que engana
         // nao e' outro ponto da funcao, e' o comentario dela mesma.
         //
-        // O marcador agora e' o BLOCO INTEIRO, do WHERE ate FOR UPDATE SKIP
-        // LOCKED, no mesmo formato ja usado (e confirmado pelo revisor) em
-        // expirar_pedidos_vencidos e confirmar_pagamento acima: contiguo o
-        // bastante para nao existir em nenhum outro lugar do arquivo --
-        // nem no comentario (que quebra linha e pontua diferente), nem no
-        // WHERE do CREATE INDEX (mesma clausula inicial, indentacao
-        // diferente).
+        // Rodada 6 (20260970000000, achado ANOTADO de revisor de contexto
+        // limpo): aquela migration faz OUTRO CREATE OR REPLACE nesta mesma
+        // funcao e insere uma SETIMA clausula entre a sexta e o "FOR UPDATE
+        // SKIP LOCKED" -- o bloco amarrado de antes (WHERE ate esse anchor)
+        // deixou de casar contra o corpo que fica no banco depois dela
+        // (medido: false). A Rodada 6 ENCOLHEU o marcador para as seis
+        // clausulas sem o anchor final, apostando que elas continuariam
+        // contiguas byte a byte "em qualquer versao futura da funcao que
+        // preserve a ordem" -- promessa sobre o futuro dentro de uma trava.
+        // A propria funcao ja tinha acabado de falsificar essa promessa uma
+        // vez (foi exatamente essa aposta, no marcador anterior a' Rodada
+        // 6, que a 20260970000000 quebrou) -- entao encolher para fazer a
+        // MESMA aposta de novo e' repetir o defeito que a Rodada 6 estava
+        // tentando consertar. Achado BLOQUEANTE de revisor de contexto
+        // limpo (segunda rodada): medido contra os dois corpos reais --
+        // com o anchor "FOR UPDATE SKIP LOCKED" apagado do corpo, o
+        // marcador encolhido da Rodada 6 ainda saia "verificada".
+        //
+        // Rodada 7: em vez de apostar no futuro, o segundo bloco abaixo
+        // ancora no FIM do WHERE em vez do comeco -- "FOR UPDATE SKIP
+        // LOCKED" seguido do "LOOP" e do PERFORM que abre o corpo do laco.
+        // Uma clausula nova inserida ANTES do anchor (exatamente o que
+        // 20260970000000 fez) nao move o anchor nem o que vem depois dele,
+        // entao o bloco casa nos DOIS corpos (20260901000000 e
+        // 20260970000000) e continua acusando a remocao do "FOR UPDATE
+        // SKIP LOCKED" nos dois -- medido pelo revisor contra as duas
+        // versoes.
+        //
+        // O marcador solto "FOR UPDATE SKIP LOCKED" sozinho NAO serve: ele
+        // casa verbatim contra o comentario desta propria funcao ("-- FOR
+        // UPDATE SKIP LOCKED: mesma protecao de expirar_pedidos_vencidos
+        // --", logo depois do BEGIN) mesmo com o anchor executavel
+        // apagado -- e' a armadilha da Rodada 5 outra vez, com outro alvo.
         `WHERE coupon_id IS NOT NULL
           AND status = 'cancelled'
           AND payment_status IS DISTINCT FROM 'pago'
           AND payment_status IS DISTINCT FROM 'pago_apos_expirar'
           AND coupon_usage_returned = FALSE
-          AND (expires_at IS NULL OR expires_at < now() - interval '24 hours')
-        FOR UPDATE SKIP LOCKED`,
-        "PERFORM public.devolver_uso_cupom(v_pedido.id);",
+          AND (expires_at IS NULL OR expires_at < now() - interval '24 hours')`,
+        `        FOR UPDATE SKIP LOCKED
+    LOOP
+        PERFORM public.devolver_uso_cupom(v_pedido.id);`,
         "SET coupon_usage_returned = TRUE",
       ],
     },
@@ -699,6 +726,252 @@ const VERIFICACOES = {
   //    WHERE table_schema='public' AND table_name='marketplace_orders'
   //      AND column_name='status';
   //   -- esperado: is_nullable='NO', column_default=''pending''::text
+
+  // ---------------------------------------------------------------------
+  // 20260970000000_cancelamento_respeita_o_envio.sql tambem entra por ALTER
+  // TABLE (duas colunas novas: cancelled_after_shipping,
+  // returned_to_seller_at) -- o mesmo limite do bloco acima vale aqui, NAO
+  // e' o mesmo assunto: aquele e' sobre 20260822000000, este e' sobre esta
+  // migration.
+  //
+  // A EXISTENCIA das duas colunas fica provada pelas checagens abaixo, mas
+  // NAO por check_function_bodies "validar tabela/coluna na CRIACAO da
+  // funcao" -- essa premissa e' FALSA para LANGUAGE plpgsql (as duas
+  // funcoes desta migration sao plpgsql): o Postgres so' valida referencia
+  // de tabela/coluna dentro de um corpo plpgsql NA EXECUCAO daquele ramo,
+  // nunca na criacao (doc oficial, "PL/pgSQL Under the Hood" -- comandos
+  // SQL do corpo nao sao traduzidos no CREATE FUNCTION). Quem prova a
+  // coluna aqui e' outro mecanismo, mais estreito: cada migration roda em
+  // transacao propria (db-apply.cjs, passo 2, `BEGIN`/`client.query(sql)`/
+  // `COMMIT`) e o script sai por `process.exit(1)` ANTES desta verificacao
+  // se qualquer comando da migration falhar -- entao o ALTER TABLE ADD
+  // COLUMN do MESMO ARQUIVO necessariamente rodou para o fluxo chegar ate
+  // aqui. Isto so' vale enquanto coluna e funcao estiverem no mesmo
+  // arquivo -- se um dia se separarem (ou se DROP COLUMN vier depois),
+  // confira a mao:
+  //   SELECT column_name, data_type, is_nullable, column_default
+  //     FROM information_schema.columns
+  //    WHERE table_schema='public' AND table_name='marketplace_orders'
+  //      AND column_name IN ('cancelled_after_shipping', 'returned_to_seller_at');
+  //   -- esperado: 2 linhas -- cancelled_after_shipping (boolean,
+  //   -- is_nullable='NO', column_default='false'); returned_to_seller_at
+  //   -- (timestamp with time zone, is_nullable='YES', column_default NULL).
+  "20260970000000_cancelamento_respeita_o_envio.sql": [
+    {
+      funcao: "update_order_status_atomic",
+      esperado: [
+        // 1. A CORRECAO EM SI (Regra do Gabriel, 24/08/2026): o divisor
+        // passa a ser SE O PRODUTO SAIU, nao mais "so' pending pode ser
+        // cancelado". Sem esta linha, o cliente que tenta cancelar um
+        // pedido ja enviado levaria "Apenas pedidos pendentes podem ser
+        // cancelados por voce" outra vez.
+        "IF v_old_status NOT IN ('pending', 'processing', 'shipping') THEN",
+        // 2. Bloco amarrado (nao marcador solto): prova que
+        // cancelled_after_shipping so' vira true quando o pedido estava em
+        // 'shipping'. Um marcador solto ("SET cancelled_after_shipping =
+        // true" sozinho, como era antes) e' cego a QUAL guarda o antecede
+        // -- achado de revisor de contexto limpo, sabotagem S5 (trocar
+        // v_old_status = 'shipping' por 'pending' nesta guarda) passava
+        // "verificada" com o marcador solto.
+        //
+        // A EXISTENCIA da coluna NAO e' provada por check_function_bodies
+        // "validar tabela/coluna na CRIACAO da funcao" -- essa premissa e'
+        // FALSA para LANGUAGE plpgsql (as duas funcoes desta migration
+        // sao plpgsql): o Postgres so' valida referencia de tabela/coluna
+        // dentro de um corpo plpgsql NA EXECUCAO daquele ramo, nunca na
+        // criacao (doc oficial, "PL/pgSQL Under the Hood"). Quem prova a
+        // coluna aqui e' outro mecanismo, mais estreito: cada migration
+        // roda em transacao propria (db-apply.cjs, passo 2) e o script sai
+        // por `process.exit(1)` ANTES desta verificacao se qualquer
+        // comando falhar -- entao o ALTER TABLE ADD COLUMN do MESMO
+        // ARQUIVO necessariamente rodou para chegar ate aqui. Isto so'
+        // vale enquanto coluna e funcao estiverem no mesmo arquivo -- ver
+        // o bloco de comentario logo acima desta entrada no mapa para o
+        // SQL manual, caso um dia se separem.
+        `    IF p_new_status = 'cancelled'
+       AND v_old_status = 'shipping' THEN
+        UPDATE public.marketplace_orders
+           SET cancelled_after_shipping = true
+         WHERE id = p_order_id;
+    END IF;`,
+        // 3. Bloco amarrado cobrindo as TRES clausulas da restauracao de
+        // estoque, inclusive "AND v_old_status IS DISTINCT FROM
+        // 'shipping'" -- a guarda que impede a peca voltar duas vezes para
+        // o estoque (uma aqui, no cancelamento, e outra em
+        // confirmar_retorno_do_produto quando o lojista confirma o
+        // retorno). Achado de revisor de contexto limpo, sabotagem S6
+        // (apagar so' esta clausula): um marcador por linha deixaria
+        // passar, porque cada clausula continua existindo em outro ponto
+        // do arquivo (a primeira em confirmar_pagamento, a segunda no
+        // bloco 2 acima) -- so' o bloco amarrado das tres juntas detecta a
+        // clausula que falta exatamente aqui.
+        `    IF p_new_status = 'cancelled'
+       AND v_old_status IS DISTINCT FROM 'cancelled'
+       AND v_old_status IS DISTINCT FROM 'shipping' THEN`,
+      ],
+    },
+    {
+      funcao: "confirmar_retorno_do_produto",
+      esperado: [
+        // 4. A FUNCAO EXISTE: se ela nao existisse no catalogo,
+        // pg_get_functiondef nao devolveria linha nenhuma, def sairia
+        // undefined, e avaliarChecagem() classifica isso como
+        // funcaoAusente antes mesmo de comparar qualquer marcador -- nenhum
+        // dos demais abaixo sairia "ok" por acidente.
+        "Não autorizado: só a loja confirma que o produto voltou.",
+        // 5. ACHADO BLOQUEANTE de revisor de contexto limpo (segunda
+        // rodada sobre esta migration): a entrada anterior desta checagem
+        // tinha SO' os marcadores 4 e 6 (a RAISE de autorizacao e o SET
+        // final) -- tudo o que fica ENTRE eles nao tinha marcador nenhum e
+        // saia "verificada" mesmo com as duas guardas de estado, o FOR
+        // UPDATE, a idempotencia e o PERFORM devolver_estoque apagados.
+        // Medido contra o corpo real fatiado da migration: as cinco
+        // sabotagens abaixo (S9-S13) davam "verificada" com a entrada
+        // antiga.
+        //
+        // Este bloco cobre tres coisas amarradas: o FOR UPDATE da SELECT
+        // (S13 -- sem ele, dois lojistas confirmando o MESMO pedido ao
+        // mesmo tempo disputam a linha em vez de serializar); a guarda "nao
+        // estava enviado quando foi cancelado" (S11); e a guarda "nao esta
+        // mais cancelado" (S12) -- a que impede reconfirmar um pedido
+        // reativado para outro status (comentario da propria migration:
+        // pedido cancelado-apos-envio reativado para 'delivered', estoque
+        // 499 -> 500 com o produto entregue).
+        //
+        // ACHADO BLOQUEANTE de revisor de contexto limpo (terceira rodada):
+        // o bloco comecava em "WHERE id = p_order_id", deixando a SELECT que
+        // ABRE este mesmo statement (a linha logo acima) fora de qualquer
+        // marcador. S17b (trocar "cancelled_after_shipping" por um literal
+        // "true" nesta SELECT, transformando v_cancelled_after_shipping numa
+        // constante) saia "verificada": a guarda "IF NOT
+        // v_cancelled_after_shipping" continuava intacta e o marcador
+        // continuava casando, mas ela nunca dispararia -- a RPC passaria a
+        // aceitar um pedido cancelado ainda em 'pending' (cujo estoque ja
+        // tinha voltado no cancelamento) e devolver_estoque rodaria a
+        // segunda vez: 499 -> 501, sem produto nenhum voltando.
+        `    SELECT status, cancelled_after_shipping, returned_to_seller_at
+      INTO v_status, v_cancelled_after_shipping, v_returned_at
+      FROM public.marketplace_orders
+     WHERE id = p_order_id
+       FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Pedido não encontrado.';
+    END IF;
+
+    IF NOT v_cancelled_after_shipping THEN
+        RAISE EXCEPTION 'Este pedido não estava enviado quando foi cancelado: não há produto para voltar.';
+    END IF;
+
+    -- cancelled_after_shipping e' HISTORICO (nunca volta a false): se a loja
+    -- reativou o pedido para outro status depois do cancelamento (ex.:
+    -- 'delivered'), o produto NAO esta voltando -- esta entregue, na mao do
+    -- cliente. Sem esta guarda a RPC ainda aceitava e creditava estoque
+    -- fantasma. Medido: pedido cancelado-apos-envio reativado para
+    -- 'delivered', estoque 499 -> 500 com o produto entregue.
+    IF v_status IS DISTINCT FROM 'cancelled' THEN
+        RAISE EXCEPTION 'Este pedido não está mais cancelado: não há retorno para confirmar.';
+    END IF;`,
+        // 6. Bloco amarrado cobrindo a guarda de IDEMPOTENCIA (S10 -- "dois
+        // cliques dobram o estoque da loja", palavras da propria migration),
+        // o PERFORM public.devolver_estoque(...) (S9 -- a RAZAO de esta
+        // funcao existir: sem ele o lojista confirma o retorno e o estoque
+        // nunca volta) e o UPDATE final que grava returned_to_seller_at.
+        // Tambem prova, pelo mesmo raciocinio do marcador 2 acima, que a
+        // coluna returned_to_seller_at EXISTE: se nao existisse, este CREATE
+        // OR REPLACE FUNCTION teria falhado a aplicacao inteira.
+        `    IF v_returned_at IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', true, 'ja_confirmado', true, 'returned_to_seller_at', v_returned_at);
+    END IF;
+
+    -- Mesmo laco de public.devolver_estoque(uuid) (20260807000000), sem nada
+    -- alem dele -- reusa a funcao em vez de manter uma terceira copia do
+    -- mesmo invariante (IF/ELSE variante XOR produto).
+    PERFORM public.devolver_estoque(p_order_id);
+
+    UPDATE public.marketplace_orders
+       SET returned_to_seller_at = now()
+     WHERE id = p_order_id;`,
+      ],
+    },
+    {
+      funcao: "devolver_cupons_de_pedidos_mortos",
+      esperado: [
+        // 7. A CLAUSULA NOVA do WHERE (Regra do Gabriel, 24/08/2026): sem
+        // ela, a varredura devolvia a vaga do cupom de um pedido
+        // cancelado-apos-envio com o produto AINDA na mao do cliente -- ver
+        // o "DEFEITO MEDIDO" no comentario desta funcao, na propria
+        // migration. Esta migration faz CREATE OR REPLACE nesta mesma
+        // funcao -- a TERCEIRA das tres que ela redefine. Achado de
+        // revisor de contexto limpo: sem esta entrada, esta migration
+        // teria SO' as duas checagens acima (update_order_status_atomic,
+        // confirmar_retorno_do_produto), as duas sairiam "verificada",
+        // nenhuma checagem desta migration ficaria "pulada", e
+        // resumirVerificacao() devolveria VERIFICADO (saida 0) com esta
+        // terceira funcao nunca olhada -- o oposto do que se quer.
+        //
+        // Bloco amarrado, WHERE ate FOR UPDATE SKIP LOCKED com a SETIMA
+        // clausula dentro -- mesmo formato ja usado (e confirmado pelo
+        // revisor) na entrada de 20260901000000 acima. Marcador solto so'
+        // na clausula nova deixaria passar o WHERE INTEIRO apagado, porque
+        // o texto da clausula tambem aparece, verbatim, no comentario logo
+        // acima dela (a mesma falha da Rodada 5, ver a entrada de
+        // 20260901000000 acima).
+        `WHERE coupon_id IS NOT NULL
+          AND status = 'cancelled'
+          AND payment_status IS DISTINCT FROM 'pago'
+          AND payment_status IS DISTINCT FROM 'pago_apos_expirar'
+          AND coupon_usage_returned = FALSE
+          AND (expires_at IS NULL OR expires_at < now() - interval '24 hours')
+          AND (cancelled_after_shipping = false OR returned_to_seller_at IS NOT NULL)
+        FOR UPDATE SKIP LOCKED`,
+        // 8. ACHADO BLOQUEANTE de revisor de contexto limpo (terceira
+        // rodada): o bloco acima (marcador 7) prova o WHERE, mas nada nesta
+        // entrada provava o LACO em si — sem estes dois, S14 (apagar o
+        // PERFORM public.devolver_uso_cupom dentro do LOOP) e S15 (apagar o
+        // UPDATE ... SET coupon_usage_returned = TRUE) saiam "verificada".
+        // S15 e' o pior dos dois: sem ele o proprio WHERE do marcador 7
+        // (coupon_usage_returned = FALSE) continua casando o MESMO pedido em
+        // todo ciclo do cron, e devolver_uso_cupom roda de novo a cada
+        // ciclo -- o contador do cupom e' bombeado ate zero e fica em zero,
+        // zerando inclusive uso legitimo futuro. Mesmos dois marcadores ja
+        // usados (e confirmados pelo revisor) na entrada de 20260901000000
+        // acima.
+        "PERFORM public.devolver_uso_cupom(v_pedido.id);",
+        "SET coupon_usage_returned = TRUE",
+      ],
+    },
+  ],
+  "20260990000000_fecha_custo_e_fornecedor_do_security_definer.sql": {
+    funcao: "get_product_recommendations",
+    esperado: [
+      // A CORRECAO EM SI: custo e fornecedor_id saem NULOS do corpo da
+      // funcao, em vez do valor real da tabela (SELECT * antigo). Sao os
+      // dois marcadores que provam que a porta fechou NESTA funcao — sem
+      // eles a migration poderia ter aplicado em qualquer outro lugar e a
+      // verificacao passaria do mesmo jeito.
+      "NULL::numeric(10,2),  -- custo: nunca sai desta funcao",
+      "NULL::uuid,           -- fornecedor_id: nunca sai desta funcao",
+      // Os dois marcadores acima tambem existem no corpo PRE-migration (o
+      // texto "p.tags && v_tags" que morava aqui antes era so' do WHERE, e
+      // sobrevivia sem mudanca nenhuma no corpo — nao provava a correcao
+      // sozinho). Este terceiro marcador e' CONTIGUO, atravessa o
+      // NULL::uuid e so' existe na forma NOVA (SELECT <lista de colunas>
+      // sem ROW(...)::public.produtos em volta): se alguem reverter para
+      // SELECT * (por engano) ou recolocar o embrulho ROW(...)::produtos,
+      // esta faixa exata deixa de casar.
+      `        p.estoque_minimo,
+        NULL::uuid,           -- fornecedor_id: nunca sai desta funcao
+        p.ativo,`,
+    ],
+  },
+  // NOTA: get_active_products_internal nao entra aqui. A correcao dela nesta
+  // migration e' um REVOKE EXECUTE, e o db-apply so sabe conferir marcador
+  // dentro de CORPO DE FUNCAO (pg_get_functiondef) -- grant/revoke sai
+  // sempre como PULADA, por desenho (ver cabecalho deste arquivo). A prova
+  // de que o EXECUTE saiu de anon/authenticated e manual, por
+  // has_function_privilege(...) -- receita no cabecalho da propria
+  // migration (20260990000000_fecha_custo_e_fornecedor_do_security_definer.sql).
 };
 
 function lerDatabaseUrl() {

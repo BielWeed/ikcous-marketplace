@@ -35,11 +35,11 @@ interface AdminSettingsViewProps {
 // um guia de ajuda. Não havia uma única configuração de loja nela. Este
 // cartão é o que faz "Ajustes" ajustar alguma coisa.
 //
-// O campo de nome NÃO mora aqui: `storeName` grava no banco (StoreContext),
-// mas nenhuma tela do lado do cliente lê `config.storeName` -- o nome que
-// aparece continua vindo de `branding.appName`. Um campo que grava e nunca
-// aparece é a mesma classe de defeito que o commit 06176a1 já matou nesta
-// tela: prometer o que o app não faz.
+// O campo de nome NÃO mora aqui: `storeName` grava no banco (StoreContext)
+// e as telas do cliente já leem de volta — Header, Home e Busca preferem
+// `config.storeName` e só caem no `branding.appName` quando o banco está
+// vazio (ver tests/front/nome-da-loja-vem-do-banco.test.tsx). Esta tela
+// segue dona só do que ela edita: a localização, no cartão abaixo.
 const StoreLocationSection = memo(function StoreLocationSection() {
   const { config, updateConfig } = useStore();
   const [storeCity, setStoreCity] = useState(config.storeCity ?? "");

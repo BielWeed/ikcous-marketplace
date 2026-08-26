@@ -1,3 +1,4 @@
+import { branding } from "@/config/branding";
 import type { Order } from "@/types";
 import { memo } from "react";
 
@@ -20,11 +21,17 @@ function reais(valor: number): string {
 export const OrderReceipt = memo(function OrderReceipt({
   order,
 }: OrderReceiptProps) {
+  // Nome da loja no papel: branding do build. Aqui NÃO se lê config.storeName
+  // do banco: importar o StoreContext puxa @/lib/supabase na carga do módulo
+  // (createClient roda no top-level), e o recibo é montado isolado em teste
+  // (jsdom sem Web Worker) -- quebrava a suíte só de importar. Quando o teste
+  // puder prover/mocar o provider, trocar por config.storeName ?? branding.appName.
+  const storeName = branding.appName;
   return (
     <>
       <div className="mx-auto hidden max-w-[80mm] border border-gray-200 bg-white p-8 font-mono text-sm text-black print:block">
         <div className="mb-4 border-b border-dashed border-black pb-4 text-center">
-          <h2 className="text-xl font-bold uppercase">IKCOUS STORE</h2>
+          <h2 className="text-xl font-bold uppercase">{storeName}</h2>
           <p className="text-xs">Pedido #{order.id.slice(-6)}</p>
           <p className="text-xs">
             {order?.createdAt

@@ -8,6 +8,10 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Coupon, View } from "@/types";
 import { haptic } from "@/utils/haptic";
+import {
+  dataEscolhidaParaValidade,
+  validadeParaDataDoInput,
+} from "@/utils/validade-do-cupom";
 import { AlertTriangle, Calendar, Ticket } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -451,24 +455,18 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                   name="validUntil"
                   type="date"
                   autoComplete="off"
-                  value={(() => {
-                    if (!formData.validUntil) return "";
-                    const d = new Date(formData.validUntil);
-                    return !Number.isNaN(d.getTime())
-                      ? d.toISOString().split("T")[0]
-                      : "";
-                  })()}
+                  value={validadeParaDataDoInput(formData.validUntil)}
                   disabled={isOffline || isSubmitting}
                   onChange={(e) => {
                     if (!e.target.value) {
                       setFormData({ ...formData, validUntil: undefined });
                       return;
                     }
-                    const d = new Date(e.target.value);
-                    if (!Number.isNaN(d.getTime())) {
+                    const validade = dataEscolhidaParaValidade(e.target.value);
+                    if (validade) {
                       setFormData({
                         ...formData,
-                        validUntil: d.toISOString(),
+                        validUntil: validade,
                       });
                     }
                   }}

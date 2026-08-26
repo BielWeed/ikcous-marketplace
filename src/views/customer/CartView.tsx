@@ -446,10 +446,24 @@ export function CartView({
                                   Identificar-se (Entrar)
                                 </p>
                                 <p className="mt-0.5 text-[9px] font-medium leading-relaxed text-slate-500">
-                                  Faça login para salvar seus itens, acumular
-                                  pontos e ativar o frete grátis (acima de{" "}
-                                  {formatCurrency(config.freeShippingMin || 0)}
-                                  ).
+                                  {/* "Acumular pontos" nunca existiu no app,
+                                      e frete grátis por valor é regra que a
+                                      loja LIGA (freeShippingMin > 0 — ver
+                                      regra-de-frete.ts): prometer o que a
+                                      loja não oferece é o mesmo defeito que
+                                      os selos do rodapé já corrigiram. A
+                                      promessa só aparece com a regra ligada,
+                                      como FreeShippingBlock e
+                                      ShippingProgress já fazem. */}
+                                  Faça login para salvar seus itens
+                                  {config.freeShippingMin > 0 && (
+                                    <>
+                                      {" "}
+                                      e ativar o frete grátis (acima de{" "}
+                                      {formatCurrency(config.freeShippingMin)})
+                                    </>
+                                  )}
+                                  .
                                 </p>
                               </div>
                             </div>

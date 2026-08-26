@@ -3,6 +3,13 @@ import { DataVault } from "@/lib/dataVault";
 import { supabase } from "@/lib/supabase";
 import { useCallback, useEffect, useState } from "react";
 
+// A RPC `get_admin_analytics_v2` tem `p_limit_days DEFAULT 90`: chamada sem
+// argumento, ela devolve só 90 dias de `revenueHistory` — e o botão "Tudo"
+// do gráfico do painel promete o histórico inteiro. Dez anos cobrem a vida
+// de qualquer loja deste app; os dias vazios antes da primeira venda são
+// aparados na exibição (`desdeOPrimeiroDiaDeMovimento`), não aqui.
+export const JANELA_TUDO_DIAS = 3650;
+
 async function callRpcWithRetry<T>(
   fn: () => Promise<{ data: T | null; error: any }>,
   retries = 3,
@@ -304,6 +311,7 @@ export function useAnalytics() {
               async () => {
                 const { data, error } = await supabase.rpc(
                   "get_admin_analytics_v2",
+                  { p_limit_days: JANELA_TUDO_DIAS },
                 );
                 return { data: data as DashboardStats | null, error };
               },
@@ -339,6 +347,7 @@ export function useAnalytics() {
           async () => {
             const { data, error } = await supabase.rpc(
               "get_admin_analytics_v2",
+              { p_limit_days: JANELA_TUDO_DIAS },
             );
             return { data: data as DashboardStats | null, error };
           },

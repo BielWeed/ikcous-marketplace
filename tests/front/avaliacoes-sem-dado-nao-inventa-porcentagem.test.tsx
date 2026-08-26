@@ -26,6 +26,9 @@ const h = vi.hoisted(() => {
     averageRating: 0,
     globalVerifiedCount: 0,
     globalRepliedCount: 0,
+    globalTotal: 0,
+    globalAverageRating: 0,
+    globaisDisponiveis: true,
     // Começa carregando, como o hook de verdade. O motivo é do DUBLÊ, não do
     // componente: o `AdminKpiCarousel` só troca o esqueleto pelo conteúdo
     // quando `loading` fica false, e este dublê devolve valores fixos — nada
@@ -45,6 +48,9 @@ const h = vi.hoisted(() => {
       averageRating: estado.averageRating,
       globalVerifiedCount: estado.globalVerifiedCount,
       globalRepliedCount: estado.globalRepliedCount,
+      globalTotal: estado.globalTotal,
+      globalAverageRating: estado.globalAverageRating,
+      globaisDisponiveis: estado.globaisDisponiveis,
     };
   }
 
@@ -115,6 +121,9 @@ describe("AdminReviewsView — taxa sem dado não vira porcentagem inventada (A3
     h.estado.averageRating = 0;
     h.estado.globalVerifiedCount = 0;
     h.estado.globalRepliedCount = 0;
+    h.estado.globalTotal = 0;
+    h.estado.globalAverageRating = 0;
+    h.estado.globaisDisponiveis = true;
     h.estado.loading = true;
 
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
@@ -218,6 +227,7 @@ describe("AdminReviewsView — taxa sem dado não vira porcentagem inventada (A3
 
   it("CONTROLE — 10 avaliações, 0 verificadas: mostra '0%' de verdade, não '—'", async () => {
     h.estado.total = 10;
+    h.estado.globalTotal = 10;
     h.estado.globalVerifiedCount = 0;
     h.estado.globalRepliedCount = 3;
 
@@ -235,6 +245,7 @@ describe("AdminReviewsView — taxa sem dado não vira porcentagem inventada (A3
 
   it("10 avaliações, 5 verificadas: mostra '50%'", async () => {
     h.estado.total = 10;
+    h.estado.globalTotal = 10;
     h.estado.globalVerifiedCount = 5;
     h.estado.globalRepliedCount = 5;
 

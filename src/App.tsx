@@ -46,6 +46,7 @@ const UserProfileView = lazyWithPreload(() =>
   })),
 );
 
+import { applyThemeColor, branding } from "@/config/branding";
 import { destinoPosLogin } from "@/lib/destinoPosLogin";
 import { supabase } from "@/lib/supabase";
 // --- LAZY LOADED ADMIN VIEWS ---
@@ -336,6 +337,7 @@ function AdminAccessDenied({
 }
 import { PushNotificationBanner } from "@/components/pwa/PushNotificationBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
+import { corPrimariaEfetiva } from "@/config/cor-da-loja";
 import { CartProvider } from "@/contexts/CartContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { StoreProvider, useStore } from "@/contexts/StoreContext";
@@ -571,6 +573,30 @@ const AppContent = () => {
       }
     }
   }, [currentView, config?.themeMode]);
+
+  // CONTRATO DE COR (ver src/config/branding.ts e StoreContext): o meta
+  // theme-color acompanha a cor primária EFETIVA — a do banco quando ela é
+  // real, senão a semente do build (que applyBranding já deixou no meta na
+  // janela pré-React). Efeito próprio, separado do themeMode acima, porque a
+  // cor muda sem o tema mudar (ex.: lojista salva só a cor primária).
+  //
+  // A REGRA mora em corPrimariaEfetiva (StoreContext) — dono único. Aqui é
+  // só reflexo. Foi exatamente aqui que o b531ca9 introduziu defeito
+  // (revisão 20260825-1015): com o fetch da config FALHANDO, isLoaded vira
+  // true no finally e o default de CÓDIGO (#000000) é truthy — a barra do
+  // celular ficava PRETA com o app na cor da marca. corPrimariaEfetiva
+  // devolve null para o default, e a semente do build sobrevive.
+  // A cor efetiva sai para fora do efeito de propósito. Antes, o efeito lia
+  // `config` inteiro e declarava só `config?.primaryColor` — o `exhaustive-deps`
+  // acusava dependência faltando, e as duas saídas fáceis eram ruins: pôr
+  // `config` na lista faz o efeito rodar a cada mudança de QUALQUER campo da
+  // configuração, e suprimir a regra esconderia a divergência em vez de
+  // resolvê-la. Assim a dependência passa a ser exatamente o valor que o efeito
+  // usa, e o comportamento é o mesmo: reaplica quando a cor efetiva muda.
+  const corDeTemaEfetiva = corPrimariaEfetiva(config) ?? branding.theme.primary;
+  useEffect(() => {
+    applyThemeColor(corDeTemaEfetiva);
+  }, [corDeTemaEfetiva]);
 
   const currentViewRef = useRef<View>(currentView);
   const selectedProductIdRef = useRef<string | null>(selectedProductId);

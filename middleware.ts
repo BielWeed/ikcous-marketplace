@@ -2,6 +2,11 @@ export const config = {
   matcher: ["/product-detail"],
 };
 
+// Nome da marca no HTML servido a crawlers. Env de projeto na Vercel chega em
+// process.env com o nome exato (mesmo canal dos VITE_SUPABASE_* abaixo);
+// sem nada configurado, o texto continua como sempre foi.
+const APP_NAME = process.env.VITE_APP_NAME || "IKCOUS Marketplace";
+
 export default async function middleware(request: Request) {
   const url = new URL(request.url);
   const userAgent = request.headers.get("user-agent") || "";
@@ -35,10 +40,10 @@ export default async function middleware(request: Request) {
             const product = products[0];
 
             // Resolve values
-            const name = product.nome || "Produto - IKCOUS";
+            const name = product.nome || `Produto - ${APP_NAME}`;
             const description =
               product.descricao ||
-              "Confira os detalhes do produto no IKCOUS Marketplace.";
+              `Confira os detalhes do produto no ${APP_NAME}.`;
             const price = product.preco_venda
               ? `R$ ${Number(product.preco_venda).toFixed(2).replace(".", ",")}`
               : "";
@@ -57,11 +62,11 @@ export default async function middleware(request: Request) {
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>${name} | IKCOUS Marketplace</title>
+  <title>${name} | ${APP_NAME}</title>
   <meta name="description" content="${description}">
   
   <!-- Open Graph -->
-  <meta property="og:title" content="${name} ${price ? `- ${price}` : ""} | IKCOUS" />
+  <meta property="og:title" content="${name} ${price ? `- ${price}` : ""} | ${APP_NAME}" />
   <meta property="og:description" content="${description}" />
   <meta property="og:type" content="product" />
   <meta property="og:url" content="${request.url}" />
@@ -71,7 +76,7 @@ export default async function middleware(request: Request) {
   
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${name} | IKCOUS" />
+  <meta name="twitter:title" content="${name} | ${APP_NAME}" />
   <meta name="twitter:description" content="${description}" />
   <meta name="twitter:image" content="${imageUrl}" />
 </head>

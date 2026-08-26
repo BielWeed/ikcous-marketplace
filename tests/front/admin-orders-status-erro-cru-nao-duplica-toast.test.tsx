@@ -101,6 +101,7 @@ const pedidoBase: Order = {
   status: "processing",
   createdAt: new Date(0).toISOString(),
   updatedAt: new Date(0).toISOString(),
+  cancelledAfterShipping: false,
 };
 
 let mockOrders: Order[] = [pedidoBase];

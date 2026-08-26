@@ -789,7 +789,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         >
           <p className="px-4 text-[10px] font-black uppercase tracking-[0.4em] text-zinc-300">
             {/* Sem cidade configurada, mostra só o nome, sem o "•" solto. */}
-            {branding.appName}
+            {config.storeName?.trim() || branding.appName}
             {config.storeCity &&
               ` • ${config.storeCity}${config.storeState ? `, ${config.storeState}` : ""}`}
           </p>

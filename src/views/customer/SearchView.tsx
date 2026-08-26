@@ -410,7 +410,9 @@ export const SearchView = React.memo(function SearchView({
                   Editor's Choice
                 </span>
                 <h3 className="text-2xl font-black tracking-tighter text-zinc-900">
-                  Trending na {branding.appName}
+                  {/* Nome do banco primeiro, branding.json como fallback —
+                      mesma preferência do Header e da Home. */}
+                  Trending na {config.storeName?.trim() || branding.appName}
                 </h3>
               </div>
               <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">

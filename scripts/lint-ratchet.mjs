@@ -110,6 +110,34 @@ function contarBiome() {
   };
 }
 
+/**
+ * Lê `biome.json` NO ATO (não presume nem cacheia de memória) e devolve
+ * `files.ignore` — as pastas que o Biome não olha nem no CI nem aqui.
+ *
+ * Isto existe porque o número de Biome, sozinho, não diz de si mesmo se pode
+ * ter relação com o diff de quem está lendo. Quem mexeu só em pasta ignorada
+ * (ex.: `supabase/`, hoje) precisa saber que o Biome não tem como ter opinião
+ * sobre aquele diff — sem isso, a única pista disponível vira a explicação de
+ * CRLF abaixo, que nem sempre é a certa.
+ */
+function pastasIgnoradasPeloBiome() {
+  try {
+    const config = JSON.parse(
+      fs.readFileSync(path.join(RAIZ, "biome.json"), "utf8"),
+    );
+    // `Array.isArray` e não `?? []`: um `"ignore": "supabase"` (string em vez de
+    // array, erro de digitação plausível) é JSON válido, escapa do catch, e
+    // quebra no `.join` do consumidor com um TypeError que parece defeito de
+    // infraestrutura. Formato errado é tão "ilegível" quanto arquivo ausente.
+    const ignore = config.files?.ignore;
+    return Array.isArray(ignore) ? ignore : [];
+  } catch {
+    // biome.json ilegível não pode derrubar a catraca — o diagnóstico fica
+    // mais pobre, mas o script continua reprovando/aprovando pelo número.
+    return [];
+  }
+}
+
 const medido = { eslint: contarEslint(), biome: contarBiome() };
 
 /**
@@ -192,9 +220,12 @@ console.log(
 );
 
 if (!NO_CI) {
+  const ignoradas = pastasIgnoradasPeloBiome();
+  const linhaIgnoradas = ignoradas.length
+    ? `O Biome não olha estas pastas (biome.json → files.ignore): ${ignoradas.join(", ")}.\nSe o seu diff só tocou uma delas, o número de Biome acima não pode falar dele.\n`
+    : "";
   console.log(
-    "\nFora do CI o Biome não é cobrado: no Windows ele conta erro de CRLF que\n" +
-      "no Linux do CI não existe. Quem cobra Biome é o CI.",
+    `\nFora do CI o Biome não é cobrado — quem cobra é o CI (Linux). Este script não mede\nquanto do excesso local é fim de linha (CRLF); não trate isso como a causa sem medir.\n${linhaIgnoradas}Para medir Biome nesta máquina sem esse ruído, siga a receita em ~/.claude/mural/core_app_mkt/_REGRAS.md.`,
   );
 }
 

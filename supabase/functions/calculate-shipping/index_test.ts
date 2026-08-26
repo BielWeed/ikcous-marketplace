@@ -269,6 +269,13 @@ function clienteFalso(opts: {
   cacheInsert: () => Promise<any>;
   logInsert?: () => Promise<any>;
   config?: typeof CONFIG_DA_LOJA;
+  /**
+   * Simula uma exceção inesperada (não um `{ error }` do PostgREST) ao ler
+   * `store_shipping_credentials` — usado para exercitar o `catch` de TOPO da
+   * função (o que roda quando algo estoura DEPOIS de `store_config` já ter
+   * sido lida), sem depender do caminho de falha da transportadora.
+   */
+  falhaAoLerCredenciais?: boolean;
 }) {
   const { registro } = opts;
   const config = opts.config ?? CONFIG_DA_LOJA;
@@ -284,6 +291,9 @@ function clienteFalso(opts: {
           // Cache miss: é o caminho que cota na transportadora e grava.
           return Promise.resolve({ data: null, error: null });
         case "store_shipping_credentials":
+          if (opts.falhaAoLerCredenciais) {
+            return Promise.reject(new Error("conexão perdida ao buscar credenciais"));
+          }
           return Promise.resolve({
             data: { credentials: { token: "token-de-teste" } },
             error: null,
@@ -769,4 +779,210 @@ Deno.test("cobertura só-local responde antes da cotação e mesmo assim declara
   assertEquals(resposta.status, 200);
   assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"]);
   assertEquals(corpo.cotacaoIncompleta, false);
+});
+
+// --- Transportadora fora do ar não pode virar preço inventado --------------
+//
+// Defeito medido em 25/08/2026: quando a chamada à transportadora falha, a
+// função usava `calculateSmartFallback` (estimativa por REGIÃO de CEP) e
+// devolvia essa estimativa com um id `flat-fee-*`. A RPC que valida o pedido
+// (`create_marketplace_order_v23`/`v24`) ignora o preço mostrado para
+// qualquer id `flat-fee-%` e cobra `COALESCE(store_config.shipping_fee, 0)`
+// — ver `20260960000000_variacao_obrigatoria_no_servidor.sql:223-224`. Como
+// a estimativa por região quase nunca bate com a taxa fixa configurada, a
+// cliente preenchia tudo, clicava em Finalizar, e ouvia "os valores do
+// pedido mudaram".
+//
+// A correção: o preço mostrado no fallback só pode ser um preço que a RPC
+// REALMENTE vai cobrar. Isso só existe quando a loja configurou uma taxa
+// fixa de verdade (`flatFeeConfigurada`) — aí o fallback mostra ESSA taxa,
+// não a estimativa por região. Sem taxa fixa configurada não há preço
+// honesto: a função falha fechado (erro, sem `options`), e o carrinho do
+// cliente volta a usar a taxa que a própria loja definiu no painel (ver
+// `ShippingCalculator.tsx`, comentário "COTAÇÃO QUE FALHA NÃO VIRA PREÇO
+// INVENTADO").
+
+/** Roda o handler com a transportadora FALHANDO (o `fetch` rejeita). */
+async function cotarComTransportadoraFora(config?: typeof CONFIG_DA_LOJA) {
+  const registro = {
+    inserts: [] as Array<{ tabela: string; linha: any }>,
+    execucoes: [] as Array<{ tabela: string; linha: any }>,
+    cacheConcluido: false,
+    logConcluido: false,
+  };
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.reject(new Error("network error: carrier unreachable"))) as any;
+  try {
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config,
+      }),
+    });
+    const texto = await resposta.text();
+    return { resposta, texto, corpo: JSON.parse(texto), registro };
+  } finally {
+    globalThis.fetch = fetchOriginal;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+}
+
+// CONFIG_DA_LOJA.shipping_fee é 15 — e 15 também é o PISO que
+// `calculateSmartFallback` devolve para região remota com baseFee baixo (ver
+// o teste "mesma região usa o piso de 15" lá em cima). Comparar o preço da
+// resposta contra o literal 15 não prova que a função LEU
+// `store_config.shipping_fee`: um código que tivesse cravado `price: 15` no
+// lugar da leitura passaria pelo mesmo jeito. `CONFIG_TAXA_NAO_TRIVIAL` usa um
+// valor que não coincide com NENHUM piso da escada antiga (15/22/38) nem com
+// o baseFee default dela (10) — só ele distingue "leu da config" de "cravou
+// um número parecido".
+const CONFIG_TAXA_NAO_TRIVIAL = { ...CONFIG_DA_LOJA, shipping_fee: 27.5 };
+
+Deno.test("transportadora fora do ar, loja COM taxa fixa: preço mostrado é o configurado (lido de store_config), não um valor cravado no código (controle: continua cotando)", async () => {
+  // Destino da requisição de teste é "01001-000" a partir de "38500-000" —
+  // regiões remotas, então a escada por região (`calculateSmartFallback`)
+  // daria um valor bem diferente do configurado. Se a função ainda usasse a
+  // escada, a RPC cobraria a taxa da loja mesmo assim e o pedido seria
+  // recusado.
+  const { resposta, corpo } = await cotarComTransportadoraFora(CONFIG_TAXA_NAO_TRIVIAL);
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.length, 1);
+  assertEquals(corpo.options[0].price, CONFIG_TAXA_NAO_TRIVIAL.shipping_fee);
+  assertEquals(corpo.options[0].id.startsWith("flat-fee-"), true);
+});
+
+Deno.test("transportadora fora do ar, loja SEM taxa fixa configurada: falha fechado, sem preço inventado", async () => {
+  const configSemTaxa = { ...CONFIG_DA_LOJA, shipping_fee: null };
+  const { resposta, corpo, texto, registro } = await cotarComTransportadoraFora(configSemTaxa as any);
+
+  // Erro de verdade — nunca 200 com um preço que ninguém garantiu.
+  assertEquals(resposta.status >= 400, true);
+  assertEquals(corpo.options, undefined);
+  assertEquals(corpo.fallback, undefined);
+  assertEquals(typeof corpo.error, "string");
+  // Nenhum preço da escada por região pode vazar (15/22/38, nem calculado a
+  // partir de baseFee 0).
+  assertEquals(texto.includes('"price"'), false);
+
+  // Este ramo não entrega preço nenhum: a resposta é 503 e ninguém compra. O
+  // painel (`AdminShippingView.tsx`) pinta 'contingency' de âmbar — reservado
+  // a "deu certo pelo plano B" — e só 'error' de vermelho. Gravar
+  // 'contingency' aqui faria a lojista ver a tela dizendo que está tudo bem
+  // numa loja em que ninguém está conseguindo comprar.
+  const log = logDaCotacao(registro);
+  assertEquals(typeof log, "object");
+  assertEquals(log.status, "error");
+});
+
+// --- O mesmo defeito, na OUTRA metade: o catch de topo da função -----------
+//
+// `precoDeContingenciaDoTopo` roda quando a função inteira estoura DEPOIS de
+// `store_config` já ter sido lida (não é falha de transportadora — é
+// qualquer exceção inesperada no meio do caminho). Mesmo defeito: a escada
+// por região não bate com o que a RPC cobra para um id `flat-fee-%`.
+
+Deno.test("catch de topo: erro inesperado após ler a config, loja COM taxa fixa -> preço é o configurado (lido de store_config), não um valor cravado no código", async () => {
+  // Mesmo cuidado do teste equivalente acima: `CONFIG_TAXA_NAO_TRIVIAL`
+  // (27,5) não coincide com nenhum piso da escada antiga (15/22/38) nem com
+  // o literal que este `catch` de topo cravava até 18/08/2026. Comparar
+  // contra `CONFIG_TAXA_NAO_TRIVIAL.shipping_fee`, e não contra um número
+  // solto, é o que prova que o valor veio de `taxaDaLoja` e não de um
+  // literal reescrito no meio do caminho.
+  const registro = {
+    inserts: [] as Array<{ tabela: string; linha: any }>,
+    execucoes: [] as Array<{ tabela: string; linha: any }>,
+    cacheConcluido: false,
+    logConcluido: false,
+  };
+  const resposta = await handler(requisicaoDeCotacao(), {
+    supabase: clienteFalso({
+      registro,
+      cacheInsert: () => Promise.resolve({ error: null }),
+      falhaAoLerCredenciais: true,
+      config: CONFIG_TAXA_NAO_TRIVIAL,
+    }),
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.fallback, true);
+  assertEquals(corpo.options.length, 1);
+  assertEquals(corpo.options[0].price, CONFIG_TAXA_NAO_TRIVIAL.shipping_fee);
+});
+
+Deno.test("catch de topo: erro inesperado após ler a config, loja SEM taxa fixa -> falha fechado", async () => {
+  const registro = {
+    inserts: [] as Array<{ tabela: string; linha: any }>,
+    execucoes: [] as Array<{ tabela: string; linha: any }>,
+    cacheConcluido: false,
+    logConcluido: false,
+  };
+  const configSemTaxa = { ...CONFIG_DA_LOJA, shipping_fee: null };
+  const resposta = await handler(requisicaoDeCotacao(), {
+    supabase: clienteFalso({
+      registro,
+      cacheInsert: () => Promise.resolve({ error: null }),
+      falhaAoLerCredenciais: true,
+      config: configSemTaxa as any,
+    }),
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 500);
+  assertEquals(corpo.options, undefined);
+  assertEquals(corpo.fallback, undefined);
+});
+
+// --- A guarda da contingência tem que autenticar o MESMO campo que usa -----
+//
+// `getFlatFeeResponse()` devolve `local-delivery` quando `isLocal`, e só cai
+// na taxa fixa (`flatFeeConfigurada`) quando não é local. Mas a guarda que
+// decide se a contingência tem preço para entregar (perto de `index.ts:1003`)
+// checava `flatFeeConfigurada(storeConfig.shipping_fee)` direto — o campo
+// ERRADO quando o que importa é isLocal. Loja nacional com faixa local
+// configurada e SEM taxa fixa, cuja transportadora não devolve nenhuma opção
+// habilitada, teria a entrega local disponível e honesta (a RPC lê
+// `local_delivery_fee`, `NOT NULL DEFAULT 10.00`) recusada mesmo assim.
+//
+// ⚠️ Ressalva de alcance: `shipping_fee` tem `DEFAULT 15` e o
+// `upsert_store_config` faz `COALESCE(...,15)` no INSERT, então `null` exige
+// alguém mandar `shipping_fee: null` explicitamente — estreito, mas o mesmo
+// estreito que o ramo inteiro atende.
+//
+// ⚠️ Achado ao escrever este teste: no código ANTES desta correção, o bloco
+// que prepara `local-delivery` (perto de `index.ts:957-966`) já roda ANTES da
+// guarda, e é incondicional — sempre que `isLocal` é `true`, ele prepend a
+// opção local em `shippingOptions`, então `shippingOptions.length` nunca
+// chega a 0 nesse cenário e a guarda de `flatFeeConfigurada` nunca é
+// alcançada. Confirmei isso rodando o cenário abaixo contra o `index.ts`
+// original (antes da troca de guarda): a resposta já saía 200 com
+// `local-delivery`, nunca 503. Ou seja, este teste não distingue a guarda
+// antiga da nova — as duas produzem a mesma saída em TODO cenário hoje
+// alcançável, porque quando `isLocal` é `true` a guarda nunca chega a rodar,
+// e quando é `false` as duas leem o mesmo campo. A troca por
+// `getFlatFeeResponse().length > 0` continua valendo como correção
+// defensiva — ela autentica o que a função REALMENTE vai devolver, e deixa de
+// ser um contrato implícito que se quebraria em silêncio se o bloco do
+// prepend acima fosse um dia reordenado — mas não é a correção de um 503 que
+// eu tenha conseguido reproduzir na árvore atual.
+
+Deno.test("loja SEM taxa fixa mas com entrega local disponível, transportadora sem opção habilitada -> 200 com local-delivery, nunca 503", async () => {
+  const configLocalSemTaxa = {
+    ...CONFIG_COM_ENTREGA_LOCAL,
+    shipping_fee: null,
+    // Nenhum método habilitado casa com "PAC" (o que a transportadora falsa
+    // devolve em `cotar()`) — a lista da transportadora fica vazia.
+    enabled_shipping_methods: ["sedex"],
+  };
+  const { resposta, corpo } = await cotar(() => Promise.resolve({ error: null }), configLocalSemTaxa);
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"]);
+  assertEquals(corpo.options[0].price, configLocalSemTaxa.local_delivery_fee);
+  // Controle: sem taxa fixa configurada, `flatFeeConfigurada` sozinha
+  // continua `false` aqui — a diferença é isLocal, não o valor da taxa.
+  assertEquals(flatFeeConfigurada(configLocalSemTaxa.shipping_fee), false);
 });
