@@ -237,12 +237,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // Removed ref tracking for filter changes in favor of direct state resets
 
   const [stats, setStats] = useState(() => ({
-    revenueDay: analyticsStats?.today?.revenue || 0,
-    pending: analyticsStats?.today?.pending || 0,
+    // PAINEL-05: `?? null` + "—" na exibição — `|| 0` afirma "R$ 0,00"
+    // quando a RPC falhou; o travessão não afirma nada (mesma razão do
+    // `completed` abaixo, que já fazia certo).
+    revenueDay: analyticsStats?.today?.revenue ?? null,
+    pending: analyticsStats?.today?.pending ?? null,
     avgTicket:
-      analyticsStats?.averageTicket ||
-      analyticsStats?.executive?.avgTicket ||
-      0,
+      analyticsStats?.averageTicket ??
+      analyticsStats?.executive?.avgTicket ??
+      null,
     // `deliveredTotal` (status='delivered') veio pra substituir
     // `month.count`, que contava TODOS os pedidos não cancelados dos
     // últimos 30 dias — inclusive os que nunca saíram de "Novo Pedido".
@@ -259,12 +262,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   useEffect(() => {
     if (analyticsStats) {
       setStats({
-        revenueDay: analyticsStats.today?.revenue || 0,
-        pending: analyticsStats.today?.pending || 0,
+        revenueDay: analyticsStats.today?.revenue ?? null,
+        pending: analyticsStats.today?.pending ?? null,
         avgTicket:
-          analyticsStats.averageTicket ||
-          analyticsStats.executive?.avgTicket ||
-          0,
+          analyticsStats.averageTicket ??
+          analyticsStats.executive?.avgTicket ??
+          null,
         completed: analyticsStats.deliveredTotal ?? null,
       });
     }
@@ -288,21 +291,27 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     () => [
       {
         label: "Receita Hoje",
-        value: `R$ ${stats.revenueDay.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+        value:
+          stats.revenueDay !== null
+            ? `R$ ${stats.revenueDay.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+            : "—",
         icon: DollarSign,
         accent: "text-emerald-500",
         subValue: "Finanças",
       },
       {
         label: "Ações Pendentes",
-        value: stats.pending.toString(),
+        value: stats.pending !== null ? stats.pending.toString() : "—",
         icon: Clock,
         accent: "text-amber-500",
         subValue: ACOES_PENDENTES_SUBTITULO,
       },
       {
         label: "Ticket Médio",
-        value: `R$ ${stats.avgTicket.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+        value:
+          stats.avgTicket !== null
+            ? `R$ ${stats.avgTicket.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+            : "—",
         icon: TrendingUp,
         accent: "text-admin-gold",
         subValue: "Rendimento",

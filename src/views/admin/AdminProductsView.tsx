@@ -311,10 +311,19 @@ export const AdminProductsView = memo(function AdminProductsView({
 
   // Lógica de cálculo financeiro global (SWR / Server-Side)
   const financialStats = useMemo(() => {
-    const invested = stats?.inventory?.totalCost ?? 0;
-    const potentialValue = stats?.inventory?.totalValue ?? 0;
-    const potentialProfit = potentialValue - invested;
-    const avgRoi = invested > 0 ? (potentialProfit / invested) * 100 : 0;
+    // PAINEL-05: `null` quando a analytics nao respondeu — os cartoes
+    // exibem "—" em vez de R$ 0,00 (zero falso afirma que o estoque
+    // nao vale nada; o travessao nao afirma nada).
+    const invested = stats?.inventory?.totalCost ?? null;
+    const potentialValue = stats?.inventory?.totalValue ?? null;
+    const potentialProfit =
+      invested !== null && potentialValue !== null
+        ? potentialValue - invested
+        : null;
+    const avgRoi =
+      invested !== null && invested > 0 && potentialProfit !== null
+        ? (potentialProfit / invested) * 100
+        : null;
 
     return {
       invested,
@@ -333,7 +342,10 @@ export const AdminProductsView = memo(function AdminProductsView({
       {
         id: "capital-alocado",
         label: "Capital Alocado",
-        value: `R$ ${financialStats.invested.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+        value:
+          financialStats.invested !== null
+            ? `R$ ${financialStats.invested.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+            : "—",
         icon: Wallet,
         accent: "text-emerald-500",
         subValue: "Capital Líquido",
@@ -341,7 +353,10 @@ export const AdminProductsView = memo(function AdminProductsView({
       {
         id: "lucro-potencial",
         label: "Lucro Potencial",
-        value: `R$ ${financialStats.potential.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+        value:
+          financialStats.potential !== null
+            ? `R$ ${financialStats.potential.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+            : "—",
         icon: TrendingUp,
         accent: "text-admin-gold",
         subValue: "Margem Bruta",
@@ -349,7 +364,10 @@ export const AdminProductsView = memo(function AdminProductsView({
       {
         id: "roi-portfolio",
         label: "ROI do Portfólio",
-        value: `${financialStats.avgRoi.toFixed(2)}%`,
+        value:
+          financialStats.avgRoi !== null
+            ? `${financialStats.avgRoi.toFixed(2)}%`
+            : "—",
         icon: DollarSign,
         accent: "text-blue-500",
         subValue: "Rendimento %",
