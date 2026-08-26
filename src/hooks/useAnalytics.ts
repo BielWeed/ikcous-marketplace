@@ -334,6 +334,13 @@ export function useAnalytics() {
             }
           } catch (e) {
             console.error("Background fetch stats failed:", e);
+            // PAINEL-02: sem isto, a falha persistente do background
+            // deixava o cache velho servindo indefinidamente como se
+            // fosse atual. O dashboard ja renderiza o error state
+            // (linha 284) — agora ele fica sabendo.
+            setError(
+              "Não foi possível atualizar agora — exibindo a última atualização.",
+            );
           }
         })();
         return cachedStats;
