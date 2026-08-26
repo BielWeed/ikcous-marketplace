@@ -378,7 +378,9 @@ export const AdminProductsView = memo(function AdminProductsView({
         value: `${totalProducts} itens`,
         icon: Package,
         accent: "text-purple-500",
-        subValue: "Catálogo Geral",
+        // PAINEL-09: o número é o total FILTRADO (total_count da RPC com
+        // busca), não o catálogo geral — o subtítulo mentia.
+        subValue: searchTerm ? "Resultados da busca" : "Catálogo Geral",
       },
     ],
     [financialStats, totalProducts],
