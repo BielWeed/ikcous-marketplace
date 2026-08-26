@@ -626,6 +626,12 @@ export const ProductView = React.memo(function ProductView({
     // substitui e não gruda o sufixo padrão; texto SEM marcador (o default)
     // mantém o comportamento de sempre — nome e preço colados na frente.
     const temMarcador = /\[(nome|preco|link)\]/i.test(config.shareText);
+    // Esta é uma decisão SEPARADA: só quando [link] está no preset é que a
+    // substituição já colocou a URL dentro do texto. Um preset com [nome]
+    // ou [preco] mas sem [link] (ex.: "[nome] por [preco]. Acesse nossa
+    // loja!") cai no ramo temMarcador acima, mas continua sem URL nenhuma —
+    // e é essa URL que falta colar no fim, no caminho do clipboard.
+    const temMarcadorDeLink = /\[link\]/i.test(config.shareText);
     const textoDoShare = temMarcador
       ? config.shareText
           .replace(/\[nome\]/gi, product.name)
@@ -648,15 +654,25 @@ export const ProductView = React.memo(function ProductView({
         console.log("Share cancelled");
       }
     } else {
-      // Com marcador, o link já está dentro do texto substituído; sem
-      // marcador, o link continua entrando como sufixo, como sempre entrou.
-      navigator.clipboard.writeText(
-        temMarcador ? textoDoShare : `${textoDoShare} - ${shareData.url}`,
-      );
-      toast.success("Link copiado!", {
-        description:
-          "O link do produto foi copiado para a área de transferência.",
-      });
+      // A URL só fica de fora quando [link] já a colocou dentro do texto
+      // substituído. Em qualquer outro caso — sem marcador nenhum, ou com
+      // marcador mas sem [link] — ela continua entrando como sufixo, como
+      // sempre entrou.
+      const textoParaCopiar = temMarcadorDeLink
+        ? textoDoShare
+        : `${textoDoShare} - ${shareData.url}`;
+      try {
+        await navigator.clipboard.writeText(textoParaCopiar);
+        toast.success("Link copiado!", {
+          description:
+            "O link do produto foi copiado para a área de transferência.",
+        });
+      } catch {
+        toast.error("Não consegui copiar", {
+          description:
+            "Seu navegador bloqueou a cópia. Copie o endereço da barra do navegador.",
+        });
+      }
     }
   };
 
