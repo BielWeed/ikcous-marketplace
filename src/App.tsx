@@ -586,9 +586,17 @@ const AppContent = () => {
   // true no finally e o default de CÓDIGO (#000000) é truthy — a barra do
   // celular ficava PRETA com o app na cor da marca. corPrimariaEfetiva
   // devolve null para o default, e a semente do build sobrevive.
+  // A cor efetiva sai para fora do efeito de propósito. Antes, o efeito lia
+  // `config` inteiro e declarava só `config?.primaryColor` — o `exhaustive-deps`
+  // acusava dependência faltando, e as duas saídas fáceis eram ruins: pôr
+  // `config` na lista faz o efeito rodar a cada mudança de QUALQUER campo da
+  // configuração, e suprimir a regra esconderia a divergência em vez de
+  // resolvê-la. Assim a dependência passa a ser exatamente o valor que o efeito
+  // usa, e o comportamento é o mesmo: reaplica quando a cor efetiva muda.
+  const corDeTemaEfetiva = corPrimariaEfetiva(config) ?? branding.theme.primary;
   useEffect(() => {
-    applyThemeColor(corPrimariaEfetiva(config) ?? branding.theme.primary);
-  }, [config?.primaryColor]);
+    applyThemeColor(corDeTemaEfetiva);
+  }, [corDeTemaEfetiva]);
 
   const currentViewRef = useRef<View>(currentView);
   const selectedProductIdRef = useRef<string | null>(selectedProductId);
