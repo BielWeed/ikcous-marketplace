@@ -191,9 +191,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           // nao-admin, catch) e "nao sei", nunca zero confiante.
           setGlobaisDisponiveis(result.globaisDisponiveis === true);
           setGlobalTotal(result.globalTotal || 0);
-          setGlobalAvgRating(
-            result.globalAverageRating?.toFixed(1) || "0.0",
-          );
+          setGlobalAvgRating(result.globalAverageRating?.toFixed(1) || "0.0");
 
           const maxPage = Math.max(0, Math.ceil(result.total / pageSize) - 1);
           if (pageToFetch > maxPage) {

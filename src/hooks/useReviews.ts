@@ -352,8 +352,7 @@ export function useReviews() {
             Number(rpcData?.global_average_rating) || 0;
           const globalVerifiedCount =
             Number(rpcData?.global_total_verified) || 0;
-          const globalRepliedCount =
-            Number(rpcData?.global_total_replied) || 0;
+          const globalRepliedCount = Number(rpcData?.global_total_replied) || 0;
 
           const formatted: AdminReview[] = reviewsList.map((item: any) => ({
             id: item.id,

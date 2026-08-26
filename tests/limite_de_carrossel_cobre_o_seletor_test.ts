@@ -62,9 +62,7 @@ Deno.test("calibragem: o extrator reage e discrimina", () => {
   // varredura verde medindo o vazio.
   assert(
     opcoes.length >= 2,
-    `o extrator achou ${opcoes.length} opcao(oes) em AdminCarouselsView. ` +
-      `Ou o seletor mudou de forma, ou o extrator quebrou — nos dois casos ` +
-      `alguem tem de olhar, e nao seguir verde.`,
+    `o extrator achou ${opcoes.length} opcao(oes) em AdminCarouselsView. Ou o seletor mudou de forma, ou o extrator quebrou — nos dois casos alguem tem de olhar, e nao seguir verde.`,
   );
 
   // Uma opção por `<option>`: se aparecer `value={N}` fora de uma opção, ou uma
@@ -73,9 +71,7 @@ Deno.test("calibragem: o extrator reage e discrimina", () => {
   assertEquals(
     opcoes.length,
     quantosOption,
-    `achei ${opcoes.length} valor(es) numerico(s) e ${quantosOption} <option>. ` +
-      `Divergiram: a premissa de que todo value={N} do arquivo e uma opcao do ` +
-      `seletor de maxItems deixou de valer.`,
+    `achei ${opcoes.length} valor(es) numerico(s) e ${quantosOption} <option>. Divergiram: a premissa de que todo value={N} do arquivo e uma opcao do seletor de maxItems deixou de valer.`,
   );
 
   // DISCRIMINA: o próprio `<select>` tem `value={sec.maxItems ?? 6}`, que se
@@ -107,13 +103,6 @@ Deno.test("o limite de carga cobre a maior opcao que o painel oferece", () => {
 
   assert(
     LIMITE_MAX_ITENS_CARROSSEL >= maiorOferecida,
-    `LIMITE_MAX_ITENS_CARROSSEL vale ${LIMITE_MAX_ITENS_CARROSSEL}, mas o ` +
-      `seletor de "Max" em AdminCarouselsView oferece ate ${maiorOferecida} ` +
-      `(opcoes: ${opcoes.join(", ")}).\n\n` +
-      `Efeito para quem usa a loja: o lojista escolhe ${maiorOferecida}, a ` +
-      `previa do painel mostra ${maiorOferecida}, e o cliente ve ` +
-      `${LIMITE_MAX_ITENS_CARROSSEL} — calado.\n\n` +
-      `Conserto: suba LIMITE_MAX_ITENS_CARROSSEL em src/config/carrossel.ts ` +
-      `para pelo menos ${maiorOferecida}, ou tire a opcao do seletor.`,
+    `LIMITE_MAX_ITENS_CARROSSEL vale ${LIMITE_MAX_ITENS_CARROSSEL}, mas o seletor de "Max" em AdminCarouselsView oferece ate ${maiorOferecida} (opcoes: ${opcoes.join(", ")}).\n\nEfeito para quem usa a loja: o lojista escolhe ${maiorOferecida}, a previa do painel mostra ${maiorOferecida}, e o cliente ve ${LIMITE_MAX_ITENS_CARROSSEL} — calado.\n\nConserto: suba LIMITE_MAX_ITENS_CARROSSEL em src/config/carrossel.ts para pelo menos ${maiorOferecida}, ou tire a opcao do seletor.`,
   );
 });

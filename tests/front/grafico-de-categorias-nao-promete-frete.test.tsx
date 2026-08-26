@@ -88,9 +88,9 @@ describe("nota do gráfico de categorias (par com a 20261003000000)", () => {
       // frase para o Volume Total passava). A nota é localizada pelo seu
       // sujeito ("Total deste gráfico") e as DUAS cláusulas conferidas
       // dentro dela.
-      const notas = Array.from(
-        hospedeiro.querySelectorAll("p"),
-      ).map((p) => p.textContent ?? "");
+      const notas = Array.from(hospedeiro.querySelectorAll("p")).map(
+        (p) => p.textContent ?? "",
+      );
       const nota = notas.find((tx) => tx.includes("Total deste gráfico"));
       expect(nota).toBeDefined();
 

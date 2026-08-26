@@ -46,9 +46,9 @@ const UserProfileView = lazyWithPreload(() =>
   })),
 );
 
+import { applyThemeColor, branding } from "@/config/branding";
 import { destinoPosLogin } from "@/lib/destinoPosLogin";
 import { supabase } from "@/lib/supabase";
-import { applyThemeColor, branding } from "@/config/branding";
 // --- LAZY LOADED ADMIN VIEWS ---
 import { cn } from "@/lib/utils";
 import { PreloadedOrLazy, lazyWithPreload } from "@/utils/lazyWithPreload";
@@ -337,10 +337,10 @@ function AdminAccessDenied({
 }
 import { PushNotificationBanner } from "@/components/pwa/PushNotificationBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
+import { corPrimariaEfetiva } from "@/config/cor-da-loja";
 import { CartProvider } from "@/contexts/CartContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { StoreProvider, useStore } from "@/contexts/StoreContext";
-import { corPrimariaEfetiva } from "@/config/cor-da-loja";
 import { useCartActions, useCartState } from "@/hooks/useCart";
 import { useRealtimeUpdate } from "@/hooks/useRealtimeUpdate";
 import type { Product, SortOption, View } from "@/types";

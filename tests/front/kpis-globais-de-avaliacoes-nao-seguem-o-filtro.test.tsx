@@ -153,9 +153,7 @@ afterEach(() => {
 describe("KPIs globais de Avaliações (par com a migration 20261002000000)", () => {
   it("filtro vazio: cartões mostram os GLOBAIS — 4.4, 7, e 43% (nunca 100% de zero)", async () => {
     await act(async () => {
-      raiz.render(
-        <AdminReviewsView active={true} onNavigate={vi.fn()} />,
-      );
+      raiz.render(<AdminReviewsView active={true} onNavigate={vi.fn()} />);
     });
     await act(async () => {
       await Promise.resolve();
@@ -225,7 +223,9 @@ describe("KPIs globais de Avaliações (par com a migration 20261002000000)", ()
     expect(rotulo).toBeDefined();
     const areaDoCartao = rotulo!.parentElement?.parentElement?.parentElement;
     expect(areaDoCartao?.textContent ?? "").toContain("—");
-    expect(areaDoCartao?.textContent ?? "").not.toMatch(/(^|[^\d])0(\.0)?([^\d]|$)/);
+    expect(areaDoCartao?.textContent ?? "").not.toMatch(
+      /(^|[^\d])0(\.0)?([^\d]|$)/,
+    );
     expect(hospedeiro.textContent).not.toContain("0.0");
     h.retorno = anterior;
   });
