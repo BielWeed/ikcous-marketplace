@@ -1120,6 +1120,12 @@ export const AdminShippingView = memo(function AdminShippingView({
                           </span>
                           <Switch
                             checked={!!shippingCreds.melhor_envio?.sandbox}
+                            // B3 da 3a revisao: mesma trava do token — sem
+                            // isto, mudar Sandbox com carga falhada era
+                            // descartado em silencio com toast verde (a loja
+                            // seguia em modo de teste achando que estava em
+                            // producao).
+                            disabled={!credsLoaded}
                             onCheckedChange={(checked) => {
                               setShippingCreds((prev) => ({
                                 ...prev,
@@ -1129,7 +1135,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                                 },
                               }));
                             }}
-                            className="scale-75 data-[state=checked]:bg-amber-500"
+                            className="scale-75 data-[state=checked]:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
                           />
                         </div>
                       )}
@@ -1157,7 +1163,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                           }));
                         }}
                         placeholder="Cole seu Bearer/API Token aqui..."
-                        className="h-9 flex-1 rounded-lg border border-white/10 bg-black/60 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-amber-500 focus:outline-none"
+                        className="h-9 flex-1 rounded-lg border border-white/10 bg-black/60 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-amber-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
                       />
                       <button
                         type="button"

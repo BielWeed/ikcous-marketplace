@@ -92,17 +92,14 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
   const handleCopy = (text: string, field: "id" | "email" | "whatsapp") => {
     haptic.light();
+    const label = field === "id" ? "ID" : field === "email" ? "E-mail" : "Telefone";
     navigator.clipboard.writeText(text).then(() => {
-
+      setCopiedField(field);
+      toast.success(`${label} copiado com sucesso!`);
+      setTimeout(() => setCopiedField(null), 2000);
     }).catch(() => {
       toast.error("Não foi possível copiar. Copie manualmente.");
     });
-    // PAINEL-17: o toast era síncrono e incondicional
-    setCopiedField(field);
-    toast.success(
-      `${field === "id" ? "ID" : field === "email" ? "E-mail" : "Telefone"} copiado com sucesso!`,
-    );
-    setTimeout(() => setCopiedField(null), 2000);
   };
 
   useEffect(() => {

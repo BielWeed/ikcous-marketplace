@@ -388,6 +388,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       }
     };
 
+    // B1+B2 da 3a revisao: limpar AMBOS os estados de detalhe no TOPO do
+    // efeito, ANTES dos retornos rapidos — senao "Voltar aos pedidos" e
+    // "clicar noutro pedido da lista" deixavam detailError=true e o painel
+    // morria ate o F5 (a view nunca desmonta por causa do DeferredTabContent).
+    setDetailError(false);
+    setLoadingDetail(false);
+
     if (!selectedOrderId) {
       triggerUpdate(null);
       return;
