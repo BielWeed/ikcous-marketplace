@@ -757,7 +757,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             Verifique a conexão e tente novamente
           </p>
           <button
-            onClick={() => setSelectedOrderId(null)}
+            onClick={() => onNavigate("admin-orders")}
             className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white transition-colors hover:border-amber-500/30 hover:bg-amber-500/10"
           >
             Voltar aos pedidos
