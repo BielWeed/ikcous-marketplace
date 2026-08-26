@@ -179,19 +179,21 @@ export const HomeView = React.memo(function HomeView({
   }, [produtosAVenda, selectedCategory, searchQuery, sortBy]);
 
   const newArrivals = useMemo(() => {
-    return [...produtosAVenda]
-      .sort((a, b) => {
-        const aAvailable = a.stock > 0 ? 1 : 0;
-        const bAvailable = b.stock > 0 ? 1 : 0;
-        if (aAvailable !== bAvailable) {
-          return bAvailable - aAvailable;
-        }
-        return (b.createdTime ?? 0) - (a.createdTime ?? 0);
-      })
-      // LIMITE_MAX_ITENS_CARROSSEL, nunca literal: o 6 fixo travava a vitrine
-      // abaixo do que o seletor de maxItems promete (defeito 20260825-1050).
-      // O corte real por seção continua no render, pelo `max` escolhido.
-      .slice(0, LIMITE_MAX_ITENS_CARROSSEL);
+    return (
+      [...produtosAVenda]
+        .sort((a, b) => {
+          const aAvailable = a.stock > 0 ? 1 : 0;
+          const bAvailable = b.stock > 0 ? 1 : 0;
+          if (aAvailable !== bAvailable) {
+            return bAvailable - aAvailable;
+          }
+          return (b.createdTime ?? 0) - (a.createdTime ?? 0);
+        })
+        // LIMITE_MAX_ITENS_CARROSSEL, nunca literal: o 6 fixo travava a vitrine
+        // abaixo do que o seletor de maxItems promete (defeito 20260825-1050).
+        // O corte real por seção continua no render, pelo `max` escolhido.
+        .slice(0, LIMITE_MAX_ITENS_CARROSSEL)
+    );
   }, [produtosAVenda]);
 
   const offerProducts = useMemo(() => {

@@ -21,10 +21,7 @@ import { toast } from "sonner";
 // quem precisa decidir "cor do banco x semente do build" pergunta aqui —
 // App.tsx (meta theme-color) e o efeito de --primary deste arquivo.
 // (definição movida para src/config/cor-da-loja.ts — ver motivo lá)
-import {
-  corPrimariaEfetiva,
-  defaultStoreConfig,
-} from "@/config/cor-da-loja";
+import { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 export { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 
 interface StoreContextType {
@@ -496,10 +493,13 @@ export function StoreProvider({
             business_hours: defaultStoreConfig.businessHours,
             enable_reviews: defaultStoreConfig.enableReviews,
             enable_coupons: defaultStoreConfig.enableCoupons,
-            // primary_color NÃO vai no insert de propósito: gravar o default
-            // calava a escolha futura do lojista (toda loja nascia com preto
-            // "oficial" sem ninguém ter decidido). Sem valor = ausente; a
-            // coluna é nullable.
+            // NULL EXPLÍCITO: a coluna tem DEFAULT '#000000' no banco
+            // (baseline_do_schema_vivo, seção store_config) — omitir o campo
+            // fazia o POSTGRES gravar preto calado, e na regra nova preto é
+            // preto de verdade: a loja de marca colorida renderizaria PRETA
+            // por cima da cor do build. NULL vence o DEFAULT da coluna: a
+            // linha nasce SEM cor, e ausente quer dizer ausente.
+            primary_color: null,
             theme_mode: defaultStoreConfig.themeMode,
             real_time_sales_alerts: defaultStoreConfig.realTimeSalesAlerts,
             push_marketing_enabled: defaultStoreConfig.pushMarketingEnabled,
@@ -776,7 +776,9 @@ export function StoreProvider({
         // formulário passa (inclusive #000000 = preto escolhido); ausente
         // não pinta nada. Nenhum caminho aplica cru por fora do dono único.
         applyBranding(
-          corPrimariaEfetiva({ primaryColor: updates.primaryColor } as StoreConfig),
+          corPrimariaEfetiva({
+            primaryColor: updates.primaryColor,
+          } as StoreConfig),
         );
         toast.success("Configurações salvas");
         return true;
@@ -861,8 +863,7 @@ export function StoreProvider({
       // REJEITA em vez de mascarar a falha como "vazio de verdade".
       try {
         const vault = await DataVault.init();
-        const freshProducts =
-          await vault.getAllOrThrow<Product>("products");
+        const freshProducts = await vault.getAllOrThrow<Product>("products");
         setProducts(freshProducts);
       } catch (err) {
         // Leitura do cofre falhou -- manter o que já está na tela é

@@ -59,7 +59,8 @@ const PADRAO_ESCRITA =
 const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
   "src/contexts/StoreContext.tsx": {
     n: 10,
-    porque: "lê do banco (mapConfig) e aplica em runtime — inclusive updateConfig",
+    porque:
+      "lê do banco (mapConfig) e aplica em runtime — inclusive updateConfig",
   },
   "src/types/database.types.ts": {
     n: 6,
@@ -79,7 +80,8 @@ const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
   },
   "src/views/admin/AdminBannersView.tsx": {
     n: 1,
-    porque: "lê config.primaryColor como sugestão de paleta (tem seletor: ligá-lo ao primaryColor conta como NOVA e cai aqui)",
+    porque:
+      "lê config.primaryColor como sugestão de paleta (tem seletor: ligá-lo ao primaryColor conta como NOVA e cai aqui)",
   },
   "src/config/branding.ts": {
     n: 1,
@@ -87,7 +89,8 @@ const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
   },
   "src/types/index.ts": {
     n: 0,
-    porque: "tipo opcional (primaryColor?: string) — o `?` não casa o padrão; zero esperado",
+    porque:
+      "tipo opcional (primaryColor?: string) — o `?` não casa o padrão; zero esperado",
   },
 };
 
@@ -121,14 +124,7 @@ describe("acoplamento guarda x escrita de primaryColor (revisões 1255 + 1315)",
 
     if (problemas.length > 0) {
       throw new Error(
-        `Escrita de primaryColor surgiu (ou a contagem do arquivo MUDOU — pra mais ou pra menos): ${problemas.join("; ")}. ` +
-          "Se for LEITURA legítima, atualize o n em LEITURAS_CONHECIDAS com o motivo. " +
-          "Se for ESCRITA: a guarda temporária do corPrimariaEfetiva (#000000 → " +
-          "semente) precisa SAIR JUNTO com ela — preto passa a ser escolha de " +
-          "lojista. Remova a comparação em src/config/cor-da-loja.ts (bloco " +
-          "SOBRE #000000) e INVERTA o teste (e) de " +
-          "cor-da-loja-vem-do-banco.test.tsx. Depois atualize a whitelist " +
-          "deste tripwire com o novo caminho de escrita.",
+        `Escrita de primaryColor surgiu (ou a contagem do arquivo MUDOU — pra mais ou pra menos): ${problemas.join("; ")}. Se for LEITURA legítima, atualize o n em LEITURAS_CONHECIDAS com o motivo. Se for ESCRITA: a guarda temporária do corPrimariaEfetiva (#000000 → semente) precisa SAIR JUNTO com ela — preto passa a ser escolha de lojista. Remova a comparação em src/config/cor-da-loja.ts (bloco SOBRE #000000) e INVERTA o teste (e) de cor-da-loja-vem-do-banco.test.tsx. Depois atualize a whitelist deste tripwire com o novo caminho de escrita.`,
       );
     }
 

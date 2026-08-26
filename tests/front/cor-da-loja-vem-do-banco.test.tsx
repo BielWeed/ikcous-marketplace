@@ -468,9 +468,9 @@ describe("App — o meta theme-color acompanha a cor primária efetiva (banco > 
       await Promise.resolve();
     });
 
-    expect(
-      document.documentElement.style.getPropertyValue("--primary"),
-    ).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe(
+      "",
+    );
     expect(metaThemeColor()?.getAttribute("content")).toBe(
       branding.theme.primary,
     );

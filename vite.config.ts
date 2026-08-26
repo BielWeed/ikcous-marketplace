@@ -40,8 +40,7 @@ export default defineConfig(({ mode, command }) => {
   // Identidade do build: env (se configurada) > branding.json > default.
   // Sem nenhuma env de identidade definida, o resultado é idêntico ao build
   // anterior (tudo cai no branding.json).
-  const appName =
-    env.VITE_APP_NAME || branding.appName || "IKCOUS Marketplace";
+  const appName = env.VITE_APP_NAME || branding.appName || "IKCOUS Marketplace";
   const brandPrimary =
     env.VITE_BRAND_PRIMARY || branding.theme?.primary || "#18181b";
   const brandSecondary =

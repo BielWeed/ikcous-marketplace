@@ -7,6 +7,12 @@ import { StarRating } from "./StarRating";
 
 interface ReviewCardProps {
   review: Review;
+  // A união abaixo é deliberada: o chamador pode passar um handler síncrono
+  // (void) ou um que devolve o resultado da gravação (Promise<boolean>), e os
+  // dois já existem no código. Estreitar isso é mudança de contrato de uma prop
+  // pública e pede revisão própria — não entra de carona num commit que existe
+  // para destravar o lint.
+  // biome-ignore lint/suspicious/noConfusingVoidType: ver o comentário acima
   onHelpful?: (reviewId: string) => void | Promise<boolean>;
   onNavigate?: (view: View, id?: string) => void;
 }

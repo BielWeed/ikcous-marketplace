@@ -222,16 +222,10 @@ console.log(
 if (!NO_CI) {
   const ignoradas = pastasIgnoradasPeloBiome();
   const linhaIgnoradas = ignoradas.length
-    ? `O Biome não olha estas pastas (biome.json → files.ignore): ${ignoradas.join(", ")}.\n` +
-      "Se o seu diff só tocou uma delas, o número de Biome acima não pode falar dele.\n"
+    ? `O Biome não olha estas pastas (biome.json → files.ignore): ${ignoradas.join(", ")}.\nSe o seu diff só tocou uma delas, o número de Biome acima não pode falar dele.\n`
     : "";
   console.log(
-    "\nFora do CI o Biome não é cobrado — quem cobra é o CI (Linux). " +
-      "Este script não mede\nquanto do excesso local é fim de linha (CRLF); " +
-      "não trate isso como a causa sem medir.\n" +
-      linhaIgnoradas +
-      "Para medir Biome nesta máquina sem esse ruído, siga a receita em " +
-      "~/.claude/mural/core_app_mkt/_REGRAS.md.",
+    `\nFora do CI o Biome não é cobrado — quem cobra é o CI (Linux). Este script não mede\nquanto do excesso local é fim de linha (CRLF); não trate isso como a causa sem medir.\n${linhaIgnoradas}Para medir Biome nesta máquina sem esse ruído, siga a receita em ~/.claude/mural/core_app_mkt/_REGRAS.md.`,
   );
 }
 
