@@ -333,9 +333,6 @@ export function useProducts({ autoFetch = true } = {}) {
           return mapProductFromDB(productData);
         }
         return null;
-      } catch (err) {
-        console.error("Error fetching product:", err);
-        return null;
       } finally {
         setLoading(false);
       }

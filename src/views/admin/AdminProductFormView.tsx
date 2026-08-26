@@ -498,7 +498,20 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     if (productId) {
       const loadProduct = async () => {
         setIsLoading(true);
-        const product = await fetchProduct(productId);
+        // PAINEL-06: distinguir "não existe" de "não consegui carregar".
+        // Antes: fetchProduct engolia erro de rede e devolvia null —
+        // a view dizia "não encontrado" e expulsava o lojista.
+        let product: ReturnType<typeof fetchProduct> extends Promise<infer T>
+          ? T
+          : never = null;
+        try {
+          product = await fetchProduct(productId);
+        } catch (err) {
+          console.error("[ProductForm] Erro ao carregar produto:", err);
+          toast.error("Erro ao carregar produto. Verifique a conexão.");
+          setIsLoading(false);
+          return; // fica no formulário — o lojista pode tentar de novo
+        }
         if (product) {
           const productFields = {
             name: product.name,
