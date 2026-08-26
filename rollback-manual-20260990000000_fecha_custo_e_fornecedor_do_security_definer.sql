@@ -12,6 +12,14 @@
 -- — exatamente o defeito que a migration fechou. So aplicar para reverter um
 -- problema causado pela migration em si.
 
+-- ALCANCE (formato combinado com o GLM em 25/08/2026, para quem le em incidente):
+--   RESTAURA ....... definicao das duas funcoes (corpo, SECURITY DEFINER,
+--                    search_path) e os grants que o CREATE OR REPLACE preserva.
+--   NAO RESTAURA ... Sem DML. Sem view. Sem sequence. Esta migration nao grava,
+--                    apaga nem altera linha nenhuma, entao nao ha dado a repor.
+--   A omissao seria pior que a linha: "nao diz nada sobre DML" e indistinguivel
+--   de "ninguem pensou em DML" na cabeca de quem abre isto durante um problema.
+
 -- 1. get_product_recommendations volta a fazer SELECT * (verbatim da
 --    definicao viva em 20260612000000_security_definer_and_otp_fix.sql /
 --    baseline). CREATE OR REPLACE preserva o GRANT EXECUTE que ja existe
