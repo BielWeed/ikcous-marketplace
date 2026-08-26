@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import type { Notification } from "@/types";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { NotificationContext } from "./NotificationContextCore";
 
 // Notificação de campanha ("Todos os Clientes", AdminPushView) grava UMA
@@ -157,7 +158,13 @@ export function NotificationProvider({
           prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
         );
       } catch (err) {
+        // Achado 4 da auditoria rodada 2: sem este aviso a cliente toca em
+        // "marcar como lida", nada acontece, e nada explica o porquê — ela
+        // toca de novo, e de novo. O estado da tela continua honesto (o
+        // `setNotifications` acima só roda no caminho de sucesso); o que
+        // faltava era a tela CONTAR que não deu.
         console.error("[Notifications] Mark as read error:", err);
+        toast.error("Não conseguimos marcar como lida. Tente de novo.");
       }
     },
     [user],
@@ -190,7 +197,11 @@ export function NotificationProvider({
 
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch (err) {
+      // Achado 4 da auditoria rodada 2 — mesmo motivo do markAsRead.
       console.error("[Notifications] Mark all as read error:", err);
+      toast.error(
+        "Não conseguimos marcar os avisos como lidos. Tente de novo.",
+      );
     }
   }, [user, notifications]);
 
@@ -217,7 +228,11 @@ export function NotificationProvider({
         if (error) throw error;
         setNotifications((prev) => prev.filter((n) => n.id !== id));
       } catch (err) {
+        // Achado 4 da auditoria rodada 2 — mesmo motivo do markAsRead. Este é
+        // o pior dos três para quem usa: apagar é o gesto de que a pessoa mais
+        // espera retorno imediato.
         console.error("[Notifications] Delete error:", err);
+        toast.error("Não conseguimos apagar este aviso. Tente de novo.");
       }
     },
     [user],
