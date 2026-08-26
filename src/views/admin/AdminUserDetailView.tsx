@@ -75,6 +75,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const { isAdmin } = useAuth();
   const isOffline = useOnlineStatus();
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -91,12 +92,18 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
   const handleCopy = (text: string, field: "id" | "email" | "whatsapp") => {
     haptic.light();
-    navigator.clipboard.writeText(text);
-    setCopiedField(field);
-    toast.success(
-      `${field === "id" ? "ID" : field === "email" ? "E-mail" : "Telefone"} copiado com sucesso!`,
-    );
-    setTimeout(() => setCopiedField(null), 2000);
+    const label =
+      field === "id" ? "ID" : field === "email" ? "E-mail" : "Telefone";
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopiedField(field);
+        toast.success(`${label} copiado com sucesso!`);
+        setTimeout(() => setCopiedField(null), 2000);
+      })
+      .catch(() => {
+        toast.error("Não foi possível copiar. Copie manualmente.");
+      });
   };
 
   useEffect(() => {
@@ -109,6 +116,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const fetchUserData = useCallback(async () => {
     if (!isAdmin) return;
     setLoading(true);
+    setLoadFailed(false);
     try {
       const { data, error } = await supabase.rpc("get_admin_user_detail", {
         p_user_id: userId,
@@ -190,6 +198,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     } catch (err) {
       console.error("[AdminUserDetail] Error fetching data:", err);
       toast.error("Erro ao carregar dados do usuário");
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -523,7 +532,19 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         </div>
       </div>
 
-      {loading ? (
+      {loadFailed && !loading ? (
+        <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-red-400">
+            Não foi possível carregar os dados deste cliente
+          </p>
+          <button
+            onClick={() => fetchUserData()}
+            className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      ) : loading ? (
         renderContentSkeleton()
       ) : (
         <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-12">

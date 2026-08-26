@@ -18,6 +18,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
   const {
     questions,
     loading,
+    error,
     getQuestionsByProduct,
     addQuestion,
     addAnswer,
@@ -190,6 +191,25 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
             <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
               Sincronizando conversas...
             </p>
+          </div>
+        ) : error && questions.length === 0 ? (
+          // Falha de carregamento não é "sem perguntas": sem este ramo, a
+          // tela convidava a cliente a "ser o primeiro" num produto que a
+          // consulta não conseguiu trazer — e podia ter histórico respondido.
+          <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-gradient-to-b from-zinc-50/50 to-zinc-100/10 px-6 py-12 text-center shadow-sm">
+            <div className="mb-4 flex size-10 items-center justify-center rounded-full border border-amber-200/60 bg-amber-50 shadow-sm">
+              <MessageSquare className="size-4 text-amber-500" />
+            </div>
+            <p className="text-sm font-bold tracking-tight text-zinc-900">
+              Não conseguimos carregar as perguntas
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">{error}</p>
+            <button
+              onClick={() => getQuestionsByProduct(productId)}
+              className="mt-4 rounded-full bg-zinc-900 px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:opacity-90 active:scale-95"
+            >
+              Tentar de novo
+            </button>
           </div>
         ) : questions.length === 0 ? (
           <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-gradient-to-b from-zinc-50/50 to-zinc-100/10 px-6 py-12 text-center shadow-sm">

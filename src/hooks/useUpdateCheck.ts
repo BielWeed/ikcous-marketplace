@@ -1,5 +1,6 @@
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { useStore } from "@/contexts/StoreContext";
+import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -172,19 +173,15 @@ export function useUpdateCheck() {
       }
 
       // 3. Selective localStorage purge
-      // Keep auth tokens, user data, and brand specific keys
-      const whitelist = [
-        "sb-",
-        "supabase.auth",
-        "pwa_",
-        "marketplace_",
-        "ikcous_",
-        "cart_",
-        "favorites_",
-      ];
+      // Keep auth tokens, user data, brand specific keys and PENDING writes
+      // — mesma lista branca de GlobalErrorBoundary.tsx
+      // (@/lib/localStoragePurgeWhitelist): a Nuclear Purge dispara SOZINHA
+      // no boot (checkMandatoryUpdate), então uma lista desatualizada aqui
+      // apaga fila de escrita offline sem ninguém decidir nada — ver o
+      // comentário do arquivo compartilhado.
       try {
         for (const key of Object.keys(localStorage)) {
-          if (!whitelist.some((prefix) => key.startsWith(prefix))) {
+          if (!chaveSobreviveAPurga(key)) {
             localStorage.removeItem(key);
           }
         }

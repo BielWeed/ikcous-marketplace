@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
 import { AlertTriangle, RefreshCcw } from "lucide-react";
 import { Component } from "react";
 import type { ErrorInfo, ReactNode } from "react";
@@ -91,8 +92,23 @@ export class GlobalErrorBoundary extends Component<Props, State> {
   }
 
   private readonly handleReset = () => {
-    // Clear potentially corrupted application state
-    localStorage.clear();
+    // Purga SELETIVA: `localStorage.clear()` puro apagava a sessão do
+    // Supabase (chaves `sb-`) e o carrinho (`marketplace_cart_v1`) junto com
+    // o estado corrompido — a pessoa tocava no único botão da tela de erro e
+    // saía sem sessão e sem o que tinha montado no carrinho. Preserva o que
+    // está na lista branca; limpa o resto.
+    try {
+      for (const key of Object.keys(localStorage)) {
+        if (!chaveSobreviveAPurga(key)) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (e) {
+      console.error(
+        "[GlobalErrorBoundary] Falha ao limpar localStorage seletivamente",
+        e,
+      );
+    }
     sessionStorage.clear();
     window.location.reload();
   };

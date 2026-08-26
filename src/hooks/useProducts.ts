@@ -311,7 +311,15 @@ export function useProducts({ autoFetch = true } = {}) {
 
         const { data: p, error: pErr } = await pQuery;
 
-        if (pErr) throw pErr;
+        // B2 da 2a revisao: PGRST116 e "0 linhas casam" do .single() —
+        // produto que de FACTO nao existe ou foi soft-deleted. Sem esta
+        // guarda, o pErr ia para o throw e a view dizia "verifique a
+        // conexao" para um produto que simplesmente nao esta mais la.
+        // O padrao certo ja existia em UserProfileView.tsx:131.
+        if (pErr) {
+          if ((pErr as any).code === "PGRST116") return null;
+          throw pErr;
+        }
 
         const { data: v, error: vErr } = await supabase
           .from("product_variants")
@@ -332,9 +340,6 @@ export function useProducts({ autoFetch = true } = {}) {
         if (productData) {
           return mapProductFromDB(productData);
         }
-        return null;
-      } catch (err) {
-        console.error("Error fetching product:", err);
         return null;
       } finally {
         setLoading(false);

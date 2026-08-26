@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import type { Notification } from "@/types";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { NotificationContext } from "./NotificationContextCore";
 
 // Notificação de campanha ("Todos os Clientes", AdminPushView) grava UMA
@@ -63,6 +64,10 @@ export function NotificationProvider({
   const { isLeader } = useLeaderElection();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  // Falha de fetch ≠ caixa vazia: sem este estado, a tela anunciava
+  // "Tudo em ordem" para uma cliente com avisos não lidos que a consulta
+  // não conseguiu trazer.
+  const [erro, setErro] = useState<string | null>(null);
   const lastFetchRef = useRef<number>(0);
   // ids da última busca cujo usuario_id era nulo (aviso de campanha) — é o
   // que diferencia, em markAsRead/markAllAsRead/deleteNotification, uma
@@ -75,6 +80,13 @@ export function NotificationProvider({
         setNotifications([]);
         campanhaIdsRef.current = new Set();
         setLoading(false);
+        // Este ramo NÃO é o caminho do logout (o efeito lá embaixo é, e a
+        // limpeza que resolve o defeito mora lá). Ele é alcançado pelo
+        // `refresh()` — o botão "Tentar de novo" da tela, tocado por quem não
+        // tem sessão. Sem sessão não há o que buscar, mas também não há erro
+        // a exibir: limpar aqui é o que faz esse botão deixar de ser um
+        // clique que não produz nada.
+        setErro(null);
         return;
       }
 
@@ -117,8 +129,10 @@ export function NotificationProvider({
 
         campanhaIdsRef.current = campanhaIds;
         setNotifications(mappedData);
+        setErro(null);
       } catch (err) {
         console.error("[Notifications] Fetch error:", err);
+        setErro("Não conseguimos carregar suas notificações.");
       } finally {
         setLoading(false);
       }
@@ -151,7 +165,13 @@ export function NotificationProvider({
           prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
         );
       } catch (err) {
+        // Achado 4 da auditoria rodada 2: sem este aviso a cliente toca em
+        // "marcar como lida", nada acontece, e nada explica o porquê — ela
+        // toca de novo, e de novo. O estado da tela continua honesto (o
+        // `setNotifications` acima só roda no caminho de sucesso); o que
+        // faltava era a tela CONTAR que não deu.
         console.error("[Notifications] Mark as read error:", err);
+        toast.error("Não conseguimos marcar como lida. Tente de novo.");
       }
     },
     [user],
@@ -184,7 +204,11 @@ export function NotificationProvider({
 
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     } catch (err) {
+      // Achado 4 da auditoria rodada 2 — mesmo motivo do markAsRead.
       console.error("[Notifications] Mark all as read error:", err);
+      toast.error(
+        "Não conseguimos marcar os avisos como lidos. Tente de novo.",
+      );
     }
   }, [user, notifications]);
 
@@ -211,7 +235,11 @@ export function NotificationProvider({
         if (error) throw error;
         setNotifications((prev) => prev.filter((n) => n.id !== id));
       } catch (err) {
+        // Achado 4 da auditoria rodada 2 — mesmo motivo do markAsRead. Este é
+        // o pior dos três para quem usa: apagar é o gesto de que a pessoa mais
+        // espera retorno imediato.
         console.error("[Notifications] Delete error:", err);
+        toast.error("Não conseguimos apagar este aviso. Tente de novo.");
       }
     },
     [user],
@@ -272,6 +300,15 @@ export function NotificationProvider({
     }
     setNotifications([]);
     setLoading(false);
+    // ESTE é o caminho do logout — o efeito não chama `fetchNotifications`
+    // quando `user` some, então limpar `erro` lá dentro não alcança aqui.
+    // `erro` descreve a falha de UMA consulta logada e não pode sobreviver à
+    // sessão que o criou: o sino do topo abre para qualquer pessoa, e sem
+    // esta linha a falha de quem deslogou virava "Não conseguimos carregar"
+    // permanente para o visitante seguinte no mesmo aparelho, com o "Tentar
+    // de novo" incapaz de limpá-la. Regressão introduzida por mim em 9142182,
+    // apontada pela revisão cruzada do parceiro (laudo da rodada 2, #5).
+    setErro(null);
     bc?.close();
   }, [user, fetchNotifications, isLeader]);
 
@@ -282,6 +319,7 @@ export function NotificationProvider({
       notifications,
       unreadCount,
       loading,
+      erro,
       markAsRead,
       markAllAsRead,
       deleteNotification,
@@ -291,6 +329,7 @@ export function NotificationProvider({
       notifications,
       unreadCount,
       loading,
+      erro,
       markAsRead,
       markAllAsRead,
       deleteNotification,

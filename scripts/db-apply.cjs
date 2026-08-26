@@ -972,6 +972,33 @@ const VERIFICACOES = {
   // de que o EXECUTE saiu de anon/authenticated e manual, por
   // has_function_privilege(...) -- receita no cabecalho da propria
   // migration (20260990000000_fecha_custo_e_fornecedor_do_security_definer.sql).
+  "20261012000000_a_vitrine_sabe_que_o_produto_mudou.sql": [
+    {
+      funcao: "handle_produto_atualizado",
+      esperado: [
+        // A correcao inteira desta funcao cabe nesta linha: sem ela o
+        // BEFORE UPDATE de produtos nao marca nada, e o defeito original
+        // (catchUp nunca rebusca) continua intacto.
+        "NEW.ultima_atualizacao = now();",
+      ],
+    },
+    {
+      funcao: "handle_variant_atualiza_produto",
+      esperado: [
+        // A guarda do reparenting -- sem ela, mover uma variante de produto
+        // so' marcaria UM dos dois produtos, e o outro ficaria com oferta
+        // desatualizada na vitrine sem nenhum sinal de mudanca.
+        "OLD.product_id IS DISTINCT FROM NEW.product_id",
+        // O ramo padrao (sem reparenting) -- contiguo do ELSE ate o END IF,
+        // para que trocar o COALESCE por um dos dois IDs sozinho (perdendo
+        // o caso INSERT ou o caso DELETE) reprove a verificacao.
+        `    ELSE
+        UPDATE public.produtos SET ultima_atualizacao = now()
+         WHERE id = COALESCE(NEW.product_id, OLD.product_id);
+    END IF;`,
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

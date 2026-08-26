@@ -49,6 +49,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { enviarComprovantePedido } from "../_shared/comprovante.ts";
+import { readKey } from "../_shared/webpush.ts";
 
 export {
   assuntoDoEmail,
@@ -89,24 +90,60 @@ const emTeste =
   Deno.mainModule.endsWith("_test.js") ||
   Deno.mainModule.includes("index_test");
 
+/**
+ * INFRA-260 (#126), última das sete funções migradas para `readKey`: no dia
+ * em que as chaves LEGADAS do Supabase forem desligadas,
+ * `Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")` volta undefined e
+ * `createClient(url, undefined!)` — ou `createClient(url, "")`, já que
+ * `readKey` nunca lança e cai para "" quando nenhuma das duas variáveis
+ * existe (ver o comentário dela em `_shared/webpush.ts`) — lança
+ * "supabaseKey is required.". Por isso o `createClient` fica dentro de um
+ * try: sem ele, o throw escaparia o handler inteiro como um 500 cru, sem o
+ * JSON que `montarResposta` produz, e o comprovante do pedido pararia de
+ * sair sem ninguém perceber — e-mail que não chega não reclama.
+ *
+ * `deps.supabase` é injetável para o teste alcançar este caminho sem SMTP
+ * nem banco de verdade — mesmo padrão que `criar-pagamento/index.ts` já usa.
+ */
+export async function handler(
+  req: Request,
+  deps: { supabase?: ReturnType<typeof createClient> } = {},
+): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  const corpo = await req.json().catch(() => null);
+  const orderId = corpo?.orderId;
+  if (!pareceUuid(orderId)) {
+    return montarResposta({ ok: false, motivo: "pedido_invalido" });
+  }
+
+  let supabase: ReturnType<typeof createClient>;
+  if (deps.supabase) {
+    supabase = deps.supabase;
+  } else {
+    try {
+      supabase = createClient(
+        Deno.env.get("SUPABASE_URL"),
+        readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+      );
+    } catch (err) {
+      console.error(
+        "send-order-confirmation: falha ao criar o client do Supabase",
+        err,
+      );
+      // Reusa "envio_falhou" — o mesmo motivo que `_shared/comprovante.ts`
+      // já emite para outra falha de infraestrutura (leitura do pedido),
+      // em vez de inventar uma categoria nova para esta.
+      return montarResposta({ ok: false, motivo: "envio_falhou" });
+    }
+  }
+
+  const desfecho = await enviarComprovantePedido({ supabase, orderId });
+  return montarResposta(desfecho);
+}
+
 if (!emTeste) {
-  serve(async (req: Request) => {
-    if (req.method === "OPTIONS") {
-      return new Response("ok", { headers: corsHeaders });
-    }
-
-    const corpo = await req.json().catch(() => null);
-    const orderId = corpo?.orderId;
-    if (!pareceUuid(orderId)) {
-      return montarResposta({ ok: false, motivo: "pedido_invalido" });
-    }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL"),
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
-    );
-
-    const desfecho = await enviarComprovantePedido({ supabase, orderId });
-    return montarResposta(desfecho);
-  });
+  serve((req: Request) => handler(req));
 }

@@ -28,8 +28,17 @@ const validateStatusUpdate = (
       throw new Error(errorMsg);
     }
 
-    if (order && order.status !== "pending") {
-      const errorMsg = "Apenas pedidos pendentes podem ser cancelados";
+    // Regra do Gabriel (24/08/2026): o divisor e' se o produto SAIU, nao se
+    // foi pago. Nao enviado (pending/processing) e enviado (shipping) podem
+    // ser cancelados; entregue nao — produto entregue e' devolucao, outro
+    // assunto. Espelha a mesma trava do servidor
+    // (update_order_status_atomic, supabase/migrations/20260970000000_
+    // cancelamento_respeita_o_envio.sql).
+    if (
+      order &&
+      !["pending", "processing", "shipping"].includes(order.status)
+    ) {
+      const errorMsg = "Este pedido não pode mais ser cancelado";
       if (!silent) toast.error(errorMsg);
       throw new Error(errorMsg);
     }
@@ -401,7 +410,7 @@ export const mensagemAmigavelErroAtualizacaoStatus = (
   // `code`, e essa SIM precisa cair no genérico.
   if (
     textoOriginal === "Usuários só podem cancelar pedidos" ||
-    textoOriginal === "Apenas pedidos pendentes podem ser cancelados"
+    textoOriginal === "Este pedido não pode mais ser cancelado"
   ) {
     return textoOriginal;
   }
@@ -412,6 +421,337 @@ export const mensagemAmigavelErroAtualizacaoStatus = (
 
   return "Não foi possível atualizar o status do pedido agora. Tente novamente em instantes.";
 };
+
+/**
+ * Funde a linha que o realtime do Supabase entrega em `payload.new` sobre o
+ * pedido que já está em memória (PEDIDO-04, achado da auditoria de
+ * 26/08/2026). Extraída do corpo de `handleRealtimeUpdate` só para poder ser
+ * testada sem montar o WebSocket inteiro — mesma ideia de
+ * `escolherRecargaDeReconexao`, acima.
+ *
+ * O DEFEITO QUE ISTO SUBSTITUI: `handleRealtimeUpdate` remontava o pedido com
+ * uma lista fechada de campos (`status`, `trackingCode` — confirmado em
+ * `git show HEAD:src/hooks/useOrders.ts` antes desta correção) escrita à mão.
+ * O realtime do Postgres entrega a LINHA INTEIRA em `payload.new` — não um diff — e
+ * `payment_status` (e `total`) nunca estavam na lista. Resultado: o PIX
+ * confirmava, o webhook gravava `payment_status = 'pago'` no banco, e quem
+ * estava com a tela "Meus Pedidos" aberta continuava vendo "Aguardando
+ * pagamento" até sair e voltar — e essa mesma leitura errada era regravada no
+ * cache do localStorage, então a PRÓXIMA abertura também nascia errada.
+ *
+ * A CORREÇÃO NÃO É ACRESCENTAR `payment_status` À LISTA — é eliminar a lista.
+ * `mapOrderFromDB` (src/lib/mappers.ts) já cobre TODOS os campos da própria
+ * linha de `marketplace_orders`, e é o MESMO mapeador que `handleRealtimeInsert`
+ * (logo acima) já usa para o INSERT. Uma lista escrita à mão é a causa raiz;
+ * trocar de lista mantém a causa viva para o próximo campo que alguém
+ * esquecer.
+ *
+ * O QUE FALTA NA LINHA DO REALTIME, E POR QUE ISTO PRECISA DE CUIDADO: o
+ * realtime entrega só a linha de `marketplace_orders`, sem as junções que
+ * `fetchUserOrders`/`loadOrders`/`handleRealtimeInsert` pedem (`items` via
+ * `marketplace_order_items`, `address` via `user_addresses`). Sem essas
+ * junções, `mapOrderFromDB` devolveria `items: []` — apagando da tela os
+ * itens de um pedido que já existia — E, para cliente LOGADO com endereço
+ * salvo, o endereço de entrega inteiro em branco: `create_marketplace_order_
+ * v23`/`v24` gravam `customer_data.address = null` nesse caso (`supabase/
+ * migrations/20260960000000_variacao_obrigatoria_no_servidor.sql:344-350`),
+ * e `typeof null === "object"` faz `mapOrderFromDB` cair nesse `null` (que é
+ * falsy) e depois no `customer_data` cru, que não tem `street`/`number`/etc.
+ *
+ * ACHADO BLOQUEANTE DA REVISÃO DESTA CORREÇÃO (26/08/2026): a primeira
+ * versão só protegia `items`, e essa mesma correção passou a zerar o
+ * "Endereço de Entrega" na ficha de pedido aberta a cada atualização em
+ * tempo real — o PIX confirmando, ou a própria lojista mudando o status.
+ * `CamposPreservadosDaMemoria`, abaixo, é a resposta: os campos que
+ * `mapOrderFromDB` deriva de uma junção que a linha do realtime nunca traz
+ * saem do PEDIDO EM MEMÓRIA, nunca do resultado de `mapOrderFromDB(linhaNova)`.
+ *
+ * ⚠️ ISTO NÃO GENERALIZA, e é importante não acreditar que generaliza: o tipo
+ * é um `Pick` de DOIS NOMES ESCRITOS À MÃO. Se alguém acrescentar uma junção
+ * nova ao select (por exemplo `coupon:coupons(*)`), mapeá-la em
+ * `mapOrderFromDB` e NÃO vier aqui, o código compila, os testes passam, e cada
+ * atualização em tempo real apaga esse campo da tela aberta e grava o apagado
+ * no cache do aparelho. Não há trava automática para o campo ESQUECIDO —
+ * a checagem do TypeScript só pega campo a mais ou a menos no literal.
+ * Quem acrescentar junção tem de vir aqui na mão. Isto não
+ * perde nenhuma atualização legítima: nem `customer_name` nem `customer_data`
+ * (as duas colunas que alimentam `customer`) são reescritas por RPC nenhuma
+ * depois da criação do pedido — confirmado varrendo `supabase/` inteiro por
+ * `customer_data\s*=`/`customer_name\s*=` fora de INSERT/jsonb_build_object
+ * (0 ocorrências). `items` já tinha a mesma garantia, e é por isso que os dois
+ * podem ser tratados igual aqui.
+ */
+// Os dois campos abaixo — `items` e `customer` — são os campos preservados da
+// memória de que o docstring acima fala. "Derivado de JOIN" é o nome do RISCO,
+// não da fonte: `customer` também carrega `customer_name` e `customer_data`,
+// que são COLUNAS de `marketplace_orders`, não junção nenhuma. Preservá-las
+// aqui é seguro pelo mesmo motivo que `items` é — nenhuma RPC as reescreve
+// depois da criação do pedido (varredura no docstring acima: 0 ocorrências de
+// `customer_data\s*=`/`customer_name\s*=` fora de INSERT/jsonb_build_object)
+// —, não porque tenham vindo de um JOIN de verdade.
+type CamposPreservadosDaMemoria = Pick<Order, "items" | "customer">;
+
+export function mesclarAtualizacaoRealtime(
+  pedidoAtual: Order,
+  linhaNova: Parameters<typeof mapOrderFromDB>[0],
+): Order {
+  const mapeado = mapOrderFromDB(linhaNova);
+  // Escritos por nome, não num laço percorrendo uma lista de chaves: a
+  // versão anterior (`for (const campo of [...]) resultado[campo] =
+  // pedidoAtual[campo]`) acessava os dois objetos por chave vinda de
+  // variável, e isso é exatamente o padrão que `security/detect-object-
+  // injection` existe para pegar — disparava uma vez na leitura e outra na
+  // escrita. Só há dois campos hoje: se um terceiro precisar da mesma
+  // proteção, adicione-o AQUI e no tipo `CamposPreservadosDaMemoria` acima —
+  // o literal do objeto abaixo tem checagem de excesso/falta do TypeScript
+  // contra esse tipo, então campo sobrando ou faltando vira erro de build.
+  const preservados: CamposPreservadosDaMemoria = {
+    items: pedidoAtual.items,
+    customer: pedidoAtual.customer,
+  };
+  return { ...pedidoAtual, ...mapeado, ...preservados };
+}
+
+/**
+ * Estado da conexão realtime do canal de pedidos (auditoria de 26/08/2026,
+ * achado do selo "Operações ao Vivo"/"Moderação Ativa" no painel). O
+ * `channel.subscribe` abaixo (dentro de `useOrders`, seção "Realtime
+ * subscription for orders") já tratava `SUBSCRIBED`, `CHANNEL_ERROR`,
+ * `TIMED_OUT` e `CLOSED` — só que NENHUM dos quatro ramos tinha `setState`:
+ * o handler falava só com `console.*` e `handleReconnect()`. Sem estado
+ * exportado, nenhuma tela tinha como saber se o canal estava vivo — o selo
+ * não estava mal ligado, ele não tinha a que se ligar.
+ *
+ * QUATRO estados, de propósito — nunca um booleano. Colapsar "ainda não sei"
+ * em "não conectado" foi o que produziu metade dos selos que mentem nesta
+ * auditoria: um selo que mostra "desconectado" durante o primeiro segundo de
+ * toda abertura é o MESMO defeito com outro sinal.
+ *
+ * - "conectando": o efeito de inscrição acabou de montar e NENHUMA resposta
+ *   do canal chegou ainda — nem sucesso, nem erro. É o "ainda não sei", e
+ *   dura só o instante inicial de toda abertura.
+ * - "conectado": o último status que o canal reportou foi "SUBSCRIBED".
+ * - "reconectando": o canal caiu (CHANNEL_ERROR/TIMED_OUT/CLOSED, ou uma
+ *   falha ao criar o canal) e a retentativa automática já existente
+ *   (`handleReconnect`, INALTERADA por esta mudança) está em curso. Visível
+ *   em vez de silenciosa.
+ * - "desconectado": NENHUMA inscrição está ativa para esta instância do
+ *   hook — `enabled === false` ou sem usuário logado. Nunca usado para "caiu
+ *   e está tentando de novo"; esse caso é sempre "reconectando", porque o
+ *   hook nunca desiste sozinho — `handleReconnect` tenta para sempre.
+ */
+export type EstadoConexaoRealtime =
+  | "conectando"
+  | "conectado"
+  | "reconectando"
+  | "desconectado";
+
+/**
+ * Traduz o status cru que o supabase-js entrega ao callback de
+ * `channel.subscribe` no `EstadoConexaoRealtime` que a UI pode mostrar sem
+ * mentir. Extraída para ser testável sem montar o WebSocket — mesma ideia de
+ * `escolherRecargaDeReconexao` e `mesclarAtualizacaoRealtime`, acima.
+ *
+ * Só "SUBSCRIBED" vira "conectado". QUALQUER outra coisa — CHANNEL_ERROR,
+ * TIMED_OUT, CLOSED, e qualquer status futuro do SDK que este código ainda
+ * não conheça — vira "reconectando", porque o handler que chama esta função
+ * SEMPRE aciona `handleReconnect()` para os três primeiros. "desconectado"
+ * nunca sai daqui: é reservado para quando NENHUMA inscrição está ativa (ver
+ * o docstring de `EstadoConexaoRealtime`, acima).
+ */
+export function proximoEstadoConexao(
+  statusCanal: string,
+): EstadoConexaoRealtime {
+  if (statusCanal === "SUBSCRIBED") return "conectado";
+  return "reconectando";
+}
+
+interface EstadoConexaoCompartilhado {
+  status: EstadoConexaoRealtime;
+  listeners: Set<(status: EstadoConexaoRealtime) => void>;
+}
+
+/**
+ * Guarda o estado de conexão POR CANAL (`channelId`, a mesma chave de
+ * `globalOrderSubscriptions`, acima) — nunca por instância do hook. O
+ * WebSocket real é compartilhado entre todas as instâncias que apontam para
+ * o mesmo canal (duas telas montadas ao mesmo tempo, ou várias na mesma
+ * página); se o estado fosse por instância, cada uma reagiria à própria
+ * cópia e divergiria da real (item 5 do pedido).
+ *
+ * Mapa SEPARADO de `globalOrderSubscriptions` de propósito: aquele guarda o
+ * canal e os callbacks de EVENTO (INSERT/UPDATE/DELETE); este guarda só o
+ * estado de CONEXÃO. Separar os dois deixa esta parte testável sem montar
+ * `SharedSubscription` inteira, e não arrisca o resto do fluxo de evento
+ * (`mesclarAtualizacaoRealtime` e vizinhos), que acabaram de sair de
+ * revisão.
+ */
+const globalConnectionStatus = new Map<string, EstadoConexaoCompartilhado>();
+
+/**
+ * Atualiza o estado de conexão de um canal e avisa todas as instâncias
+ * inscritas nele. Idempotente por design (item "cuidado com o custo de
+ * render" do pedido): se o status novo é IGUAL ao que já estava, não
+ * notifica ninguém. Sem isto, uma rede ruim que gera CHANNEL_ERROR repetido
+ * chamaria `setState` a cada tentativa — mesmo o estado visível
+ * ("reconectando") nunca mudando — provocando re-render em cascata numa
+ * tela com lista grande.
+ */
+export function definirStatusConexao(
+  channelId: string,
+  status: EstadoConexaoRealtime,
+): void {
+  const atual = globalConnectionStatus.get(channelId);
+  if (atual) {
+    if (atual.status === status) return;
+    atual.status = status;
+    for (const listener of atual.listeners) {
+      // Um listener que lance não pode interromper a notificação dos
+      // seguintes — hoje só há um por instância do hook (`setConnectionStatus`)
+      // e ele não lança, mas duas telas montadas ao mesmo tempo já são dois
+      // listeners no MESMO Set.
+      try {
+        listener(status);
+      } catch (e) {
+        console.error("[Realtime] Order connection status listener error:", e);
+      }
+    }
+    return;
+  }
+  globalConnectionStatus.set(channelId, { status, listeners: new Set() });
+}
+
+/**
+ * Inscreve uma instância do hook nas mudanças de estado de um canal. Devolve
+ * o status ATUAL (para a instância que monta depois de outra já estar
+ * conectada não passar pelo "conectando" à toa) e uma função para cancelar a
+ * inscrição no cleanup do efeito.
+ */
+export function assinarStatusConexao(
+  channelId: string,
+  listener: (status: EstadoConexaoRealtime) => void,
+): { statusAtual: EstadoConexaoRealtime; cancelar: () => void } {
+  let entry = globalConnectionStatus.get(channelId);
+  if (!entry) {
+    entry = { status: "conectando", listeners: new Set() };
+    globalConnectionStatus.set(channelId, entry);
+  }
+  entry.listeners.add(listener);
+  const entryFinal = entry;
+  return {
+    statusAtual: entryFinal.status,
+    cancelar: () => entryFinal.listeners.delete(listener),
+  };
+}
+
+/**
+ * Decide se ESTE `channel.subscribe` callback ainda pode escrever no estado
+ * de conexão compartilhado — condicionado à IDENTIDADE DO CANAL (é ele que
+ * está registrado agora para este `channelId`?), NUNCA ao `isUnmounting` da
+ * instância do hook que o criou.
+ *
+ * ACHADO B1 DA REVISÃO DE 26/08/2026: a versão anterior guardava a escrita
+ * atrás de `if (isUnmounting) return`, onde `isUnmounting` é uma flag POR
+ * INSTÂNCIA, fechada sobre a execução do efeito que criou o canal. O canal
+ * físico SOBREVIVE ao desmonte de quem o criou — o remount reaproveita via
+ * `refCount++` (ramo `existing` de `setupRealtime`, abaixo) e NUNCA chama
+ * `channel.subscribe` de novo. O callback registrado na criação continua
+ * sendo a ÚNICA fonte de status daquele canal. Guardar por `isUnmounting`
+ * da instância CRIADORA congelava o estado para sempre assim que ela
+ * desmontava, mesmo com outra instância viva usando o MESMO canal —
+ * cliente troca "Meus Pedidos" pela ficha de um pedido (mesmo `channelId`),
+ * entra num elevador, o socket cai: selo verde numa tela morta,
+ * indefinidamente.
+ *
+ * A guarda certa é por CANAL, não por instância: só recusa a escrita quando
+ * o canal desta execução já foi SUBSTITUÍDO por um canal novo no mapa
+ * compartilhado (teardown completo seguido de recriação) — nesse caso sim,
+ * o callback é ruído de um canal morto e não pode sobrescrever o estado do
+ * canal atual.
+ *
+ * `subscriptions` é passado explicitamente (em vez de ler
+ * `globalOrderSubscriptions` direto) para poder ser testado sem montar o
+ * canal real do Supabase.
+ */
+export function podeEscreverStatusDoCanal(
+  channelId: string,
+  channel: unknown,
+  subscriptions: Map<string, { channel: unknown }>,
+): boolean {
+  return subscriptions.get(channelId)?.channel === channel;
+}
+
+/**
+ * Remove a entrada de um canal do mapa de status compartilhado. Chamado do
+ * teardown DEFINITIVO — depois do debounce de 4s, quando o `refCount`
+ * continua em zero e o canal é mesmo removido (não só um remount que o
+ * reaproveitou).
+ *
+ * ACHADO C1 DA REVISÃO DE 26/08/2026: nenhuma referência ao mapa fazia
+ * `delete`. Depois do último canal cair e o debounce de limpeza rodar, a
+ * entrada ficava parada no ÚLTIMO status conhecido — "conectado", na
+ * maioria dos casos, porque é o estado que mais tempo passa estável. Um
+ * remount que aconteça DEPOIS dessa limpeza (ex.: cliente sai de "Meus
+ * Pedidos", passa 30s numa página de produto, perde a rede, volta) lia esse
+ * verde vencido no PRIMEIRO render, antes de qualquer canal novo existir —
+ * e ficava assim até o SDK esgotar o próprio tempo (10s por padrão).
+ */
+export function limparStatusConexao(channelId: string): void {
+  globalConnectionStatus.delete(channelId);
+}
+
+/**
+ * Decide o que fazer com uma mensagem recebida no `BroadcastChannel`
+ * compartilhado entre abas, para o canal `channelId` desta instância.
+ * Extraída para ser testável sem `BroadcastChannel` real — mesma ideia de
+ * `escolherRecargaDeReconexao`, acima.
+ *
+ * ACHADO C2 DA REVISÃO DE 26/08/2026: o ramo NÃO-LÍDER nunca chamava
+ * `definirStatusConexao` — a semente ficava em "conectando" para sempre,
+ * mesmo essa aba recebendo atualização de PEDIDO de verdade pelo mesmo
+ * `BroadcastChannel` (é o `order_change` que o líder já emite). Com zero
+ * consumidor do campo isso era acidentalmente inofensivo; com telas do
+ * painel lendo o campo, um selo que nunca sai de "conectando…" ensina a
+ * pessoa a ignorar TODOS os selos, inclusive o da aba líder, onde ele está
+ * certo e importa. A saúde do socket da aba não-líder É a saúde do socket
+ * do líder — o broadcast dele é a ÚNICA fonte dela.
+ *
+ * Mensagem de tipo desconhecido (`channelId` de outra aba, ou um `type`
+ * que esta versão do app ainda não conhece) é ignorada de propósito — não
+ * pode quebrar uma aba rodando versão diferente do app.
+ */
+export function processarMensagemBroadcast(
+  mensagem: {
+    type?: unknown;
+    channelId?: unknown;
+    payload?: unknown;
+    status?: unknown;
+  },
+  channelId: string,
+  isLeader: boolean,
+  acoes: {
+    onEvent: (payload: unknown) => void;
+    definirStatus: (channelId: string, status: EstadoConexaoRealtime) => void;
+    responderStatusAtual: () => void;
+  },
+): void {
+  if (mensagem?.channelId !== channelId) return;
+
+  if (mensagem.type === "order_change") {
+    // O líder já processou o evento direto do canal real — o broadcast é
+    // só para as OUTRAS abas.
+    if (!isLeader) acoes.onEvent(mensagem.payload);
+  } else if (mensagem.type === "conn_status") {
+    // O líder é a FONTE deste campo, nunca o destino: ele já sabe o status
+    // real do próprio socket.
+    if (!isLeader && typeof mensagem.status === "string") {
+      acoes.definirStatus(channelId, mensagem.status as EstadoConexaoRealtime);
+    }
+  } else if (mensagem.type === "conn_status_request") {
+    // Só o líder tem o socket para responder por.
+    if (isLeader) acoes.responderStatusAtual();
+  }
+}
 
 export function useOrders(
   enabled = true,
@@ -443,6 +783,13 @@ export function useOrders(
   const [totalOrders, setTotalOrders] = useState(() => {
     return isAdmin ? cachedAdminTotalOrders : 0;
   });
+  // Estado da conexão realtime exposto para a UI — ver o docstring de
+  // `EstadoConexaoRealtime`, acima. "conectando" é o valor inicial correto
+  // mesmo quando `enabled` é false: o efeito de inscrição, logo abaixo,
+  // corrige para "desconectado" no primeiro render quando não há inscrição
+  // nenhuma para fazer.
+  const [connectionStatus, setConnectionStatus] =
+    useState<EstadoConexaoRealtime>("conectando");
 
   // Synchronously load cache on mount or when user changes
   useEffect(() => {
@@ -678,11 +1025,7 @@ export function useOrders(
       setOrders((prev) => {
         const updated = prev.map((o) =>
           o.id === updatedOrder.id
-            ? {
-                ...o,
-                status: updatedOrder.status,
-                trackingCode: updatedOrder.tracking_code,
-              }
+            ? mesclarAtualizacaoRealtime(o, updatedOrder)
             : o,
         );
         if (user?.id && !isAdmin) {
@@ -742,11 +1085,29 @@ export function useOrders(
 
   // Realtime subscription for orders
   useEffect(() => {
-    if (!enabled || !user?.id) return;
+    if (!enabled || !user?.id) {
+      // Nenhuma inscrição vai acontecer nesta montagem — "conectando" aqui
+      // mentiria que uma tentativa está em curso. Só o estado LOCAL desta
+      // instância muda: como `assinarStatusConexao` nunca chega a rodar
+      // neste ramo, nenhuma entrada é criada em `globalConnectionStatus`
+      // para este `channelId` por causa desta instância — não há o que
+      // `limparStatusConexao` (achado C1, acima) precise desfazer aqui.
+      setConnectionStatus("desconectado");
+      return;
+    }
 
     const channelId = isAdmin
       ? "admin_order_updates"
       : `order_updates_${user.id}`;
+    // Sincroniza esta instância com o estado JÁ conhecido do canal
+    // compartilhado (item 5 do pedido: duas telas montadas ao mesmo tempo
+    // têm que ler o MESMO estado, não uma cópia própria) e passa a ouvir
+    // as próximas mudanças.
+    const statusInscricao = assinarStatusConexao(
+      channelId,
+      setConnectionStatus,
+    );
+    setConnectionStatus(statusInscricao.statusAtual);
     let isUnmounting = false;
     let isConnecting = false;
     let retryCount = 0;
@@ -758,7 +1119,51 @@ export function useOrders(
       typeof window !== "undefined"
         ? new BroadcastChannel("ikcous_orders_realtime")
         : null;
+    // Listener ÚNICO, anexado independente de liderança (achado C2 da
+    // revisão de 26/08/2026 — antes só a aba NÃO-líder ouvia, e só para
+    // "order_change"). `processarMensagemBroadcast` decide o que fazer com
+    // cada tipo de mensagem; ver o docstring dela, acima, para o porquê de
+    // cada ramo.
+    // ⚠️ ACHADO B-1 DA REVISÃO DE 26/08/2026, TAPADO PELA METADE — leia antes
+    // de mexer. Este `bc` pertence à INSTÂNCIA e é fechado no teardown dela
+    // (`bc?.close()`, no fim deste efeito). Mas o CANAL de realtime sobrevive
+    // à instância que o criou (`refCount` + debounce de 4 s), e o callback de
+    // `channel.subscribe` registrado por ela continua rodando. Resultado: ele
+    // chamava `bc.postMessage` num canal já fechado, o que lança
+    // `InvalidStateError` — e o `realtime-js` invoca esse callback CRU, sem
+    // try/catch, então virava rejeição não tratada em produção. Isso disparava
+    // mesmo com ZERO consumidor do estado de conexão.
+    //
+    // Esta flag para o ESTOURO. Ela NÃO conserta o defeito: a mensagem
+    // continua não chegando na segunda aba, que segue mostrando o último
+    // status recebido. O conserto de verdade é dar ao canal de aviso o tempo
+    // de vida do CANAL, não o da instância — mesma lição do B1 anterior (o
+    // estado é por canal; quem publica o estado também tem de ser). Está
+    // documentado como ABERTO, e por isso o selo de "Operações ao Vivo" NÃO
+    // pode ser ligado a este campo ainda.
+    let bcFechado = false;
+    // Um ponto só de publicação: qualquer `postMessage` deste efeito passa
+    // por aqui, para que a flag acima não dependa de alguém lembrar dela.
+    const publicarNoBc = (mensagem: unknown) => {
+      if (bcFechado) return;
+      bc?.postMessage(mensagem);
+    };
     let bcListener: ((event: MessageEvent) => void) | null = null;
+    if (bc) {
+      bcListener = (event: MessageEvent) => {
+        processarMensagemBroadcast(event.data, channelId, isLeader, {
+          onEvent: (payload) => onEvent(payload),
+          definirStatus: definirStatusConexao,
+          responderStatusAtual: () => {
+            const atual = globalConnectionStatus.get(channelId)?.status;
+            if (atual) {
+              publicarNoBc({ type: "conn_status", channelId, status: atual });
+            }
+          },
+        });
+      };
+      bc.addEventListener("message", bcListener);
+    }
 
     const onEvent = async (payload: any) => {
       if (isUnmounting) return;
@@ -814,7 +1219,7 @@ export function useOrders(
           },
           async (payload) => {
             // Leader posts message to other tabs
-            bc?.postMessage({ type: "order_change", channelId, payload });
+            publicarNoBc({ type: "order_change", channelId, payload });
 
             const sub = globalOrderSubscriptions.get(channelId);
             if (sub) {
@@ -840,6 +1245,35 @@ export function useOrders(
 
         channel.subscribe(async (status: any, err?: any) => {
           isConnecting = false;
+
+          // B1 (revisão de 26/08/2026): a ESCRITA do estado vem ANTES da
+          // guarda de instância, condicionada à IDENTIDADE DO CANAL —
+          // `podeEscreverStatusDoCanal` (ver o docstring dela, acima) nunca
+          // olha `isUnmounting`. O canal físico sobrevive ao desmonte de
+          // quem o criou (remount reaproveita via refCount++, sem chamar
+          // `channel.subscribe` de novo), e este callback continua sendo a
+          // ÚNICA fonte de status daquele canal.
+          if (
+            podeEscreverStatusDoCanal(
+              channelId,
+              channel,
+              globalOrderSubscriptions,
+            )
+          ) {
+            const novoStatus = proximoEstadoConexao(status);
+            definirStatusConexao(channelId, novoStatus);
+            // C2: a aba NÃO-líder aprende a saúde deste socket pelo MESMO
+            // BroadcastChannel que já leva `order_change` — a saúde dela É
+            // a saúde do líder, porque este broadcast é a única fonte dela.
+            publicarNoBc({
+              type: "conn_status",
+              channelId,
+              status: novoStatus,
+            });
+          }
+
+          // Guarda por INSTÂNCIA, inalterada: só governa `handleReconnect`
+          // e `retryCount`, que continuam fora do escopo desta correção.
           if (isUnmounting) return;
 
           if (status === "SUBSCRIBED") {
@@ -874,6 +1308,10 @@ export function useOrders(
       } catch (err) {
         console.error("[Realtime] Orders critical setup error:", err);
         isConnecting = false;
+        // A criação do canal falhou antes de chegar a `channel.subscribe` —
+        // não há status do SDK para traduzir aqui, mas `handleReconnect()`,
+        // logo abaixo, vai tentar de novo do mesmo jeito.
+        definirStatusConexao(channelId, "reconectando");
         handleReconnect();
       }
     };
@@ -918,20 +1356,10 @@ export function useOrders(
       console.log(
         `[Realtime-Orders] Secondary tab listening via BroadcastChannel: ${channelId}`,
       );
-      if (bc) {
-        bcListener = (event: MessageEvent) => {
-          if (
-            event.data?.type === "order_change" &&
-            event.data?.channelId === channelId
-          ) {
-            console.log(
-              "[Realtime-Orders-Secondary] Received order change broadcast event",
-            );
-            onEvent(event.data.payload);
-          }
-        };
-        bc.addEventListener("message", bcListener);
-      }
+      // C2: pede ao líder o status ATUAL logo ao montar — sem isto, uma
+      // aba não-líder que abre e não vê nenhuma transição de status fica
+      // em "conectando" até a próxima queda do socket do líder.
+      publicarNoBc({ type: "conn_status_request", channelId });
     }
 
     const handleVisibilityChange = () => {
@@ -973,6 +1401,7 @@ export function useOrders(
 
     return () => {
       isUnmounting = true;
+      statusInscricao.cancelar();
       clearTimeout(reconnectTimeout);
       clearTimeout(visibilityTimeout);
       clearTimeout(onlineTimeout);
@@ -995,6 +1424,12 @@ export function useOrders(
               const currentSub = globalOrderSubscriptions.get(channelId);
               if (currentSub && currentSub.refCount <= 0) {
                 globalOrderSubscriptions.delete(channelId);
+                // C1: apaga a entrada do estado de conexão JUNTO com a do
+                // canal — sem isto ela ficava presa no último status
+                // conhecido, e o próximo remount lia um verde vencido antes
+                // de qualquer canal novo existir. Ver o docstring de
+                // `limparStatusConexao`, acima.
+                limparStatusConexao(channelId);
                 supabase.removeChannel(currentSub.channel).catch(() => {});
                 console.log(
                   `[Realtime] Cleaned up shared channel after debounce: ${channelId}`,
@@ -1006,11 +1441,13 @@ export function useOrders(
             );
           }
         }
-      } else {
-        if (bcListener && bc) {
-          bc.removeEventListener("message", bcListener);
-        }
       }
+      // Listener único (achado C2) — removido independente de liderança,
+      // porque agora é anexado independente dela também.
+      if (bcListener && bc) {
+        bc.removeEventListener("message", bcListener);
+      }
+      bcFechado = true;
       bc?.close();
     };
   }, [enabled, user?.id, isAdmin, isLeader]);
@@ -1667,6 +2104,11 @@ export function useOrders(
     loading,
     isLoaded: !loading,
     totalOrders,
+    // Estado da conexão realtime (auditoria de 26/08/2026) — ver o
+    // docstring de `EstadoConexaoRealtime`, acima. Quatro valores possíveis:
+    // "conectando" | "conectado" | "reconectando" | "desconectado". Nunca
+    // colapsar num booleano na tela que consumir isto.
+    realtimeConnectionStatus: connectionStatus,
     fetchUserOrders,
     loadOrders, // New pagination function
     fetchOrders, // Legacy alias

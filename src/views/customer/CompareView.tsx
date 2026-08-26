@@ -54,13 +54,20 @@ export function CompareView({
     // inteira some -- não só a estrela. Deixar só o ícone e manter o texto
     // "4.5/5" continuaria publicando a nota, e a tabela é uma lista de
     // linhas, então tirar a linha não deixa buraco (as outras só sobem).
+    //
+    // LOJA-01 (auditoria 26/08/2026): o formato checava `p.rating` (truthy),
+    // mas `produtos.rating` nasce com DEFAULT 5 e nunca é recalculado -- essa
+    // checagem nunca caía no ramo "Sem avaliações". Só `reviewCount > 0` diz
+    // se existe avaliação de verdade por trás do número.
     ...(config.enableReviews
       ? [
           {
             key: "rating",
             label: "Avaliação",
             format: (p: Product) =>
-              p.rating ? `${p.rating.toFixed(1)}/5` : "Sem avaliações",
+              p.reviewCount && p.reviewCount > 0
+                ? `${(p.rating ?? 0).toFixed(1)}/5`
+                : "Sem avaliações",
           },
         ]
       : []),
@@ -88,7 +95,12 @@ export function CompareView({
           products[0],
         ).id;
       case "rating": {
-        const ratedProducts = products.filter((p) => p.rating);
+        // LOJA-01: mesmo motivo do `format` acima -- `p.rating` é sempre
+        // verdadeiro (DEFAULT 5), então o filtro precisa ser por
+        // `reviewCount`, não por `rating`.
+        const ratedProducts = products.filter(
+          (p) => p.reviewCount && p.reviewCount > 0,
+        );
         if (ratedProducts.length === 0) return null;
         return ratedProducts.reduce(
           (max, p) => ((p.rating || 0) > (max.rating || 0) ? p : max),
@@ -229,9 +241,14 @@ export function CompareView({
                               : ""
                           }`}
                         >
-                          {feature.key === "rating" && product.rating ? (
+                          {feature.key === "rating" &&
+                          product.reviewCount &&
+                          product.reviewCount > 0 ? (
                             <div className="flex flex-col items-center">
-                              <StarRating rating={product.rating} size={14} />
+                              <StarRating
+                                rating={product.rating ?? 0}
+                                size={14}
+                              />
                               <span className="mt-1 text-xs">{value}</span>
                             </div>
                           ) : feature.key === "shipping" ? (

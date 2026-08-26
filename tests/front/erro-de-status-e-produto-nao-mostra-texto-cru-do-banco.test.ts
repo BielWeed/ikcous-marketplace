@@ -102,9 +102,9 @@ describe("mensagemAmigavelErroAtualizacaoStatus — as causas de update_order_st
     ).toBe("Usuários só podem cancelar pedidos");
     expect(
       mensagemAmigavelErroAtualizacaoStatus(
-        new Error("Apenas pedidos pendentes podem ser cancelados"),
+        new Error("Este pedido não pode mais ser cancelado"),
       ),
-    ).toBe("Apenas pedidos pendentes podem ser cancelados");
+    ).toBe("Este pedido não pode mais ser cancelado");
   });
 
   it("erro técnico cru do banco (código de servidor, texto de constraint): frase genérica, nunca o texto técnico", () => {

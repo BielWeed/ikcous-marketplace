@@ -435,6 +435,41 @@ Deno.test("subDoToken: lixo devolve null, não estoura", () => {
 
 // --- handler: a fiação onde autorização e dinheiro de fato acontecem --
 
+// PEDIDO-07 (auditoria de 26/08/2026): no dia em que as chaves LEGADAS do
+// Supabase forem desligadas, `Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")`
+// volta undefined e `createClient(url, undefined!)` lança "supabaseKey is
+// required." — ANTES desta correção, essa chamada ficava FORA de qualquer
+// try/catch (linha 277-282 da auditoria), e o throw escapava o handler
+// inteiro: 500 cru, sem `terminal`, sem mensagem que o front reconheça — o
+// cliente clica "Tentar de novo" e repete a mesma falha até o pedido
+// expirar em 30 min. Nenhum teste anterior desta suíte exercitava este
+// caminho: todos os outros testes passam `deps.supabase` já pronto, então
+// nenhum chegava a `deps.supabase ?? createClient(...)`.
+Deno.test("handler: nenhuma chave de service role no ambiente (nem a nova SUPABASE_SECRET_KEYS, nem a legada SUPABASE_SERVICE_ROLE_KEY) vira resposta tratada 503, não um throw que escapa do handler", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  Deno.env.set("SUPABASE_URL", "https://xyz.supabase.co");
+  Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+  Deno.env.delete("SUPABASE_SECRET_KEYS");
+
+  try {
+    // Sem `supabase` em deps: força o handler a montar o client real a
+    // partir do ambiente, em vez do cliente falso que o resto da suíte usa.
+    const resposta = await handler(
+      requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+      {},
+    );
+    const corpo = await resposta.json();
+
+    // Mesmo par (status, mensagem) que a checagem de MP_ACCESS_TOKEN ausente
+    // já usa, poucas linhas acima no arquivo real — falha de CONFIGURAÇÃO
+    // deste servidor, não do cliente, tratada da mesma forma.
+    assertEquals(resposta.status, 503);
+    assertEquals(corpo.error, "Pagamento indisponível.");
+  } finally {
+    Deno.env.delete("SUPABASE_URL");
+  }
+});
+
 Deno.test("handler: pedido de outro usuário devolve 404, não o pedido de ninguém", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   const donoDoPedido = "9f9f9f9f-1111-2222-3333-444455556666";
@@ -2025,6 +2060,16 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // muda só quando um ponto de retorno é acrescentado ou removido de
   // propósito — o que É a enumeração pedida, não um acidente de estilo.
   //
+  // 19, não mais 18: PEDIDO-07 (auditoria de 26/08/2026) envolveu o
+  // createClient() do client real (usado quando `deps.supabase` não vem, o
+  // caso de produção) num try/catch — antes ele ficava fora de qualquer
+  // try, e uma falha de configuração (chave ausente) escapava o handler
+  // inteiro como throw, não como `json(...)`. O catch novo reusa o MESMO
+  // literal "Pagamento indisponível." que a checagem de MP_ACCESS_TOKEN já
+  // usa (mesma categoria: bug de configuração deste servidor, não do
+  // pedido) — por isso não precisou de entrada NOVA em recuperaveisConhecidas,
+  // só mais uma ocorrência do mesmo identificador.
+  //
   // 18, não mais 17: pagamento online exige conta (decisão do Gabriel,
   // 16/08/2026) acrescentou um ponto de retorno novo — `if (pedido.user_id
   // === null) return json({ error: ..., code: "PAGAMENTO_ONLINE_EXIGE_
@@ -2050,7 +2095,7 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // virou dois — falha de LEITURA (503) e "não existe" (404) — porque as
   // duas causas eram opostas e tinham que responder diferente (achado da
   // revisão do CHECKOUT-050, #194).
-  assertEquals(achados, 18);
+  assertEquals(achados, 19);
 });
 
 // CHECKOUT-050 (#194), achado por mutação: o teste acima só casa o helper
