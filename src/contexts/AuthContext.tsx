@@ -4,6 +4,10 @@ import {
   MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA,
 } from "@/lib/mensagens-auth";
 import { supabase } from "@/lib/supabase";
+import {
+  isAuthApiError,
+  isAuthRetryableFetchError,
+} from "@supabase/supabase-js";
 import type { Session, User } from "@supabase/supabase-js";
 import {
   type ReactNode,
@@ -445,6 +449,55 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                   setUser(null);
                   activeUserIdRef.current = null;
                   setAdminStatus("not-admin");
+                  return;
+                }
+
+                // CONTA-02 (auditoria de 26/08/2026) — `verifyError` que NÃO
+                // é comprovadamente inválido não pode terminar deslogando.
+                // `AuthRetryableFetchError` é o que o @supabase/auth-js
+                // lança para QUALQUER falha de rede ou status 5xx
+                // (node_modules/@supabase/auth-js/dist/module/lib/fetch.js:
+                // 18-32: handleError() cobre `!looksLikeFetchResponse`
+                // — rede/CORS — e a lista NETWORK_ERROR_CODES de 500 a 530)
+                // — classificação ESTRUTURAL da própria SDK (o nome/classe
+                // do erro), não uma lista de strings nova que quebra se o
+                // servidor mudar a frase amanhã. Falha ao VERIFICAR não é
+                // prova de invalidez: o boot já hidratou sessão/usuário a
+                // partir do cache local (linhas acima), e não tocar em nada
+                // aqui — nem `signOut()`, nem `activeUserIdRef`, nem
+                // `setSession`/`setUser` — é o que preserva carrinho, vistos
+                // recentemente, comparados e CEP de frete até a próxima
+                // tentativa (próximo boot ou evento do listener). Isto
+                // também cobre o caso OFFLINE: `supabase.auth.signOut()`
+                // devolve erro de rede SEM chamar `_removeSession()` (ver
+                // GoTrueClient.js:3357-3376 — só limpa a sessão local se o
+                // servidor confirmou, ou se o erro foi 404/401/403), então a
+                // pessoa continua logada; ao NÃO entrar mais no `else` de
+                // `if (verifiedUser)` abaixo para este erro,
+                // `activeUserIdRef.current` também não é zerado por engano,
+                // e o estado não fica desencontrado do que a UI mostra.
+                //
+                // CONTA-02b (auditoria de 26/08/2026) — 429 (rate limit) NÃO
+                // cai em nenhum dos dois ramos acima: não é 403/"not
+                // found"/"Invalid token" (não é `isDefinitivelyInvalid`), e
+                // não está em `NETWORK_ERROR_CODES` (500-504, 520-530 —
+                // node_modules/@supabase/auth-js/dist/module/lib/fetch.js:
+                // 21-32), então o SDK lança `AuthApiError(429)`, não
+                // `AuthRetryableFetchError`. Sem este ramo, o mesmo `else`
+                // de `if (verifiedUser)` chamava `signOut()` para "estou
+                // sendo limitado por excesso de chamadas" — gatilho real:
+                // várias abas ou recargas rápidas contra `GET /user`. Mesma
+                // classificação ESTRUTURAL (`isAuthApiError` +
+                // `.status`, node_modules/@supabase/auth-js/dist/module/
+                // lib/errors.js:41-50), mesmo princípio: não consigo
+                // verificar não pode significar sessão inválida.
+                const isRateLimited =
+                  isAuthApiError(verifyError) && verifyError.status === 429;
+
+                if (isAuthRetryableFetchError(verifyError) || isRateLimited) {
+                  console.warn(
+                    "[Auth] Session verification inconclusive (network/server error or rate limited). Keeping cached session.",
+                  );
                   return;
                 }
               }
