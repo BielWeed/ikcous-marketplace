@@ -45,6 +45,7 @@ const pedidoBase: Order = {
   status: "pending",
   createdAt: new Date(0).toISOString(),
   updatedAt: new Date(0).toISOString(),
+  cancelledAfterShipping: false,
 };
 
 let pedidoAtual: Order = pedidoBase;

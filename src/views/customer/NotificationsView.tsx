@@ -30,8 +30,16 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
     try {
       const date = new Date(dateStr);
       const now = new Date();
-      const diffTime = Math.abs(now.getTime() - date.getTime());
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      // "Hoje" e "Ontem" são dias de CALENDÁRIO, não janelas de 24h: aviso
+      // criado às 23:50 de ontem e lido às 00:10 de hoje é de ONTEM, mas a
+      // diferença em milissegundos dá 0 dia e o floor dizia "Hoje às 23:50".
+      // Comparar início do dia resolve; e sem o Math.abs, created_at no
+      // futuro (clock skew) cai no formato completo em vez de "Hoje".
+      const inicioDoDia = (d: Date) =>
+        new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      const diffDays = Math.round(
+        (inicioDoDia(now) - inicioDoDia(date)) / (1000 * 60 * 60 * 24),
+      );
 
       if (diffDays === 0) {
         return `Hoje às ${date.toLocaleTimeString("pt-BR", {

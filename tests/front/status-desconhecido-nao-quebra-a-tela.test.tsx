@@ -52,6 +52,7 @@ const pedidoBase: Order = {
   status: "shipping",
   createdAt: new Date(0).toISOString(),
   updatedAt: new Date(0).toISOString(),
+  cancelledAfterShipping: false,
 };
 
 /** Lista compartilhada pelos dois `useOrders` mocados abaixo — cada teste

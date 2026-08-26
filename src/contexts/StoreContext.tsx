@@ -17,32 +17,12 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 
-const defaultStoreConfig: StoreConfig = {
-  freeShippingMin: 350,
-  shippingFee: 15,
-  whatsappNumber: "34999999999",
-  shareText: "Olha que achei na IKCOUS!",
-  businessHours: "Seg-Sáb: 9h às 18h",
-  enableReviews: true,
-  enableCoupons: true,
-  primaryColor: "#000000",
-  themeMode: "light",
-  realTimeSalesAlerts: true,
-  pushMarketingEnabled: false,
-  // originCep NÃO tem reserva de propósito. Ele valia "38500-000", e isso fazia
-  // toda loja que nunca informou de onde despacha calcular frete a partir de
-  // Monte Carmelo, calada. Sem valor = a loja não disse, e quem consome trata isso.
-  shippingProvider: "flat_fee",
-  enabledShippingMethods: ["sedex", "pac"],
-  shippingCoverage: "national",
-  localDeliveryFee: 10,
-  localCepRange: "",
-  homeSections: [
-    { id: "new_arrivals", title: "Últimos Lançamentos", active: true },
-    { id: "offers", title: "Ofertas Imperdíveis", active: true },
-    { id: "bestsellers", title: "Destaques em Alta", active: true },
-  ],
-};
+// Exportado porque a regra de cor efetiva (abaixo) é o dono único do contrato:
+// quem precisa decidir "cor do banco x semente do build" pergunta aqui —
+// App.tsx (meta theme-color) e o efeito de --primary deste arquivo.
+// (definição movida para src/config/cor-da-loja.ts — ver motivo lá)
+import { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
+export { corPrimariaEfetiva, defaultStoreConfig } from "@/config/cor-da-loja";
 
 interface StoreContextType {
   config: StoreConfig;
@@ -238,6 +218,24 @@ function valorFoiGravado(
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
+// Contrato de identidade do shareText (só na LEITURA, não é migration): o
+// texto default histórico ("Olha que achei na IKCOUS!", nunca customizado
+// pela loja) cita o nome da loja QUANDO o banco tem um (store_name). Sem
+// store_name, o texto volta cru: a igualdade byte a byte com o default é o
+// que impede o mount de gravar config "nova" no DataVault sem nada ter
+// mudado (medido: compor com branding.appName quebrava essa igualdade e
+// disparava um put a cada primeiro carregamento). Texto customizado nunca
+// é sobrescrito; o default gravado NO BANCO (dbInsert) segue o histórico.
+function componhaShareText(
+  bruto: string | undefined,
+  storeName: string | undefined,
+): string {
+  const texto = bruto ?? defaultStoreConfig.shareText;
+  if (texto !== defaultStoreConfig.shareText) return texto;
+  if (!storeName) return texto;
+  return `Olha que achei na ${storeName}!`;
+}
+
 export function StoreProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -265,13 +263,22 @@ export function StoreProvider({
         if (cachedConfig && !cancelled) {
           const { id: _id, ...configData } = cachedConfig;
           const merged = { ...defaultStoreConfig, ...configData };
+          // shareText com nome efetivo — mesmo contrato do mapConfig (o
+          // cache pode ter texto cru gravado pelo realtimeSyncEngine).
+          merged.shareText = componhaShareText(
+            merged.shareText,
+            merged.storeName,
+          );
           setConfig(merged);
           setIsLoaded(true);
-          // Apply branding immediately
-          if (merged.primaryColor) {
+          // Apply branding immediately — também pela REGRA (dono único): o
+          // cache pode carregar config sem cor (ou o lojista escolheu preto,
+          // que é real e passa). Nada aplica valor cru por fora daqui.
+          const corCache = corPrimariaEfetiva(merged);
+          if (corCache) {
             document.documentElement.style.setProperty(
               "--primary",
-              hexToTailwindHsl(merged.primaryColor),
+              hexToTailwindHsl(corCache),
             );
           }
           // ADMIN-100 (#102): a classe `dark` (e o atributo `data-theme-mode`)
@@ -297,7 +304,7 @@ export function StoreProvider({
           err,
         );
         try {
-          const vault = vaultRef.current || (await DataVault.init());
+          const vault = await DataVault.init();
           if (vault) {
             const stores: import("@/lib/dataVault").StoreName[] = [
               "products",
@@ -329,7 +336,7 @@ export function StoreProvider({
     };
   }, []);
 
-  const applyBranding = useCallback((primaryColor?: string) => {
+  const applyBranding = useCallback((primaryColor?: string | null) => {
     if (primaryColor) {
       document.documentElement.style.setProperty(
         "--primary",
@@ -343,10 +350,24 @@ export function StoreProvider({
   // efeito de loadFromVault acima) — App.tsx já reage a `config.themeMode`
   // pelo mesmo contexto, então remover a duplicata aqui não deixa nenhum
   // dos três valores de themeMode (light/dark/glass) sem quem aplique.
+  //
+  // CONTRATO DE COR — precedência: o branding do build (applyBranding em
+  // main.tsx) é a semente anti-flash no :root; o primary_color do BANCO vence
+  // quando a config chega OU muda — e vence SEMPRE pela regra de
+  // corPrimariaEfetiva, em TODOS os caminhos (cache, fetch, updateConfig,
+  // realtime). Sentinela de "sem valor" é AUSÊNCIA: sem primary_color nem no
+  // default nem gravado pelo app, ausente = fica a semente do build; um valor
+  // presente é sempre real, inclusive #000000 (preto é escolha legítima).
+  // Este efeito garante a re-aplicação em qualquer mudança posterior.
   useEffect(() => {
-    if (config.primaryColor) {
-      applyBranding(config.primaryColor);
-    }
+    // Regra mora em corPrimariaEfetiva — dono único (o meta theme-color do
+    // App.tsx consulta o mesmo lugar).
+    const cor = corPrimariaEfetiva(config);
+    if (cor) applyBranding(cor);
+    // `config` inteiro não entra de propósito: a única entrada reativa da
+    // regra é `config.primaryColor` (a comparação com o default é contra
+    // constante estável). A regra não enxerga dentro da helper.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.primaryColor, applyBranding]);
 
   const mapConfig = useCallback((data: any): StoreConfig => {
@@ -371,6 +392,7 @@ export function StoreProvider({
       "localDeliveryFee",
       defaultStoreConfig.localDeliveryFee,
     );
+    const storeName = getVal("store_name", "storeName", undefined);
 
     return {
       freeShippingMin: Number(freeMin),
@@ -380,10 +402,9 @@ export function StoreProvider({
         "whatsappNumber",
         defaultStoreConfig.whatsappNumber,
       ),
-      shareText: getVal(
-        "share_text",
-        "shareText",
-        defaultStoreConfig.shareText,
+      shareText: componhaShareText(
+        getVal("share_text", "shareText", defaultStoreConfig.shareText),
+        storeName,
       ),
       businessHours: getVal(
         "business_hours",
@@ -401,11 +422,7 @@ export function StoreProvider({
         defaultStoreConfig.enableCoupons,
       ),
       logoUrl: getVal("logo_url", "logoUrl", undefined),
-      primaryColor: getVal(
-        "primary_color",
-        "primaryColor",
-        defaultStoreConfig.primaryColor,
-      ),
+      primaryColor: getVal("primary_color", "primaryColor", undefined),
       themeMode: getVal(
         "theme_mode",
         "themeMode",
@@ -422,7 +439,7 @@ export function StoreProvider({
         defaultStoreConfig.pushMarketingEnabled,
       ),
       minAppVersion: getVal("min_app_version", "minAppVersion", undefined),
-      storeName: getVal("store_name", "storeName", undefined),
+      storeName,
       storeCity: getVal("store_city", "storeCity", undefined),
       storeState: getVal("store_state", "storeState", undefined),
       originCep: getVal("origin_cep", "originCep", undefined),
@@ -476,7 +493,13 @@ export function StoreProvider({
             business_hours: defaultStoreConfig.businessHours,
             enable_reviews: defaultStoreConfig.enableReviews,
             enable_coupons: defaultStoreConfig.enableCoupons,
-            primary_color: defaultStoreConfig.primaryColor,
+            // NULL EXPLÍCITO: a coluna tem DEFAULT '#000000' no banco
+            // (baseline_do_schema_vivo, seção store_config) — omitir o campo
+            // fazia o POSTGRES gravar preto calado, e na regra nova preto é
+            // preto de verdade: a loja de marca colorida renderizaria PRETA
+            // por cima da cor do build. NULL vence o DEFAULT da coluna: a
+            // linha nasce SEM cor, e ausente quer dizer ausente.
+            primary_color: null,
             theme_mode: defaultStoreConfig.themeMode,
             real_time_sales_alerts: defaultStoreConfig.realTimeSalesAlerts,
             push_marketing_enabled: defaultStoreConfig.pushMarketingEnabled,
@@ -512,7 +535,7 @@ export function StoreProvider({
                 .catch(() => {});
               return mapped;
             });
-            applyBranding(mapped.primaryColor);
+            applyBranding(corPrimariaEfetiva(mapped));
           }
         }
       } else if (data) {
@@ -528,12 +551,24 @@ export function StoreProvider({
             return (mapped as any)[k] === (prev as any)[k];
           });
           if (isIdentical) return prev;
-          vaultRef.current
-            ?.put("store_config", { id: "singleton", ...mapped })
-            .catch(() => {});
+          // Sempre pelo singleton: após um onversionchange (outra aba subiu a
+          // versão) a conexão que vaultRef segurava está FECHADA — init()
+          // devolve a viva/reaberta. Erro LOGADO: escrita engolida calada é
+          // como o cache offline morreu invisível (defeito confirmado na
+          // revisão cruzada 20260825-1050).
+          DataVault.init()
+            .then((vault) =>
+              vault.put("store_config", { id: "singleton", ...mapped }),
+            )
+            .catch((err) =>
+              console.warn(
+                "[StoreContext] config não gravada no cache offline:",
+                err,
+              ),
+            );
           return mapped;
         });
-        applyBranding(mapped.primaryColor);
+        applyBranding(corPrimariaEfetiva(mapped));
       }
     } catch (err) {
       console.error("[StoreContext] Config error:", err);
@@ -590,12 +625,20 @@ export function StoreProvider({
         setProducts((prev) => {
           if (JSON.stringify(prev) === JSON.stringify(mapped)) return prev;
           // Persist to DataVault (non-blocking)
-          vaultRef.current
-            ?.replaceAll("products", mapped)
-            .then(() => {
-              vaultRef.current?.setLastSync("products");
+          // Pelo singleton e com erro logado — mesma regra dos puts de config
+          // (revisão 20260825-1050): conexão fechada por upgrade de outra aba
+          // reabre no init(), e falha de escrita não pode ser silêncio.
+          DataVault.init()
+            .then(async (vault) => {
+              await vault.replaceAll("products", mapped);
+              await vault.setLastSync("products");
             })
-            .catch(() => {});
+            .catch((err) =>
+              console.warn(
+                "[StoreContext] produtos não gravados no cache offline:",
+                err,
+              ),
+            );
           return mapped;
         });
       } else {
@@ -716,12 +759,27 @@ export function StoreProvider({
         setConfig((prev) => {
           const newConfig = { ...prev, ...updates };
           // Persist to DataVault
-          vaultRef.current
-            ?.put("store_config", { id: "singleton", ...newConfig })
-            .catch(() => {});
+          // Pelo singleton e com erro logado (revisão 20260825-1050).
+          DataVault.init()
+            .then((vault) =>
+              vault.put("store_config", { id: "singleton", ...newConfig }),
+            )
+            .catch((err) =>
+              console.warn(
+                "[StoreContext] config não gravada no cache offline:",
+                err,
+              ),
+            );
           return newConfig;
         });
-        if (updates.primaryColor) applyBranding(updates.primaryColor);
+        // Aplica pela REGRA também no caminho do admin: valor explícito do
+        // formulário passa (inclusive #000000 = preto escolhido); ausente
+        // não pinta nada. Nenhum caminho aplica cru por fora do dono único.
+        applyBranding(
+          corPrimariaEfetiva({
+            primaryColor: updates.primaryColor,
+          } as StoreConfig),
+        );
         toast.success("Configurações salvas");
         return true;
       } catch (err) {
@@ -778,7 +836,7 @@ export function StoreProvider({
             );
           }
           setConfig(mapped);
-          applyBranding(mapped.primaryColor);
+          applyBranding(corPrimariaEfetiva(mapped));
         }
       },
       [mapConfig, applyBranding, config.minAppVersion],
@@ -788,31 +846,33 @@ export function StoreProvider({
   useSyncListener(
     ["products"],
     useCallback(async () => {
-      // Re-read products from DataVault when Realtime updates them
-      if (vaultRef.current) {
-        // SEM guarda de "lista vazia": ela engolia o caso em que a lista
-        // ficou vazia, e a vitrine seguia mostrando o produto excluído --
-        // com preço e estoque -- até alguém recarregar a página.
-        //
-        // Mas lista vazia tem DOIS significados: pode ser a lojista
-        // excluindo o ÚLTIMO produto em outro dispositivo (esvaziar é o
-        // certo) OU uma leitura que falhou (conexão fechada por outra aba
-        // durante um purge, store ausente...) -- o `catch` de `getAll`
-        // resolve `[]` nos dois casos. Por isso `getAllOrThrow`, que
-        // REJEITA em vez de mascarar a falha como "vazio de verdade".
-        try {
-          const freshProducts =
-            await vaultRef.current.getAllOrThrow<Product>("products");
-          setProducts(freshProducts);
-        } catch (err) {
-          // Leitura do cofre falhou -- manter o que já está na tela é
-          // melhor que esvaziar a vitrine por causa de uma falha de
-          // leitura.
-          console.warn(
-            "[StoreContext] Falha ao reler o cofre; mantendo a lista atual:",
-            err,
-          );
-        }
+      // Re-read products from DataVault when Realtime updates them.
+      // Pelo singleton (revisão 20260825-1050): se outra aba subiu a versão
+      // do banco, a conexão antiga está fechada — init() reabre e a releitura
+      // deste listener volta a funcionar sem recarregar a página.
+      //
+      // SEM guarda de "lista vazia": ela engolia o caso em que a lista
+      // ficou vazia, e a vitrine seguia mostrando o produto excluído --
+      // com preço e estoque -- até alguém recarregar a página.
+      //
+      // Mas lista vazia tem DOIS significados: pode ser a lojista
+      // excluindo o ÚLTIMO produto em outro dispositivo (esvaziar é o
+      // certo) OU uma leitura que falhou (conexão fechada por outra aba
+      // durante um purge, store ausente...) -- o `catch` de `getAll`
+      // resolve `[]` nos dois casos. Por isso `getAllOrThrow`, que
+      // REJEITA em vez de mascarar a falha como "vazio de verdade".
+      try {
+        const vault = await DataVault.init();
+        const freshProducts = await vault.getAllOrThrow<Product>("products");
+        setProducts(freshProducts);
+      } catch (err) {
+        // Leitura do cofre falhou -- manter o que já está na tela é
+        // melhor que esvaziar a vitrine por causa de uma falha de
+        // leitura.
+        console.warn(
+          "[StoreContext] Falha ao reler o cofre; mantendo a lista atual:",
+          err,
+        );
       }
     }, []),
   );

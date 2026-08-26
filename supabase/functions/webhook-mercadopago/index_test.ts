@@ -897,8 +897,17 @@ Deno.test("type DESCONHECIDO + id em forma de order -> consulta a Orders API (n�
   console.error = (...args: unknown[]) => {
     chamadasErro.push(args);
   };
+  // `enviarComprovante` no-op: este teste é sobre ROTEAMENTO (type
+  // desconhecido -> forma do id), não sobre o comprovante. O resultado é
+  // 'pago', então o gate real do handler chamaria o comprovante de verdade
+  // — que, sem SMTP configurado no ambiente de teste, logaria um SEGUNDO
+  // console.error ("sem_remetente") e quebraria a contagem exata abaixo.
+  // Mesmo papel que o antigo stub padrão de `.functions.invoke` cumpria
+  // silenciosamente antes do redesenho (25/08/2026): isolar testes que não
+  // são sobre o comprovante do ruído dele.
+  const enviarComprovante = async (_args: unknown) => {};
   try {
-    const resposta = await handler(req, { supabase, fetchImpl });
+    const resposta = await handler(req, { supabase, fetchImpl, enviarComprovante });
 
     assertEquals(resposta.status, 200);
     assertEquals(chamadas.some((u) => u.includes("/v1/orders/")), true, "deveria ter consultado /v1/orders/");
@@ -1310,4 +1319,388 @@ Deno.test("rota payment: status 'refunded' (estornado) com gateway_payment_id gr
   assertEquals(registro.chamadasRpc.length, 1);
   assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_GRAVADO_NO_BANCO);
   assertEquals(registro.chamadasRpc[0].args.p_status, "estornado");
+});
+
+// --- defeito medido em 25/08/2026: quem paga PIX pelo site nunca é avisado
+// de que o pagamento entrou. `useOrders.ts:1330-1332` promete "quem envia
+// nesse caminho é o webhook, quando o pagamento confirma" — mas o webhook
+// nunca chamava `send-order-confirmation`. Estes testes prendem essa
+// promessa: o comprovante ao CLIENTE dispara SÓ em 'pago' (1 dos 9
+// retornos), nunca nos outros oito, e uma falha de envio não pode derrubar
+// o webhook (o MP reenviaria em laço).
+//
+// REDESENHO DE 25/08/2026: `enviarComprovante` (deps do handler) continua
+// existindo como o ponto de injeção para testes — só o que ele faz POR
+// PADRÃO mudou. Antes chamava `supabase.functions.invoke("send-order-
+// confirmation", ...)` por HTTP, com um header `Authorization` forçado.
+// Agora chama `enviarComprovantePedido` (`_shared/comprovante.ts`) DIRETO,
+// por import — sem HTTP, sem header, sem depender de qual chave
+// (`SUPABASE_SECRET_KEYS` vs `SUPABASE_SERVICE_ROLE_KEY`) o painel do
+// Supabase tem hoje. Os testes que provavam o mecanismo HTTP antigo (header
+// `Authorization` com a chave legada, `SUPABASE_SERVICE_ROLE_KEY` ausente)
+// saíram: não há mais header nenhum para forçar. No lugar entrou um teste
+// que mata o mutante de REGREDIR para o mecanismo antigo (mais abaixo,
+// "não depende de SUPABASE_SECRET_KEYS nem de invoke HTTP").
+//
+// ⚠️ 'pago_apos_expirar' fica de FORA de propósito (achado de revisão de
+// contexto limpo, 25/08/2026, mantido no redesenho) — diferente do push ao
+// lojista, que sai nos DOIS. `enviarComprovantePedido` só sabe ler o
+// literal 'pago'; com 'pago_apos_expirar' ela mentiria duas vezes: diria
+// que o pagamento está "aguardando confirmação" (já foi confirmado) e que
+// o pedido "entra na fila de separação" (segue cancelado, estoque já
+// devolvido). E não há segunda chance: a reserva de envio é única e
+// definitiva.
+
+Deno.test("resultado 'pago' -> dispara TAMBÉM o comprovante ao cliente, com o orderId certo", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+  });
+  const enviarPush = async (_args: unknown) => {};
+  const chamadasComprovante: unknown[] = [];
+  const enviarComprovante = async (args: unknown) => {
+    chamadasComprovante.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush, enviarComprovante });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadasComprovante.length, 1);
+  assertEquals((chamadasComprovante[0] as { orderId: string }).orderId, UUID_PEDIDO);
+});
+
+Deno.test("resultado 'pago_apos_expirar' -> NÃO dispara o comprovante ao cliente (enviarComprovantePedido só conhece 'pago' e mentiria duas vezes)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago_apos_expirar", pedido, registro });
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+  });
+  const enviarPush = async (_args: unknown) => {};
+  const chamadasComprovante: unknown[] = [];
+  const enviarComprovante = async (args: unknown) => {
+    chamadasComprovante.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush, enviarComprovante });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(
+    chamadasComprovante.length,
+    0,
+    "'pago_apos_expirar' não deveria disparar o comprovante — o pedido segue cancelado e o texto mentiria",
+  );
+});
+
+Deno.test("comprovante dispara em exatamente 1 dos 9 retornos possíveis da RPC — só 'pago' (o push sai também em 'pago_apos_expirar', o comprovante não)", async () => {
+  const NOVE_RETORNOS = [
+    "pago",
+    "pago_apos_expirar",
+    "ja_pago",
+    "recusado",
+    "estornado",
+    "ja_estornado",
+    "divergente",
+    "inexistente",
+    "ignorado",
+  ];
+  const DISPARAM = new Set(["pago"]);
+
+  for (const resultado of NOVE_RETORNOS) {
+    const registro = { chamadasRpc: [] };
+    const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+    const supabase = clienteFalso({ rpcResultado: resultado, pedido, registro });
+    const req = await requisicaoAssinada("999");
+    const fetchImpl = fetchConsulta(200, {
+      id: 999,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+    });
+    const enviarPush = async (_args: unknown) => {};
+    const chamadasComprovante: unknown[] = [];
+    const enviarComprovante = async (args: unknown) => {
+      chamadasComprovante.push(args);
+    };
+
+    await handler(req, { supabase, fetchImpl, enviarPush, enviarComprovante });
+
+    const esperado = DISPARAM.has(resultado) ? 1 : 0;
+    assertEquals(
+      chamadasComprovante.length,
+      esperado,
+      `resultado="${resultado}" deveria disparar ${esperado} comprovante(s)`,
+    );
+  }
+});
+
+// --- o caminho REAL (deps.enviarComprovante não injetado): agora chama
+// enviarComprovantePedido DIRETO, sem HTTP -----------------------------------
+
+Deno.test("enviarComprovantePedido lança -> webhook ainda responde 200, e loga o erro (falha nunca sobe)", async () => {
+  // Usa a implementação REAL (não injeta deps.enviarComprovante), para provar
+  // que o catch de `dispararComprovanteReal` — não o teste — é o que impede
+  // a falha de subir. Sem isso, uma exceção inesperada dentro do miolo faria
+  // o handler devolver 500 e o MP reenviaria em laço um pagamento que já foi
+  // registrado com sucesso.
+  //
+  // `supabase.rpc` lança direto (em vez de devolver `{error}`) para simular
+  // uma falha que `enviarComprovantePedido` não trata internamente — o
+  // ponto de prova aqui é o `catch` de `dispararComprovanteReal`, não o
+  // tratamento de erro do miolo (que já tem sua própria suíte em
+  // `_shared/comprovante_test.ts`).
+  Deno.env.set("SMTP_USER", "loja@exemplo.com");
+  Deno.env.set("SMTP_PASSWORD", "fixture-nao-e-credencial-real");
+  try {
+    const registro = { chamadasRpc: [] };
+    const pedido = {
+      id: UUID_PEDIDO,
+      customer_name: "Maria",
+      customer_data: { email: "cliente@exemplo.com" },
+      total: 149.9,
+      total_amount: null,
+    };
+    const supabase = {
+      rpc: async (nome: string, args: Record<string, unknown>) => {
+        registro.chamadasRpc.push({ args });
+        if (nome === "confirmar_pagamento") return { data: "pago", error: null };
+        if (nome === "reivindicar_email_de_confirmacao") {
+          throw new Error("conexão com o banco caiu no meio da reserva");
+        }
+        return { data: null, error: null };
+      },
+      from(tabela: string) {
+        return {
+          select(_cols: string) {
+            return {
+              eq(_col: string, _val: unknown) {
+                return { maybeSingle: async () => ({ data: tabela === "marketplace_orders" ? pedido : null, error: null }) };
+              },
+            };
+          },
+        };
+      },
+    };
+    const req = await requisicaoAssinada("999");
+    const fetchImpl = fetchConsulta(200, {
+      id: ID_PAGAMENTO_DO_MP,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+    });
+    const enviarPush = async (_args: unknown) => {};
+    const chamadasErro: unknown[][] = [];
+    const console_error = console.error;
+    console.error = (...args: unknown[]) => {
+      chamadasErro.push(args);
+    };
+
+    let resposta: Response;
+    try {
+      resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+    } finally {
+      console.error = console_error;
+    }
+
+    assertEquals(resposta.status, 200);
+    assertEquals(
+      chamadasErro.some((args) =>
+        args.some((v) => typeof v === "string" && v.includes("comprovante")),
+      ),
+      true,
+      "deveria logar console.error mencionando o comprovante",
+    );
+  } finally {
+    Deno.env.delete("SMTP_USER");
+    Deno.env.delete("SMTP_PASSWORD");
+  }
+});
+
+Deno.test("enviarComprovantePedido devolve { ok: false } SEM lançar (ex.: SMTP não configurado) -> webhook responde 200, e loga o motivo", async () => {
+  // `enviarComprovantePedido` (`_shared/comprovante.ts`) NUNCA lança para os
+  // desfechos esperados — devolve `{ ok: false, motivo }` (ver
+  // `_shared/comprovante_test.ts`). Este teste prende que
+  // `dispararComprovanteReal` INSPECIONA esse retorno e loga o motivo, em
+  // vez de tratar `{ ok: false }` como sucesso silencioso — sem ele, um
+  // mutante que apagasse o `if (!desfecho.ok)` sobreviveria: o webhook
+  // continuaria respondendo 200 (o catch nem entraria em jogo), mas nenhum
+  // log diria por que o cliente não recebeu o comprovante.
+  //
+  // SMTP_USER/SMTP_PASSWORD ficam DELETADOS de propósito (não setados): é
+  // o que faz `remetenteConfigurado()` real devolver `false` e
+  // `enviarComprovantePedido` devolver `{ ok: false, motivo: 'sem_remetente' }`
+  // SEM tocar rede nenhuma — nem o `supabase` fake precisa implementar nada
+  // além do necessário para `confirmar_pagamento`.
+  const valorUser = Deno.env.get("SMTP_USER");
+  const valorPass = Deno.env.get("SMTP_PASSWORD");
+  Deno.env.delete("SMTP_USER");
+  Deno.env.delete("SMTP_PASSWORD");
+  try {
+    const registro = { chamadasRpc: [] };
+    const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+    const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+    const req = await requisicaoAssinada("999");
+    const fetchImpl = fetchConsulta(200, {
+      id: ID_PAGAMENTO_DO_MP,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+    });
+    const enviarPush = async (_args: unknown) => {};
+    const chamadasErro: unknown[][] = [];
+    const console_error = console.error;
+    console.error = (...args: unknown[]) => {
+      chamadasErro.push(args);
+    };
+
+    let resposta: Response;
+    try {
+      resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+    } finally {
+      console.error = console_error;
+    }
+
+    assertEquals(resposta.status, 200);
+    const logComMotivo = chamadasErro.find((args) =>
+      args.some((v) => typeof v === "string" && v.includes("comprovante ao cliente não enviado")),
+    );
+    assertEquals(logComMotivo !== undefined, true, "deveria logar que o comprovante não foi enviado");
+    const [, campos] = (logComMotivo ?? []) as [string, Record<string, unknown>];
+    assertEquals(campos?.motivo, "sem_remetente");
+  } finally {
+    if (valorUser !== undefined) Deno.env.set("SMTP_USER", valorUser);
+    if (valorPass !== undefined) Deno.env.set("SMTP_PASSWORD", valorPass);
+  }
+});
+
+Deno.test("por padrão (sem deps.enviarComprovante), chama enviarComprovantePedido DIRETO — a reserva do banco (reivindicar_email_de_confirmacao) é alcançada com o orderId certo", async () => {
+  Deno.env.set("SMTP_USER", "loja@exemplo.com");
+  Deno.env.set("SMTP_PASSWORD", "fixture-nao-e-credencial-real");
+  try {
+    const chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> = [];
+    const pedido = {
+      id: UUID_PEDIDO,
+      customer_name: "Maria",
+      customer_data: { email: "cliente@exemplo.com" },
+      total: 149.9,
+      total_amount: null,
+    };
+    const supabase = {
+      rpc: async (nome: string, args: Record<string, unknown>) => {
+        chamadasRpc.push({ nome, args });
+        if (nome === "confirmar_pagamento") return { data: "pago", error: null };
+        // "já enviado": para o teste, o que importa é provar que a RPC de
+        // reserva foi ALCANÇADA com o orderId certo — não completar o envio
+        // (que tocaria SMTP de verdade).
+        if (nome === "reivindicar_email_de_confirmacao") return { data: false, error: null };
+        return { data: null, error: null };
+      },
+      from(tabela: string) {
+        return {
+          select(_cols: string) {
+            return {
+              eq(_col: string, _val: unknown) {
+                return { maybeSingle: async () => ({ data: tabela === "marketplace_orders" ? pedido : null, error: null }) };
+              },
+            };
+          },
+        };
+      },
+    };
+    const req = await requisicaoAssinada("999");
+    const fetchImpl = fetchConsulta(200, {
+      id: ID_PAGAMENTO_DO_MP,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+    });
+    const enviarPush = async (_args: unknown) => {};
+
+    const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+    assertEquals(resposta.status, 200);
+    const chamadaReserva = chamadasRpc.find((c) => c.nome === "reivindicar_email_de_confirmacao");
+    assertEquals(chamadaReserva?.args.p_order_id, UUID_PEDIDO);
+  } finally {
+    Deno.env.delete("SMTP_USER");
+    Deno.env.delete("SMTP_PASSWORD");
+  }
+});
+
+// --- defeito medido em 25/08/2026 (redesenho): mata o mutante de REGREDIR
+// para o mecanismo antigo (supabase.functions.invoke + header Authorization
+// forçado com uma chave lida do ambiente). O teste NÃO prova por VALOR (a
+// leitura de uma variável específica) — prova por MECANISMO: o fake de
+// supabase abaixo não define `.functions` nenhum, então se o código
+// regredisse para `supabase.functions.invoke(...)`, a chamada lançaria
+// "is not a function", o catch de `dispararComprovanteReal` engoliria o
+// erro, e a reserva (`reivindicar_email_de_confirmacao`) JAMAIS seria
+// alcançada. `SUPABASE_SECRET_KEYS` é setada com um valor DISTINTO e nunca
+// deveria ser lida por este caminho — se o mutante reintroduzisse a leitura
+// da chave, o valor lido seria justamente este, mas quem denuncia a
+// regressão é a ausência da chamada à reserva, não o valor em si.
+
+Deno.test("comprovante chama DIRETO a reserva no supabase do webhook — não depende de SUPABASE_SECRET_KEYS nem de invoke HTTP", async () => {
+  const valorAnterior = Deno.env.get("SUPABASE_SECRET_KEYS");
+  Deno.env.set(
+    "SUPABASE_SECRET_KEYS",
+    JSON.stringify({ default: "chave-nova-que-este-caminho-nao-deveria-ler" }),
+  );
+  Deno.env.set("SMTP_USER", "loja@exemplo.com");
+  Deno.env.set("SMTP_PASSWORD", "fixture-nao-e-credencial-real");
+  try {
+    const chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> = [];
+    const pedido = {
+      id: UUID_PEDIDO,
+      customer_name: "Maria",
+      customer_data: { email: "cliente@exemplo.com" },
+      total: 149.9,
+      total_amount: null,
+    };
+    const supabase = {
+      // Sem `.functions` de propósito — ver o comentário acima.
+      rpc: async (nome: string, args: Record<string, unknown>) => {
+        chamadasRpc.push({ nome, args });
+        if (nome === "confirmar_pagamento") return { data: "pago", error: null };
+        if (nome === "reivindicar_email_de_confirmacao") return { data: false, error: null };
+        return { data: null, error: null };
+      },
+      from(tabela: string) {
+        return {
+          select(_cols: string) {
+            return {
+              eq(_col: string, _val: unknown) {
+                return { maybeSingle: async () => ({ data: tabela === "marketplace_orders" ? pedido : null, error: null }) };
+              },
+            };
+          },
+        };
+      },
+    };
+    const req = await requisicaoAssinada("999");
+    const fetchImpl = fetchConsulta(200, {
+      id: ID_PAGAMENTO_DO_MP,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+    });
+    const enviarPush = async (_args: unknown) => {};
+
+    const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+    assertEquals(resposta.status, 200);
+    assertEquals(
+      chamadasRpc.some((c) => c.nome === "reivindicar_email_de_confirmacao"),
+      true,
+      "a reserva do banco precisa ser alcançada sem passar por HTTP nem por header de autenticação",
+    );
+  } finally {
+    if (valorAnterior === undefined) Deno.env.delete("SUPABASE_SECRET_KEYS");
+    else Deno.env.set("SUPABASE_SECRET_KEYS", valorAnterior);
+    Deno.env.delete("SMTP_USER");
+    Deno.env.delete("SMTP_PASSWORD");
+  }
 });

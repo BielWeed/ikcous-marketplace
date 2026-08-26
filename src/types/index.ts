@@ -172,6 +172,10 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
   trackingCode?: string;
+  /** true quando o pedido já estava enviado no momento do cancelamento. */
+  cancelledAfterShipping: boolean;
+  /** quando o lojista confirmou que o produto voltou. null = ainda não voltou. */
+  returnedToSellerAt?: string | null;
 }
 
 export interface Review {

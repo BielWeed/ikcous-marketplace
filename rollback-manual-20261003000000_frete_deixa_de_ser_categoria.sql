@@ -1,0 +1,72 @@
+-- ROLLBACK MANUAL de 20261003000000_frete_deixa_de_ser_categoria.sql
+--
+-- Restaura a definicao anterior VERBATIM (baseline): a linha sintetica
+-- 'Frete' volta a entrar na rosca de categorias. Custo declarado: o
+-- rotulo volta a mentir que frete e categoria de produto (o defeito do
+-- achado 9 retorna). Sem dado envolvido - so o retorno da linha calculada.
+-- NOTA DE PAR (revisao 2350): o front do par e o 94b36a1 (nota do
+-- grafico). Este rollback SEM o front revertido junto religa a mentira
+-- NA DIRECAO OPOSTA - a nota "sem frete" negaria a fatia Frete desenhada
+-- ao lado. Rollback do banco so com o front revertido junto.
+
+-- RESTAURA: a definicao da get_category_analytics do baseline (com o
+-- UNION ALL da linha sintetica 'Frete'). NAO RESTAURA: nada alem - o
+-- rollback e so a definicao antiga da funcao; o FRONT do par (a nota
+-- do grafico) tem que ser revertido JUNTO (nota de par acima).
+-- ALCANCE: so-definicao-de-funcao. Sem DML. Sem view. Sem policy.
+
+-- CORRECAO (fila 1935, item 1/2): CREATE OR REPLACE, nunca CREATE cru
+-- nem DROP+CREATE - a funcao JA EXISTE no banco (CREATE falharia no
+-- apply) e o OR REPLACE preserva os grants de EXECUTE (anon/authenticated)
+-- que um DROP+CREATE perderia em silencio.
+
+CREATE OR REPLACE FUNCTION public.get_category_analytics("start_date" timestamp with time zone, "end_date" timestamp with time zone) RETURNS TABLE("name" "text", "value" numeric, "orders" bigint, "avg_ticket" numeric)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+BEGIN
+    -- Guarda de autorização: SECURITY DEFINER ignora o RLS das três tabelas
+    -- abaixo, então quem autoriza é esta linha.
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Acesso negado: privilégios de administrador necessários.';
+    END IF;
+
+    RETURN QUERY
+    WITH category_sums AS (
+        SELECT
+            COALESCE(p.categoria, 'Geral')::text as name,
+            SUM(oi.price * oi.quantity)::numeric as value,
+            COUNT(DISTINCT o.id)::bigint as orders,
+            CASE
+                WHEN COUNT(DISTINCT o.id) > 0 THEN
+                    ROUND((SUM(oi.price * oi.quantity) / COUNT(DISTINCT o.id))::numeric, 2)
+                ELSE 0
+            END as avg_ticket
+        FROM public.marketplace_order_items oi
+        JOIN public.produtos p ON oi.product_id = p.id
+        JOIN public.marketplace_orders o ON oi.order_id = o.id
+        WHERE o.created_at >= start_date AND o.created_at <= end_date
+          AND o.status NOT IN ('cancelled', 'returned')
+        GROUP BY COALESCE(p.categoria, 'Geral')
+
+        UNION ALL
+
+        SELECT
+            'Frete'::text as name,
+            SUM(o.shipping)::numeric as value,
+            COUNT(DISTINCT o.id)::bigint as orders,
+            CASE
+                WHEN COUNT(DISTINCT o.id) > 0 THEN
+                    ROUND((SUM(o.shipping) / COUNT(DISTINCT o.id))::numeric, 2)
+                ELSE 0
+            END as avg_ticket
+        FROM public.marketplace_orders o
+        WHERE o.created_at >= start_date AND o.created_at <= end_date
+          AND o.status NOT IN ('cancelled', 'returned')
+          AND COALESCE(o.shipping, 0) > 0
+    )
+    SELECT cs.name, cs.value, cs.orders, cs.avg_ticket
+    FROM category_sums cs
+    ORDER BY cs.value DESC;
+END;
+$$;

@@ -78,6 +78,7 @@ import {
   readKey,
   resumir,
 } from "../_shared/webpush.ts";
+import { enviarComprovantePedido } from "../_shared/comprovante.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -207,6 +208,89 @@ async function disparoPushReal(args: {
 }
 
 /**
+ * Manda ao CLIENTE o comprovante do pedido (PEDIDO-070) chamando DIRETO o
+ * miolo de `send-order-confirmation` — `_shared/comprovante.ts` — em vez de
+ * `supabase.functions.invoke`. É o mesmo movimento que `notify-new-order`
+ * já faz para reusar a `send-push` via `_shared/webpush.ts` (ver o
+ * cabeçalho daquele arquivo): a function de origem não pode ser importada
+ * pelo `index.ts` dela mesma porque chama `serve()` no topo, então o miolo
+ * mora em `_shared` e os dois chamadores importam de lá.
+ *
+ * REDESENHO DE 25/08/2026 — POR QUE NÃO A QUARTA CORREÇÃO NA PORTA HTTP
+ *   O comprovante foi consertado três vezes chamando `send-order-
+ *   confirmation` pela porta pública (desenhada para o navegador): (1) faltava
+ *   a chamada; (2) o texto mentia no pagamento atrasado — incompatibilidade
+ *   de CONTRATO; (3) a chave (JWT novo x legado) — incompatibilidade de
+ *   AUTENTICAÇÃO. As rodadas 2 e 3 são o mesmo defeito com roupa diferente:
+ *   cada volta descobria mais um jeito de a porta HTTP não servir a um
+ *   chamador servidor. A correção não é acertar o contrato da porta pela
+ *   quarta vez — é não passar por ela: chamando a função direto, por
+ *   import, não existe mais fronteira nenhuma para autenticar. Some o HTTP,
+ *   o `verify_jwt`, o header forçado, a chave legada enquistada e a
+ *   dependência do calendário de desligamento das chaves legadas
+ *   (INFRA-260, #126) — não porque a INFRA-260 foi concluída, mas porque
+ *   esta chamada específica deixou de depender dela.
+ *
+ * SÓ PARA `resultado === "pago"` — achado de revisão de contexto limpo,
+ * 25/08/2026, mantido no redesenho. O chamador (mais abaixo) restringe este
+ * disparo a 'pago', mesmo o push ao lojista saindo também para
+ * 'pago_apos_expirar'. Motivo: `enviarComprovantePedido`
+ * (`_shared/comprovante.ts`) só sabe ler o literal 'pago' —
+ * `aguardandoPagamento` compara `payment_status !== 'pago'`, e
+ * 'pago_apos_expirar' cai nesse `true`. Disparar para esse retorno faria o
+ * comprovante mentir DUAS vezes: diria que o pagamento ainda está
+ * "aguardando confirmação" (já foi confirmado — é por isso que chegamos
+ * aqui) e que o pedido "entra na fila de separação" (o pedido segue
+ * `status='cancelled'`, estoque já devolvido; nunca entra em separação). E
+ * não há segunda chance: `reivindicar_email_de_confirmacao` é reserva única
+ * e definitiva, então o e-mail certo nunca poderia ser mandado depois.
+ * Ensinar o comprovante a falar de 'pago_apos_expirar' exige um texto novo
+ * (produto, não engenharia) — fora do escopo deste redesenho, que só troca
+ * COMO a chamada acontece, não o que ela diz.
+ *
+ * A REPETIÇÃO NÃO PRECISA DE TRAVA AQUI
+ *   O MP é reentrante por natureza (reenvia a mesma notificação até receber
+ *   200), mas `enviarComprovantePedido` já reserva o envio com
+ *   `reivindicar_email_de_confirmacao` — um UPDATE condicional atômico em
+ *   que só a primeira chamada ganha (a MESMA trava que já protege o
+ *   caminho do front, chamando a MESMA RPC, sem mudar uma linha dela).
+ *   Reenvio do MP chamando esta função de novo é seguro: a chamada seguinte
+ *   cai em `ja_enviado` e não manda nada. Além disso, esta função só é
+ *   alcançada quando `confirmar_pagamento` (RPC, `FOR UPDATE`) devolve
+ *   'pago' — um reenvio que chegue depois de o pagamento já ter sido
+ *   registrado recebe 'ja_pago' e nem tenta chamar o comprovante de novo
+ *   (ver o teste "push dispara em exatamente 2 dos 9 retornos possíveis").
+ *
+ * Erros aqui NUNCA sobem, pela mesma razão do push (`disparoPushReal`,
+ * acima): o pedido já está 'pago' no banco quando esta função roda, e uma
+ * falha de e-mail não pode virar 500 — isso faria o MP reenviar um evento
+ * que já foi tratado com sucesso. Só loga — tanto a exceção inesperada
+ * (`catch`) quanto o desfecho `{ ok: false, motivo }` que
+ * `enviarComprovantePedido` devolve sem lançar (SMTP não configurado,
+ * pedido sem e-mail, reserva já gasta por outro chamador etc.).
+ */
+async function dispararComprovanteReal(args: {
+  supabase: ReturnType<typeof createClient>;
+  orderId: string;
+}): Promise<void> {
+  const { supabase, orderId } = args;
+  try {
+    const desfecho = await enviarComprovantePedido({ supabase, orderId });
+    if (!desfecho.ok) {
+      console.error(
+        "webhook-mercadopago: comprovante ao cliente não enviado",
+        { orderId, motivo: desfecho.motivo },
+      );
+    }
+  } catch (erro) {
+    console.error(
+      "webhook-mercadopago: falha ao disparar comprovante ao cliente",
+      erro,
+    );
+  }
+}
+
+/**
  * `deps` é a mesma costura da `criar-pagamento` (index.ts:124-135): em
  * produção o `serve()` lá embaixo chama `handler(req)` com um único
  * argumento.
@@ -228,6 +312,7 @@ async function handler(
     supabase?: ReturnType<typeof createClient>;
     fetchImpl?: typeof fetch;
     enviarPush?: typeof disparoPushReal;
+    enviarComprovante?: typeof dispararComprovanteReal;
   } = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -651,6 +736,17 @@ async function handler(
 
     const enviarPush = deps.enviarPush ?? disparoPushReal;
     await enviarPush({ supabase, aviso });
+
+    // PEDIDO-070: o cliente também precisa saber que o pagamento entrou —
+    // mas SÓ em 'pago'. Ver o comentário de `dispararComprovanteReal`,
+    // acima ("SÓ PARA resultado === 'pago'"), para o porquê de
+    // 'pago_apos_expirar' ficar de fora (send-order-confirmation só
+    // conhece o literal 'pago' e mentiria duas vezes) e para a trava
+    // contra duplicidade e o porquê de erro aqui nunca subir.
+    if (resultado === "pago") {
+      const enviarComprovante = deps.enviarComprovante ?? dispararComprovanteReal;
+      await enviarComprovante({ supabase, orderId });
+    }
   } else if (resultado === "divergente" || resultado === "inexistente") {
     // error, não warn: ao contrário dos outros retornos deste laço (ja_pago,
     // ignorado...), estes dois chegam com o pagamento JÁ APROVADO pelo MP —

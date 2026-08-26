@@ -11,7 +11,20 @@ export interface Branding {
   supportContact: string;
 }
 
-export const branding: Branding = brandingData;
+// Identidade por build: env (VITE_*) vence, branding.json é o fallback. Assim
+// TODO consumidor de branding fica parametrizado no build sem editar cada
+// view — outra build do ecossistema troca a marca só pelas envs.
+const env = import.meta.env;
+
+export const branding: Branding = {
+  ...brandingData,
+  appName: env.VITE_APP_NAME ?? brandingData.appName,
+  theme: {
+    primary: env.VITE_BRAND_PRIMARY ?? brandingData.theme.primary,
+    secondary: env.VITE_BRAND_SECONDARY ?? brandingData.theme.secondary,
+    accent: env.VITE_BRAND_ACCENT ?? brandingData.theme.accent,
+  },
+};
 
 // Converte Hex (#RRGGBB) para HSL no formato aceito pelo Tailwind (ex: "240 5.9% 10%")
 export function hexToTailwindHsl(hex: string): string {
@@ -57,6 +70,24 @@ export function hexToTailwindHsl(hex: string): string {
   return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
 }
 
+// CONTRATO DE COR — precedência: o branding (build) acima é a SEMENTE imediata
+// anti-flash no :root (aplicada por main.tsx antes do React montar); o
+// primary_color do BANCO vence quando a config chega ou muda (StoreContext
+// aplica na --primary; App reflete no meta theme-color). Este helper escreve
+// o meta em runtime — cria a tag se ainda não existir.
+export function applyThemeColor(colorHex: string): void {
+  if (typeof document === "undefined") return;
+  let meta: HTMLMetaElement | null = document.querySelector(
+    'meta[name="theme-color"]',
+  );
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.setAttribute("name", "theme-color");
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute("content", colorHex);
+}
+
 // Injeta as configurações de marca no DOM
 export function applyBranding(): void {
   if (typeof document === "undefined") return;
@@ -79,6 +110,10 @@ export function applyBranding(): void {
   if (branding.theme.accent) {
     root.style.setProperty("--accent", hexToTailwindHsl(branding.theme.accent));
   }
+
+  // Semente do contrato de cor também no meta (janela pré-React): o App
+  // assume depois com a cor efetiva (banco > build).
+  applyThemeColor(branding.theme.primary);
 
   // 2. Atualizar Favicon e Apple Touch Icon se existirem arquivos de branding personalizados
   // A pasta /branding/ é gerada no public pelo Ecosystem Manager

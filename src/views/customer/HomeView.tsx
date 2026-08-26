@@ -20,6 +20,7 @@ import { PremiumOffers } from "@/components/ui/custom/PremiumOffers";
 import { ProductCarousel } from "@/components/ui/custom/ProductCarousel";
 import { ProductList } from "@/components/ui/custom/ProductList";
 import { branding } from "@/config/branding";
+import { LIMITE_MAX_ITENS_CARROSSEL } from "@/config/carrossel";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { haptic } from "@/utils/haptic";
 
@@ -178,16 +179,21 @@ export const HomeView = React.memo(function HomeView({
   }, [produtosAVenda, selectedCategory, searchQuery, sortBy]);
 
   const newArrivals = useMemo(() => {
-    return [...produtosAVenda]
-      .sort((a, b) => {
-        const aAvailable = a.stock > 0 ? 1 : 0;
-        const bAvailable = b.stock > 0 ? 1 : 0;
-        if (aAvailable !== bAvailable) {
-          return bAvailable - aAvailable;
-        }
-        return (b.createdTime ?? 0) - (a.createdTime ?? 0);
-      })
-      .slice(0, 6);
+    return (
+      [...produtosAVenda]
+        .sort((a, b) => {
+          const aAvailable = a.stock > 0 ? 1 : 0;
+          const bAvailable = b.stock > 0 ? 1 : 0;
+          if (aAvailable !== bAvailable) {
+            return bAvailable - aAvailable;
+          }
+          return (b.createdTime ?? 0) - (a.createdTime ?? 0);
+        })
+        // LIMITE_MAX_ITENS_CARROSSEL, nunca literal: o 6 fixo travava a vitrine
+        // abaixo do que o seletor de maxItems promete (defeito 20260825-1050).
+        // O corte real por seção continua no render, pelo `max` escolhido.
+        .slice(0, LIMITE_MAX_ITENS_CARROSSEL)
+    );
   }, [produtosAVenda]);
 
   const offerProducts = useMemo(() => {
@@ -198,7 +204,7 @@ export const HomeView = React.memo(function HomeView({
         const bAvailable = b.stock > 0 ? 1 : 0;
         return bAvailable - aAvailable;
       })
-      .slice(0, 10);
+      .slice(0, LIMITE_MAX_ITENS_CARROSSEL);
   }, [produtosAVenda]);
 
   const bestsellerProducts = useMemo(() => {
@@ -209,7 +215,7 @@ export const HomeView = React.memo(function HomeView({
         const bAvailable = b.stock > 0 ? 1 : 0;
         return bAvailable - aAvailable;
       })
-      .slice(0, 10);
+      .slice(0, LIMITE_MAX_ITENS_CARROSSEL);
   }, [produtosAVenda]);
 
   const sortOptions: {
@@ -240,20 +246,21 @@ export const HomeView = React.memo(function HomeView({
   const homeDescription = cidadeLoja
     ? `Descubra produtos exclusivos com frete grátis em ${cidadeLoja}.`
     : "Descubra produtos exclusivos.";
-  const homeSocialTitle = `${branding.appName} - Seu Shopping Local`;
+  // Mesma preferência do Header: o nome que o lojista gravou no banco vem
+  // antes do branding.json estático.
+  const nomeDaLoja = config.storeName?.trim() || branding.appName;
+  const homeSocialTitle = `${nomeDaLoja} - Seu Shopping Local`;
   const homeLogo = `${globalThis.location.origin}/branding/logo.png`;
 
   useDocumentMeta({
-    title: cidadeLoja
-      ? `${branding.appName} | ${cidadeLoja}`
-      : branding.appName,
+    title: cidadeLoja ? `${nomeDaLoja} | ${cidadeLoja}` : nomeDaLoja,
     names: {
       // "Entrega ultrarrápida" e "troca garantida" saíram: não existe fluxo
       // de troca (issues #46 e #108, ambas abertas) nem entrega ultrarrápida
       // — é a mesma mentira que o PR #225 já tinha tirado do carrinho.
       description: cidadeLoja
-        ? `O marketplace online de ${cidadeLoja} - ${branding.appName}`
-        : `O marketplace online - ${branding.appName}`,
+        ? `O marketplace online de ${cidadeLoja} - ${nomeDaLoja}`
+        : `O marketplace online - ${nomeDaLoja}`,
       "twitter:card": "summary_large_image",
       "twitter:title": homeSocialTitle,
       "twitter:description": homeDescription,
@@ -269,7 +276,7 @@ export const HomeView = React.memo(function HomeView({
     jsonLd: {
       "@context": "https://schema.org",
       "@type": "WebSite",
-      name: branding.appName,
+      name: nomeDaLoja,
       url: globalThis.location.origin,
       potentialAction: {
         "@type": "SearchAction",

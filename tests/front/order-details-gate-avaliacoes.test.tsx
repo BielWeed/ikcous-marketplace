@@ -37,6 +37,7 @@ const pedidoEntregue: Order = {
   status: "delivered",
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
+  cancelledAfterShipping: false,
 };
 
 vi.mock("@/hooks/useOrders", () => ({

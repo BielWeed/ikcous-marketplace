@@ -106,6 +106,7 @@ describe("OrderList — botão de ID em 'Copiado!' usa text-emerald-700 (contras
       status: "pending" as const,
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
+      cancelledAfterShipping: false,
     };
 
     await act(async () => {

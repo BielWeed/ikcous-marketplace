@@ -140,6 +140,7 @@ const pedidoBase: Order = {
   status: "pending",
   createdAt: new Date(0).toISOString(),
   updatedAt: new Date(0).toISOString(),
+  cancelledAfterShipping: false,
 };
 
 describe("PaymentStatusBadge (componente) — aviso do lojista quando o pedido pago é cancelado", () => {
@@ -349,6 +350,7 @@ describe("OrderDetail (ficha do pedido no painel) — mostra o aviso nos DOIS po
       status,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      cancelledAfterShipping: false,
     };
   }
 
