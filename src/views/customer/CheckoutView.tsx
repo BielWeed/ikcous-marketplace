@@ -286,25 +286,65 @@ export function CheckoutView({
     }
   }, [storeConfigLoaded, profile, user]);
 
+  // A quem os campos de endereço ATUALMENTE pertencem: o último CEP cuja
+  // busca foi aplicada. `null` só quando o campo nasce vazio — aí não existe
+  // outro CEP "dono" do que a pessoa já digitou à mão, e um campo que o
+  // ViaCEP não determina fica como está. Mesmo desenho de AddressForm.tsx
+  // (linhas 81-83), e pela mesma razão: `cep` aqui NASCE preenchido de
+  // `ikcous_last_shipping_cep` (visita anterior), e um campo pré-preenchido
+  // nunca dispara `onChange` — sem esta semente, `cepAssociadoRef` ficava
+  // `null` para sempre nesse caminho, `eraDeOutroCep` nunca era `true`, e a
+  // rua completada à mão para o CEP antigo sobrevivia misturada com a
+  // cidade/estado de um CEP novo digitado por cima (achado da revisão de
+  // 25/08/2026).
+  const cepAssociadoRef = useRef<string | null>(
+    (() => {
+      const cepDaVisitaAnterior = localStorage.getItem(
+        "ikcous_last_shipping_cep",
+      );
+      return cepDaVisitaAnterior
+        ? formatarCep(cepDaVisitaAnterior).limpo
+        : null;
+    })(),
+  );
+  // CEP da busca em voo, gravado pelo `onChange` do campo ANTES de chamar
+  // `buscarCep` — ver o comentário equivalente em AddressForm.tsx.
+  const cepEmBuscaRef = useRef<string>("");
+
   // Busca de CEP do checkout de convidado — mesma implementação do
   // AddressForm, atrás de useBuscaCep (#184 corrida, #185 timeout, #186
-  // abort no desmonte).
+  // abort no desmonte). Campo que o ViaCEP não devolveu (CEP de localidade
+  // única) só é limpo se pertencia a um CEP DIFERENTE do que acabou de
+  // responder — ver AddressForm.tsx para o mecanismo completo.
   const { buscando: isSearchingCep, buscar: buscarCep } = useBuscaCep(
     (endereco) => {
-      if (endereco.logradouro)
+      const cepDaResposta = cepEmBuscaRef.current;
+      const eraDeOutroCep =
+        cepAssociadoRef.current !== null &&
+        cepAssociadoRef.current !== cepDaResposta;
+
+      if (endereco.logradouro) {
         form.setValue("street", endereco.logradouro, {
           shouldValidate: true,
         });
-      if (endereco.bairro)
+      } else if (eraDeOutroCep) {
+        form.setValue("street", "", { shouldValidate: true });
+      }
+      if (endereco.bairro) {
         form.setValue("neighborhood", endereco.bairro, {
           shouldValidate: true,
         });
+      } else if (eraDeOutroCep) {
+        form.setValue("neighborhood", "", { shouldValidate: true });
+      }
       if (endereco.localidade)
         form.setValue("city", endereco.localidade, {
           shouldValidate: true,
         });
       if (endereco.uf)
         form.setValue("state", endereco.uf, { shouldValidate: true });
+
+      cepAssociadoRef.current = cepDaResposta;
     },
   );
 
@@ -1379,7 +1419,11 @@ export function CheckoutView({
 
                           const isNational =
                             config.shippingCoverage === "national";
-                          if (isNational) {
+                          // `limpo.length === 8` é portante, não só filtro
+                          // de busca — ver o comentário equivalente em
+                          // AddressForm.tsx.
+                          if (isNational && limpo.length === 8) {
+                            cepEmBuscaRef.current = limpo;
                             await buscarCep(limpo);
                           }
                         }}
