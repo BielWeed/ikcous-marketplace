@@ -63,6 +63,10 @@ export function NotificationProvider({
   const { isLeader } = useLeaderElection();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  // Falha de fetch ≠ caixa vazia: sem este estado, a tela anunciava
+  // "Tudo em ordem" para uma cliente com avisos não lidos que a consulta
+  // não conseguiu trazer.
+  const [erro, setErro] = useState<string | null>(null);
   const lastFetchRef = useRef<number>(0);
   // ids da última busca cujo usuario_id era nulo (aviso de campanha) — é o
   // que diferencia, em markAsRead/markAllAsRead/deleteNotification, uma
@@ -117,8 +121,10 @@ export function NotificationProvider({
 
         campanhaIdsRef.current = campanhaIds;
         setNotifications(mappedData);
+        setErro(null);
       } catch (err) {
         console.error("[Notifications] Fetch error:", err);
+        setErro("Não conseguimos carregar suas notificações.");
       } finally {
         setLoading(false);
       }
@@ -282,6 +288,7 @@ export function NotificationProvider({
       notifications,
       unreadCount,
       loading,
+      erro,
       markAsRead,
       markAllAsRead,
       deleteNotification,
@@ -291,6 +298,7 @@ export function NotificationProvider({
       notifications,
       unreadCount,
       loading,
+      erro,
       markAsRead,
       markAllAsRead,
       deleteNotification,
