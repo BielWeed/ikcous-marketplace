@@ -1142,7 +1142,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                         // editavel quando a carga falhou — o lojista digitava
                         // o token de novo e o save silenciosamente o descartava
                         // (a guarda credsLoaded pulava o upsert) com toast verde.
-                        disabled={!credsLoaded && formData.shippingProvider !== "flat_fee"}
+                        disabled={!credsLoaded}
                         value={
                           shippingCreds[formData.shippingProvider]?.token || ""
                         }
