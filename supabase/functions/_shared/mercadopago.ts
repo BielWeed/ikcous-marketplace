@@ -162,6 +162,36 @@ export function montarCorpoCartao(args: {
  * regra escrita em mais de um lugar) se repetindo dentro da MESMA função de
  * negócio. Um segundo consumidor pode voltar a existir amanhã; a tabela não
  * volta a ser reescrita por lugar quando isso acontecer.
+ *
+ * "processed:partially_refunded" NÃO está nesta tabela, de propósito
+ * (PEDIDO-05, auditoria de 26/08/2026). Estava mapeado para "estornado" — o
+ * MESMO rótulo do estorno TOTAL ("refunded:refunded") — e este banco não tem
+ * coluna de VALOR estornado: a informação de "quanto voltou" nunca entra.
+ * `confirmar_pagamento` não distingue os dois rótulos, e as nove agregações
+ * do analítico filtram `payment_status IN ('pago', 'pago_apos_expirar')`
+ * (`20260822000100_analitico_conta_so_dinheiro_reconhecido.sql`) — um
+ * estorno de R$ 5 num pedido de R$ 200 apagava os R$ 200 inteiros do
+ * faturamento, não só os R$ 5. A doc oficial do MP (checkout-api-orders/
+ * payment-management/status/order-status, context7, 26/08/2026) confirma que
+ * "processed" + "partially_refunded" é o par documentado para devolução
+ * PARCIAL — distinto de "refunded" + "refunded" (devolução TOTAL, estado
+ * terminal). Modelar "quanto" é decisão de produto que não é desta correção;
+ * o conserto mínimo e correto é NÃO AFIRMAR o que não se sabe: par ausente
+ * cai no `?? null` de `mapearStatusOrder` (abaixo), a MESMA regra que o
+ * resto deste arquivo já segue para todo par desconhecido — o pedido fica
+ * intacto e o caso vira log, em vez de apagar uma venda inteira em silêncio.
+ *
+ * OUTROS PARES REVISADOS PELA MESMA REGRA, E MANTIDOS: "charged_back:*"
+ * (in_process/settled/reimbursed) não têm "partial" no nome nem na doc do MP
+ * (checkout-api-orders/payment-management/chargebacks/management — dispute é
+ * do PAGAMENTO inteiro, resolvida por settled=perda ou reimbursed=vitória do
+ * vendedor), então não sofrem da MESMA ambiguidade de valor que
+ * partially_refunded sofria. Achado à parte, fora do escopo desta correção:
+ * "charged_back:in_process" marca o pedido 'estornado' antes da disputa ter
+ * um DESFECHO (a decisão ainda não saiu), e "charged_back:reimbursed" é a
+ * decisão FAVORÁVEL ao vendedor (o valor volta PARA ELE) mapeando para o
+ * mesmo rótulo que uma perda definitiva — os dois merecem uma correção
+ * própria, revisada à parte, não incluída aqui.
  */
 export const MAPA_STATUS_ORDER: Record<string, string> = {
   "processed:accredited": "pago",
@@ -171,7 +201,6 @@ export const MAPA_STATUS_ORDER: Record<string, string> = {
   "action_required:waiting_capture": "aguardando",
   // waiting_transfer é o estado do PIX recém-criado — o mais comum em produção.
   "action_required:waiting_transfer": "aguardando",
-  "processed:partially_refunded": "estornado",
   "refunded:refunded": "estornado",
   "charged_back:in_process": "estornado",
   "charged_back:settled": "estornado",
@@ -190,9 +219,10 @@ export const MAPA_STATUS_ORDER: Record<string, string> = {
  * 'expirado' | 'estornado' | 'pago_apos_expirar').
  *
  * NÃO é um mapa de `status` sozinho: `processed` também aparece em
- * `processed + partially_refunded`, que não é pago. Por isso a chave é o
- * PAR — igual ao motivo pelo qual mapearStatus (acima) nunca teve esse
- * problema: o clássico só tinha um campo para olhar.
+ * `processed + partially_refunded`, que não é pago (nem "estornado" — ver o
+ * comentário grande de MAPA_STATUS_ORDER, acima, PEDIDO-05). Por isso a
+ * chave é o PAR — igual ao motivo pelo qual mapearStatus (acima) nunca teve
+ * esse problema: o clássico só tinha um campo para olhar.
  *
  * `pago_apos_expirar` não é produzido aqui de propósito: essa transição
  * depende do estado ATUAL do pedido no banco (se já expirou), e quem decide

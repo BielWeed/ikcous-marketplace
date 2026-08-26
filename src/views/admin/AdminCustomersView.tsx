@@ -216,14 +216,17 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     () => [
       {
         label: "Total Clientes",
-        value: globalStats?.total_customers || 0,
+        // PAINEL-14: `?? null` + "—" — `|| 0` diz "zero clientes" quando a
+        // RPC falhou; o travessão não afirma nada. Os cartões vizinhos
+        // ("Ticket Médio") já usam este padrão.
+        value: globalStats?.total_customers ?? "—",
         icon: Users,
         accent: "text-admin-gold",
         subValue: "Base de Clientes",
       },
       {
         label: "Novos (30d)",
-        value: globalStats?.new_customers_30d || 0,
+        value: globalStats?.new_customers_30d ?? "—",
         icon: TrendingUp,
         accent: "text-emerald-500",
         subValue: "Crescimento",

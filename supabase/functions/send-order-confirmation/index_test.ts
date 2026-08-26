@@ -5,6 +5,7 @@ import {
 import {
   assuntoDoEmail,
   emailDoCliente,
+  handler,
   htmlDoPedido,
   linhasDosItens,
   mascarar,
@@ -186,4 +187,117 @@ Deno.test("montarResposta traduz cada desfecho para o status certo", () => {
   assertEquals(montarResposta({ ok: false, motivo: "ja_enviado" }).status, 200);
   assertEquals(montarResposta({ ok: false, motivo: "sem_destinatario" }).status, 200);
   assertEquals(montarResposta({ ok: false, motivo: "sem_pedido" }).status, 200);
+});
+
+// --- handler: a chave de service role sumindo do ambiente -----------------
+
+/** Devolve a variavel ao estado anterior. Ternario como comando e erro de lint. */
+function restaurar(nome: string, valor: string | undefined): void {
+  if (valor === undefined) {
+    Deno.env.delete(nome);
+  } else {
+    Deno.env.set(nome, valor);
+  }
+}
+
+// INFRA-260 (#126), última das sete funções migradas: no dia em que as
+// chaves LEGADAS do Supabase forem desligadas, `Deno.env.get(
+// "SUPABASE_SERVICE_ROLE_KEY")` volta undefined, `readKey` cai para "" (ela
+// nunca lança — ver o comentário dela em `_shared/webpush.ts`), mas
+// `createClient(url, "")` lança "supabaseKey is required.". Antes desta
+// correção essa chamada ficava FORA de qualquer try/catch, direto no corpo
+// do `serve()`: o throw escapava o handler inteiro — 500 cru, sem o JSON que
+// `montarResposta` produz — e o comprovante do pedido simplesmente parava de
+// sair, sem ninguém perceber (e-mail que não chega não reclama).
+Deno.test("handler: nenhuma chave de service role no ambiente (nem a nova SUPABASE_SECRET_KEYS, nem a legada SUPABASE_SERVICE_ROLE_KEY) vira resposta tratada, não um throw que escapa do handler", async () => {
+  const urlAnterior = Deno.env.get("SUPABASE_URL");
+  const legadaAnterior = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const novaAnterior = Deno.env.get("SUPABASE_SECRET_KEYS");
+  Deno.env.set("SUPABASE_URL", "https://xyz.supabase.co");
+  Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+  Deno.env.delete("SUPABASE_SECRET_KEYS");
+
+  try {
+    // Sem `supabase` em deps: força o handler a montar o client real a
+    // partir do ambiente, em vez do cliente falso que os outros testes
+    // usariam.
+    const resposta = await handler(
+      new Request("http://localhost/", {
+        method: "POST",
+        body: JSON.stringify({ orderId: PEDIDO.id }),
+      }),
+      {},
+    );
+    const corpo = await resposta.json();
+
+    // Reusa o motivo que este MESMO arquivo já emite para outra falha de
+    // infraestrutura (leitura do pedido, em `_shared/comprovante.ts`) — não
+    // inventa categoria nova, e o par (status, motivo) é o que
+    // `montarResposta` já traduz para 502 no teste acima.
+    assertEquals(resposta.status, 502);
+    assertEquals(corpo.ok, false);
+    assertEquals(corpo.motivo, "envio_falhou");
+  } finally {
+    restaurar("SUPABASE_URL", urlAnterior);
+    restaurar("SUPABASE_SERVICE_ROLE_KEY", legadaAnterior);
+    restaurar("SUPABASE_SECRET_KEYS", novaAnterior);
+  }
+});
+
+// A suíte acima prova que a FALTA de qualquer chave não escapa o handler —
+// mas com as duas variáveis apagadas, `readKey` (migrado) e
+// `Deno.env.get(legada)` (pré-migração) devolvem a MESMA coisa ("" e
+// undefined, respectivamente) e `createClient` lança nos dois casos, pelo
+// MESMO motivo. Esse par não discrimina a migração: revertendo só a troca
+// de `readKey` por `Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")` em
+// `index.ts`, a suíte inteira continua verde.
+//
+// O par abaixo discrimina. Com SUPABASE_SECRET_KEYS presente (a variável
+// NOVA) e SUPABASE_SERVICE_ROLE_KEY ausente (a LEGADA, como fica no dia em
+// que ela for desligada):
+//   - código migrado (`readKey`): acha a chave em SUPABASE_SECRET_KEYS,
+//     `createClient` NÃO lança, o handler segue para
+//     `enviarComprovantePedido`, que recusa por falta de SMTP configurado
+//     no ambiente de teste → 502 / "sem_remetente".
+//   - código pré-migração (`Deno.env.get` direto na legada): a variável
+//     está apagada, `createClient(url, undefined)` lança "supabaseKey is
+//     required.", cai no catch → 502 / "envio_falhou".
+// Medido nas duas versões antes de escrever esta asserção (cópia isolada em
+// scratchpad, nunca neste arquivo): real → sem_remetente; mutante (a troca
+// revertida para a chamada legada) → envio_falhou.
+Deno.test("handler: com a chave NOVA presente e só a legada ausente, o client se monta (prova que leu SUPABASE_SECRET_KEYS, não a variável legada) e a falha vira sem_remetente, não envio_falhou", async () => {
+  const urlAnterior = Deno.env.get("SUPABASE_URL");
+  const legadaAnterior = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const novaAnterior = Deno.env.get("SUPABASE_SECRET_KEYS");
+  const smtpUserAnterior = Deno.env.get("SMTP_USER");
+  const smtpPassAnterior = Deno.env.get("SMTP_PASSWORD");
+  Deno.env.set("SUPABASE_URL", "https://xyz.supabase.co");
+  Deno.env.set("SUPABASE_SECRET_KEYS", '{"default":"sb_secret_abc"}');
+  Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+  // Sem remetente configurado: é o segundo desfecho possível depois que o
+  // client se monta, e é o que diferencia "leu a chave nova" de "morreu no
+  // createClient" sem precisar de rede nem de banco de verdade.
+  Deno.env.delete("SMTP_USER");
+  Deno.env.delete("SMTP_PASSWORD");
+
+  try {
+    const resposta = await handler(
+      new Request("http://localhost/", {
+        method: "POST",
+        body: JSON.stringify({ orderId: PEDIDO.id }),
+      }),
+      {},
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 502);
+    assertEquals(corpo.ok, false);
+    assertEquals(corpo.motivo, "sem_remetente");
+  } finally {
+    restaurar("SUPABASE_URL", urlAnterior);
+    restaurar("SUPABASE_SERVICE_ROLE_KEY", legadaAnterior);
+    restaurar("SUPABASE_SECRET_KEYS", novaAnterior);
+    restaurar("SMTP_USER", smtpUserAnterior);
+    restaurar("SMTP_PASSWORD", smtpPassAnterior);
+  }
 });

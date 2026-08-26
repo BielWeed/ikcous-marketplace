@@ -498,7 +498,29 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     if (productId) {
       const loadProduct = async () => {
         setIsLoading(true);
-        const product = await fetchProduct(productId);
+        // PAINEL-06: distinguir "não existe" de "não consegui carregar".
+        // Antes: fetchProduct engolia erro de rede e devolvia null —
+        // a view dizia "não encontrado" e expulsava o lojista.
+        let product: ReturnType<typeof fetchProduct> extends Promise<infer T>
+          ? T
+          : never = null;
+        try {
+          product = await fetchProduct(productId);
+        } catch (err) {
+          console.error("[ProductForm] Erro ao carregar produto:", err);
+          toast.error("Erro ao carregar produto. Verifique a conexão.");
+          setIsLoading(false);
+          // B3 da 2a revisao: SEM isto, o formulario vazio renderizava
+          // normalmente — e Salvar com currentProduct null chamava
+          // updateProduct com o objeto inteiro, APAGANDO os dados do
+          // produto real (imagem_urls=[], custo=null, sold=0).
+          // B3: currentProduct ja esta null (produto nao carregou) —
+          // handleSubmit usa currentProduct para decidir update vs insert,
+          // entao um save daqui seria um INSERT vazio, nao um UPDATE
+          // destrutivo. Mas para nao deixar o lojista parado num form que
+          // parece editavel, a tela de erro deve ocupar o render inteiro.
+          return;
+        }
         if (product) {
           const productFields = {
             name: product.name,
@@ -1272,6 +1294,43 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     (!costError || costError.startsWith("Aviso")) &&
     !originalPriceError &&
     !stockError;
+
+  // B3 da 2a revisao: produto pediu para editar mas nao carregou —
+  // formulario vazio editavel e armadilha (save destrutivo). Erro na tela.
+  if (productId && !isLoading && !currentProduct) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
+        <div className="flex size-16 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10">
+          <svg
+            className="size-8 text-red-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+            />
+          </svg>
+        </div>
+        <p className="mt-6 text-[10px] font-black uppercase tracking-[0.2em] text-red-400">
+          Não foi possível carregar este produto
+        </p>
+        <p className="mt-1 text-[9px] text-zinc-500">
+          Verifique a conexão — o formulário fica bloqueado para proteger os
+          dados
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
+        >
+          Recarregar
+        </button>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

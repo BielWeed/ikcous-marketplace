@@ -15,7 +15,14 @@ export const StarRating = memo(function StarRating({
   rating,
   maxRating = 5,
   onRatingChange,
-  readonly = false,
+  // LOJA-01 (auditoria 26/08/2026): exibição é a REGRA neste componente --
+  // ProductCard, PremiumOffers, CompareView e ProductView renderizam
+  // avaliação pura, sem controlar nota nenhuma, e três deles esqueciam de
+  // passar `readonly`, deixando o cursor de mãozinha e o hover de campo de
+  // entrada num clique que só abre o produto. Campo de nota clicável de
+  // verdade é a EXCEÇÃO (hoje nenhum lugar do projeto usa) e precisa pedir
+  // isso explicitamente com `readonly={false}` + `onRatingChange`.
+  readonly = true,
   size = 20,
   className,
 }: StarRatingProps) {

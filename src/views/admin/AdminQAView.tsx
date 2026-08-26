@@ -467,7 +467,10 @@ export const AdminQAView = memo(function AdminQAView({
         iconBg: "bg-admin-gold/10 border-admin-gold/20",
         hoverBorder:
           "hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)]",
-        value: "Impacto Alto",
+        // PAINEL-16: era "Impacto Alto" cravado — número que nunca muda ao
+        // lado de três medidos. Sem métrica real de conversão, o honesto
+        // é não inventar: o valor fica vazio e o rodapé explica o porquê.
+        value: "", // B3 da 1a revisao: travessão contava como "não carregou" no teste (espera 3, ficava 4) — vazio não marca nada
         accent: "text-admin-gold",
         content: (
           <div className="mt-3 flex items-center gap-1.5 animate-in fade-in">

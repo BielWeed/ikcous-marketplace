@@ -62,30 +62,74 @@ export function AddressForm({
   });
 
   const hasInitializedRef = useRef(false);
+  // Guarda o endereço já aplicado ao formulário. A EDIÇÃO pode chegar
+  // DEPOIS do mount: sem cache local de endereços, o fetch do pai ainda
+  // corria quando isLoaded subiu, o reset único travou os campos vazios e o
+  // "Editar Endereço" nascia em branco — salvar por cima redigitado
+  // sobrescrevia o endereço real. Chegou endereço DIFERENTE do aplicado,
+  // o formulário se preenche.
+  const initialDataAplicadoRef = useRef<Address | undefined>(undefined);
+
+  // A quem os campos de endereço ATUALMENTE pertencem: o CEP do
+  // `initialData` (edição) ou o último CEP cuja busca foi aplicada — mesmo
+  // em cadastro novo, depois da primeira busca bem-sucedida. `null` só
+  // antes de qualquer busca aplicada num cadastro novo: aí não existe outro
+  // CEP "dono" do que a pessoa já digitou à mão, e um campo que o ViaCEP não
+  // determina fica como está (CARRINHO-03 não cobre esse caso — só a
+  // divergência entre o CEP dono do valor atual e o CEP que acabou de
+  // responder).
+  const cepAssociadoRef = useRef<string | null>(
+    initialData?.cep ? formatarCep(initialData.cep).limpo : null,
+  );
+  // CEP da busca que está em voo agora, gravado pelo `onChange` do campo
+  // ANTES de chamar `buscarCep` — é com ele que o callback abaixo sabe qual
+  // CEP a resposta corrente descreve (o hook já garante, pela guarda de
+  // sequência de #184, que só a busca mais nova chama este callback).
+  const cepEmBuscaRef = useRef<string>("");
 
   // Corrida, timeout e abort no desmonte ficam por conta do hook (#184,
-  // #185, #186) — aqui só mapeia o endereço encontrado para os campos deste
-  // formulário, escrevendo apenas o que o ViaCEP de fato devolveu.
+  // #185, #186). Aqui: campo que o ViaCEP devolveu, escreve o valor dele;
+  // campo que o ViaCEP NÃO devolveu (string vazia, CEP de localidade única)
+  // só é limpo se ele pertencia a um CEP DIFERENTE do que acabou de
+  // responder — um campo digitado à mão para o CEP que continua o mesmo não
+  // se apaga.
   const { buscando: buscandoCep, buscar: buscarCep } = useBuscaCep(
     (endereco) => {
-      if (endereco.logradouro)
+      const cepDaResposta = cepEmBuscaRef.current;
+      const eraDeOutroCep =
+        cepAssociadoRef.current !== null &&
+        cepAssociadoRef.current !== cepDaResposta;
+
+      if (endereco.logradouro) {
         form.setValue("street", endereco.logradouro, {
           shouldValidate: true,
         });
-      if (endereco.bairro)
+      } else if (eraDeOutroCep) {
+        form.setValue("street", "", { shouldValidate: true });
+      }
+      if (endereco.bairro) {
         form.setValue("neighborhood", endereco.bairro, {
           shouldValidate: true,
         });
+      } else if (eraDeOutroCep) {
+        form.setValue("neighborhood", "", { shouldValidate: true });
+      }
       if (endereco.localidade)
         form.setValue("city", endereco.localidade, { shouldValidate: true });
       if (endereco.uf)
         form.setValue("state", endereco.uf, { shouldValidate: true });
+
+      cepAssociadoRef.current = cepDaResposta;
     },
   );
 
   useEffect(() => {
     if (isLoaded && !hasInitializedRef.current) {
       hasInitializedRef.current = true;
+      initialDataAplicadoRef.current = initialData;
+      cepAssociadoRef.current = initialData?.cep
+        ? formatarCep(initialData.cep).limpo
+        : null;
       if (initialData) {
         form.reset({
           name: initialData.name || "",
@@ -118,8 +162,32 @@ export function AddressForm({
           is_default: false,
         });
       }
+      return;
     }
-  }, [isLoaded, initialData]);
+    if (
+      hasInitializedRef.current &&
+      initialData &&
+      initialData.id !== initialDataAplicadoRef.current?.id
+    ) {
+      initialDataAplicadoRef.current = initialData;
+      cepAssociadoRef.current = initialData.cep
+        ? formatarCep(initialData.cep).limpo
+        : null;
+      form.reset({
+        name: initialData.name || "",
+        cep: initialData.cep || "",
+        street: initialData.street || "",
+        number: initialData.number || "",
+        complement: initialData.complement || "",
+        neighborhood: initialData.neighborhood || "",
+        city: initialData.city || "",
+        state: initialData.state || "",
+        reference: initialData.reference || "",
+        recipient_name: initialData.recipient_name || "",
+        is_default: !!initialData.is_default,
+      });
+    }
+  }, [isLoaded, initialData, form]);
 
   const handleSubmit = async (values: AddressFormValues) => {
     setLoading(true);
@@ -213,7 +281,12 @@ export function AddressForm({
                   const { limpo, formatado } = formatarCep(e.target.value);
                   field.onChange(formatado);
 
-                  if (isNational) {
+                  // `limpo.length === 8` é portante, não só filtro de busca:
+                  // um CEP incompleto (7 dígitos) gravaria em
+                  // `cepEmBuscaRef` um dono que a busca nunca respondeu, e a
+                  // limpeza de `eraDeOutroCep` dispararia sozinha depois.
+                  if (isNational && limpo.length === 8) {
+                    cepEmBuscaRef.current = limpo;
                     void buscarCep(limpo);
                   }
                 };

@@ -3,6 +3,7 @@ import { useNotificationCenter } from "@/contexts/NotificationContextCore";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell,
+  BellOff,
   Check,
   CheckCheck,
   ChevronRight,
@@ -20,8 +21,14 @@ interface NotificationsViewProps {
 type TabType = "todas" | "avisos";
 
 export function NotificationsView({ onNavigate }: NotificationsViewProps) {
-  const { notifications, markAllAsRead, deleteNotification, markAsRead } =
-    useNotificationCenter();
+  const {
+    notifications,
+    erro,
+    refresh,
+    markAllAsRead,
+    deleteNotification,
+    markAsRead,
+  } = useNotificationCenter();
 
   const [activeTab, setActiveTab] = useState<TabType>("todas");
 
@@ -404,6 +411,27 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
               })}
             </AnimatePresence>
           </motion.div>
+        ) : erro && filteredNotifications.length === 0 ? (
+          /* Estado de ERRO — falha de consulta não é caixa limpa: sem este
+           * ramo, a tela dizia "Tudo em ordem" para uma cliente com avisos
+           * que a consulta não conseguiu trazer. */
+          <div className="flex h-full flex-col items-center justify-center px-6 py-20 text-center">
+            <div className="relative mb-6 flex size-20 items-center justify-center rounded-3xl bg-amber-50 shadow-inner dark:bg-amber-950/40">
+              <BellOff className="size-9 text-amber-500" />
+            </div>
+            <h2 className="mb-2 text-base font-black uppercase tracking-wider text-zinc-800 dark:text-zinc-200">
+              Não conseguimos carregar
+            </h2>
+            <p className="mb-8 max-w-xs text-xs font-semibold leading-relaxed text-zinc-400 dark:text-zinc-500">
+              {erro} Verifique sua conexão e tente de novo.
+            </p>
+            <Button
+              onClick={() => void refresh()}
+              className="rounded-2xl bg-zinc-900 px-6 py-4 text-xs font-bold text-white shadow-md transition-all hover:bg-zinc-800 hover:shadow-lg dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              Tentar de novo
+            </Button>
+          </div>
         ) : (
           /* Premium Empty State */
           <div className="flex h-full flex-col items-center justify-center px-6 py-20 text-center">
