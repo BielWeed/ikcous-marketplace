@@ -100,6 +100,10 @@ export function useQuestions() {
     return isAdmin && cachedQuestionsData ? cachedQuestionsData : [];
   });
   const [loading, setLoading] = useState(() => isAdmin && !cachedQuestionsData);
+  // Falha de fetch ≠ produto sem perguntas: sem este estado, o catch abaixo
+  // deixava questions=[] e a tela convidava a cliente a "ser o primeiro" a
+  // perguntar num produto que podia ter dez perguntas respondidas.
+  const [error, setError] = useState<string | null>(null);
   const latestProductIdRef = useRef<string | null>(null);
   const productQuestionsAbortControllerRef = useRef<AbortController | null>(
     null,
@@ -225,6 +229,7 @@ export function useQuestions() {
 
         if (latestProductIdRef.current === productId) {
           setQuestions(formattedQuestions);
+          setError(null);
         }
         updateQuestionsCache(productId, formattedQuestions);
       } catch (error: any) {
@@ -237,6 +242,9 @@ export function useQuestions() {
         }
         console.error("Error fetching questions:", error);
         toast.error("Erro ao carregar perguntas.");
+        if (latestProductIdRef.current === productId) {
+          setError("Não conseguimos carregar as perguntas deste produto.");
+        }
       } finally {
         if (latestProductIdRef.current === productId) {
           setLoading(false);
@@ -728,6 +736,7 @@ export function useQuestions() {
   return {
     questions,
     loading,
+    error,
     getQuestionsByProduct,
     getAllQuestions,
     addQuestion,
