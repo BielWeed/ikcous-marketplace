@@ -7,6 +7,97 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.9.0] — 2026-08-26
+
+**Uma auditoria do app inteiro, em duas rodadas, e ~50 defeitos fechados.** Trinta
+e oito entregas desde a `1.8.1`. O número do meio sobe porque muda o que
+acontece na tela em dezenas de pontos — a `1.8.1` tinha subido só o último
+dígito justamente porque nada de comportamento mudava, e aqui muda.
+
+O trabalho foi dividido em duas metades e **revisado cruzado de propósito**:
+ninguém revisou o próprio conserto. Isso pagou — três dos defeitos desta lista
+são regressões que a própria rodada de correção criou, achadas pela revisão do
+outro lado e fechadas antes de chegar aqui.
+
+### Para quem COMPRA
+
+- **Trocar o CEP no checkout** parou de misturar rua antiga com cidade nova.
+- **Engasgo de rede na entrada** parou de deslogar e de esvaziar o carrinho.
+- **Salvar o cadastro meio carregado** parou de apagar nome e WhatsApp.
+- **Produto sem nenhuma avaliação** parou de exibir cinco estrelas.
+- **O botão da tela de erro** parou de apagar carrinho e sessão junto.
+- **Falha ao carregar um produto** parou de dizer "produto não encontrado" —
+  não conseguir buscar e não existir viraram coisas diferentes.
+- **Apagar ou marcar um aviso como lido** parou de falhar em silêncio.
+- **Compartilhar um produto** parou de copiar mensagem sem link nenhum. As
+  mensagens prontas do painel que não trazem `[link]` voltam a levar o endereço
+  da loja — e se o navegador bloquear a cópia, aparece o erro, não um
+  "Link copiado!" falso.
+- **A limpeza da atualização do app** passou a respeitar a mesma lista do resto:
+  o que não pode ser perdido não é perdido.
+
+### Para quem VENDE
+
+- **Um engasgo de rede parou de expulsar o lojista do painel.** A tela
+  confundia "o servidor disse que você não é admin" com "o servidor não
+  respondeu", e as duas jogavam para fora recarregando a página — levando junto
+  o cadastro em andamento. Havia até beco sem saída: com alteração não salva,
+  cancelar a saída travava o painel em "Verificando permissões…" até um F5.
+- **A seção de chaves de frete parou de morrer calada.** Dizia "Recarregando…"
+  para sempre sem nada recarregar. Agora explica e oferece tentar de novo.
+- **Trocar de aba parou de apagar** o que foi digitado nas regras de frete, e
+  **salvar frete parou de apagar** o token da transportadora.
+- **Os números do painel pararam de afirmar zero quando a consulta falha.** Zero
+  que quer dizer "não consegui medir" agora se identifica como tal, em pedidos,
+  produtos e clientes.
+- **Falha ao abrir um pedido** mostra erro e caminho de volta, em vez de rodinha
+  eterna.
+- **Respostas em tempo real** pararam de ser etiquetadas com o produto errado.
+- **O cache de categorias** passou a respeitar o período selecionado.
+- **A ficha do pedido parou de prometer estorno** que o app não faz.
+
+### O que esta release NÃO liga — e depende de dois cliques
+
+Três consertos viajam nesta release como arquivo e **ficam dormentes** até
+serem ligados à mão. Nada quebra por eles estarem dormentes; eles simplesmente
+ainda não fazem efeito.
+
+**Publicar as cinco funções do servidor** — `criar-pagamento`, `send-otp-email`,
+`send-order-confirmation`, `webhook-mercadopago` e `reconciliar-pagamentos`.
+Enquanto não subirem:
+
+- Um **estorno parcial** continua apagando a venda inteira do faturamento: R$ 5
+  devolvidos num pedido de R$ 200 zeram os R$ 200 nos nove relatórios.
+- As três primeiras continuam lendo a **chave antiga do Supabase**. Ela não cai
+  sozinha em data nenhuma — mas o dia em que essa chave for desligada no painel
+  da Supabase, pagamento, e-mail de pedido e login param juntos. O código já
+  está pronto para a chave nova; falta publicar.
+
+**Aplicar as três mudanças de banco** — e a ordem importa: a da reconciliação
+(`20261010000000`) vai **por último, depois das funções**, porque ela faz a
+reconciliação alcançar mais pedidos, e quem processa esses pedidos hoje ainda é
+o código que colapsa estorno parcial em estorno total. As outras duas
+(`20261011000000`, `20261012000000`) são indiferentes à ordem. Quando aplicadas:
+
+- A **reconciliação passa a alcançar o pedido vivo**: PIX pago cujo aviso do
+  Mercado Pago se perdeu deixa de ser cancelado aos 30 minutos com o dinheiro
+  parado e o produto revendido.
+- O **carrinho passa a guardar a variação escolhida**, não o nome do grupo.
+- A **vitrine passa a saber que o produto mudou**: hoje ela pode mostrar preço,
+  estoque e foto de ontem mesmo com a pessoa online, e oferecer variação que a
+  lojista já apagou.
+
+### Como isto foi verificado
+
+Cada conserto tem teste escrito **antes** dele e visto falhando — 41 arquivos de
+prova novos. A exceção está declarada: os cinco consertos do painel da primeira
+rodada ficaram sem cobertura, medido revertendo os cinco de uma vez e vendo
+1.061 testes continuarem passando.
+
+Onde a correção era "não expulsa mais", há controle negativo provando que quem
+não é admin **continua barrado** — senão a asserção passaria com um portão que
+simplesmente deixou de proteger.
+
 ## [1.8.1] — 2026-08-24
 
 **Texto verde que ninguém conseguia ler volta a ser legível, em 14 pontos.**
