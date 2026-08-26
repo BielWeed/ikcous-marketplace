@@ -607,7 +607,11 @@ export function useQuestions() {
                 "[Realtime-Questions] Answer change:",
                 payload.eventType,
               );
-              bc?.postMessage({ type: "questions_change", productId, payload });
+              // PAINEL-11: canal de answers SEM filtro de produto — resposta
+              // de QUALQUER produto chega aqui. O broadcast anterior etiquetava
+              // com o productId LOCAL (errado para outros produtos); agora vai
+              // sem productId (sinal genérico que todas as abas aceitam).
+              bc?.postMessage({ type: "questions_change", payload });
               if (onChange) {
                 onChange();
               } else if (productId) {
@@ -656,6 +660,9 @@ export function useQuestions() {
           listener = (event: MessageEvent) => {
             if (
               event.data?.type === "questions_change" &&
+              // PAINEL-11: answers chegam SEM productId (canal sem filtro) —
+              // aceitar tanto com (questions, filtrado) quanto sem (answers)
+              event.data?.productId === undefined ||
               event.data?.productId === productId
             ) {
               console.log(
