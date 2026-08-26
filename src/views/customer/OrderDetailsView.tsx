@@ -178,15 +178,22 @@ export function OrderDetailsView({
 
   const handleCancelOrder = async () => {
     if (!order) return;
-    // O botão "Cancelar Pedido" aparece para TODO pedido 'pending' com
-    // usuário logado, sem olhar o pagamento — e este app não tem estorno
-    // automático em lugar nenhum. Quem já pagou (`pago` ou
+    // Regra do Gabriel (24/08/2026): o botão "Cancelar Pedido" aparece para
+    // pedido 'pending', 'processing' OU 'shipping' com usuário logado — o
+    // divisor é se o produto JÁ SAIU, não se foi pago. 'delivered' fica de
+    // fora: produto entregue é devolução, outro assunto. Este é o espelho na
+    // tela da mesma trava do servidor (validateStatusUpdate, useOrders.ts, e
+    // update_order_status_atomic no banco).
+    //
+    // O aviso, por sua vez, ainda depende do pagamento — e este app não tem
+    // estorno automático em lugar nenhum. Quem já pagou (`pago` ou
     // `pago_apos_expirar`, via `paymentStatusKey` — a ÚNICA fonte que decide
     // "null vira sem_cobranca") precisa saber, ANTES de confirmar, que o
-    // dinheiro fica com a loja até alguém devolver à mão. Quem ainda não
-    // pagou (aguardando/recusado/expirado/estornado/nulo) continua vendo o
-    // texto original: cancelar ali é inofensivo, e falar em dinheiro
-    // assustaria à toa.
+    // dinheiro fica com a loja até alguém devolver à mão — e se o pedido já
+    // foi enviado, até o PRODUTO voltar à loja. Quem ainda não pagou
+    // (aguardando/recusado/expirado/estornado/nulo) continua vendo o texto
+    // original: cancelar ali é inofensivo, e falar em dinheiro assustaria à
+    // toa.
     // `===` e nao `.includes()`: o array seria inferido como `string[]` e
     // aceitaria qualquer coisa, entao um rename futuro de `PaymentStatus`
     // quebraria os dois `switch` deste arquivo e passaria calado AQUI —
@@ -195,11 +202,25 @@ export function OrderDetailsView({
     const chavePagamento = paymentStatusKey(order.paymentStatus);
     const pagamentoJaEntrou =
       chavePagamento === "pago" || chavePagamento === "pago_apos_expirar";
-    const confirmCancel = globalThis.confirm(
-      pagamentoJaEntrou
-        ? "Você já pagou este pedido. Se cancelar, ele não será entregue e o dinheiro NÃO volta automaticamente — você vai precisar falar com a loja para pedir a devolução. Tem certeza?"
-        : "Tem certeza que deseja cancelar este pedido? Esta ação não pode ser desfeita.",
-    );
+    const jaFoiEnviado = order.status === "shipping";
+    // Achado da auditoria de 26/08/2026 (PEDIDO-03): este ramo prometia "o
+    // dinheiro volta depois que ele chegar de volta" — como se a devolução
+    // fosse automática assim que o produto chegasse na loja. Não existe
+    // ESSE nem NENHUM outro mecanismo de estorno automático no repositório
+    // (busca por `refund`/`estorn` em src/ e supabase/functions/ só acha
+    // rótulo de tela e tradução de status do Mercado Pago), e
+    // `confirmar_retorno_do_produto` não toca `payment_status` nem fala com
+    // o gateway. A frase agora usa o MESMO vocabulário honesto do ramo "não
+    // enviado" logo abaixo ("NÃO volta automaticamente" + "falar com a
+    // loja"), só acrescentando o fato físico de que a loja precisa do
+    // produto de volta antes dessa conversa fazer sentido — é isso, e só
+    // isso, que muda entre os dois ramos.
+    const textoConfirm = !pagamentoJaEntrou
+      ? "Tem certeza que deseja cancelar este pedido? Esta ação não pode ser desfeita."
+      : jaFoiEnviado
+        ? "Este pedido já foi enviado. Se cancelar, você precisa devolver o produto à loja — o dinheiro NÃO volta automaticamente, você vai precisar combinar a devolução com a loja depois que o produto chegar de volta. Tem certeza?"
+        : "Você já pagou este pedido. Se cancelar, ele não será entregue e o dinheiro NÃO volta automaticamente — você vai precisar falar com a loja para pedir a devolução. Tem certeza?";
+    const confirmCancel = globalThis.confirm(textoConfirm);
     if (!confirmCancel) return;
 
     setIsCancelling(true);
@@ -553,23 +574,27 @@ export function OrderDetailsView({
           {/* Exige sessão: o convidado chega nesta tela pelo fallback de
               sessionStorage do loadOrder, e update_order_status_atomic passou a
               recusar chamador sem auth.uid() (PEDIDO-010, #115). Sem esta
-              condição o botão continuaria visível e falharia sempre. */}
-          {order.status === "pending" && user && (
-            <div className="mt-4 border-t border-zinc-100 pt-4">
-              <button
-                onClick={handleCancelOrder}
-                disabled={isCancelling}
-                className="text-red-655 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-red-50 text-[9px] font-black uppercase tracking-widest transition-all hover:bg-red-100 active:scale-[0.98] disabled:bg-zinc-50 disabled:text-zinc-400"
-              >
-                {isCancelling ? (
-                  <Loader2 className="size-3 animate-spin" />
-                ) : (
-                  <XCircle className="size-3.5" />
-                )}
-                {isCancelling ? "Processando" : "Cancelar Pedido"}
-              </button>
-            </div>
-          )}
+              condição o botão continuaria visível e falharia sempre.
+              'pending'/'processing'/'shipping': o divisor da regra do
+              Gabriel (24/08/2026) é se o produto SAIU, não se foi pago —
+              'delivered' fica fora, é devolução, outro assunto. */}
+          {["pending", "processing", "shipping"].includes(order.status) &&
+            user && (
+              <div className="mt-4 border-t border-zinc-100 pt-4">
+                <button
+                  onClick={handleCancelOrder}
+                  disabled={isCancelling}
+                  className="text-red-655 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-red-50 text-[9px] font-black uppercase tracking-widest transition-all hover:bg-red-100 active:scale-[0.98] disabled:bg-zinc-50 disabled:text-zinc-400"
+                >
+                  {isCancelling ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <XCircle className="size-3.5" />
+                  )}
+                  {isCancelling ? "Processando" : "Cancelar Pedido"}
+                </button>
+              </div>
+            )}
         </motion.div>
 
         {/* Items List Card */}
