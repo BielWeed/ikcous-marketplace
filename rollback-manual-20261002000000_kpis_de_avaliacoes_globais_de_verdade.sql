@@ -6,6 +6,12 @@
 -- pede o front revertido JUNTO, como o par do top-5 (regra registrada na
 -- revisao 20260825-2145: rollback do banco so com o front revertido junto).
 
+-- RESTAURA: a definicao da get_admin_reviews_paged do baseline (metricas
+-- so filtradas, sem as chaves global_*). NAO RESTAURA: nada alem - o
+-- rollback e so a definicao antiga da funcao; o FRONT do par (cartoes
+-- globais) tem que ser revertido JUNTO (nota de par acima).
+-- ALCANCE: so-definicao-de-funcao. Sem DML. Sem view. Sem policy.
+
 -- CORRECAO (fila 1935, item 1/2): CREATE OR REPLACE, nunca CREATE cru
 -- nem DROP+CREATE - a funcao JA EXISTE no banco (CREATE falharia no
 -- apply) e o OR REPLACE preserva os grants de EXECUTE (anon/authenticated)

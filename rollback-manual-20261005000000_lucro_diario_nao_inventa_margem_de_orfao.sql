@@ -10,6 +10,11 @@
 -- 20261005 reinstalaria o LEFT em silencio - o perigo real e a ordem
 -- INVERSA, nao a falta de antecedencia.
 
+-- RESTAURA: a definicao da get_admin_analytics_v2 da 20261001000000
+-- (LEFT JOIN no daily_items - o vies otimista volta). NAO RESTAURA:
+-- nada alem - o rollback e so a definicao antiga da funcao.
+-- ALCANCE: so-definicao-de-funcao. Sem DML. Sem view. Sem policy.
+
 CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2(p_limit_days integer DEFAULT 90)
  RETURNS json
  LANGUAGE plpgsql

@@ -9,6 +9,12 @@
 -- NA DIRECAO OPOSTA - a nota "sem frete" negaria a fatia Frete desenhada
 -- ao lado. Rollback do banco so com o front revertido junto.
 
+-- RESTAURA: a definicao da get_category_analytics do baseline (com o
+-- UNION ALL da linha sintetica 'Frete'). NAO RESTAURA: nada alem - o
+-- rollback e so a definicao antiga da funcao; o FRONT do par (a nota
+-- do grafico) tem que ser revertido JUNTO (nota de par acima).
+-- ALCANCE: so-definicao-de-funcao. Sem DML. Sem view. Sem policy.
+
 -- CORRECAO (fila 1935, item 1/2): CREATE OR REPLACE, nunca CREATE cru
 -- nem DROP+CREATE - a funcao JA EXISTE no banco (CREATE falharia no
 -- apply) e o OR REPLACE preserva os grants de EXECUTE (anon/authenticated)

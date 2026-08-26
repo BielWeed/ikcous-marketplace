@@ -13,6 +13,12 @@
 -- meio deixa a migration parcialmente revertida, e rodar o resto do
 -- arquivo conclui (DROP COLUMN IF EXISTS aceita reexecucao).
 
+-- RESTAURA: as 15 colunas de banners (DROP COLUMN de volta ao schema de 8).
+-- NAO RESTAURA: dado gravado nas 15 colunas entre apply e rollback
+-- (banner criado/editado no periodo perde os campos ricos - custo
+-- ja declarado acima); as 8 colunas originais e seus dados, intactos.
+-- ALCANCE: so-DDL. Sem DML.
+
 ALTER TABLE public.banners DROP COLUMN IF EXISTS subtitle;
 ALTER TABLE public.banners DROP COLUMN IF EXISTS subtitle_color;
 ALTER TABLE public.banners DROP COLUMN IF EXISTS title_color;

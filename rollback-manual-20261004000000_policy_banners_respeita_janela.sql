@@ -11,6 +11,12 @@
 -- Ficha negativa pos-rollback: o SELECT anon do banner futuro volta a
 -- devolver a linha - e a prova de que o rollback aconteceu.
 
+-- RESTAURA: a banners_select_policy do baseline (so 'active' ou admin,
+-- sem janela). NAO RESTAURA: nada alem - o rollback e so a policy
+-- antiga; NENHUM dado e tocado. EFEITO DECLARADO: reabre a exposicao
+-- de banner agendado a anon (custo ja declarado acima).
+-- ALCANCE: so-policy. Sem DML. Sem view.
+
 DROP POLICY IF EXISTS banners_select_policy ON public.banners;
 
 CREATE POLICY banners_select_policy ON public.banners FOR SELECT USING ((("active" = true) OR ((( SELECT "auth"."role"() AS "role") = 'authenticated'::"text") AND ( SELECT "public"."is_admin"() AS "is_admin"))));
