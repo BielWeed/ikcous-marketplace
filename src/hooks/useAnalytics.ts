@@ -120,6 +120,9 @@ export interface DashboardStats {
 // Memory cache for SWR pattern
 let cachedStats: DashboardStats | null = null;
 let cachedCategoryData: any = null;
+// PAINEL-10: o cache era servido para QUALQUER range se o throttle
+// ainda não tinha expirado — período B mostrava números de A.
+let cachedCategoryRange: string | null = null;
 let lastStatsFetchTime = 0;
 let lastCategoryFetchTime = 0;
 const REVALIDATION_THROTTLE_MS = 30000; // 30 seconds
@@ -426,9 +429,11 @@ export function useAnalytics() {
       }
 
       const now = Date.now();
+      const rangeKey = `${start}:${end}`;
       const shouldRevalidate =
         forceRefresh ||
         !cachedCategoryData ||
+        cachedCategoryRange !== rangeKey || // PAINEL-10: range diferente = cache inválido
         now - lastCategoryFetchTime > REVALIDATION_THROTTLE_MS;
 
       if (cachedCategoryData && !shouldRevalidate) {
@@ -457,6 +462,7 @@ export function useAnalytics() {
             }
             if (data) {
               cachedCategoryData = data;
+            cachedCategoryRange = rangeKey; // PAINEL-10
               lastCategoryFetchTime = Date.now();
               setCategoryData(data);
               setCategoryError(null);
@@ -492,6 +498,7 @@ export function useAnalytics() {
         );
         if (error) throw error;
         cachedCategoryData = data;
+        cachedCategoryRange = rangeKey; // PAINEL-10
         lastCategoryFetchTime = Date.now();
         setCategoryData(data);
         setCategoryError(null);
