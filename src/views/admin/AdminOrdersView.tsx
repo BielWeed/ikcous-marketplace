@@ -428,8 +428,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         }
       } catch (err) {
         console.error("Error fetching single order:", err);
-        toast.error("Erro ao carregar detalhes do pedido");
-        setDetailError(true);
+        if (isCurrent) {
+          toast.error("Erro ao carregar detalhes do pedido");
+          setDetailError(true);
+        }
       } finally {
         if (isCurrent) setLoadingDetail(false);
       }

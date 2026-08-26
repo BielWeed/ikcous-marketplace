@@ -383,8 +383,11 @@ export const AdminShippingView = memo(function AdminShippingView({
       setOriginalShippingCreds(JSON.parse(JSON.stringify(shippingCreds)));
       onSetDirty?.(false);
       haptic.success();
+      const credsPuladas = provider !== "flat_fee" && !credsLoaded;
       toast.success("Configurações salvas!", {
-        description: "As regras e chaves de frete foram salvas com sucesso.",
+        description: credsPuladas
+          ? "Regras salvas. As chaves de frete NÃO foram salvas (falha na leitura)."
+          : "As regras e chaves de frete foram salvas com sucesso.",
       });
     } catch (err) {
       console.error("[AdminShippingView] Error saving configs:", err);
@@ -1118,6 +1121,11 @@ export const AdminShippingView = memo(function AdminShippingView({
                           <span className="text-[10px] font-medium text-zinc-400">
                             Sandbox
                           </span>
+                          {!credsLoaded ? (
+                            <span className="text-[9px] font-bold uppercase tracking-widest text-amber-500">
+                              Recarregando…
+                            </span>
+                          ) : (
                           <Switch
                             checked={!!shippingCreds.melhor_envio?.sandbox}
                             // B3 da 3a revisao: mesma trava do token — sem
@@ -1135,8 +1143,9 @@ export const AdminShippingView = memo(function AdminShippingView({
                                 },
                               }));
                             }}
-                            className="scale-75 data-[state=checked]:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="scale-75 data-[state=checked]:bg-amber-500"
                           />
+                          )}
                         </div>
                       )}
                     </div>
