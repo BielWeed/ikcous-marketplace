@@ -529,7 +529,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         const updatedId = payload.new?.id;
         const newStatus = payload.new?.status as OrderStatus;
         toast.info(
-          `Pedido #${updatedId ? updatedId.slice(-6) : ""} atualizado para ${statusConfig[newStatus]?.label || newStatus}`,
+          `Pedido #${updatedId ? updatedId.slice(-6) : ""} atualizado para ${statusConfig[newStatus]?.label ?? `Status: ${newStatus}`}`,
         );
       }
 
