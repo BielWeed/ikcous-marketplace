@@ -85,14 +85,20 @@ const migration = Deno.readTextFileSync(MIGRATION_PATH);
 const rollback = Deno.readTextFileSync(ROLLBACK_PATH);
 const dbApply = Deno.readTextFileSync(DB_APPLY_PATH);
 
-Deno.test("a migration nao abre transacao escondida", () => {
-  const veredito = avaliarFase0(migration);
-  assertEquals(veredito.recusas, []);
-});
-
-Deno.test("o rollback nao abre transacao escondida", () => {
-  const veredito = avaliarFase0(rollback);
-  assertEquals(veredito.recusas, []);
+// `avaliarFase0` avalia o PAR de uma vez — assinatura conferida no codigo real
+// (scripts/db-prove-rollback.cjs:308) e no arquivo-molde
+// (tests/migration_vitrine_sabe_que_produto_mudou_test.ts:99). Ela recebe UM
+// OBJETO NOMEADO e devolve `{ recusado, motivos }` — nao `{ recusas }`, e nao
+// aceita a string solta. Alem de BEGIN/COMMIT escondido, ela ja recusa
+// `CREATE FUNCTION` sem `OR REPLACE` nos DOIS arquivos, entao nao existe teste
+// separado para isso: seria assercao mais fraca que a que ja esta aqui.
+Deno.test("avaliarFase0 nao recusa o par migration+rollback", () => {
+  const r = avaliarFase0({
+    sqlMigration: migration,
+    sqlRollback: rollback,
+    temRollback: true,
+  });
+  assertEquals(r.recusado, false, `motivos: ${(r.motivos || []).join("; ")}`);
 });
 
 Deno.test("a migration cria as duas colunas e a tabela de historico", () => {
@@ -117,11 +123,6 @@ Deno.test("a RPC recusa pedido cancelado, pedido do site, e nao inventa status",
   assertStringIncludes(migration, "'recebido_na_entrega'");
 });
 
-Deno.test("CREATE FUNCTION sempre com OR REPLACE (senao perde o GRANT)", () => {
-  const cruas = migration.match(/CREATE\s+FUNCTION\s/gi) || [];
-  assertEquals(cruas.length, 0);
-});
-
 Deno.test("o rollback derruba TUDO que a migration cria", () => {
   assertStringIncludes(rollback, "DROP FUNCTION IF EXISTS public.registrar_pagamento_recebido(uuid, boolean)");
   assertStringIncludes(rollback, "DROP TABLE IF EXISTS public.marketplace_order_payment_history");
@@ -138,7 +139,7 @@ Deno.test("a entrada em VERIFICACOES existe e nomeia a funcao", () => {
 
 - [ ] **Step 2: Rodar o teste e confirmar que ele FALHA**
 
-Run: `npx deno test --allow-read --allow-env tests/migration_lojista_registra_pagamento_recebido_test.ts`
+Run: `deno test --allow-all --no-check tests/migration_lojista_registra_pagamento_recebido_test.ts`
 Expected: FAIL — `No such file or directory` na leitura da migration, que ainda não existe.
 
 - [ ] **Step 3: Escrever a migration**
@@ -344,8 +345,8 @@ Acrescentar:
 
 - [ ] **Step 6: Rodar o teste e confirmar que ele PASSA**
 
-Run: `npx deno test --allow-read --allow-env tests/migration_lojista_registra_pagamento_recebido_test.ts`
-Expected: PASS, 8 testes.
+Run: `deno test --allow-all --no-check tests/migration_lojista_registra_pagamento_recebido_test.ts`
+Expected: PASS, **6 testes**.
 
 - [ ] **Step 7: Provar por mutação que o teste tem dente**
 
@@ -403,29 +404,38 @@ Mensagem: `feat(db): a loja passa a poder registrar o pagamento que recebeu na m
 | `get_admin_customers_paged` | 2 | 44, 78 |
 | `get_segmented_push_targets` | 1 | 29 |
 
-- [ ] **Step 1: Tirar o corpo VIVO das três funções, que é a base do rollback**
+- [ ] **Step 1: Ler os corpos VIVOS que a sessão principal já extraiu**
 
 O corpo que o Postgres guarda é o texto do arquivo que o aplicou — **não existe convenção do repositório para seguir**, e o fim de linha varia por função. A fonte da verdade é `pg_get_functiondef` do banco, nunca um arquivo de migration antigo.
 
-Rodar, e salvar a saída no scratchpad da sessão (não no repositório):
+**Você não acessa o banco.** A sessão principal extraiu os três corpos vivos e deixou um arquivo por função em:
 
-```bash
-node scripts/db-dump-funcoes.cjs get_admin_analytics_v2 get_admin_customers_paged get_segmented_push_targets
+```
+.superpowers/sdd/2026-08-27-recebimento-na-entrega/corpos-vivos/
+  get_admin_analytics_v2.sql
+  get_admin_customers_paged.sql
+  get_segmented_push_targets.sql
 ```
 
-Se esse script não existir, escrever um de leitura no scratchpad que faça `SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname = ANY($1)` e grave um arquivo por função. **Somente leitura, nenhuma escrita no banco.**
+Leia os três. Eles são a base **do rollback** (cópia literal) e a base **da migration** (a mesma cópia, com os 12 pontos alterados). Se algum dos três arquivos não existir ou estiver vazio, **pare e avise** — sem eles não há como escrever nem a migration nem o rollback com fidelidade, e reconstruir o corpo de memória é exatamente como se embarca um rollback infiel.
+
+⚠️ **Copie byte a byte, incluindo o fim de linha.** Um mesmo repositório tem função gravada em CRLF e função gravada em LF, e converter tudo para um dos dois conserta uma e quebra a outra.
 
 - [ ] **Step 2: Escrever o teste de forma**
 
 Criar `tests/migration_receita_conta_so_dinheiro_que_entrou_test.ts`, no mesmo molde do teste da Task 1 (mesmos imports, mesmo `avaliarFase0`), com estes casos:
 
 ```ts
-Deno.test("a migration nao abre transacao escondida", () => {
-  assertEquals(avaliarFase0(migration).recusas, []);
-});
-
-Deno.test("o rollback nao abre transacao escondida", () => {
-  assertEquals(avaliarFase0(rollback).recusas, []);
+// Assinatura conferida no codigo real (scripts/db-prove-rollback.cjs:308):
+// objeto nomeado na entrada, `{ recusado, motivos }` na saida. Ela ja cobre
+// `CREATE FUNCTION` sem `OR REPLACE` nos dois arquivos — nao duplicar.
+Deno.test("avaliarFase0 nao recusa o par migration+rollback", () => {
+  const r = avaliarFase0({
+    sqlMigration: migration,
+    sqlRollback: rollback,
+    temRollback: true,
+  });
+  assertEquals(r.recusado, false, `motivos: ${(r.motivos || []).join("; ")}`);
 });
 
 Deno.test("a migration redefine as TRES funcoes", () => {
@@ -456,10 +466,6 @@ Deno.test("orders_count e last_order_date NAO foram tocados", () => {
   );
 });
 
-Deno.test("CREATE FUNCTION sempre com OR REPLACE", () => {
-  assertEquals((migration.match(/CREATE\s+FUNCTION\s/gi) || []).length, 0);
-});
-
 Deno.test("o rollback restaura as tres funcoes", () => {
   for (const fn of [
     "get_admin_analytics_v2",
@@ -476,7 +482,7 @@ O último caso é o mais importante: **o rollback tem de trazer de volta exatame
 
 - [ ] **Step 3: Rodar o teste e confirmar que FALHA**
 
-Run: `npx deno test --allow-read --allow-env tests/migration_receita_conta_so_dinheiro_que_entrou_test.ts`
+Run: `deno test --allow-all --no-check tests/migration_receita_conta_so_dinheiro_que_entrou_test.ts`
 Expected: FAIL — arquivo da migration não existe.
 
 - [ ] **Step 4: Escrever a migration**
@@ -523,8 +529,8 @@ No cabeçalho da migration, escrever: o número medido (R$ 2.977,09 contados con
 
 - [ ] **Step 7: Rodar o teste e confirmar que PASSA**
 
-Run: `npx deno test --allow-read --allow-env tests/migration_receita_conta_so_dinheiro_que_entrou_test.ts`
-Expected: PASS, 8 testes.
+Run: `deno test --allow-all --no-check tests/migration_receita_conta_so_dinheiro_que_entrou_test.ts`
+Expected: PASS, **6 testes**.
 
 - [ ] **Step 8: Mutação**
 
