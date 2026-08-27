@@ -160,12 +160,65 @@ O detalhe que importa: as duas chaves antigas são assinadas pela mesma chave-me
 
 ### 2.2 — Procure a opção menos destrutiva primeiro
 
-Antes de rotacionar o JWT secret, procure na tela se existe:
+> ## ⚠️ Antes de tudo: a loja precisa APRENDER a chave nova antes de você apagar a velha
+>
+> Sem este passo, "migrar para as chaves novas" **não é** o caminho seguro descrito abaixo —
+> é o caminho que derruba a loja **sem tela de erro nenhuma**. A ordem daqui não pode ser
+> invertida, e o motivo é medido, não teórico:
+>
+> **Estado real em 27/08/2026** (`npx vercel env ls production`): a variável
+> `VITE_SUPABASE_PUBLISHABLE_KEY` que a loja precisa para usar a chave nova **não existe** em
+> Production na Vercel. Se a chave legada (`anon`) for desligada antes dessa variável existir
+> e entrar num build novo, o site publicado continua rodando com a chave antiga (morta) — e
+> como o portão de erro só percebe variável **ausente**, não **errada**, a loja abre
+> normalmente e toda chamada ao banco responde 401. Ninguém vê tela vermelha, só o carrinho e
+> os produtos que não carregam.
+>
+> **Faça isto primeiro, nesta ordem exata:**
+>
+> 1. Abra <https://supabase.com/dashboard/project/cafkrminfnokvgjqtkle/settings/api-keys> e
+>    ache a chave **publishable** (formato `sb_publishable_...`). Copie ela pro bloco de notas.
+> 2. Na Vercel: **Settings → Environment Variables → Add New**.
+>    - Nome: `VITE_SUPABASE_PUBLISHABLE_KEY`
+>    - Valor: a chave que você copiou no passo 1
+>    - Ambiente: marque **Production**
+>    Salve.
+> 3. Aba **Deployments** → o último de Production → menu `···` → **Redeploy**.
+>    **Por que este passo não é opcional:** essa chave entra no código no momento do build —
+>    a mesma mecânica da §2.3 passo 5 abaixo, só que para a chave nova em vez da `anon`. Salvar
+>    a variável sem refazer o deploy não muda nada no site que já está no ar.
+> 4. Espere ficar **Ready** (uns 2 minutos) e abra <https://ickous-marketplace.vercel.app>.
+>
+>    🔴 **NÃO basta ver os produtos carregarem — e este é o ponto que mais engana.** Neste
+>    momento a chave antiga ainda está viva, e a loja funciona com ela. Ou seja: o catálogo
+>    abre normalmente **mesmo que o passo 2 ou o passo 3 tenham falhado**. Se você usar
+>    "os produtos apareceram" como prova, o passo 5 desliga a chave antiga e a loja cai.
+>
+>    **A conferência que vale, e é o portão da segurança inteira deste procedimento:**
+>    aperte **F12** → aba **Console** → recarregue a página. Vai aparecer uma linha assim:
+>
+>    ```
+>    [EnvGuard] Chave do Supabase resolvida a partir de VITE_SUPABASE_PUBLISHABLE_KEY.
+>    ```
+>
+>    **Tem de estar escrito `VITE_SUPABASE_PUBLISHABLE_KEY`.** Se aparecer
+>    `VITE_SUPABASE_ANON_KEY`, o site publicado ainda NÃO está usando a chave nova —
+>    **pare aqui e não desligue nada.** Quase sempre é uma destas três: a variável foi salva
+>    em outro ambiente que não Production, o nome dela saiu digitado errado, ou o Redeploy do
+>    passo 3 não chegou a terminar. Conserte e refaça o passo 3.
+>
+>    Se não aparecer linha nenhuma, o que abriu é uma versão antiga guardada pelo navegador:
+>    abra numa janela anônima e olhe de novo.
+> 5. **Só depois** que o catálogo carregar com a chave nova em produção, siga para a
+>    recomendação abaixo e desligue ou migre as chaves legadas.
+
+Só depois de fazer o bloco acima, procure na tela se existe:
 
 - Um botão pra **revogar ou desabilitar apenas a `service_role` legada**, ou
 - A opção de **migrar para as chaves novas** (`sb_secret_...`)
 
-Se existir, use esse caminho: ele mata a chave vazada **sem** derrubar a loja.
+Se existir, use esse caminho: ele mata a chave vazada **sem** derrubar a loja — porque a loja
+já sabe usar a chave nova, graças ao pré-requisito acima.
 
 > Não sei dizer o nome exato do botão — a interface do Supabase muda com frequência e eu
 > não tenho acesso ao seu painel. Se ficar em dúvida sobre o que um botão faz, **tire um
@@ -198,7 +251,19 @@ Aí a loja vai cair por alguns minutos. Faça na ordem exata:
 Depois de terminar, me chama que eu rodo a verificação. Ou faça você mesmo:
 
 1. Abra <https://ickous-marketplace.vercel.app> e veja se os produtos carregam.
-   Produto aparecendo = a `anon` nova está funcionando.
+   **"Produto aparecendo" sozinho não diz QUAL chave está funcionando** — hoje a loja aceita
+   tanto a `publishable` nova quanto a `anon` legada, então o catálogo carrega se qualquer
+   uma das duas estiver certa. Pra saber qual delas realmente respondeu:
+   - Abra o Console do navegador (tecla **F12** → aba **Console**) logo depois de a página
+     carregar. Vai aparecer uma linha começando com `[EnvGuard] Chave do Supabase resolvida a
+     partir de...` — ela nomeia exatamente a variável usada (`VITE_SUPABASE_PUBLISHABLE_KEY`
+     ou `VITE_SUPABASE_ANON_KEY`). Essa linha existe desde a INFRA-260 (#126) exatamente para
+     tirar essa dúvida sem precisar desligar nada para testar.
+   - ⚠️ **Isso vale mesmo se você rotacionou o JWT secret pela §2.3.** A `publishable` **não**
+     é assinada pela chave-mestra (a §2.1 explica: as chaves novas se revogam uma a uma), então
+     ela **sobrevive** à rotação — e a loja prefere ela. "O produto apareceu" depois da rotação
+     pode ser a `publishable` respondendo enquanto a `anon` nova que você acabou de colar está
+     errada. **A linha do Console acima é a única resposta confiável**, aqui e sempre.
 2. Adicione algo ao carrinho e vá até o checkout, sem finalizar.
 3. Entre no painel admin e veja se a lista de pedidos carrega.
 4. No GitHub, marque os alertas como resolvidos:
@@ -210,8 +275,19 @@ Depois de terminar, me chama que eu rodo a verificação. Ou faça você mesmo:
 ## Se algo quebrar
 
 **A loja abre em branco ou fica travada carregando**
-A `anon` key nova não chegou no build. Confira se você salvou a variável na Vercel **e**
-refez o deploy. Só salvar não resolve.
+A chave não chegou no build. Confira se você salvou a variável na Vercel **e** refez o
+deploy — só salvar não resolve.
+
+**A loja abre, mas produto/login/painel dão erro (e não aparece tela vermelha)**
+A chave que o site está usando **existe mas está errada** — truncada na cópia, com espaço
+colado, ou salva no ambiente trocado. O portão de erro do app só percebe variável
+**ausente**, nunca **errada**, e é por isso que não há aviso na tela. Aperte **F12** →
+**Console** e leia a linha `[EnvGuard] Chave do Supabase resolvida a partir de...`: ela diz
+qual das duas variáveis o site pegou. Corrija **essa** e refaça o deploy.
+
+⚠️ Cuidado com a inversão: se a `VITE_SUPABASE_PUBLISHABLE_KEY` estiver preenchida com um
+valor errado, ela **vence** a `VITE_SUPABASE_ANON_KEY` mesmo que a legada esteja perfeita.
+Chave nova errada derruba a loja com a chave antiga boa parada ao lado.
 
 **Os produtos não aparecem, mas a página abre**
 Provavelmente a `anon` foi atualizada mas há cache do Service Worker. Abra numa janela

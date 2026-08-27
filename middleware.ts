@@ -20,7 +20,17 @@ export default async function middleware(request: Request) {
   if (isBot && url.pathname === "/product-detail") {
     const productId = url.searchParams.get("id");
     const supabaseUrl = process.env.VITE_SUPABASE_URL;
-    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
+    // INFRA-260 (#126): a chave `anon` legada dá lugar à `publishable`, e as
+    // legadas funcionam só até o dono desligá-las num clique no Dashboard.
+    // Mesma precedência de src/lib/env.ts, mas inline: este middleware roda
+    // na Vercel Edge, fora do bundle do app, e não importa `src/`. A limpeza
+    // (URL/chave do Supabase são sempre ASCII imprimível) também precisa ser
+    // replicada ANTES do `||` — sem ela, um valor sujo (BOM, zero-width,
+    // espaço colado no `vercel env add`) é não-vazio e vence a legada boa.
+    const cleanEnvVar = (val: string) => val.replace(/[^!-~]/g, "");
+    const supabaseKey =
+      cleanEnvVar(process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "") ||
+      cleanEnvVar(process.env.VITE_SUPABASE_ANON_KEY || "");
 
     if (productId && supabaseUrl && supabaseKey) {
       try {

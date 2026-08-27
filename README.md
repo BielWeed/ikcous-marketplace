@@ -39,7 +39,9 @@ Uma plataforma de marketplace moderna, rápida e responsiva, focada em produtos 
 
    ```env
    VITE_SUPABASE_URL=seu_url
-   VITE_SUPABASE_ANON_KEY=sua_chave
+   VITE_SUPABASE_PUBLISHABLE_KEY=sua_chave_publishable
+   # Alternativa: VITE_SUPABASE_ANON_KEY=sua_chave_anon (legada — só serve de
+   # fallback se a publishable acima faltar)
    ```
 
 3. Inicie o ambiente de desenvolvimento:
