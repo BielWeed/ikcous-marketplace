@@ -182,7 +182,11 @@ function listaDaConstraintRestaurada(sql) {
     /ADD CONSTRAINT marketplace_orders_payment_status_check[\s\S]*?ARRAY\s*\[([\s\S]*?)\]/,
   );
   if (!m) return null;
-  return (m[1].match(/'([a-z_]+)'/g) || []).map((x) => x.slice(1, -1));
+  // `[^']+` e nao `[a-z_]+`: com a classe estreita, um setimo valor como
+  // 'recebido_na_entrega2' ou 'PIX' NAO casava e sumia em silencio da lista
+  // comparada — medido passando verde. Descartar em silencio e' o modo de
+  // falha que nao levanta suspeita.
+  return (m[1].match(/'([^']+)'/g) || []).map((x) => x.slice(1, -1));
 }
 
 Deno.test("o rollback restaura a constraint com EXATAMENTE os seis originais", () => {
@@ -241,25 +245,37 @@ Deno.test("a reversao inteira e' UM bloco atomico, com o portao dentro", () => {
         RAISE EXCEPTION 'Reversao recusada:`),
   );
 
-  // NADA que destroi pode ficar FORA do bloco. Esta e' a assercao que substitui
-  // a de ordem: em vez de adivinhar qual e' o "primeiro DROP", exige que nao
-  // exista nenhum DDL fora do que e' atomico.
-  const fim = rollbackN.indexOf("END $$;");
-  assert(fim > -1, "nao achei o fim do bloco DO");
-  const foraDoBloco = rollbackN.slice(fim + "END $$;".length);
-  for (const perigoso of [
+  // NADA que destroi pode ficar FORA do bloco — e "fora" tem DOIS lados.
+  // 🔴 A versao anterior olhava so' o que vinha DEPOIS do `END $$;`. Medido: um
+  // `ALTER TABLE ... DROP CONSTRAINT` inserido ANTES do `DO $$` passava verde —
+  // e ele e' comando de topo, confirma sozinho, entao o portao aborta so' a si
+  // mesmo e a tabela fica SEM TRAVA, com o operador lendo "reversao recusada" e
+  // achando que nada aconteceu. Era o mesmo dano, pelo lado que ninguem olhava.
+  // Usa `codigo` (sem linhas de comentario) porque o cabecalho cita DROP em prosa.
+  const iAbre = codigo.indexOf("DO $$");
+  const iFecha = codigo.indexOf("END $$;");
+  assert(iAbre > -1 && iFecha > iAbre, "nao achei o bloco atomico no codigo");
+  const antesDoBloco = codigo.slice(0, iAbre);
+  const depoisDoBloco = codigo.slice(iFecha + "END $$;".length);
+  const perigosos = [
     "DROP ",
     "ALTER TABLE ",
     "CREATE ",
     "TRUNCATE ",
     "UPDATE ",
     "DELETE ",
+  ];
+  for (const [onde, trecho] of [
+    ["ANTES", antesDoBloco],
+    ["DEPOIS", depoisDoBloco],
   ]) {
-    assertEquals(
-      foraDoBloco.includes(perigoso),
-      false,
-      `"${perigoso.trim()}" nao pode aparecer FORA do bloco atomico — la ele confirma sozinho`,
-    );
+    for (const perigoso of perigosos) {
+      assertEquals(
+        trecho.includes(perigoso),
+        false,
+        `"${perigoso.trim()}" nao pode aparecer ${onde} do bloco atomico — la ele confirma sozinho`,
+      );
+    }
   }
 });
 
@@ -289,8 +305,16 @@ Deno.test("a tabela nova nasce com RLS ligado e policy so' para admin", () => {
   // igualmente validas — sem qualificar o schema (`ON <tabela> FOR INSERT`) e
   // com clausula no meio (`ON public.<tabela> AS PERMISSIVE FOR ALL`). Quatro
   // strings literais nao enumeram uma gramatica.
+  // Aspas opcionais: `ON "public"."tabela"` e forma valida e existe neste
+  // repositorio. Sem isso, a grafia entre aspas escapava — medido verde.
   const policyDeEscrita =
-    /ON (?:public\.)?marketplace_order_payment_history\b[^;]*?\bFOR (?:INSERT|UPDATE|DELETE|ALL)\b/;
+    /* eslint-disable-next-line security/detect-unsafe-regex --
+     * Medido em 27/08/2026: 0,13-0,22 ms contra tres entradas adversariais de
+     * 60-160 mil caracteres (aspas repetidas, "public" repetido, e texto sem
+     * ';' nem 'FOR' para nunca casar) e 0,18 ms contra a maior migration real
+     * do repositorio (201 KB). Sem blowup exponencial nos tres casos. Entrada
+     * e' sempre o texto de migration/rollback local, nunca rede. */
+    /ON (?:"?public"?\.)?"?marketplace_order_payment_history"?[^;]*?\bFOR (?:INSERT|UPDATE|DELETE|ALL)\b/;
   assertEquals(
     policyDeEscrita.test(migrationN),
     false,
