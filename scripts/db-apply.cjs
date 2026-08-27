@@ -999,6 +999,21 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261020000000_lojista_registra_pagamento_recebido.sql": [
+    {
+      funcao: "registrar_pagamento_recebido",
+      esperado: [
+        // A guarda de quem pode: sem ela, qualquer cliente logado marcaria
+        // o proprio pedido como pago.
+        "IF NOT public.is_admin() THEN",
+        // Bloco amarrado, nao marcador solto: prova que a recusa do pedido
+        // do site esta ligada ao METODO, e nao a outra condicao qualquer.
+        "IF v_payment_method = 'online' THEN",
+        // A palavra do lojista NAO sobrescreve a do gateway.
+        "ELSIF v_payment_status IS NOT NULL THEN",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
