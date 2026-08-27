@@ -7,6 +7,71 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.10.0] — 2026-08-27
+
+Seis defeitos que a loja tinha e ninguém via, mais a metade que faltava do
+cancelamento depois do envio. É a versão que fecha a conta aberta na 1.9.x.
+
+### Para quem COMPRA
+
+- **A foto para de virar um retângulo preto.** Imagem com fundo transparente
+  perdia o fundo ao ser redimensionada e virava um bloco preto — no catálogo,
+  no avatar e na capa.
+- **Falha de rede na busca do CEP deixa de ser silêncio.** Se a consulta caía, o
+  endereço simplesmente não preenchia e nada explicava por quê: a pessoa ficava
+  tentando no escuro, no meio do checkout.
+- **Um erro do servidor para de virar "você está sem internet".** Um 502 isolado
+  fazia a loja anunciar que a pessoa estava offline, com a internet dela
+  funcionando.
+- **O app para de reescrever sozinho o nome do produto** ao carregar o catálogo.
+- **Quem liga o aviso de novidades para de ficar preso.** Havia becos sem saída
+  em que a pessoa autorizava a notificação, nunca recebia nada, e a tela
+  continuava dizendo que estava tudo certo.
+- **Duas abas abertas param de brigar.** Com a loja aberta em mais de uma aba,
+  duas podiam assumir o mesmo posto ao mesmo tempo e duplicar trabalho.
+
+### Para quem VENDE
+
+- **O painel separa duas perguntas que eram uma só:** "o produto voltou?" e
+  "pode devolver o dinheiro?". Quando um pedido é cancelado depois de enviado, a
+  mercadoria está fisicamente com o cliente — e o painel agora mostra isso, com o
+  botão para confirmar o retorno quando ela chegar.
+- **O estoque parou de mentir nesse caso.** Antes, cancelar um pedido já enviado
+  devolvia a peça para a prateleira na hora, e a loja passava a anunciar um
+  produto que não estava lá. Agora ele só volta quando você confirmar que
+  recebeu.
+- **Cliente não cancela mais pedido já entregue.** Produto entregue é devolução,
+  que é outro assunto. Você, como loja, continua podendo.
+
+### 🔴 A ordem em que isto subiu, porque ela não foi a ideal
+
+A regra no banco (migration `20260970000000`) foi aplicada em **27/08/2026, antes
+desta release** — verificada em conexão nova, chamando as funções como o app
+chama, com controle negativo e a transação encerrada em `ROLLBACK`.
+
+Consequência: desde aquele momento até o merge desta release, o banco já exigia a
+confirmação de retorno enquanto o painel publicado **ainda não tinha o botão** —
+um cancelamento depois do envio prenderia o estoque sem tela para liberá-lo.
+Janela medida: 1 pedido em `shipping` e nenhum pedido novo desde 23/08.
+
+**Esta release é o que fecha essa janela.** O certo, da próxima vez, é publicar a
+tela primeiro e o banco depois: tela nova com banco velho funciona; banco novo
+com tela velha é que quebra.
+
+### Fecha uma pendência da 1.9.1
+
+A 1.9.1 subiu declarando que faltava cadastrar `VITE_SUPABASE_PUBLISHABLE_KEY` na
+Vercel e refazer o deploy. Medido em 27/08: a variável existe em Production e o
+site publicado **já carrega a chave nova**. Aquele passo está concluído.
+
+### Sabido e não corrigido
+
+- **Não existe devolver dinheiro pelo app.** O painel passa a *listar* quanto
+  você deve estornar; o estorno em si continua manual, no painel do Mercado
+  Pago, um pedido por vez.
+- Segue valendo o que a 1.9.0 já listava em aberto — frete grátis escrito em 10
+  lugares (`FRETE-020`) e o OTP de rastreio de convidado (`AUTH-010`, #118).
+
 ## [1.9.1] — 2026-08-27
 
 **Nada muda na tela, e é esse o ponto.** Esta versão existe para a loja
