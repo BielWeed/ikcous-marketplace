@@ -753,7 +753,29 @@ O corpo que o Postgres guarda é o texto do arquivo que o aplicou — **não exi
 
 Leia os três. Eles são a base **do rollback** (cópia literal) e a base **da migration** (a mesma cópia, com os 12 pontos alterados). Se algum dos três arquivos não existir ou estiver vazio, **pare e avise** — sem eles não há como escrever nem a migration nem o rollback com fidelidade, e reconstruir o corpo de memória é exatamente como se embarca um rollback infiel.
 
-⚠️ **Copie byte a byte, incluindo o fim de linha.** Um mesmo repositório tem função gravada em CRLF e função gravada em LF, e converter tudo para um dos dois conserta uma e quebra a outra.
+## 🔴 O fim de linha destes dois arquivos é LF, e a convenção do repositório vai te empurrar para o errado
+
+**Os três corpos vivos estão em LF puro** — medido em 27/08/2026: `CRLF=0` nos três (`get_admin_analytics_v2` 268 LF, `get_admin_customers_paged` 170 LF, `get_segmented_push_targets` 72 LF).
+
+**E os arquivos novos deste repositório são gravados em CRLF.** Medido nos vizinhos, dentro do commit: `tests/migration_vitrine_sabe_que_produto_mudou_test.ts` = 445 CRLF, `supabase/migrations/20261012000000_a_vitrine...sql` = 148 CRLF. No Windows, um editor ou um script em modo texto grava CRLF **sem avisar**.
+
+Ou seja: **seguir a convenção do repositório aqui produz um rollback infiel.** O corpo que o Postgres guarda é o texto do arquivo que o aplicou — não existe convenção a seguir, existe o corpo vivo a reproduzir.
+
+**A assinatura da falha, para você reconhecer se acontecer:** `db-prove-rollback.cjs` devolve `FALHOU / rollback infiel` com `divergencias de conteudo: N` e **`so de espaco/formatacao: 0`**, com as duas strings visualmente idênticas na saída. O normalizador do script **não** trata quebra de linha como espaço, e é essa severidade que salva — se ele classificasse como formatação, um rollback infiel embarcaria.
+
+**Como garantir:** escreva os dois arquivos em LF explicitamente (em Python, `open(..., "w", newline="\n")`; nunca o modo texto padrão do Windows) e **confira antes de commitar**:
+
+```bash
+grep -c $'\r' supabase/migrations/20261021000000_receita_conta_so_dinheiro_que_entrou.sql
+```
+
+```bash
+grep -c $'\r' rollback-manual-20261021000000_receita_conta_so_dinheiro_que_entrou.sql
+```
+
+Os dois têm de dar **0**. Se derem outra coisa, conserte antes de seguir — e confira também no blob depois de commitar, com `git show HEAD:<caminho> | grep -c $'\r'`, porque o git pode converter na cópia de trabalho e esconder a diferença.
+
+⚠️ Isto vale **só** para estes dois arquivos, cujo conteúdo tem de reproduzir corpo vivo. O arquivo de teste desta tarefa segue a convenção normal do repositório.
 
 - [ ] **Step 2: Escrever o teste de forma**
 
