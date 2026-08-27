@@ -90,10 +90,9 @@ export function mapProductFromDB(
     const updatedAt = row.ultima_atualizacao || row.updated_at || createdAt;
     const createdTime = new Date(createdAt).getTime();
 
-    const formattedName =
-      name === "boobie goods" || name === "Boobie Goods"
-        ? "Bobbie Goods"
-        : name;
+    // Quem manda no catálogo é a lojista: o nome vem exatamente como ela
+    // cadastrou, sem reescrita silenciosa no código. Já existiu um `if` aqui
+    // trocando "boobie goods"/"Boobie Goods" por "Bobbie Goods".
 
     const variantStock =
       Array.isArray(row.product_variants) &&
@@ -107,7 +106,7 @@ export function mapProductFromDB(
 
     return {
       id: row.id,
-      name: formattedName,
+      name,
       description,
       price,
       costPrice,

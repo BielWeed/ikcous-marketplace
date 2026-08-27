@@ -513,6 +513,30 @@ export function mesclarAtualizacaoRealtime(
 }
 
 /**
+ * Deriva o novo valor de `cancelledAfterShipping` para o UPDATE OTIMISTA de
+ * `updateOrderStatus` (achado da Task 5 do plano de cancelamento-com-
+ * estorno, 26/08/2026) — espelha, do lado do cliente e SEM esperar a
+ * resposta do servidor, a regra gravada pela migration `20260970000000` em
+ * `update_order_status_atomic`: só vira `true` quando o pedido está sendo
+ * cancelado agora e o status ANTERIOR (antes desta chamada) era `shipping`.
+ * Cancelar a partir de `pending`/`processing` mantém `false` — o produto
+ * nunca saiu, não há nada para "esperar voltar". Fora do caminho de
+ * cancelamento, o valor atual é preservado tal como está (o campo é
+ * histórico e nunca volta a `false` sozinho, ver comentário da coluna na
+ * migration).
+ */
+export function derivarCancelledAfterShipping(
+  statusAnterior: OrderStatus,
+  novoStatus: OrderStatus,
+  valorAtual: boolean,
+): boolean {
+  if (novoStatus === "cancelled" && statusAnterior === "shipping") {
+    return true;
+  }
+  return valorAtual;
+}
+
+/**
  * Estado da conexão realtime do canal de pedidos (auditoria de 26/08/2026,
  * achado do selo "Operações ao Vivo"/"Moderação Ativa" no painel). O
  * `channel.subscribe` abaixo (dentro de `useOrders`, seção "Realtime
@@ -989,6 +1013,122 @@ export function useOrders(
     [loadOrders],
   );
 
+  /**
+   * Referência PRÓPRIA de pedidos cancelados — Task 5, BLOQUEIA 1 da
+   * revisão de 26/08/2026: os baldes de mercadoria ("esperando o produto
+   * voltar") e de dinheiro ("estorno devido") em AdminOrdersView.tsx
+   * precisam enxergar TODO pedido cancelado da loja, não só a página que o
+   * filtro/busca/período/paginação da tela principal trouxe. `filter` da
+   * tela nasce "open" (exclui `cancelled`) — se os baldes dependessem de
+   * `orders`, o painel nunca montaria no estado padrão da tela.
+   *
+   * Consulta PRÓPRIA, com filtro FIXO (`p_status: "cancelled"`), sem busca
+   * e sem período — a mesma RPC `get_admin_orders_paged`, com um
+   * `AbortController` independente do de `loadOrders` (cancelar uma
+   * consulta não pode abortar a outra). Pagina até cobrir `total_count`:
+   * uma única chamada com `p_page_size` fixo perderia pedido cancelado além
+   * do primeiro lote assim que a loja passar dos ~72 de hoje (achado
+   * 20/08/2026, docstring de `filter` acima).
+   */
+  const cancelledOrdersAbortControllerRef = useRef<AbortController | null>(
+    null,
+  );
+  const [pedidosCancelados, setPedidosCancelados] = useState<Order[]>([]);
+  const [carregandoPedidosCancelados, setCarregandoPedidosCancelados] =
+    useState(false);
+  /**
+   * Achados B e D da revisão de 26/08/2026 (rodada 4, BLOQUEIA): erro
+   * engolido pela RPC (o `catch` abaixo — SEM toast e sem propagar, isso
+   * continua certo, não pode derrubar a lista principal) e truncagem pelo
+   * teto de páginas (`MAX_PAGES`, abaixo — o teto em si está certo, não foi
+   * mexido) têm o MESMO efeito na tela: `pedidosCancelados` fica menor que
+   * a realidade. Sem sinal nenhum, os dois containers de
+   * AdminOrdersView.tsx (que só renderizam com `lista.length > 0`)
+   * desaparecem exatamente como desapareceriam se não houvesse pedido
+   * nenhum pendente — a lojista lia "nada pendente" quando a verdade era
+   * "não sei". Este flag é a diferença entre as duas leituras.
+   */
+  const [pedidosCanceladosIncompleto, setPedidosCanceladosIncompleto] =
+    useState(false);
+
+  const fetchPedidosCancelados = useCallback(async () => {
+    if (!enabled) return [];
+
+    if (cancelledOrdersAbortControllerRef.current) {
+      cancelledOrdersAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    cancelledOrdersAbortControllerRef.current = controller;
+    const signal = controller.signal;
+
+    const PAGE_SIZE = 200;
+    // Teto de segurança contra loop sem fim se `total_count` vier
+    // inconsistente — não contra loja real: 25 * 200 = 5000 pedidos
+    // cancelados.
+    const MAX_PAGES = 25;
+
+    setCarregandoPedidosCancelados(true);
+    try {
+      let page = 0;
+      let acumulado: Order[] = [];
+      let totalCount = 0;
+      do {
+        const query = (supabase.rpc as any)("get_admin_orders_paged", {
+          p_search: "",
+          p_status: "cancelled",
+          p_start_date: "",
+          p_end_date: "",
+          p_page: page,
+          p_page_size: PAGE_SIZE,
+        }).abortSignal(signal);
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        const orderData = data?.data || [];
+        totalCount = Number(data?.total_count) || 0;
+        acumulado = acumulado.concat(
+          orderData.map((item: any) => mapOrderFromDB(item)),
+        );
+        page += 1;
+      } while (acumulado.length < totalCount && page < MAX_PAGES);
+
+      setPedidosCancelados(acumulado);
+      // Achado D: o teto de páginas pode encerrar o laço antes de cobrir
+      // `totalCount` — sem esta linha a lista truncada era gravada como se
+      // fosse a íntegra, e a tela não tinha como diferenciar as duas.
+      setPedidosCanceladosIncompleto(acumulado.length !== totalCount);
+      return acumulado;
+    } catch (err: any) {
+      if (
+        err?.name === "AbortError" ||
+        err?.message === "Fetch is aborted" ||
+        err?.message?.includes("aborted")
+      ) {
+        return [];
+      }
+      // SEM toast e sem propagar: esta falha NÃO pode derrubar a lista
+      // principal de pedidos, que é o trabalho do dia da lojista (BLOQUEIA
+      // 1 da revisão de 26/08/2026). O painel de mercadoria/estorno
+      // simplesmente fica sem dado até a próxima tentativa — mas passa a
+      // avisar que o que tem (ou a falta) pode não ser a realidade
+      // (achado B).
+      console.error("Error loading cancelled orders panel:", err);
+      setPedidosCanceladosIncompleto(true);
+      return [];
+    } finally {
+      // ANOTADO da revisão de 26/08/2026 (rodada 4): se uma chamada mais
+      // nova disparar antes desta terminar (dois cliques seguidos, ou o
+      // achado A desta rodada chamando de novo enquanto a 1ª ainda está em
+      // voo), este `finally` roda para a chamada VELHA e pode marcar
+      // `false` por cima do `true` que a chamada NOVA acabou de setar.
+      // Inofensivo enquanto `carregandoPedidosCancelados` continuar sem
+      // consumidor (nem AdminOrdersView.tsx, nem os testes leem este
+      // campo) — deixa de ser no dia em que alguém ligar um spinner nele.
+      setCarregandoPedidosCancelados(false);
+    }
+  }, [enabled]);
+
   const handleRealtimeInsert = useCallback(
     async (newPayload: any) => {
       const { data, error } = await supabase
@@ -1034,8 +1174,17 @@ export function useOrders(
         }
         return updated;
       });
+      // Achado A da revisão de 26/08/2026 (rodada 4), mesma razão de
+      // `updateOrderStatus` acima — mas para a origem que NÃO passa por
+      // ele: o cliente cancela o próprio pedido, ou outra sessão admin
+      // cancela, e o evento chega por realtime com esta tela aberta. Sem
+      // isto, o card "Produtos que ainda não voltaram" também ficava
+      // parado até a lojista trocar de aba.
+      if (isAdmin && updatedOrder.status === "cancelled") {
+        fetchPedidosCancelados().catch(() => {});
+      }
     },
-    [isAdmin, user?.id],
+    [isAdmin, user?.id, fetchPedidosCancelados],
   );
 
   const handleRealtimeDelete = useCallback(
@@ -1474,6 +1623,21 @@ export function useOrders(
           if (o.id === orderId) {
             const updatedOrder = Object.assign({}, o);
             updatedOrder.status = status;
+            // Achado da Task 5 (26/08/2026): sem isto, cancelar pelo painel
+            // um pedido JÁ ENVIADO entrava no cache com
+            // `cancelledAfterShipping: false` até o servidor responder.
+            // Achado da revisão de 26/08/2026 (rodada 4): isto NÃO alimenta
+            // `baldeDeEstorno` — desde o BLOQUEIA 1 da rodada anterior os
+            // dois baldes leem `pedidosCancelados` (a consulta PRÓPRIA, ver
+            // `fetchPedidosCancelados`), nunca `orders`/`cachedAdminOrders`.
+            // A derivação aqui continua certa por manter ESTE campo coerente
+            // nesta fatia de estado enquanto o servidor não responde — só a
+            // razão de existir mudou.
+            updatedOrder.cancelledAfterShipping = derivarCancelledAfterShipping(
+              o.status,
+              status,
+              o.cancelledAfterShipping,
+            );
             return updatedOrder;
           }
           return o;
@@ -1484,6 +1648,12 @@ export function useOrders(
             if (o.id === orderId) {
               const updatedOrder = Object.assign({}, o);
               updatedOrder.status = status;
+              updatedOrder.cancelledAfterShipping =
+                derivarCancelledAfterShipping(
+                  o.status,
+                  status,
+                  o.cancelledAfterShipping,
+                );
               return updatedOrder;
             }
             return o;
@@ -1538,6 +1708,19 @@ export function useOrders(
 
         clearAnalyticsCache();
         if (!silent) toast.success("Status atualizado com sucesso");
+        // Achado A da revisão de 26/08/2026 (rodada 4, BLOQUEIA): os dois
+        // baldes de mercadoria/estorno de AdminOrdersView.tsx dependem de
+        // `pedidosCancelados` — a consulta PRÓPRIA acima, em
+        // `fetchPedidosCancelados` — e nada disparava essa consulta de
+        // novo quando ESTE clique era a origem do cancelamento. Sem isto,
+        // a lojista cancelava um pedido já enviado e o card "Produtos que
+        // ainda não voltaram" só aparecia depois de trocar de aba e
+        // voltar. `isAdmin`: cliente também chama `updateOrderStatus` para
+        // cancelar o próprio pedido (CheckoutView/OrderDetailsView) — essa
+        // RPC é do painel admin, não faz sentido chamá-la do lado dele.
+        if (isAdmin && status === "cancelled") {
+          fetchPedidosCancelados().catch(() => {});
+        }
       } catch (err: any) {
         console.error("Error updating status:", err);
         cachedAdminOrders = cachedAdminOrders
@@ -1553,8 +1736,96 @@ export function useOrders(
         throw err;
       }
     },
-    [isAdmin, orders, user?.id],
+    [isAdmin, orders, user?.id, fetchPedidosCancelados],
   );
+
+  /**
+   * Confirma que o produto de um pedido cancelado-após-envio voltou à mão da
+   * lojista — chama a RPC `confirmar_retorno_do_produto` (migration
+   * `20260970000000`, ainda NÃO aplicada no banco enquanto esta tela não
+   * estiver no ar: ver "A ordem de aplicação" no plano). É esse clique que
+   * devolve o item ao estoque; sem ele, a mercadoria fica fora do catálogo
+   * para sempre — a migration tirou o retorno automático que existia antes.
+   *
+   * Não move dinheiro nenhum: o app não estorna sozinho. Isto só marca que a
+   * MERCADORIA voltou — quem governa o card de mercadoria é
+   * `precisaConfirmarRetornoDoProduto` (AdminOrdersView.tsx), não
+   * `baldeDeEstorno` (achado da revisão de 26/08/2026, rodada 4: a versão
+   * anterior deste comentário estava errada duas vezes — o card some por
+   * `precisaConfirmarRetornoDoProduto`, e um pedido nunca pago jamais vira
+   * "devolver_agora", só sai do card de mercadoria).
+   */
+  const confirmarRetornoDoProduto = useCallback(async (orderId: string) => {
+    try {
+      const { data, error } = await (supabase.rpc as any)(
+        "confirmar_retorno_do_produto",
+        { p_order_id: orderId },
+      );
+
+      if (error) throw error;
+
+      // A idempotência (RPC devolve `ja_confirmado: true` sem re-mexer no
+      // estoque num segundo clique) mora no banco — aqui só refletimos o
+      // que ele confirmou. `returned_to_seller_at` vem da RPC quando
+      // presente; senão, "agora" é a melhor aproximação otimista.
+      const returnedAt: string =
+        typeof data?.returned_to_seller_at === "string"
+          ? data.returned_to_seller_at
+          : new Date().toISOString();
+
+      cachedAdminOrders = (cachedAdminOrders || []).map((o) =>
+        o.id === orderId ? { ...o, returnedToSellerAt: returnedAt } : o,
+      );
+
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId ? { ...o, returnedToSellerAt: returnedAt } : o,
+        ),
+      );
+
+      // Mesma atualização no painel de mercadoria/estorno (`pedidosCancelados`,
+      // acima): é ela — e não `orders` — quem alimenta os dois baldes de
+      // AdminOrdersView.tsx desde o BLOQUEIA 1 da revisão de 26/08/2026.
+      // Sem isto, um clique bem-sucedido continuaria mostrando o pedido
+      // no balde "esperando o produto voltar" até a próxima recarga.
+      setPedidosCancelados((prev) =>
+        prev.map((o) =>
+          o.id === orderId ? { ...o, returnedToSellerAt: returnedAt } : o,
+        ),
+      );
+
+      clearAnalyticsCache();
+      // O toast tem que dizer a verdade do QUE ESTE clique fez: no
+      // segundo clique a RPC devolve `ja_confirmado: true` sem tocar no
+      // estoque (idempotência, ver a migration) — dizer "Estoque
+      // atualizado" nesse caso afirma um fato que este clique não
+      // cumpriu (achado da revisão de 26/08/2026).
+      if (data?.ja_confirmado) {
+        toast.success(
+          "Este retorno já tinha sido confirmado antes. Nada mudou no estoque.",
+        );
+      } else {
+        toast.success("Retorno do produto confirmado. Estoque atualizado.");
+      }
+      return data;
+    } catch (err: any) {
+      // Achado E da revisão de 26/08/2026 (rodada 4, BLOQUEIA): este
+      // catch só roda quando a RPC falha — e a falha acontece ANTES de
+      // qualquer escrita de estado (elas ficam todas depois do
+      // `if (error) throw error;`, acima). Um rollback aqui nunca desfaz
+      // nada DESTA chamada; ele restaura um retrato tirado no início
+      // dela, que pode já estar velho por causa de OUTRA atualização
+      // (realtime, ou outro clique) que aconteceu enquanto esta RPC
+      // estava em voo — e aí o rollback apaga essa outra atualização em
+      // vez de desfazer a própria. A correção é subtrativa: sem estado
+      // otimista para desfazer, não há nada para restaurar.
+      console.error("Error confirming product return:", err);
+      toast.error("Não foi possível confirmar o retorno do produto.", {
+        description: err?.message,
+      });
+      throw err;
+    }
+  }, []);
 
   const fetchOrderHistory = useCallback(async (orderId: string) => {
     try {
@@ -2096,6 +2367,9 @@ export function useOrders(
       if (adminOrdersAbortControllerRef.current) {
         adminOrdersAbortControllerRef.current.abort();
       }
+      if (cancelledOrdersAbortControllerRef.current) {
+        cancelledOrdersAbortControllerRef.current.abort();
+      }
     };
   }, []);
 
@@ -2113,6 +2387,15 @@ export function useOrders(
     loadOrders, // New pagination function
     fetchOrders, // Legacy alias
     updateOrderStatus,
+    confirmarRetornoDoProduto,
+    // Painel de mercadoria/estorno (Task 5, BLOQUEIA 1 da revisão de
+    // 26/08/2026) — ver o docstring de `fetchPedidosCancelados`, acima.
+    pedidosCancelados,
+    carregandoPedidosCancelados,
+    // Achados B/D da revisão de 26/08/2026 (rodada 4) — ver o docstring de
+    // `pedidosCanceladosIncompleto`, acima.
+    pedidosCanceladosIncompleto,
+    fetchPedidosCancelados,
     fetchOrdersByWhatsapp,
     generateOrderOtp,
     fetchOrdersByOtp,
