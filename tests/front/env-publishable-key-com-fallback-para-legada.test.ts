@@ -44,12 +44,18 @@ describe("env.ts — publishable key nova com fallback para a anon legada (INFRA
     const env = await importarEnvLimpo();
 
     expect(env.SUPABASE_PUBLISHABLE_KEY).toBe("sb_publishable_teste123");
-    // Alias de compatibilidade: hoje nenhum módulo importa `SUPABASE_ANON_KEY`
-    // de `@/lib/env` (grep confirma: só `SUPABASE_PUBLISHABLE_KEY` e
-    // `SUPABASE_URL` são importados em `supabase.ts`). Este export é o ponto
-    // de pouso para a migração futura de `useOnlineStatus.ts:48`, que hoje lê
-    // `import.meta.env.VITE_SUPABASE_ANON_KEY` cru — tem que apontar para o
-    // MESMO valor resolvido, não para a legada vazia.
+    // Alias de compatibilidade SEM CONSUMIDOR. Nenhum módulo importa
+    // `SUPABASE_ANON_KEY` de `@/lib/env` — só `SUPABASE_PUBLISHABLE_KEY` e
+    // `SUPABASE_URL`, em `supabase.ts`. A asserção existe para garantir que,
+    // se alguém importar este nome, receba o valor RESOLVIDO e nunca a legada
+    // vazia. É dívida conhecida: o export sobreviveu ao motivo que o criou.
+    //
+    // 🔴 NÃO use este alias como "ponto de pouso" para migrar mais nada para
+    // `@/lib/env`. Este módulo LANÇA na própria avaliação (o portão de boot),
+    // e o CI não tem `.env`: importá-lo de um hook derrubou 14 arquivos de
+    // teste já commitados, e passou verde na máquina do autor porque ali o
+    // `.env` existe. Quem precisa só dos VALORES importa `@/lib/env-valores`,
+    // que é puro e não lança.
     expect(env.SUPABASE_ANON_KEY).toBe("sb_publishable_teste123");
   });
 

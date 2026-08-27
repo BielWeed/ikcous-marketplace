@@ -9,36 +9,33 @@
  *
  * Aqui a falha é tratada onde ela realmente acontece: pinta a tela de erro com DOM
  * puro (sem React, que ainda não montou) e só então interrompe o boot.
+ *
+ * O CÁLCULO dos valores (puro, sem `throw`) mora em `@/lib/env-valores` — este
+ * arquivo importa de lá e reexporta, e fica só com o PORTÃO: a validação, a tela
+ * de erro e o `throw`. Quem já importava `@/lib/env` não nota diferença nenhuma;
+ * quem só precisa do valor (como `useOnlineStatus.ts`) agora pode importar o
+ * módulo puro e não herdar o portão.
+ *
+ * `env-valores.ts` expõe FUNÇÕES de leitura viva, não mais `const`. Aqui elas
+ * são chamadas UMA vez, no topo — o resultado vira `const` deste módulo, e o
+ * portão abaixo continua avaliando na carga do módulo, como sempre avaliou.
  */
+import {
+  lerChaveSupabase,
+  lerOrigemChaveSupabase,
+  lerSupabaseUrl,
+} from "@/lib/env-valores";
 
-// URL e chave anon são sempre ASCII imprimível ("!" a "~"). Descartar o resto elimina
-// de uma vez BOM, zero-width, nbsp e espaços que entram ao colar valores no .env.
-const cleanEnvVar = (val: string) => val.replace(/[^!-~]/g, "");
-
-export const SUPABASE_URL = cleanEnvVar(
-  import.meta.env.VITE_SUPABASE_URL || "",
-);
-
-// INFRA-260 (#126): o Supabase está trocando as chaves de API — a legada
-// `anon` (JWT) dá lugar à `publishable` (`sb_publishable_...`). As legadas
-// funcionam até o dono desligá-las num clique no Dashboard, sem data
-// marcada. As 8 edge functions no ar já leem a nova com fallback para a
-// legada (`readKey` em supabase/functions/_shared/webpush.ts); aqui é a
-// mesma precedência, para o front sobreviver ao mesmo desligamento.
-const PUBLISHABLE_KEY_NOVA = cleanEnvVar(
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "",
-);
-const ANON_KEY_LEGADA = cleanEnvVar(
-  import.meta.env.VITE_SUPABASE_ANON_KEY || "",
-);
-export const SUPABASE_PUBLISHABLE_KEY = PUBLISHABLE_KEY_NOVA || ANON_KEY_LEGADA;
-
-// Alias de COMPATIBILIDADE, não descuido: criado PARA a frente que vai
-// migrar `src/hooks/useOnlineStatus.ts:48` (INFRA-260), que hoje lê
-// `import.meta.env.VITE_SUPABASE_ANON_KEY` cru, direto do `import.meta.env` —
-// nenhum módulo importa este nome ainda. É o ponto de pouso que aquela
-// migração vai usar. Aponta para o MESMO valor já resolvido acima — nunca
-// para a legada crua.
+export const SUPABASE_URL = lerSupabaseUrl();
+export const SUPABASE_PUBLISHABLE_KEY = lerChaveSupabase();
+// Alias de compatibilidade SEM CONSUMIDOR — dívida conhecida, mantida de
+// propósito e com prazo de validade. Ele nasceu como "ponto de pouso" para a
+// migração do `useOnlineStatus.ts`; essa migração já aconteceu e, com razão,
+// NÃO usou este nome (o hook importa `@/lib/env-valores`, que é puro). Fica
+// só para não quebrar quem porventura importasse o nome antigo, e aponta para
+// o MESMO valor resolvido — nunca para a legada crua. Quando ninguém mais
+// depender dele, apagar junto com a asserção que o cobre em
+// `tests/front/env-publishable-key-com-fallback-para-legada.test.ts`.
 export const SUPABASE_ANON_KEY = SUPABASE_PUBLISHABLE_KEY;
 
 /**
@@ -113,9 +110,7 @@ if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
 // truncada por colagem, mas não-vazia), um 401 em massa aponta direto para
 // qual variável venceu — sem precisar de sessão de depuração. Nunca o VALOR
 // da chave, só o NOME da variável de origem.
-const ORIGEM_DA_CHAVE = PUBLISHABLE_KEY_NOVA
-  ? "VITE_SUPABASE_PUBLISHABLE_KEY"
-  : "VITE_SUPABASE_ANON_KEY";
+const ORIGEM_DA_CHAVE = lerOrigemChaveSupabase();
 console.info(
   `[EnvGuard] Chave do Supabase resolvida a partir de ${ORIGEM_DA_CHAVE}.`,
 );
