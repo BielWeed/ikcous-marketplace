@@ -39,8 +39,16 @@ export function PushNotificationBanner({
       return;
     }
 
-    // 3. Se ja inscrito ou permissao negada/concedida no navegador
-    if (subscription || permission === "denied" || permission === "granted") {
+    // 3. Se ja inscrito, ou permissao negada.
+    //
+    // "granted" sozinho NAO entra aqui: a permissao e concedida ANTES da
+    // inscricao ser gravada (usePushNotifications.ts:149-226). Se o
+    // pushManager.subscribe() ou a gravacao no Supabase falharem depois, o
+    // estado final e "granted" SEM subscription — e esconder o banner nesse
+    // caso deixava a cliente achando que ia receber os avisos, para sempre
+    // (o banner e a UNICA porta de inscricao que ela tem). Quem JA esta
+    // inscrita (subscription existe) continua sem ver o banner de novo.
+    if (subscription || permission === "denied") {
       setIsVisible(false);
       return;
     }
