@@ -309,11 +309,30 @@ Deno.test("a tabela nova nasce com RLS ligado e policy so' para admin", () => {
   // repositorio. Sem isso, a grafia entre aspas escapava — medido verde.
   const policyDeEscrita =
     /* eslint-disable-next-line security/detect-unsafe-regex --
-     * Medido em 27/08/2026: 0,13-0,22 ms contra tres entradas adversariais de
-     * 60-160 mil caracteres (aspas repetidas, "public" repetido, e texto sem
-     * ';' nem 'FOR' para nunca casar) e 0,18 ms contra a maior migration real
-     * do repositorio (201 KB). Sem blowup exponencial nos tres casos. Entrada
-     * e' sempre o texto de migration/rollback local, nunca rede. */
+     * O pior caso e' QUADRATICO, nao exponencial -- refeito em 27/08/2026
+     * porque a primeira medicao usou entrada facil (aspas/"public" repetidos
+     * nunca criam a ambiguidade real). Entrada adversarial de verdade: o
+     * PREFIXO QUE CASA ("ON marketplace_order_payment_history ") repetido,
+     * sem ';' nem 'FOR', forcando o [^;]*? a varrer ate o fim a partir de
+     * cada ocorrencia:
+     *   666 mil chars    -> 3,03 s
+     *   1,37 milhao      -> 12,51 s
+     *   2,74 milhoes     -> 49,90 s
+     *   5,48 milhoes     -> 201,89 s
+     *   crescimento ao dobrar o tamanho: 4,13x / 3,99x / 4,05x, CONSTANTE
+     *   -- QUADRATICO.
+     * Controle positivo, regex sabidamente exponencial no mesmo motor
+     * ((a+)+ contra 'a'.repeat(n)+'X'): n=20 -> 96 ms, n=24 -> 201 ms,
+     * n=28 -> 3,15 s -- o crescimento ACELERA a cada passo (2,1x, depois
+     * 15,7x), o oposto da razao constante acima. E' isso que separa
+     * quadratico de exponencial aqui.
+     * O que torna isto seguro NAO e' a regex ser rapida -- no pior caso
+     * ela nao e' -- e' a entrada ser SEMPRE um arquivo local do
+     * repositorio (migration/rollback), nunca rede nem entrada de
+     * usuario. Extrapolando a curva medida (k ~= 6,7e-9 ms/char^2) para os
+     * 201 KB da maior migration do repositorio, no formato MAIS
+     * adversarial possivel (que uma migration real nunca tem), da ~0,29 s;
+     * a migration desta tarefa tem 7 KB, onde o mesmo calculo da ~0,0003 s. */
     /ON (?:"?public"?\.)?"?marketplace_order_payment_history"?[^;]*?\bFOR (?:INSERT|UPDATE|DELETE|ALL)\b/;
   assertEquals(
     policyDeEscrita.test(migrationN),
