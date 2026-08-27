@@ -218,13 +218,88 @@ Deno.test("o rollback derruba TUDO que a migration cria — os QUATRO objetos", 
   // As duas colunas: apagar estas duas linhas do rollback deixava a bateria verde.
   assertStringIncludes(rollbackN, norm("DROP COLUMN IF EXISTS pagamento_recebido_em"));
   assertStringIncludes(rollbackN, norm("DROP COLUMN IF EXISTS pagamento_recebido_por"));
-  // E a constraint volta aos SEIS: o setimo valor NAO pode sobrar no rollback.
+});
+
+Deno.test("o rollback restaura a constraint com os SEIS — nao so' 'sem o setimo'", () => {
   assertStringIncludes(rollbackN, norm("ADD CONSTRAINT marketplace_orders_payment_status_check"));
+  // 🔴 Contar a AUSENCIA do setimo prova pouco: um rollback que restaurasse a
+  // constraint com CINCO valores passava verde. Medido — tirar 'estornado' do
+  // rollback nao derrubava nada, enquanto tirar do lado da MIGRATION derrubava,
+  // porque la o laco existia. A assimetria era o defeito. Aqui o laco tambem.
+  for (const v of [
+    "aguardando",
+    "pago",
+    "recusado",
+    "expirado",
+    "estornado",
+    "pago_apos_expirar",
+  ]) {
+    assertStringIncludes(
+      rollbackN,
+      norm(`'${v}'::text`),
+      `o rollback tem de restaurar '${v}' na constraint`,
+    );
+  }
+  // E o setimo NAO pode sobrar na constraint restaurada. A busca e' pelo literal
+  // COM ::text, que so' aparece dentro da lista da constraint — o portao do
+  // bloco 0 cita a string sem o cast, e nao deve derrubar este teste.
   assertEquals(
-    (rollbackN.match(/'recebido_na_entrega'/g) || []).length,
+    (rollbackN.match(/'recebido_na_entrega'::text/g) || []).length,
     0,
     "o rollback nao pode deixar o valor novo na constraint restaurada",
   );
+});
+
+Deno.test("o rollback RECUSA antes de destruir, se houver pagamento marcado", () => {
+  // Cada comando do rollback confirma sozinho (o db-apply NAO aplica
+  // rollback-manual: isto roda a mao). Sem este portao, o DROP CONSTRAINT
+  // confirma, o ADD CONSTRAINT falha, e a tabela fica SEM trava nenhuma em
+  // payment_status — com o historico que diria quais pedidos causaram a falha
+  // ja apagado. Bloco amarrado: a condicao E a recusa.
+  assertStringIncludes(
+    rollbackN,
+    norm(`IF EXISTS (
+        SELECT 1 FROM public.marketplace_orders
+         WHERE payment_status = 'recebido_na_entrega'
+    ) THEN
+        RAISE EXCEPTION 'Reversao recusada:`),
+  );
+  // E o portao vem ANTES de qualquer destruicao — ordem e' a correcao aqui.
+  const iPortao = rollbackN.indexOf("Reversao recusada:");
+  const iDrop = rollbackN.indexOf("DROP FUNCTION IF EXISTS");
+  assert(iPortao > -1, "o portao de recusa nao existe");
+  assert(iDrop > -1, "o DROP FUNCTION nao existe");
+  assert(
+    iPortao < iDrop,
+    "o portao de recusa tem de vir ANTES do primeiro DROP — senao ele so avisa depois de destruir",
+  );
+});
+
+Deno.test("a tabela nova nasce com RLS ligado e policy so' para admin", () => {
+  // 🔴 Tabela nova em `public` NASCE com INSERT/SELECT/UPDATE/DELETE para `anon`
+  // por pg_default_acl deste banco (medido), e a chave anonima vai no bundle do
+  // front. O RLS e' a UNICA coisa entre ela e essa tabela. Medido: apagar o
+  // ENABLE ROW LEVEL SECURITY, ou apagar a policy, deixava a bateria verde.
+  assertStringIncludes(
+    migrationN,
+    norm("ALTER TABLE public.marketplace_order_payment_history ENABLE ROW LEVEL SECURITY"),
+  );
+  assertStringIncludes(
+    migrationN,
+    norm(`CREATE POLICY mkt_order_payment_history_select
+    ON public.marketplace_order_payment_history
+    FOR SELECT
+    USING (public.is_admin())`),
+  );
+  // Nenhuma policy de ESCRITA: quem escreve e' a RPC, que e' SECURITY DEFINER.
+  // Uma policy de INSERT/UPDATE/DELETE aqui abriria a tabela para o cliente.
+  for (const verbo of ["FOR INSERT", "FOR UPDATE", "FOR DELETE", "FOR ALL"]) {
+    assertEquals(
+      migrationN.includes(norm(`ON public.marketplace_order_payment_history ${verbo}`)),
+      false,
+      `a tabela de historico nao pode ter policy de escrita (${verbo})`,
+    );
+  }
 });
 
 Deno.test("a entrada em VERIFICACOES existe e nomeia a funcao", () => {
@@ -437,20 +512,34 @@ GRANT EXECUTE ON FUNCTION public.registrar_pagamento_recebido(uuid, boolean) TO 
 
 Criar `rollback-manual-20261020000000_lojista_registra_pagamento_recebido.sql`, com o mesmo aviso de `BEGIN`/`COMMIT` no cabeçalho, e:
 
+🔴 **A ORDEM DESTE ARQUIVO É A CORREÇÃO, NÃO ESTILO. Não reordene.**
+
+`db-apply.cjs` aplica **migration** dentro de uma transação (`:1604-1614`, com `ROLLBACK` se falhar), mas **nunca aplica `rollback-manual`** — conferido, zero referências no script. A reversão é rodada à mão, fora de transação, e **cada comando confirma sozinho**. Isso significa que um comando que falha no meio deixa tudo que veio antes já gravado.
+
+A versão anterior deste arquivo punha a constraint por último "para falhar barulhento". Medido: ela falharia **depois** de `DROP FUNCTION`, `DROP TABLE` e os dois `DROP COLUMN` já terem confirmado, e o `DROP CONSTRAINT` também já teria passado — deixando a `marketplace_orders` **sem nenhuma trava em `payment_status`**, a guarda que existe desde `20260807000000` simplesmente sumida, e o histórico que diria quais pedidos causaram a falha já apagado. Barulho no fim não é o mesmo que segurança.
+
+**Recusar antes de destruir** é o que resolve, e é o primeiro bloco do arquivo:
+
 ```sql
-DROP FUNCTION IF EXISTS public.registrar_pagamento_recebido(uuid, boolean);
+-- 0. PORTAO: recusa a reversao enquanto ela apagaria registro de pagamento.
+--    Vem PRIMEIRO porque cada comando deste arquivo confirma sozinho (o
+--    db-apply.cjs nao aplica rollback-manual -- isto roda a mao). Falhando
+--    aqui, NADA foi destruido ainda: a funcao, a tabela de historico, as duas
+--    colunas e a constraint continuam todas de pe.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM public.marketplace_orders
+         WHERE payment_status = 'recebido_na_entrega'
+    ) THEN
+        RAISE EXCEPTION 'Reversao recusada: existem pedidos com pagamento marcado como recebido na entrega. Reverter apagaria esse registro (a coluna, o historico e o proprio status). Desmarque-os pelo painel, ou decida explicitamente descarta-los, antes de rodar este arquivo.';
+    END IF;
+END $$;
 
-DROP TABLE IF EXISTS public.marketplace_order_payment_history;
-
-ALTER TABLE public.marketplace_orders DROP COLUMN IF EXISTS pagamento_recebido_em;
-ALTER TABLE public.marketplace_orders DROP COLUMN IF EXISTS pagamento_recebido_por;
-
--- A constraint volta aos SEIS valores originais de 20260807000000. Isto vem por
--- ULTIMO de proposito: se algum pedido tiver ficado com
--- 'recebido_na_entrega', o ADD CONSTRAINT falha aqui e o rollback para --
--- barulhento, que e' o certo. Reverter em silencio deixaria linha viva com
--- estado que a constraint restaurada nao aceita, e o proximo UPDATE naquele
--- pedido (por qualquer motivo) morreria sem ninguem entender por que.
+-- 1. A constraint volta aos SEIS valores de 20260807000000. Depois do portao
+--    acima, nenhuma linha viola, entao o ADD nao pode falhar -- e a janela em
+--    que a tabela fica sem trava dura o intervalo entre estes dois comandos,
+--    com o resto do schema intacto.
 ALTER TABLE public.marketplace_orders
   DROP CONSTRAINT IF EXISTS marketplace_orders_payment_status_check;
 
@@ -467,7 +556,26 @@ ALTER TABLE public.marketplace_orders
       'pago_apos_expirar'::text
     ])
   );
+
+-- 2. So agora o que destroi.
+DROP FUNCTION IF EXISTS public.registrar_pagamento_recebido(uuid, boolean);
+
+DROP TABLE IF EXISTS public.marketplace_order_payment_history;
+
+ALTER TABLE public.marketplace_orders DROP COLUMN IF EXISTS pagamento_recebido_em;
+ALTER TABLE public.marketplace_orders DROP COLUMN IF EXISTS pagamento_recebido_por;
 ```
+
+✅ **`avaliarFase0` aceita o bloco `DO $$ … BEGIN … END $$` — medido em 27/08/2026, não suposto**, com controle positivo na mesma rodada:
+
+```
+bloco DO $$ ... BEGIN ... END $$                -> ACEITO
+CONTROLE POSITIVO: BEGIN;/COMMIT; de verdade    -> RECUSADO
+  ("migration contém controle de transação em nível superior (BEGIN/COMMIT)
+    — invalida o ROLLBACK da prova")
+```
+
+O detector distingue o `BEGIN` de bloco plpgsql do `BEGIN` de transação. Se mesmo assim ele recusar o seu arquivo, o problema é outro (SQL malformado, dollar-quote desbalanceado) — leia o motivo que ele imprime antes de mexer no desenho.
 
 **No cabeçalho, escrever por que aqui as colunas CAEM** (ao contrário do rollback da `20260970000000`, que deixa as dela de propósito): esta migration é aditiva e nenhum pedido real tem valor nessas colunas no momento em que ela é revertida. Se um dia houver dado gravado ali, este rollback passa a apagar histórico e precisa ser revisto.
 
@@ -503,11 +611,11 @@ Acrescentar:
 - [ ] **Step 6: Rodar o teste e confirmar que ele PASSA**
 
 Run: `deno test --allow-all --no-check tests/migration_lojista_registra_pagamento_recebido_test.ts`
-Expected: PASS, **8 testes**.
+Expected: PASS, **11 testes**.
 
-- [ ] **Step 7: Provar por mutação que o teste tem dente — SETE mutações, uma por vez**
+- [ ] **Step 7: Provar por mutação que o teste tem dente — ONZE mutações, uma por vez**
 
-Apagar uma linha e ver o teste cair prova pouco: prova que o teste vê **a linha**. A pergunta certa é se ele vê **o efeito**. Estas sete foram medidas contra a versão anterior deste teste, e **seis passaram verdes** — cada uma agora tem de derrubar pelo menos um caso.
+Apagar uma linha e ver o teste cair prova pouco: prova que o teste vê **a linha**. A pergunta certa é se ele vê **o efeito**. Estas onze foram medidas contra versões anteriores deste teste, e **dez passaram verdes em algum momento** — cada uma agora tem de derrubar pelo menos um caso.
 
 Antes de cada mutação, copie o arquivo original para o seu scratchpad; depois restaure copiando de volta e confirme com `git diff --stat` que voltou idêntico. **Nunca** `git stash`/`checkout`/`restore`.
 
@@ -520,10 +628,16 @@ Antes de cada mutação, copie o arquivo original para o seu scratchpad; depois 
 | M5 | o `UPDATE` grava `'pago'` em vez de `v_depois` | os três pontos |
 | M6 | neutralizar o `RAISE` da recusa de sobrescrever o gateway | as quatro recusas |
 | M7 | tirar `'recebido_na_entrega'::text` da lista da CHECK constraint | a constraint alargada |
+| M8 | tirar `'estornado'::text` da constraint do **rollback** | o rollback restaura com os SEIS |
+| M9 | apagar o `ALTER TABLE … ENABLE ROW LEVEL SECURITY` da tabela nova | RLS ligado e policy |
+| M10 | apagar a `CREATE POLICY mkt_order_payment_history_select` inteira | RLS ligado e policy |
+| M11 | mover o portão `DO $$` do rollback para **depois** do primeiro `DROP` | o rollback RECUSA antes de destruir |
 
-**Se alguma das sete passar verde, o teste é decorativo naquele ponto e você conserta o teste — não segue em frente.** Cole no relatório a tabela com o resultado real de cada uma.
+As quatro últimas foram medidas passando verdes contra a versão anterior deste teste, e M8 é a mais traiçoeira: um rollback que restaurasse a constraint com **cinco** valores passava a bateria inteira, e rodado para valer estreitaria a trava em silêncio — o próximo estorno de pedido passaria a ser recusado pelo banco, com erro genérico, longe da causa.
 
-Expected após restaurar tudo: PASS, 8 testes, e `git diff` vazio.
+**Se alguma das onze passar verde, o teste é decorativo naquele ponto e você conserta o teste — não segue em frente.** Cole no relatório a tabela com o resultado real de cada uma.
+
+Expected após restaurar tudo: PASS, 11 testes, e `git diff` vazio.
 
 - [ ] **Step 8: Rodar a verificação que este diff pede**
 
