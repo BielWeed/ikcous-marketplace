@@ -19,7 +19,20 @@
 - **Toda migration tem entrada no mapa `VERIFICACOES` de `scripts/db-apply.cjs`.** Sem ela o `db-apply` devolve `PULADA` com saída 2 — que não é sucesso nem falha, é "ninguém conferiu".
 - **NINGUÉM APLICA MIGRATION.** Nenhuma tarefa deste plano roda `db-apply.cjs` sem `--dry-run`, `supabase db push`, nem escreve no banco. Quem aplica é a sessão principal, com autorização do Gabriel. `--dry-run` **não é inerte**: ele escreve arquivo e sobrescreve o que estiver no caminho.
 - **Faixa de migration reservada por esta frente: `20261020000000` e `20261021000000`.** Conferido livre em 27/08/2026 (a maior no disco é `20261012000000`).
-- **`payment_status` é texto livre, não enum.** Não há guarda no banco contra valor inválido — a RPC é o único caminho de escrita.
+- 🔴 **`payment_status` TEM guarda no banco, e ela recusa o valor novo.** A versão anterior desta linha dizia "texto livre, não enum, não há guarda" — **era falsa, e foi afirmada sem medir**. Medido em 27/08/2026, no banco vivo:
+
+  ```
+  marketplace_orders_payment_status_check
+    CHECK (payment_status IS NULL OR payment_status = ANY
+      (ARRAY['aguardando','pago','recusado','expirado','estornado','pago_apos_expirar']))
+
+  UPDATE ... SET payment_status='recebido_na_entrega'  -> RECUSADO (violates check constraint)
+  CONTROLE POSITIVO: mesmo UPDATE com 'pago'           -> ACEITO (o instrumento discrimina)
+  ```
+
+  A constraint nasceu em `supabase/migrations/20260807000000_reserva_com_expiracao.sql`. **Sem alargá-la, a funcionalidade não funciona uma única vez** — e nada acusa: o `db-apply` confere marcadores dentro do corpo da função, todos casam, a migration aplica limpa e a verificação sai "verificada". A falha só aparece no primeiro clique do lojista.
+
+- **O tipo `PaymentStatus` (`src/types/index.ts:135-141`) é o espelho dessa constraint**, e o comentário dele diz isso por escrito: *"Mudar aqui sem mudar lá (ou o contrário) é como o pedido fica com estado que o banco recusa."* Os dois lados mudam juntos, nesta ordem: banco na Task 1, tipo na Task 3.
 - **Vocabulário fixo:** `payment_method` é `"pix" | "card" | "cash" | "online"` (`src/types/index.ts:128`). `online` = pago pelo site (Mercado Pago); os outros três = na entrega.
 - **Valor novo de `payment_status`: exatamente a string `recebido_na_entrega`.** Os já existentes: `pago`, `pago_apos_expirar`, `expirado`, e `NULL`.
 - **Verificação:** diff que toca `src/` ou `tests/` pede os sete comandos do CI (`npm ci`, `npm run typecheck`, `npm test`, `npm run build`, `npm run lint:links`, `npm run lint:ratchet`, `npm run size`). Diff que toca só `supabase/migrations/`, `scripts/` ou documentação: rode `npm test` e `npm run lint:ratchet`, e **não** rode o resto — a sessão principal roda o que faltar.
@@ -101,31 +114,117 @@ Deno.test("avaliarFase0 nao recusa o par migration+rollback", () => {
   assertEquals(r.recusado, false, `motivos: ${(r.motivos || []).join("; ")}`);
 });
 
-Deno.test("a migration cria as duas colunas e a tabela de historico", () => {
-  assertStringIncludes(migration, "ADD COLUMN IF NOT EXISTS pagamento_recebido_em timestamptz");
-  assertStringIncludes(migration, "ADD COLUMN IF NOT EXISTS pagamento_recebido_por uuid");
-  assertStringIncludes(migration, "CREATE TABLE IF NOT EXISTS public.marketplace_order_payment_history");
+// 🔴 Toda assercao de guarda daqui para baixo e' BLOCO AMARRADO: a condicao E a
+// consequencia, na mesma string. Marcador solto afere que a LINHA existe, nao que
+// ela FAZ algo — medido: mantendo `IF NOT public.is_admin() THEN` no lugar e
+// trocando so' o `RAISE` por `NULL;`, a guarda vira no-op, qualquer cliente logado
+// marca qualquer pedido como pago, e a bateria inteira continua VERDE.
+// `norm` existe para a assercao nao depender de indentacao.
+const norm = (s) => s.replace(/\s+/g, " ").trim();
+const migrationN = norm(migration);
+const rollbackN = norm(rollback);
+
+Deno.test("a migration alarga a CHECK constraint para aceitar o valor novo", () => {
+  // Sem isto a funcionalidade nao funciona UMA vez: a constraint de
+  // 20260807000000 tem seis valores e recusa o setimo. Medido em 27/08/2026.
+  assertStringIncludes(
+    migrationN,
+    norm("DROP CONSTRAINT IF EXISTS marketplace_orders_payment_status_check"),
+  );
+  assertStringIncludes(migrationN, norm("'recebido_na_entrega'::text"));
+  // ADITIVA: os seis originais continuam todos la.
+  for (const v of [
+    "aguardando",
+    "pago",
+    "recusado",
+    "expirado",
+    "estornado",
+    "pago_apos_expirar",
+  ]) {
+    assertStringIncludes(migrationN, norm(`'${v}'::text`));
+  }
 });
 
-Deno.test("a RPC nasce com guarda de admin e GRANT so para authenticated", () => {
-  assertStringIncludes(migration, "CREATE OR REPLACE FUNCTION public.registrar_pagamento_recebido");
-  assertStringIncludes(migration, "SECURITY DEFINER");
-  assertStringIncludes(migration, "IF NOT public.is_admin() THEN");
+Deno.test("a migration cria as duas colunas e a tabela de historico", () => {
+  assertStringIncludes(migrationN, norm("ADD COLUMN IF NOT EXISTS pagamento_recebido_em timestamptz"));
+  assertStringIncludes(migrationN, norm("ADD COLUMN IF NOT EXISTS pagamento_recebido_por uuid"));
+  assertStringIncludes(migrationN, norm("CREATE TABLE IF NOT EXISTS public.marketplace_order_payment_history"));
+});
+
+Deno.test("as QUATRO recusas da RPC sao blocos amarrados, nao linhas soltas", () => {
   assertStringIncludes(
-    migration,
-    "GRANT EXECUTE ON FUNCTION public.registrar_pagamento_recebido(uuid, boolean) TO authenticated",
+    migrationN,
+    norm(`IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Não autorizado: só a loja registra pagamento recebido.';`),
+  );
+  assertStringIncludes(
+    migrationN,
+    norm(`IF v_status = 'cancelled' THEN
+        RAISE EXCEPTION 'Pedido cancelado não recebe pagamento.';`),
+  );
+  assertStringIncludes(
+    migrationN,
+    norm(`IF v_payment_method = 'online' THEN
+        RAISE EXCEPTION 'Este pedido é pago pelo site:`),
+  );
+  // A palavra do lojista NAO sobrescreve a do gateway.
+  assertStringIncludes(
+    migrationN,
+    norm(`ELSIF v_payment_status IS NOT NULL THEN
+            RAISE EXCEPTION 'Este pedido já tem pagamento registrado`),
   );
 });
 
-Deno.test("a RPC recusa pedido cancelado, pedido do site, e nao inventa status", () => {
-  assertStringIncludes(migration, "IF v_status = 'cancelled' THEN");
-  assertStringIncludes(migration, "IF v_payment_method = 'online' THEN");
-  assertStringIncludes(migration, "'recebido_na_entrega'");
+Deno.test("os tres pontos que o plano chama de 'a correcao em si' tem assercao", () => {
+  // 1. FOR UPDATE: dois cliques simultaneos nao gravam duas linhas de historico.
+  assertStringIncludes(migrationN, norm("WHERE id = p_order_id FOR UPDATE;"));
+  // 2. O UPDATE grava o valor NOVO — amarrado a atribuicao que o define, porque a
+  //    string 'recebido_na_entrega' aparece em 3 lugares do arquivo e so' UMA
+  //    decide o que e' gravado.
+  assertStringIncludes(
+    migrationN,
+    norm(`v_depois := 'recebido_na_entrega';
+            UPDATE public.marketplace_orders
+               SET payment_status = v_depois,`),
+  );
+  // 3. Segundo clique nao gera linha de historico fantasma.
+  assertStringIncludes(
+    migrationN,
+    norm(`IF NOT v_ja_estava THEN
+        INSERT INTO public.marketplace_order_payment_history`),
+  );
 });
 
-Deno.test("o rollback derruba TUDO que a migration cria", () => {
-  assertStringIncludes(rollback, "DROP FUNCTION IF EXISTS public.registrar_pagamento_recebido(uuid, boolean)");
-  assertStringIncludes(rollback, "DROP TABLE IF EXISTS public.marketplace_order_payment_history");
+Deno.test("a RPC nasce SECURITY DEFINER, sem privilegio para anon", () => {
+  assertStringIncludes(migrationN, norm("CREATE OR REPLACE FUNCTION public.registrar_pagamento_recebido"));
+  assertStringIncludes(migrationN, norm("SECURITY DEFINER"));
+  assertStringIncludes(migrationN, norm("SET search_path = public"));
+  // Funcao nova nasce com EXECUTE para `anon` por default deste banco
+  // (pg_default_acl) — o REVOKE e' o que desfaz isso, e sem assercao ninguem nota
+  // se ele sumir.
+  assertStringIncludes(
+    migrationN,
+    norm("REVOKE ALL ON FUNCTION public.registrar_pagamento_recebido(uuid, boolean) FROM anon"),
+  );
+  assertStringIncludes(
+    migrationN,
+    norm("GRANT EXECUTE ON FUNCTION public.registrar_pagamento_recebido(uuid, boolean) TO authenticated"),
+  );
+});
+
+Deno.test("o rollback derruba TUDO que a migration cria — os QUATRO objetos", () => {
+  assertStringIncludes(rollbackN, norm("DROP FUNCTION IF EXISTS public.registrar_pagamento_recebido(uuid, boolean)"));
+  assertStringIncludes(rollbackN, norm("DROP TABLE IF EXISTS public.marketplace_order_payment_history"));
+  // As duas colunas: apagar estas duas linhas do rollback deixava a bateria verde.
+  assertStringIncludes(rollbackN, norm("DROP COLUMN IF EXISTS pagamento_recebido_em"));
+  assertStringIncludes(rollbackN, norm("DROP COLUMN IF EXISTS pagamento_recebido_por"));
+  // E a constraint volta aos SEIS: o setimo valor NAO pode sobrar no rollback.
+  assertStringIncludes(rollbackN, norm("ADD CONSTRAINT marketplace_orders_payment_status_check"));
+  assertEquals(
+    (rollbackN.match(/'recebido_na_entrega'/g) || []).length,
+    0,
+    "o rollback nao pode deixar o valor novo na constraint restaurada",
+  );
 });
 
 Deno.test("a entrada em VERIFICACOES existe e nomeia a funcao", () => {
@@ -149,6 +248,36 @@ Criar `supabase/migrations/20261020000000_lojista_registra_pagamento_recebido.sq
 Cabeçalho obrigatório, em comentário: o que a migration faz, que ela é **aditiva** (não nega nada), e a linha `-- Sem BEGIN/COMMIT de proposito: com eles o ROLLBACK do script de prova vira no-op.`
 
 Conteúdo, nesta ordem:
+
+0. 🔴 **Alargar a CHECK constraint — sem isto nada mais aqui funciona.** Vem primeiro no arquivo, antes das colunas, porque é a guarda que recusa o valor que a RPC grava:
+
+```sql
+-- A constraint nasceu em 20260807000000_reserva_com_expiracao.sql com seis
+-- valores. O setimo entra aqui, junto da funcionalidade que o usa. Medido em
+-- 27/08/2026: sem esta linha, o UPDATE da RPC morre com
+-- "violates check constraint marketplace_orders_payment_status_check" no
+-- PRIMEIRO clique do lojista -- e nada acusa antes disso, porque a verificacao
+-- do db-apply confere marcadores DENTRO do corpo da funcao, e todos casam.
+ALTER TABLE public.marketplace_orders
+  DROP CONSTRAINT IF EXISTS marketplace_orders_payment_status_check;
+
+ALTER TABLE public.marketplace_orders
+  ADD CONSTRAINT marketplace_orders_payment_status_check
+  CHECK (
+    payment_status IS NULL
+    OR payment_status = ANY (ARRAY[
+      'aguardando'::text,
+      'pago'::text,
+      'recusado'::text,
+      'expirado'::text,
+      'estornado'::text,
+      'pago_apos_expirar'::text,
+      'recebido_na_entrega'::text
+    ])
+  );
+```
+
+⚠️ **Isto continua sendo ADITIVO:** a lista só ganha um valor, nenhum sai. Nenhuma linha existente passa a violar a constraint, e nada que hoje é aceito passa a ser recusado. Se você se pegar removendo um dos seis, parou — leia de novo.
 
 1. As duas colunas:
 
@@ -315,6 +444,29 @@ DROP TABLE IF EXISTS public.marketplace_order_payment_history;
 
 ALTER TABLE public.marketplace_orders DROP COLUMN IF EXISTS pagamento_recebido_em;
 ALTER TABLE public.marketplace_orders DROP COLUMN IF EXISTS pagamento_recebido_por;
+
+-- A constraint volta aos SEIS valores originais de 20260807000000. Isto vem por
+-- ULTIMO de proposito: se algum pedido tiver ficado com
+-- 'recebido_na_entrega', o ADD CONSTRAINT falha aqui e o rollback para --
+-- barulhento, que e' o certo. Reverter em silencio deixaria linha viva com
+-- estado que a constraint restaurada nao aceita, e o proximo UPDATE naquele
+-- pedido (por qualquer motivo) morreria sem ninguem entender por que.
+ALTER TABLE public.marketplace_orders
+  DROP CONSTRAINT IF EXISTS marketplace_orders_payment_status_check;
+
+ALTER TABLE public.marketplace_orders
+  ADD CONSTRAINT marketplace_orders_payment_status_check
+  CHECK (
+    payment_status IS NULL
+    OR payment_status = ANY (ARRAY[
+      'aguardando'::text,
+      'pago'::text,
+      'recusado'::text,
+      'expirado'::text,
+      'estornado'::text,
+      'pago_apos_expirar'::text
+    ])
+  );
 ```
 
 **No cabeçalho, escrever por que aqui as colunas CAEM** (ao contrário do rollback da `20260970000000`, que deixa as dela de propósito): esta migration é aditiva e nenhum pedido real tem valor nessas colunas no momento em que ela é revertida. Se um dia houver dado gravado ali, este rollback passa a apagar histórico e precisa ser revisto.
@@ -330,29 +482,48 @@ Acrescentar:
     {
       funcao: "registrar_pagamento_recebido",
       esperado: [
-        // A guarda de quem pode: sem ela, qualquer cliente logado marcaria
-        // o proprio pedido como pago.
-        "IF NOT public.is_admin() THEN",
-        // Bloco amarrado, nao marcador solto: prova que a recusa do pedido
-        // do site esta ligada ao METODO, e nao a outra condicao qualquer.
-        "IF v_payment_method = 'online' THEN",
-        // A palavra do lojista NAO sobrescreve a do gateway.
-        "ELSIF v_payment_status IS NOT NULL THEN",
+        // BLOCOS AMARRADOS -- condicao E consequencia na mesma string. A versao
+        // anterior desta entrada usava marcador de linha unica ("IF NOT
+        // public.is_admin() THEN" sozinho) e um comentario que se dizia
+        // "amarrado". Medido por revisor de contexto limpo: mantendo a linha e
+        // trocando so' o RAISE por `NULL;`, a guarda vira no-op -- qualquer
+        // cliente logado marca qualquer pedido como pago -- e os tres marcadores
+        // continuavam CASANDO. Marcador que sobrevive a neutralizacao da guarda
+        // nao verifica nada; ele so' registra que alguem digitou a palavra.
+        "IF NOT public.is_admin() THEN\n        RAISE EXCEPTION 'Não autorizado: só a loja registra pagamento recebido.';",
+        "IF v_payment_method = 'online' THEN\n        RAISE EXCEPTION 'Este pedido é pago pelo site:",
+        "ELSIF v_payment_status IS NOT NULL THEN\n            RAISE EXCEPTION 'Este pedido já tem pagamento registrado",
       ],
     },
   ],
 ```
 
+⚠️ **Estes marcadores são casados contra o corpo que o Postgres devolve em `pg_get_functiondef`, não contra o arquivo.** Escreva a indentação exatamente como ela sai no corpo vivo — se o `db-apply` reprovar dizendo que o marcador não casou, o problema é espaço, não lógica. Confira comparando com a saída real antes de mexer no SQL.
+
 - [ ] **Step 6: Rodar o teste e confirmar que ele PASSA**
 
 Run: `deno test --allow-all --no-check tests/migration_lojista_registra_pagamento_recebido_test.ts`
-Expected: PASS, **6 testes**.
+Expected: PASS, **8 testes**.
 
-- [ ] **Step 7: Provar por mutação que o teste tem dente**
+- [ ] **Step 7: Provar por mutação que o teste tem dente — SETE mutações, uma por vez**
 
-Apagar do arquivo da migration a linha `IF NOT public.is_admin() THEN` (guardando o conteúdo antes, num arquivo do scratchpad — **nunca** `git stash`/`checkout`), rodar o teste, e confirmar que ele **FALHA**. Restaurar em seguida e conferir com `git diff --stat` que o arquivo voltou idêntico.
+Apagar uma linha e ver o teste cair prova pouco: prova que o teste vê **a linha**. A pergunta certa é se ele vê **o efeito**. Estas sete foram medidas contra a versão anterior deste teste, e **seis passaram verdes** — cada uma agora tem de derrubar pelo menos um caso.
 
-Expected após apagar: FAIL no teste "a RPC nasce com guarda de admin". Expected após restaurar: PASS, e `git diff` vazio para esse arquivo.
+Antes de cada mutação, copie o arquivo original para o seu scratchpad; depois restaure copiando de volta e confirme com `git diff --stat` que voltou idêntico. **Nunca** `git stash`/`checkout`/`restore`.
+
+| # | mutação (aplicar sozinha, sempre a partir do original) | tem de derrubar |
+|---|---|---|
+| M1 | manter `IF NOT public.is_admin() THEN` e trocar o `RAISE` dele por `NULL;` | as quatro recusas |
+| M2 | apagar as duas linhas `DROP COLUMN` do **rollback** | o rollback derruba TUDO |
+| M3 | apagar o `FOR UPDATE` do `SELECT` | os três pontos |
+| M4 | `IF NOT v_ja_estava THEN` → `IF TRUE THEN` | os três pontos |
+| M5 | o `UPDATE` grava `'pago'` em vez de `v_depois` | os três pontos |
+| M6 | neutralizar o `RAISE` da recusa de sobrescrever o gateway | as quatro recusas |
+| M7 | tirar `'recebido_na_entrega'::text` da lista da CHECK constraint | a constraint alargada |
+
+**Se alguma das sete passar verde, o teste é decorativo naquele ponto e você conserta o teste — não segue em frente.** Cole no relatório a tabela com o resultado real de cada uma.
+
+Expected após restaurar tudo: PASS, 8 testes, e `git diff` vazio.
 
 - [ ] **Step 8: Rodar a verificação que este diff pede**
 
@@ -616,7 +787,28 @@ O segundo caso existe porque a migration ainda **não** está aplicada quando o 
 Run: `npx vitest run tests/front/lojista-registra-pagamento-recebido.test.ts`
 Expected: FAIL — `pagamentoRecebidoEm` é `undefined`.
 
-- [ ] **Step 3: Acrescentar os campos ao tipo `Order`**
+- [ ] **Step 3a: 🔴 Acrescentar o valor novo ao tipo `PaymentStatus`**
+
+Em `src/types/index.ts:135-141`. O comentário que já está acima dele diz por que isto é obrigatório: *"Espelha a CHECK constraint marketplace_orders_payment_status_check, criada na migration 20260807000000. Mudar aqui sem mudar lá (ou o contrário) é como o pedido fica com estado que o banco recusa."*
+
+A Task 1 alargou a constraint no banco. Este é o outro lado:
+
+```ts
+export type PaymentStatus =
+  | "aguardando"
+  | "pago"
+  | "recusado"
+  | "expirado"
+  | "estornado"
+  | "pago_apos_expirar"
+  | "recebido_na_entrega";
+```
+
+**Não altere o comentário acima do tipo** — ele continua verdadeiro e é ele que faz o próximo leitor manter os dois lados juntos.
+
+⚠️ Acrescentar valor a esta união **quebra `switch` exaustivo** que não trate o caso novo. O `typecheck` acusa (TS2678 / falta de caso). Se ele apontar, o conserto é tratar o caso novo em cada `switch`, **não** afrouxar o tipo nem usar `default` para engolir — pelo menos dois `switch` deste projeto dependem dessa exaustividade de propósito. Cole a saída do `typecheck` no relatório mesmo quando ela passar.
+
+- [ ] **Step 3b: Acrescentar os campos ao tipo `Order`**
 
 Em `src/types/index.ts`, logo abaixo de `returnedToSellerAt` (linha 178):
 
