@@ -8,6 +8,37 @@
 -- Sem BEGIN/COMMIT de proposito: com eles o ROLLBACK do script de prova vira
 -- no-op.
 
+-- 0. Alargar a CHECK constraint — sem isto nada mais aqui funciona. Vem
+--    primeiro no arquivo, antes das colunas, porque e' a guarda que recusa o
+--    valor que a RPC grava.
+--
+--    A constraint nasceu em 20260807000000_reserva_com_expiracao.sql com seis
+--    valores. O setimo entra aqui, junto da funcionalidade que o usa. Medido em
+--    27/08/2026: sem esta linha, o UPDATE da RPC morre com
+--    "violates check constraint marketplace_orders_payment_status_check" no
+--    PRIMEIRO clique do lojista -- e nada acusa antes disso, porque a verificacao
+--    do db-apply confere marcadores DENTRO do corpo da funcao, e todos casam.
+--
+--    ADITIVA: a lista so' ganha um valor, nenhum sai. Nenhuma linha existente
+--    passa a violar a constraint, e nada que hoje e' aceito passa a ser recusado.
+ALTER TABLE public.marketplace_orders
+  DROP CONSTRAINT IF EXISTS marketplace_orders_payment_status_check;
+
+ALTER TABLE public.marketplace_orders
+  ADD CONSTRAINT marketplace_orders_payment_status_check
+  CHECK (
+    payment_status IS NULL
+    OR payment_status = ANY (ARRAY[
+      'aguardando'::text,
+      'pago'::text,
+      'recusado'::text,
+      'expirado'::text,
+      'estornado'::text,
+      'pago_apos_expirar'::text,
+      'recebido_na_entrega'::text
+    ])
+  );
+
 -- 1. As duas colunas novas em marketplace_orders --------------------------
 ALTER TABLE public.marketplace_orders
   ADD COLUMN IF NOT EXISTS pagamento_recebido_em timestamptz;

@@ -1003,14 +1003,17 @@ const VERIFICACOES = {
     {
       funcao: "registrar_pagamento_recebido",
       esperado: [
-        // A guarda de quem pode: sem ela, qualquer cliente logado marcaria
-        // o proprio pedido como pago.
-        "IF NOT public.is_admin() THEN",
-        // Bloco amarrado, nao marcador solto: prova que a recusa do pedido
-        // do site esta ligada ao METODO, e nao a outra condicao qualquer.
-        "IF v_payment_method = 'online' THEN",
-        // A palavra do lojista NAO sobrescreve a do gateway.
-        "ELSIF v_payment_status IS NOT NULL THEN",
+        // BLOCOS AMARRADOS -- condicao E consequencia na mesma string. A versao
+        // anterior desta entrada usava marcador de linha unica ("IF NOT
+        // public.is_admin() THEN" sozinho) e um comentario que se dizia
+        // "amarrado". Medido por revisor de contexto limpo: mantendo a linha e
+        // trocando so' o RAISE por `NULL;`, a guarda vira no-op -- qualquer
+        // cliente logado marca qualquer pedido como pago -- e os tres marcadores
+        // continuavam CASANDO. Marcador que sobrevive a neutralizacao da guarda
+        // nao verifica nada; ele so' registra que alguem digitou a palavra.
+        "IF NOT public.is_admin() THEN\n        RAISE EXCEPTION 'Não autorizado: só a loja registra pagamento recebido.';",
+        "IF v_payment_method = 'online' THEN\n        RAISE EXCEPTION 'Este pedido é pago pelo site:",
+        "ELSIF v_payment_status IS NOT NULL THEN\n            RAISE EXCEPTION 'Este pedido já tem pagamento registrado",
       ],
     },
   ],
