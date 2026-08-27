@@ -162,6 +162,16 @@ export const compressImage = (
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext("2d");
+      // JPEG nao tem canal alfa: sem isto, a area transparente de um PNG
+      // (logo, figurinha) e composta sobre PRETO no toDataURL abaixo, e a
+      // foto de perfil "aparece corrompida" com fundo preto onde era
+      // transparente. Pintar branco ANTES de desenhar mantem o tipo
+      // image/jpeg que o resto do app (upload, updateProfile, exibicao) ja
+      // espera.
+      if (ctx) {
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0, 0, width, height);
+      }
       ctx?.drawImage(img, 0, 0, width, height);
       resolve(canvas.toDataURL("image/jpeg", 0.8)); // 80% quality
     };
