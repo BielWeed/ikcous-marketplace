@@ -18,9 +18,28 @@ const cleanEnvVar = (val: string) => val.replace(/[^!-~]/g, "");
 export const SUPABASE_URL = cleanEnvVar(
   import.meta.env.VITE_SUPABASE_URL || "",
 );
-export const SUPABASE_ANON_KEY = cleanEnvVar(
+
+// INFRA-260 (#126): o Supabase está trocando as chaves de API — a legada
+// `anon` (JWT) dá lugar à `publishable` (`sb_publishable_...`). As legadas
+// funcionam até o dono desligá-las num clique no Dashboard, sem data
+// marcada. As 8 edge functions no ar já leem a nova com fallback para a
+// legada (`readKey` em supabase/functions/_shared/webpush.ts); aqui é a
+// mesma precedência, para o front sobreviver ao mesmo desligamento.
+const PUBLISHABLE_KEY_NOVA = cleanEnvVar(
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "",
+);
+const ANON_KEY_LEGADA = cleanEnvVar(
   import.meta.env.VITE_SUPABASE_ANON_KEY || "",
 );
+export const SUPABASE_PUBLISHABLE_KEY = PUBLISHABLE_KEY_NOVA || ANON_KEY_LEGADA;
+
+// Alias de COMPATIBILIDADE, não descuido: criado PARA a frente que vai
+// migrar `src/hooks/useOnlineStatus.ts:48` (INFRA-260), que hoje lê
+// `import.meta.env.VITE_SUPABASE_ANON_KEY` cru, direto do `import.meta.env` —
+// nenhum módulo importa este nome ainda. É o ponto de pouso que aquela
+// migração vai usar. Aponta para o MESMO valor já resolvido acima — nunca
+// para a legada crua.
+export const SUPABASE_ANON_KEY = SUPABASE_PUBLISHABLE_KEY;
 
 /**
  * Substitui o loader inicial por uma tela de erro legível.
@@ -68,10 +87,13 @@ function renderBootFailure(title: string, detail: string): void {
   host.append(wrapper);
 }
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
   const faltando = [
     !SUPABASE_URL && "VITE_SUPABASE_URL",
-    !SUPABASE_ANON_KEY && "VITE_SUPABASE_ANON_KEY",
+    // Nenhuma das DUAS chegou — nomear as duas, senão quem depura procura
+    // só a variável antiga e não acha o motivo real.
+    !SUPABASE_PUBLISHABLE_KEY &&
+      "VITE_SUPABASE_PUBLISHABLE_KEY (ou VITE_SUPABASE_ANON_KEY)",
   ]
     .filter(Boolean)
     .join(" e ");
@@ -85,3 +107,15 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     `[EnvGuard] Variáveis de ambiente ausentes: ${faltando}. Verifique .env.production.local e .env.production.`,
   );
 }
+
+// Rastro de uma linha para o dia em que a `anon` legada for desligada: se o
+// portão acima passou mas a chave resolvida for a errada (ex.: publishable
+// truncada por colagem, mas não-vazia), um 401 em massa aponta direto para
+// qual variável venceu — sem precisar de sessão de depuração. Nunca o VALOR
+// da chave, só o NOME da variável de origem.
+const ORIGEM_DA_CHAVE = PUBLISHABLE_KEY_NOVA
+  ? "VITE_SUPABASE_PUBLISHABLE_KEY"
+  : "VITE_SUPABASE_ANON_KEY";
+console.info(
+  `[EnvGuard] Chave do Supabase resolvida a partir de ${ORIGEM_DA_CHAVE}.`,
+);

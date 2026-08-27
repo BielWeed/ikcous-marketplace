@@ -96,7 +96,7 @@ coisa diferente:
 | O que você vê | Significado |
 | --- | --- |
 | Barra de progresso subindo até 85%, depois a loja | Certo. Os 85% são teto codificado, não medição de carga — item 4 do [`04-GLOSSARIO.md`](04-GLOSSARIO.md) |
-| Tela **vermelha** "🚨 ERRO DE AMBIENTE" | Faltou `VITE_SUPABASE_URL` ou `VITE_SUPABASE_ANON_KEY`. A guarda está em `src/lib/env.ts:71-87` e a mensagem cita `.env.production.local` por nome (`:81`) |
+| Tela **vermelha** "🚨 ERRO DE AMBIENTE" | Faltou `VITE_SUPABASE_URL` ou `VITE_SUPABASE_PUBLISHABLE_KEY` (a legada `VITE_SUPABASE_ANON_KEY` serve de fallback, mas some quando o Supabase desligar). A guarda está em `src/lib/env.ts:90-109` e a mensagem cita `.env.production.local` por nome (`:103`) |
 | Travado em 85% **para sempre**, sem mensagem | A árvore React nunca montou — item 4 do [`04-GLOSSARIO.md`](04-GLOSSARIO.md). **Não é falta de env**: isso hoje dá tela vermelha (armadilha 1). Abra o console |
 
 *Confirmação independente:* o dev server desta máquina está de pé desde 29/07 03:30 e responde `200`
@@ -163,7 +163,7 @@ e no projeto Vercel `ickous-marketplace`.** Sem isso, nada abaixo existe para vo
 | Variável | De onde vem |
 | --- | --- |
 | `VITE_SUPABASE_URL` | **Pega sozinho:** Supabase → Project Settings → API. É pública, vai para o bundle mesmo |
-| `VITE_SUPABASE_ANON_KEY` | **Pega sozinho:** mesma tela. Também pública por desenho — a autorização real está no RLS |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | **Pega sozinho:** mesma tela, aba das chaves novas (`sb_publishable_...`, INFRA-260/#126). Também pública por desenho — a autorização real está no RLS. A legada `VITE_SUPABASE_ANON_KEY` continua servindo de fallback se esta faltar, mas o dono pode desligá-la num clique |
 | `DATABASE_URL` | **Monta sozinho, com senha do Gabriel:** Supabase → Connect (pooler). Não copie dos dumps `.env.vercel.pulled*` — a string mudou em 30/07 e não se sabe qual das duas está viva (seção 3) |
 | `VERCEL_OIDC_TOKEN` | **Pega sozinho:** não se digita, sai de `vercel link` + `vercel env pull`. **Leia a armadilha 1 antes** |
 | `SUPABASE_SERVICE_ROLE_KEY` | **`<pedir pro Gabriel>`** — segredo de servidor. **Nunca** com prefixo `VITE_`, nunca em arquivo que o Vite leia para o bundle |
