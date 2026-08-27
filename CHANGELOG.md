@@ -7,6 +7,71 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.9.1] — 2026-08-27
+
+**Nada muda na tela, e é esse o ponto.** Esta versão existe para a loja
+sobreviver a um botão que ainda não foi apertado — por isso sobe só o último
+dígito.
+
+### O que estava em risco
+
+O Supabase, que é o banco de dados da loja, está trocando as chaves de acesso:
+as antigas dão lugar a novas. As antigas **não têm data para morrer** — elas
+funcionam até alguém desligá-las num botão do painel. Não é um relógio
+correndo, é um clique.
+
+As oito funções de servidor já sabiam usar a chave nova, com a antiga como
+reserva. **O site não sabia.** No instante daquele clique, a loja pararia de
+carregar por completo: nem produto, nem login, nem carrinho.
+
+### O que mudou
+
+- O site passa a usar a **chave nova** e só cai para a antiga se a nova faltar.
+- A tela de erro de configuração passa a **nomear as duas chaves** — antes
+  citava só a antiga, e quem fosse investigar procuraria a variável errada.
+- Ao carregar, a loja **registra qual chave usou**. Sem isso, um erro de
+  autenticação em massa não teria nenhum rastro para seguir.
+- Um caractere invisível colado junto da chave (acontece ao copiar e colar)
+  deixa de derrubar a autenticação em silêncio.
+- O **manual de troca de credenciais** parou de recomendar, como caminho
+  seguro, o passo que derrubaria a loja — e ganhou a conferência que
+  realmente distingue qual chave está respondendo.
+
+### Para quem COMPRA
+
+Nada. Nenhuma tela, texto ou comportamento muda.
+
+### Para quem VENDE
+
+Nada muda hoje. O que muda é que desligar as chaves antigas deixa de ser um
+risco de derrubar a loja — **desde que o passo do ambiente seja feito**, abaixo.
+
+### 🔴 Esta release NÃO conclui a migração — falta um passo fora do código
+
+Medido em 27/08/2026: a variável `VITE_SUPABASE_PUBLISHABLE_KEY` **não existe**
+no ambiente de produção da Vercel. Enquanto ela não existir, o site continua
+rodando com a chave antiga, e o clique de desligamento derruba a loja do mesmo
+jeito.
+
+Para concluir, **nesta ordem**:
+
+1. esta versão publicada (é o que esta release faz);
+2. a variável cadastrada na Vercel com a chave `sb_publishable_...`;
+3. um **novo deploy** — a chave entra no código no momento do build, então
+   salvar a variável sem republicar não muda o site que está no ar;
+4. conferir no Console do navegador que a linha `[EnvGuard]` nomeia
+   `VITE_SUPABASE_PUBLISHABLE_KEY`, e **só então** desligar as antigas.
+
+A ordem não pode inverter: cadastrar a chave nova sobre um site antigo faz a
+nova vencer a antiga carregando os defeitos que esta release corrige. O passo a
+passo está em `docs/runbooks/rotacao-credenciais-supabase.md`.
+
+### Ambiente desta release
+
+**Nenhuma** migration e **nenhuma** edge function entre a `1.9.0` e esta — só
+arquivos de tela, um módulo novo de leitura de ambiente e documentação. O
+`middleware.ts` (que roda na borda da Vercel) mudou junto, pela mesma razão.
+
 ## [1.9.0] — 2026-08-26
 
 **Uma auditoria do app inteiro, em duas rodadas, e ~50 defeitos fechados.** Trinta

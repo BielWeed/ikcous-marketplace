@@ -1,3 +1,15 @@
+// Importa do módulo PURO (sem portão de boot), não de `@/lib/env`: este hook
+// roda em teste sem `.env`, e o portão lançaria `throw` na avaliação do
+// módulo antes do teste começar. A guarda `if (!url)` logo abaixo é quem
+// resolve a ausência da chave neste caminho.
+//
+// São FUNÇÕES, chamadas dentro de `verifyConnection` — não `const` lidas
+// aqui no topo. Este hook é importado estaticamente no topo de arquivo de
+// teste que faz `vi.stubEnv(...)` dentro de `beforeEach`; se o valor fosse
+// capturado na avaliação do módulo (como uma `const` importada faz), o
+// `beforeEach` nunca alcançaria mais o valor. Lendo dentro da função, cada
+// chamada de `verifyConnection` relê o ambiente corrente.
+import { lerChaveSupabase, lerSupabaseUrl } from "@/lib/env-valores";
 import { useEffect, useState } from "react";
 
 export interface Diagnostics {
@@ -44,8 +56,8 @@ export function useConnectionDiagnostics() {
       }
 
       try {
-        const url = import.meta.env.VITE_SUPABASE_URL;
-        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        const url = lerSupabaseUrl();
+        const anonKey = lerChaveSupabase();
         if (!url) {
           if (isMounted) {
             setDiagnostics({

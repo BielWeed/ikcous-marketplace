@@ -9,7 +9,9 @@ O projeto está configurado para o Vite. Recomendamos o deploy via Vercel:
 1. Conecte seu repositório ao Vercel.
 2. Configure as seguintes variáveis de ambiente no painel da Vercel:
    - `VITE_SUPABASE_URL`: Sua URL do projeto Supabase.
-   - `VITE_SUPABASE_ANON_KEY`: Sua chave anônima (anon key).
+   - `VITE_SUPABASE_PUBLISHABLE_KEY`: Sua chave publishable (`sb_publishable_...`,
+     INFRA-260/#126). Alternativa: `VITE_SUPABASE_ANON_KEY` — chave legada
+     (formato JWT), usada como fallback só se a publishable acima faltar.
 3. O comando de build deve ser: `npm run build`.
 4. O diretório de saída será: `dist`.
 
