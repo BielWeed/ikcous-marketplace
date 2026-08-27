@@ -945,6 +945,142 @@ Mensagem: `fix(db): a receita passa a contar so o dinheiro que entrou de verdade
 
 ---
 
+### Task 2b: Os três achados da revisão de 27/08/2026
+
+A Task 2 foi executada e revisada. Os 12 pontos saíram corretos e o rollback é byte a byte fiel
+aos corpos vivos (`sha256` conferido pelo revisor, função por função). **Dois defeitos e uma
+omissão do plano ficaram, e esta tarefa os fecha.** Ela edita os mesmos quatro arquivos da
+Task 2 — não cria arquivo novo.
+
+- [ ] **Step 1: 🔴 Os dois arquivos SQL não têm terminador de statement**
+
+`pg_get_functiondef` **não emite `;`** — os corpos vivos terminam em `$function$\n`. Copiar
+"caractere a caractere", como o Step 4 mandou, derrubou o terminador junto. Resultado: os três
+`CREATE OR REPLACE FUNCTION` de cada arquivo emendam direto no próximo, e o Postgres analisa a
+string inteira antes de executar qualquer coisa — `syntax error at or near "CREATE"`.
+
+**A migration não aplica, e o rollback não restaura.** Os 7 testes ficam verdes assim mesmo,
+porque nenhum deles olha terminador.
+
+Medido em 27/08/2026, pela sessão principal, com instrumento próprio e controle:
+
+```
+os dois arquivos sob revisão:   6 tags $function$,  0 seguidas de ';'
+controle, resto das migrations: 77 tags de fechamento, 77 terminam o statement com ';'
+```
+
+A correção é `;` depois de cada uma das 3 tags de fechamento, **nos 2 arquivos** — 6 bytes no
+total. Ela **não** quebra a fidelidade do rollback: o `;` fica fora do dollar-quote, então o
+Postgres não o guarda no corpo da função, e o `sha256` de cada corpo continua batendo.
+
+⚠️ **Não meça isto com `grep` e escape de barra invertida.** O Bash tool come a barra antes de o
+`grep` vê-la, e a resposta volta como um número plausível — a sessão principal caiu nessa
+armadilha nesta mesma tarefa e recebeu `0 tags` para um arquivo que tem 6. Script em Python, com
+`chr(36)` para montar o `$`.
+
+- [ ] **Step 2: 🔴 O 13º ponto — o alarme de dinheiro em pedido cancelado fica cego**
+
+`get_admin_analytics_v2`, no bloco `-- 6. Dinheiro reconhecido fora da regra de status`:
+
+```sql
+SELECT COUNT(*) INTO paid_on_cancelled
+FROM public.marketplace_orders
+WHERE payment_status IN ('pago', 'pago_apos_expirar') AND status = 'cancelled';
+```
+
+Este contador **é exibido na tela**, em `src/views/admin/AdminOrdersView.tsx:1031`: um aviso
+âmbar, fixo e sem botão de dispensar, dizendo *"N pedidos receberam pagamento e estão
+cancelados"*. O comentário ao lado dele registra por que é fixo: *"foi exatamente isso que fez o
+defeito passar despercebido antes"*.
+
+**Sem o valor novo nesta lista, um pedido recebido na entrega e depois cancelado some do
+aviso** — e é o caso em que o lojista está com o dinheiro do cliente na mão. Pela regra que o
+Gabriel decidiu em 24/08/2026, esse dinheiro tem de voltar ao cliente; o aviso é o único lugar
+do app que conta essa dívida.
+
+**Este defeito é criado por esta funcionalidade**, não encontrado ao lado dela: antes da Task 1
+a string `recebido_na_entrega` não existia, e nada escapava. Por isso ele entra aqui em vez de
+virar tarefa separada.
+
+Acrescentar `'recebido_na_entrega'` a essa lista, **só na migration** — o rollback continua
+sendo a cópia literal dos corpos vivos, sem uma alteração.
+
+Isso muda a contagem que o teste do Step 2 da Task 2 cobra: passam a ser **13** ocorrências de
+`payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')` na migration — os 12
+que vieram de `IS NULL` mais este. A asserção `nenhum ponto aceita mais payment_status IS NULL`
+não muda (este ponto nunca teve `IS NULL`), e o rollback continua com 12.
+
+Separe as duas contagens no teste, com mensagens distintas, para que uma falha diga qual das
+duas caiu.
+
+- [ ] **Step 3: A bateria não tem dente — 8 de 10 sabotagens passam verdes**
+
+O revisor montou um espelho do trio no scratchpad e sabotou, conferindo por bytes que cada
+sabotagem mudou o arquivo e que a restauração foi byte-idêntica:
+
+| sabotagem | a bateria pegou? |
+|---|---|
+| reverter 1 dos 12 pontos | ✅ |
+| apagar uma função inteira da migration | ✅ |
+| migration perde `SECURITY DEFINER` | ❌ |
+| migration perde `SET search_path` | ❌ |
+| assinatura muda (`DEFAULT 90` → `30`) | ❌ |
+| rollback infiel: 12 `IS NULL` intactos, corpo reescrito | ❌ |
+| os dois arquivos convertidos para CRLF | ❌ |
+| regra de dinheiro reescrita (`NOT IN ('cancelled','returned')` → `('cancelled')`) | ❌ |
+| corpo de função corrompido no rollback | ❌ |
+
+`SECURITY DEFINER`, `search_path` e as assinaturas **sobreviveram intactos** nos dois arquivos —
+o revisor provou por diff. Mas sobreviveram por cuidado do executor, **não por portão nenhum**.
+Na próxima edição não sobrevivem.
+
+**A asserção que falta, e que sozinha pega seis dessas oito:** a migration tem de ser o rollback
+com as substituições aplicadas, byte a byte.
+
+```
+aplicar_substituicoes(texto_do_rollback) === texto_da_migration
+```
+
+Ela funciona porque o rollback já é (por asserção) o corpo vivo. Faça a derivação no teste, em
+código, e compare os textos inteiros — não conte ocorrências. Uma falha deve imprimir a primeira
+posição em que os dois divergem, com algum contexto dos dois lados; hash sozinho não diz nada a
+quem for consertar.
+
+🔴 **Não faça o teste ler `.superpowers/`.** Medido: `.gitignore:142` ignora `.superpowers/`, e
+`git ls-files` na pasta dos corpos vivos volta vazio. Um teste que os leia passa nesta máquina e
+quebra no CI. Para ancorar o rollback nos corpos vivos, **embuta os três `sha256` no próprio
+teste**, com um comentário dizendo de onde vieram e em que data.
+
+Mais duas asserções baratas, uma por defeito acima:
+
+- `$function$;` aparece exatamente 3 vezes em cada um dos dois arquivos (pega o Step 1);
+- nenhum dos dois arquivos contém `\r` (pega a sabotagem de CRLF — hoje o LF só tem conferência
+  manual, que ninguém repete).
+
+- [ ] **Step 4: Provar que cada asserção nova tem dente**
+
+Uma sabotagem por asserção acrescentada, uma por vez, guardando os bytes antes e restaurando
+depois. Para cada uma: a mensagem exata da falha, e a confirmação de que o arquivo voltou.
+
+Refaça também a tabela de 10 sabotagens acima e mostre quantas a bateria pega agora. Se alguma
+das seis que a asserção de fidelidade deveria cobrir continuar passando, **isso é o achado** —
+relate em vez de contornar.
+
+- [ ] **Step 5: Verificação**
+
+```bash
+npm test
+```
+
+```bash
+npm run lint:ratchet
+```
+
+Mais as duas conferências de CR, que têm de continuar dando 0. Não commitar — quem commita é a
+sessão principal.
+
+---
+
 ### Task 3: O front enxerga os campos novos
 
 **Files:**
