@@ -209,15 +209,26 @@ Deno.test("a reversao inteira e' UM bloco atomico, com o portao dentro", () => {
   // TRAVA em payment_status. Medido: com a versao em tres comandos, bastava o
   // portao cair entre o DROP e o ADD — ou alguem clicar "recebi" no painel
   // nesse intervalo — para a guarda viva desde 20260807000000 sumir.
+  // Conta so' nas linhas de CODIGO. Sem isto, citar o literal num comentario
+  // do cabecalho derruba o teste a toa — e o conserto tentador de quem tropecar
+  // nisso e' AFROUXAR a assercao, que e' o pior desfecho possivel.
+  // (Medido: `removerRuido` de db-prove-rollback.cjs NAO serve aqui — ele trata
+  //  `$$ ... $$` como string e apaga o bloco inteiro, entao dois blocos reais
+  //  contam ZERO. Filtrar linha de comentario e' o que funciona: conferido com
+  //  controle positivo, dois blocos -> 2, e negativo, so' prosa -> 0.)
+  const codigo = rollback
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("--"))
+    .join("\n");
   assertEquals(
-    (rollbackN.match(/DO \$\$/g) || []).length,
+    (codigo.match(/DO \$\$/g) || []).length,
     1,
-    "a reversao tem de ser UM bloco DO $$ so'",
+    "a reversao tem de ser UM bloco atomico so'",
   );
   assertEquals(
-    (rollbackN.match(/END \$\$;/g) || []).length,
+    (codigo.match(/END \$\$;/g) || []).length,
     1,
-    "a reversao tem de fechar UM bloco DO $$ so'",
+    "a reversao tem de fechar UM bloco atomico so'",
   );
 
   // O portao existe, e e' bloco amarrado: a condicao E a recusa.
