@@ -220,42 +220,55 @@ Deno.test("o rollback derruba TUDO que a migration cria — os QUATRO objetos", 
   assertStringIncludes(rollbackN, norm("DROP COLUMN IF EXISTS pagamento_recebido_por"));
 });
 
-Deno.test("o rollback restaura a constraint com os SEIS — nao so' 'sem o setimo'", () => {
-  assertStringIncludes(rollbackN, norm("ADD CONSTRAINT marketplace_orders_payment_status_check"));
-  // 🔴 Contar a AUSENCIA do setimo prova pouco: um rollback que restaurasse a
-  // constraint com CINCO valores passava verde. Medido — tirar 'estornado' do
-  // rollback nao derrubava nada, enquanto tirar do lado da MIGRATION derrubava,
-  // porque la o laco existia. A assimetria era o defeito. Aqui o laco tambem.
-  for (const v of [
-    "aguardando",
-    "pago",
-    "recusado",
-    "expirado",
-    "estornado",
-    "pago_apos_expirar",
-  ]) {
-    assertStringIncludes(
-      rollbackN,
-      norm(`'${v}'::text`),
-      `o rollback tem de restaurar '${v}' na constraint`,
-    );
-  }
-  // E o setimo NAO pode sobrar na constraint restaurada. A busca e' pelo literal
-  // COM ::text, que so' aparece dentro da lista da constraint — o portao do
-  // bloco 0 cita a string sem o cast, e nao deve derrubar este teste.
+// A lista da constraint restaurada, extraida do ARRAY[...] em vez de procurada
+// no arquivo inteiro. Contar ocorrencia no arquivo todo foi medido furado nos
+// DOIS sentidos: exigindo `::text`, um setimo valor sem o cast entrava na
+// constraint e passava verde (e o Postgres aceita o literal nu num text[]);
+// sem exigir, o texto do portao derrubava o teste a toa.
+function listaDaConstraintRestaurada(sql) {
+  const m = sql.match(
+    /ADD CONSTRAINT marketplace_orders_payment_status_check[\s\S]*?ARRAY\s*\[([\s\S]*?)\]/,
+  );
+  if (!m) return null;
+  return (m[1].match(/'([a-z_]+)'/g) || []).map((x) => x.slice(1, -1));
+}
+
+Deno.test("o rollback restaura a constraint com EXATAMENTE os seis originais", () => {
+  const lista = listaDaConstraintRestaurada(rollback);
+  assert(lista !== null, "nao achei o ARRAY da constraint no rollback");
   assertEquals(
-    (rollbackN.match(/'recebido_na_entrega'::text/g) || []).length,
-    0,
-    "o rollback nao pode deixar o valor novo na constraint restaurada",
+    lista,
+    [
+      "aguardando",
+      "pago",
+      "recusado",
+      "expirado",
+      "estornado",
+      "pago_apos_expirar",
+    ],
+    `a constraint restaurada tem de ter os seis originais, na ordem, e nada mais — achei: ${JSON.stringify(lista)}`,
   );
 });
 
-Deno.test("o rollback RECUSA antes de destruir, se houver pagamento marcado", () => {
-  // Cada comando do rollback confirma sozinho (o db-apply NAO aplica
-  // rollback-manual: isto roda a mao). Sem este portao, o DROP CONSTRAINT
-  // confirma, o ADD CONSTRAINT falha, e a tabela fica SEM trava nenhuma em
-  // payment_status — com o historico que diria quais pedidos causaram a falha
-  // ja apagado. Bloco amarrado: a condicao E a recusa.
+Deno.test("a reversao inteira e' UM bloco atomico, com o portao dentro", () => {
+  // 🔴 Bloco DO e' UM comando, logo UMA transacao: ou reverte inteiro ou nada.
+  // Sem isso, portao / DROP CONSTRAINT / ADD CONSTRAINT sao tres comandos com
+  // confirmacao propria, e uma falha no meio deixa a marketplace_orders SEM
+  // TRAVA em payment_status. Medido: com a versao em tres comandos, bastava o
+  // portao cair entre o DROP e o ADD — ou alguem clicar "recebi" no painel
+  // nesse intervalo — para a guarda viva desde 20260807000000 sumir.
+  assertEquals(
+    (rollbackN.match(/DO \$\$/g) || []).length,
+    1,
+    "a reversao tem de ser UM bloco DO $$ so'",
+  );
+  assertEquals(
+    (rollbackN.match(/END \$\$;/g) || []).length,
+    1,
+    "a reversao tem de fechar UM bloco DO $$ so'",
+  );
+
+  // O portao existe, e e' bloco amarrado: a condicao E a recusa.
   assertStringIncludes(
     rollbackN,
     norm(`IF EXISTS (
@@ -264,15 +277,20 @@ Deno.test("o rollback RECUSA antes de destruir, se houver pagamento marcado", ()
     ) THEN
         RAISE EXCEPTION 'Reversao recusada:`),
   );
-  // E o portao vem ANTES de qualquer destruicao — ordem e' a correcao aqui.
-  const iPortao = rollbackN.indexOf("Reversao recusada:");
-  const iDrop = rollbackN.indexOf("DROP FUNCTION IF EXISTS");
-  assert(iPortao > -1, "o portao de recusa nao existe");
-  assert(iDrop > -1, "o DROP FUNCTION nao existe");
-  assert(
-    iPortao < iDrop,
-    "o portao de recusa tem de vir ANTES do primeiro DROP — senao ele so avisa depois de destruir",
-  );
+
+  // NADA que destroi pode ficar FORA do bloco. Esta e' a assercao que substitui
+  // a de ordem: em vez de adivinhar qual e' o "primeiro DROP", exige que nao
+  // exista nenhum DDL fora do que e' atomico.
+  const fim = rollbackN.indexOf("END $$;");
+  assert(fim > -1, "nao achei o fim do bloco DO");
+  const foraDoBloco = rollbackN.slice(fim + "END $$;".length);
+  for (const perigoso of ["DROP ", "ALTER TABLE ", "CREATE ", "TRUNCATE ", "UPDATE ", "DELETE "]) {
+    assertEquals(
+      foraDoBloco.includes(perigoso),
+      false,
+      `"${perigoso.trim()}" nao pode aparecer FORA do bloco atomico — la ele confirma sozinho`,
+    );
+  }
 });
 
 Deno.test("a tabela nova nasce com RLS ligado e policy so' para admin", () => {
@@ -292,14 +310,20 @@ Deno.test("a tabela nova nasce com RLS ligado e policy so' para admin", () => {
     USING (public.is_admin())`),
   );
   // Nenhuma policy de ESCRITA: quem escreve e' a RPC, que e' SECURITY DEFINER.
-  // Uma policy de INSERT/UPDATE/DELETE aqui abriria a tabela para o cliente.
-  for (const verbo of ["FOR INSERT", "FOR UPDATE", "FOR DELETE", "FOR ALL"]) {
-    assertEquals(
-      migrationN.includes(norm(`ON public.marketplace_order_payment_history ${verbo}`)),
-      false,
-      `a tabela de historico nao pode ter policy de escrita (${verbo})`,
-    );
-  }
+  // Uma policy de INSERT/UPDATE/DELETE/ALL aqui abriria a tabela para `anon`.
+  //
+  // 🔴 REGEX, nao lista de strings. Medido: a versao com quatro literais
+  // (`ON public.<tabela> FOR INSERT`) pegava a grafia canonica e PERDIA duas
+  // igualmente validas — sem qualificar o schema (`ON <tabela> FOR INSERT`) e
+  // com clausula no meio (`ON public.<tabela> AS PERMISSIVE FOR ALL`). Quatro
+  // strings literais nao enumeram uma gramatica.
+  const policyDeEscrita =
+    /ON (?:public\.)?marketplace_order_payment_history\b[^;]*?\bFOR (?:INSERT|UPDATE|DELETE|ALL)\b/;
+  assertEquals(
+    policyDeEscrita.test(migrationN),
+    false,
+    "a tabela de historico nao pode ter policy de escrita: quem escreve e' a RPC",
+  );
 });
 
 Deno.test("a entrada em VERIFICACOES existe e nomeia a funcao", () => {
@@ -520,51 +544,60 @@ A versão anterior deste arquivo punha a constraint por último "para falhar bar
 
 **Recusar antes de destruir** é o que resolve, e é o primeiro bloco do arquivo:
 
+**A reversão inteira vai num bloco `DO $$` único.** Bloco `DO` é **um** comando, e um comando é uma transação — então ou a reversão inteira acontece, ou nada acontece. Isso mata a classe de defeito pela raiz, em vez de guardá-la com uma asserção de ordem que já errou de âncora uma vez.
+
 ```sql
--- 0. PORTAO: recusa a reversao enquanto ela apagaria registro de pagamento.
---    Vem PRIMEIRO porque cada comando deste arquivo confirma sozinho (o
---    db-apply.cjs nao aplica rollback-manual -- isto roda a mao). Falhando
---    aqui, NADA foi destruido ainda: a funcao, a tabela de historico, as duas
---    colunas e a constraint continuam todas de pe.
 DO $$
 BEGIN
+    -- PORTAO: recusa enquanto a reversao apagaria registro de pagamento.
+    -- Dentro do bloco atomico, entao nem o DROP CONSTRAINT chega a acontecer.
     IF EXISTS (
         SELECT 1 FROM public.marketplace_orders
          WHERE payment_status = 'recebido_na_entrega'
     ) THEN
-        RAISE EXCEPTION 'Reversao recusada: existem pedidos com pagamento marcado como recebido na entrega. Reverter apagaria esse registro (a coluna, o historico e o proprio status). Desmarque-os pelo painel, ou decida explicitamente descarta-los, antes de rodar este arquivo.';
+        RAISE EXCEPTION 'Reversao recusada: existem pedidos com pagamento '
+            'marcado como recebido na entrega. Reverter apagaria esse '
+            'registro. Desmarque-os pelo painel, ou decida explicitamente '
+            'descarta-los, antes de rodar este arquivo.';
     END IF;
+
+    -- A constraint volta aos SEIS valores de 20260807000000.
+    ALTER TABLE public.marketplace_orders
+      DROP CONSTRAINT IF EXISTS marketplace_orders_payment_status_check;
+
+    ALTER TABLE public.marketplace_orders
+      ADD CONSTRAINT marketplace_orders_payment_status_check
+      CHECK (
+        payment_status IS NULL
+        OR payment_status = ANY (ARRAY[
+          'aguardando'::text,
+          'pago'::text,
+          'recusado'::text,
+          'expirado'::text,
+          'estornado'::text,
+          'pago_apos_expirar'::text
+        ])
+      );
+
+    DROP FUNCTION IF EXISTS public.registrar_pagamento_recebido(uuid, boolean);
+
+    DROP TABLE IF EXISTS public.marketplace_order_payment_history;
+
+    ALTER TABLE public.marketplace_orders
+      DROP COLUMN IF EXISTS pagamento_recebido_em;
+    ALTER TABLE public.marketplace_orders
+      DROP COLUMN IF EXISTS pagamento_recebido_por;
 END $$;
-
--- 1. A constraint volta aos SEIS valores de 20260807000000. Depois do portao
---    acima, nenhuma linha viola, entao o ADD nao pode falhar -- e a janela em
---    que a tabela fica sem trava dura o intervalo entre estes dois comandos,
---    com o resto do schema intacto.
-ALTER TABLE public.marketplace_orders
-  DROP CONSTRAINT IF EXISTS marketplace_orders_payment_status_check;
-
-ALTER TABLE public.marketplace_orders
-  ADD CONSTRAINT marketplace_orders_payment_status_check
-  CHECK (
-    payment_status IS NULL
-    OR payment_status = ANY (ARRAY[
-      'aguardando'::text,
-      'pago'::text,
-      'recusado'::text,
-      'expirado'::text,
-      'estornado'::text,
-      'pago_apos_expirar'::text
-    ])
-  );
-
--- 2. So agora o que destroi.
-DROP FUNCTION IF EXISTS public.registrar_pagamento_recebido(uuid, boolean);
-
-DROP TABLE IF EXISTS public.marketplace_order_payment_history;
-
-ALTER TABLE public.marketplace_orders DROP COLUMN IF EXISTS pagamento_recebido_em;
-ALTER TABLE public.marketplace_orders DROP COLUMN IF EXISTS pagamento_recebido_por;
 ```
+
+**O que a atomicidade fecha, e que a versão anterior deixava aberto:**
+
+- **A ordem deixa de importar para a segurança.** Antes, portão, `DROP CONSTRAINT` e `ADD CONSTRAINT` eram três comandos com confirmação própria: uma falha entre eles deixava a tabela **sem trava em `payment_status`**. Agora não existe "entre eles".
+- **A corrida deixa de existir.** Antes, alguém podia clicar "recebi" no painel **depois** do portão passar e **antes** do `ADD CONSTRAINT` — e o `ADD` falhava com a trava já derrubada. Um comando só não tem essa janela.
+
+✅ **`avaliarFase0` aceita a reversão inteira num `DO $$` — medido em 27/08/2026**, com controle positivo (`BEGIN;`/`COMMIT;` de verdade continua sendo recusado).
+
+⚠️ **A mensagem do portão fala de `payment_status`, e é isso que o predicado olha.** Ela **não** promete nada sobre a tabela de histórico: um pedido marcado e depois desmarcado pelo painel volta a `payment_status = NULL` e **deixa duas linhas** no histórico, que o `DROP TABLE` apaga. Isso é decisão de produto do Gabriel, está anotado, e **não** é para o executor resolver — escreva a mensagem exatamente como está acima, sem prometer mais do que ela detecta.
 
 ✅ **`avaliarFase0` aceita o bloco `DO $$ … BEGIN … END $$` — medido em 27/08/2026, não suposto**, com controle positivo na mesma rodada:
 
@@ -613,9 +646,9 @@ Acrescentar:
 Run: `deno test --allow-all --no-check tests/migration_lojista_registra_pagamento_recebido_test.ts`
 Expected: PASS, **11 testes**.
 
-- [ ] **Step 7: Provar por mutação que o teste tem dente — ONZE mutações, uma por vez**
+- [ ] **Step 7: Provar por mutação que o teste tem dente — DEZESSEIS mutações, uma por vez**
 
-Apagar uma linha e ver o teste cair prova pouco: prova que o teste vê **a linha**. A pergunta certa é se ele vê **o efeito**. Estas onze foram medidas contra versões anteriores deste teste, e **dez passaram verdes em algum momento** — cada uma agora tem de derrubar pelo menos um caso.
+Apagar uma linha e ver o teste cair prova pouco: prova que o teste vê **a linha**. A pergunta certa é se ele vê **o efeito**. Estas dezesseis foram medidas contra versões anteriores deste teste, e **quinze passaram verdes em algum momento** — cada uma agora tem de derrubar pelo menos um caso.
 
 Antes de cada mutação, copie o arquivo original para o seu scratchpad; depois restaure copiando de volta e confirme com `git diff --stat` que voltou idêntico. **Nunca** `git stash`/`checkout`/`restore`.
 
@@ -631,11 +664,16 @@ Antes de cada mutação, copie o arquivo original para o seu scratchpad; depois 
 | M8 | tirar `'estornado'::text` da constraint do **rollback** | o rollback restaura com os SEIS |
 | M9 | apagar o `ALTER TABLE … ENABLE ROW LEVEL SECURITY` da tabela nova | RLS ligado e policy |
 | M10 | apagar a `CREATE POLICY mkt_order_payment_history_select` inteira | RLS ligado e policy |
-| M11 | mover o portão `DO $$` do rollback para **depois** do primeiro `DROP` | o rollback RECUSA antes de destruir |
+| M11 | tirar o `DO $$`/`END $$;` do rollback, deixando os comandos soltos | a reversao e' UM bloco atomico |
+| M12 | acrescentar `DROP TABLE public.x;` **depois** do `END $$;` | a reversao e' UM bloco atomico |
+| M13 | devolver o setimo valor a constraint do rollback **sem** o `::text` | a constraint restaurada tem EXATAMENTE os seis |
+| M14 | policy de escrita **sem qualificar o schema**: `ON marketplace_order_payment_history FOR INSERT` | RLS ligado e policy |
+| M15 | policy com clausula no meio: `ON public.marketplace_order_payment_history AS PERMISSIVE FOR ALL` | RLS ligado e policy |
+| M16 | policy de escrita na grafia canonica (**controle positivo**: ja derrubava, tem de continuar derrubando) | RLS ligado e policy |
 
-As quatro últimas foram medidas passando verdes contra a versão anterior deste teste, e M8 é a mais traiçoeira: um rollback que restaurasse a constraint com **cinco** valores passava a bateria inteira, e rodado para valer estreitaria a trava em silêncio — o próximo estorno de pedido passaria a ser recusado pelo banco, com erro genérico, longe da causa.
+As de M11 a M15 foram medidas **passando verdes** contra a versão anterior deste teste — cada uma é um buraco real que a asserção anterior não via. M16 é controle positivo: ela já derrubava, e tem de continuar derrubando; se parar, a correção alargou demais e a asserção passou a acusar tudo. M8 continua sendo a mais traiçoeira: um rollback que restaurasse a constraint com **cinco** valores passava a bateria inteira, e rodado para valer estreitaria a trava em silêncio — o próximo estorno de pedido passaria a ser recusado pelo banco, com erro genérico, longe da causa.
 
-**Se alguma das onze passar verde, o teste é decorativo naquele ponto e você conserta o teste — não segue em frente.** Cole no relatório a tabela com o resultado real de cada uma.
+**Se alguma das dezesseis passar verde (ou se o controle positivo M16 parar de derrubar), o teste é decorativo naquele ponto e você conserta o teste — não segue em frente.** Cole no relatório a tabela com o resultado real de cada uma.
 
 Expected após restaurar tudo: PASS, 11 testes, e `git diff` vazio.
 
