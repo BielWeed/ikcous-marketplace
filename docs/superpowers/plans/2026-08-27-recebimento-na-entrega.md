@@ -230,7 +230,11 @@ function listaDaConstraintRestaurada(sql) {
     /ADD CONSTRAINT marketplace_orders_payment_status_check[\s\S]*?ARRAY\s*\[([\s\S]*?)\]/,
   );
   if (!m) return null;
-  return (m[1].match(/'([a-z_]+)'/g) || []).map((x) => x.slice(1, -1));
+  // `[^']+` e nao `[a-z_]+`: com a classe estreita, um setimo valor como
+  // 'recebido_na_entrega2' ou 'PIX' NAO casava e sumia em silencio da lista
+  // comparada — medido passando verde. Descartar em silencio e' o modo de
+  // falha que nao levanta suspeita.
+  return (m[1].match(/'([^']+)'/g) || []).map((x) => x.slice(1, -1));
 }
 
 Deno.test("o rollback restaura a constraint com EXATAMENTE os seis originais", () => {
@@ -289,18 +293,27 @@ Deno.test("a reversao inteira e' UM bloco atomico, com o portao dentro", () => {
         RAISE EXCEPTION 'Reversao recusada:`),
   );
 
-  // NADA que destroi pode ficar FORA do bloco. Esta e' a assercao que substitui
-  // a de ordem: em vez de adivinhar qual e' o "primeiro DROP", exige que nao
-  // exista nenhum DDL fora do que e' atomico.
-  const fim = rollbackN.indexOf("END $$;");
-  assert(fim > -1, "nao achei o fim do bloco DO");
-  const foraDoBloco = rollbackN.slice(fim + "END $$;".length);
-  for (const perigoso of ["DROP ", "ALTER TABLE ", "CREATE ", "TRUNCATE ", "UPDATE ", "DELETE "]) {
-    assertEquals(
-      foraDoBloco.includes(perigoso),
-      false,
-      `"${perigoso.trim()}" nao pode aparecer FORA do bloco atomico — la ele confirma sozinho`,
-    );
+  // NADA que destroi pode ficar FORA do bloco — e "fora" tem DOIS lados.
+  // 🔴 A versao anterior olhava so' o que vinha DEPOIS do `END $$;`. Medido: um
+  // `ALTER TABLE ... DROP CONSTRAINT` inserido ANTES do `DO $$` passava verde —
+  // e ele e' comando de topo, confirma sozinho, entao o portao aborta so' a si
+  // mesmo e a tabela fica SEM TRAVA, com o operador lendo "reversao recusada" e
+  // achando que nada aconteceu. Era o mesmo dano, pelo lado que ninguem olhava.
+  // Usa `codigo` (sem linhas de comentario) porque o cabecalho cita DROP em prosa.
+  const iAbre = codigo.indexOf("DO $$");
+  const iFecha = codigo.indexOf("END $$;");
+  assert(iAbre > -1 && iFecha > iAbre, "nao achei o bloco atomico no codigo");
+  const antesDoBloco = codigo.slice(0, iAbre);
+  const depoisDoBloco = codigo.slice(iFecha + "END $$;".length);
+  const perigosos = ["DROP ", "ALTER TABLE ", "CREATE ", "TRUNCATE ", "UPDATE ", "DELETE "];
+  for (const [onde, trecho] of [["ANTES", antesDoBloco], ["DEPOIS", depoisDoBloco]]) {
+    for (const perigoso of perigosos) {
+      assertEquals(
+        trecho.includes(perigoso),
+        false,
+        `"${perigoso.trim()}" nao pode aparecer ${onde} do bloco atomico — la ele confirma sozinho`,
+      );
+    }
   }
 });
 
@@ -328,8 +341,10 @@ Deno.test("a tabela nova nasce com RLS ligado e policy so' para admin", () => {
   // igualmente validas — sem qualificar o schema (`ON <tabela> FOR INSERT`) e
   // com clausula no meio (`ON public.<tabela> AS PERMISSIVE FOR ALL`). Quatro
   // strings literais nao enumeram uma gramatica.
+  // Aspas opcionais: `ON "public"."tabela"` e forma valida e existe neste
+  // repositorio. Sem isso, a grafia entre aspas escapava — medido verde.
   const policyDeEscrita =
-    /ON (?:public\.)?marketplace_order_payment_history\b[^;]*?\bFOR (?:INSERT|UPDATE|DELETE|ALL)\b/;
+    /ON (?:"?public"?\.)?"?marketplace_order_payment_history"?[^;]*?\bFOR (?:INSERT|UPDATE|DELETE|ALL)\b/;
   assertEquals(
     policyDeEscrita.test(migrationN),
     false,
@@ -657,7 +672,7 @@ Acrescentar:
 Run: `deno test --allow-all --no-check tests/migration_lojista_registra_pagamento_recebido_test.ts`
 Expected: PASS, **11 testes**.
 
-- [ ] **Step 7: Provar por mutação que o teste tem dente — DEZESSEIS mutações, uma por vez**
+- [ ] **Step 7: Provar por mutação que o teste tem dente — DEZENOVE mutações, uma por vez**
 
 Apagar uma linha e ver o teste cair prova pouco: prova que o teste vê **a linha**. A pergunta certa é se ele vê **o efeito**. Estas dezesseis foram medidas contra versões anteriores deste teste, e **quinze passaram verdes em algum momento** — cada uma agora tem de derrubar pelo menos um caso.
 
@@ -681,12 +696,17 @@ Antes de cada mutação, copie o arquivo original para o seu scratchpad; depois 
 | M14 | policy de escrita **sem qualificar o schema**: `ON marketplace_order_payment_history FOR INSERT` | RLS ligado e policy |
 | M15 | policy com clausula no meio: `ON public.marketplace_order_payment_history AS PERMISSIVE FOR ALL` | RLS ligado e policy |
 | M16 | policy de escrita na grafia canonica (**controle positivo**: ja derrubava, tem de continuar derrubando) | RLS ligado e policy |
+| M17 | inserir `ALTER TABLE ... DROP CONSTRAINT ...;` **ANTES** do `DO $$` no rollback | a reversao e' UM bloco atomico |
+| M18 | devolver a constraint do rollback um setimo valor **com digito**: `'recebido_na_entrega2'::text` | EXATAMENTE os seis |
+| M19 | policy de escrita com identificador **entre aspas**: `ON "public"."marketplace_order_payment_history" FOR INSERT` | RLS ligado e policy |
 
 As de M11 a M15 foram medidas **passando verdes** contra a versão anterior deste teste — cada uma é um buraco real que a asserção anterior não via. M16 é controle positivo: ela já derrubava, e tem de continuar derrubando; se parar, a correção alargou demais e a asserção passou a acusar tudo. M8 continua sendo a mais traiçoeira: um rollback que restaurasse a constraint com **cinco** valores passava a bateria inteira, e rodado para valer estreitaria a trava em silêncio — o próximo estorno de pedido passaria a ser recusado pelo banco, com erro genérico, longe da causa.
 
-**Se alguma das dezesseis passar verde (ou se o controle positivo M16 parar de derrubar), o teste é decorativo naquele ponto e você conserta o teste — não segue em frente.** Cole no relatório a tabela com o resultado real de cada uma.
+**Se alguma das dezenove passar verde (ou se o controle positivo M16 parar de derrubar), o teste é decorativo naquele ponto e você conserta o teste — não segue em frente.** Cole no relatório a tabela com o resultado real de cada uma.
 
-Expected após restaurar tudo: PASS, 11 testes, e `git diff` vazio.
+M17, M18 e M19 foram medidas passando **verdes** contra a versao anterior deste teste — as tres sao buracos reais que as assercoes anteriores nao viam, e as tres tem de derrubar agora.
+
+Expected apos restaurar tudo: PASS, 11 testes, e `git diff` vazio.
 
 - [ ] **Step 8: Rodar a verificação que este diff pede**
 
@@ -753,29 +773,46 @@ O corpo que o Postgres guarda é o texto do arquivo que o aplicou — **não exi
 
 Leia os três. Eles são a base **do rollback** (cópia literal) e a base **da migration** (a mesma cópia, com os 12 pontos alterados). Se algum dos três arquivos não existir ou estiver vazio, **pare e avise** — sem eles não há como escrever nem a migration nem o rollback com fidelidade, e reconstruir o corpo de memória é exatamente como se embarca um rollback infiel.
 
-## 🔴 O fim de linha destes dois arquivos é LF, e a convenção do repositório vai te empurrar para o errado
+## O fim de linha: escreva LF — e a conferência abaixo é a única que mede
 
-**Os três corpos vivos estão em LF puro** — medido em 27/08/2026: `CRLF=0` nos três (`get_admin_analytics_v2` 268 LF, `get_admin_customers_paged` 170 LF, `get_segmented_push_targets` 72 LF).
+**Os três corpos vivos estão em LF puro**, e **este repositório inteiro também está** — medido por contagem de bytes em 27/08/2026, disco e blob:
 
-**E os arquivos novos deste repositório são gravados em CRLF.** Medido nos vizinhos, dentro do commit: `tests/migration_vitrine_sabe_que_produto_mudou_test.ts` = 445 CRLF, `supabase/migrations/20261012000000_a_vitrine...sql` = 148 CRLF. No Windows, um editor ou um script em modo texto grava CRLF **sem avisar**.
+```
+                                                   CR    LF
+rollback-manual-20261020000000_....sql              0    75
+supabase/migrations/20261020000000_....sql          0   185
+tests/migration_lojista_..._test.ts                 0   307
+tests/migration_vitrine_..._test.ts                 0   445
+supabase/migrations/20261012000000_a_vitrine.sql    0   148
+```
 
-Ou seja: **seguir a convenção do repositório aqui produz um rollback infiel.** O corpo que o Postgres guarda é o texto do arquivo que o aplicou — não existe convenção a seguir, existe o corpo vivo a reproduzir.
+Então escrever LF **é** seguir a convenção daqui; não há conflito. Em Python, `open(..., "w", newline="\n")` — nunca o modo texto padrão do Windows, que traduz para CRLF sem avisar.
 
-**A assinatura da falha, para você reconhecer se acontecer:** `db-prove-rollback.cjs` devolve `FALHOU / rollback infiel` com `divergencias de conteudo: N` e **`so de espaco/formatacao: 0`**, com as duas strings visualmente idênticas na saída. O normalizador do script **não** trata quebra de linha como espaço, e é essa severidade que salva — se ele classificasse como formatação, um rollback infiel embarcaria.
+🔴 **A conferência NÃO pode ser `grep -c $'\r'`.** Medido, com controle positivo e negativo:
 
-**Como garantir:** escreva os dois arquivos em LF explicitamente (em Python, `open(..., "w", newline="\n")`; nunca o modo texto padrão do Windows) e **confira antes de commitar**:
+```
+                         grep -c $'\r'    Python (bytes)
+arquivo CRLF de verdade        0            CR=3
+arquivo LF de verdade          0            CR=0
+```
+
+**O `grep` devolve o MESMO número para entradas opostas** — o escape da barra invertida é comido antes de chegar nele. Instrumento cego que imprime número plausível é pior que instrumento quebrado, porque não levanta suspeita. Uma versão anterior deste plano trazia esse comando como portão obrigatório; ela estava errada e as contagens que ela produziu eram, na verdade, **contagem de linhas**.
+
+**A conferência que mede:**
 
 ```bash
-grep -c $'\r' supabase/migrations/20261021000000_receita_conta_so_dinheiro_que_entrou.sql
+python -c "print(open('supabase/migrations/20261021000000_receita_conta_so_dinheiro_que_entrou.sql','rb').read().count(chr(13).encode()))"
 ```
 
 ```bash
-grep -c $'\r' rollback-manual-20261021000000_receita_conta_so_dinheiro_que_entrou.sql
+python -c "print(open('rollback-manual-20261021000000_receita_conta_so_dinheiro_que_entrou.sql','rb').read().count(chr(13).encode()))"
 ```
 
-Os dois têm de dar **0**. Se derem outra coisa, conserte antes de seguir — e confira também no blob depois de commitar, com `git show HEAD:<caminho> | grep -c $'\r'`, porque o git pode converter na cópia de trabalho e esconder a diferença.
+Os dois têm de dar **0**.
 
-⚠️ Isto vale **só** para estes dois arquivos, cujo conteúdo tem de reproduzir corpo vivo. O arquivo de teste desta tarefa segue a convenção normal do repositório.
+**A assinatura da falha, se ainda assim escapar CRLF:** `db-prove-rollback.cjs` devolve `FALHOU / rollback infiel` com `divergencias de conteudo: N` e **`so de espaco/formatacao: 0`**, com as duas strings visualmente idênticas na saída. O normalizador do script **não** trata quebra de linha como espaço, e é essa severidade que salva — se classificasse como formatação, um rollback infiel embarcaria com aprovação.
+
+ℹ️ Para o casamento dos marcadores do `VERIFICACOES` isto é indiferente: `scripts/db-apply.cjs:1379-1391` normaliza `\r\n → \n` dos **dois** lados antes de comparar. O que depende de LF é a **fidelidade do rollback**, comparada pelo `db-prove-rollback`.
 
 - [ ] **Step 2: Escrever o teste de forma**
 
