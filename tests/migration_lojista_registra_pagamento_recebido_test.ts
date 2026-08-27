@@ -170,16 +170,95 @@ Deno.test("o rollback derruba TUDO que a migration cria — os QUATRO objetos", 
     rollbackN,
     norm("DROP COLUMN IF EXISTS pagamento_recebido_por"),
   );
-  // E a constraint volta aos SEIS: o setimo valor NAO pode sobrar no rollback.
+});
+
+Deno.test("o rollback restaura a constraint com os SEIS — nao so' 'sem o setimo'", () => {
   assertStringIncludes(
     rollbackN,
     norm("ADD CONSTRAINT marketplace_orders_payment_status_check"),
   );
+  // 🔴 Contar a AUSENCIA do setimo prova pouco: um rollback que restaurasse a
+  // constraint com CINCO valores passava verde. Medido — tirar 'estornado' do
+  // rollback nao derrubava nada, enquanto tirar do lado da MIGRATION derrubava,
+  // porque la o laco existia. A assimetria era o defeito. Aqui o laco tambem.
+  for (const v of [
+    "aguardando",
+    "pago",
+    "recusado",
+    "expirado",
+    "estornado",
+    "pago_apos_expirar",
+  ]) {
+    assertStringIncludes(
+      rollbackN,
+      norm(`'${v}'::text`),
+      `o rollback tem de restaurar '${v}' na constraint`,
+    );
+  }
+  // E o setimo NAO pode sobrar na constraint restaurada. A busca e' pelo literal
+  // COM ::text, que so' aparece dentro da lista da constraint — o portao do
+  // bloco 0 cita a string sem o cast, e nao deve derrubar este teste.
   assertEquals(
-    (rollbackN.match(/'recebido_na_entrega'/g) || []).length,
+    (rollbackN.match(/'recebido_na_entrega'::text/g) || []).length,
     0,
     "o rollback nao pode deixar o valor novo na constraint restaurada",
   );
+});
+
+Deno.test("o rollback RECUSA antes de destruir, se houver pagamento marcado", () => {
+  // Cada comando do rollback confirma sozinho (o db-apply NAO aplica
+  // rollback-manual: isto roda a mao). Sem este portao, o DROP CONSTRAINT
+  // confirma, o ADD CONSTRAINT falha, e a tabela fica SEM trava nenhuma em
+  // payment_status — com o historico que diria quais pedidos causaram a falha
+  // ja apagado. Bloco amarrado: a condicao E a recusa.
+  assertStringIncludes(
+    rollbackN,
+    norm(`IF EXISTS (
+        SELECT 1 FROM public.marketplace_orders
+         WHERE payment_status = 'recebido_na_entrega'
+    ) THEN
+        RAISE EXCEPTION 'Reversao recusada:`),
+  );
+  // E o portao vem ANTES de qualquer destruicao — ordem e' a correcao aqui.
+  const iPortao = rollbackN.indexOf("Reversao recusada:");
+  const iDrop = rollbackN.indexOf("DROP FUNCTION IF EXISTS");
+  assert(iPortao > -1, "o portao de recusa nao existe");
+  assert(iDrop > -1, "o DROP FUNCTION nao existe");
+  assert(
+    iPortao < iDrop,
+    "o portao de recusa tem de vir ANTES do primeiro DROP — senao ele so avisa depois de destruir",
+  );
+});
+
+Deno.test("a tabela nova nasce com RLS ligado e policy so' para admin", () => {
+  // 🔴 Tabela nova em `public` NASCE com INSERT/SELECT/UPDATE/DELETE para `anon`
+  // por pg_default_acl deste banco (medido), e a chave anonima vai no bundle do
+  // front. O RLS e' a UNICA coisa entre ela e essa tabela. Medido: apagar o
+  // ENABLE ROW LEVEL SECURITY, ou apagar a policy, deixava a bateria verde.
+  assertStringIncludes(
+    migrationN,
+    norm(
+      "ALTER TABLE public.marketplace_order_payment_history ENABLE ROW LEVEL SECURITY",
+    ),
+  );
+  assertStringIncludes(
+    migrationN,
+    norm(`CREATE POLICY mkt_order_payment_history_select
+    ON public.marketplace_order_payment_history
+    FOR SELECT
+    USING (public.is_admin())`),
+  );
+  // Nenhuma policy de ESCRITA: quem escreve e' a RPC, que e' SECURITY DEFINER.
+  // Uma policy de INSERT/UPDATE/DELETE aqui abriria a tabela para o cliente.
+  for (const verbo of ["FOR INSERT", "FOR UPDATE", "FOR DELETE", "FOR ALL"]) {
+    assertEquals(
+      migrationN.includes(
+        norm(`ON public.marketplace_order_payment_history ${verbo}`),
+      ),
+      false,
+      `a tabela de historico nao pode ter policy de escrita (${verbo})`,
+    );
+  }
 });
 
 Deno.test("a entrada em VERIFICACOES existe e nomeia a funcao", () => {
