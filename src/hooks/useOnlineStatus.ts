@@ -89,6 +89,20 @@ export function useConnectionDiagnostics() {
 
         if (isMounted) {
           const isGatewayError = res.status >= 502 && res.status <= 504;
+
+          // Um 502/503/504 isolado é o SERVIDOR com problema, não a
+          // internet da cliente — ela pode estar perfeitamente online. Antes
+          // de virar veredito, confirma com uma segunda sonda (mesmo padrão
+          // de retry do `catch` abaixo, para erro de rede de verdade). Só
+          // marca offline se a falha persistir na confirmação.
+          if (isGatewayError && !isRetry) {
+            isChecking = false;
+            setTimeout(() => {
+              if (isMounted) verifyConnection(true);
+            }, 1500);
+            return;
+          }
+
           const isOffline = isGatewayError;
 
           let quality: "excellent" | "good" | "slow" | "offline" = "excellent";

@@ -57,7 +57,13 @@ import {
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-const compressImage = (
+// Exportado só para o teste chamar direto (não passa pelo componente inteiro)
+// — continua sendo um detalhe interno desta tela, não uma API pública. Nome
+// `compressProductImage` (não `compressImage`) de propósito: já existe um
+// `compressImage` em `src/utils/avatars.ts` (assinatura incompatível,
+// `string` → `Promise<string>`), e o TypeScript pega o auto-import errado
+// quando os dois se chamam igual.
+export const compressProductImage = (
   file: File,
   maxWidth = 1200,
   maxHeight = 1200,
@@ -99,6 +105,15 @@ const compressImage = (
         return;
       }
 
+      // JPEG não tem canal alfa: sem pintar um fundo antes, a área
+      // transparente de um PNG (produto recortado, sem fundo) é composta
+      // sobre PRETO por padrão do canvas no `toBlob` abaixo — a foto que
+      // vende o produto na vitrine aparece com um retângulo preto atrás.
+      // Mesmo conserto de `src/utils/avatars.ts`/`src/utils/covers.ts`:
+      // branco, ANTES do `drawImage`, mantendo `image/jpeg` (o upload e o
+      // resto do app já esperam esse tipo).
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
 
       canvas.toBlob(
@@ -888,7 +903,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       );
       try {
         const compressedFiles = await Promise.all(
-          files.map((file) => compressImage(file)),
+          files.map((file) => compressProductImage(file)),
         );
 
         setImageUploadStep("uploading");

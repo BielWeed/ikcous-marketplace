@@ -31,7 +31,10 @@ type PushSubscribeErrorOrigin =
 // perdeu" — nesse caso a gravação PODE ter acontecido de verdade. "Não foi
 // possível salvar" mentiria nesse cenário; "não conseguimos confirmar" é
 // verdade nos dois. O `upsert` é idempotente por `onConflict: "endpoint"`,
-// então repetir converge — o risco aqui é só de mensagem, nunca de dado.
+// então repetir converge — MAS só porque `subscribe()` (mais abaixo) só
+// desfaz no navegador o que a PRÓPRIA chamada criou agora; se ele
+// desfizesse uma inscrição já existente, o retry pegaria um endpoint novo
+// e a convergência quebraria (a linha antiga ficaria órfã de verdade).
 //
 // A frase de "permissão" evita "configurações do site": esse rótulo não
 // existe no iOS. Fora do modo instalado, o Safari nem expõe `PushManager`
@@ -131,8 +134,19 @@ export function usePushNotifications() {
       const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
       if (!vapidPublicKey) {
-        console.warn("VAPID Public Key not found in environment");
-        return;
+        // Item 5 da revisão de 27/08/2026: isto devolvia `undefined` em
+        // silêncio (nem toast, nem erro) — mesmo defeito que
+        // `push-sem-conta-avisa-em-vez-de-calar.test.ts` já corrigiu para a
+        // origem "sem_conta". Com o banner agora reaparecendo sempre que há
+        // permissão concedida mas nenhuma inscrição salva, faltar a chave
+        // deixava o tarjão "Quero Receber!" para sempre na tela, clicável e
+        // inerte. Família "navegador": não é decisão da pessoa (permissão),
+        // nem falha do banco — é o app que não está configurado para
+        // inscrever ninguém neste build.
+        throw new PushSubscribeError(
+          "navegador",
+          new Error("VAPID Public Key não configurada no build"),
+        );
       }
 
       // Precisa ser ANTES de pedir a permissão do navegador: se a pessoa
@@ -170,6 +184,30 @@ export function usePushNotifications() {
       }
 
       const registration = await navigator.serviceWorker.ready;
+
+      // `pushManager.subscribe()` com a MESMA `applicationServerKey` não
+      // cria nada quando já existe uma inscrição viva — a spec (W3C Push
+      // API, algoritmo de `subscribe()`, passo 11.6) compara as `options`
+      // com as da inscrição existente e, se baterem, resolve a promessa com
+      // a inscrição EXISTENTE. Sem saber disso, o `unsubscribe()` de erro do
+      // banco (mais abaixo) destruiria uma inscrição que este fluxo nem
+      // criou — cenário real: a pessoa já está inscrita, toca de novo em
+      // "Testar Recebimento" ou no convite, e um blip passageiro no
+      // Supabase apaga a inscrição que já funcionava.
+      //
+      // Falha ao sondar = estado DESCONHECIDO, e desconhecido não autoriza
+      // destruir — falha fechada: assume que já existia (não desfaz). Try/
+      // catch PRÓPRIO: se isto lançasse dentro do try grande, o erro
+      // trocaria de família (viraria a mensagem genérica do catch externo)
+      // em vez da família real ("banco"/"navegador") do que vier a seguir.
+      let inscricaoJaExistiaAntesDestaChamada = true;
+      try {
+        const inscricaoExistente =
+          await registration.pushManager.getSubscription();
+        inscricaoJaExistiaAntesDestaChamada = inscricaoExistente !== null;
+      } catch {
+        inscricaoJaExistiaAntesDestaChamada = true;
+      }
 
       // Convert VAPID key from base64 to Uint8Array
       const padding = "=".repeat((4 - (vapidPublicKey.length % 4)) % 4);
@@ -215,9 +253,46 @@ export function usePushNotifications() {
 
       if (error) {
         // O navegador JÁ criou a inscrição — o que falhou foi salvar no
-        // banco (RLS, coluna, o que for). Família "banco": distinta das
-        // duas de cima porque a ação para resolver é outra (tentar de novo
-        // a gravação, não mexer em permissão do navegador).
+        // banco (RLS, coluna, o que for). Sem desfazer, o navegador fica
+        // inscrito e o banco vazio: ninguém consegue enviar para esta
+        // cliente, e a PRÓXIMA carga acha `getSubscription()` não-nulo —
+        // o app acredita que ela está inscrita, esconde o convite para
+        // sempre, e a permissão já concedida vira um beco sem saída.
+        //
+        // Mas só faz sentido desfazer o que ESTA chamada criou agora —
+        // `inscricaoJaExistiaAntesDestaChamada` (ver sonda logo acima, antes
+        // do `subscribe()`). Se já havia inscrição viva, `newSubscription`
+        // É essa mesma inscrição (devolvida pela spec, não criada de novo);
+        // desfazê-la destruiria algo que já funcionava, por causa de um erro
+        // que não tem nada a ver com ela.
+        //
+        // Desfazer a inscrição RECÉM-CRIADA devolve um estado CONSISTENTE
+        // (nem navegador, nem banco) e barato de repetir: a permissão do
+        // SO/navegador já foi concedida, então tentar de novo não reabre o
+        // balão. Contas dos dois lados, por escrito:
+        //   - Se este `unsubscribe()` também falhar, sobra a MESMA
+        //     inconsistência de antes do conserto — não fica pior, e o
+        //     erro de banco ainda é reportado (catch abaixo).
+        //   - Se o `error` acima for, na verdade, "a resposta se perdeu
+        //     mas a gravação aconteceu" (ver comentário no topo do
+        //     arquivo sobre o `postgrest-js`), desfazer aqui deixa uma
+        //     linha órfã no banco — resíduo inofensivo NESSE caso
+        //     específico: a inscrição era nova, então não existe cliente
+        //     que dependia dela até agora; o provedor de push só para de
+        //     conseguir entregar numa linha que ninguém usava.
+        // O bem maior — a cliente conseguir se inscrever de verdade, em
+        // vez de ficar invisível para sempre — vale mais que os dois
+        // riscos acima, sem pagar o preço de destruir uma inscrição alheia.
+        if (!inscricaoJaExistiaAntesDestaChamada) {
+          try {
+            await newSubscription.unsubscribe();
+          } catch (unsubscribeError) {
+            console.error(
+              "Falha ao desfazer inscrição do navegador após erro no banco:",
+              unsubscribeError,
+            );
+          }
+        }
         throw new PushSubscribeError("banco", error);
       }
 
