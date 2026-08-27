@@ -172,45 +172,55 @@ Deno.test("o rollback derruba TUDO que a migration cria — os QUATRO objetos", 
   );
 });
 
-Deno.test("o rollback restaura a constraint com os SEIS — nao so' 'sem o setimo'", () => {
-  assertStringIncludes(
-    rollbackN,
-    norm("ADD CONSTRAINT marketplace_orders_payment_status_check"),
+// A lista da constraint restaurada, extraida do ARRAY[...] em vez de procurada
+// no arquivo inteiro. Contar ocorrencia no arquivo todo foi medido furado nos
+// DOIS sentidos: exigindo `::text`, um setimo valor sem o cast entrava na
+// constraint e passava verde (e o Postgres aceita o literal nu num text[]);
+// sem exigir, o texto do portao derrubava o teste a toa.
+function listaDaConstraintRestaurada(sql) {
+  const m = sql.match(
+    /ADD CONSTRAINT marketplace_orders_payment_status_check[\s\S]*?ARRAY\s*\[([\s\S]*?)\]/,
   );
-  // 🔴 Contar a AUSENCIA do setimo prova pouco: um rollback que restaurasse a
-  // constraint com CINCO valores passava verde. Medido — tirar 'estornado' do
-  // rollback nao derrubava nada, enquanto tirar do lado da MIGRATION derrubava,
-  // porque la o laco existia. A assimetria era o defeito. Aqui o laco tambem.
-  for (const v of [
-    "aguardando",
-    "pago",
-    "recusado",
-    "expirado",
-    "estornado",
-    "pago_apos_expirar",
-  ]) {
-    assertStringIncludes(
-      rollbackN,
-      norm(`'${v}'::text`),
-      `o rollback tem de restaurar '${v}' na constraint`,
-    );
-  }
-  // E o setimo NAO pode sobrar na constraint restaurada. A busca e' pelo literal
-  // COM ::text, que so' aparece dentro da lista da constraint — o portao do
-  // bloco 0 cita a string sem o cast, e nao deve derrubar este teste.
+  if (!m) return null;
+  return (m[1].match(/'([a-z_]+)'/g) || []).map((x) => x.slice(1, -1));
+}
+
+Deno.test("o rollback restaura a constraint com EXATAMENTE os seis originais", () => {
+  const lista = listaDaConstraintRestaurada(rollback);
+  assert(lista !== null, "nao achei o ARRAY da constraint no rollback");
   assertEquals(
-    (rollbackN.match(/'recebido_na_entrega'::text/g) || []).length,
-    0,
-    "o rollback nao pode deixar o valor novo na constraint restaurada",
+    lista,
+    [
+      "aguardando",
+      "pago",
+      "recusado",
+      "expirado",
+      "estornado",
+      "pago_apos_expirar",
+    ],
+    `a constraint restaurada tem de ter os seis originais, na ordem, e nada mais — achei: ${JSON.stringify(lista)}`,
   );
 });
 
-Deno.test("o rollback RECUSA antes de destruir, se houver pagamento marcado", () => {
-  // Cada comando do rollback confirma sozinho (o db-apply NAO aplica
-  // rollback-manual: isto roda a mao). Sem este portao, o DROP CONSTRAINT
-  // confirma, o ADD CONSTRAINT falha, e a tabela fica SEM trava nenhuma em
-  // payment_status — com o historico que diria quais pedidos causaram a falha
-  // ja apagado. Bloco amarrado: a condicao E a recusa.
+Deno.test("a reversao inteira e' UM bloco atomico, com o portao dentro", () => {
+  // 🔴 Bloco DO e' UM comando, logo UMA transacao: ou reverte inteiro ou nada.
+  // Sem isso, portao / DROP CONSTRAINT / ADD CONSTRAINT sao tres comandos com
+  // confirmacao propria, e uma falha no meio deixa a marketplace_orders SEM
+  // TRAVA em payment_status. Medido: com a versao em tres comandos, bastava o
+  // portao cair entre o DROP e o ADD — ou alguem clicar "recebi" no painel
+  // nesse intervalo — para a guarda viva desde 20260807000000 sumir.
+  assertEquals(
+    (rollbackN.match(/DO \$\$/g) || []).length,
+    1,
+    "a reversao tem de ser UM bloco DO $$ so'",
+  );
+  assertEquals(
+    (rollbackN.match(/END \$\$;/g) || []).length,
+    1,
+    "a reversao tem de fechar UM bloco DO $$ so'",
+  );
+
+  // O portao existe, e e' bloco amarrado: a condicao E a recusa.
   assertStringIncludes(
     rollbackN,
     norm(`IF EXISTS (
@@ -219,15 +229,27 @@ Deno.test("o rollback RECUSA antes de destruir, se houver pagamento marcado", ()
     ) THEN
         RAISE EXCEPTION 'Reversao recusada:`),
   );
-  // E o portao vem ANTES de qualquer destruicao — ordem e' a correcao aqui.
-  const iPortao = rollbackN.indexOf("Reversao recusada:");
-  const iDrop = rollbackN.indexOf("DROP FUNCTION IF EXISTS");
-  assert(iPortao > -1, "o portao de recusa nao existe");
-  assert(iDrop > -1, "o DROP FUNCTION nao existe");
-  assert(
-    iPortao < iDrop,
-    "o portao de recusa tem de vir ANTES do primeiro DROP — senao ele so avisa depois de destruir",
-  );
+
+  // NADA que destroi pode ficar FORA do bloco. Esta e' a assercao que substitui
+  // a de ordem: em vez de adivinhar qual e' o "primeiro DROP", exige que nao
+  // exista nenhum DDL fora do que e' atomico.
+  const fim = rollbackN.indexOf("END $$;");
+  assert(fim > -1, "nao achei o fim do bloco DO");
+  const foraDoBloco = rollbackN.slice(fim + "END $$;".length);
+  for (const perigoso of [
+    "DROP ",
+    "ALTER TABLE ",
+    "CREATE ",
+    "TRUNCATE ",
+    "UPDATE ",
+    "DELETE ",
+  ]) {
+    assertEquals(
+      foraDoBloco.includes(perigoso),
+      false,
+      `"${perigoso.trim()}" nao pode aparecer FORA do bloco atomico — la ele confirma sozinho`,
+    );
+  }
 });
 
 Deno.test("a tabela nova nasce com RLS ligado e policy so' para admin", () => {
@@ -249,16 +271,20 @@ Deno.test("a tabela nova nasce com RLS ligado e policy so' para admin", () => {
     USING (public.is_admin())`),
   );
   // Nenhuma policy de ESCRITA: quem escreve e' a RPC, que e' SECURITY DEFINER.
-  // Uma policy de INSERT/UPDATE/DELETE aqui abriria a tabela para o cliente.
-  for (const verbo of ["FOR INSERT", "FOR UPDATE", "FOR DELETE", "FOR ALL"]) {
-    assertEquals(
-      migrationN.includes(
-        norm(`ON public.marketplace_order_payment_history ${verbo}`),
-      ),
-      false,
-      `a tabela de historico nao pode ter policy de escrita (${verbo})`,
-    );
-  }
+  // Uma policy de INSERT/UPDATE/DELETE/ALL aqui abriria a tabela para `anon`.
+  //
+  // 🔴 REGEX, nao lista de strings. Medido: a versao com quatro literais
+  // (`ON public.<tabela> FOR INSERT`) pegava a grafia canonica e PERDIA duas
+  // igualmente validas — sem qualificar o schema (`ON <tabela> FOR INSERT`) e
+  // com clausula no meio (`ON public.<tabela> AS PERMISSIVE FOR ALL`). Quatro
+  // strings literais nao enumeram uma gramatica.
+  const policyDeEscrita =
+    /ON (?:public\.)?marketplace_order_payment_history\b[^;]*?\bFOR (?:INSERT|UPDATE|DELETE|ALL)\b/;
+  assertEquals(
+    policyDeEscrita.test(migrationN),
+    false,
+    "a tabela de historico nao pode ter policy de escrita: quem escreve e' a RPC",
+  );
 });
 
 Deno.test("a entrada em VERIFICACOES existe e nomeia a funcao", () => {
