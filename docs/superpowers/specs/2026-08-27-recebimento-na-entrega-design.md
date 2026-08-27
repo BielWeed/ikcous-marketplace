@@ -227,7 +227,25 @@ Verde não prova nada até a implementação ser apagada e o teste falhar.
 | `payment_status` é texto livre — nada impede valor inválido | a RPC é o único caminho de escrita, e ela só grava os dois valores previstos |
 | Trocar 12 pontos em massa e acertar o alvo errado | cada ponto é lido e decidido individualmente; `orders_count` e `last_order_date` ficam fora por decisão escrita |
 | A queda da receita ser lida como defeito | está escrito aqui, e vai no corpo do PR e no CHANGELOG |
-| Migration aplicada antes de a tela subir | a tela vai a produção **antes** do banco. Tela nova com banco velho funciona; banco novo com tela velha é que quebra — foi o erro cometido hoje na migration do estorno |
+| Migration aplicada na ordem errada | ver **A ordem de subida**, abaixo — ela é em três passos, e não o "tela antes do banco" simples |
+
+## A ordem de subida — corrigida em 27/08/2026, ao escrever o plano
+
+A regra geral do repositório é publicar a tela antes do banco, porque tela nova com banco velho
+funciona e banco novo com tela velha quebra. **Aqui ela vale só para a metade que recusa.**
+
+O trabalho vira **duas** migrations, separadas por natureza:
+
+| # | passo | por quê |
+|---|---|---|
+| 1 | aplicar `20261020000000` — colunas, tabela de histórico e a RPC | **aditiva**: não nega nada a ninguém, não muda nenhum número, e nada na tela depende dela ainda |
+| 2 | publicar o front | o botão já encontra a RPC existindo |
+| 3 | aplicar `20261021000000` — a regra da receita | é ela que **recusa** contar dinheiro, e é o único passo que precisa da tela pronta |
+
+**Por que a versão anterior desta spec estava errada:** ela mandava a tela subir antes de todo o
+banco. Mas o botão chama uma função que só existe depois do passo 1 — subir a tela primeiro
+quebraria no primeiro clique. A regra certa não é "tela antes do banco": é **o que só acrescenta
+pode ir primeiro; o que passa a recusar vai por último.**
 
 ---
 
