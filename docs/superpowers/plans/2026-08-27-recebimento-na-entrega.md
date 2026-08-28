@@ -128,7 +128,7 @@ colados.
   - o jsonb devolvido tem as chaves: `order_id`, `payment_status`, `pagamento_recebido_em`, `pagamento_recebido_por`, `ja_estava` (boolean)
   - a string de status nova: `recebido_na_entrega`
 
-- [ ] **Step 1: Escrever o teste de forma (que roda no CI, sem banco)**
+- [x] **Step 1: Escrever o teste de forma (que roda no CI, sem banco)**
 
 Este teste é a **única** rede: nenhuma das sete verificações do CI olha SQL. Ele segue o padrão de `tests/migration_vitrine_sabe_que_produto_mudou_test.ts` e reusa o detector de transação de `scripts/db-prove-rollback.cjs` em vez de escrever um regex novo (aquele detector já passou por rodadas de mutação contra comentário, string, dollar-quote e `CASE … END`).
 
@@ -420,12 +420,12 @@ Deno.test("a entrada em VERIFICACOES existe e nomeia a funcao", () => {
 });
 ```
 
-- [ ] **Step 2: Rodar o teste e confirmar que ele FALHA**
+- [x] **Step 2: Rodar o teste e confirmar que ele FALHA**
 
 Run: `deno test --allow-all --no-check tests/migration_lojista_registra_pagamento_recebido_test.ts`
 Expected: FAIL — `No such file or directory` na leitura da migration, que ainda não existe.
 
-- [ ] **Step 3: Escrever a migration**
+- [x] **Step 3: Escrever a migration**
 
 Criar `supabase/migrations/20261020000000_lojista_registra_pagamento_recebido.sql`.
 
@@ -617,7 +617,7 @@ GRANT EXECUTE ON FUNCTION public.registrar_pagamento_recebido(uuid, boolean) TO 
 - O `ELSIF v_payment_status IS NOT NULL THEN RAISE`: impede marcar "recebi na mão" por cima de um `pago` do gateway. Sem ele, a palavra do lojista sobrescreveria a do Mercado Pago em silêncio.
 - `IF NOT v_ja_estava` em volta do `INSERT`: segundo clique não gera linha de histórico fantasma.
 
-- [ ] **Step 4: Escrever o rollback manual**
+- [x] **Step 4: Escrever o rollback manual**
 
 Criar `rollback-manual-20261020000000_lojista_registra_pagamento_recebido.sql`, com o mesmo aviso de `BEGIN`/`COMMIT` no cabeçalho, e:
 
@@ -697,7 +697,7 @@ O detector distingue o `BEGIN` de bloco plpgsql do `BEGIN` de transação. Se me
 
 **No cabeçalho, escrever por que aqui as colunas CAEM** (ao contrário do rollback da `20260970000000`, que deixa as dela de propósito): esta migration é aditiva e nenhum pedido real tem valor nessas colunas no momento em que ela é revertida. Se um dia houver dado gravado ali, este rollback passa a apagar histórico e precisa ser revisto.
 
-- [ ] **Step 5: Acrescentar a entrada no mapa `VERIFICACOES`**
+- [x] **Step 5: Acrescentar a entrada no mapa `VERIFICACOES`**
 
 Em `scripts/db-apply.cjs`, seguir o formato da entrada `"20260970000000_cancelamento_respeita_o_envio.sql"` (mapa `nome do arquivo` → array de `{ funcao, esperado: [trechos] }`).
 
@@ -726,12 +726,12 @@ Acrescentar:
 
 ⚠️ **Estes marcadores são casados contra o corpo que o Postgres devolve em `pg_get_functiondef`, não contra o arquivo.** Escreva a indentação exatamente como ela sai no corpo vivo — se o `db-apply` reprovar dizendo que o marcador não casou, o problema é espaço, não lógica. Confira comparando com a saída real antes de mexer no SQL.
 
-- [ ] **Step 6: Rodar o teste e confirmar que ele PASSA**
+- [x] **Step 6: Rodar o teste e confirmar que ele PASSA**
 
 Run: `deno test --allow-all --no-check tests/migration_lojista_registra_pagamento_recebido_test.ts`
 Expected: PASS, **11 testes**.
 
-- [ ] **Step 7: Provar por mutação que o teste tem dente — DEZENOVE mutações, uma por vez**
+- [x] **Step 7: Provar por mutação que o teste tem dente — DEZENOVE mutações, uma por vez**
 
 Apagar uma linha e ver o teste cair prova pouco: prova que o teste vê **a linha**. A pergunta certa é se ele vê **o efeito**. Estas dezesseis foram medidas contra versões anteriores deste teste, e **quinze passaram verdes em algum momento** — cada uma agora tem de derrubar pelo menos um caso.
 
@@ -767,7 +767,7 @@ M17, M18 e M19 foram medidas passando **verdes** contra a versao anterior deste 
 
 Expected apos restaurar tudo: PASS, 11 testes, e `git diff` vazio.
 
-- [ ] **Step 8: Rodar a verificação que este diff pede**
+- [x] **Step 8: Rodar a verificação que este diff pede**
 
 O diff toca `supabase/migrations/`, `scripts/` e `tests/`. Rodar, e **colar a saída no relatório**:
 
@@ -781,7 +781,7 @@ npm run lint:ratchet
 
 Não rodar `typecheck`, `build`, `lint:links` nem `size` — a sessão principal roda o que faltar.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add -- "supabase/migrations/20261020000000_lojista_registra_pagamento_recebido.sql" "rollback-manual-20261020000000_lojista_registra_pagamento_recebido.sql" "tests/migration_lojista_registra_pagamento_recebido_test.ts"
@@ -817,7 +817,7 @@ Mensagem: `feat(db): a loja passa a poder registrar o pagamento que recebeu na m
 | `get_admin_customers_paged` | 2 | 44, 78 |
 | `get_segmented_push_targets` | 1 | 29 |
 
-- [ ] **Step 1: Ler os corpos VIVOS que a sessão principal já extraiu**
+- [x] **Step 1: Ler os corpos VIVOS que a sessão principal já extraiu**
 
 O corpo que o Postgres guarda é o texto do arquivo que o aplicou — **não existe convenção do repositório para seguir**, e o fim de linha varia por função. A fonte da verdade é `pg_get_functiondef` do banco, nunca um arquivo de migration antigo.
 
@@ -873,7 +873,7 @@ Os dois têm de dar **0**.
 
 ℹ️ Para o casamento dos marcadores do `VERIFICACOES` isto é indiferente: `scripts/db-apply.cjs:1379-1391` normaliza `\r\n → \n` dos **dois** lados antes de comparar. O que depende de LF é a **fidelidade do rollback**, comparada pelo `db-prove-rollback`.
 
-- [ ] **Step 2: Escrever o teste de forma**
+- [x] **Step 2: Escrever o teste de forma**
 
 Criar `tests/migration_receita_conta_so_dinheiro_que_entrou_test.ts`, no mesmo molde do teste da Task 1 (mesmos imports, mesmo `avaliarFase0`), com estes casos:
 
@@ -932,12 +932,12 @@ Deno.test("o rollback restaura as tres funcoes", () => {
 
 O último caso é o mais importante: **o rollback tem de trazer de volta exatamente as 12 ocorrências**, senão ele não desfaz.
 
-- [ ] **Step 3: Rodar o teste e confirmar que FALHA**
+- [x] **Step 3: Rodar o teste e confirmar que FALHA**
 
 Run: `deno test --allow-all --no-check tests/migration_receita_conta_so_dinheiro_que_entrou_test.ts`
 Expected: FAIL — arquivo da migration não existe.
 
-- [ ] **Step 4: Escrever a migration**
+- [x] **Step 4: Escrever a migration**
 
 Partindo dos corpos vivos salvos no Step 1, um `CREATE OR REPLACE FUNCTION` por função, **copiando o corpo caractere a caractere** e alterando **somente** os 12 pontos:
 
@@ -956,11 +956,11 @@ Em `get_admin_customers_paged:78` a forma é `o.payment_status`, com o prefixo d
 
 No cabeçalho da migration, escrever: o número medido (R$ 2.977,09 contados contra R$ 4,00 recebidos), que a queda do número é o **objetivo** e não um defeito, e que ela depende da `20261020000000` já estar aplicada.
 
-- [ ] **Step 5: Escrever o rollback manual**
+- [x] **Step 5: Escrever o rollback manual**
 
 `rollback-manual-20261021000000_receita_conta_so_dinheiro_que_entrou.sql`: os **três corpos vivos salvos no Step 1**, sem nenhuma alteração — é literalmente o estado anterior.
 
-- [ ] **Step 6: Acrescentar a entrada no `VERIFICACOES`**
+- [x] **Step 6: Acrescentar a entrada no `VERIFICACOES`**
 
 ```js
   "20261021000000_receita_conta_so_dinheiro_que_entrou.sql": [
@@ -979,16 +979,16 @@ No cabeçalho da migration, escrever: o número medido (R$ 2.977,09 contados con
   ],
 ```
 
-- [ ] **Step 7: Rodar o teste e confirmar que PASSA**
+- [x] **Step 7: Rodar o teste e confirmar que PASSA**
 
 Run: `deno test --allow-all --no-check tests/migration_receita_conta_so_dinheiro_que_entrou_test.ts`
 Expected: PASS, **6 testes**.
 
-- [ ] **Step 8: Mutação**
+- [x] **Step 8: Mutação**
 
 Trocar **um** dos 12 pontos de volta para a forma com `IS NULL`, rodar, e confirmar que o teste da contagem falha dizendo `esperava 12 pontos trocados, achei 11`. Restaurar e conferir com `git diff --stat`.
 
-- [ ] **Step 9: Verificação e commit**
+- [x] **Step 9: Verificação e commit**
 
 ```bash
 npm test
@@ -1011,7 +1011,7 @@ aos corpos vivos (`sha256` conferido pelo revisor, função por função). **Doi
 omissão do plano ficaram, e esta tarefa os fecha.** Ela edita os mesmos quatro arquivos da
 Task 2 — não cria arquivo novo.
 
-- [ ] **Step 1: 🔴 Os dois arquivos SQL não têm terminador de statement**
+- [x] **Step 1: 🔴 Os dois arquivos SQL não têm terminador de statement**
 
 `pg_get_functiondef` **não emite `;`** — os corpos vivos terminam em `$function$\n`. Copiar
 "caractere a caractere", como o Step 4 mandou, derrubou o terminador junto. Resultado: os três
@@ -1037,7 +1037,7 @@ Postgres não o guarda no corpo da função, e o `sha256` de cada corpo continua
 armadilha nesta mesma tarefa e recebeu `0 tags` para um arquivo que tem 6. Script em Python, com
 `chr(36)` para montar o `$`.
 
-- [ ] **Step 2: 🔴 O 13º ponto — o alarme de dinheiro em pedido cancelado fica cego**
+- [x] **Step 2: 🔴 O 13º ponto — o alarme de dinheiro em pedido cancelado fica cego**
 
 `get_admin_analytics_v2`, no bloco `-- 6. Dinheiro reconhecido fora da regra de status`:
 
@@ -1072,7 +1072,7 @@ não muda (este ponto nunca teve `IS NULL`), e o rollback continua com 12.
 Separe as duas contagens no teste, com mensagens distintas, para que uma falha diga qual das
 duas caiu.
 
-- [ ] **Step 3: A bateria não tem dente — 8 de 10 sabotagens passam verdes**
+- [x] **Step 3: A bateria não tem dente — 8 de 10 sabotagens passam verdes**
 
 O revisor montou um espelho do trio no scratchpad e sabotou, conferindo por bytes que cada
 sabotagem mudou o arquivo e que a restauração foi byte-idêntica:
@@ -1116,7 +1116,7 @@ Mais duas asserções baratas, uma por defeito acima:
 - nenhum dos dois arquivos contém `\r` (pega a sabotagem de CRLF — hoje o LF só tem conferência
   manual, que ninguém repete).
 
-- [ ] **Step 4: Provar que cada asserção nova tem dente**
+- [x] **Step 4: Provar que cada asserção nova tem dente**
 
 Uma sabotagem por asserção acrescentada, uma por vez, guardando os bytes antes e restaurando
 depois. Para cada uma: a mensagem exata da falha, e a confirmação de que o arquivo voltou.
@@ -1125,7 +1125,7 @@ Refaça também a tabela de 10 sabotagens acima e mostre quantas a bateria pega 
 das seis que a asserção de fidelidade deveria cobrir continuar passando, **isso é o achado** —
 relate em vez de contornar.
 
-- [ ] **Step 5: Verificação**
+- [x] **Step 5: Verificação**
 
 ```bash
 npm test
@@ -1156,7 +1156,7 @@ sessão principal.
 
 🔴 **O defeito histórico deste projeto mora exatamente aqui.** Numa entrega anterior, um plano dizia "Consome: a coluna `payment_status`" como se ela chegasse ao front — e o `mapOrderFromDB` nunca a copiou. O filtro e o selo ficaram corretos no código e **todo** pedido se comportava como se o campo fosse vazio. **Coluna que não passa pelo mapper não existe para a tela.**
 
-- [ ] **Step 1: Escrever o teste que falha**
+- [x] **Step 1: Escrever o teste que falha**
 
 Criar `tests/front/lojista-registra-pagamento-recebido.test.ts`. O primeiro caso é o do mapper, e ele é obrigatório:
 
@@ -1199,12 +1199,12 @@ describe("o mapper leva os campos de recebimento para a tela", () => {
 
 O segundo caso existe porque a migration ainda **não** está aplicada quando o front sobe (ver "A ordem de subida"): o banco devolve linha sem essas colunas, e a tela tem de sobreviver a isso sem quebrar.
 
-- [ ] **Step 2: Rodar e confirmar que FALHA**
+- [x] **Step 2: Rodar e confirmar que FALHA**
 
 Run: `npx vitest run tests/front/lojista-registra-pagamento-recebido.test.ts`
 Expected: FAIL — `pagamentoRecebidoEm` é `undefined`.
 
-- [ ] **Step 3a: 🔴 Acrescentar o valor novo ao tipo `PaymentStatus`**
+- [x] **Step 3a: 🔴 Acrescentar o valor novo ao tipo `PaymentStatus`**
 
 Em `src/types/index.ts:135-141`. O comentário que já está acima dele diz por que isto é obrigatório: *"Espelha a CHECK constraint marketplace_orders_payment_status_check, criada na migration 20260807000000. Mudar aqui sem mudar lá (ou o contrário) é como o pedido fica com estado que o banco recusa."*
 
@@ -1225,7 +1225,7 @@ export type PaymentStatus =
 
 ⚠️ Acrescentar valor a esta união **quebra `switch` exaustivo** que não trate o caso novo. O `typecheck` acusa (TS2678 / falta de caso). Se ele apontar, o conserto é tratar o caso novo em cada `switch`, **não** afrouxar o tipo nem usar `default` para engolir — pelo menos dois `switch` deste projeto dependem dessa exaustividade de propósito. Cole a saída do `typecheck` no relatório mesmo quando ela passar.
 
-- [ ] **Step 3b: Acrescentar os campos ao tipo `Order`**
+- [x] **Step 3b: Acrescentar os campos ao tipo `Order`**
 
 Em `src/types/index.ts`, logo abaixo de `returnedToSellerAt` (linha 178):
 
@@ -1236,7 +1236,7 @@ Em `src/types/index.ts`, logo abaixo de `returnedToSellerAt` (linha 178):
   pagamentoRecebidoPor?: string | null;
 ```
 
-- [ ] **Step 4: Copiar os campos no mapper**
+- [x] **Step 4: Copiar os campos no mapper**
 
 Em `src/lib/mappers.ts`, dentro de `mapOrderFromDB`, ao lado de `cancelledAfterShipping` / `returnedToSellerAt` (linhas 256-257), no mesmo estilo — o cast `(row as any)` é necessário porque `database.types.ts` ainda não foi regenerado, exatamente como as duas linhas vizinhas:
 
@@ -1247,12 +1247,12 @@ Em `src/lib/mappers.ts`, dentro de `mapOrderFromDB`, ao lado de `cancelledAfterS
     pagamentoRecebidoPor: (row as any).pagamento_recebido_por ?? null,
 ```
 
-- [ ] **Step 5: Rodar e confirmar que PASSA**
+- [x] **Step 5: Rodar e confirmar que PASSA**
 
 Run: `npx vitest run tests/front/lojista-registra-pagamento-recebido.test.ts`
 Expected: PASS, 2 casos.
 
-- [ ] **Step 6: Escrever o teste do hook**
+- [x] **Step 6: Escrever o teste do hook**
 
 Acrescentar ao mesmo arquivo. O caso que mais importa é o do cache — **sem ele a tela marca o pagamento e o número da receita não muda**, porque `useAnalytics` guarda o resultado em cache de módulo:
 
@@ -1265,7 +1265,7 @@ vi.mock("@/hooks/useAnalytics", () => ({
 
 E um caso que assere: depois de `registrarPagamentoRecebido(id, true)` resolver, `clearAnalyticsCache` foi chamado **uma** vez. Montar o resto do teste seguindo o molde do arquivo já existente `tests/front/cancelar-enviado-otimista-marca-que-precisa-devolver.test.tsx`, que exercita `confirmarRetornoDoProduto` com o mesmo formato de mock do `supabase.rpc`.
 
-- [ ] **Step 7: Escrever a função no hook**
+- [x] **Step 7: Escrever a função no hook**
 
 Em `src/hooks/useOrders.ts`, no molde de `confirmarRetornoDoProduto` (linha 1758). A função:
 
@@ -1275,16 +1275,16 @@ Em `src/hooks/useOrders.ts`, no molde de `confirmarRetornoDoProduto` (linha 1758
 4. atualiza `cachedAdminOrders`, `setOrders` e `setPedidosCancelados` com os campos novos, no mesmo padrão das três atualizações que `confirmarRetornoDoProduto` já faz;
 5. chama `clearAnalyticsCache()`.
 
-- [ ] **Step 8: Rodar e confirmar que PASSA**
+- [x] **Step 8: Rodar e confirmar que PASSA**
 
 Run: `npx vitest run tests/front/lojista-registra-pagamento-recebido.test.ts`
 Expected: PASS.
 
-- [ ] **Step 9: Mutação — a prova de que o teste tem dente**
+- [x] **Step 9: Mutação — a prova de que o teste tem dente**
 
 Apagar a linha `clearAnalyticsCache();` da função nova (guardando o conteúdo no scratchpad), rodar, e confirmar que o teste do cache **FALHA**. Restaurar e conferir por `git diff --stat`.
 
-- [ ] **Step 10: Verificação e commit**
+- [x] **Step 10: Verificação e commit**
 
 O diff toca `src/` e `tests/`: rodar os **sete** comandos e colar a saída.
 
@@ -1418,7 +1418,7 @@ errado, **pare e relate**; não decida sozinho.
 pior que nenhum comentário: o próximo leitor confia nele. Cite a `20261021000000` e diga que o
 `null` deixou de contar.
 
-- [ ] **Step 1: Escrever os testes que falham — um por ponto**
+- [x] **Step 1: Escrever os testes que falham — um por ponto**
 
 Sete casos, cada um exercitando a **função exportada** correspondente (elas já são exportadas
 justamente para o teste não montar a tela inteira — ver o comentário sobre
@@ -1430,11 +1430,11 @@ Mais um caso para a ressalva do `null`: pedido com `paymentStatus: null` **não*
 
 Mais um caso para a lacuna: `PAYMENT_STATUS_FILTER_VALUES` contém o valor novo.
 
-- [ ] **Step 2: Rodar e confirmar que FALHAM** — nomeie quantos falharam e por quê. Se algum
+- [x] **Step 2: Rodar e confirmar que FALHAM** — nomeie quantos falharam e por quê. Se algum
   passar de primeira, **esse é o achado**: significa que eu classifiquei o ponto errado, e a
   decisão volta para a sessão principal.
 
-- [ ] **Step 3: Corrigir os sete pontos, mais a lacuna do filtro**
+- [x] **Step 3: Corrigir os sete pontos, mais a lacuna do filtro**
 
 Um de cada vez. **Não** invente uma função utilitária compartilhada nesta tarefa: os sete pontos
 têm formas diferentes (`switch`, `===` encadeado, `filter`, condição de selo) e três deles têm
@@ -1446,15 +1446,15 @@ isso no relatório — a decisão é da sessão principal, não sua.
 **não** `.includes()`: com array o TypeScript infere `string[]` e um rename futuro de
 `PaymentStatus` passaria calado. **Preserve a forma `===`** e o comentário.
 
-- [ ] **Step 4: Rodar e confirmar que PASSAM**
+- [x] **Step 4: Rodar e confirmar que PASSAM**
 
-- [ ] **Step 5: Mutação, uma por ponto corrigido**
+- [x] **Step 5: Mutação, uma por ponto corrigido**
 
 Reverta cada ponto individualmente, confirme que **o teste daquele ponto** cai (e nomeie a
 mensagem), restaure e confirme por hash. Sete mutações, sete mensagens. Se uma reversão não
 derrubar nenhum teste, aquele ponto não está coberto — relate.
 
-- [ ] **Step 6: A verificação dos sete comandos, menos `npm ci`**
+- [x] **Step 6: A verificação dos sete comandos, menos `npm ci`**
 
 ---
 
@@ -1464,7 +1464,7 @@ Duas revisões independentes (uma da Task 3, outra da 3b, em sessões diferentes
 `PASSA` no código e deixaram três coisas para cá. **Nenhuma bloqueia hoje** — as três viram
 defeito no instante em que a Task 4 ligar o botão, ou enganam o próximo leitor.
 
-- [ ] **Step 1: `pagamentoRecebidoPor` não chega ao estado local**
+- [x] **Step 1: `pagamentoRecebidoPor` não chega ao estado local**
 
 `src/hooks/useOrders.ts:1855-1874`. A RPC devolve `pagamento_recebido_por`
 (`20261020000000...sql:176`) e o mapper copia (`mappers.ts:261`), mas os **três** `.map` de
@@ -1477,7 +1477,7 @@ desfazer → marcar deixa `pagamentoRecebidoPor` com o valor da montagem inicial
 
 Acrescentar ao `?? null` e aos três spreads, no padrão que já está lá.
 
-- [ ] **Step 2: Teste para os três `.map` — hoje apagar os três deixa a suíte VERDE**
+- [x] **Step 2: Teste para os três `.map` — hoje apagar os três deixa a suíte VERDE**
 
 É o buraco mais sério dos três, e ele é **do plano**, não de quem executou: o plano só exigiu o
 caso do `clearAnalyticsCache`. Os três `.map` são exatamente o que faz o selo e o balde de estorno
@@ -1488,7 +1488,7 @@ quando o `.map` correspondente é apagado. Prove isso — três mutações, trê
 
 Inclua `pagamentoRecebidoPor` nas asserções, senão o Step 1 nasce sem cobertura.
 
-- [ ] **Step 3: Seis comentários que este trabalho venceu**
+- [x] **Step 3: Seis comentários que este trabalho venceu**
 
 Comentário que cita migration e afirma o contrário do código **já criou um defeito nesta linha
 hoje** (o `null` do LTV). Todos conferidos no disco:
@@ -1502,7 +1502,7 @@ hoje** (o `null` do LTV). Todos conferidos no disco:
 | `AdminCustomersView.tsx:237-240` | `get_admin_customers_paged` "filtra só por status, sem olhar cobrança" | deixou de ser verdade na `20260823000000` e muda de novo na `20261021000000` |
 | `AdminUserDetailView.tsx` (bloco do LTV) | conferir se sobrou menção ao `null` contando | a Task 3b removeu o `null`; o comentário tem de dizer isso e citar a `20261021000000` |
 
-- [ ] **Step 4: Registrar um ponto VERIFICADO, para ninguém reabrir**
+- [x] **Step 4: Registrar um ponto VERIFICADO, para ninguém reabrir**
 
 `src/components/admin/orders/OrderDetail.tsx:70` — `paymentStatusQuePedeConfirmacao:
 PaymentStatus[]`, consumido em `:919` por `.includes()`. A revisão levantou como candidato a
@@ -1513,7 +1513,7 @@ certo — o botão "Avançar" não pede confirmação porque o dinheiro entrou.
 Acrescentar uma linha ao comentário que já existe em `:68-69` registrando que o valor novo foi
 avaliado e fica de fora **de propósito**. Sem isso, o próximo revisor reabre.
 
-- [ ] **Step 5: Verificação**
+- [x] **Step 5: Verificação**
 
 `npm run typecheck`, `npm test`, `npm run build`, `npm run lint:links`, `npm run size`, e
 `npx eslint <arquivos do diff>`. **Não** rode `npm run lint:ratchet` (ver a regra em
@@ -1531,7 +1531,7 @@ avaliado e fica de fora **de propósito**. Sem isso, o próximo revisor reabre.
 - Consumes: da Task 3, `registrarPagamentoRecebido(orderId, recebido)` de `useOrders()`, e `order.pagamentoRecebidoEm`.
 - Produces: nada que outra tarefa consuma.
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [x] **Step 1: Escrever os testes que falham**
 
 Criar `tests/front/painel-botao-registrar-pagamento-recebido.test.tsx`, seguindo o molde de montagem de `tests/front/painel-lista-estorno-devido.test.tsx`. Quatro casos, e os três primeiros são guardas de escopo:
 
@@ -1542,12 +1542,12 @@ Criar `tests/front/painel-botao-registrar-pagamento-recebido.test.tsx`, seguindo
 
 O caso 4 assere o argumento porque marcar e desmarcar chamam a **mesma** função: um teste que só confere "foi chamada" passa com o botão de desfazer marcando de novo.
 
-- [ ] **Step 2: Rodar e confirmar que FALHAM**
+- [x] **Step 2: Rodar e confirmar que FALHAM**
 
 Run: `npx vitest run tests/front/painel-botao-registrar-pagamento-recebido.test.tsx`
 Expected: FAIL nos 4 — nada renderiza o botão ainda.
 
-- [ ] **Step 3: Implementar o botão**
+- [x] **Step 3: Implementar o botão**
 
 Em `AdminOrdersView.tsx`:
 
@@ -1564,24 +1564,61 @@ const podeRegistrarPagamento =
 
 Seguir o padrão visual dos botões que já existem no cartão. **Não** inventar componente novo.
 
-- [ ] **Step 4: Rodar e confirmar que PASSAM**
+- [x] **Step 4: Rodar e confirmar que PASSAM**
 
 Run: `npx vitest run tests/front/painel-botao-registrar-pagamento-recebido.test.tsx`
 Expected: PASS, 4 casos.
 
-- [ ] **Step 5: Mutação**
+- [x] **Step 5: Mutação**
 
 Trocar `order.paymentMethod !== "online"` por `true` e confirmar que o caso 2 **falha**. Restaurar e conferir por `git diff --stat`.
 
-- [ ] **Step 6: Ver na tela de verdade**
+- [x] **Step 6: Ver na tela de verdade**
 
 Subir o preview (`preview_start` com `{name: "core_app_mkt"}`), abrir o painel de pedidos, e **tirar um print** do cartão com o botão. Ler o console e a rede à procura de erro. Colar o print no relatório.
 
-- [ ] **Step 7: Verificação e commit**
+- [x] **Step 7: Verificação e commit**
 
 Os sete comandos, saída colada.
 
 Mensagem: `feat(admin): o lojista marca no painel o pagamento que recebeu na mao`
+
+---
+
+### Task 4b: A ficha do pedido pergunta se recebeu, ao avançar para entregue
+
+🔴 **Esta tarefa foi ESCRITA DEPOIS de ser entregue.** Ela não existia no plano; o código que a
+implementa se identifica como *"Task 4b"* (`podeRegistrarPagamento.ts:4`) e um `grep "Task 4b"`
+neste arquivo devolvia **zero**. Foi a conferência de conjunto (`diretor`, 28/08/2026) que achou:
+854 linhas entregues dentro do commit `9992df6`, cuja mensagem anuncia só a Task 4.
+
+**Registro isso como falha de processo minha, não da execução.** O trabalho é coerente com o
+objetivo e passou pela mesma revisão de contexto limpo que o resto — mas **escopo que ninguém
+planejou, entregue num commit que anuncia outra coisa, é escopo que ninguém aprovou.** Se um dia
+alguém perguntar "de onde veio esta tela?", a resposta tem de estar aqui e não só no `git log`.
+
+**O que ela entrega, e por que ela é coerente com o pedido:** a Task 4 põe o botão no **cartão** do
+pedido, na lista. Mas o lojista que avança um pedido para `delivered` está exatamente no momento
+em que o dinheiro na entrega troca de mãos — e naquela tela não havia pergunta nenhuma. A ficha
+passa a perguntar **"Recebeu o pagamento?"** ao avançar para entregue
+(`OrderDetail.tsx:1018-1020`), com o mesmo par marcar/desfazer.
+
+**Files (o que de fato foi entregue, medido em `git show --stat 9992df6`):**
+- Create: `src/components/admin/orders/podeRegistrarPagamento.ts` — a guarda sai do
+  `AdminOrdersView` para módulo próprio, porque `AdminOrdersView` importa `OrderDetail` e usar a
+  função nos dois lados fecharia ciclo de importação.
+- Modify: `src/components/admin/orders/OrderDetail.tsx` (+242)
+- Test: `tests/front/ficha-do-pedido-pergunta-se-recebeu-ao-entregar.test.tsx` (+612, novo)
+
+- [x] **Entregue e revisado.** Dois defeitos foram pegos pela revisão antes do merge, e os dois
+  estão descritos na mensagem de `9992df6`: a ficha apagando o "Recebido em" logo depois do
+  lojista confirmar (`setSelectedOrder` espalhando valor capturado no fecho, com um `await` no
+  meio), e o botão da ficha sem teste nenhum — trocar `true` por `false` deixava os 1207 verdes.
+
+- [x] **Pendência de registro:** decidir com o Gabriel se esta tela fica. Ela não foi pedida, e a
+  regra de escopo deste repositório manda perguntar *"quem sente a falta disso hoje, na loja do
+  Gabriel?"*. A resposta plausível é "ele mesmo, ao entregar um pedido pago na mão" — mas
+  **plausível não é aprovado**, e quem decide produto é ele.
 
 ---
 

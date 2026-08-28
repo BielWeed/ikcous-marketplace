@@ -22,6 +22,27 @@
 -- tela. Aplicar esta migration antes faria a receita cair sem que exista
 -- ainda um jeito de os pedidos futuros voltarem a contar.
 --
+-- 🔴 E VAI COLADA A PUBLICACAO DO FRONT EM PRODUCAO (merge de release/* na
+-- `main`), NAO em qualquer momento depois dela. Achado da conferencia de
+-- conjunto em 28/08/2026, e ele nao estava aqui: o aviso vivia so' no plano e
+-- no corpo do PR -- que ninguem abre no instante de aplicar.
+--
+-- O MOTIVO: o front tambem parou de contar `payment_status IS NULL` no LTV do
+-- cliente (AdminUserDetailView), que e' a mesma mudanca que esta migration faz
+-- no servidor. Entre publicar o front e aplicar isto, as duas telas divergem:
+--
+--   lista de Clientes (servidor, regra antiga)  ->  R$ 473,40
+--   ficha do cliente  (cliente, regra nova)     ->  R$   3,00
+--   clientes que veriam os dois numeros         ->  4
+--
+-- Medido no banco em 27/08/2026, somente leitura, sobre a mesma populacao que
+-- a ficha usa (status NOT IN ('cancelled','returned')). Mesmo painel, MESMO
+-- rotulo "LTV Total", dois numeros. A janela fecha sozinha quando isto aplica
+-- -- por isso o remedio nao e' desfazer nada, e' encurtar a janela.
+--
+-- Mergear o PR na `develop` NAO abre essa janela: `develop` e' integracao,
+-- `main` e' producao (CONTRIBUTING.md:216-217). A janela abre no release.
+--
 -- Sem BEGIN/COMMIT de proposito: com eles o ROLLBACK do script de prova vira
 -- no-op.
 --

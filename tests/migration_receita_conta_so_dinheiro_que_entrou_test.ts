@@ -42,12 +42,34 @@ Deno.test("a migration redefine as TRES funcoes", () => {
   }
 });
 
+// A varredura ignora linha de comentario SQL. Sem isso, ela conta PROSA como
+// codigo: um comentario que EXPLICA a mudanca precisa citar
+// `payment_status IS NULL`, e o teste reprovava o arquivo por causa da propria
+// documentacao dele. Achado em 28/08/2026, ao acrescentar ao cabecalho o aviso
+// de que esta migration vai colada a publicacao do front.
+//
+// E' o mesmo defeito que o commit `aaba2fb` ja consertou no teste irmao ("a
+// contagem do bloco atomico para de contar prosa como codigo") -- segunda vez
+// nesta mesma linha de trabalho.
+//
+// A alternativa era reescrever o comentario para nao usar a frase que ele
+// explica. Isso seria dobrar a documentacao para caber no instrumento: o teste
+// passaria a EMPURRAR a prosa para pior, e quem lesse o cabecalho depois nao
+// saberia por que ele fala em rodeios.
+function semComentarios(sql: string): string {
+  return sql
+    .split("\n")
+    .filter((linha) => !linha.trimStart().startsWith("--"))
+    .join("\n");
+}
+
 Deno.test("nenhum ponto de dinheiro aceita mais payment_status IS NULL", () => {
-  const restos = migration.match(/payment_status\s+IS\s+NULL/gi) || [];
+  const restos =
+    semComentarios(migration).match(/payment_status\s+IS\s+NULL/gi) || [];
   assertEquals(
     restos.length,
     0,
-    `sobrou ${restos.length} ocorrencia(s) de IS NULL`,
+    `sobrou ${restos.length} ocorrencia(s) de IS NULL no CODIGO da migration`,
   );
 });
 
