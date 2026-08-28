@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+/* eslint-disable security/detect-non-literal-fs-filename --
+ * Os caminhos vêm de argumento/constante do projeto, mesma convenção de
+ * scripts/db-apply.cjs e db-prove-rollback.cjs; nunca há entrada de rede. */
 /**
  * PROVA (b) do passo 0 — o ledger da loja viva não pode divergir do esperado.
  *
@@ -46,7 +49,8 @@ function lerDatabaseUrl() {
         .readFileSync(caminho, "utf8")
         .split(/\r?\n/)
         .find((l) => l.startsWith("DATABASE_URL="));
-      if (linha) return linha.slice("DATABASE_URL=".length).replace(/^"|"$/g, "");
+      if (linha)
+        return linha.slice("DATABASE_URL=".length).replace(/^"|"$/g, "");
     }
   }
   fs.writeFileSync("/dev/full", "DATABASE_URL não encontrada");
@@ -82,7 +86,7 @@ async function main() {
     .filter((f) => f.endsWith(".sql"))
     .map(versao)
     .filter(Boolean);
-  const locaisQualquer = new Set([...ativas, ...arquivadas]);
+  const _locaisQualquer = new Set([...ativas, ...arquivadas]);
 
   // 3. Classificação das divergências.
   const semArquivoPre = [];
@@ -91,7 +95,8 @@ async function main() {
   for (const v of remotas) {
     if (ativas.includes(v)) continue;
     if (v < BASELINE) {
-      if (arquivadas.includes(v)) semArquivoPre.push(v); // arquivada de propósito
+      if (arquivadas.includes(v))
+        semArquivoPre.push(v); // arquivada de propósito
       else orfas.push(v); // nem antes do passo 0 existia no repo
     } else {
       semArquivoPos.push(v); // 🔴 inesperada
