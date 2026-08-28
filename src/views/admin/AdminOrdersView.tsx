@@ -15,6 +15,7 @@ import {
   paymentStatusKey,
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
+import { podeRegistrarPagamento } from "@/components/admin/orders/podeRegistrarPagamento";
 import { STATUS_PEDIDOS_COM_ACAO_PENDENTE } from "@/components/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
@@ -255,6 +256,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     loadOrders,
     updateOrderStatus,
     confirmarRetornoDoProduto,
+    registrarPagamentoRecebido,
     totalOrders,
     isLoaded,
     loading,
@@ -451,6 +453,34 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       }
     },
     [confirmarRetornoDoProduto],
+  );
+
+  /**
+   * Task 4 do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
+   * — botão no cartão do pedido. Mesmo molde de `handleConfirmarRetorno`
+   * acima: `try/catch/finally` com um estado próprio para desabilitar o
+   * botão durante a chamada. O hook (`useOrders.registrarPagamentoRecebido`)
+   * já mostra o próprio toast de erro traduzido — não duplicar aviso aqui
+   * (mesmo motivo do catch de `handleConfirmarRetorno`, acima).
+   */
+  const [registrandoPagamentoId, setRegistrandoPagamentoId] = useState<
+    string | null
+  >(null);
+  const handleRegistrarPagamento = useCallback(
+    async (orderId: string, recebido: boolean) => {
+      setRegistrandoPagamentoId(orderId);
+      try {
+        await registrarPagamentoRecebido(orderId, recebido);
+      } catch (err) {
+        console.error(
+          "[handleRegistrarPagamento] Erro ao registrar pagamento recebido:",
+          err,
+        );
+      } finally {
+        setRegistrandoPagamentoId(null);
+      }
+    },
+    [registrarPagamentoRecebido],
   );
 
   const kpiCards = useMemo<readonly KpiCardConfig[]>(
@@ -776,9 +806,22 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       await updateOrderStatus(orderId, newStatus, undefined, silent);
       haptic.success();
 
-      if (selectedOrder?.id === orderId) {
-        setSelectedOrder({ ...selectedOrder, status: newStatus });
-      }
+      // Achado 1 (caça-defeitos, Task 4c) — `handleStatusChange` é função
+      // comum, não `useCallback`: fecha sobre o `selectedOrder` do render em
+      // que foi criada. Desde a Task 4b, `onRegistrarPagamento` (chamado
+      // ANTES desta função pelo `OrderDetail.confirmarRecebimentoEAvancar`,
+      // com um `await` real de RPC no meio) já pode ter atualizado
+      // `pagamentoRecebidoEm` no estado por fora deste fecho; reescrever o
+      // objeto a partir do `selectedOrder` CAPTURADO (o de antes daquele
+      // `await`) apagava de volta o recebimento que acabou de ser gravado —
+      // a ficha voltava a oferecer "Marcar como recebido" como se o
+      // dinheiro não tivesse entrado, mesmo com o banco certo. Atualização
+      // funcional lê o estado CORRENTE, nunca o capturado, e imuniza este
+      // ponto contra qualquer `await` que venha a ser inserido antes dele
+      // no futuro.
+      setSelectedOrder((prev) =>
+        prev?.id === orderId ? { ...prev, status: newStatus } : prev,
+      );
 
       loadStats();
     } catch (err: any) {
@@ -976,6 +1019,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             order={selectedOrder}
             onStatusChange={handleStatusChange}
             isOffline={isOffline}
+            onRegistrarPagamento={registrarPagamentoRecebido}
           />
         </div>
       </LocalErrorBoundary>
@@ -1634,6 +1678,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     onSelect={handleSelectOrder}
                     onWhatsApp={handleWhatsApp}
                     changeType={recentOrderChanges[order.id]}
+                    onRegistrarPagamento={handleRegistrarPagamento}
+                    registrandoPagamento={registrandoPagamentoId === order.id}
                   />
                 ))}
               </div>
@@ -1647,6 +1693,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     onSelect={handleSelectOrder}
                     onWhatsApp={handleWhatsApp}
                     changeType={recentOrderChanges[order.id]}
+                    onRegistrarPagamento={handleRegistrarPagamento}
+                    registrandoPagamento={registrandoPagamentoId === order.id}
                   />
                 ))}
               </div>
@@ -1804,6 +1852,10 @@ interface AdminOrderCardProps {
   readonly onSelect: (order: Order) => void;
   readonly onWhatsApp: (order: Order) => void;
   readonly changeType?: "INSERT" | "UPDATE";
+  /** Task 4 — chama `registrarPagamentoRecebido(orderId, recebido)` do hook. */
+  readonly onRegistrarPagamento: (orderId: string, recebido: boolean) => void;
+  /** Task 4 — true enquanto ESTE pedido está em voo na RPC (desabilita o botão). */
+  readonly registrandoPagamento: boolean;
 }
 
 const AdminOrderCard = memo(function AdminOrderCard({
@@ -1812,6 +1864,8 @@ const AdminOrderCard = memo(function AdminOrderCard({
   onSelect,
   onWhatsApp,
   changeType,
+  onRegistrarPagamento,
+  registrandoPagamento,
 }: AdminOrderCardProps) {
   if (viewMode === "detailed") {
     return (
@@ -1941,6 +1995,51 @@ const AdminOrderCard = memo(function AdminOrderCard({
               </div>
             </div>
           </div>
+
+          {/* Task 4 do plano recebimento-na-entrega — botão de pagamento
+              recebido na mão. `podeRegistrarPagamento` é a MESMA condição
+              (definida uma vez, acima) que decide se este bloco existe e
+              qual dos dois ramos aparece dentro dele. */}
+          {podeRegistrarPagamento(order) && (
+            <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-4">
+              {order.pagamentoRecebidoEm ? (
+                <>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                    Recebido em{" "}
+                    {new Date(order.pagamentoRecebidoEm).toLocaleDateString(
+                      "pt-BR",
+                      { day: "2-digit", month: "short" },
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRegistrarPagamento(order.id, false);
+                    }}
+                    disabled={registrandoPagamento}
+                    className="relative z-10 shrink-0 rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:bg-zinc-700 hover:text-white disabled:opacity-50"
+                  >
+                    Desfazer
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRegistrarPagamento(order.id, true);
+                  }}
+                  disabled={registrandoPagamento}
+                  className="relative z-10 w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
+                >
+                  {registrandoPagamento
+                    ? "Registrando..."
+                    : "Marcar como recebido"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </motion.div>
     );
@@ -2056,6 +2155,47 @@ const AdminOrderCard = memo(function AdminOrderCard({
           <ChevronRight className="size-4.5 transform text-zinc-500 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-admin-gold" />
         </div>
       </div>
+
+      {/* Task 4 do plano recebimento-na-entrega — mesmo bloco do modo
+          "detailed", ver o comentário lá. */}
+      {podeRegistrarPagamento(order) && (
+        <div className="relative z-10 mt-3 flex items-center justify-between gap-1.5 border-t border-white/5 pt-3">
+          {order.pagamentoRecebidoEm ? (
+            <>
+              <span className="truncate text-[8px] font-black uppercase tracking-widest text-emerald-400">
+                Recebido em{" "}
+                {new Date(order.pagamentoRecebidoEm).toLocaleDateString(
+                  "pt-BR",
+                  { day: "2-digit", month: "short" },
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRegistrarPagamento(order.id, false);
+                }}
+                disabled={registrandoPagamento}
+                className="relative z-10 shrink-0 rounded-lg border border-zinc-700/50 bg-zinc-800/50 px-2 py-1 text-[8px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:bg-zinc-700 hover:text-white disabled:opacity-50"
+              >
+                Desfazer
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRegistrarPagamento(order.id, true);
+              }}
+              disabled={registrandoPagamento}
+              className="relative z-10 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-[8px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
+            >
+              {registrandoPagamento ? "Registrando..." : "Marcar como recebido"}
+            </button>
+          )}
+        </div>
+      )}
     </motion.div>
   );
 });
