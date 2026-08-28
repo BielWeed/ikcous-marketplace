@@ -89,8 +89,19 @@ async function main() {
   const _locaisQualquer = new Set([...ativas, ...arquivadas]);
 
   // 3. Classificação das divergências.
+  // Exceção declarada (revisão do PR #320, BLOQUEIA 1 do Claude): o backfill
+  // 20260807000002 é PÓS-baseline no timestamp mas é operação de dados, não de
+  // schema — DML one-shot com contagens hardcoded do banco original
+  // ("esperava 13 pedidos e 33 unidades"), sem o que fazer em banco novo. Foi
+  // arquivado de propósito para a cadeia limpa passar dele; o ledger de
+  // produção o registra como aplicado, e isso é esperado, não divergência.
+  // Structuralmente seria REMOTA_SEM_ARQUIVO_POS; semanticamente é benigna.
+  const POS_BASELINE_ARQUIVADAS_DE_PROPOSITO = new Set([
+    "20260807000002", // backfill_pedidos_abandonados — DML pura, zero DDL
+  ]);
   const semArquivoPre = [];
   const semArquivoPos = [];
+  const semArquivoPosDeProposito = [];
   const orfas = [];
   for (const v of remotas) {
     if (ativas.includes(v)) continue;
@@ -98,6 +109,8 @@ async function main() {
       if (arquivadas.includes(v))
         semArquivoPre.push(v); // arquivada de propósito
       else orfas.push(v); // nem antes do passo 0 existia no repo
+    } else if (POS_BASELINE_ARQUIVADAS_DE_PROPOSITO.has(v)) {
+      semArquivoPosDeProposito.push(v); // exceção declarada acima
     } else {
       semArquivoPos.push(v); // 🔴 inesperada
     }
@@ -118,6 +131,10 @@ async function main() {
   );
   console.log(orfas.join("\n") || "(nenhuma)");
   console.log(
+    `\n[DECLARADA] REMOTA_SEM_ARQUIVO_POS_ARQUIVADA_DE_PROPOSITO (pós-baseline só-de-dados, motivo no código, ${semArquivoPosDeProposito.length}):`,
+  );
+  console.log(semArquivoPosDeProposito.join("\n") || "(nenhuma)");
+  console.log(
     `\n[ATENÇÃO] LOCAL_SEM_REGISTRO (arquivos novos, apply é clique do Gabriel, ${localSemRegistro.length}):`,
   );
   console.log(localSemRegistro.join("\n") || "(nenhum)");
@@ -133,7 +150,7 @@ async function main() {
     process.exit(1);
   }
   console.log(
-    "\nPASSA: a única divergência é o conjunto arquivado de propósito (+ órfãs pré-existentes, se houver). Ninguém roda repair.",
+    "\nPASSA: a única divergência é o conjunto arquivado de propósito — as pré-baseline, as órfãs pré-existentes e as pós-baseline só-de-dados declaradas no código. Ninguém roda repair.",
   );
 }
 

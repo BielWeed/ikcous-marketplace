@@ -2,19 +2,19 @@
 
 **Status:** Aceito (execução em revisão — PR `infra/passo0-arquivo-pre-baseline`)
 **Data:** 28/08/2026
-**Decisor:** Gabriel (direção de 28/08: "siga desenvolvimento… vender nossa assinatura
-para o primeiro lojista o mais rápido possível", com autonomia concedida) · Parecer
+**Decisor:** Gabriel (execução autorizada em 28/08, com autonomia concedida) · Parecer
 conjunto GLM+Claude de 25/08 ("passo 0") · Revisão técnica do Claude pendente no PR
-**Depende de:** ADR 0002 · Resolve a parte que faltava (§ "O que ainda falta") e o
-pedido 001 do workspace do Gerenciador
+**Depende de:** ADR 0002 · Resolve a parte que faltava (§ "O que ainda falta") do ADR 0002
 
 ---
 
 ## Contexto
 
 O ADR 0002 criou o baseline e deixou declarado: *um banco zerado rodaria as 98
-históricas e depois o baseline, e colidiria*. O Gerenciador formalizou isso como
-pedido 001 — sem banco novo não existe entrega de loja nova. Em 25/08 o parecer
+históricas e depois o baseline, e não subiria*. Hoje a loja do próprio Gabriel
+não se reconstrói a partir do código: o backup diário não tem PITR (ADR 0002,
+issue #131), e sem cadeia limpa não há recriação em nenhuma falha grave.
+Em 25/08 o parecer
 conjunto fixou o arquivamento como **passo 0**. Em 28/08 o Gabriel mandou executar
 com prioridade.
 
@@ -47,8 +47,8 @@ de verdade.
 1. **Controle negativo — o estado antes NÃO sobe.** Com os 142 arquivos na raiz, o
    banco zerado quebra na `20260218000000_optimize_admin_queries.sql` (4ª da ordem)
    com `relation "public.marketplace_orders" does not exist` (42P01): dependência
-   invertida entre históricas — a colisão com o baseline viria depois. O defeito do
-   pedido 001 é pior do que descrito, e o arquivamento o elimina inteiro.
+   invertida entre históricas — a colisão com o baseline viria depois. O defeito é
+   pior do que o descrito no ADR 0002, e o arquivamento o elimina inteiro.
 2. **Depois: `ZERADO_SOBE` (exit 0).** Ferramenta nova versionada
    `scripts/db-prove-banco-zerado.cjs`: cria banco descartável **no mesmo servidor**
    (o papel tem CREATEDB; o nome único e o `DROP DATABASE … WITH (FORCE)` no fim são
@@ -81,8 +81,8 @@ de verdade.
   `search_path = ''` na sessão (`set_config` do pg_dump moderno). Quem aplicar
   baseline + outros na MESMA sessão precisa re-SETAR o search_path entre arquivos;
   o CLI real não sofre disso (sessão por migration). A ferramenta de prova emula.
-- O caminho de criação de banco de loja nova deixa de ser bloqueado (pedido 001
-  do Gerenciador): `baseline + 42 posteriores`, na ordem de timestamp, sobem.
+- A recriação do banco a partir do código deixa de ser bloqueada: `baseline +
+  42 posteriores`, na ordem de timestamp, sobem.
 
 ## Desacordo registrado
 

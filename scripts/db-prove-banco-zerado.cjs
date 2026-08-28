@@ -19,9 +19,10 @@
  *   Fase 2: no banco da prova, instala as MESMAS extensões que o banco de
  *     desenvolvimento tem (um projeto Supabase novo as traz pré-instaladas;
  *     sem isto a prova acusaria falta que o provisionamento real não tem) e
- *     aplica TODOS os arquivos da raiz, em ordem de timestamp, dentro de UMA
- *     transação terminada em ROLLBACK — inclusive quando algo dá errado no
- *     meio (try/finally). Cada arquivo vai inteiro ao parser do Postgres
+ *     aplica TODOS os arquivos da raiz, em ordem de timestamp, em
+ *     AUTOCOMMIT (o mesmo modo do CLI real) — a contenção da prova é o
+ *     BANCO DESCARTÁVEL, derrubado em todos os caminhos de saída
+ *     (try/finally). Cada arquivo vai inteiro ao parser do Postgres
  *     (simple query), que entende $$...$$ e divide corretamente.
  *   Fase 3 (finally): DROP DATABASE ... WITH (FORCE) do banco da prova.
  *
@@ -31,7 +32,8 @@
  * é a única bancada fiel.
  *
  * ESTADOS DE SAÍDA:
- *   0  ZERADO_SOBE   — a raiz inteira aplicou sem erro de SQL; ROLLBACK dado.
+ *   0  ZERADO_SOBE   — a raiz inteira aplicou sem erro de SQL; banco
+ *     descartável derrubado no fim (DROP, não ROLLBACK).
  *   2  RECUSADO      — Fase 0 achou comando que quebra a contenção.
  *   3  FALHOU        — erro de SQL real. Quando o primeiro erro é de objeto
  *      duplicado (família 42xxx), o rótulo é COLIDIU: é o defeito que este
@@ -60,6 +62,22 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const ROTULO = "db-prove-banco-zerado";
+
+// Limpeza de emergência (revisão do PR #320, amarelo 1 do Claude): um Ctrl-C
+// entre a criação e o finally deixaria banco descartável órfão com o schema
+// inteiro no servidor vivo. Os sinais derrubam o banco da prova antes de morrer.
+let derrubarBancoDeEmergencia = null;
+for (const sinal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(sinal, async () => {
+    console.error(`
+[${ROTULO}] ${sinal} recebido — derrubando o banco da prova antes de sair…`);
+    try {
+      if (derrubarBancoDeEmergencia) await derrubarBancoDeEmergencia();
+    } finally {
+      process.exit(130);
+    }
+  });
+}
 
 function sair(estado, detalhes) {
   console.log(`\n[${ROTULO}] ${estado}`);
@@ -333,6 +351,12 @@ async function main() {
   const nomeBanco = `prova_zerada_${carimbo}_${process.pid}`;
   await criarBancoDeProva(url, nomeBanco);
   console.log(`[fase 1] banco de prova criado: ${nomeBanco}`);
+  derrubarBancoDeEmergencia = manter
+    ? null // --manter-banco pediu o banco vivo para autópsia: nem sinal o derruba
+    : async () => {
+        await derrubarBanco(url, nomeBanco);
+        derrubarBancoDeEmergencia = null;
+      };
 
   const uProva = new URL(url);
   uProva.pathname = `/${nomeBanco}`;
@@ -479,7 +503,7 @@ async function main() {
   if (!manter) await derrubarBanco(url, nomeBanco);
   sair(
     "ZERADO_SOBE",
-    `A raiz inteira aplicou num banco zerado (${aplicados} aplicados, ${pulados.length} pulados por provisionamento pg_cron) e o ROLLBACK devolveu tudo.${manter ? ` (banco mantido para autópsia: ${nomeBanco})` : ""}`,
+    `A raiz inteira aplicou num banco zerado (${aplicados} aplicados, ${pulados.length} pulados por provisionamento pg_cron) em AUTOCOMMIT, e o banco descartável foi derrubado no fim (DROP) — a contenção é o banco, não uma transação.${manter ? ` (banco mantido para autópsia: ${nomeBanco})` : ""}`,
   );
 }
 
