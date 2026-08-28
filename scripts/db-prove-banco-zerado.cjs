@@ -206,8 +206,8 @@ function comandosNoNivelDeInstrucao(arquivo) {
     for (const palavra of PALAVRAS_DE_CONTROLE) {
       if (
         maiusculo === palavra ||
-        maiusculo.startsWith(palavra + " ") ||
-        maiusculo.startsWith(palavra + ";")
+        maiusculo.startsWith(`${palavra} `) ||
+        maiusculo.startsWith(`${palavra};`)
       ) {
         achados.push(`${palavra}: "${enunciado.slice(0, 60)}"`);
       }
@@ -235,21 +235,13 @@ function faseZero(arquivos) {
   }
   if (avisos.length) {
     console.log(
-      `[fase 0] AVISO: ${avisos.length} comandos de controle de transação ` +
-        `soltos em ${new Set(avisos.map((a) => a.split(" → ")[0])).size} arquivos. ` +
-        `A contenção da prova é o BANCO DESCARTÁVEL (DROP no fim), não o ROLLBACK, ` +
-        `então seguem aplicando — como um banco zerado real os rodaria:` +
-        `\n  ` +
-        avisos.slice(0, 8).join("\n  ") +
-        (avisos.length > 8 ? `\n  … e mais ${avisos.length - 8}` : ""),
+      `[fase 0] AVISO: ${avisos.length} comandos de controle de transação soltos em ${new Set(avisos.map((a) => a.split(" → ")[0])).size} arquivos. A contenção da prova é o BANCO DESCARTÁVEL (DROP no fim), não o ROLLBACK, então seguem aplicando — como um banco zerado real os rodaria:\n  ${avisos.slice(0, 8).join("\n  ")}${avisos.length > 8 ? `\n  … e mais ${avisos.length - 8}` : ""}`,
     );
   }
   if (recusas.length) {
     sair(
       "RECUSADO",
-      "Estes comandos fogem ao banco da prova (tocam o SERVIDOR ou não rodam " +
-        "em transação) — nada foi executado:\n" +
-        recusas.map((r) => `  - ${r}`).join("\n"),
+      `Estes comandos fogem ao banco da prova (tocam o SERVIDOR ou não rodam em transação) — nada foi executado:\n${recusas.map((r) => `  - ${r}`).join("\n")}`,
     );
   }
   console.log(
@@ -377,10 +369,11 @@ async function main() {
           await cliente.query(`CREATE SCHEMA IF NOT EXISTS "${esquema}"`);
         }
         await cliente.query(
-          `CREATE EXTENSION IF NOT EXISTS "${ext.extname}"` +
-            (ext.esquema && ext.esquema !== "public"
+          `CREATE EXTENSION IF NOT EXISTS "${ext.extname}"${
+            ext.esquema && ext.esquema !== "public"
               ? ` SCHEMA "${ext.esquema}"`
-              : ""),
+              : ""
+          }`,
         );
       } catch (erro) {
         console.log(
@@ -433,7 +426,7 @@ async function main() {
         aplicados += 1;
       } catch (erro) {
         const excecao = EXCECOES_DE_PROVISIONAMENTO[nome];
-        if (excecao && excecao.test(erro.message || "")) {
+        if (excecao?.test(erro.message || "")) {
           pulados.push(`${nome} → ${erro.message}`);
           continue;
         }
@@ -464,10 +457,7 @@ async function main() {
     );
     if (pulados.length) {
       console.log(
-        `[fase 2] PULADOS por provisionamento pg_cron (bancada da prova não ` +
-          `reproduz; a entrega real aplica no banco \`postgres\` do projeto): ` +
-          `\n  ` +
-          pulados.join("\n  "),
+        `[fase 2] PULADOS por provisionamento pg_cron (bancada da prova não reproduz; a entrega real aplica no banco \`postgres\` do projeto): \n  ${pulados.join("\n  ")}`,
       );
     }
   } catch (erro) {
@@ -477,10 +467,7 @@ async function main() {
       if (!manter) await derrubarBanco(url, nomeBanco);
       sair(
         "FALHOU",
-        (duplicado ? "COLIDIU" : "ERRO_DE_SQL") +
-          `\n  arquivo:  ${falha.arquivo} (após ${falha.aplicados} anteriores)` +
-          `\n  codigo:   ${falha.codigo}` +
-          `\n  mensagem: ${falha.mensagem}`,
+        `${duplicado ? "COLIDIU" : "ERRO_DE_SQL"}\n  arquivo:  ${falha.arquivo} (após ${falha.aplicados} anteriores)\n  codigo:   ${falha.codigo}\n  mensagem: ${falha.mensagem}`,
       );
     }
     await cliente.end().catch(() => {});
@@ -492,9 +479,7 @@ async function main() {
   if (!manter) await derrubarBanco(url, nomeBanco);
   sair(
     "ZERADO_SOBE",
-    `A raiz inteira aplicou num banco zerado (${aplicados} aplicados, ` +
-      `${pulados.length} pulados por provisionamento pg_cron) e o ROLLBACK devolveu tudo.` +
-      (manter ? ` (banco mantido para autópsia: ${nomeBanco})` : ""),
+    `A raiz inteira aplicou num banco zerado (${aplicados} aplicados, ${pulados.length} pulados por provisionamento pg_cron) e o ROLLBACK devolveu tudo.${manter ? ` (banco mantido para autópsia: ${nomeBanco})` : ""}`,
   );
 }
 
@@ -513,5 +498,5 @@ async function derrubarBanco(urlControle, nome) {
 }
 
 main().catch((erro) =>
-  sair("INDETERMINADO", erro && erro.stack ? erro.stack : String(erro)),
+  sair("INDETERMINADO", erro?.stack ? erro.stack : String(erro)),
 );
