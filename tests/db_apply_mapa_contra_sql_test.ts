@@ -65,15 +65,29 @@ const checagensDe = (registro) =>
   Array.isArray(registro) ? registro : [registro];
 
 function lerMigration(arquivo) {
-  try {
-    return Deno.readTextFileSync(new URL(arquivo, PASTA_MIGRATIONS));
-  } catch (erro) {
-    // Falha ALTA, nunca `skip`: entrada no mapa apontando para arquivo que não
-    // existe quer dizer que ninguém está conferindo aquela migration.
-    throw new Error(
-      `${arquivo}: o mapa VERIFICACOES tem entrada para esta migration, mas o arquivo não está em supabase/migrations/ (${erro?.message})`,
-    );
+  // ⚠️ Dois caminhos, de propósito (PR 320, mergeado 28/08): migrations
+  // PRE-baseline foram movidas para `_arquivadas/` na `develop`, e o mapa
+  // VERIFICACOES referencia as duas origens — 3 das entradas (29/07) vivem em
+  // `_arquivadas/` hoje. Tenta a raiz primeiro; sem o fallback, o teste
+  // reprova ALTO em arquivo que existe e que continua sendo conferido.
+  const caminhos = [
+    new URL(arquivo, PASTA_MIGRATIONS),
+    new URL(`_arquivadas/${arquivo}`, PASTA_MIGRATIONS),
+  ];
+  let ultimoErro;
+  for (const caminho of caminhos) {
+    try {
+      return Deno.readTextFileSync(caminho);
+    } catch (erro) {
+      ultimoErro = erro;
+    }
   }
+  // Falha ALTA, nunca `skip`: entrada no mapa apontando para arquivo que não
+  // existe em lugar nenhum quer dizer que ninguém está conferindo aquela
+  // migration.
+  throw new Error(
+    `${arquivo}: o mapa VERIFICACOES tem entrada para esta migration, mas o arquivo não está em supabase/migrations/ nem em supabase/migrations/_arquivadas/ (${ultimoErro?.message})`,
+  );
 }
 
 /**
