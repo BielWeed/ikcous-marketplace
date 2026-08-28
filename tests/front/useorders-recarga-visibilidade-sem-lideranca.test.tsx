@@ -7,14 +7,18 @@
 // reverteu a rodada 2 e NOMEOU o conserto: efeito próprio, dependências
 // `[enabled, user?.id, isAdmin]`, SEM `isLeader` — ver
 // `~/.claude/mural/core_app_mkt/frentes/vitrine-sabe-que-o-produto-mudou.md`.
+// (Rodada 4, revisão do PR 321: as deps honestas são `[enabled]` — o corpo não
+// lê as outras duas, e cada mudança delas derrubava o timer pendente.)
 //
 // ⚠️ A ARMADILHA que a rodada 2 caiu, evitada aqui DE PROPÓSITO: o commit do
 // React acontece num `act` SEPARADO do avanço do relógio. Fundidos num `act`
 // só, o React descarrega efeitos passivos DEPOIS do timer, a ordem da
 // produção se inverte e este teste passaria verde com o defeito intacto.
 //
-// Os dois cenários abaixo devem FALHAR no código sem conserto (prova de que o
-// defeito existe hoje) e PASSAR com o efeito próprio.
+// Os dois primeiros cenários devem FALHAR no código sem conserto (prova de
+// que o defeito existe hoje) e PASSAR com o efeito próprio. O terceiro prova o
+// conserto do BLOQUEIA da revisão do PR 321: a recarga por visibilidade é
+// background refresh e é SILENCIOSA — erro na consulta não vira toast.
 
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -22,11 +26,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const lideranca = vi.hoisted(() => ({ isLeader: false }));
 const chamadasFrom = vi.hoisted(() => ({ marketplaceOrders: 0 }));
+const visibilidade = vi.hoisted(() => ({ estado: "visible" }));
+const resposta = vi.hoisted(() => ({ erro: false }));
+const toasts = vi.hoisted(() => ({ erro: vi.fn() }));
 
 vi.mock("@/lib/supabase", () => {
   const builder = () => {
-    const resolvido = { data: [], error: null, count: 0 };
-    const promessa = Promise.resolve(resolvido);
+    const corpo = resposta.erro
+      ? { data: null, error: { message: "boom" }, count: 0 }
+      : { data: [], error: null, count: 0 };
+    const promessa = Promise.resolve(corpo);
     const alvo: Record<string, unknown> = {
       select: () => alvo,
       eq: () => alvo,
@@ -35,6 +44,7 @@ vi.mock("@/lib/supabase", () => {
       limit: () => alvo,
       or: () => alvo,
       in: () => alvo,
+      abortSignal: () => alvo,
       single: () => alvo,
       maybeSingle: () => alvo,
     };
@@ -82,7 +92,7 @@ vi.mock("@/hooks/useLeaderElection", () => ({
 }));
 
 vi.mock("sonner", () => ({
-  toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
+  toast: { error: toasts.erro, success: vi.fn(), info: vi.fn() },
 }));
 
 import { useOrders } from "@/hooks/useOrders";
@@ -104,19 +114,50 @@ function Alvo() {
   return null;
 }
 
+function disparaVisibilidade() {
+  // Fiel à produção: o navegador dispara em `document` com bubbles, e é o
+  // borbulhar até o `window` que alcança o listener em `globalThis`.
+  document.dispatchEvent(new Event("visibilitychange", { bubbles: true }));
+}
+
 describe("useOrders — recarga ao voltar para a aba visível (sem depender de liderança)", () => {
   let root: Root | null = null;
+  let descritorOriginal: PropertyDescriptor | undefined;
 
   beforeEach(() => {
     vi.useFakeTimers();
     chamadasFrom.marketplaceOrders = 0;
     lideranca.isLeader = false;
+    resposta.erro = false;
+    visibilidade.estado = "visible";
+    toasts.erro.mockClear();
     if (typeof (globalThis as any).BroadcastChannel === "undefined") {
       (globalThis as any).BroadcastChannel = BroadcastChannelStub;
     }
+    // O localStorage do node 25 nasce quebrado sem `--localstorage-file`
+    // (existe, mas sem métodos). O hook lê cache dele no mount. Map em vez de
+    // objeto indexado para não somar warning de object-injection (teto do CI).
+    const memoria = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (k: string) => memoria.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          memoria.set(k, String(v));
+        },
+        removeItem: (k: string) => {
+          memoria.delete(k);
+        },
+        clear: () => memoria.clear(),
+      },
+    });
+    descritorOriginal = Object.getOwnPropertyDescriptor(
+      document,
+      "visibilityState",
+    );
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
-      get: () => "visible",
+      get: () => visibilidade.estado,
     });
   });
 
@@ -125,6 +166,9 @@ describe("useOrders — recarga ao voltar para a aba visível (sem depender de l
       root?.unmount();
     });
     root = null;
+    if (descritorOriginal) {
+      Object.defineProperty(document, "visibilityState", descritorOriginal);
+    }
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -140,35 +184,64 @@ describe("useOrders — recarga ao voltar para a aba visível (sem depender de l
 
   const contagemNova = () => chamadasFrom.marketplaceOrders;
 
-  it("aba NÃO-líder que volta ao visível recarrega a lista", async () => {
+  it("aba NÃO-líder: volta ao visível recarrega EXATAMENTE 1 vez; ir para hidden não recarrega", async () => {
     lideranca.isLeader = false;
     montar();
     const antes = contagemNova();
 
+    visibilidade.estado = "hidden";
     act(() => {
-      window.dispatchEvent(new Event("visibilitychange"));
+      disparaVisibilidade();
     });
     await act(async () => {
       vi.advanceTimersByTime(500);
     });
     await act(async () => {});
+    expect(contagemNova()).toBe(antes); // hidden não agenda nada
 
-    expect(contagemNova()).toBeGreaterThan(antes);
+    visibilidade.estado = "visible";
+    act(() => {
+      disparaVisibilidade();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+    await act(async () => {});
+    expect(contagemNova()).toBe(antes + 1); // exatamente 1: debounce sem duplicar
   });
 
-  it("aba LÍDER com canal vivo que volta ao visível recarrega a lista", async () => {
+  it("aba LÍDER com canal vivo que volta ao visível recarrega EXATAMENTE 1 vez", async () => {
     lideranca.isLeader = true;
     montar();
     const antes = contagemNova();
 
     act(() => {
-      window.dispatchEvent(new Event("visibilitychange"));
+      disparaVisibilidade();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+    await act(async () => {});
+    expect(contagemNova()).toBe(antes + 1);
+  });
+
+  it("a recarga por visibilidade é SILENCIOSA: erro na consulta não vira toast (BLOQUEIA do PR 321)", async () => {
+    lideranca.isLeader = false;
+    resposta.erro = true;
+    montar();
+    const antes = contagemNova();
+
+    act(() => {
+      disparaVisibilidade();
     });
     await act(async () => {
       vi.advanceTimersByTime(500);
     });
     await act(async () => {});
 
-    expect(contagemNova()).toBeGreaterThan(antes);
+    // O refresh ACONTECEU (a consulta voou), mas o erro de background não
+    // fala com o usuário: nenhum toast por cima da tela do PIX.
+    expect(contagemNova()).toBe(antes + 1);
+    expect(toasts.erro).not.toHaveBeenCalled();
   });
 });
