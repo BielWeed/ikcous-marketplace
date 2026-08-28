@@ -229,6 +229,36 @@ describe("PaymentStatusBadge (componente) — aviso do lojista quando o pedido p
     expect(selo).not.toBeNull();
     expect(selo?.className).toContain("animate-pulse");
   });
+
+  // Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
+  // (ponto 3): antes desta correção, `recebido_na_entrega` + `cancelled`
+  // caía no `getPaymentStatusConfig` comum e mostrava o selo verde parado
+  // "Recebido na entrega" — o mesmo defeito que este arquivo já cobre para
+  // `pago`, só que sem o anel de atenção nenhum.
+  it("recebido_na_entrega + cancelled: mostra o MESMO rótulo de atenção do LOJISTA que 'pago' + cancelled", async () => {
+    await renderizar("recebido_na_entrega", "cancelled");
+
+    expect(hospedeiro.textContent).toContain(
+      "Pago e cancelado — precisa de atenção",
+    );
+    expect(hospedeiro.textContent).not.toBe("Recebido na entrega");
+
+    const selo = hospedeiro.querySelector("div");
+    expect(selo).not.toBeNull();
+    expect(selo?.className).toContain("animate-pulse");
+    expect(selo?.className).toContain("ring-red-500/60");
+  });
+
+  it("CONTROLE — recebido_na_entrega + delivered (venda saudável): continua 'Recebido na entrega' verde, sem anel", async () => {
+    await renderizar("recebido_na_entrega", "delivered");
+
+    expect(hospedeiro.textContent).toBe("Recebido na entrega");
+    expect(hospedeiro.textContent).not.toContain("precisa de atenção");
+
+    const selo = hospedeiro.querySelector("div");
+    expect(selo).not.toBeNull();
+    expect(selo?.className).not.toContain("animate-pulse");
+  });
 });
 
 // `describe.each` sobre os dois modos de visualização — achado do revisor:

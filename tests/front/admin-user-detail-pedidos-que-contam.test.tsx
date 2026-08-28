@@ -304,10 +304,16 @@ describe("AdminUserDetailView — a contagem de pedidos bate com a lista", () =>
     expect(valorDoCard("LTV Total")).toBe("R$ 100,00");
   });
 
-  it("pedido com payment_status nulo entra no LTV, igual a pedido pago na entrega", async () => {
-    // payment_status NULO significa "sem cobrança online" (pedido pago na
-    // entrega, ou histórico) — CONTA por definição da regra, a mesma leitura
-    // que o mapper já preserva (mappers.ts:244-246, `null` não é traduzido).
+  // Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
+  // (ponto 1): a migration `20261021000000` tirou o `payment_status IS NULL`
+  // da regra de dinheiro no servidor — antes dela, nulo era o ÚNICO jeito de
+  // representar "pago na entrega" e por isso CONTAVA. Agora a loja registra
+  // esse recebimento explicitamente (RPC `registrar_pagamento_recebido`, que
+  // grava `payment_status = 'recebido_na_entrega'`), e nulo volta a
+  // significar só "sem pagamento confirmado" — não soma mais no LTV. Pedidos
+  // antigos com null ficam de fora até alguém os marcar pelo painel: isso é
+  // o OBJETIVO desta correção, não uma regressão.
+  it("pedido com payment_status nulo NAO entra mais no LTV (a regra do null mudou)", async () => {
     estado.orders = [
       {
         id: "sem-cobranca",
@@ -318,7 +324,23 @@ describe("AdminUserDetailView — a contagem de pedidos bate com a lista", () =>
     ];
     await abrirFicha();
 
+    // A contagem de pedidos continua igual — só o dinheiro sai do LTV.
     expect(numeroDoCard("Cesta / Pedidos")).toBe(1);
-    expect(valorDoCard("LTV Total")).toBe("R$ 40,00");
+    expect(valorDoCard("LTV Total")).toBe("R$ 0,00");
+  });
+
+  it("pedido com payment_status 'recebido_na_entrega' entra no LTV, igual a 'pago'", async () => {
+    estado.orders = [
+      {
+        id: "recebido-na-entrega",
+        status: "delivered",
+        total: 75,
+        payment_status: "recebido_na_entrega",
+      },
+    ];
+    await abrirFicha();
+
+    expect(numeroDoCard("Cesta / Pedidos")).toBe(1);
+    expect(valorDoCard("LTV Total")).toBe("R$ 75,00");
   });
 });

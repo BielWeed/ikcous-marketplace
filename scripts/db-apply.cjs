@@ -999,6 +999,51 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261020000000_lojista_registra_pagamento_recebido.sql": [
+    {
+      funcao: "registrar_pagamento_recebido",
+      esperado: [
+        // BLOCOS AMARRADOS -- condicao E consequencia na mesma string. A versao
+        // anterior desta entrada usava marcador de linha unica ("IF NOT
+        // public.is_admin() THEN" sozinho) e um comentario que se dizia
+        // "amarrado". Medido por revisor de contexto limpo: mantendo a linha e
+        // trocando so' o RAISE por `NULL;`, a guarda vira no-op -- qualquer
+        // cliente logado marca qualquer pedido como pago -- e os tres marcadores
+        // continuavam CASANDO. Marcador que sobrevive a neutralizacao da guarda
+        // nao verifica nada; ele so' registra que alguem digitou a palavra.
+        "IF NOT public.is_admin() THEN\n        RAISE EXCEPTION 'Não autorizado: só a loja registra pagamento recebido.';",
+        "IF v_payment_method = 'online' THEN\n        RAISE EXCEPTION 'Este pedido é pago pelo site:",
+        "ELSIF v_payment_status IS NOT NULL THEN\n            RAISE EXCEPTION 'Este pedido já tem pagamento registrado",
+      ],
+    },
+  ],
+  "20261021000000_receita_conta_so_dinheiro_que_entrou.sql": [
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        "payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')",
+        // O 13o ponto, do alarme `paid_on_cancelled`. Ele precisa de marcador
+        // proprio porque `avaliarChecagem` usa `includes()`: o marcador acima
+        // ja casaria com qualquer um dos 13 pontos, entao sozinho ele nao prova
+        // que ESTE aqui foi trocado. E' o unico ponto cuja forma nao veio de
+        // `payment_status IS NULL` -- ele alimenta o aviso da tela sobre dinheiro
+        // que o lojista recebeu e precisa devolver (AdminOrdersView.tsx:1031).
+        "payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega') AND status = 'cancelled'",
+      ],
+    },
+    {
+      funcao: "get_admin_customers_paged",
+      esperado: [
+        "o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')",
+      ],
+    },
+    {
+      funcao: "get_segmented_push_targets",
+      esperado: [
+        "o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

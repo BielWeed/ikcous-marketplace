@@ -124,6 +124,20 @@ describe("filterOrdersByPaymentStatus", () => {
   });
 });
 
+// Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
+// — lacuna de funcionalidade (não é um dos sete pontos de dinheiro, mas foi
+// medida junto): o lojista não tinha como filtrar a lista por "recebido na
+// entrega" porque o valor não estava no array que alimenta o dropdown.
+describe("PAYMENT_STATUS_FILTER_VALUES", () => {
+  it("inclui 'recebido_na_entrega' — sem isto o dropdown não oferece a opção", async () => {
+    const { PAYMENT_STATUS_FILTER_VALUES } = await import(
+      "@/views/admin/AdminOrdersView"
+    );
+
+    expect(PAYMENT_STATUS_FILTER_VALUES).toContain("recebido_na_entrega");
+  });
+});
+
 describe("PaymentStatusBadge", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;

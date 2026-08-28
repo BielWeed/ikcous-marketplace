@@ -235,6 +235,24 @@ describe("baldeDeEstorno — a lista é derivada, nunca gravada", () => {
     });
     expect(baldeDeEstorno(pedido)).toBe("devolver_agora");
   });
+
+  // Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
+  // (ponto 2) — o caso que prova a gravidade do problema: a Task 2 já fez o
+  // aviso âmbar "N pedidos receberam pagamento e estão cancelados" contar
+  // `recebido_na_entrega` (regra do SERVIDOR, `get_admin_analytics_v2`), mas
+  // `baldeDeEstorno` (regra do CLIENTE, aqui) continuava cego a esse valor.
+  // Um pedido recebido na entrega e depois cancelado fazia o aviso dizer
+  // "1 pedido" e a lista de estorno abaixo dele mostrar NENHUM.
+  it("recebido_na_entrega conta como dinheiro que entrou (terceira porta do balde)", async () => {
+    const { baldeDeEstorno } = await import("@/views/admin/AdminOrdersView");
+    const pedido = pedidoFake({
+      id: "p7",
+      status: "cancelled",
+      paymentStatus: "recebido_na_entrega",
+      cancelledAfterShipping: false,
+    });
+    expect(baldeDeEstorno(pedido)).toBe("devolver_agora");
+  });
 });
 
 // ITEM 3 da revisão de 26/08/2026 (segunda mutação sobrevivente): apagar

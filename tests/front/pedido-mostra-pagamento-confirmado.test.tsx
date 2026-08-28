@@ -133,6 +133,22 @@ describe("OrderDetailsView — o selo de pagamento deixa de mentir (pedido pago 
     );
   });
 
+  // Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
+  // (ponto 5, `pendingDescription`): antes desta correção o `switch` só
+  // conhecia 'pago'/'pago_apos_expirar' e caía no `default`, mostrando o
+  // texto genérico de "aguardando" para um pedido que a loja já confirmou
+  // ter recebido na entrega.
+  it("status 'pending' + recebido_na_entrega: mostra 'Pagamento confirmado', igual a 'pago'", async () => {
+    pedidoAtual = pedidoComPagamento("recebido_na_entrega");
+
+    await renderizar();
+
+    expect(hospedeiro.textContent).toContain("Pagamento confirmado");
+    expect(hospedeiro.textContent).not.toContain(
+      "Aguardando confirmação de pagamento",
+    );
+  });
+
   it("status 'pending' + aguardando: continua mostrando o texto de aguardando (não quebrou o caminho que já estava certo)", async () => {
     pedidoAtual = pedidoComPagamento("aguardando");
 
@@ -289,6 +305,31 @@ describe("OrderDetailsView — pedido cancelado com pagamento que ficou com a lo
     expect(hospedeiro.textContent).toContain("Pago — fale com a loja");
     expect(hospedeiro.textContent).not.toContain("Pagamento confirmado");
     expect(hospedeiro.textContent).not.toContain("Pago — pedido cancelado");
+  });
+
+  // Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
+  // (pontos 4 e 6, `customerPaymentStatusEntry` e `cancelledDescription`):
+  // antes desta correção, um pedido recebido na entrega e depois cancelado
+  // mostrava a DESCRIÇÃO genérica de "cancelado" (ponto 6) e o SELO verde
+  // fixo "Pagamento confirmado" (ponto 4) — como se nada tivesse acontecido
+  // com o dinheiro que já entrou.
+  it("status 'cancelled' + recebido_na_entrega: mostra a mesma orientação de cancelado-mas-pago (descrição)", async () => {
+    pedidoAtual = pedidoCanceladoComPagamento("recebido_na_entrega");
+
+    await renderizar();
+
+    expect(hospedeiro.textContent).toContain(
+      "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.",
+    );
+  });
+
+  it("status 'cancelled' + recebido_na_entrega: o selo mostra 'Pago — fale com a loja', e NÃO o verde 'Pagamento confirmado'", async () => {
+    pedidoAtual = pedidoCanceladoComPagamento("recebido_na_entrega");
+
+    await renderizar();
+
+    expect(hospedeiro.textContent).toContain("Pago — fale com a loja");
+    expect(hospedeiro.textContent).not.toContain("Pagamento confirmado");
   });
 
   // Achado 1 (degrau 1): o par mais perigoso — pedido cancelado com o
