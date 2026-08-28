@@ -1261,7 +1261,6 @@ export function useOrders(
     let isConnecting = false;
     let retryCount = 0;
     let reconnectTimeout: ReturnType<typeof setTimeout> | undefined;
-    let visibilityTimeout: ReturnType<typeof setTimeout> | undefined;
     let onlineTimeout: ReturnType<typeof setTimeout> | undefined;
 
     const bc =
@@ -1511,24 +1510,6 @@ export function useOrders(
       publicarNoBc({ type: "conn_status_request", channelId });
     }
 
-    const handleVisibilityChange = () => {
-      if (!isLeader) return;
-      if (document.visibilityState === "visible") {
-        clearTimeout(visibilityTimeout);
-        visibilityTimeout = setTimeout(() => {
-          const sub = globalOrderSubscriptions.get(channelId);
-          if ((!sub || sub.refCount <= 0) && !isUnmounting && !isConnecting) {
-            console.log("[Realtime] Orders foregrounded. Forcing reconnect...");
-            retryCount = 0;
-            clearTimeout(reconnectTimeout);
-            recarregarAposReconexaoRef.current().then(() => {
-              if (!isUnmounting) setupRealtime();
-            });
-          }
-        }, 500);
-      }
-    };
-
     const handleOnline = () => {
       if (!isLeader) return;
       clearTimeout(onlineTimeout);
@@ -1545,19 +1526,13 @@ export function useOrders(
       }, 500);
     };
 
-    globalThis.addEventListener("visibilitychange", handleVisibilityChange);
     globalThis.addEventListener("online", handleOnline);
 
     return () => {
       isUnmounting = true;
       statusInscricao.cancelar();
       clearTimeout(reconnectTimeout);
-      clearTimeout(visibilityTimeout);
       clearTimeout(onlineTimeout);
-      globalThis.removeEventListener(
-        "visibilitychange",
-        handleVisibilityChange,
-      );
       globalThis.removeEventListener("online", handleOnline);
 
       if (isLeader) {
@@ -1600,6 +1575,38 @@ export function useOrders(
       bc?.close();
     };
   }, [enabled, user?.id, isAdmin, isLeader]);
+
+  // Recarga por visibilidade num EFEITO PRÓPRIO, de propósito (achado 2 do
+  // laudo da rodada 2, metade A — "pedido novo não entra na lista"; spec da
+  // revisão de 26/08, documentada na frente
+  // vitrine-sabe-que-o-produto-mudou). A rodada 2 pendurou esta recarga
+  // DENTRO do efeito de realtime, dependente de isLeader: a reconquista de
+  // liderança (~420 ms depois de voltar) re-rodava o efeito, o teardown
+  // matava o timer de 500 ms e a recarga morria 80 ms antes de rodar; e a
+  // aba não-líder nem agendava. Aqui a recarga de DADOS é independente de
+  // liderança NENHUMA — toda aba que volta ao visível re-busca a lista por
+  // REST, com o socket do efeito acima vivo, morto ou zumbi. A RECONSTRUÇÃO
+  // do socket fica onde está: os caminhos de status do SDK seguem disparando
+  // `handleReconnect` no efeito de realtime.
+  useEffect(() => {
+    if (!enabled) return;
+    let visibilityTimeout: ReturnType<typeof setTimeout> | undefined;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      clearTimeout(visibilityTimeout);
+      visibilityTimeout = setTimeout(() => {
+        recarregarAposReconexaoRef.current().catch(() => {});
+      }, 500);
+    };
+    globalThis.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      clearTimeout(visibilityTimeout);
+      globalThis.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
+    };
+  }, [enabled, user?.id, isAdmin]);
 
   const updateOrderStatus = useCallback(
     async (
