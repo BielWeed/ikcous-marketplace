@@ -7,6 +7,227 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.10.0] — 2026-08-27
+
+Seis defeitos que a loja tinha e ninguém via, mais a metade que faltava do
+cancelamento depois do envio. É a versão que fecha a conta aberta na 1.9.x.
+
+### Para quem COMPRA
+
+- **A foto para de virar um retângulo preto.** Imagem com fundo transparente
+  perdia o fundo ao ser redimensionada e virava um bloco preto — no catálogo,
+  no avatar e na capa.
+- **Falha de rede na busca do CEP deixa de ser silêncio.** Se a consulta caía, o
+  endereço simplesmente não preenchia e nada explicava por quê: a pessoa ficava
+  tentando no escuro, no meio do checkout.
+- **Um erro do servidor para de virar "você está sem internet".** Um 502 isolado
+  fazia a loja anunciar que a pessoa estava offline, com a internet dela
+  funcionando.
+- **O app para de reescrever sozinho o nome do produto** ao carregar o catálogo.
+- **Quem liga o aviso de novidades para de ficar preso.** Havia becos sem saída
+  em que a pessoa autorizava a notificação, nunca recebia nada, e a tela
+  continuava dizendo que estava tudo certo.
+- **Duas abas abertas param de brigar.** Com a loja aberta em mais de uma aba,
+  duas podiam assumir o mesmo posto ao mesmo tempo e duplicar trabalho.
+
+### Para quem VENDE
+
+- **O painel separa duas perguntas que eram uma só:** "o produto voltou?" e
+  "pode devolver o dinheiro?". Quando um pedido é cancelado depois de enviado, a
+  mercadoria está fisicamente com o cliente — e o painel agora mostra isso, com o
+  botão para confirmar o retorno quando ela chegar.
+- **O estoque parou de mentir nesse caso.** Antes, cancelar um pedido já enviado
+  devolvia a peça para a prateleira na hora, e a loja passava a anunciar um
+  produto que não estava lá. Agora ele só volta quando você confirmar que
+  recebeu.
+- **Cliente não cancela mais pedido já entregue.** Produto entregue é devolução,
+  que é outro assunto. Você, como loja, continua podendo.
+
+### 🔴 A ordem em que isto subiu, porque ela não foi a ideal
+
+A regra no banco (migration `20260970000000`) foi aplicada em **27/08/2026, antes
+desta release** — verificada em conexão nova, chamando as funções como o app
+chama, com controle negativo e a transação encerrada em `ROLLBACK`.
+
+Consequência: desde aquele momento até o merge desta release, o banco já exigia a
+confirmação de retorno enquanto o painel publicado **ainda não tinha o botão** —
+um cancelamento depois do envio prenderia o estoque sem tela para liberá-lo.
+Janela medida: 1 pedido em `shipping` e nenhum pedido novo desde 23/08.
+
+**Esta release é o que fecha essa janela.** O certo, da próxima vez, é publicar a
+tela primeiro e o banco depois: tela nova com banco velho funciona; banco novo
+com tela velha é que quebra.
+
+### Fecha uma pendência da 1.9.1
+
+A 1.9.1 subiu declarando que faltava cadastrar `VITE_SUPABASE_PUBLISHABLE_KEY` na
+Vercel e refazer o deploy. Medido em 27/08: a variável existe em Production e o
+site publicado **já carrega a chave nova**. Aquele passo está concluído.
+
+### Sabido e não corrigido
+
+- **Não existe devolver dinheiro pelo app.** O painel passa a *listar* quanto
+  você deve estornar; o estorno em si continua manual, no painel do Mercado
+  Pago, um pedido por vez.
+- Segue valendo o que a 1.9.0 já listava em aberto — frete grátis escrito em 10
+  lugares (`FRETE-020`) e o OTP de rastreio de convidado (`AUTH-010`, #118).
+
+## [1.9.1] — 2026-08-27
+
+**Nada muda na tela, e é esse o ponto.** Esta versão existe para a loja
+sobreviver a um botão que ainda não foi apertado — por isso sobe só o último
+dígito.
+
+### O que estava em risco
+
+O Supabase, que é o banco de dados da loja, está trocando as chaves de acesso:
+as antigas dão lugar a novas. As antigas **não têm data para morrer** — elas
+funcionam até alguém desligá-las num botão do painel. Não é um relógio
+correndo, é um clique.
+
+As oito funções de servidor já sabiam usar a chave nova, com a antiga como
+reserva. **O site não sabia.** No instante daquele clique, a loja pararia de
+carregar por completo: nem produto, nem login, nem carrinho.
+
+### O que mudou
+
+- O site passa a usar a **chave nova** e só cai para a antiga se a nova faltar.
+- A tela de erro de configuração passa a **nomear as duas chaves** — antes
+  citava só a antiga, e quem fosse investigar procuraria a variável errada.
+- Ao carregar, a loja **registra qual chave usou**. Sem isso, um erro de
+  autenticação em massa não teria nenhum rastro para seguir.
+- Um caractere invisível colado junto da chave (acontece ao copiar e colar)
+  deixa de derrubar a autenticação em silêncio.
+- O **manual de troca de credenciais** parou de recomendar, como caminho
+  seguro, o passo que derrubaria a loja — e ganhou a conferência que
+  realmente distingue qual chave está respondendo.
+
+### Para quem COMPRA
+
+Nada. Nenhuma tela, texto ou comportamento muda.
+
+### Para quem VENDE
+
+Nada muda hoje. O que muda é que desligar as chaves antigas deixa de ser um
+risco de derrubar a loja — **desde que o passo do ambiente seja feito**, abaixo.
+
+### 🔴 Esta release NÃO conclui a migração — falta um passo fora do código
+
+Medido em 27/08/2026: a variável `VITE_SUPABASE_PUBLISHABLE_KEY` **não existe**
+no ambiente de produção da Vercel. Enquanto ela não existir, o site continua
+rodando com a chave antiga, e o clique de desligamento derruba a loja do mesmo
+jeito.
+
+Para concluir, **nesta ordem**:
+
+1. esta versão publicada (é o que esta release faz);
+2. a variável cadastrada na Vercel com a chave `sb_publishable_...`;
+3. um **novo deploy** — a chave entra no código no momento do build, então
+   salvar a variável sem republicar não muda o site que está no ar;
+4. conferir no Console do navegador que a linha `[EnvGuard]` nomeia
+   `VITE_SUPABASE_PUBLISHABLE_KEY`, e **só então** desligar as antigas.
+
+A ordem não pode inverter: cadastrar a chave nova sobre um site antigo faz a
+nova vencer a antiga carregando os defeitos que esta release corrige. O passo a
+passo está em `docs/runbooks/rotacao-credenciais-supabase.md`.
+
+### Ambiente desta release
+
+**Nenhuma** migration e **nenhuma** edge function entre a `1.9.0` e esta — só
+arquivos de tela, um módulo novo de leitura de ambiente e documentação. O
+`middleware.ts` (que roda na borda da Vercel) mudou junto, pela mesma razão.
+
+## [1.9.0] — 2026-08-26
+
+**Uma auditoria do app inteiro, em duas rodadas, e ~50 defeitos fechados.** Trinta
+e oito entregas desde a `1.8.1`. O número do meio sobe porque muda o que
+acontece na tela em dezenas de pontos — a `1.8.1` tinha subido só o último
+dígito justamente porque nada de comportamento mudava, e aqui muda.
+
+O trabalho foi dividido em duas metades e **revisado cruzado de propósito**:
+ninguém revisou o próprio conserto. Isso pagou — três dos defeitos desta lista
+são regressões que a própria rodada de correção criou, achadas pela revisão do
+outro lado e fechadas antes de chegar aqui.
+
+### Para quem COMPRA
+
+- **Trocar o CEP no checkout** parou de misturar rua antiga com cidade nova.
+- **Engasgo de rede na entrada** parou de deslogar e de esvaziar o carrinho.
+- **Salvar o cadastro meio carregado** parou de apagar nome e WhatsApp.
+- **Produto sem nenhuma avaliação** parou de exibir cinco estrelas.
+- **O botão da tela de erro** parou de apagar carrinho e sessão junto.
+- **Falha ao carregar um produto** parou de dizer "produto não encontrado" —
+  não conseguir buscar e não existir viraram coisas diferentes.
+- **Apagar ou marcar um aviso como lido** parou de falhar em silêncio.
+- **Compartilhar um produto** parou de copiar mensagem sem link nenhum. As
+  mensagens prontas do painel que não trazem `[link]` voltam a levar o endereço
+  da loja — e se o navegador bloquear a cópia, aparece o erro, não um
+  "Link copiado!" falso.
+- **A limpeza da atualização do app** passou a respeitar a mesma lista do resto:
+  o que não pode ser perdido não é perdido.
+
+### Para quem VENDE
+
+- **Um engasgo de rede parou de expulsar o lojista do painel.** A tela
+  confundia "o servidor disse que você não é admin" com "o servidor não
+  respondeu", e as duas jogavam para fora recarregando a página — levando junto
+  o cadastro em andamento. Havia até beco sem saída: com alteração não salva,
+  cancelar a saída travava o painel em "Verificando permissões…" até um F5.
+- **A seção de chaves de frete parou de morrer calada.** Dizia "Recarregando…"
+  para sempre sem nada recarregar. Agora explica e oferece tentar de novo.
+- **Trocar de aba parou de apagar** o que foi digitado nas regras de frete, e
+  **salvar frete parou de apagar** o token da transportadora.
+- **Os números do painel pararam de afirmar zero quando a consulta falha.** Zero
+  que quer dizer "não consegui medir" agora se identifica como tal, em pedidos,
+  produtos e clientes.
+- **Falha ao abrir um pedido** mostra erro e caminho de volta, em vez de rodinha
+  eterna.
+- **Respostas em tempo real** pararam de ser etiquetadas com o produto errado.
+- **O cache de categorias** passou a respeitar o período selecionado.
+- **A ficha do pedido parou de prometer estorno** que o app não faz.
+
+### O que esta release NÃO liga — e depende de dois cliques
+
+Três consertos viajam nesta release como arquivo e **ficam dormentes** até
+serem ligados à mão. Nada quebra por eles estarem dormentes; eles simplesmente
+ainda não fazem efeito.
+
+**Publicar as cinco funções do servidor** — `criar-pagamento`, `send-otp-email`,
+`send-order-confirmation`, `webhook-mercadopago` e `reconciliar-pagamentos`.
+Enquanto não subirem:
+
+- Um **estorno parcial** continua apagando a venda inteira do faturamento: R$ 5
+  devolvidos num pedido de R$ 200 zeram os R$ 200 nos nove relatórios.
+- As três primeiras continuam lendo a **chave antiga do Supabase**. Ela não cai
+  sozinha em data nenhuma — mas o dia em que essa chave for desligada no painel
+  da Supabase, pagamento, e-mail de pedido e login param juntos. O código já
+  está pronto para a chave nova; falta publicar.
+
+**Aplicar as três mudanças de banco** — e a ordem importa: a da reconciliação
+(`20261010000000`) vai **por último, depois das funções**, porque ela faz a
+reconciliação alcançar mais pedidos, e quem processa esses pedidos hoje ainda é
+o código que colapsa estorno parcial em estorno total. As outras duas
+(`20261011000000`, `20261012000000`) são indiferentes à ordem. Quando aplicadas:
+
+- A **reconciliação passa a alcançar o pedido vivo**: PIX pago cujo aviso do
+  Mercado Pago se perdeu deixa de ser cancelado aos 30 minutos com o dinheiro
+  parado e o produto revendido.
+- O **carrinho passa a guardar a variação escolhida**, não o nome do grupo.
+- A **vitrine passa a saber que o produto mudou**: hoje ela pode mostrar preço,
+  estoque e foto de ontem mesmo com a pessoa online, e oferecer variação que a
+  lojista já apagou.
+
+### Como isto foi verificado
+
+Cada conserto tem teste escrito **antes** dele e visto falhando — 41 arquivos de
+prova novos. A exceção está declarada: os cinco consertos do painel da primeira
+rodada ficaram sem cobertura, medido revertendo os cinco de uma vez e vendo
+1.061 testes continuarem passando.
+
+Onde a correção era "não expulsa mais", há controle negativo provando que quem
+não é admin **continua barrado** — senão a asserção passaria com um portão que
+simplesmente deixou de proteger.
+
 ## [1.8.1] — 2026-08-24
 
 **Texto verde que ninguém conseguia ler volta a ser legível, em 14 pontos.**
