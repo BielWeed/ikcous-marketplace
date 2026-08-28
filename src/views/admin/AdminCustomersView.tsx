@@ -234,15 +234,41 @@ export const AdminCustomersView = memo(function AdminCustomersView({
       {
         label: "Ticket Médio",
         // Até 21/08/2026 este card CALCULAVA `global_ltv / global_orders`
-        // a partir de `get_admin_customers_paged` — que filtra pedidos só
-        // por status (`NOT IN ('cancelled','returned')`), sem olhar
-        // cobrança. O Dashboard, via `get_admin_analytics_v2`, filtra
-        // TAMBÉM por `payment_status`. As duas contas só batiam quando não
-        // existia nenhum pedido aguardando pagamento no banco — no primeiro
-        // PIX pendente, os dois cards do mesmo painel, com o mesmo rótulo
-        // "Ticket Médio", voltavam a divergir (achado 4 da auditoria de
-        // 20/08/2026; a troca de divisor do commit 402c669 corrigiu só
-        // metade do defeito).
+        // a partir de `get_admin_customers_paged` — que, NAQUELA ÉPOCA,
+        // filtrava pedidos só por status (`NOT IN ('cancelled','returned')`),
+        // sem olhar cobrança. O Dashboard, via `get_admin_analytics_v2`,
+        // filtra TAMBÉM por `payment_status`. As duas contas só batiam
+        // quando não existia nenhum pedido aguardando pagamento no banco —
+        // no primeiro PIX pendente, os dois cards do mesmo painel, com o
+        // mesmo rótulo "Ticket Médio", voltavam a divergir (achado 4 da
+        // auditoria de 20/08/2026; a troca de divisor do commit 402c669
+        // corrigiu só metade do defeito).
+        //
+        // ⚠️ Esse "sem olhar cobrança" já não é a foto de hoje, e a regra
+        // mudou DUAS vezes. Conferido na fonte, não de memória:
+        //
+        //   `20260823000000` (linha 99) passou a filtrar
+        //   `get_admin_customers_paged` também por `payment_status`, mas com
+        //   `payment_status IS NULL OR payment_status IN ('pago',
+        //   'pago_apos_expirar')` — ou seja, **`NULL` CONTA**, e a linha 18
+        //   daquela migration diz isso por extenso: "payment_status IS NULL
+        //   CONTA, de propósito". Ela tirou da soma só o `aguardando`, que
+        //   era o PIX gerado e não pago do achado 17.
+        //
+        //   `20261021000000` (linhas 351 e 385, Task 2 de
+        //   docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md) é a
+        //   que **tira o `NULL`**: vira `payment_status IN ('pago',
+        //   'pago_apos_expirar', 'recebido_na_entrega')`, sem `IS NULL`.
+        //
+        // 🔴 A segunda é a que move dinheiro, e por muito: `NULL` são 53 dos
+        // 84 pedidos deste banco, R$ 2.977,09 (medido em 27/08/2026). Quando
+        // esta tela cair depois de aplicar a `20261021000000`, a causa é o
+        // `NULL` ter saído — NÃO o `recebido_na_entrega` ter entrado, que na
+        // mesma medição tem 0 pedidos. Procurar a queda no valor novo é
+        // procurar no lugar errado do número inteiro.
+        //
+        // O parágrafo acima descreve só o histórico do achado 4; não leia
+        // como o comportamento atual da função.
         //
         // A correção: este card para de ter a própria conta. Passa a LER
         // `executive.avgTicket`, a mesma fonte que o Dashboard e a tela de

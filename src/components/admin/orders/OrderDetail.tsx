@@ -38,6 +38,7 @@ import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { OrderReceipt } from "./OrderReceipt";
 import { PaymentStatusBadge, statusConfig } from "./OrderStatusBadge";
+import { podeRegistrarPagamento } from "./podeRegistrarPagamento";
 
 const statusFlow: OrderStatus[] = [
   "pending",
@@ -67,6 +68,15 @@ const statusFlow: OrderStatus[] = [
 // Achado da 2ª revisão da ficha, que derrubou o próprio achado para hoje e
 // registrou o gatilho. O tipo `PaymentStatus[]` não obriga ninguém a
 // decidir sobre valor novo — se a união crescer, esta linha não reclama.
+//
+// VERIFICADO (Task 3c do plano
+// docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md): a revisão
+// avaliou `recebido_na_entrega` como oitavo candidato a este array e
+// refutou por polaridade — esta lista é de "NÃO pagou"
+// (`aguardando`/`recusado`/`estornado`), e `recebido_na_entrega` é
+// exatamente o dinheiro entrando pela mão da loja. Ficar de fora é o
+// comportamento certo: o botão "Avançar" não precisa pedir confirmação
+// quando o pagamento já foi confirmado. Não reabrir isto sem fato novo.
 const paymentStatusQuePedeConfirmacao: PaymentStatus[] = [
   "aguardando",
   "recusado",
@@ -89,6 +99,23 @@ interface OrderDetailProps {
     status: OrderStatus,
   ) => Promise<void> | void;
   isOffline?: boolean;
+  /**
+   * Task 4b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
+   * — a função CRUA do hook (`useOrders.registrarPagamentoRecebido`), que
+   * LANÇA em caso de falha. Não é o wrapper que `AdminOrdersView` usa no
+   * cartão da lista (`handleRegistrarPagamento`, que engole o erro pra não
+   * duplicar toast): a ficha precisa SABER se a gravação falhou antes de
+   * decidir se avança o status (ver `confirmarRecebimentoEAvancar` abaixo),
+   * e um wrapper que sempre resolve não deixaria ela saber.
+   *
+   * Opcional só para não quebrar os testes que montam `<OrderDetail>`
+   * direto sem essa prop (ex.: painel-avisa-pedido-pago-e-cancelado.test.tsx).
+   * Em produção, `AdminOrdersView` sempre passa.
+   */
+  onRegistrarPagamento?: (
+    orderId: string,
+    recebido: boolean,
+  ) => Promise<unknown>;
 }
 
 const globalSkuCache: Record<string, string> = {};
@@ -494,9 +521,18 @@ function OrderItemsCard({
 
 interface OrderFinanceCardProps {
   order: Order;
+  /** Task 4b — `undefined` só nos testes que montam `<OrderDetail>` direto
+   * sem a prop (ver `OrderDetailProps.onRegistrarPagamento`); nesse caso o
+   * bloco de recebimento não renderiza (ver guarda no JSX abaixo). */
+  onRegistrarPagamento?: (orderId: string, recebido: boolean) => void;
+  registrandoPagamento?: boolean;
 }
 
-function OrderFinanceCard({ order }: Readonly<OrderFinanceCardProps>) {
+function OrderFinanceCard({
+  order,
+  onRegistrarPagamento,
+  registrandoPagamento,
+}: Readonly<OrderFinanceCardProps>) {
   const getPaymentMethodLabel = (method: PaymentMethod) => {
     if (method === "pix") return "Rede PIX";
     if (method === "card") return "Rede Crédito";
@@ -590,6 +626,46 @@ function OrderFinanceCard({ order }: Readonly<OrderFinanceCardProps>) {
             </div>
           </div>
         </div>
+
+        {/* Task 4b do plano recebimento-na-entrega — o botão de pagamento
+            recebido na mão fica disponível na FICHA o tempo todo, mesma
+            condição (`podeRegistrarPagamento`) e mesmo comportamento do
+            cartão da lista (Task 4). `onRegistrarPagamento` falta só nos
+            testes que montam `<OrderDetail>` direto sem a prop. */}
+        {onRegistrarPagamento && podeRegistrarPagamento(order) && (
+          <div className="flex items-center justify-between gap-2 border-t border-white/10 pt-4">
+            {order.pagamentoRecebidoEm ? (
+              <>
+                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                  Recebido em{" "}
+                  {new Date(order.pagamentoRecebidoEm).toLocaleDateString(
+                    "pt-BR",
+                    { day: "2-digit", month: "short" },
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onRegistrarPagamento(order.id, false)}
+                  disabled={registrandoPagamento}
+                  className="shrink-0 rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:bg-zinc-700 hover:text-white disabled:opacity-50"
+                >
+                  Desfazer
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onRegistrarPagamento(order.id, true)}
+                disabled={registrandoPagamento}
+                className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
+              >
+                {registrandoPagamento
+                  ? "Registrando..."
+                  : "Marcar como recebido"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="absolute right-0 top-0 size-32 bg-admin-gold opacity-5 blur-[100px]" />
@@ -864,6 +940,7 @@ export const OrderDetail = memo(function OrderDetail({
   order,
   onStatusChange,
   isOffline = false,
+  onRegistrarPagamento,
 }: Readonly<OrderDetailProps>) {
   const [localTrackingCode, setLocalTrackingCode] = useState(
     order.trackingCode || "",
@@ -884,12 +961,15 @@ export const OrderDetail = memo(function OrderDetail({
   const [copiedTracking, setCopiedTracking] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
-  // Avanço represado enquanto espera a confirmação de "pedido não pago"
-  // (ver `paymentStatusQuePedeConfirmacao` acima). `null` = nenhuma
-  // confirmação pendente / diálogo fechado.
+  // Avanço represado enquanto espera confirmação — de "pedido não pago" (ver
+  // `paymentStatusQuePedeConfirmacao` acima) OU da pergunta de recebimento
+  // na entrega (Task 4b). `null` = nenhuma confirmação pendente / diálogo
+  // fechado. `perguntaRecebimento` decide qual dos dois textos o mesmo
+  // AlertDialog mostra — ver JSX abaixo.
   const [pendingAdvance, setPendingAdvance] = useState<{
     orderId: string;
     status: OrderStatus;
+    perguntaRecebimento: boolean;
   } | null>(null);
 
   const handleStatusChange = async (
@@ -918,17 +998,90 @@ export const OrderDetail = memo(function OrderDetail({
       order.paymentStatus &&
       paymentStatusQuePedeConfirmacao.includes(order.paymentStatus)
     ) {
-      setPendingAdvance({ orderId, status: nextStatus });
+      setPendingAdvance({
+        orderId,
+        status: nextStatus,
+        perguntaRecebimento: false,
+      });
       return;
     }
+
+    // Task 4b — o instante em que o dinheiro troca de mão: pedido de
+    // pagamento na entrega (não "online"), ainda sem recebimento
+    // registrado, avançando justo para "delivered". `podeRegistrarPagamento`
+    // é a MESMA condição que decide o botão do cartão e da ficha — ver
+    // `podeRegistrarPagamento.ts`. Sem `onRegistrarPagamento` (só acontece
+    // nos testes que montam `<OrderDetail>` direto, ver `OrderDetailProps`)
+    // não há como gravar nada, então não faz sentido abrir a pergunta.
+    if (
+      onRegistrarPagamento &&
+      nextStatus === "delivered" &&
+      !order.pagamentoRecebidoEm &&
+      podeRegistrarPagamento(order)
+    ) {
+      setPendingAdvance({
+        orderId,
+        status: nextStatus,
+        perguntaRecebimento: true,
+      });
+      return;
+    }
+
     handleStatusChange(orderId, nextStatus);
   };
 
+  // Usada pelo caso "pagamento não confirmado" (perguntaRecebimento: false)
+  // e por "Ainda não" do caso "pergunta de recebimento" (perguntaRecebimento:
+  // true) — os dois só avançam o status, sem gravar nada.
   const confirmPendingAdvance = () => {
     if (!pendingAdvance) return;
     const { orderId, status } = pendingAdvance;
     setPendingAdvance(null);
     handleStatusChange(orderId, status);
+  };
+
+  // 🔴 Task 4b — a ordem não se negocia: grava o dinheiro PRIMEIRO, avança o
+  // status DEPOIS, e SÓ SE a gravação não tiver lançado. `onRegistrarPagamento`
+  // já mostra o próprio toast de erro (ver `useOrders.registrarPagamentoRecebido`)
+  // — o catch aqui só ABORTA, sem chamar `handleStatusChange`: o pedido
+  // continua "em aberto" e o botão de registrar continua na tela, em vez de
+  // ficar "entregue" e sem registro nenhum — o dano silencioso que esta
+  // tarefa existe pra evitar.
+  const confirmarRecebimentoEAvancar = async () => {
+    if (!pendingAdvance || !onRegistrarPagamento) return;
+    const { orderId, status } = pendingAdvance;
+    setPendingAdvance(null);
+    try {
+      await onRegistrarPagamento(orderId, true);
+    } catch (err) {
+      console.error(
+        "[OrderDetail] Erro ao registrar pagamento recebido antes de avançar:",
+        err,
+      );
+      return;
+    }
+    handleStatusChange(orderId, status);
+  };
+
+  // Task 4b — botão "Marcar como recebido"/"Desfazer" DENTRO da ficha
+  // (Consolidado Financeiro), independente da pergunta acima: em qualquer
+  // momento, não só no instante de avançar para "delivered". Mesmo molde de
+  // `AdminOrdersView.handleRegistrarPagamento` — engole o erro (o hook já
+  // mostra o próprio toast) e só desabilita o botão durante a chamada.
+  const [registrandoPagamento, setRegistrandoPagamento] = useState(false);
+  const handleRegistrarPagamento = async (
+    orderId: string,
+    recebido: boolean,
+  ) => {
+    if (!onRegistrarPagamento) return;
+    setRegistrandoPagamento(true);
+    try {
+      await onRegistrarPagamento(orderId, recebido);
+    } catch (err) {
+      console.error("[OrderDetail] Erro ao registrar pagamento recebido:", err);
+    } finally {
+      setRegistrandoPagamento(false);
+    }
   };
 
   useEffect(() => {
@@ -1173,7 +1326,13 @@ export const OrderDetail = memo(function OrderDetail({
           </div>
 
           <div className="space-y-6">
-            <OrderFinanceCard order={order} />
+            <OrderFinanceCard
+              order={order}
+              onRegistrarPagamento={
+                onRegistrarPagamento ? handleRegistrarPagamento : undefined
+              }
+              registrandoPagamento={registrandoPagamento}
+            />
             <OrderLogisticsCard
               localTrackingCode={localTrackingCode}
               isEditingTracking={isEditingTracking}
@@ -1207,27 +1366,65 @@ export const OrderDetail = memo(function OrderDetail({
         onOpenChange={(open) => !open && setPendingAdvance(null)}
       >
         <AlertDialogContent className="max-w-md rounded-3xl border border-white/10 bg-zinc-950">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
-              Este pedido não está com o pagamento confirmado
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-xs text-zinc-400">
-              O dinheiro deste pedido não entrou. Se você avançar, a mercadoria
-              caminha para sair mesmo assim — e, depois de finalizado, não dá
-              mais para cancelar e devolver ao estoque.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmPendingAdvance}
-              className="rounded-xl border-0 bg-admin-gold px-4 py-2 text-xs font-bold text-black hover:bg-admin-gold/90"
-            >
-              Avançar mesmo assim
-            </AlertDialogAction>
-          </AlertDialogFooter>
+          {pendingAdvance?.perguntaRecebimento ? (
+            <>
+              {/* Task 4b — pedido de pagamento na entrega, avançando para
+                  "delivered": o instante em que o dinheiro troca de mão.
+                  "Recebi" grava o pagamento e SÓ DEPOIS avança (ver
+                  `confirmarRecebimentoEAvancar`); "Ainda não" só avança. */}
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
+                  Recebeu os R${" "}
+                  {(order.total || 0).toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                  })}{" "}
+                  deste pedido?
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-xs text-zinc-400">
+                  Pedido de pagamento na entrega. Se você já recebeu o dinheiro
+                  na mão, confirme abaixo — o registro fica salvo no pedido.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter className="mt-4 gap-2">
+                <AlertDialogAction
+                  onClick={confirmPendingAdvance}
+                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white"
+                >
+                  Ainda não
+                </AlertDialogAction>
+                <AlertDialogAction
+                  onClick={confirmarRecebimentoEAvancar}
+                  className="rounded-xl border-0 bg-emerald-500 px-4 py-2 text-xs font-bold text-black hover:bg-emerald-500/90"
+                >
+                  Recebi
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </>
+          ) : (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
+                  Este pedido não está com o pagamento confirmado
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-xs text-zinc-400">
+                  O dinheiro deste pedido não entrou. Se você avançar, a
+                  mercadoria caminha para sair mesmo assim — e, depois de
+                  finalizado, não dá mais para cancelar e devolver ao estoque.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter className="mt-4 gap-2">
+                <AlertDialogCancel className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+                  Cancelar
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={confirmPendingAdvance}
+                  className="rounded-xl border-0 bg-admin-gold px-4 py-2 text-xs font-bold text-black hover:bg-admin-gold/90"
+                >
+                  Avançar mesmo assim
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </>
+          )}
         </AlertDialogContent>
       </AlertDialog>
     </div>

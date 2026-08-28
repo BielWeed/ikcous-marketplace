@@ -149,6 +149,24 @@ describe("OrderDetailsView — o aviso de cancelamento fala do dinheiro quando j
     expect(texto).toContain("falar com a loja");
   });
 
+  // Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
+  // (ponto 7, `pagamentoJaEntrou`): antes desta correção, um pedido recebido
+  // na entrega lia o texto genérico de cancelamento, sem avisar que o
+  // dinheiro já está com a loja.
+  it("paymentStatus 'recebido_na_entrega': o confirm avisa que o dinheiro não volta automaticamente e cita a loja", async () => {
+    confirmMock = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirmMock);
+    pedidoAtual = pedidoComPagamento("recebido_na_entrega");
+
+    await renderizar();
+    await clicarCancelar();
+
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    const texto = confirmMock.mock.calls[0][0] as string;
+    expect(texto).toContain("NÃO volta automaticamente");
+    expect(texto).toContain("falar com a loja");
+  });
+
   it("CONTROLE — paymentStatus 'aguardando': o confirm recebe o texto original, sem falar em dinheiro", async () => {
     confirmMock = vi.fn().mockReturnValue(true);
     vi.stubGlobal("confirm", confirmMock);

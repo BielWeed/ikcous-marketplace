@@ -106,14 +106,17 @@ export interface DashboardStats {
   /** Pedidos com `status = 'delivered'`, desde sempre. Opcional: campo novo
    * na RPC `get_admin_analytics_v2`, ainda não aplicado em toda base. */
   deliveredTotal?: number;
-  /** Pedidos com `payment_status IN ('pago','pago_apos_expirar') AND status =
-   * 'cancelled'` — dinheiro recebido em pedido cancelado. São DUAS portas, e
-   * a segunda é a mais provável: o cliente que paga o PIX fora do prazo
-   * (`pago_apos_expirar`), e o pedido já pago que o admin cancela pelo painel
-   * (`pago`), que abre com um clique. Quem ler só a primeira e escrever um
-   * rótulo tipo "pagos depois de expirar" reproduz o defeito que este campo
-   * existe para consertar — foi o que quase aconteceu aqui. Mesma ressalva de
-   * `deliveredTotal` acima. */
+  /** Pedidos com `payment_status IN ('pago','pago_apos_expirar',
+   * 'recebido_na_entrega') AND status = 'cancelled'` — dinheiro recebido em
+   * pedido cancelado. São TRÊS portas desde a migration `20261021000000`
+   * (Task 2 de docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md):
+   * o cliente que paga o PIX fora do prazo (`pago_apos_expirar`), o pedido
+   * já pago que o admin cancela pelo painel (`pago`), que abre com um
+   * clique, e agora a loja confirmando que recebeu na mão
+   * (`recebido_na_entrega`, sem gateway nenhum). Quem ler só uma delas e
+   * escrever um rótulo tipo "pagos depois de expirar" reproduz o defeito
+   * que este campo existe para consertar — foi o que quase aconteceu aqui.
+   * Mesma ressalva de `deliveredTotal` acima. */
   paidOnCancelled?: number;
 }
 

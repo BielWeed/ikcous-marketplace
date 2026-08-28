@@ -108,6 +108,10 @@ function pendingDescription(
   switch (key) {
     case "pago":
     case "pago_apos_expirar":
+    case "recebido_na_entrega":
+      // Task 3b de docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md:
+      // a loja confirmou o recebimento na entrega — mesmo tratamento de
+      // `pago`.
       return "Pagamento confirmado. A loja vai iniciar a separação.";
     case "recusado":
       return "O pagamento não foi aprovado. Tente novamente ou fale com a loja.";
@@ -147,7 +151,14 @@ function cancelledDescription(
   paymentStatus: PaymentStatus | null | undefined,
 ): string {
   const key = paymentStatusKey(paymentStatus);
-  if (key === "pago" || key === "pago_apos_expirar") {
+  // `recebido_na_entrega` entra na mesma frase de `pago`/`pago_apos_expirar`
+  // (Task 3b de docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md):
+  // dinheiro que a loja já confirmou ter recebido, e o pedido morreu depois.
+  if (
+    key === "pago" ||
+    key === "pago_apos_expirar" ||
+    key === "recebido_na_entrega"
+  ) {
     return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
   }
   if (key === "aguardando") {
@@ -186,14 +197,15 @@ export function OrderDetailsView({
     // update_order_status_atomic no banco).
     //
     // O aviso, por sua vez, ainda depende do pagamento — e este app não tem
-    // estorno automático em lugar nenhum. Quem já pagou (`pago` ou
-    // `pago_apos_expirar`, via `paymentStatusKey` — a ÚNICA fonte que decide
-    // "null vira sem_cobranca") precisa saber, ANTES de confirmar, que o
-    // dinheiro fica com a loja até alguém devolver à mão — e se o pedido já
-    // foi enviado, até o PRODUTO voltar à loja. Quem ainda não pagou
-    // (aguardando/recusado/expirado/estornado/nulo) continua vendo o texto
-    // original: cancelar ali é inofensivo, e falar em dinheiro assustaria à
-    // toa.
+    // estorno automático em lugar nenhum. Quem já pagou (`pago`,
+    // `pago_apos_expirar` ou `recebido_na_entrega` — Task 3b de
+    // docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md — via
+    // `paymentStatusKey` — a ÚNICA fonte que decide "null vira sem_cobranca")
+    // precisa saber, ANTES de confirmar, que o dinheiro fica com a loja até
+    // alguém devolver à mão — e se o pedido já foi enviado, até o PRODUTO
+    // voltar à loja. Quem ainda não pagou (aguardando/recusado/expirado/
+    // estornado/nulo) continua vendo o texto original: cancelar ali é
+    // inofensivo, e falar em dinheiro assustaria à toa.
     // `===` e nao `.includes()`: o array seria inferido como `string[]` e
     // aceitaria qualquer coisa, entao um rename futuro de `PaymentStatus`
     // quebraria os dois `switch` deste arquivo e passaria calado AQUI —
@@ -201,7 +213,9 @@ export function OrderDetailsView({
     // a ler o texto generico. Com `===` o TypeScript reprova (TS2678).
     const chavePagamento = paymentStatusKey(order.paymentStatus);
     const pagamentoJaEntrou =
-      chavePagamento === "pago" || chavePagamento === "pago_apos_expirar";
+      chavePagamento === "pago" ||
+      chavePagamento === "pago_apos_expirar" ||
+      chavePagamento === "recebido_na_entrega";
     const jaFoiEnviado = order.status === "shipping";
     // Achado da auditoria de 26/08/2026 (PEDIDO-03): este ramo prometia "o
     // dinheiro volta depois que ele chegar de volta" — como se a devolução

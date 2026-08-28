@@ -429,17 +429,22 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     dinheiro é uma SEGUNDA passada, só para a soma do LTV, em cima do mesmo
     `pedidosQueContam` — a contagem de pedidos não muda.
 
-    A regra de "dinheiro reconhecido" é a mesma das migrations
-    `20260822000100` e `20260823000000`: `paymentStatus` nulo CONTA (pedido
-    pago na entrega, ou histórico sem cobrança online, mesma leitura do
-    mapper — ver mappers.ts:244-246); só ficam de fora 'aguardando',
-    'recusado', 'expirado' e 'estornado'.
+    A regra de "dinheiro reconhecido" MUDOU com a migration `20261021000000`
+    (Task 2 de docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md):
+    `payment_status` nulo DEIXOU de contar. Até ali, nulo era o ÚNICO jeito
+    de representar "pago na entrega", e por isso contava; agora a loja
+    registra esse recebimento explicitamente (RPC
+    `registrar_pagamento_recebido`, que grava `payment_status =
+    'recebido_na_entrega'`), e nulo volta a significar só "sem pagamento
+    confirmado". Contam: 'pago', 'pago_apos_expirar' e
+    'recebido_na_entrega'. Ficam de fora: nulo, 'aguardando', 'recusado',
+    'expirado' e 'estornado'.
   */
   const pedidosPagos = pedidosQueContam.filter(
     (o) =>
-      o.paymentStatus == null ||
       o.paymentStatus === "pago" ||
-      o.paymentStatus === "pago_apos_expirar",
+      o.paymentStatus === "pago_apos_expirar" ||
+      o.paymentStatus === "recebido_na_entrega",
   );
 
   const totalSpent = pedidosPagos.reduce((sum, o) => sum + o.total, 0);
