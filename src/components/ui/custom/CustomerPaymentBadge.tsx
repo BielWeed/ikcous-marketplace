@@ -38,6 +38,10 @@ const customerPaymentConfig: Record<
   recusado: { label: "Pagamento recusado", tone: "recusado" },
   expirado: { label: "Pagamento expirado", tone: "expirado" },
   estornado: { label: "Pagamento estornado", tone: "recusado" },
+  // A loja confirmou que recebeu o pagamento na entrega (dinheiro, PIX ou
+  // cartão combinados na hora da entrega) — do ponto de vista do comprador
+  // é o mesmo "confirmado" de `pago`, só que fora do gateway.
+  recebido_na_entrega: { label: "Pagamento confirmado", tone: "confirmado" },
 };
 
 /**
@@ -141,6 +145,12 @@ const customerPaymentConfigByKey = new Map(
 // e repete o vocabulário que `cancelledDescription` já usa mais abaixo
 // ("Fale com a loja para resolver."), então as duas telas dizem a mesma
 // coisa.
+//
+// SE APLICA a `recebido_na_entrega` (Task 3b de
+// docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md), diferente
+// de `pago_apos_expirar` acima: não existe rótulo próprio para "recebido na
+// entrega, cancelado depois" em lugar nenhum do app — sem essa entrada aqui,
+// o selo mostraria "Pagamento confirmado" verde para um pedido morto.
 const PAGO_MAS_CANCELADO: CustomerPaymentEntry = {
   label: "Pago — fale com a loja",
   tone: "atencao",
@@ -174,7 +184,11 @@ export function customerPaymentStatusEntry(
 ): CustomerPaymentEntry | null {
   const key = paymentStatusKey(paymentStatus);
   if (key === "sem_cobranca") return null;
-  if (key === "pago" && orderStatus === "cancelled") return PAGO_MAS_CANCELADO;
+  if (
+    (key === "pago" || key === "recebido_na_entrega") &&
+    orderStatus === "cancelled"
+  )
+    return PAGO_MAS_CANCELADO;
   if (key === "aguardando" && orderStatus === "cancelled")
     return AGUARDANDO_MAS_CANCELADO;
   // `Map.get` não é indexação dinâmica para o eslint, e o Record acima é

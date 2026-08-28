@@ -105,14 +105,25 @@ const ACOES_PENDENTES_SUBTITULO = STATUS_PEDIDOS_COM_ACAO_PENDENTE.map(
  */
 type PaymentStatusFilter = PaymentStatusKey | "all";
 
-/** Valores do filtro de pagamento, na ordem em que aparecem no dropdown. */
-const PAYMENT_STATUS_FILTER_VALUES: PaymentStatusKey[] = [
+/**
+ * Valores do filtro de pagamento, na ordem em que aparecem no dropdown.
+ * Exportada para o teste não montar a tela inteira (mesmo motivo de
+ * `filterOrdersByPaymentStatus`, abaixo).
+ *
+ * `recebido_na_entrega` acrescentado na Task 3b do plano
+ * docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md — lacuna de
+ * funcionalidade (não é um dos sete pontos de dinheiro daquele plano, mas
+ * foi medida junto): sem esta linha o lojista não tinha como filtrar a
+ * lista por "recebido na entrega".
+ */
+export const PAYMENT_STATUS_FILTER_VALUES: PaymentStatusKey[] = [
   "aguardando",
   "pago",
   "recusado",
   "expirado",
   "estornado",
   "pago_apos_expirar",
+  "recebido_na_entrega",
   "sem_cobranca",
 ];
 
@@ -180,9 +191,16 @@ export type BaldeDeEstorno = "devolver_agora" | "esperando_o_produto" | null;
  */
 export function baldeDeEstorno(pedido: Order): BaldeDeEstorno {
   if (pedido.status !== "cancelled") return null;
+  // Terceira porta do balde, acrescentada na Task 3b do plano
+  // docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md: dinheiro
+  // recebido na entrega e depois cancelado é dinheiro que entrou, igual a
+  // `pago`/`pago_apos_expirar` — sem esta porta, o aviso âmbar do servidor
+  // ("N pedidos receberam pagamento e estão cancelados") contava o pedido e
+  // esta lista não mostrava nenhum cartão para ele.
   const entrou =
     pedido.paymentStatus === "pago" ||
-    pedido.paymentStatus === "pago_apos_expirar";
+    pedido.paymentStatus === "pago_apos_expirar" ||
+    pedido.paymentStatus === "recebido_na_entrega";
   if (!entrou) return null;
   if (pedido.cancelledAfterShipping && !pedido.returnedToSellerAt) {
     return "esperando_o_produto";
@@ -369,13 +387,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   }, [analyticsStats]);
 
   // Pedidos com dinheiro recebido em pedido cancelado. A migration que
-  // alimenta este contador conta as DUAS portas:
-  //   payment_status IN ('pago', 'pago_apos_expirar') AND status = 'cancelled'
-  // O texto precisa valer para as duas — "pago depois de cancelado" só é
-  // verdade na segunda (achado 1 da revisão). O único sinal disso antes
-  // era a etiqueta no cartão da lista, que rola para fora de vista
-  // conforme chegam pedidos novos — daqui vem o aviso fixo logo abaixo dos
-  // cartões de métrica.
+  // alimenta este contador conta TRÊS portas desde a `20261021000000`
+  // (Task 2 do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md):
+  //   payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')
+  //   AND status = 'cancelled'
+  // O texto precisa valer para as três — "pago depois de cancelado" só é
+  // verdade na segunda, e "recebido na entrega" é a loja confirmando na
+  // mão, sem gateway nenhum (achado 1 da revisão original, achado 2 da
+  // Task 3c). O único sinal disso antes era a etiqueta no cartão da lista,
+  // que rola para fora de vista conforme chegam pedidos novos — daqui vem
+  // o aviso fixo logo abaixo dos cartões de métrica.
   const paidOnCancelledCount = analyticsStats?.paidOnCancelled ?? 0;
   const avisoPagoAposCancelado =
     paidOnCancelledCount === 1
@@ -1063,10 +1084,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 variant="outline"
                 onClick={() => {
                   // O botão leva aos CANCELADOS, não a um payment_status
-                  // específico: a contagem larga cobre as duas portas do
-                  // contrato ampliado ('pago' e 'pago_apos_expirar' com
+                  // específico: a contagem larga cobre as TRÊS portas do
+                  // contrato ampliado ('pago', 'pago_apos_expirar' e, desde
+                  // a `20261021000000`, 'recebido_na_entrega' — com
                   // status='cancelled'), e filtrar por um valor só deixava
-                  // metade dos pedidos "presos" fora da lista — a etiqueta
+                  // parte dos pedidos "presos" fora da lista — a etiqueta
                   // de cada cartão já marca qual porta é cada um (achado 1
                   // da revisão). Busca e período também são zerados: sem
                   // isso um filtro de uma sessão anterior sobrevivia e a

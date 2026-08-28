@@ -255,6 +255,10 @@ export function mapOrderFromDB(
     // regeneradas em database.types.ts, por isso o cast — igual ao total_amount acima.
     cancelledAfterShipping: (row as any).cancelled_after_shipping === true,
     returnedToSellerAt: (row as any).returned_to_seller_at ?? null,
+    // Colunas da migration 20261020000000: ainda não regeneradas em
+    // database.types.ts, por isso o cast — igual às duas linhas acima.
+    pagamentoRecebidoEm: (row as any).pagamento_recebido_em ?? null,
+    pagamentoRecebidoPor: (row as any).pagamento_recebido_por ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

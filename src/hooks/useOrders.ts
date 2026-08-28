@@ -1827,6 +1827,83 @@ export function useOrders(
     }
   }, []);
 
+  /**
+   * Registra que a loja recebeu (ou desfez o recebimento de) um pagamento na
+   * entrega — chama a RPC `registrar_pagamento_recebido` (migration
+   * `20261020000000`, Task 1 do plano
+   * docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md). A verdade
+   * gravada é a que o BANCO devolveu, não a otimista: a RPC é idempotente e
+   * um segundo clique devolve `ja_estava: true` sem ter mexido em nada, então
+   * ler `data?.payment_status`/`data?.pagamento_recebido_em` da resposta
+   * cobre os dois casos com o mesmo código.
+   *
+   * `clearAnalyticsCache()` no fim é o que faz o número de "Receita Hoje"
+   * mudar depois deste clique — sem ele, `useAnalytics` continuaria
+   * devolvendo o resultado guardado em cache de módulo.
+   */
+  const registrarPagamentoRecebido = useCallback(
+    async (orderId: string, recebido: boolean) => {
+      try {
+        const { data, error } = await (supabase.rpc as any)(
+          "registrar_pagamento_recebido",
+          { p_order_id: orderId, p_recebido: recebido },
+        );
+
+        if (error) throw error;
+
+        const paymentStatus = data?.payment_status ?? null;
+        const pagamentoRecebidoEm = data?.pagamento_recebido_em ?? null;
+        // Achado da Task 3c (revisões da Task 3/3b): faltava aqui — o
+        // mapper já copia `pagamento_recebido_por` (mappers.ts:261), mas os
+        // três `.map` abaixo só propagavam `paymentStatus` e
+        // `pagamentoRecebidoEm`. Sem ele, a sequência marcar → desfazer →
+        // marcar deixava `pagamentoRecebidoPor` preso no valor da montagem
+        // inicial até a próxima recarga.
+        const pagamentoRecebidoPor = data?.pagamento_recebido_por ?? null;
+
+        // Os três campos num objeto só, e não repetidos em cada `.map`: era
+        // justamente a repetição que deixou `pagamentoRecebidoPor` de fora
+        // dos três lugares. Com uma fonte só, um campo novo no futuro entra
+        // nos três de uma vez, ou não entra em nenhum -- nunca em dois.
+        const camposDoRecebimento = {
+          paymentStatus,
+          pagamentoRecebidoEm,
+          pagamentoRecebidoPor,
+        };
+
+        cachedAdminOrders = (cachedAdminOrders || []).map((o) =>
+          o.id === orderId ? { ...o, ...camposDoRecebimento } : o,
+        );
+
+        setOrders((prev) =>
+          prev.map((o) =>
+            o.id === orderId ? { ...o, ...camposDoRecebimento } : o,
+          ),
+        );
+
+        // Mesma atualização no painel de mercadoria/estorno
+        // (`pedidosCancelados`) que `confirmarRetornoDoProduto` já faz: é
+        // ela — e não `orders` — quem alimenta os dois baldes de
+        // AdminOrdersView.tsx desde o BLOQUEIA 1 da revisão de 26/08/2026.
+        setPedidosCancelados((prev) =>
+          prev.map((o) =>
+            o.id === orderId ? { ...o, ...camposDoRecebimento } : o,
+          ),
+        );
+
+        clearAnalyticsCache();
+        return data;
+      } catch (err: any) {
+        console.error("Error registering payment received:", err);
+        toast.error("Não foi possível registrar o pagamento recebido.", {
+          description: err?.message,
+        });
+        throw err;
+      }
+    },
+    [],
+  );
+
   const fetchOrderHistory = useCallback(async (orderId: string) => {
     try {
       // Cast to any because table might be missing in generated types
@@ -2388,6 +2465,7 @@ export function useOrders(
     fetchOrders, // Legacy alias
     updateOrderStatus,
     confirmarRetornoDoProduto,
+    registrarPagamentoRecebido,
     // Painel de mercadoria/estorno (Task 5, BLOQUEIA 1 da revisão de
     // 26/08/2026) — ver o docstring de `fetchPedidosCancelados`, acima.
     pedidosCancelados,

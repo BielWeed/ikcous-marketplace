@@ -67,6 +67,15 @@ const statusFlow: OrderStatus[] = [
 // Achado da 2ª revisão da ficha, que derrubou o próprio achado para hoje e
 // registrou o gatilho. O tipo `PaymentStatus[]` não obriga ninguém a
 // decidir sobre valor novo — se a união crescer, esta linha não reclama.
+//
+// VERIFICADO (Task 3c do plano
+// docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md): a revisão
+// avaliou `recebido_na_entrega` como oitavo candidato a este array e
+// refutou por polaridade — esta lista é de "NÃO pagou"
+// (`aguardando`/`recusado`/`estornado`), e `recebido_na_entrega` é
+// exatamente o dinheiro entrando pela mão da loja. Ficar de fora é o
+// comportamento certo: o botão "Avançar" não precisa pedir confirmação
+// quando o pagamento já foi confirmado. Não reabrir isto sem fato novo.
 const paymentStatusQuePedeConfirmacao: PaymentStatus[] = [
   "aguardando",
   "recusado",

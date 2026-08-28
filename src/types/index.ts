@@ -138,7 +138,8 @@ export type PaymentStatus =
   | "recusado"
   | "expirado"
   | "estornado"
-  | "pago_apos_expirar";
+  | "pago_apos_expirar"
+  | "recebido_na_entrega";
 
 export interface OrderItem {
   productId: string;
@@ -176,6 +177,10 @@ export interface Order {
   cancelledAfterShipping: boolean;
   /** quando o lojista confirmou que o produto voltou. null = ainda não voltou. */
   returnedToSellerAt?: string | null;
+  /** Quando a loja confirmou que recebeu o pagamento na entrega. NULL = não confirmado. */
+  pagamentoRecebidoEm?: string | null;
+  /** Qual admin confirmou o recebimento. */
+  pagamentoRecebidoPor?: string | null;
 }
 
 export interface Review {

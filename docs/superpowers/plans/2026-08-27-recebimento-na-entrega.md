@@ -50,6 +50,65 @@ A regra geral do repositório é publicar a tela antes do banco, porque tela nov
 
 **Se os passos 2 e 3 forem invertidos**, existe uma janela em que a receita já caiu e o lojista não tem botão para registrar o que recebeu — o mesmo defeito que a migration do estorno abriu em 27/08/2026.
 
+### 🔴 Correção de 27/08/2026 — a tabela acima ficou incompleta quando a Task 3b nasceu
+
+A tabela foi escrita quando a mudança de front era só a Task 3, que é **inerte**: ela apenas
+acrescenta um valor que ainda não existe em lugar nenhum e copia dois campos. Podia subir a
+qualquer momento.
+
+**A Task 3b tornou o front NÃO-inerte.** Um dos seus sete pontos —
+`AdminUserDetailView.tsx`, o cálculo do LTV do cliente — **para de contar `payment_status IS
+NULL`**, que é a mesma mudança que a `20261021000000` faz no banco. Ela move um número de dinheiro
+**sem** a migration.
+
+Consequência, na janela entre o passo 2 e o passo 3:
+
+| tela | de onde vem o número | regra em vigor na janela |
+|---|---|---|
+| Lista de clientes → card **"LTV Total"** | servidor, `get_admin_customers_paged` (ainda a regra da `20260823000000`) | `NULL` **conta** |
+| Ficha do cliente → card **"LTV Total"** | cliente, `pedidosPagos.reduce` (já a regra nova) | `NULL` **não conta** |
+
+Mesmo painel, **mesmo rótulo literal**, dois números. O lojista clica no cliente e o valor muda.
+
+**Medido no banco em 27/08/2026 (somente leitura), sobre a população que a ficha usa
+(`status NOT IN ('cancelled','returned')`):**
+
+```
+pedidos nessa populacao            12   (9 deles com payment_status NULL)
+regra ANTIGA, com null (a lista)   R$ 473,40
+regra NOVA,   sem null (a ficha)   R$   3,00
+clientes distintos que veriam os dois numeros:  4
+
+contexto do banco inteiro:  84 pedidos
+   (null) 53 -> R$ 2.977,09   |   expirado 27 -> R$ 2.024,60
+   pago    3 -> R$     3,00   |   pago_apos_expirar 1 -> R$ 1,00
+CONTROLE POSITIVO: payment_status = 'recebido_na_entrega'  ->  0 pedidos (esperado)
+```
+
+⚠️ **Um laudo anterior citou "64 dos 83 pedidos" para dimensionar esta janela. O número é falso** —
+nem o numerador nem o denominador batem, e quem o escreveu declarou não ter consultado o banco. O
+correto é o bloco acima. Não reintroduzir o 64.
+
+**A decisão:** não mexer no código — ele está **certo depois do passo 3**, e o R$ 3,00 permanente
+é o mesmo número deixando de mentir, exatamente como a receita caindo de R$ 2.977,09 para R$ 4,00.
+O que estava errado era a tabela. A ordem passa a ser:
+
+| # | passo | por quê |
+|---|---|---|
+| 1 | aplicar `20261020000000` (aditiva) | só acrescenta coluna, tabela e função. Não nega nada e não muda número nenhum |
+| 2 | publicar o front em produção | o botão encontra a RPC existindo |
+| 3 | aplicar `20261021000000` (a regra) | **colado no passo 2, na mesma janela de manutenção** |
+
+**Os passos 2 e 3 deixaram de ser independentes.** Não são mais "publique quando der, aplique
+depois": a janela entre eles agora tem custo próprio, e ela se fecha sozinha assim que o passo 3
+roda. Quem executar os dois tem de executá-los seguidos.
+
+**Por que não inverter e aplicar as duas migrations antes do front:** aí a receita cai enquanto o
+lojista ainda não tem botão — a janela original, que esta tabela existe para evitar. As duas
+janelas são reais; a diferença é que a do LTV **confunde** e a da receita **impede agir**. Entre
+as duas, a que confunde é a menos cara, e ela encurta para perto de zero se os passos forem
+colados.
+
 ---
 
 ### Task 1: Migration aditiva — colunas, histórico e a RPC
@@ -1258,6 +1317,207 @@ npm run size
 ```
 
 Mensagem: `feat(orders): a tela enxerga o pagamento que a loja recebeu na mao`
+
+---
+
+### Task 3b: Os sete pontos do app que decidem "isto conta como dinheiro"
+
+🔴 **Esta tarefa é obrigatória ANTES da Task 4**, e o plano original não a tinha. Ela apareceu
+quando a revisão da Task 3 começou a dizer *"três lugares no cliente que contam como dinheiro não
+conhecem o valor novo"* — a revisão caiu por erro de conexão antes de nomeá-los, e a sessão
+principal fez o levantamento próprio. **São sete, não três.**
+
+**O que está errado, em uma frase:** a Task 2 mudou a regra de dinheiro **no banco**, mas o app
+tem a sua própria cópia dessa regra espalhada em sete pontos, e nenhum deles conhece
+`recebido_na_entrega`. O resultado não é só "falta o valor novo" — é **a tela contradizendo o
+banco e contradizendo a si mesma**.
+
+#### O caso que prova a gravidade
+
+A Task 2 acrescentou o valor novo ao contador `paid_on_cancelled`, que alimenta o aviso âmbar
+fixo *"N pedidos receberam pagamento e estão cancelados"* (`AdminOrdersView.tsx:1031`). Mas
+`baldeDeEstorno` — a função que decide qual **cartão** de pedido aparece na lista de estorno
+devido — continua cega. Então, para um pedido recebido na entrega e depois cancelado:
+
+> o aviso diz **"1 pedido"**, e a lista abaixo dele mostra **nenhum**.
+
+Antes da Task 2 os dois estavam errados juntos e concordavam. Agora um está certo e o outro não —
+e **essa inconsistência é pior que o defeito original**, porque quem olhar vai desconfiar do aviso
+certo em vez de procurar o cartão que falta.
+
+#### O levantamento (medido em 27/08/2026, com controle positivo)
+
+Varredura em `git ls-files src/*.ts src/*.tsx`, excluindo linha de comentário, procurando
+`'pago'`/`'pago_apos_expirar'` sem `recebido_na_entrega`: **20 linhas executáveis em 9 arquivos**.
+Controle positivo do filtro: ele acha as **3** linhas onde o valor novo já existe, então
+discrimina. Classificadas uma a uma:
+
+**Decidem dinheiro — todas as sete têm de conhecer o valor novo:**
+
+| # | onde | o que quebra hoje |
+|---|---|---|
+| 1 | `src/views/admin/AdminUserDetailView.tsx:439-443` | `pedidosPagos` → `totalSpent`, o **LTV do cliente**. Ver a ressalva do `null` abaixo — este ponto tem defeito **duplo**. |
+| 2 | `src/views/admin/AdminOrdersView.tsx:182-186` | `baldeDeEstorno` — o cartão de "devolver dinheiro" não aparece. É o caso descrito acima. |
+| 3 | `src/components/admin/orders/OrderStatusBadge.tsx:256` | o selo "pago mas cancelado" do painel não acende. |
+| 4 | `src/components/ui/custom/CustomerPaymentBadge.tsx:181` | idem, na tela do comprador. |
+| 5 | `src/views/customer/OrderDetailsView.tsx:109-110` | `pendingDescription` — o cliente não lê "Pagamento confirmado". |
+| 6 | `src/views/customer/OrderDetailsView.tsx:150` | `cancelledDescription` — quem pagou na entrega e teve o pedido cancelado lê o texto genérico, em vez de *"seu pagamento foi recebido, fale com a loja"*. |
+| 7 | `src/views/customer/OrderDetailsView.tsx:204` | `pagamentoJaEntrou` — mesma tela, mesma consequência. |
+
+**Lacuna de funcionalidade, não erro de dinheiro** (trate, mas não confunda com as sete):
+
+- `src/views/admin/AdminOrdersView.tsx:109-117` — `PAYMENT_STATUS_FILTER_VALUES` não tem a opção
+  nova, então o lojista não consegue filtrar por "recebido na entrega". Acrescente na ordem que
+  fizer sentido no dropdown.
+
+**Fora do caminho — NÃO tocar:**
+
+- `src/components/checkout/PagamentoOnline.tsx:218` — é o fluxo do gateway online (Mercado Pago),
+  e `recebido_na_entrega` nunca chega ali. Acrescentar o valor aqui seria alargar uma guarda de
+  segurança de pagamento online sem motivo. **Deixe como está.**
+- `src/types/index.ts:137,141` e `src/hooks/useOrders.ts:150` — são a definição do tipo, não
+  decisão de regra.
+
+#### 🔴 A ressalva do `null` — leia antes de mexer no ponto 1
+
+`AdminUserDetailView.tsx:439-443` hoje é:
+
+```ts
+const pedidosPagos = pedidosQueContam.filter(
+  (o) =>
+    o.paymentStatus == null ||
+    o.paymentStatus === "pago" ||
+    o.paymentStatus === "pago_apos_expirar",
+);
+```
+
+O comentário logo acima declara: *"A regra de 'dinheiro reconhecido' é a mesma das migrations
+`20260822000100` e `20260823000000`: `paymentStatus` nulo CONTA"*.
+
+**Esse comentário deixou de ser verdade quando a Task 2 foi escrita.** A migration nova tira
+exatamente o `IS NULL` da regra — é ela que faz a receita cair de R$ 2.977,09 para perto de
+R$ 4,00. Então este ponto tem **dois** defeitos, não um: falta o valor novo **e** sobra o `null`.
+
+A regra correta, idêntica à do banco, é a lista dos três e mais nada:
+
+```ts
+const pedidosPagos = pedidosQueContam.filter(
+  (o) =>
+    o.paymentStatus === "pago" ||
+    o.paymentStatus === "pago_apos_expirar" ||
+    o.paymentStatus === "recebido_na_entrega",
+);
+```
+
+**Consequência esperada, e ela é o objetivo:** o LTV histórico dos clientes vai cair junto com a
+receita, porque os pedidos antigos são `null` e ninguém vai voltar para marcá-los. **Isso não é
+regressão** — é o mesmo número deixando de mentir, no mesmo lugar. Se você achar que isto está
+errado, **pare e relate**; não decida sozinho.
+
+**Corrija o comentário junto.** Um comentário que cita migration e afirma o contrário do código é
+pior que nenhum comentário: o próximo leitor confia nele. Cite a `20261021000000` e diga que o
+`null` deixou de contar.
+
+- [ ] **Step 1: Escrever os testes que falham — um por ponto**
+
+Sete casos, cada um exercitando a **função exportada** correspondente (elas já são exportadas
+justamente para o teste não montar a tela inteira — ver o comentário sobre
+`filterOrdersByPaymentStatus`). Para cada um: um pedido com
+`paymentStatus: "recebido_na_entrega"` tem de receber o mesmo tratamento que um `"pago"`.
+
+Mais um caso para a ressalva do `null`: pedido com `paymentStatus: null` **não** conta mais no
+`totalSpent`.
+
+Mais um caso para a lacuna: `PAYMENT_STATUS_FILTER_VALUES` contém o valor novo.
+
+- [ ] **Step 2: Rodar e confirmar que FALHAM** — nomeie quantos falharam e por quê. Se algum
+  passar de primeira, **esse é o achado**: significa que eu classifiquei o ponto errado, e a
+  decisão volta para a sessão principal.
+
+- [ ] **Step 3: Corrigir os sete pontos, mais a lacuna do filtro**
+
+Um de cada vez. **Não** invente uma função utilitária compartilhada nesta tarefa: os sete pontos
+têm formas diferentes (`switch`, `===` encadeado, `filter`, condição de selo) e três deles têm
+comentários explicando por que são o que são. Unificar tudo é uma refatoração de risco próprio, e
+ela não cabe junto com uma correção de comportamento. Se você achar que a unificação vale, escreva
+isso no relatório — a decisão é da sessão principal, não sua.
+
+⚠️ Em `OrderDetailsView.tsx:204` existe um comentário explicando por que ali é `===` encadeado e
+**não** `.includes()`: com array o TypeScript infere `string[]` e um rename futuro de
+`PaymentStatus` passaria calado. **Preserve a forma `===`** e o comentário.
+
+- [ ] **Step 4: Rodar e confirmar que PASSAM**
+
+- [ ] **Step 5: Mutação, uma por ponto corrigido**
+
+Reverta cada ponto individualmente, confirme que **o teste daquele ponto** cai (e nomeie a
+mensagem), restaure e confirme por hash. Sete mutações, sete mensagens. Se uma reversão não
+derrubar nenhum teste, aquele ponto não está coberto — relate.
+
+- [ ] **Step 6: A verificação dos sete comandos, menos `npm ci`**
+
+---
+
+### Task 3c: Os achados das duas revisões da Task 3/3b
+
+Duas revisões independentes (uma da Task 3, outra da 3b, em sessões diferentes) fecharam
+`PASSA` no código e deixaram três coisas para cá. **Nenhuma bloqueia hoje** — as três viram
+defeito no instante em que a Task 4 ligar o botão, ou enganam o próximo leitor.
+
+- [ ] **Step 1: `pagamentoRecebidoPor` não chega ao estado local**
+
+`src/hooks/useOrders.ts:1855-1874`. A RPC devolve `pagamento_recebido_por`
+(`20261020000000...sql:176`) e o mapper copia (`mappers.ts:261`), mas os **três** `.map` de
+estado propagam só `paymentStatus` e `pagamentoRecebidoEm`.
+
+Hoje é inerte — `grep` por `pagamentoRecebidoPor` em `src/` devolve só o tipo e o mapper, ninguém
+lê. **O gatilho é a Task 4:** quando o cartão mostrar "recebido por Fulano", a sequência marcar →
+desfazer → marcar deixa `pagamentoRecebidoPor` com o valor da montagem inicial (`null`) e
+`pagamentoRecebidoEm` com o novo — dois campos do mesmo evento discordando até a próxima recarga.
+
+Acrescentar ao `?? null` e aos três spreads, no padrão que já está lá.
+
+- [ ] **Step 2: Teste para os três `.map` — hoje apagar os três deixa a suíte VERDE**
+
+É o buraco mais sério dos três, e ele é **do plano**, não de quem executou: o plano só exigiu o
+caso do `clearAnalyticsCache`. Os três `.map` são exatamente o que faz o selo e o balde de estorno
+mudarem **sem recarregar a tela**.
+
+Um teste por estado (`cachedAdminOrders`, `orders`, `pedidosCancelados`), e cada um tem de cair
+quando o `.map` correspondente é apagado. Prove isso — três mutações, três mensagens.
+
+Inclua `pagamentoRecebidoPor` nas asserções, senão o Step 1 nasce sem cobertura.
+
+- [ ] **Step 3: Seis comentários que este trabalho venceu**
+
+Comentário que cita migration e afirma o contrário do código **já criou um defeito nesta linha
+hoje** (o `null` do LTV). Todos conferidos no disco:
+
+| arquivo:linha | o que diz hoje | por quê venceu |
+|---|---|---|
+| `AdminOrdersView.tsx:390` | "conta as DUAS portas" | são três desde a `20261021000000` |
+| `AdminOrdersView.tsx:1084` | "as duas portas" | idem |
+| `useAnalytics.ts:110` | "São DUAS portas" | idem |
+| `OrderStatusBadge.tsx:187` | "os sete rótulos" | são oito com `recebido_na_entrega` |
+| `AdminCustomersView.tsx:237-240` | `get_admin_customers_paged` "filtra só por status, sem olhar cobrança" | deixou de ser verdade na `20260823000000` e muda de novo na `20261021000000` |
+| `AdminUserDetailView.tsx` (bloco do LTV) | conferir se sobrou menção ao `null` contando | a Task 3b removeu o `null`; o comentário tem de dizer isso e citar a `20261021000000` |
+
+- [ ] **Step 4: Registrar um ponto VERIFICADO, para ninguém reabrir**
+
+`src/components/admin/orders/OrderDetail.tsx:70` — `paymentStatusQuePedeConfirmacao:
+PaymentStatus[]`, consumido em `:919` por `.includes()`. A revisão levantou como candidato a
+oitavo ponto de dinheiro e **refutou por polaridade**: a lista é de "NÃO pagou"
+(`aguardando`/`recusado`/`estornado`), então `recebido_na_entrega` ficar de fora é o comportamento
+certo — o botão "Avançar" não pede confirmação porque o dinheiro entrou.
+
+Acrescentar uma linha ao comentário que já existe em `:68-69` registrando que o valor novo foi
+avaliado e fica de fora **de propósito**. Sem isso, o próximo revisor reabre.
+
+- [ ] **Step 5: Verificação**
+
+`npm run typecheck`, `npm test`, `npm run build`, `npm run lint:links`, `npm run size`, e
+`npx eslint <arquivos do diff>`. **Não** rode `npm run lint:ratchet` (ver a regra em
+`CLAUDE.md` → *Quanto da verificação pedir a um subagente*) e **não** rode `npm ci`.
 
 ---
 
