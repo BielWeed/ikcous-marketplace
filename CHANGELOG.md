@@ -7,6 +7,51 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.11.0] - 2026-08-28
+
+A loja passa a conseguir registrar o pagamento que recebeu na mao, e o painel para de
+dizer que recebeu dinheiro que nunca entrou.
+
+### Para quem VENDE
+
+- **Da' para marcar na tela que o pagamento foi recebido na entrega** - PIX na entrega,
+  cartao na maquininha ou dinheiro na mao. O botao esta no cartao do pedido, e a ficha
+  do pedido pergunta ao avancar para "entregue", que e' o momento em que o dinheiro
+  troca de mao de verdade. Fica gravado quem confirmou e quando.
+- **A "Receita Hoje" para de contar dinheiro que nao entrou.** Ate' agora, pedido sem
+  confirmacao de pagamento era tratado como pago - inclusive os pagos na entrega, que
+  nao tinham como ser confirmados porque a funcionalidade acima nao existia.
+- **O mesmo vale para a ficha do cliente:** o LTV Total e quem conta como "cliente
+  frequente" passam a olhar so' dinheiro reconhecido.
+- **A lista de pedidos ganha filtro por situacao do pagamento.**
+
+> **O numero vai CAIR, e isso e' o objetivo.** Medido em 27/08/2026, o painel dizia que
+> a loja tinha recebido R$ 2.977,09; tinham entrado R$ 4,00. A diferenca eram 53 pedidos
+> pagos na entrega que ninguem nunca confirmou. O app nao quebrou - ele parou de mentir.
+
+### Para quem COMPRA
+
+- **Cancelar um pedido ja pago passa a avisar sobre o dinheiro ANTES de confirmar.** Quem
+  ja pagou - inclusive na entrega - e' avisado de que o valor fica com a loja ate' alguem
+  devolver a' mao, e de que, se o pedido ja saiu, so' depois de o produto voltar. Quem
+  ainda nao pagou continua vendo o texto de sempre.
+- **A ficha do pedido reconhece o pagamento recebido na entrega** como pagamento
+  confirmado, em vez de deixar a pessoa achando que ficou devendo.
+
+### Exige acao no momento de publicar
+
+Esta versao tem **duas migrations que vao coladas a este deploy**, nesta ordem, e nao
+antes dele:
+
+1. `20261020000000_lojista_registra_pagamento_recebido.sql` - aditiva, nao nega nada do
+   que ja existe.
+2. `20261021000000_receita_conta_so_dinheiro_que_entrou.sql` - depende da primeira.
+
+Aplicar a segunda antes de o front subir abre uma janela em que a lista de Clientes e a
+ficha do mesmo cliente mostram valores diferentes sob o rotulo "LTV Total" (medido em
+27/08/2026: R$ 473,40 contra R$ 3,00, em 4 clientes). A janela fecha sozinha quando as
+duas pontas estao no ar - por isso a regra e' encurta-la, nao desfazer nada.
+
 ## [1.10.0] — 2026-08-27
 
 Seis defeitos que a loja tinha e ninguém via, mais a metade que faltava do
