@@ -109,7 +109,10 @@ async function main() {
       if (arquivadas.includes(v))
         semArquivoPre.push(v); // arquivada de propósito
       else orfas.push(v); // nem antes do passo 0 existia no repo
-    } else if (POS_BASELINE_ARQUIVADAS_DE_PROPOSITO.has(v)) {
+    } else if (
+      POS_BASELINE_ARQUIVADAS_DE_PROPOSITO.has(v) &&
+      arquivadas.includes(v)
+    ) {
       semArquivoPosDeProposito.push(v); // exceção declarada acima
     } else {
       semArquivoPos.push(v); // 🔴 inesperada

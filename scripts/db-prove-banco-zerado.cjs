@@ -69,13 +69,20 @@ const ROTULO = "db-prove-banco-zerado";
 let derrubarBancoDeEmergencia = null;
 for (const sinal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   process.on(sinal, async () => {
-    console.error(`
+    // Mensagem e derrubada só quando EXISTE banco da prova (achado 2 da
+    // rodada 2 da revisão do PR #320): antes da fase 1, ou com
+    // --manter-banco, não há o que derrubar — anunciar a derrubada nesse
+    // caso era falso positivo.
+    if (derrubarBancoDeEmergencia) {
+      console.error(`
 [${ROTULO}] ${sinal} recebido — derrubando o banco da prova antes de sair…`);
-    try {
-      if (derrubarBancoDeEmergencia) await derrubarBancoDeEmergencia();
-    } finally {
-      process.exit(130);
+      try {
+        await derrubarBancoDeEmergencia();
+      } finally {
+        process.exit(130);
+      }
     }
+    process.exit(130);
   });
 }
 
