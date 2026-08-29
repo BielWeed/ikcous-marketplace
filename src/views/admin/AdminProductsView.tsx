@@ -531,7 +531,9 @@ export const AdminProductsView = memo(function AdminProductsView({
         name: `${productToDuplicate.name} (Cópia)`,
         description: productToDuplicate.description,
         price: productToDuplicate.price,
-        costPrice: productToDuplicate.costPrice || 0,
+        // `?? null`, não `|| 0`: a cópia herda o estado real do custo — sem
+        // custo nasce sem custo (null), brinde de custo zero nasce com 0.
+        costPrice: productToDuplicate.costPrice ?? null,
         originalPrice: productToDuplicate.originalPrice,
         stock: productToDuplicate.stock,
         category: productToDuplicate.category,
@@ -1506,35 +1508,28 @@ const AdminProductCard = memo(function AdminProductCard({
     // (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): `costPrice || 0`
     // fundia "sem custo cadastrado" com "custo é zero" — o mesmo produto
     // mostrava margem de 100% (o melhor número do painel) e ROI de 0% ao
-    // mesmo tempo, por descrever um custo que ninguém mediu. `hasCost`
-    // separa os dois estados; sem ele, margem/ROI/capital/potencial viram
-    // `null` e a tela mostra "—" em vez de afirmar um número. Com custo
-    // real (> 0) a conta é BYTE A BYTE a mesma de antes.
+    // mesmo tempo, por descrever um custo que ninguém mediu.
     //
-    // ⚠️ POR QUE zero conta como ausencia aqui, sendo que
-    // AdminCustomersView.tsx:252-255 faz o CONTRARIO de proposito (usa `??`
-    // para que um zero MEDIDO nao vire "nao sei"): porque neste caminho o
-    // app nao consegue representar "nao sei". `useProducts.ts:530` grava
-    // `custo: productData.costPrice || 0` no insert, entao o `null` que o
-    // formulario monta e achatado para `0` ANTES de chegar ao banco — e o
-    // produto que motivou este achado tem `custo = 0` significando ausencia.
-    // Com a origem ambigua, nenhuma regra de exibicao acerta os dois casos,
-    // e afirmar "margem de 100%" e o erro mais caro dos dois.
+    // SEGUNDA ETAPA (item 3 do laudo de 29/08): o gatilho escrito aqui pelo
+    // auditor foi cumprido. A migration 20261024000000 derrubou o NOT NULL de
+    // produtos.custo e o useProducts parou de achatar null em 0 — agora os
+    // dois estados chegam DISTINTOS do banco: custo null = sem custo medido;
+    // custo 0 = brinde de custo zero de propósito. `hasCost` virou
+    // `costPrice != null` (sem o `> 0`): o brinde medido volta a afirmar
+    // números — margem de 100%, capital R$ 0,00, etiqueta "Custo Suspeito" —
+    // e "Sem Custo Cadastrado" fica para quem não tem custo nenhum.
     //
-    // O preco: um brinde de custo zero DE VERDADE tambem cai em "—".
-    // **Gatilho:** no dia em que `useProducts.ts:530` parar de achatar
-    // `null` em `0`, este `hasCost` deve virar `costPrice != null` (sem o
-    // `> 0`) na MESMA mudanca, senao o zero medido fica invisivel.
-    const hasCost =
-      product.costPrice !== undefined &&
-      product.costPrice !== null &&
-      product.costPrice > 0;
+    // Uma exceção permanece: o ROI divide PELO custo. Custo zero vira divisão
+    // por zero, que não é número — o ROI do brinde mostra "—" enquanto a
+    // margem (que divide pelo preço) afirma os 100% verdadeiros.
+    const hasCost = product.costPrice != null;
+    const temCustoPositivo = hasCost && product.costPrice > 0;
     const margin = !hasCost
       ? null
       : product.price > 0
         ? ((product.price - product.costPrice) / product.price) * 100
         : 0;
-    const roi = !hasCost
+    const roi = !temCustoPositivo
       ? null
       : ((product.price - product.costPrice) / product.costPrice) * 100;
     const invested = !hasCost ? null : product.costPrice * product.stock;
