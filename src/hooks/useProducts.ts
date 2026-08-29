@@ -572,7 +572,11 @@ export function useProducts({ autoFetch = true } = {}) {
             nome: productData.name,
             descricao: productData.description,
             preco_venda: productData.price,
-            custo: productData.costPrice || 0,
+            // null = sem custo medido, 0 = custo zero de propósito (a
+            // migration 20261024000000 derrubou o NOT NULL de produtos.custo).
+            // O `|| 0` daqui fundia os dois — era a origem da ambiguidade do
+            // achado 8 (gatilho em AdminProductsView, hasCost).
+            custo: productData.costPrice ?? null,
             preco_original: productData.originalPrice,
             estoque: productData.stock,
             categoria: productData.category,
