@@ -1,0 +1,20 @@
+-- ROLLBACK MANUAL da 20261028000000_filtro_de_pagamento_filtra_o_banco.sql
+-- (o filtro de Status de Pagamento filtra no banco — p_payment_status na
+-- get_admin_orders_paged)
+--
+-- NÃO HÁ SQL NOVO: o corpo anterior da função está INTEIRO na
+-- 20260961000000_busca_por_telefone_normaliza_digitos.sql. O desfazer é
+-- re-aplicar aquele arquivo (CREATE OR REPLACE idempotente):
+--
+--   node scripts/db-apply.cjs \
+--     supabase/migrations/20260961000000_busca_por_telefone_normaliza_digitos.sql
+--
+-- ⚠️ ORDEM DE VOLTAR: BANCO PRIMEIRO, front depois (ou o deploy inteiro de
+-- uma vez). O front novo chama a RPC com p_payment_status; com o banco
+-- velho (função de 6 argumentos), o PostgREST não encontra a assinatura e
+-- a listagem do painel quebra com PGRST202. A ordem de SUBIR é a mesma:
+-- migration antes do deploy do front.
+--
+-- EFEITO COLATERAL HONESTO: sem o conserto, o filtro de pagamento volta a
+-- cortar só a página aberta no painel (o defeito do item 10 do laudo
+-- volta).
