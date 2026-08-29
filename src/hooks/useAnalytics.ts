@@ -128,6 +128,14 @@ let cachedCategoryData: any = null;
 let cachedCategoryRange: string | null = null;
 let lastStatsFetchTime = 0;
 let lastCategoryFetchTime = 0;
+// Guarda de ordem das chamadas de resumo executivo: pausar/ativar produtos
+// em sequência rápida dispara várias `fetchExecutiveSummary(true)` — e a
+// resposta que chegasse POR ÚLTIMO gravava cache/estado/broadcast, podendo
+// ser a da PRIMEIRA chamada (rede lenta), deixando o KPI com retrato velho
+// sem nada denunciar. A resposta só grava se a chamada ainda for a mais
+// recente iniciada; resposta atrasada devolve o dado a quem chamou e pronto
+// (mesmo espírito de OrderDetailsView.tsx:303-306).
+let ultimaChamadaExecutiva = 0;
 const REVALIDATION_THROTTLE_MS = 30000; // 30 seconds
 
 const STATS_EVENT = "ikcous-admin-stats-updated";
@@ -280,6 +288,12 @@ export function useAnalytics() {
 
   const fetchExecutiveSummary = useCallback(
     async (forceRefresh = false): Promise<DashboardStats | null> => {
+      // Registro a minha vez ANTES de qualquer await: a ordem das chamadas
+      // é a ordem em que foram iniciadas, e só a mais recente grava estado.
+      const minhaChamada = ++ultimaChamadaExecutiva;
+      const chamadaFicouAtrasada = () =>
+        minhaChamada !== ultimaChamadaExecutiva;
+
       if (!isAdmin) {
         console.warn(
           "[useAnalytics] fetchExecutiveSummary bypassed: user is not admin",
@@ -322,7 +336,7 @@ export function useAnalytics() {
                 return { data: data as DashboardStats | null, error };
               },
             );
-            if (!err && data) {
+            if (!err && data && !chamadaFicouAtrasada()) {
               cachedStats = data;
               lastStatsFetchTime = Date.now();
               setStats(cachedStats);
@@ -340,6 +354,9 @@ export function useAnalytics() {
             }
           } catch (e) {
             console.error("Background fetch stats failed:", e);
+            // Chamada antiga: a mais recente já respondeu (ou vai responder)
+            // — o erro atrasado não pode apagar o estado que ela trouxe.
+            if (chamadaFicouAtrasada()) return;
             // PAINEL-02: sem isto, a falha persistente do background
             // deixava o cache velho servindo indefinidamente como se
             // fosse atual. O dashboard ja renderiza o error state
@@ -367,6 +384,10 @@ export function useAnalytics() {
         );
 
         if (err) throw err;
+        // Resposta atrasada de uma chamada antiga: devolve o dado a quem
+        // chamou, mas NÃO grava cache/estado/broadcast — a chamada mais
+        // recente é a dona do retrato agora.
+        if (chamadaFicouAtrasada()) return data as any as DashboardStats;
         cachedStats = data as any as DashboardStats;
         lastStatsFetchTime = Date.now();
         setStats(cachedStats);
@@ -385,6 +406,8 @@ export function useAnalytics() {
         return cachedStats;
       } catch (err: any) {
         console.error("Error fetching executive summary:", err);
+        // Chamada antiga falhando não apaga o resultado da mais recente.
+        if (chamadaFicouAtrasada()) return null;
         setError(mensagemParaLojista(err, "carregar o resumo do painel"));
         return null;
       } finally {
