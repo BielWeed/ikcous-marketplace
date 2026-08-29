@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { CouponInput } from "@/components/ui/custom/CouponInput";
+import { SaidaDaRecusa } from "@/components/ui/custom/SaidaDaRecusa";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,6 +17,11 @@ import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
+import {
+  type AcaoDeRecusa,
+  type RecusaDoPedido,
+  classificarRecusaDoPedido,
+} from "@/lib/recusaDoPedido";
 import { supabase } from "@/lib/supabase";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import { cn } from "@/lib/utils";
@@ -94,6 +100,70 @@ interface CheckoutFormValues {
   state?: string;
   complement?: string;
 }
+
+/**
+ * Decide QUAL saída a tela oferece para a recusa que o banco deu no último
+ * clique.
+ *
+ * É uma função pura exportada de propósito: montar a `CheckoutView` inteira num
+ * teste arrasta `useAuth`, `useOrders`, `useCoupons`, confetti e Supabase, e
+ * nada disso participa desta decisão. O teste que prende as onze recusas
+ * (`tests/front/checkout-oferece-saida-na-recusa.test.tsx`) exercita esta função,
+ * não a view.
+ *
+ * Hoje ela apenas delega — o valor de existir é o ponto de costura ficar
+ * nomeado e testável. Se um dia a tela precisar de uma regra que só ela conhece
+ * (por exemplo: sem cupom aplicado, `remover_cupom` não faz sentido), é aqui que
+ * ela entra, e o teste já está montado.
+ */
+export const decidirSaidaDoCheckout = (error: unknown): RecusaDoPedido =>
+  classificarRecusaDoPedido(error);
+
+/**
+ * Para ONDE cada ação leva. Tabela, e não cadeia de `if`, pelo mesmo motivo do
+ * `ROTULO_DA_ACAO` no componente: `Record<AcaoDeRecusa, …>` **para de compilar**
+ * no dia em que `AcaoDeRecusa` ganhar um caso novo, em vez de deixá-lo cair num
+ * `default` silencioso — que é o beco que este trabalho inteiro existe para
+ * fechar.
+ *
+ * Seis das dez levam ao CARRINHO porque é lá que o problema se resolve de fato:
+ * quantidade, variação, item indisponível e a cotação do frete são todos
+ * editáveis lá, e nenhum deles é editável na tela do checkout.
+ */
+type DestinoDaRecusa =
+  | "carrinho"
+  | "cupom"
+  | "endereco"
+  | "pedidos"
+  | "so_fechar";
+
+const DESTINO_DA_ACAO: Record<AcaoDeRecusa, DestinoDaRecusa> = {
+  reconferir_carrinho: "carrinho",
+  recotar_frete: "carrinho",
+  ajustar_estoque: "carrinho",
+  remover_item: "carrinho",
+  escolher_variacao: "carrinho",
+  trocar_entrega: "carrinho",
+  remover_cupom: "cupom",
+  trocar_endereco: "endereco",
+  conferir_antes: "pedidos",
+  // 🔴 `tentar_de_novo` NÃO reenvia sozinho. O botão "Finalizar Pedido"
+  // continua na tela e é a pessoa que decide apertá-lo de novo. Reenviar por
+  // conta própria transformaria um clique em dois pedidos no dia em que a
+  // classificação errasse — exatamente o estrago que este trabalho evita.
+  tentar_de_novo: "so_fechar",
+};
+
+/**
+ * O mesmo conteúdo como `Map`, gerado a partir do `Record` acima — mesma fonte,
+ * não uma segunda. O `eslint-plugin-security` não distingue um `Record`
+ * exaustivo de um dicionário arbitrário e acusa `detect-object-injection` em
+ * toda indexação dinâmica; `Map.get` não é indexação para ele. Mesmo padrão de
+ * `OrderStatusBadge.tsx` e `SaidaDaRecusa.tsx`.
+ */
+const DESTINO_POR_ACAO = new Map(
+  Object.entries(DESTINO_DA_ACAO) as [AcaoDeRecusa, DestinoDaRecusa][],
+);
 
 interface CheckoutViewProps {
   readonly cart?: CartItem[];
@@ -351,6 +421,11 @@ export function CheckoutView({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // A recusa que o banco deu no último clique, quando deu. `null` é o estado
+  // normal — o painel só existe depois de uma recusa e some assim que a pessoa
+  // age ou fecha.
+  const [recusaDoUltimoClique, setRecusaDoUltimoClique] =
+    useState<RecusaDoPedido | null>(null);
   /** Ver `criarTravaDeEnvio`: fecha o botao no tique do clique (#27). */
   const travaDeEnvioRef = useRef(criarTravaDeEnvio());
   const [showSuccess, setShowSuccess] = useState(false);
@@ -815,9 +890,67 @@ export function CheckoutView({
   const semFreteSelecionado =
     cart.length > 0 && shipping > 0 && !selectedShippingOption;
 
+  // `SaidaDaRecusa` promete, por escrito, que `conferir_antes` nunca oferece
+  // "tentar de novo" — é o caso em que não se sabe se o pedido nasceu, e
+  // repetir debita estoque duas vezes e queima cupom de uso único. Mas o
+  // painel só CONTROLA o próprio botão; o "Finalizar Pedido" ficava livre ao
+  // lado dele, e a pessoa clicava de novo sem ler o aviso. Travar o botão
+  // ENQUANTO o painel está na tela fecha essa porta sem fechar de vez: quem
+  // sabe que o pedido não nasceu fecha o painel (`onFechar`) e o botão volta
+  // sozinho. Em `tentar_de_novo` o botão continua livre de propósito — ali o
+  // reenvio manual É a saída desenhada.
+  const aguardandoConferenciaDaRecusa =
+    recusaDoUltimoClique?.acao === "conferir_antes";
+
+  // Fonte ÚNICA da condição de "Finalizar Pedido" apagado. Antes desta
+  // constante, o `disabled` do botão e o `cn(...)` que decide a APARÊNCIA
+  // dele repetiam a mesma expressão em dois lugares — e foi exatamente esse
+  // par que divergiu: o `disabled` nunca ganhou `aguardandoConferenciaDaRecusa`
+  // quando o painel `SaidaDaRecusa` foi acrescentado, e o botão ficava
+  // habilitado por baixo do próprio aviso que dizia "não tente de novo".
+  // Com um nome só, as duas leituras não podem voltar a divergir.
+  const botaoFinalizarDesabilitado =
+    !isValid ||
+    isSubmitting ||
+    semFreteSelecionado ||
+    aguardandoConferenciaDaRecusa;
+
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
     setCouponError("");
+  };
+
+  /**
+   * O que acontece quando a pessoa aperta o botão do painel da recusa.
+   *
+   * O painel some em TODOS os caminhos: ou o problema vai ser resolvido em
+   * outra tela, ou foi resolvido aqui mesmo, ou a pessoa escolheu só fechar.
+   * Painel que sobrevive à própria ação vira aviso velho na tela.
+   */
+  const agirNaRecusa = (acao: AcaoDeRecusa) => {
+    setRecusaDoUltimoClique(null);
+    haptic.light();
+
+    switch (DESTINO_POR_ACAO.get(acao)) {
+      case "carrinho":
+        onNavigate("cart");
+        return;
+      case "cupom":
+        // Resolve aqui mesmo: o cupom é editável nesta tela, e mandar a pessoa
+        // para o carrinho para tirar algo que está na frente dela seria pior.
+        handleRemoveCoupon();
+        return;
+      case "endereco":
+        setIsAddressModalOpen(true);
+        return;
+      case "pedidos":
+        // `conferir_antes` é o caso em que NÃO se sabe se o pedido nasceu.
+        // A única saída segura é olhar os próprios pedidos antes de repetir.
+        onNavigate("orders");
+        return;
+      case "so_fechar":
+        return;
+    }
   };
 
   const handleApplyCoupon = async (code: string) => {
@@ -880,6 +1013,11 @@ export function CheckoutView({
       A liberacao vai no `finally` la' embaixo, junto com `setIsSubmitting`.
     */
     if (!travaDeEnvioRef.current.tentarEntrar()) return;
+
+    // A recusa anterior sai da tela assim que uma tentativa nova começa. Sem
+    // isto, o painel da recusa passada ficaria ao lado do spinner da tentativa
+    // atual, oferecendo uma ação para um problema que já pode não existir mais.
+    setRecusaDoUltimoClique(null);
 
     let isFormValid: boolean;
     try {
@@ -1021,6 +1159,11 @@ export function CheckoutView({
       // vazio, então o toast sempre carrega uma frase utilizável e o alerta
       // deixou de ter um gatilho útil.
       toast.error(`Falha no Pedido: ${mensagemAmigavelErroPedido(error)}`);
+      // O toast é o AVISO — ele alcança quem não está olhando esta parte da
+      // tela. O painel abaixo é a AÇÃO. Os dois convivem de propósito: até
+      // 28/08/2026 só existia o toast, ele sumia sozinho e não levava a lugar
+      // nenhum, e a pessoa ficava parada no último clique com o dinheiro na mão.
+      setRecusaDoUltimoClique(decidirSaidaDoCheckout(error));
     } finally {
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -2120,12 +2263,10 @@ export function CheckoutView({
                           haptic.medium();
                           handleSubmitEvent();
                         }}
-                        disabled={
-                          !isValid || isSubmitting || semFreteSelecionado
-                        }
+                        disabled={botaoFinalizarDesabilitado}
                         className={cn(
                           "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
-                          !isValid || isSubmitting || semFreteSelecionado
+                          botaoFinalizarDesabilitado
                             ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
                             : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
                         )}
@@ -2151,6 +2292,18 @@ export function CheckoutView({
                         <AlertCircle className="size-3.5 shrink-0" />
                         Volte ao carrinho e calcule o frete para continuar
                       </p>
+                    )}
+                    {recusaDoUltimoClique && (
+                      // Fica ao lado do botão que acabou de falhar, de
+                      // propósito: é onde a pessoa está olhando no instante da
+                      // recusa. O toast avisa; este painel é o que dá a saída.
+                      <div className="mx-auto max-w-md">
+                        <SaidaDaRecusa
+                          recusa={recusaDoUltimoClique}
+                          onAgir={agirNaRecusa}
+                          onFechar={() => setRecusaDoUltimoClique(null)}
+                        />
+                      </div>
                     )}
                   </motion.div>
                 </div>
