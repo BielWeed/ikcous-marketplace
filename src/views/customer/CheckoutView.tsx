@@ -2305,9 +2305,16 @@ export function CheckoutView({
                       // banco); esta linha explica só COMO DESTRAVAR o
                       // botão — mesmo espírito do aviso de frete acima.
                       //
-                      // Não manda "conferir sua lista de pedidos": quem
-                      // compra sem conta não tem, neste cenário (a resposta
-                      // nunca chegou ao navegador), nem o id do pedido nem o
+                      // `conferir_antes` reúne DOIS casos (recusaDoPedido.ts:
+                      // 141-169), não um: erro sem código reconhecível, onde
+                      // a resposta pode não ter chegado e ninguém sabe se o
+                      // pedido existe; e um P0001 cujo texto nenhuma regra
+                      // prevista casa, onde a resposta CHEGOU e o
+                      // `RAISE EXCEPTION` garante que o pedido não nasceu —
+                      // a trava aí é conservadora de propósito, não por
+                      // falta de prova. Nos dois, a frase não manda
+                      // "conferir sua lista de pedidos": quem compra sem
+                      // conta não tem, aqui, nem o id do pedido nem o
                       // comprovante que o "Ver meus pedidos" exige
                       // (OrderSearch.tsx:80-85) — mandar conferir algo
                       // impossível só empurrava para "então fecha e tenta de
@@ -2315,7 +2322,10 @@ export function CheckoutView({
                       // para evitar. Por isso a frase não afirma nenhum
                       // estado de tela: só instrui a saída, para quem já tem
                       // certeza.
-                      <p className="mx-auto mt-2 flex max-w-md items-center gap-1.5 text-[10px] font-bold uppercase text-red-500">
+                      <p
+                        data-testid="aviso-como-destravar-finalizar"
+                        className="mx-auto mt-2 flex max-w-md items-center gap-1.5 text-[10px] font-bold uppercase text-red-500"
+                      >
                         <AlertCircle className="size-3.5 shrink-0" />
                         Só feche o aviso abaixo se tiver certeza de que o pedido
                         não foi criado

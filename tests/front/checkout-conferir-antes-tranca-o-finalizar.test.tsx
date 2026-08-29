@@ -129,12 +129,18 @@ function localizarBotaoFecharAviso() {
 }
 
 // Âncora do aviso que instrui como destravar o botão em `conferir_antes`.
-// "não foi criado" é exclusiva desse texto: o painel `SaidaDaRecusa` fala em
-// "nasceu" (SaidaDaRecusa.tsx:18), não em "criado", e nenhum outro aviso da
-// tela usa essa palavra — grep confirmado antes de escolher a âncora.
+// Por `data-testid`, não por texto: o painel `SaidaDaRecusa` imprime a
+// mensagem do banco LITERAL (SaidaDaRecusa.tsx:101-103), e uma RPC nova
+// poderia escrever uma frase que casasse com uma âncora de texto — o que
+// faria este helper achar o `<p>` do painel em vez do aviso. O teste abaixo
+// ainda confere o TEXTO do aviso numa asserção própria (não só a presença):
+// perder essa checagem reabriria a frase antiga, que causou o bloqueio sem
+// instrução de saída que este componente existe para consertar.
 function localizarAvisoDeComoDestravar() {
-  return [...document.body.querySelectorAll("p")].find((p) =>
-    p.textContent?.includes("não foi criado"),
+  return (
+    document.body.querySelector(
+      '[data-testid="aviso-como-destravar-finalizar"]',
+    ) ?? undefined
   );
 }
 
@@ -233,6 +239,14 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
     // é o motivo deste PR: antes dele, quem compra sem conta ficava
     // travado sem nenhuma instrução de saída.
     expect(localizarAvisoDeComoDestravar()).not.toBeUndefined();
+    // A âncora agora é o `data-testid`, não o texto — então o TEXTO precisa
+    // de asserção própria, senão o teste passa a aceitar qualquer frase
+    // ali dentro, inclusive a antiga ("Confira se o pedido já apareceu na
+    // sua lista..."), que foi exatamente o que causou o bloqueio sem saída
+    // que este aviso existe para resolver.
+    expect(localizarAvisoDeComoDestravar()?.textContent).toContain(
+      "não foi criado",
+    );
 
     // A trava existe para impedir o SEGUNDO pedido, não só para deixar o
     // botão cinza: `disabled === true` prova o mecanismo, não a
