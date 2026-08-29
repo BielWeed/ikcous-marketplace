@@ -270,6 +270,36 @@ export function precoResolvidoSemCache(id: unknown): boolean {
     return id === 'local-delivery' || id.startsWith('flat-fee-')
 }
 
+/**
+ * Monta o registro do `shipping_calculation_logs` para a cotação de TAXA
+ * FIXA (achado 9 do laudo de 29/08: esse ramo respondia antes de gravar log
+ * — o histórico da lojista nunca mostrava o provedor padrão).
+ *
+ * `cart || []` não é detalhe: a coluna cart_items é NOT NULL, e este ramo
+ * também atende carrinho ausente/vazio de QUALQUER provedor — nesse caso o
+ * provider honesto é o sufixo "(sem itens)", porque quem respondeu foi a
+ * contingência da loja, não a transportadora escolhida. `status: 'empty'`
+ * marca a resposta sem opção nenhuma (taxa fixa não configurada e sem
+ * entrega local), para o histórico não confundir com uma cotação bem
+ * sucedida. Pura e exportada para o index_test.ts provar o formato.
+ */
+export function montarLogDaCotacaoFlatFee(
+    originCep: string,
+    destinationCepLimpo: string,
+    provider: string,
+    cart: unknown,
+    quantidadeDeOpcoes: number,
+): Record<string, unknown> {
+    return {
+        origin_cep: originCep,
+        destination_cep: destinationCepLimpo,
+        provider: provider === 'flat_fee' ? 'flat_fee' : 'flat_fee (sem itens)',
+        cart_items: cart || [],
+        response_time_ms: 0,
+        status: quantidadeDeOpcoes > 0 ? 'success' : 'empty',
+    }
+}
+
 // Helper to check if destination is a local CEP
 export function isLocalCep(originCep: string, destCep: string, localCepRange?: string): boolean {
     const cleanOrigin = originCep.replace(/\D/g, '')
@@ -716,8 +746,20 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
         // 4. If provider is flat_fee, return immediately
         if (provider === 'flat_fee' || !cart || !Array.isArray(cart) || cart.length === 0) {
+            const opcoes = getFlatFeeResponse()
+            // Achado 9 do laudo (29/08): este ramo respondia ANTES de gravar
+            // log — o "Histórico de Cotações" do painel nunca mostrava as
+            // cotações da taxa fixa, o provedor padrão da loja. Mesmo
+            // formato dos outros logs (fire and forget: a resposta não
+            // espera o log; a falha dele só é logada no console).
+            fireAndForget(
+                supabaseClient.from('shipping_calculation_logs').insert(
+                    montarLogDaCotacaoFlatFee(originCep, cleanCep, provider, cart, opcoes.length),
+                ),
+                'Failed to log flat fee quote:',
+            )
             return new Response(
-                JSON.stringify({ options: getFlatFeeResponse(), cotacaoIncompleta: false }),
+                JSON.stringify({ options: opcoes, cotacaoIncompleta: false }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
