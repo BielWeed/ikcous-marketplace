@@ -890,6 +890,31 @@ export function CheckoutView({
   const semFreteSelecionado =
     cart.length > 0 && shipping > 0 && !selectedShippingOption;
 
+  // `SaidaDaRecusa` promete, por escrito, que `conferir_antes` nunca oferece
+  // "tentar de novo" — é o caso em que não se sabe se o pedido nasceu, e
+  // repetir debita estoque duas vezes e queima cupom de uso único. Mas o
+  // painel só CONTROLA o próprio botão; o "Finalizar Pedido" ficava livre ao
+  // lado dele, e a pessoa clicava de novo sem ler o aviso. Travar o botão
+  // ENQUANTO o painel está na tela fecha essa porta sem fechar de vez: quem
+  // sabe que o pedido não nasceu fecha o painel (`onFechar`) e o botão volta
+  // sozinho. Em `tentar_de_novo` o botão continua livre de propósito — ali o
+  // reenvio manual É a saída desenhada.
+  const aguardandoConferenciaDaRecusa =
+    recusaDoUltimoClique?.acao === "conferir_antes";
+
+  // Fonte ÚNICA da condição de "Finalizar Pedido" apagado. Antes desta
+  // constante, o `disabled` do botão e o `cn(...)` que decide a APARÊNCIA
+  // dele repetiam a mesma expressão em dois lugares — e foi exatamente esse
+  // par que divergiu: o `disabled` nunca ganhou `aguardandoConferenciaDaRecusa`
+  // quando o painel `SaidaDaRecusa` foi acrescentado, e o botão ficava
+  // habilitado por baixo do próprio aviso que dizia "não tente de novo".
+  // Com um nome só, as duas leituras não podem voltar a divergir.
+  const botaoFinalizarDesabilitado =
+    !isValid ||
+    isSubmitting ||
+    semFreteSelecionado ||
+    aguardandoConferenciaDaRecusa;
+
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
     setCouponError("");
@@ -2238,12 +2263,10 @@ export function CheckoutView({
                           haptic.medium();
                           handleSubmitEvent();
                         }}
-                        disabled={
-                          !isValid || isSubmitting || semFreteSelecionado
-                        }
+                        disabled={botaoFinalizarDesabilitado}
                         className={cn(
                           "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
-                          !isValid || isSubmitting || semFreteSelecionado
+                          botaoFinalizarDesabilitado
                             ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
                             : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
                         )}
