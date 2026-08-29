@@ -299,7 +299,6 @@ export type View =
   | "profile"
   | "orders"
   | "order-details"
-  | "compare"
   | "recently-viewed"
   | "login"
   | "admin-login"

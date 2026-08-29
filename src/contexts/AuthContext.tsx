@@ -111,7 +111,6 @@ function clearLocalUserData() {
   if (typeof window === "undefined") return;
   localStorage.removeItem("marketplace_cart_v1");
   localStorage.removeItem("ikcous_recently_viewed");
-  localStorage.removeItem("ikcous_compare");
   localStorage.removeItem("ikcous_is_admin");
   // Revisão de contexto limpo do diff (achado 2) — o CEP também é PII do
   // usuário logado: `ikcous_last_shipping_cep` é lido na montagem do
