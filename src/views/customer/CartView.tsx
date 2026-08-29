@@ -40,6 +40,34 @@ interface CartViewProps {
   isActive?: boolean;
 }
 
+/**
+ * Decide o que a lista de pedidos vira depois de uma recarga.
+ *
+ * POR QUE EXISTE: toda `fetchUserOrders` aborta a busca anterior
+ * (useOrders:862-865) e a busca abortada devolve `[]` EM SILÊNCIO
+ * (useOrders:912-919). Desde o #321 a recarga por visibilidade dispara isso
+ * sozinha quando a pessoa volta ao app — e tocar em "Meus Pedidos" dentro da
+ * janela do timer é o fluxo exato de quem voltou do pagamento PIX. Gravar o
+ * `[]` da corrida perdida apagava da tela uma lista que o banco nunca apagou.
+ *
+ * A REGRA (padrão da casa, OrderDetailsView:303): recarga vazia com lista em
+ * memória mantém o que está na tela — melhor um dado de um segundo atrás do
+ * que piscar para "nenhum pedido" por causa de uma resposta abortada. O vazio
+ * GENUÍNO continua fluindo quando não havia nada em memória (primeira carga),
+ * e recarga com conteúdo sempre substitui. Preso por teste em
+ * `cart-view-lista-de-pedidos-resiste-a-recarga-vazia.test.tsx` — função pura
+ * de propósito, pelo mesmo motivo do `decidirSaidaDoCheckout` (#328): montar
+ * a view inteira no teste arrasta o mundo e, medido neste ambiente, pendura o
+ * `act` (aba orders + jsdom + framer-motion).
+ */
+export const mesclarListaAposRecarga = <T,>(
+  atual: T[],
+  nova: T[] | null | undefined,
+): T[] => {
+  const lista = nova || [];
+  return lista.length > 0 || atual.length === 0 ? lista : atual;
+};
+
 export function CartView({
   cart: propCart,
   onUpdateQuantity: propOnUpdateQuantity,
@@ -150,7 +178,7 @@ export function CartView({
       if (user) {
         setIsLoadingOrders(true);
         fetchUserOrders().then((data) => {
-          setOrders(data || []);
+          setOrders((atual) => mesclarListaAposRecarga(atual, data));
           setIsLoadingOrders(false);
           setOrderViewMode("user");
         });

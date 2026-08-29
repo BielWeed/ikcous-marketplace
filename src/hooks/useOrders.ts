@@ -1000,7 +1000,11 @@ export function useOrders(
           return { orders: [], total: 0 };
         }
         console.error("Error loading orders:", err);
-        toast.error("Erro ao carregar pedidos");
+        // Mesma disciplina da fetchUserOrders (:920): recarga silenciosa (o
+        // ramo admin da recarga de reconexão força silent=true) não fala com
+        // a pessoa — some o AVISO, não some a falha (o console.error acima
+        // segue e o erro continua sendo devolvido).
+        if (!silent) toast.error("Erro ao carregar pedidos");
         return { orders: [], total: 0 };
       } finally {
         setLoading(false);
