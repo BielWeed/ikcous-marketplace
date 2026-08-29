@@ -1365,6 +1365,24 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261027000000_o_pagamento_avisa_o_cliente.sql": [
+    {
+      // Follow-up do item 11 (revisão do #343): o PIX caiu e o cliente é
+      // avisado. As 2 frases ('pago' e 'pago_apos_expirar') e as 2 guardas,
+      // exatamente 1x no corpo — 'expirado'/'estornado' ficam silenciosos
+      // por desenho, e a contagem da guarda prova que continua assim.
+      funcao: "notifica_cliente_de_mudanca_de_pagamento",
+      esperado: [
+        { texto: "Pagamento confirmado", vezes: 1 },
+        { texto: "tinha sido cancelado ou expirado", vezes: 1 },
+        { texto: "NEW.user_id IS NULL", vezes: 1 },
+        {
+          texto: "OLD.payment_status IS NOT DISTINCT FROM NEW.payment_status",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
