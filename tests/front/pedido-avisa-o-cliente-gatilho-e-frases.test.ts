@@ -92,11 +92,14 @@ describe("a trigger que avisa o cliente existe e promete por verdade", () => {
   });
 
   it("sino é best-effort: falha de aviso NUNCA reverte o status do pedido", () => {
-    expect(sql).toContain("EXCEPTION WHEN OTHERS THEN");
-    // O EXCEPTION devolve o pedido intacto (RETURN NEW dentro do bloco
-    // protegido seria ambíguo; a prova é que o RETURN NEW final existe e o
-    // EXCEPTION não levanta nada).
-    expect(sql.endsWith("$$;") || sql.includes("RETURN NEW;")).toBe(true);
+    // O bloco protegido existe UMA vez e a falha fica logada (RAISE WARNING),
+    // não engolida em silêncio — defeito de configuração tem de aparecer nos
+    // logs do banco.
+    expect(corpoFuncao.split("EXCEPTION WHEN OTHERS THEN").length - 1).toBe(1);
+    expect(corpoFuncao.split("RAISE WARNING").length - 1).toBe(1);
+    // O RETURN NEW final (fora do bloco protegido) é o que devolve o pedido
+    // intacto.
+    expect(corpoFuncao).toContain("RETURN NEW;");
   });
 
   it("status sem frase desenhada não inventa aviso", () => {
