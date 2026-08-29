@@ -2304,10 +2304,21 @@ export function CheckoutView({
                       // volta". O painel já explica O PROBLEMA (a frase do
                       // banco); esta linha explica só COMO DESTRAVAR o
                       // botão — mesmo espírito do aviso de frete acima.
+                      //
+                      // Não manda "conferir sua lista de pedidos": quem
+                      // compra sem conta não tem, neste cenário (a resposta
+                      // nunca chegou ao navegador), nem o id do pedido nem o
+                      // comprovante que o "Ver meus pedidos" exige
+                      // (OrderSearch.tsx:80-85) — mandar conferir algo
+                      // impossível só empurrava para "então fecha e tenta de
+                      // novo", que é o pedido em dobro que esta trava existe
+                      // para evitar. Por isso a frase não afirma nenhum
+                      // estado de tela: só instrui a saída, para quem já tem
+                      // certeza.
                       <p className="mx-auto mt-2 flex max-w-md items-center gap-1.5 text-[10px] font-bold uppercase text-red-500">
                         <AlertCircle className="size-3.5 shrink-0" />
-                        Confira se o pedido já apareceu na sua lista. Se não
-                        apareceu, feche o aviso abaixo para poder tentar de novo
+                        Só feche o aviso abaixo se tiver certeza de que o pedido
+                        não foi criado
                       </p>
                     )}
                     {recusaDoUltimoClique && (
