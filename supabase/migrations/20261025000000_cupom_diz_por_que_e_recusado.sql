@@ -32,10 +32,6 @@
 --
 --   -- 1. As DUAS funções vivas dizem o motivo (cada frase deve devolver
 --   --    2 linhas — uma por função):
---   SELECT proname, pg_get_functiondef(oid) AS corpo
---   FROM pg_proc
---   WHERE proname IN ('create_marketplace_order_v23', 'create_marketplace_order_v24')
---     AND pronamespace = 'public'::regnamespace\gset
 --   SELECT proname,
 --          (corpo LIKE '%não existe. Confira o código%')      AS tem_nao_existe,
 --          (corpo LIKE '%está desativado pela loja%')          AS tem_desativado,
@@ -62,11 +58,6 @@
 -- ============================================================
 -- create_marketplace_order_v23 — corpo da 20260960000000 com o bloco da
 -- recusa do cupom trocado (e v_cupom_recusado RECORD no DECLARE).
--- ============================================================
-
--- ============================================================
--- create_marketplace_order_v23 — corpo da 20260960000000 com o bloco da recusa do
--- cupom trocado (e v_cupom_recusado RECORD no DECLARE).
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.create_marketplace_order_v23(p_items jsonb, p_total_amount numeric, p_shipping_cost numeric, p_payment_method text, p_address_id uuid, p_coupon_code text, p_customer_name text, p_customer_phone text, p_observation text, p_address_data jsonb, p_destination_cep text, p_shipping_option_id text)
