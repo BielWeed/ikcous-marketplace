@@ -666,10 +666,24 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         dateRange.start || undefined,
         dateRange.end || undefined,
         silent,
+        // Achado 10 do laudo (29/08): o filtro de pagamento filtra NO BANCO
+        // (migration 20261028000000) — a lista inteira e o total da
+        // paginação passam a respeitar o filtro, não só a página aberta. O
+        // recorte em memória (filterOrdersByPaymentStatus, abaixo) fica
+        // como defesa.
+        paymentFilter,
       );
       loadStats();
     },
-    [loadOrders, itemsPerPage, filter, searchQuery, dateRange, loadStats],
+    [
+      loadOrders,
+      itemsPerPage,
+      filter,
+      searchQuery,
+      dateRange,
+      loadStats,
+      paymentFilter,
+    ],
   );
 
   useEffect(() => {
