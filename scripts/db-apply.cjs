@@ -1383,6 +1383,21 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261028000000_filtro_de_pagamento_filtra_o_banco.sql": [
+    {
+      // Item 10 do laudo de 29/08: o filtro de Status de Pagamento filtra
+      // NO BANCO. A cláusula nova aparece EXATAMENTE 2x no corpo (COUNT e
+      // dados) — de menos, um dos WHERE voltou a ignorar o filtro (a
+      // paginação volta a mentir); de mais, o corpo divergiu do desenhado.
+      funcao: "get_admin_orders_paged",
+      esperado: [
+        { texto: "p_payment_status = 'all'", vezes: 2 },
+        { texto: "o.payment_status = p_payment_status", vezes: 2 },
+        { texto: "p_payment_status = 'sem_cobranca'", vezes: 2 },
+        { texto: "p_payment_status text DEFAULT 'all'::text", vezes: 1 },
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
