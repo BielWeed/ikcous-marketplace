@@ -214,14 +214,15 @@ Duas leituras que enganam:
 
 ### Quanto da verificação pedir a um subagente
 
-**A primeira rodada de `lint:ratchet` numa máquina fria é cara; as seguintes não.** O eslint
-roda com `--cache`, então depois da primeira ele só reanalisa o que mudou. Quem pagar a
-primeira paga por todos.
+**A catraca local fecha em ~1 min com o cache do eslint quente e já passou de 70 min sem ele**
+(13–62 s em 06, 12, 22 e 25/08/2026; em 27/08 não fechou em 70 min, comendo sete esperas de 10
+min). O mesmo passo fecha em **38 s no CI** (run 33090330051), e daqui não dá para prever qual:
 
-Medido em 10/08/2026: uma regra só — `tailwindcss/no-custom-classname` — era 97,9% do tempo
-do eslint no Windows (609 s de 627 s em 76 arquivos), e a catraca passava de 40 min aqui
-contra **1,2 min no Linux do CI**. Numa cadeia revisão → conserto → re-revisão, esse preço
-era pago três vezes, por um diff que às vezes tinha duas linhas.
+> **Passou de 10 min — uma espera cheia da ferramenta —, deixou de ser verificação e virou
+> bloqueio.** Não mate a rodada (matar no meio invalida o cache e cobra a próxima fria) e **não
+> dispare outra**: duas concorrentes se matam e devolvem saída vazia. Pare de **esperar** por
+> ela — a prova local para commitar passa a ser `npx eslint <arquivos do diff>` mais o hook de
+> pre-commit, e o CI fecha a catraca inteira. Se ele reprovar, o conserto é no mesmo PR.
 
 Por isso, ao montar o prompt de um subagente:
 
@@ -232,7 +233,6 @@ Por isso, ao montar o prompt de um subagente:
   entrega diff ali e pula o `lint:ratchet` não tem NENHUM dos outros seis cobrindo o que mudou.
 - **Diff toca só `scripts/`, comentário, migration ou documentação:** nomeie os comandos que
   fazem sentido e diga explicitamente para **não** rodar o resto — a sessão roda o que faltar.
-  Foi assim que uma re-revisão voltou em 5 min em vez de 80.
 
 O que **não** muda: quem cobra é o CI, e nenhuma dessas escolhas altera regra, teto ou o que
 reprova um PR. Escopar a verificação de um subagente é decisão de custo, nunca de exigência —
