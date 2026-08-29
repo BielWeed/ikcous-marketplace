@@ -26,6 +26,7 @@ const MIGRATION = [
     "supabase/migrations/_arquivadas",
     NOME_DA_MIGRATION,
   ),
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
 ].find((caminho) => fs.existsSync(caminho));
 if (!MIGRATION) {
   console.error(
