@@ -904,11 +904,14 @@ export function CheckoutView({
 
   // Fonte ÚNICA da condição de "Finalizar Pedido" apagado. Antes desta
   // constante, o `disabled` do botão e o `cn(...)` que decide a APARÊNCIA
-  // dele repetiam a mesma expressão em dois lugares — e foi exatamente esse
-  // par que divergiu: o `disabled` nunca ganhou `aguardandoConferenciaDaRecusa`
-  // quando o painel `SaidaDaRecusa` foi acrescentado, e o botão ficava
-  // habilitado por baixo do próprio aviso que dizia "não tente de novo".
-  // Com um nome só, as duas leituras não podem voltar a divergir.
+  // dele repetiam a mesma expressão em dois lugares — e as duas estavam
+  // ERRADAS JUNTAS: nenhuma incluía `aguardandoConferenciaDaRecusa`, porque
+  // nenhuma foi lembrada quando o painel `SaidaDaRecusa` entrou. A razão de
+  // existir esta constante é PROSPECTIVA, não o relato de uma divergência
+  // que já aconteceu: duas cópias da mesma condição divergem no primeiro
+  // requisito novo que precisa ser lembrado nos dois lugares — e foi
+  // exatamente isso que acabou de acontecer aqui. Com um nome só, a próxima
+  // exigência entra num lugar, não em dois.
   const botaoFinalizarDesabilitado =
     !isValid ||
     isSubmitting ||
@@ -2259,6 +2262,7 @@ export function CheckoutView({
                       </button>
 
                       <button
+                        type="button"
                         onClick={() => {
                           haptic.medium();
                           handleSubmitEvent();
@@ -2291,6 +2295,19 @@ export function CheckoutView({
                       <p className="mx-auto mt-2 flex max-w-md items-center gap-1.5 text-[10px] font-bold uppercase text-red-500">
                         <AlertCircle className="size-3.5 shrink-0" />
                         Volte ao carrinho e calcule o frete para continuar
+                      </p>
+                    )}
+                    {aguardandoConferenciaDaRecusa && (
+                      // A única porta de saída daqui era o "X" de 16px no
+                      // painel abaixo (aria-label "Fechar o aviso"), sem
+                      // nenhum texto ligando "fechar o aviso" a "o botão
+                      // volta". O painel já explica O PROBLEMA (a frase do
+                      // banco); esta linha explica só COMO DESTRAVAR o
+                      // botão — mesmo espírito do aviso de frete acima.
+                      <p className="mx-auto mt-2 flex max-w-md items-center gap-1.5 text-[10px] font-bold uppercase text-red-500">
+                        <AlertCircle className="size-3.5 shrink-0" />
+                        Confira se o pedido já apareceu na sua lista. Se não
+                        apareceu, feche o aviso abaixo para poder tentar de novo
                       </p>
                     )}
                     {recusaDoUltimoClique && (

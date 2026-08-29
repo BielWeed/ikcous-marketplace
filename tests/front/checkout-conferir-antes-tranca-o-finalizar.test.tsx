@@ -218,6 +218,17 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
 
     const botaoFinalizar = localizarBotaoFinalizar()!;
     expect(botaoFinalizar.disabled).toBe(true);
+
+    // A trava existe para impedir o SEGUNDO pedido, não só para deixar o
+    // botão cinza: `disabled === true` prova o mecanismo, não a
+    // consequência. `HTMLElement.click()` em botão `disabled` não dispara o
+    // handler no jsdom, então este clique é uma prova válida (e mais forte)
+    // de que nenhum pedido novo se cria por cima do aviso.
+    await act(async () => {
+      botaoFinalizar.click();
+      await esperarMicrotarefas();
+    });
+    expect(createOrder).toHaveBeenCalledTimes(1);
   });
 
   it("recusa com SQLSTATE (ex.: falha transitória do Postgres): o painel de tentar_de_novo aparece e o Finalizar Pedido continua HABILITADO", async () => {
