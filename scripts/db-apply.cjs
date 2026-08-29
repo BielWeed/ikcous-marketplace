@@ -577,7 +577,10 @@ const VERIFICACOES = {
         // A trava anti-adulteracao de 5 centavos. Ela NAO cobre carrinho
         // trocado (preco divergente e outra pergunta), mas cobre preco forjado.
         "Os valores do pedido mudaram",
-        "Estoque insuficiente para o produto",
+        // Aparece 3x no corpo (medido): o RAISE do item normal e os dois das
+        // variacoes. Contagem exata para a queda de qualquer um deles acusar,
+        // em vez de imprimir ok com as outras de pe.
+        { texto: "Estoque insuficiente para o produto", vezes: 3 },
         "UPDATE public.coupons SET usage_count = usage_count + 1",
       ],
     },
@@ -589,7 +592,8 @@ const VERIFICACOES = {
         "usage_limit IS NULL OR usage_limit <= 0 OR usage_count < usage_limit",
         "FOR UPDATE;",
         "Os valores do pedido mudaram",
-        "Estoque insuficiente para o produto",
+        // Mesma contagem da v23: 3x no corpo (medido).
+        { texto: "Estoque insuficiente para o produto", vezes: 3 },
         "UPDATE public.coupons SET usage_count = usage_count + 1",
         // A UNICA coisa que separa a v24 da v23: a reserva com prazo do
         // pagamento online. Se sumir no REPLACE, o PIX deixa de expirar e o
@@ -633,11 +637,19 @@ const VERIFICACOES = {
         // termo de poucos digitos casa quase toda a base pela clausula do
         // telefone -- medido: "3d" de 15 para 60 resultados. O marcador
         // cruza quebra de linha de proposito, para casar o bloco e nao um
-        // identificador solto.
-        "length(v_search_digitos) >= 4\n            AND regexp_replace(",
+        // identificador solto. Aparece 2x no corpo (medido): a consulta
+        // existe duplicada, uma na CONTAGEM e outra nos DADOS.
+        {
+          texto: "length(v_search_digitos) >= 4\n            AND regexp_replace(",
+          vezes: 2,
+        },
         // O coalesce com o jsonb: e ele que faz os pedidos de coluna nula (a
         // RPC legada nunca preencheu) serem achaveis. 0 ocorrencia na anterior.
-        "coalesce(o.customer_phone, o.customer_data->>'whatsapp', ''),",
+        // 2x no corpo (medido): CONTAGEM e DADOS, como a guarda acima.
+        {
+          texto: "coalesce(o.customer_phone, o.customer_data->>'whatsapp', ''),",
+          vezes: 2,
+        },
         // Daqui para baixo: o que tem de SOBREVIVER ao REPLACE. Estes aparecem
         // na definicao anterior TAMBEM, e isso e o certo para a classe deles.
         //
@@ -645,8 +657,10 @@ const VERIFICACOES = {
         // 'public', a busca por nome quebra com "function unaccent(text) does
         // not exist" -- e o painel para de achar qualquer coisa por texto.
         "SET search_path TO 'public', 'extensions'",
-        "unaccent(o.customer_name)",
-        "unaccent(oi.product_name)",
+        // Os dois unaccent aparecem 2x no corpo (medido): a dupla CONTAGEM x
+        // DADOS duplica as clausulas de busca.
+        { texto: "unaccent(o.customer_name)", vezes: 2 },
+        { texto: "unaccent(oi.product_name)", vezes: 2 },
         // A trava de autorizacao. Se sumir, a busca de pedidos do painel passa
         // a responder para qualquer pessoa autenticada.
         "IF NOT public.is_admin() THEN",
@@ -664,8 +678,10 @@ const VERIFICACOES = {
         // O texto que a CLIENTE ve na tela. Se sumir no REPLACE, o item sem
         // variacao volta a ser aceito calado — preco de `preco_venda` em vez
         // do `price_override`, e a baixa cai no `estoque` agregado em vez do
-        // `stock_increment` da variacao escolhida.
-        "Escolha uma varia",
+        // `stock_increment` da variacao escolhida. 2x no corpo (medido): o
+        // comentario do por-que e o RAISE — contagem exata para o comentario
+        // nao "provar" a queda do RAISE.
+        { texto: "Escolha uma varia", vezes: 2 },
         // Daqui para baixo: o que tem de SOBREVIVER ao REPLACE, porque esta
         // migration reescreve as duas funcoes inteiras a partir do texto da
         // 20260951 — herdado da entrada dela, mesmo cenario ruim de cada um.
@@ -679,8 +695,9 @@ const VERIFICACOES = {
         "usage_limit IS NULL OR usage_limit <= 0 OR usage_count < usage_limit",
         "Os valores do pedido mudaram",
         // Se sumir no REPLACE, pedido com estoque insuficiente e aceito
-        // mesmo assim -- a lojista vende o que nao tem.
-        "Estoque insuficiente para o produto",
+        // mesmo assim -- a lojista vende o que nao tem. 3x no corpo
+        // (medido), herdado da 20260951.
+        { texto: "Estoque insuficiente para o produto", vezes: 3 },
         // Se sumir no REPLACE, o cupom de uso unico deixa de ser consumido:
         // o mesmo codigo pode ser reaplicado indefinidamente.
         "UPDATE public.coupons SET usage_count = usage_count + 1",
@@ -690,13 +707,14 @@ const VERIFICACOES = {
       funcao: "create_marketplace_order_v24",
       esperado: [
         "variant_id ausente em produto com variacao ativa",
-        "Escolha uma varia",
+        { texto: "Escolha uma varia", vezes: 2 },
         "itens_da_cotacao",
         "OUTRO carrinho",
         "FOR UPDATE;",
         "usage_limit IS NULL OR usage_limit <= 0 OR usage_count < usage_limit",
         "Os valores do pedido mudaram",
-        "Estoque insuficiente para o produto",
+        // Mesma contagem da v23: 3x no corpo (medido).
+        { texto: "Estoque insuficiente para o produto", vezes: 3 },
         "UPDATE public.coupons SET usage_count = usage_count + 1",
         // A UNICA coisa que separa a v24 da v23: a reserva com prazo do
         // pagamento online. Se sumir no REPLACE, o PIX deixa de expirar e o
@@ -1235,7 +1253,14 @@ const VERIFICACOES = {
     {
       funcao: "get_admin_analytics_v2",
       esperado: [
-        "payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')",
+        // 10x no corpo (medido): o predicado da receita reconhecida repete em
+        // cada uma das portas de dinheiro da funcao. Contagem exata para a
+        // queda de QUALQUER porta acusar, em vez de imprimir ok com as outras.
+        {
+          texto:
+            "payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')",
+          vezes: 10,
+        },
         // O 13o ponto, do alarme `paid_on_cancelled`. Ele precisa de marcador
         // proprio porque `avaliarChecagem` usa `includes()`: o marcador acima
         // ja casaria com qualquer um dos 13 pontos, entao sozinho ele nao prova
