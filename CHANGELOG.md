@@ -7,6 +7,47 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.12.0] - 2026-08-29
+
+O checkout para de engolir as recusas do banco: a pessoa vê O QUE deu errado
+e ganha o botão que resolve. E a lista de pedidos deixa de apagar a si mesma
+na volta do PIX.
+
+### Para quem COMPRA
+
+- **Pedido recusado agora diz o motivo e oferece a saída.** As 11 recusas do
+  banco (estoque, variação, frete, cupom, endereço...) mostram a frase exata e
+  um botão com a ação certa: atualizar o carrinho, escolher a variação, tirar
+  o cupom, ver os pedidos. Até agora era só um aviso vermelho que sumia.
+- **O botão "Finalizar" trava sozinho nos casos perigosos.** Quando não dá
+  para saber se o pedido nasceu (rede caiu no meio), o botão fica travado
+  enquanto o aviso está na tela — fechar o aviso destrava. Um clique a mais
+  contra dois pedidos no lugar de um.
+- **A lista de pedidos não apaga mais a si mesma.** Voltar do banco e tocar
+  em "Meus Pedidos" na sequência errada chegou a mostrar "nenhum pedido" com
+  o pedido pago. Não mostra mais.
+- **Pedidos atualizam ao voltar para a aba.** Qualquer aba do app re-busca a
+  lista em silêncio quando volta ao foco — quem actualizou o pedido no
+  computador vê a versão nova ao voltar.
+
+### Para quem VENDE
+
+- **O painel para de tocar alerta vermelho sem você pedir.** Recargas de
+  fundo com falha ficam registradas nos bastidores; alerta vermelho só em
+  carga que você pediu de verdade.
+
+### Ferramenta (não muda nada na loja)
+
+- Migrations passam a viver em dois andares (raiz e _arquivadas) com um
+  resolvedor único para todos os scripts de prova — a família que o
+  arquivamento quebrou em silêncio voltou a funcionar.
+- O db-apply exige CONTAGEM EXATA dos marcadores de verificação, não só
+  presença.
+- O secretlint varre .ps1, .bat e o package-lock.json — preso por teste com
+  iscas de token falso.
+- Fim de linha determinístico no checkout (.gitattributes) e os slash
+  commands do Claude Code documentados no repositório.
+
 ## [1.11.0] - 2026-08-28
 
 A loja passa a conseguir registrar o pagamento que recebeu na mao, e o painel para de

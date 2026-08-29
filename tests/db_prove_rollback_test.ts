@@ -783,6 +783,53 @@ Deno.test("resumirDivergencias", async (t) => {
     },
   );
 
+  await t.step(
+    "divergência SÓ de fim de linha (LF vs CRLF) conta como formatação",
+    () => {
+      // MEDIDO em 27/08/2026 no banco de desenvolvimento, com
+      // `BEGIN READ ONLY`: 22 das 78 funções de `public` têm CRLF gravado no
+      // corpo (`prosrc`), contra 56 em LF. Como `pg_get_functiondef` devolve
+      // o corpo verbatim, a foto ANTES e a foto FINAL de um par antigo
+      // divergem só na quebra de linha — e o relatório imprimia
+      // "divergências de conteúdo: 1" com as duas strings visualmente
+      // IDÊNTICAS na tela, o que já foi lido aqui como erro de quem escreveu
+      // o rollback. `\r` é espaço em branco e era justamente o caso que
+      // escapava do colapso, porque `JSON.stringify` roda ANTES dele e troca
+      // o CR real pelos DOIS caracteres literais `\` + `r`.
+      const detalhes = [
+        {
+          caminho: "funcoes.f.def",
+          antes: "CREATE FUNCTION f()\nRETURNS void",
+          depois: "CREATE FUNCTION f()\r\nRETURNS void",
+        },
+      ];
+      const r = resumirDivergencias(detalhes);
+      assertEquals(r, { conteudo: 0, formatacao: 1 });
+    },
+  );
+
+  await t.step("CR solto (sem LF) também conta como formatação", () => {
+    const detalhes = [{ caminho: "x", antes: "a\nb", depois: "a\rb" }];
+    const r = resumirDivergencias(detalhes);
+    assertEquals(r, { conteudo: 0, formatacao: 1 });
+  });
+
+  await t.step(
+    "quebra de linha REMOVIDA continua sendo conteúdo (controle da correção acima)",
+    () => {
+      // Esta é a asserção que impede a correção de fim de linha de virar um
+      // "colapsa tudo": normalizar CRLF->LF NÃO pode fazer duas instruções
+      // que viraram uma linha só passarem por "formatação". É a propriedade
+      // que o `JSON.stringify` existe para proteger — ver o comentário de
+      // `resumirDivergencias`.
+      const detalhes = [
+        { caminho: "x", antes: "SELECT a\nFROM t", depois: "SELECT a FROM t" },
+      ];
+      const r = resumirDivergencias(detalhes);
+      assertEquals(r, { conteudo: 1, formatacao: 0 });
+    },
+  );
+
   await t.step("valor realmente diferente conta como conteúdo", () => {
     const detalhes = [{ caminho: "x", antes: "abc", depois: "xyz" }];
     const r = resumirDivergencias(detalhes);

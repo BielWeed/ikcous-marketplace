@@ -476,11 +476,40 @@ function compararFotos(a, b, caminho = "") {
  * quem mostra a verdade byte-a-byte para quem for conferir). `JSON.stringify`
  * entra porque transforma quebra de linha real em `\n` literal (dois
  * caracteres, não mais espaço em branco), então a corrida de espaço só é
- * colapsada DENTRO de uma mesma linha, nunca através de linhas.
+ * colapsada DENTRO de uma mesma linha, nunca através de linhas: um
+ * rollback-manual que junta duas instruções numa linha só continua sendo
+ * divergência de CONTEÚDO, e é para isso que o `stringify` existe aqui.
+ *
+ * O PREÇO desse `stringify`, e por que existe o `semCr` abaixo: ele roda
+ * ANTES do colapso de `\s+`, então o CR de um CRLF também vira os dois
+ * caracteres literais `\` + `r` — que não são mais espaço em branco e
+ * escapavam do colapso. Uma divergência EXCLUSIVAMENTE de fim de linha
+ * (LF de um lado, CRLF do outro) era contada em `conteudo`, e o relatório
+ * imprimia "divergências de conteúdo: 1" com as duas strings visualmente
+ * IDÊNTICAS na tela — o que já foi lido neste repositório como erro de quem
+ * escreveu o rollback-manual. Não era. Por isso o CR é normalizado para LF
+ * ANTES do `stringify`, e só o CR: a quebra de linha em si continua
+ * sobrevivendo como `\n` literal, preservando inteira a propriedade do
+ * parágrafo acima.
+ *
+ * Isso não é hipótese. MEDIDO em 27/08/2026 no banco de desenvolvimento, com
+ * `BEGIN READ ONLY`: 22 das 78 funções de `public` têm CRLF gravado no corpo
+ * (`prosrc`), contra 56 em LF. Como `pg_get_functiondef` devolve o corpo
+ * verbatim, pares antigos vão continuar divergindo só no fim de linha até
+ * cada função ser reaplicada a partir de arquivo já determinístico (a causa
+ * raiz nos ARQUIVOS foi fechada pelo `.gitattributes` no mesmo dia). É
+ * exatamente aí que o rótulo honesto decide se alguém vai caçar um
+ * "rollback infiel" que não existe.
  */
 function resumirDivergencias(detalhes) {
+  // Replacer do `JSON.stringify`: roda em toda string, em qualquer
+  // profundidade, sobre o CR REAL — nunca sobre o texto escapado que o
+  // stringify produz. É o que evita confundir um CR de verdade com uma
+  // string que por acaso contenha a barra invertida seguida de `r`.
+  const semCr = (_chave, valor) =>
+    typeof valor === "string" ? valor.replace(/\r\n?/g, "\n") : valor;
   const normalizar = (valor) =>
-    String(JSON.stringify(valor)).replace(/\s+/g, " ").trim();
+    String(JSON.stringify(valor, semCr)).replace(/\s+/g, " ").trim();
   let conteudo = 0;
   let formatacao = 0;
   for (const d of detalhes) {

@@ -35,12 +35,9 @@ const path = require("node:path");
 const { Client } = require("pg");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const MIGRATION = path.join(
-  PROJECT_ROOT,
-  "supabase",
-  "migrations",
-  "20260805010000_bind_guest_otp_to_single_order.sql",
-);
+const { resolverCaminhoMigration } = require("./ler-migration.cjs");
+const NOME_DA_MIGRATION = "20260805010000_bind_guest_otp_to_single_order.sql";
+const MIGRATION = resolverCaminhoMigration(NOME_DA_MIGRATION);
 
 const EMAIL_VITIMA = "vitima@exemplo-prova-auth010.invalid";
 const EMAIL_ATACANTE = "atacante@exemplo-prova-auth010.invalid";
@@ -107,8 +104,8 @@ async function contarOtp(client) {
 }
 
 async function main() {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename
-  if (!fs.existsSync(MIGRATION)) throw new Error(`Nao achei ${MIGRATION}`);
+  if (!MIGRATION)
+    throw new Error(`Nao achei (raiz nem _arquivadas): ${NOME_DA_MIGRATION}`);
 
   const client = new Client({
     connectionString: lerDatabaseUrl(),

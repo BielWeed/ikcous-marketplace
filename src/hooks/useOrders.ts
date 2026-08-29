@@ -190,13 +190,14 @@ export type ConsultaAdmin = [
  */
 export function escolherRecargaDeReconexao(deps: {
   isAdmin: boolean;
-  fetchUserOrders: () => Promise<unknown>;
+  fetchUserOrders: (silencioso?: boolean) => Promise<unknown>;
   loadOrders: (...args: ConsultaAdmin) => Promise<unknown>;
   ultimaConsultaAdmin: ConsultaAdmin | null;
-}): () => Promise<unknown> {
+}): (opts?: { silencioso?: boolean }) => Promise<unknown> {
   const { isAdmin, fetchUserOrders, loadOrders, ultimaConsultaAdmin } = deps;
 
-  if (!isAdmin) return () => fetchUserOrders();
+  if (!isAdmin)
+    return ({ silencioso } = {}) => fetchUserOrders(silencioso === true);
 
   if (!ultimaConsultaAdmin) return () => Promise.resolve();
 
@@ -844,83 +845,86 @@ export function useOrders(
   }, [user?.id, isAdmin]);
 
   // Fetch orders for the logged-in user
-  const fetchUserOrders = useCallback(async () => {
-    if (!user || !enabled) return [];
-    const cacheKey = `ikcous_orders_cache_${user.id}`;
-    let hasCache = false;
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        hasCache = true;
+  const fetchUserOrders = useCallback(
+    async (silent = false) => {
+      if (!user || !enabled) return [];
+      const cacheKey = `ikcous_orders_cache_${user.id}`;
+      let hasCache = false;
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          hasCache = true;
+        }
+      } catch {
+        // ignore localStorage issues
       }
-    } catch {
-      // ignore localStorage issues
-    }
 
-    if (userOrdersAbortControllerRef.current) {
-      userOrdersAbortControllerRef.current.abort();
-    }
-    userOrdersAbortControllerRef.current = new AbortController();
-    const signal = userOrdersAbortControllerRef.current.signal;
-
-    if (!hasCache) {
-      setLoading(true);
-    }
-    try {
-      const query = supabase
-        .from("marketplace_orders")
-        .select(
-          `
-          *,
-          items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)),
-          address:user_addresses(*)
-        `,
-        )
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .abortSignal(signal);
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      if (data) {
-        const mappedOrders = data.map((item) => mapOrderFromDB(item as any));
-        const serializado = JSON.stringify(mappedOrders);
-
-        // Devolver a MESMA referência quando o resultado não mudou faz o React
-        // desistir do re-render. Sem isto, `setOrders` trocava a referência a
-        // cada volta — inclusive para lista vazia, porque `if (data)` é
-        // verdadeiro para `[]` — e quem tivesse `orders` nas dependências de um
-        // useCallback ficava em loop de requisição. Era o caso do
-        // OrderDetailsView para usuário logado sem nenhum pedido (PEDIDO-040,
-        // #84).
-        //
-        // A comparação é contra o state ATUAL, não contra o último fetch: se um
-        // update otimista mexeu na lista e o servidor devolver o valor antigo,
-        // a tela precisa voltar para o que o servidor diz.
-        setOrders((atual) =>
-          JSON.stringify(atual) === serializado ? atual : mappedOrders,
-        );
-        localStorage.setItem(cacheKey, serializado);
-        return mappedOrders;
+      if (userOrdersAbortControllerRef.current) {
+        userOrdersAbortControllerRef.current.abort();
       }
-      return [];
-    } catch (err: any) {
-      if (
-        err?.name === "AbortError" ||
-        err?.message === "Fetch is aborted" ||
-        err?.message?.includes("aborted")
-      ) {
+      userOrdersAbortControllerRef.current = new AbortController();
+      const signal = userOrdersAbortControllerRef.current.signal;
+
+      if (!hasCache) {
+        setLoading(true);
+      }
+      try {
+        const query = supabase
+          .from("marketplace_orders")
+          .select(
+            `
+            *,
+            items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)),
+            address:user_addresses(*)
+          `,
+          )
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .abortSignal(signal);
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+
+        if (data) {
+          const mappedOrders = data.map((item) => mapOrderFromDB(item as any));
+          const serializado = JSON.stringify(mappedOrders);
+
+          // Devolver a MESMA referência quando o resultado não mudou faz o React
+          // desistir do re-render. Sem isto, `setOrders` trocava a referência a
+          // cada volta — inclusive para lista vazia, porque `if (data)` é
+          // verdadeiro para `[]` — e quem tivesse `orders` nas dependências de um
+          // useCallback ficava em loop de requisição. Era o caso do
+          // OrderDetailsView para usuário logado sem nenhum pedido (PEDIDO-040,
+          // #84).
+          //
+          // A comparação é contra o state ATUAL, não contra o último fetch: se um
+          // update otimista mexeu na lista e o servidor devolver o valor antigo,
+          // a tela precisa voltar para o que o servidor diz.
+          setOrders((atual) =>
+            JSON.stringify(atual) === serializado ? atual : mappedOrders,
+          );
+          localStorage.setItem(cacheKey, serializado);
+          return mappedOrders;
+        }
         return [];
+      } catch (err: any) {
+        if (
+          err?.name === "AbortError" ||
+          err?.message === "Fetch is aborted" ||
+          err?.message?.includes("aborted")
+        ) {
+          return [];
+        }
+        console.error("Error fetching user orders:", err);
+        if (!silent) toast.error("Erro ao carregar seus pedidos");
+        return [];
+      } finally {
+        setLoading(false);
       }
-      console.error("Error fetching user orders:", err);
-      toast.error("Erro ao carregar seus pedidos");
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, [user, enabled]);
+    },
+    [user, enabled],
+  );
 
   // Load orders with pagination (Admin) - Optimized
   const loadOrders = useCallback(
@@ -996,7 +1000,11 @@ export function useOrders(
           return { orders: [], total: 0 };
         }
         console.error("Error loading orders:", err);
-        toast.error("Erro ao carregar pedidos");
+        // Mesma disciplina da fetchUserOrders (:920): recarga silenciosa (o
+        // ramo admin da recarga de reconexão força silent=true) não fala com
+        // a pessoa — some o AVISO, não some a falha (o console.error acima
+        // segue e o erro continua sendo devolvido).
+        if (!silent) toast.error("Erro ao carregar pedidos");
         return { orders: [], total: 0 };
       } finally {
         setLoading(false);
@@ -1210,9 +1218,9 @@ export function useOrders(
    * cliente, ou a paginada do painel na pagina e no filtro em que a lojista
    * estava (PEDIDO-030, #83). Ver `escolherRecargaDeReconexao`.
    */
-  const recarregarAposReconexaoRef = useRef<() => Promise<unknown>>(() =>
-    Promise.resolve(),
-  );
+  const recarregarAposReconexaoRef = useRef<
+    (opts?: { silencioso?: boolean }) => Promise<unknown>
+  >(() => Promise.resolve());
   const handleRealtimeInsertRef = useRef(handleRealtimeInsert);
   const handleRealtimeUpdateRef = useRef(handleRealtimeUpdate);
   const handleRealtimeDeleteRef = useRef(handleRealtimeDelete);
@@ -1261,7 +1269,6 @@ export function useOrders(
     let isConnecting = false;
     let retryCount = 0;
     let reconnectTimeout: ReturnType<typeof setTimeout> | undefined;
-    let visibilityTimeout: ReturnType<typeof setTimeout> | undefined;
     let onlineTimeout: ReturnType<typeof setTimeout> | undefined;
 
     const bc =
@@ -1511,24 +1518,6 @@ export function useOrders(
       publicarNoBc({ type: "conn_status_request", channelId });
     }
 
-    const handleVisibilityChange = () => {
-      if (!isLeader) return;
-      if (document.visibilityState === "visible") {
-        clearTimeout(visibilityTimeout);
-        visibilityTimeout = setTimeout(() => {
-          const sub = globalOrderSubscriptions.get(channelId);
-          if ((!sub || sub.refCount <= 0) && !isUnmounting && !isConnecting) {
-            console.log("[Realtime] Orders foregrounded. Forcing reconnect...");
-            retryCount = 0;
-            clearTimeout(reconnectTimeout);
-            recarregarAposReconexaoRef.current().then(() => {
-              if (!isUnmounting) setupRealtime();
-            });
-          }
-        }, 500);
-      }
-    };
-
     const handleOnline = () => {
       if (!isLeader) return;
       clearTimeout(onlineTimeout);
@@ -1545,19 +1534,13 @@ export function useOrders(
       }, 500);
     };
 
-    globalThis.addEventListener("visibilitychange", handleVisibilityChange);
     globalThis.addEventListener("online", handleOnline);
 
     return () => {
       isUnmounting = true;
       statusInscricao.cancelar();
       clearTimeout(reconnectTimeout);
-      clearTimeout(visibilityTimeout);
       clearTimeout(onlineTimeout);
-      globalThis.removeEventListener(
-        "visibilitychange",
-        handleVisibilityChange,
-      );
       globalThis.removeEventListener("online", handleOnline);
 
       if (isLeader) {
@@ -1600,6 +1583,50 @@ export function useOrders(
       bc?.close();
     };
   }, [enabled, user?.id, isAdmin, isLeader]);
+
+  // Recarga por visibilidade num EFEITO PRÓPRIO, de propósito (achado 2 do
+  // laudo da rodada 2, metade A — "pedido novo não entra na lista"; spec da
+  // revisão de 26/08, documentada na frente
+  // vitrine-sabe-que-o-produto-mudou). A rodada 2 pendurou esta recarga
+  // DENTRO do efeito de realtime, dependente de isLeader: a reconquista de
+  // liderança (~420 ms depois de voltar) re-rodava o efeito, o teardown
+  // matava o timer de 500 ms e a recarga morria 80 ms antes de rodar; e a
+  // aba não-líder nem agendava. Aqui a recarga de DADOS é independente de
+  // liderança NENHUMA — toda aba que volta ao visível re-busca a lista por
+  // REST, com o socket do efeito acima vivo, morto ou zumbi. A RECONSTRUÇÃO
+  // do socket fica onde está (efeito de realtime, via `handleReconnect`
+  // nos status que o SDK reportar) — e a recarga por REST aqui é justamente
+  // a mitigação do socket zumbi que nenhum status cobre.
+  //
+  // SILENCIOSA de propósito (revisão do PR 321): background refresh não foi
+  // pedido pelo usuário, então não pode falar com ele — sem toast vermelho
+  // por cima da tela do PIX quando a rede do banco acabou de fazer handover.
+  //
+  // Deps `[enabled]` apenas (revisão do PR 321): o corpo só lê `enabled` e
+  // um ref atualizado a cada render; `user?.id`/`isAdmin` nas deps eram
+  // decorativas e cada mudança delas derrubava o timer pendente — a mesma
+  // classe de falha que matou a rodada 2, em miniatura.
+  useEffect(() => {
+    if (!enabled) return;
+    let visibilityTimeout: ReturnType<typeof setTimeout> | undefined;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      clearTimeout(visibilityTimeout);
+      visibilityTimeout = setTimeout(() => {
+        recarregarAposReconexaoRef
+          .current({ silencioso: true })
+          .catch(() => {});
+      }, 500);
+    };
+    globalThis.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      clearTimeout(visibilityTimeout);
+      globalThis.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
+    };
+  }, [enabled]);
 
   const updateOrderStatus = useCallback(
     async (

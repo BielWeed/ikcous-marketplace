@@ -294,6 +294,53 @@ Deno.test("H: VERIFICACOES tem entrada para esta migration cobrindo as duas func
 // construída a partir destes testes.
 // ---------------------------------------------------------------------------
 
+/**
+ * Aplica UMA sabotagem sobre o texto real e prova que ela PEGOU antes de
+ * qualquer asserção descer: o padrão tem de casar EXATAMENTE uma vez, e o
+ * texto tem de mudar.
+ *
+ * Existe porque o modo de falhar deste arquivo já aconteceu: os padrões de B,
+ * C, F e C2 traziam `\n` cru, os dois arquivos SQL vivem em CRLF no disco
+ * (`core.autocrlf=true` no gitconfig de SISTEMA, no Windows) e o `.replace`
+ * virava no-op silencioso — quatro controles que não sabotavam nada, com a
+ * cara de cobertura. Daí o `\r?\n` em todo padrão que atravessa fim de linha,
+ * igual ao que `extrairEntradaVerificacoes` já fazia para db-apply.cjs.
+ *
+ * A contagem de ocorrências é a metade CIRÚRGICA da regra da casa: padrão que
+ * casa duas vezes derruba mais do que a mutação diz derrubar, e aí a asserção
+ * cair não prova que ela cobria o alvo.
+ *
+ * O padrão chega JÁ global (`/g`), em vez de ser reconstruído aqui com
+ * `new RegExp`: `matchAll` exige a flag, e com a contagem travada em 1 um
+ * `replace` global troca exatamente a mesma coisa que um não-global. Montar o
+ * regex dinamicamente custaria um warning novo de `security/detect-non-literal-
+ * regexp`, e a catraca de lint reprova warning novo igual a erro novo.
+ */
+function mutarUmaVez(texto, padrao, substituto, rotulo) {
+  assert(
+    padrao.global,
+    `sabotagem "${rotulo}": o padrão precisa da flag /g para ser contado`,
+  );
+  // `matchAll` conta a partir de `lastIndex`, e `replace` global o ZERA antes
+  // de rodar. Um padrão que chegasse com `lastIndex` sujo contaria 1 e
+  // trocaria 2 — sabotagem dupla carimbada como cirúrgica, exatamente o que
+  // este helper existe para impedir. Zerar aqui tira a premissa implícita de
+  // que todo chamador passa um regex virgem.
+  padrao.lastIndex = 0;
+  const ocorrencias = [...texto.matchAll(padrao)].length;
+  assertEquals(
+    ocorrencias,
+    1,
+    `sabotagem "${rotulo}": casou ${ocorrencias} vez(es), esperado 1 — controle que não sabota não prova nada`,
+  );
+  const mutado = texto.replace(padrao, substituto);
+  assert(
+    mutado !== texto,
+    `sabotagem "${rotulo}": o replace não alterou o texto`,
+  );
+  return mutado;
+}
+
 Deno.test("MUTACAO A: inserir BEGIN;/COMMIT; na migration faz avaliarFase0 recusar", () => {
   const mutado = `${sqlMigration.replace(
     "CREATE OR REPLACE FUNCTION public.handle_produto_atualizado()",
@@ -304,15 +351,23 @@ Deno.test("MUTACAO A: inserir BEGIN;/COMMIT; na migration faz avaliarFase0 recus
 });
 
 Deno.test("MUTACAO B: apagar o gatilho de product_variants faz a asserção B falhar", () => {
-  const mutado = sqlMigration.replace(
-    /CREATE TRIGGER sync_produto_ultima_atualizacao[\s\S]*?;\n/,
+  const mutado = mutarUmaVez(
+    sqlMigration,
+    /CREATE TRIGGER sync_produto_ultima_atualizacao[\s\S]*?;\r?\n/g,
     "",
+    "apagar CREATE TRIGGER sync_produto_ultima_atualizacao",
   );
   const gatilhos = extrairGatilhosCriados(mutado);
   assertEquals(
     gatilhos.some((g) => g.nome === "sync_produto_ultima_atualizacao"),
     false,
     "a mutação não removeu o gatilho — o extrator não teria como reprovar",
+  );
+  // Cirúrgica: derrubou UM gatilho, não os dois. Sem isto, um padrão guloso
+  // que apagasse a migration inteira passaria por sabotagem válida.
+  assert(
+    gatilhos.some((g) => g.nome === "set_ultima_atualizacao"),
+    "a mutação levou junto o gatilho de produtos — não é cirúrgica",
   );
 });
 
@@ -332,12 +387,22 @@ Deno.test("MUTACAO D: renomear a função na linha CREATE OR REPLACE faz a asser
 });
 
 Deno.test("MUTACAO C: apagar UM DROP do rollback quebra a simetria", () => {
-  const rollbackMutado = sqlRollback.replace(
-    "DROP TRIGGER IF EXISTS sync_produto_ultima_atualizacao ON public.product_variants;\n",
+  const rollbackMutado = mutarUmaVez(
+    sqlRollback,
+    /DROP TRIGGER IF EXISTS sync_produto_ultima_atualizacao ON public\.product_variants;\r?\n/g,
     "",
+    "apagar DROP TRIGGER sync_produto_ultima_atualizacao do rollback",
   );
   const gatilhosCriados = extrairGatilhosCriados(sqlMigration);
   const gatilhosDropados = extrairGatilhosDropados(rollbackMutado);
+  // Cirúrgica: sobrou EXATAMENTE o outro DROP TRIGGER. Se a mutação tivesse
+  // levado os dois, a simetria quebraria do mesmo jeito — e o controle
+  // passaria pelo motivo errado, sem cobrir o caso "esqueceu UM".
+  assertEquals(
+    gatilhosDropados.map((g) => g.nome),
+    ["set_ultima_atualizacao"],
+    "a mutação não deixou exatamente o outro DROP TRIGGER de pé",
+  );
   assert(
     !mesmosGatilhos(gatilhosCriados, gatilhosDropados),
     "apagar um DROP do rollback deveria quebrar a simetria e não quebrou",
@@ -345,9 +410,21 @@ Deno.test("MUTACAO C: apagar UM DROP do rollback quebra a simetria", () => {
 });
 
 Deno.test("MUTACAO F: apagar o ramo de reparenting faz a asserção F falhar", () => {
-  const mutado = sqlMigration.replace(
-    /IF TG_OP = 'UPDATE' AND OLD\.product_id IS DISTINCT FROM NEW\.product_id THEN[\s\S]*?ELSE\n/,
+  const mutado = mutarUmaVez(
+    sqlMigration,
+    /IF TG_OP = 'UPDATE' AND OLD\.product_id IS DISTINCT FROM NEW\.product_id THEN[\s\S]*?ELSE\r?\n/g,
     "",
+    "apagar o ramo de reparenting (IF ... THEN ... ELSE)",
+  );
+  // Cirúrgica: só o ramo do IF caiu — o UPDATE do caso comum (o do ELSE) e a
+  // função que os contém continuam de pé.
+  assertStringIncludes(
+    mutado,
+    "WHERE id = COALESCE(NEW.product_id, OLD.product_id);",
+  );
+  assertStringIncludes(
+    mutado,
+    "CREATE OR REPLACE FUNCTION public.handle_variant_atualiza_produto()",
   );
   assert(
     !mutado.includes("OLD.product_id IS DISTINCT FROM NEW.product_id"),
@@ -432,12 +509,21 @@ Deno.test("MUTACAO B3: remover 'OR DELETE' do gatilho de variantes derruba a ass
 });
 
 Deno.test("MUTACAO C2: apagar o DROP FUNCTION do rollback (lado das funções, não dos gatilhos) quebra a simetria", () => {
-  const rollbackMutado = sqlRollback.replace(
-    "DROP FUNCTION IF EXISTS public.handle_variant_atualiza_produto();\n",
+  const rollbackMutado = mutarUmaVez(
+    sqlRollback,
+    /DROP FUNCTION IF EXISTS public\.handle_variant_atualiza_produto\(\);\r?\n/g,
     "",
+    "apagar DROP FUNCTION handle_variant_atualiza_produto do rollback",
   );
   const funcoesCriadas = extrairFuncoesCriadas(sqlMigration);
   const funcoesDropadas = extrairFuncoesDropadas(rollbackMutado);
+  // Cirúrgica: a outra DROP FUNCTION sobreviveu — a simetria quebra por
+  // FALTAR uma, não por ter sumido o bloco inteiro.
+  assertEquals(
+    funcoesDropadas,
+    ["handle_produto_atualizado"],
+    "a mutação não deixou exatamente a outra DROP FUNCTION de pé",
+  );
   assert(
     !mesmasFuncoes(funcoesCriadas, funcoesDropadas),
     "apagar um DROP FUNCTION do rollback deveria quebrar a simetria de funções e não quebrou",

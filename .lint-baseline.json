@@ -81,14 +81,22 @@
     "abaixar com base nela arriscaria reprovar o proximo por 1.",
     "",
     "Os números vivos são os campos abaixo, nunca os citados na prosa acima:",
-    "a prosa registra o histórico datado de cada mudança."
+    "a prosa registra o histórico datado de cada mudança.",
+    "",
+    "29/08/2026 — biome de 23 para 21. Medido no CI, run 33221880062 (PR #325):",
+    "'biome errors 21 / teto 23 — baixou -2'. A queda veio da develop (o lote de",
+    "formatação do #323 e vizinhos), nao do PR. O mesmo PR na mesma rodada",
+    "ADICIONOU 1 warning de eslint (detect-non-literal-fs-filename num",
+    "existsSync com variavel, o padrao que os db-prove convivem com",
+    "eslint-disable) — consertado no mesmo commit com o disable, devolvendo os",
+    "550. Baixado SO' DEPOIS do CI, como as duas quedas anteriores."
   ],
   "eslint": {
     "errors": 0,
     "warnings": 550
   },
   "biome": {
-    "errors": 23,
+    "errors": 21,
     "warnings": 1
   }
 }
