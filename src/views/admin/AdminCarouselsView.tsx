@@ -4,7 +4,7 @@ import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
-import { cn } from "@/lib/utils";
+import { cn, normalizeText } from "@/lib/utils";
 import type { View } from "@/types";
 import {
   ArrowDown,
@@ -345,11 +345,13 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   const filteredCurationProducts = useMemo(() => {
     let list = products;
     if (searchCurationQuery.trim()) {
-      const q = searchCurationQuery.toLowerCase();
+      // Busca sem acento acha produto acentuado ("alianca" acha "Aliança") —
+      // mesma regra (normalizeText) da busca da loja.
+      const q = normalizeText(searchCurationQuery);
       list = products.filter(
         (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.category?.toLowerCase().includes(q),
+          normalizeText(p.name).includes(q) ||
+          normalizeText(p.category).includes(q),
       );
     }
     if (!activeCurationSection) return list;

@@ -1,5 +1,18 @@
 # Backlog — IKCOUS Marketplace
 
+> ⚠️ **Nenhuma das 111 tarefas abaixo tem campo de estado.** Os 11 campos por tarefa (Épico,
+> Tipo, Tamanho, Risco, Prioridade, Evidência, Depende de, Critério de aceite, Contexto,
+> Arquivos, Bom pra quem chega) **não incluem "feito ou não"** — então este arquivo lista
+> trabalho já concluído como se estivesse pendente.
+>
+> **Prova disso, medida em 22/08/2026:** `PEDIDO-010` continua marcado **P0** aqui, e está
+> corrigido desde `supabase/migrations/20260804010000_fix_order_owner_check_null_safety.sql:99`,
+> de **04/08**.
+>
+> **Antes de pegar qualquer tarefa daqui, confira o estado real em
+> [`../auditoria/2026-08-22-reauditoria-de-julho.md`](../auditoria/2026-08-22-reauditoria-de-julho.md).**
+> O mesmo vale para o [`backlog.csv`](backlog.csv), que sai da mesma fonte.
+
 Gerado em 30/07/2026, a partir da reauditoria dos 85 achados de 29/07, do estado medido do
 banco de produção e do levantamento de lacuna de produto. O retrato que originou este backlog
 está em [`06-ESTADO-ATUAL.md`](../onboarding/06-ESTADO-ATUAL.md); a ordem sugerida de ataque,

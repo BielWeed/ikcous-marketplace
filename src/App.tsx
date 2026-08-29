@@ -46,57 +46,22 @@ const UserProfileView = lazyWithPreload(() =>
   })),
 );
 
+import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
+import { applyThemeColor, branding } from "@/config/branding";
 import { destinoPosLogin } from "@/lib/destinoPosLogin";
 import { supabase } from "@/lib/supabase";
 // --- LAZY LOADED ADMIN VIEWS ---
 import { cn } from "@/lib/utils";
 import { PreloadedOrLazy, lazyWithPreload } from "@/utils/lazyWithPreload";
 
-const AdminArea = React.lazy(async () => {
-  try {
-    const { data, error } = await supabase.rpc("is_admin");
-    if (error || !data) {
-      return {
-        default: function AdminUnauthorized() {
-          React.useEffect(() => {
-            import("sonner").then(({ toast }) => {
-              toast.error("Acesso restrito a administradores.");
-            });
-            window.location.href = "/";
-          }, []);
-          return (
-            <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
-              <div className="size-12 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
-              <p className="animate-pulse font-medium text-muted-foreground">
-                Verificando permissões...
-              </p>
-            </div>
-          );
-        },
-      };
-    }
-  } catch (e) {
-    console.error("[App] Admin verification error:", e);
-    return {
-      default: function AdminError() {
-        React.useEffect(() => {
-          window.location.href = "/";
-        }, []);
-        return (
-          <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
-            <div className="size-12 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
-            <p className="animate-pulse font-medium text-muted-foreground">
-              Verificando permissões...
-            </p>
-          </div>
-        );
-      },
-    };
-  }
-  return import("@/components/layouts/AdminArea").then((m) => ({
-    default: m.AdminArea,
-  }));
-});
+// O portao do painel mora em `@/components/layouts/AdminAreaGate`. Ele saiu de
+// dentro de um `React.lazy` aqui (achado 1 da auditoria de 26/08/2026): o
+// carregador tratava "o servidor disse que voce nao e admin" e "o servidor nao
+// respondeu" como o mesmo caso, e os dois expulsavam com
+// `window.location.href`. O motivo inteiro esta escrito no arquivo do portao.
+// O nome `AdminArea` fica porque e assim que VIEW_COMPONENTS e o render abaixo
+// o chamam.
+const AdminArea = AdminAreaGate;
 
 const AdminLogin = lazyWithPreload(() =>
   import("@/views/admin/AdminLoginView").then((m) => ({
@@ -178,6 +143,7 @@ const VIEW_COMPONENTS = {
   "admin-customers": AdminArea,
   "admin-user-detail": AdminArea,
   "admin-push": AdminArea,
+  "admin-notifications": AdminArea,
   "admin-whatsapp-config": AdminArea,
   "address-form": AddressFormView,
   "admin-login": AdminLogin,
@@ -335,6 +301,7 @@ function AdminAccessDenied({
 }
 import { PushNotificationBanner } from "@/components/pwa/PushNotificationBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
+import { corPrimariaEfetiva } from "@/config/cor-da-loja";
 import { CartProvider } from "@/contexts/CartContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { StoreProvider, useStore } from "@/contexts/StoreContext";
@@ -379,6 +346,7 @@ const getNavigationDirection = (
     admin: 0,
     "admin-dashboard": 0,
     "admin-push": 0.5,
+    "admin-notifications": 0.3,
     "admin-orders": 1,
     "admin-reviews": 1.4,
     "admin-qa": 1.6,
@@ -569,6 +537,30 @@ const AppContent = () => {
       }
     }
   }, [currentView, config?.themeMode]);
+
+  // CONTRATO DE COR (ver src/config/branding.ts e StoreContext): o meta
+  // theme-color acompanha a cor primária EFETIVA — a do banco quando ela é
+  // real, senão a semente do build (que applyBranding já deixou no meta na
+  // janela pré-React). Efeito próprio, separado do themeMode acima, porque a
+  // cor muda sem o tema mudar (ex.: lojista salva só a cor primária).
+  //
+  // A REGRA mora em corPrimariaEfetiva (StoreContext) — dono único. Aqui é
+  // só reflexo. Foi exatamente aqui que o b531ca9 introduziu defeito
+  // (revisão 20260825-1015): com o fetch da config FALHANDO, isLoaded vira
+  // true no finally e o default de CÓDIGO (#000000) é truthy — a barra do
+  // celular ficava PRETA com o app na cor da marca. corPrimariaEfetiva
+  // devolve null para o default, e a semente do build sobrevive.
+  // A cor efetiva sai para fora do efeito de propósito. Antes, o efeito lia
+  // `config` inteiro e declarava só `config?.primaryColor` — o `exhaustive-deps`
+  // acusava dependência faltando, e as duas saídas fáceis eram ruins: pôr
+  // `config` na lista faz o efeito rodar a cada mudança de QUALQUER campo da
+  // configuração, e suprimir a regra esconderia a divergência em vez de
+  // resolvê-la. Assim a dependência passa a ser exatamente o valor que o efeito
+  // usa, e o comportamento é o mesmo: reaplica quando a cor efetiva muda.
+  const corDeTemaEfetiva = corPrimariaEfetiva(config) ?? branding.theme.primary;
+  useEffect(() => {
+    applyThemeColor(corDeTemaEfetiva);
+  }, [corDeTemaEfetiva]);
 
   const currentViewRef = useRef<View>(currentView);
   const selectedProductIdRef = useRef<string | null>(selectedProductId);
@@ -1492,6 +1484,7 @@ const AppContent = () => {
         "admin-customers",
         "admin-user-detail",
         "admin-push",
+        "admin-notifications",
         "admin-whatsapp-config",
         "address-form",
         "admin-login",
@@ -2066,6 +2059,11 @@ const AppContent = () => {
           <PreloadedOrLazy
             component={ProductView}
             props={{
+              // Sem esta `key` o React reaproveita a MESMA instância do
+              // ProductView ao trocar de produto pela faixa "você também pode
+              // gostar" — e a variação, a quantidade e a foto do produto
+              // anterior atravessam para a tela do novo.
+              key: `product-detail-${product.id}`,
               product: product,
               isFavorite: favorites.some((f) => f.id === product.id),
               onToggleFavorite: () => handleToggleFavorite(product),
@@ -2203,6 +2201,7 @@ const AppContent = () => {
               initialQuery: searchQuery,
               onBack: () => handleNavigate("home"),
               selectedProductId: selectedProductId || undefined,
+              onQueryChange: setSearchQuery,
             }}
           />
         );
@@ -2234,6 +2233,7 @@ const AppContent = () => {
       "admin-customers",
       "admin-user-detail",
       "admin-push",
+      "admin-notifications",
       "admin-whatsapp-config",
     ];
 
@@ -2728,6 +2728,7 @@ const AppContent = () => {
                   handleAdminUserDetailBack={handleAdminUserDetailBack}
                   backOverride={backOverride}
                   isTransitionSupported={isTransitionSupported}
+                  fallback={<AdminRouteLoading />}
                 />
               ) : (
                 <AdminAccessDenied onNavigate={handleNavigate} />

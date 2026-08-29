@@ -38,7 +38,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
-import { cn } from "@/lib/utils";
+import { cn, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
 import {
@@ -47,7 +47,6 @@ import {
   Bell,
   ChevronDown,
   ChevronUp,
-  Copy,
   Edit,
   ExternalLink,
   Eye,
@@ -667,10 +666,11 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   const filteredProducts = useMemo(() => {
     if (!productSearch) return products;
+    // Busca sem acento acha produto acentuado ("maquina" acha "Máquina") —
+    // mesma regra (normalizeText) da busca da loja.
+    const q = normalizeText(productSearch);
     return products.filter(
-      (p) =>
-        p.id === formData.productId ||
-        p.name.toLowerCase().includes(productSearch.toLowerCase()),
+      (p) => p.id === formData.productId || normalizeText(p.name).includes(q),
     );
   }, [products, productSearch, formData.productId]);
 
@@ -724,16 +724,15 @@ export const AdminBannersView = memo(function AdminBannersView({
   const filteredBannersList = useMemo(() => {
     const now = new Date();
     return banners.filter((b) => {
+      // Busca sem acento acha banner acentuado — mesma regra (normalizeText)
+      // da busca da loja.
+      const q = normalizeText(searchQueryList);
       const matchesSearch =
         !searchQueryList ||
-        (b.title || "").toLowerCase().includes(searchQueryList.toLowerCase()) ||
-        (b.subtitle || "")
-          .toLowerCase()
-          .includes(searchQueryList.toLowerCase()) ||
-        (b.badgeText || "")
-          .toLowerCase()
-          .includes(searchQueryList.toLowerCase()) ||
-        (b.link || "").toLowerCase().includes(searchQueryList.toLowerCase());
+        normalizeText(b.title).includes(q) ||
+        normalizeText(b.subtitle).includes(q) ||
+        normalizeText(b.badgeText).includes(q) ||
+        normalizeText(b.link).includes(q);
 
       let matchesStatus = true;
       if (statusFilter === "active") {
@@ -1177,62 +1176,6 @@ export const AdminBannersView = memo(function AdminBannersView({
       );
     };
   }, []);
-
-  const handleDuplicateBanner = (banner: Banner) => {
-    setActiveColorElement("titleColor");
-    setProductSearch("");
-
-    let initialCoupon = "";
-    if (banner.link) {
-      const match = banner.link.match(/[?&]coupon=([^&]+)/);
-      if (match?.[1]) {
-        initialCoupon = match[1];
-      }
-    }
-    setSelectedCouponCode(initialCoupon);
-
-    isSavedRef.current = false;
-    setActiveStep(1);
-    setEditingBanner(null);
-    const isSimple =
-      !banner.title?.trim() &&
-      !banner.subtitle?.trim() &&
-      !banner.buttonText?.trim() &&
-      !banner.badgeText?.trim();
-    setBannerMode(isSimple ? "simple" : "complete");
-
-    const defaultPosition = banner.position || "home_top";
-    const nextOrder =
-      banners.filter((b) => b.position === defaultPosition).length + 1;
-
-    setFormData({
-      title: banner.title ? `${banner.title} (Cópia)` : "",
-      imageUrl: banner.imageUrl || "",
-      link: banner.link || "",
-      position: defaultPosition,
-      active: true,
-      order: nextOrder,
-      subtitle: banner.subtitle || "",
-      titleColor: banner.titleColor || "",
-      subtitleColor: banner.subtitleColor || "",
-      buttonText: banner.buttonText || "",
-      buttonBgColor: banner.buttonBgColor || "",
-      buttonTextColor: banner.buttonTextColor || "",
-      fontFamily: banner.fontFamily || "",
-      overlayColor: banner.overlayColor || "",
-      overlayOpacity: banner.overlayOpacity ?? 40,
-      badgeText: banner.badgeText || "",
-      templateType: banner.templateType || "default",
-      productId: banner.productId || "",
-      startDate: banner.startDate || null,
-      endDate: banner.endDate || null,
-    });
-
-    setIsDialogOpen(true);
-    toast.success("Campanha duplicada! Ajuste as informações e salve.", {
-      icon: "👥",
-    });
-  };
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
@@ -2287,16 +2230,6 @@ export const AdminBannersView = memo(function AdminBannersView({
                                       <div className="flex items-center gap-1">
                                         <button
                                           onClick={() =>
-                                            handleDuplicateBanner(banner)
-                                          }
-                                          disabled={isProcessing || isOffline}
-                                          className="flex size-7 items-center justify-center rounded-md border border-white/5 bg-zinc-900 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white active:scale-95"
-                                          title="Duplicar"
-                                        >
-                                          <Copy className="size-3.5 text-amber-500" />
-                                        </button>
-                                        <button
-                                          onClick={() =>
                                             handleOpenDialog(banner)
                                           }
                                           disabled={isProcessing || isOffline}
@@ -2535,19 +2468,6 @@ export const AdminBannersView = memo(function AdminBannersView({
 
                                     {/* Action Buttons Toolbar */}
                                     <div className="flex items-center gap-1">
-                                      <button
-                                        onClick={() =>
-                                          handleDuplicateBanner(banner)
-                                        }
-                                        disabled={isProcessing || isOffline}
-                                        className="flex h-7 sm:h-8 items-center justify-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-2 sm:px-3 text-[10px] sm:text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-                                        title="Duplicar Banner"
-                                      >
-                                        <Copy className="size-3 shrink-0 text-amber-500" />
-                                        <span className="hidden sm:inline">
-                                          Duplicar
-                                        </span>
-                                      </button>
                                       <button
                                         onClick={() => handleOpenDialog(banner)}
                                         disabled={isProcessing || isOffline}

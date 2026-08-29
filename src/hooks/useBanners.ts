@@ -75,6 +75,22 @@ export function useBanners(adminMode = false) {
       .catch(() => {});
   }, []);
 
+  // Toda mutação local (criar, editar, reordenar, excluir, reverter) atualiza
+  // estado e vault — e TEM de atualizar o cache de módulo junto: o próximo
+  // mount (a Home abrindo depois do painel) nasce dele, e o throttle de 60s
+  // confia que ele reflete a última verdade conhecida. Sem isto, um banner
+  // criado agora não aparecia na Home por até 1 minuto — e um excluído
+  // ressuscitaria nela no mesmo intervalo.
+  const applyLocalBanners = useCallback(
+    (items: Banner[]) => {
+      globalBannersCache = items;
+      lastBannersFetchTime = Date.now();
+      persistToVault(items);
+      setBanners(items);
+    },
+    [persistToVault],
+  );
+
   const normalizeLocalBannersOrder = useCallback(
     (
       pos: "home_top" | "home_middle" | "home_bottom",
@@ -360,8 +376,7 @@ export function useBanners(adminMode = false) {
         data.position as "home_top" | "home_middle" | "home_bottom",
         [...banners, newBanner],
       );
-      persistToVault(updatedBanners);
-      setBanners(updatedBanners);
+      applyLocalBanners(updatedBanners);
 
       // Async normalization of position order in DB
       normalizeBannersOrder(
@@ -400,8 +415,7 @@ export function useBanners(adminMode = false) {
       updated = normalizeLocalBannersOrder(oldBanner.position, updated);
     }
 
-    persistToVault(updated);
-    setBanners(updated);
+    applyLocalBanners(updated);
 
     try {
       const dbUpdates: any = {};
@@ -475,8 +489,7 @@ export function useBanners(adminMode = false) {
     } catch (error) {
       console.error("Error updating banner:", error);
       toast.error("Erro ao atualizar banner.");
-      persistToVault(previousBanners);
-      setBanners(previousBanners);
+      applyLocalBanners(previousBanners);
       throw error;
     }
   };
@@ -551,8 +564,7 @@ export function useBanners(adminMode = false) {
       cachedBanners[overIndex] = activeB;
       cachedBanners.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-      persistToVault(cachedBanners);
-      setBanners(cachedBanners);
+      applyLocalBanners(cachedBanners);
     }
 
     try {
@@ -563,8 +575,7 @@ export function useBanners(adminMode = false) {
 
       if (error) throw error;
     } catch (error) {
-      persistToVault(previousBanners);
-      setBanners(previousBanners);
+      applyLocalBanners(previousBanners);
       console.error("Error reordering banners:", error);
       toast.error("Erro ao reordenar banners.");
     }
@@ -592,8 +603,7 @@ export function useBanners(adminMode = false) {
         normalizeBannersOrder(deletedBanner.position).catch(() => {});
       }
 
-      persistToVault(updated);
-      setBanners(updated);
+      applyLocalBanners(updated);
       toast.success("Banner excluído com sucesso!");
     } catch (error) {
       console.error("Error deleting banner:", error);
@@ -607,9 +617,26 @@ export function useBanners(adminMode = false) {
     ["banners"],
     useCallback(async () => {
       if (vaultRef.current) {
-        const fresh = await vaultRef.current.getAll<Banner>("banners");
-        if (fresh.length > 0) {
+        // SEM guarda de "lista vazia": ela engolia o caso em que a lista
+        // ficou vazia, e a tela seguia mostrando o banner excluído até
+        // alguém recarregar a página.
+        //
+        // Mas lista vazia tem DOIS significados: pode ser a lojista
+        // excluindo o ÚLTIMO banner em outro dispositivo (esvaziar é o
+        // certo) OU uma leitura que falhou (conexão fechada por outra aba
+        // durante um purge, store ausente...) -- o `catch` de `getAll`
+        // resolve `[]` nos dois casos. Por isso `getAllOrThrow`, que
+        // REJEITA em vez de mascarar a falha como "vazio de verdade".
+        try {
+          const fresh = await vaultRef.current.getAllOrThrow<Banner>("banners");
           setBanners(fresh);
+        } catch (err) {
+          // Leitura do cofre falhou -- manter o que já está na tela é
+          // melhor que esvaziar a lista por causa de uma falha de leitura.
+          console.warn(
+            "[useBanners] Falha ao reler o cofre; mantendo a lista atual:",
+            err,
+          );
         }
       }
     }, []),

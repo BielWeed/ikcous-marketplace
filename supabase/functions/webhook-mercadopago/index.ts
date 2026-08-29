@@ -78,6 +78,7 @@ import {
   readKey,
   resumir,
 } from "../_shared/webpush.ts";
+import { enviarComprovantePedido } from "../_shared/comprovante.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -207,6 +208,89 @@ async function disparoPushReal(args: {
 }
 
 /**
+ * Manda ao CLIENTE o comprovante do pedido (PEDIDO-070) chamando DIRETO o
+ * miolo de `send-order-confirmation` — `_shared/comprovante.ts` — em vez de
+ * `supabase.functions.invoke`. É o mesmo movimento que `notify-new-order`
+ * já faz para reusar a `send-push` via `_shared/webpush.ts` (ver o
+ * cabeçalho daquele arquivo): a function de origem não pode ser importada
+ * pelo `index.ts` dela mesma porque chama `serve()` no topo, então o miolo
+ * mora em `_shared` e os dois chamadores importam de lá.
+ *
+ * REDESENHO DE 25/08/2026 — POR QUE NÃO A QUARTA CORREÇÃO NA PORTA HTTP
+ *   O comprovante foi consertado três vezes chamando `send-order-
+ *   confirmation` pela porta pública (desenhada para o navegador): (1) faltava
+ *   a chamada; (2) o texto mentia no pagamento atrasado — incompatibilidade
+ *   de CONTRATO; (3) a chave (JWT novo x legado) — incompatibilidade de
+ *   AUTENTICAÇÃO. As rodadas 2 e 3 são o mesmo defeito com roupa diferente:
+ *   cada volta descobria mais um jeito de a porta HTTP não servir a um
+ *   chamador servidor. A correção não é acertar o contrato da porta pela
+ *   quarta vez — é não passar por ela: chamando a função direto, por
+ *   import, não existe mais fronteira nenhuma para autenticar. Some o HTTP,
+ *   o `verify_jwt`, o header forçado, a chave legada enquistada e a
+ *   dependência do calendário de desligamento das chaves legadas
+ *   (INFRA-260, #126) — não porque a INFRA-260 foi concluída, mas porque
+ *   esta chamada específica deixou de depender dela.
+ *
+ * SÓ PARA `resultado === "pago"` — achado de revisão de contexto limpo,
+ * 25/08/2026, mantido no redesenho. O chamador (mais abaixo) restringe este
+ * disparo a 'pago', mesmo o push ao lojista saindo também para
+ * 'pago_apos_expirar'. Motivo: `enviarComprovantePedido`
+ * (`_shared/comprovante.ts`) só sabe ler o literal 'pago' —
+ * `aguardandoPagamento` compara `payment_status !== 'pago'`, e
+ * 'pago_apos_expirar' cai nesse `true`. Disparar para esse retorno faria o
+ * comprovante mentir DUAS vezes: diria que o pagamento ainda está
+ * "aguardando confirmação" (já foi confirmado — é por isso que chegamos
+ * aqui) e que o pedido "entra na fila de separação" (o pedido segue
+ * `status='cancelled'`, estoque já devolvido; nunca entra em separação). E
+ * não há segunda chance: `reivindicar_email_de_confirmacao` é reserva única
+ * e definitiva, então o e-mail certo nunca poderia ser mandado depois.
+ * Ensinar o comprovante a falar de 'pago_apos_expirar' exige um texto novo
+ * (produto, não engenharia) — fora do escopo deste redesenho, que só troca
+ * COMO a chamada acontece, não o que ela diz.
+ *
+ * A REPETIÇÃO NÃO PRECISA DE TRAVA AQUI
+ *   O MP é reentrante por natureza (reenvia a mesma notificação até receber
+ *   200), mas `enviarComprovantePedido` já reserva o envio com
+ *   `reivindicar_email_de_confirmacao` — um UPDATE condicional atômico em
+ *   que só a primeira chamada ganha (a MESMA trava que já protege o
+ *   caminho do front, chamando a MESMA RPC, sem mudar uma linha dela).
+ *   Reenvio do MP chamando esta função de novo é seguro: a chamada seguinte
+ *   cai em `ja_enviado` e não manda nada. Além disso, esta função só é
+ *   alcançada quando `confirmar_pagamento` (RPC, `FOR UPDATE`) devolve
+ *   'pago' — um reenvio que chegue depois de o pagamento já ter sido
+ *   registrado recebe 'ja_pago' e nem tenta chamar o comprovante de novo
+ *   (ver o teste "push dispara em exatamente 2 dos 9 retornos possíveis").
+ *
+ * Erros aqui NUNCA sobem, pela mesma razão do push (`disparoPushReal`,
+ * acima): o pedido já está 'pago' no banco quando esta função roda, e uma
+ * falha de e-mail não pode virar 500 — isso faria o MP reenviar um evento
+ * que já foi tratado com sucesso. Só loga — tanto a exceção inesperada
+ * (`catch`) quanto o desfecho `{ ok: false, motivo }` que
+ * `enviarComprovantePedido` devolve sem lançar (SMTP não configurado,
+ * pedido sem e-mail, reserva já gasta por outro chamador etc.).
+ */
+async function dispararComprovanteReal(args: {
+  supabase: ReturnType<typeof createClient>;
+  orderId: string;
+}): Promise<void> {
+  const { supabase, orderId } = args;
+  try {
+    const desfecho = await enviarComprovantePedido({ supabase, orderId });
+    if (!desfecho.ok) {
+      console.error(
+        "webhook-mercadopago: comprovante ao cliente não enviado",
+        { orderId, motivo: desfecho.motivo },
+      );
+    }
+  } catch (erro) {
+    console.error(
+      "webhook-mercadopago: falha ao disparar comprovante ao cliente",
+      erro,
+    );
+  }
+}
+
+/**
  * `deps` é a mesma costura da `criar-pagamento` (index.ts:124-135): em
  * produção o `serve()` lá embaixo chama `handler(req)` com um único
  * argumento.
@@ -228,6 +312,7 @@ async function handler(
     supabase?: ReturnType<typeof createClient>;
     fetchImpl?: typeof fetch;
     enviarPush?: typeof disparoPushReal;
+    enviarComprovante?: typeof dispararComprovanteReal;
   } = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -481,6 +566,117 @@ async function handler(
       readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
     );
 
+  // CORREÇÃO DOS TRÊS ELOS (achado de auditoria, 21/08/2026): `criar-pagamento`
+  // (index.ts:590) SEMPRE grava em `gateway_payment_id` o id da ORDER (ULID,
+  // prefixo "ORD") — mesmo quando o painel do MP está inscrito no tópico
+  // clássico e esta rota (`payment`) recebe do MP um id NUMÉRICO
+  // (`consulta.id`, acima). Os dois nunca batem: `confirmar_pagamento`
+  // (20260810000000_confirmar_pagamento_guarda_status.sql:52-55) devolve
+  // 'divergente' e nada é gravado — o pedido expira em 30 min, o estoque
+  // volta à prateleira, e o dinheiro já está no Mercado Pago.
+  //
+  // A API clássica (GET /v1/payments/{id}, doc oficial medida em 21/08/2026,
+  // 62 campos) não devolve NENHUM campo que aponte de volta para o id da
+  // order — não existe tradução possível a partir da resposta do MP. A saída
+  // é mandar para a RPC o valor que JÁ ESTÁ gravado no pedido, não o que o MP
+  // devolveu.
+  //
+  // ⚠️ Isto NÃO é "o mesmo padrão que `reconciliar-pagamentos/index.ts:262-
+  // 269` já usa" — é a mesma LINHA de código, não a mesma PROVA. Em
+  // `reconciliar`, o `p_payment_id` é o mesmo id pelo qual se PERGUNTOU ao
+  // MP: a resposta "pago" é sobre aquela cobrança exata, e a guarda (d) de
+  // `confirmar_pagamento` (id confere letra a letra) segue comparando duas
+  // fontes independentes. Aqui, pergunta-se ao MP sobre o pagamento
+  // NUMÉRICO e manda-se à RPC um id que o MP NUNCA VIU nesta conversa — o
+  // valor comparado é lido desta mesma linha do banco segundos antes, então
+  // a (d) é satisfeita PELA CONSTRUÇÃO do valor, não por verificação: ela
+  // DEIXA DE TER VALOR PROBATÓRIO nesta rota — este ajuste não a toca, mas
+  // também não pode se apoiar nela para nada.
+  //
+  // ⚠️ Precisão (achado de revisão, 21/08/2026): a (c) NÃO protege contra
+  // confirmar o PEDIDO errado — protege contra confirmar um pedido SEM
+  // cobrança nossa (`gateway_payment_id IS NOT NULL`). Quem protege contra o
+  // PEDIDO errado é a invariante nº 1 deste arquivo: o `orderId` sai sempre
+  // do `external_reference` da RESPOSTA AUTENTICADA do MP (linhas 467-475),
+  // nunca do corpo do webhook — é essa disciplina, não uma guarda do banco,
+  // que barra o corpo forjado (teste "corpo hostil não decide o pedido —
+  // p_order_id vem SEMPRE da resposta do MP", index_test.ts). Quem for
+  // procurar "onde mora a defesa contra creditar o pedido errado" e achar só
+  // a RPC corre o risco de afrouxar essa disciplina no handler achando que a
+  // rede de proteção está do outro lado — não está.
+  //
+  // ⚠️ Silêncio que esta correção não fecha: o VALOR pago não é comparado
+  // com o `total` do pedido em lugar nenhum deste fluxo — e isso NUNCA foi
+  // diferente nesta rota (`payment`): não é uma conferência que se perdeu
+  // com esta correção, é o estado de sempre. A guarda (d) da RPC nunca deu
+  // essa conferência de graça aqui: o `gateway_payment_id` gravado é sempre
+  // o id da ORDER ("ORD...") e o que esta rota recebe do MP é o id CLÁSSICO
+  // numérico — os dois só coincidem em cobranças criadas antes da migração
+  // para a Orders API. Não há exploit construído hoje — o
+  // `external_reference` só é escrito por nós, e o PIX da Orders API tem um
+  // único pagamento por order — mas é uma checagem de valor que nunca
+  // existiu nesta rota e continua sem existir, até alguém decidir se vale a
+  // pena construí-la.
+  //
+  // 🔒 É POR ISSO que o bloco abaixo é restrito a `rota === "payment"`: na
+  // rota `order` a (d) ainda compara duas fontes de verdade INDEPENDENTES (o
+  // `order.id` que o MP devolveu contra o `ORD…` gravado no banco) — foi
+  // essa comparação que já pegou o defeito real de gravar `payments[0].id`
+  // no lugar de `order.id` (`index_test.ts:43-49`). Estender este bloco para
+  // a rota `order` anularia a (d) no fluxo vivo e principal de hoje.
+  //
+  // A alternativa mais forte — e que NÃO está sendo feita agora, por escopo
+  // mínimo deliberado — é usar o `ORD…` que o código já tem na mão para
+  // perguntar ao MP por ELE (`consultarOrder`, já existe neste arquivo),
+  // reconstruindo o elo inteiro ("a cobrança que registramos está paga") e
+  // devolvendo à (d) o seu valor de prova, ao custo de uma chamada HTTP.
+  // 🔒 GATILHO para deixar de ser opcional: religar cartão (Fase 3.5,
+  // `criar-pagamento/index.ts:688`, hoje desligado por `metodo !== "pix"`)
+  // ou qualquer relaxamento da trava de uma-cobrança-por-pedido.
+  //
+  // Só entra quando o valor gravado NÃO tem forma de id clássico
+  // (`idEhClassico`, `_shared/mercadopago.ts`): se os dois lados já falam a
+  // mesma língua (cobrança criada ANTES desta migração, ou um clone que não
+  // migrou), nada muda, e o aviso abaixo não dispara — é o controle negativo
+  // que prova que este ramo não fica sempre ligado.
+  //
+  // Falha ao LER esse valor NÃO pode virar "seguir com o id que o MP
+  // devolveu": se o gravado for o ORD e o código seguir com o numérico, a
+  // guarda (d) recusa do mesmo jeito que hoje — só que sem o log que explica
+  // por quê, e arriscar um palpite não tem vantagem nenhuma sobre tentar de
+  // novo. Por isso a falha de leitura devolve 500 (evento mantido na fila do
+  // MP, que reenvia) — o mesmo padrão que este handler já usa para toda
+  // falha de banco (abaixo, "confirmar_pagamento falhou").
+  if (rota === "payment") {
+    const { data: pedidoParaGatewayId, error: erroLeituraGatewayId } = await supabase
+      .from("marketplace_orders")
+      .select("gateway_payment_id")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (erroLeituraGatewayId) {
+      console.error(
+        "webhook-mercadopago: falha ao ler gateway_payment_id do pedido antes de confirmar — evento mantido na fila do MP",
+        orderId,
+        erroLeituraGatewayId,
+      );
+      return json({ error: "Erro ao consultar o pedido." }, 500);
+    }
+
+    const idGravadoNoBanco = (pedidoParaGatewayId as Record<string, unknown> | null)?.gateway_payment_id;
+    if (
+      typeof idGravadoNoBanco === "string" &&
+      idGravadoNoBanco.length > 0 &&
+      !idEhClassico(idGravadoNoBanco)
+    ) {
+      console.warn(
+        "webhook-mercadopago: gateway_payment_id gravado não é um id clássico — a rota `payment` do MP devolveu um id que nunca bateria com o valor gravado (cobrança criada pela Orders API, painel provavelmente inscrito no tópico clássico). Enviando à RPC o valor GRAVADO NO BANCO, não o que o MP devolveu.",
+        { orderId, idDevolvidoPeloMp: idParaRpc, idGravadoNoBanco },
+      );
+      idParaRpc = idGravadoNoBanco;
+    }
+  }
+
   let resultado: string;
   try {
     const { data, error: erroRpc } = await supabase.rpc("confirmar_pagamento", {
@@ -540,6 +736,17 @@ async function handler(
 
     const enviarPush = deps.enviarPush ?? disparoPushReal;
     await enviarPush({ supabase, aviso });
+
+    // PEDIDO-070: o cliente também precisa saber que o pagamento entrou —
+    // mas SÓ em 'pago'. Ver o comentário de `dispararComprovanteReal`,
+    // acima ("SÓ PARA resultado === 'pago'"), para o porquê de
+    // 'pago_apos_expirar' ficar de fora (send-order-confirmation só
+    // conhece o literal 'pago' e mentiria duas vezes) e para a trava
+    // contra duplicidade e o porquê de erro aqui nunca subir.
+    if (resultado === "pago") {
+      const enviarComprovante = deps.enviarComprovante ?? dispararComprovanteReal;
+      await enviarComprovante({ supabase, orderId });
+    }
   } else if (resultado === "divergente" || resultado === "inexistente") {
     // error, não warn: ao contrário dos outros retornos deste laço (ja_pago,
     // ignorado...), estes dois chegam com o pagamento JÁ APROVADO pelo MP —

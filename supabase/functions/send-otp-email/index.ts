@@ -36,6 +36,12 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { enviarEmail, remetenteConfigurado } from "../_shared/smtp.ts";
+// PEDIDO-07 (INFRA-260, #126): mesma migração que webhook-mercadopago,
+// reconciliar-pagamentos, notify-new-order e send-push já fizeram — lê a
+// chave NOVA (SUPABASE_SECRET_KEYS) e cai para a LEGADA
+// (SUPABASE_SERVICE_ROLE_KEY) enquanto as duas coexistirem. Sem isto, no dia
+// em que a legada for desligada, o login por código de e-mail para junto.
+import { readKey } from "../_shared/webpush.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -119,7 +125,7 @@ if (!emTeste) {
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL"),
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+      readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
     );
 
     const { data, error } = await supabase.rpc("generate_order_otp_v2", {

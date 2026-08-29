@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 //
-// Trilha 4 (#104): o centro do donut (soma de `get_category_analytics` —
-// itens + frete, SEM subtrair desconto) e o card "Volume Total" (SUM de
-// `marketplace_orders.total`, JÁ líquido de desconto) podem divergir com
-// qualquer pedido com cupom. A decisão do brief é não mexer em cálculo —
-// só explicitar a diferença na UI com uma legenda. Este teste prova que a
-// legenda aparece no bloco de dados de verdade (não nos ramos de
-// erro/vazio/esqueleto, que não têm total para comparar).
+// Trilha 4 (#104), ATUALIZADO pela 20261003000000 (frete deixou de ser
+// categoria): o centro do donut (soma de `get_category_analytics` — SÓ
+// itens, SEM subtrair desconto e SEM frete) e o card "Volume Total"
+// (SUM de `marketplace_orders.total`, JÁ líquido de desconto — e COM
+// frete) podem divergir por dois motivos: cupom e frete. A decisão do
+// brief é não mexer em cálculo — só explicitar a diferença na UI com uma
+// legenda. Este teste prova que a legenda aparece no bloco de dados de
+// verdade (não nos ramos de erro/vazio/esqueleto, que não têm total para
+// comparar). O guardião frase-a-frase da nota vive em
+// grafico-de-categorias-nao-promete-frete.test.tsx; este cobre a
+// existência da legenda no ramo de dados.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -53,7 +57,7 @@ describe("StrategicIntelligenceBlocks — legenda da divergência de totais (#10
     vi.unstubAllGlobals();
   });
 
-  it("explica que o total do donut é itens + frete, sem desconto — pode divergir do Volume Total", async () => {
+  it("explica que o total do donut é itens sem frete — pode divergir do Volume Total (com frete)", async () => {
     const { StrategicIntelligenceBlocks } = await import(
       "@/components/admin/dashboard/StrategicIntelligenceBlocks"
     );
@@ -69,7 +73,7 @@ describe("StrategicIntelligenceBlocks — legenda da divergência de totais (#10
     await esperarChartPronto();
     act(() => {});
 
-    expect(hospedeiro.textContent).toMatch(/sem desconto/i);
+    expect(hospedeiro.textContent).toMatch(/sem desconto e sem frete/i);
     expect(hospedeiro.textContent).toMatch(/volume total/i);
   });
 });

@@ -30,6 +30,26 @@ export interface Answer {
   role?: string;
 }
 
+/**
+ * Resultado de `getQAStats` com o estado da consulta explícito.
+ *
+ * O cliente do Supabase não lança exceção: quando a consulta falha, ele
+ * devolve `{ count: null, error }`. Tratar essa falha com `|| 0` fazia o
+ * "não sei" (erro) vestir a fantasia do "não há nenhum" (zero real) — e o
+ * cartão de Perguntas anunciava "Fila Limpa" com cliente esperando resposta.
+ * Os três estados (falha, com perguntas, vazia de verdade) precisam chegar
+ * distinguíveis a quem consome.
+ */
+export type QAStatsResult =
+  | {
+      status: "ok";
+      total: number;
+      pending: number;
+      answered: number;
+      rate: number;
+    }
+  | { status: "error"; error: unknown };
+
 const QUESTIONS_CACHE_KEY_PREFIX = "ikcous_questions_cache_";
 const memoryQuestionsCache = new Map<string, Question[]>();
 
@@ -80,6 +100,10 @@ export function useQuestions() {
     return isAdmin && cachedQuestionsData ? cachedQuestionsData : [];
   });
   const [loading, setLoading] = useState(() => isAdmin && !cachedQuestionsData);
+  // Falha de fetch ≠ produto sem perguntas: sem este estado, o catch abaixo
+  // deixava questions=[] e a tela convidava a cliente a "ser o primeiro" a
+  // perguntar num produto que podia ter dez perguntas respondidas.
+  const [error, setError] = useState<string | null>(null);
   const latestProductIdRef = useRef<string | null>(null);
   const productQuestionsAbortControllerRef = useRef<AbortController | null>(
     null,
@@ -205,6 +229,7 @@ export function useQuestions() {
 
         if (latestProductIdRef.current === productId) {
           setQuestions(formattedQuestions);
+          setError(null);
         }
         updateQuestionsCache(productId, formattedQuestions);
       } catch (error: any) {
@@ -217,6 +242,9 @@ export function useQuestions() {
         }
         console.error("Error fetching questions:", error);
         toast.error("Erro ao carregar perguntas.");
+        if (latestProductIdRef.current === productId) {
+          setError("Não conseguimos carregar as perguntas deste produto.");
+        }
       } finally {
         if (latestProductIdRef.current === productId) {
           setLoading(false);
@@ -508,7 +536,7 @@ export function useQuestions() {
     async (questionId: string, options?: { silent?: boolean }) => {
       if (!isAdmin) {
         if (!options?.silent) toast.error("Permissão negada");
-        return;
+        return false;
       }
       try {
         const { error } = await supabase
@@ -519,9 +547,11 @@ export function useQuestions() {
         if (error) throw error;
         setQuestions((prev) => prev.filter((q) => q.id !== questionId));
         if (!options?.silent) toast.success("Pergunta removida.");
+        return true;
       } catch (error) {
         console.error("Error deleting question:", error);
         if (!options?.silent) toast.error("Erro ao remover pergunta.");
+        return false;
       }
     },
     [isAdmin],
@@ -577,7 +607,11 @@ export function useQuestions() {
                 "[Realtime-Questions] Answer change:",
                 payload.eventType,
               );
-              bc?.postMessage({ type: "questions_change", productId, payload });
+              // PAINEL-11: canal de answers SEM filtro de produto — resposta
+              // de QUALQUER produto chega aqui. O broadcast anterior etiquetava
+              // com o productId LOCAL (errado para outros produtos); agora vai
+              // sem productId (sinal genérico que todas as abas aceitam).
+              bc?.postMessage({ type: "questions_change", payload });
               if (onChange) {
                 onChange();
               } else if (productId) {
@@ -625,7 +659,10 @@ export function useQuestions() {
         if (bc) {
           listener = (event: MessageEvent) => {
             if (
-              event.data?.type === "questions_change" &&
+              (event.data?.type === "questions_change" &&
+                // PAINEL-11: answers chegam SEM productId (canal sem filtro) —
+                // aceitar tanto com (questions, filtrado) quanto sem (answers)
+                event.data?.productId === undefined) ||
               event.data?.productId === productId
             ) {
               console.log(
@@ -671,7 +708,7 @@ export function useQuestions() {
     };
   }, []);
 
-  const getQAStats = useCallback(async () => {
+  const getQAStats = useCallback(async (): Promise<QAStatsResult> => {
     const [totalRes, pendingRes] = await Promise.all([
       supabase
         .from("vw_questions_with_answers_count" as any)
@@ -682,12 +719,20 @@ export function useQuestions() {
         .eq("answers_count", 0),
     ]);
 
-    const total = totalRes.count || 0;
-    const pending = pendingRes.count || 0;
+    // Falha de consulta NÃO é zero: sem este guarda, `{ count: null, error }`
+    // virava `total = 0` e `pending = 0` — "Fila Limpa" mentirosa na tela.
+    if (totalRes.error) return { status: "error", error: totalRes.error };
+    if (pendingRes.error) return { status: "error", error: pendingRes.error };
+
+    // Aqui só chega consulta que respondeu; count nulo sem error não ocorre
+    // no supabase-js, e `??` mantém o zero legítimo exatamente como era.
+    const total = totalRes.count ?? 0;
+    const pending = pendingRes.count ?? 0;
     const answered = Math.max(0, total - pending);
     const rate = total > 0 ? Math.round((answered / total) * 100) : 0;
 
     return {
+      status: "ok",
       total,
       pending,
       answered,
@@ -698,6 +743,7 @@ export function useQuestions() {
   return {
     questions,
     loading,
+    error,
     getQuestionsByProduct,
     getAllQuestions,
     addQuestion,

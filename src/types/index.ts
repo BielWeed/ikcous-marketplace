@@ -14,6 +14,13 @@ export interface Product {
   images: string[];
   category: string;
   stock: number;
+  /**
+   * Limiar de "estoque baixo" deste produto. Nulo significa "use o padrao do
+   * projeto" (5), a mesma regra do KPI Estoque Baixo do painel. ZERO e' uma
+   * escolha valida do lojista, nao ausencia — por isso `number | null`, e por
+   * isso quem le usa `??`, nunca `||`.
+   */
+  estoqueMinimo?: number | null;
   sold: number;
   isActive: boolean;
   isBestseller: boolean;
@@ -131,7 +138,8 @@ export type PaymentStatus =
   | "recusado"
   | "expirado"
   | "estornado"
-  | "pago_apos_expirar";
+  | "pago_apos_expirar"
+  | "recebido_na_entrega";
 
 export interface OrderItem {
   productId: string;
@@ -165,6 +173,14 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
   trackingCode?: string;
+  /** true quando o pedido já estava enviado no momento do cancelamento. */
+  cancelledAfterShipping: boolean;
+  /** quando o lojista confirmou que o produto voltou. null = ainda não voltou. */
+  returnedToSellerAt?: string | null;
+  /** Quando a loja confirmou que recebeu o pagamento na entrega. NULL = não confirmado. */
+  pagamentoRecebidoEm?: string | null;
+  /** Qual admin confirmou o recebimento. */
+  pagamentoRecebidoPor?: string | null;
 }
 
 export interface Review {
@@ -303,6 +319,7 @@ export type View =
   | "admin-customers"
   | "admin-user-detail"
   | "admin-push"
+  | "admin-notifications"
   | "admin-whatsapp-config"
   | "admin-sros"
   | "referral"

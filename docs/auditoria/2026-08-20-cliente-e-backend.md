@@ -566,9 +566,27 @@ busca e carrinho, e eles estavam no pedido — omitir a rasura é pior que a ras
   envelhece no carrinho entre a adição e o checkout, persistência entre aparelhos
   (`sync_cart_atomic`), e o caso da variante. `sync_cart_atomic` grava `variant_id` como texto
   vazio quando não há variante, e eu não segui o que acontece com isso na volta.
-- 🔴 **Busca — cobertura RASA.** Uma frase, na seção acima. **Não olhei:** o que a busca deixa de
+- ~~🔴 **Busca — cobertura RASA.** Uma frase, na seção acima. **Não olhei:** o que a busca deixa de
   achar (ela só olha nome e descrição — não categoria, não código), o comportamento com acento e
-  maiúscula além do caso já testado, e a interação entre o filtro local e a paginação do servidor.
+  maiúscula além do caso já testado, e a interação entre o filtro local e a paginação do servidor.~~
+  <br>⚠️ **RASURADO em 20/08/2026 — a parte entre parênteses estava DESATUALIZADA e mandava refazer
+  trabalho já feito.** A busca da loja **já cobre nome, descrição, categoria e tags**, e **já é cega
+  a acento nos dois lados da comparação**: `normalizeText` (`src/lib/utils.ts:58-63`) faz
+  `NFD` + remoção de diacríticos + `toLowerCase`, e a `SearchBar` a aplica em nome (`:176`),
+  descrição (`:179`), categoria (`:180`, `:137`, `:159`) e tags (`:143`). O comentário no código
+  nomeia o caso que motivou o conserto: quem digitava *alianca* não achava a *Aliança*.
+  <br>**O que continua verdadeiro e ainda não foi olhado:** busca por código do produto, e a
+  interação entre o filtro local e a paginação do servidor.
+  <br>**Nuance descoberta ao rasurar, que ninguém tinha registrado:** existem **dois** caminhos de
+  busca e eles não cobrem os mesmos campos. `SearchBar.tsx` cobre os quatro campos acima;
+  `useSearch.ts:25-27` normaliza apenas **nome e descrição**. Divergência não medida quanto a
+  impacto — fica como pista, não como achado.
+  <br>🔴 **Por que esta rasura existe:** uma sessão da caça de 20/08 mediu `ilike` no banco, obteve
+  0 resultados para todos os termos sem acento, viu que batia com o texto acima e **quase reportou
+  um defeito que não existe**. Só não virou achado falso porque ela foi digitar na tela antes de
+  escrever. É exatamente o dano que `2026-08-20-fila-unica-de-dor.md` descreve no topo — retrato
+  escrito envelhece, e o detalhe convincente é o que engana. **Confirme no código antes de obedecer
+  a qualquer "não foi coberto" escrito aqui.**
 - **O painel do lojista** (`src/views/admin/`) — só entrei nele para rastrear o formulário de
   cupom e a origem de um dado. Não foi auditado. *(Uma sessão paralela auditou o painel; o
   resultado dela está em `docs/auditoria/2026-08-20-painel-config.md`.)*

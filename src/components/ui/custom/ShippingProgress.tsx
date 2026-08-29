@@ -91,7 +91,7 @@ export function ShippingProgress({
           <p
             className={cn(
               "text-[10px] font-bold uppercase tracking-widest mt-0.5",
-              shipping === 0 ? "text-emerald-600/70" : "text-zinc-400",
+              shipping === 0 ? "text-emerald-700" : "text-zinc-400",
             )}
           >
             {shipping === 0 ? "Premium Service Ativado" : "Benefício exclusivo"}
@@ -100,10 +100,10 @@ export function ShippingProgress({
 
         {savings > 0 && (
           <div className="flex flex-col items-end text-right animate-in fade-in slide-in-from-right-4">
-            <span className="mb-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-600/70">
+            <span className="mb-0.5 text-[9px] font-bold uppercase tracking-widest text-emerald-700">
               Economia
             </span>
-            <span className="shrink-0 rounded-lg bg-emerald-100/50 px-2 py-0.5 text-xs font-black tracking-tighter text-emerald-600 sm:text-sm">
+            <span className="shrink-0 rounded-lg bg-emerald-100/50 px-2 py-0.5 text-xs font-black tracking-tighter text-emerald-700 sm:text-sm">
               + {formatCurrency(savings)}
             </span>
           </div>
@@ -116,7 +116,7 @@ export function ShippingProgress({
           <span
             className={cn(
               "text-sm font-black tracking-tighter transition-colors",
-              shipping === 0 ? "text-emerald-600" : "text-zinc-900",
+              shipping === 0 ? "text-emerald-700" : "text-zinc-900",
             )}
           >
             {Math.floor(progressPercent)}%
@@ -165,96 +165,101 @@ export function ShippingProgress({
           </div>
 
           <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto scroll-smooth px-4 pb-2 sm:-mx-5 sm:px-5">
-            {freeShippingProducts.map((p: Product) => (
-              <div
-                key={p.id}
-                onClick={() => {
-                  haptic.light();
-                  if (onNavigate) {
-                    onNavigate("product-detail", p.id);
-                  } else {
-                    globalThis.history.pushState(
-                      { view: "product-detail", id: p.id },
-                      "",
-                      `?product=${p.id}`,
-                    );
-                    globalThis.dispatchEvent(new PopStateEvent("popstate"));
-                  }
-                }}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    haptic.light();
-                    if (onNavigate) {
-                      onNavigate("product-detail", p.id);
-                    } else {
-                      globalThis.history.pushState(
-                        { view: "product-detail", id: p.id },
-                        "",
-                        `?product=${p.id}`,
-                      );
-                      globalThis.dispatchEvent(new PopStateEvent("popstate"));
+            {freeShippingProducts.map((p: Product) => {
+              // Rede de segurança: a lista já vem filtrada em
+              // getFreeShippingEligibleProducts (useProducts.ts), mas o
+              // "Adicionar" daqui não passa pelo ProductCard -- se um
+              // produto com variação ativa chegar de outro jeito, o botão
+              // não pode adicionar sem a escolha (mesmo critério do
+              // ProductCard: `variants?.some(v => v.active)`).
+              const hasActiveVariant =
+                p.variants?.some((v) => v.active) ?? false;
+              const goToProduct = () => {
+                haptic.light();
+                if (onNavigate) {
+                  onNavigate("product-detail", p.id);
+                } else {
+                  globalThis.history.pushState(
+                    { view: "product-detail", id: p.id },
+                    "",
+                    `?product=${p.id}`,
+                  );
+                  globalThis.dispatchEvent(new PopStateEvent("popstate"));
+                }
+              };
+              return (
+                <div
+                  key={p.id}
+                  onClick={goToProduct}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      goToProduct();
                     }
-                  }
-                }}
-                className="group/card w-[124px] flex-shrink-0 cursor-pointer rounded-2xl border border-zinc-100 bg-zinc-50 p-2 transition-colors hover:border-zinc-300"
-              >
-                <div className="relative mb-2 aspect-square overflow-hidden rounded-xl border border-black/[0.03] bg-white shadow-sm">
-                  <img
-                    src={p.images[0]}
-                    alt={p.name}
-                    className="size-full object-cover transition-transform duration-500 group-hover/card:scale-105"
-                  />
-                </div>
-                <div className="px-0.5">
-                  <p className="mb-1 line-clamp-2 min-h-[26px] text-[9px] font-black uppercase leading-snug tracking-tight text-zinc-600">
-                    {p.name}
-                  </p>
-                  <p className="mb-2 text-[11px] font-black tracking-tighter text-zinc-900">
-                    R$ {p.price.toFixed(2).replace(".", ",")}
-                  </p>
+                  }}
+                  className="group/card w-[124px] flex-shrink-0 cursor-pointer rounded-2xl border border-zinc-100 bg-zinc-50 p-2 transition-colors hover:border-zinc-300"
+                >
+                  <div className="relative mb-2 aspect-square overflow-hidden rounded-xl border border-black/[0.03] bg-white shadow-sm">
+                    <img
+                      src={p.images[0]}
+                      alt={p.name}
+                      className="size-full object-cover transition-transform duration-500 group-hover/card:scale-105"
+                    />
+                  </div>
+                  <div className="px-0.5">
+                    <p className="mb-1 line-clamp-2 min-h-[26px] text-[9px] font-black uppercase leading-snug tracking-tight text-zinc-600">
+                      {p.name}
+                    </p>
+                    <p className="mb-2 text-[11px] font-black tracking-tighter text-zinc-900">
+                      R$ {p.price.toFixed(2).replace(".", ",")}
+                    </p>
 
-                  <div className="mb-2 flex items-center justify-between gap-1 rounded-lg border border-zinc-200 bg-white p-0.5">
+                    <div className="mb-2 flex items-center justify-between gap-1 rounded-lg border border-zinc-200 bg-white p-0.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateQuantity(p.id, -1);
+                        }}
+                        className="flex size-5 items-center justify-center rounded-md bg-zinc-50 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 active:scale-95"
+                      >
+                        <Minus className="size-3" />
+                      </button>
+                      <span className="flex-1 text-center text-[10px] font-black text-zinc-900">
+                        {getQuantity(p.id)}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateQuantity(p.id, 1);
+                        }}
+                        className="flex size-5 items-center justify-center rounded-md bg-zinc-50 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 active:scale-95"
+                      >
+                        <Plus className="size-3" />
+                      </button>
+                    </div>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        updateQuantity(p.id, -1);
+                        if (hasActiveVariant) {
+                          goToProduct();
+                          return;
+                        }
+                        haptic.medium();
+                        onAddToCart?.(p, getQuantity(p.id));
                       }}
-                      className="flex size-5 items-center justify-center rounded-md bg-zinc-50 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 active:scale-95"
+                      className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 py-1.5 text-white shadow-sm transition-colors hover:bg-zinc-800 active:scale-95"
                     >
-                      <Minus className="size-3" />
-                    </button>
-                    <span className="flex-1 text-center text-[10px] font-black text-zinc-900">
-                      {getQuantity(p.id)}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateQuantity(p.id, 1);
-                      }}
-                      className="flex size-5 items-center justify-center rounded-md bg-zinc-50 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 active:scale-95"
-                    >
-                      <Plus className="size-3" />
+                      <ShoppingCart className="size-3" />
+                      <span className="text-[9px] font-black uppercase tracking-widest">
+                        {hasActiveVariant ? "Escolher opções" : "Adicionar"}
+                      </span>
                     </button>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      haptic.medium();
-                      onAddToCart?.(p, getQuantity(p.id));
-                    }}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 py-1.5 text-white shadow-sm transition-colors hover:bg-zinc-800 active:scale-95"
-                  >
-                    <ShoppingCart className="size-3" />
-                    <span className="text-[9px] font-black uppercase tracking-widest">
-                      Adicionar
-                    </span>
-                  </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

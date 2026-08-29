@@ -162,6 +162,16 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
       borderColor: "border-red-500/40",
       needsAttention: true,
     },
+    // A loja confirmou pelo painel que recebeu o dinheiro na entrega (Task 1
+    // de docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md) — não
+    // passou pelo gateway, mas o dinheiro entrou, e por isso o mesmo tom de
+    // `pago`.
+    recebido_na_entrega: {
+      label: "Recebido na entrega",
+      color: "text-emerald-400",
+      bgColor: "bg-emerald-500/10",
+      borderColor: "border-emerald-500/20",
+    },
     sem_cobranca: {
       label: "Sem cobrança online",
       color: "text-zinc-500",
@@ -175,8 +185,10 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
  * união fechada de literais (`PaymentStatusKey`) e o `Record` acima já é
  * exaustivo por construção, mas o eslint-plugin-security não distingue isso
  * de um dicionário arbitrário e acusa `detect-object-injection` em toda
- * indexação dinâmica. Gerado a partir do Record em vez de duplicar os sete
- * rótulos numa segunda fonte — só existe uma definição para divergir.
+ * indexação dinâmica. Gerado a partir do Record em vez de duplicar os oito
+ * rótulos (sete de `PaymentStatus` mais `sem_cobranca`, desde que
+ * `recebido_na_entrega` entrou na `20261020000000`) numa segunda fonte — só
+ * existe uma definição para divergir.
  */
 const paymentStatusConfigByKey = new Map(
   Object.entries(paymentStatusConfig) as [
@@ -199,20 +211,59 @@ export function getPaymentStatusConfig(
 
 interface PaymentStatusBadgeProps {
   paymentStatus: PaymentStatus | null | undefined;
+  // Opcional para não quebrar chamador nenhum: sem ela, o comportamento é
+  // idêntico ao de antes desta correção.
+  orderStatus?: OrderStatus | null;
   className?: string;
 }
+
+/**
+ * Rótulo que sobrepõe `paymentStatusConfig.pago` quando o pedido pagou e
+ * DEPOIS foi cancelado — produzível hoje pelo botão "Cancelar Pedido" da
+ * tela do cliente, que aparece para todo pedido pendente sem olhar o
+ * pagamento. Sem isso, o painel mostrava "Pago" verde comum para um pedido
+ * em que o dinheiro está com a loja, o estoque já voltou à prateleira e não
+ * existe estorno automático em lugar nenhum deste app.
+ *
+ * Mesma família visual de `pago_apos_expirar` (dinheiro fora do fluxo, cores
+ * reaproveitadas dali) — a causa é o espelho uma da outra: aqui o pedido
+ * nasceu pago e morreu depois; lá nasceu sem pagar e o dinheiro chegou tarde
+ * demais. Vocabulário do LOJISTA, diferente de `PAGO_MAS_CANCELADO` em
+ * `CustomerPaymentBadge.tsx`, que fala com quem comprou.
+ */
+const PAGO_E_CANCELADO: PaymentStatusEntry = {
+  label: "Pago e cancelado — precisa de atenção",
+  color: paymentStatusConfig.pago_apos_expirar.color,
+  bgColor: paymentStatusConfig.pago_apos_expirar.bgColor,
+  borderColor: paymentStatusConfig.pago_apos_expirar.borderColor,
+  needsAttention: true,
+};
 
 /**
  * Badge de `payment_status` para a fila de atenção do admin (Task 9, Fase
  * 3). `null`/`undefined` caem em "Sem cobrança online" — nunca em uma
  * chave inexistente do config, que quebraria a renderização.
+ *
+ * `orderStatus` é opcional e só muda alguma coisa nos cruzamentos que pedem
+ * atenção hoje: `pago` + `cancelled` e `recebido_na_entrega` + `cancelled`
+ * (Task 3b de docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md).
+ * Todo o resto do Record segue exatamente como antes desta correção.
  */
 export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   paymentStatus,
+  orderStatus,
   className,
 }: Readonly<PaymentStatusBadgeProps>) {
   const key = paymentStatusKey(paymentStatus);
-  const cfg = getPaymentStatusConfig(key);
+  // `recebido_na_entrega` (Task 3b de
+  // docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md) entra no
+  // mesmo cruzamento que `pago`: dinheiro que entrou fora do gateway e o
+  // pedido morreu depois é exatamente o mesmo alerta.
+  const cfg =
+    (key === "pago" || key === "recebido_na_entrega") &&
+    orderStatus === "cancelled"
+      ? PAGO_E_CANCELADO
+      : getPaymentStatusConfig(key);
 
   return (
     <div

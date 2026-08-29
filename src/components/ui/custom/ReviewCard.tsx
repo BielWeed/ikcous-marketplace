@@ -7,18 +7,27 @@ import { StarRating } from "./StarRating";
 
 interface ReviewCardProps {
   review: Review;
-  onHelpful?: (reviewId: string) => void;
+  // A união abaixo é deliberada: o chamador pode passar um handler síncrono
+  // (void) ou um que devolve o resultado da gravação (Promise<boolean>), e os
+  // dois já existem no código. Estreitar isso é mudança de contrato de uma prop
+  // pública e pede revisão própria — não entra de carona num commit que existe
+  // para destravar o lint.
+  // biome-ignore lint/suspicious/noConfusingVoidType: ver o comentário acima
+  onHelpful?: (reviewId: string) => void | Promise<boolean>;
   onNavigate?: (view: View, id?: string) => void;
 }
 
 export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
   const [hasMarkedHelpful, setHasMarkedHelpful] = useState(false);
 
-  const handleHelpful = () => {
-    if (!hasMarkedHelpful && onHelpful) {
-      onHelpful(review.id);
-      setHasMarkedHelpful(true);
-    }
+  // Trava o botão só quando o voto VALEU (o hook marcaHelpful devolve
+  // `false` quando o RPC falha e reverte o contador). Antes, a trava era
+  // local e definitiva: um erro de rede deixava o botão morto e o voto
+  // que o banco nunca gravou travado para sempre.
+  const handleHelpful = async () => {
+    if (hasMarkedHelpful || !onHelpful) return;
+    const valeu = await onHelpful(review.id);
+    if (valeu !== false) setHasMarkedHelpful(true);
   };
 
   const handleUserClick = () => {
@@ -97,7 +106,7 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
                 {review.customerName}
               </span>
               {review.verified && (
-                <span className="flex items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-600">
+                <span className="flex items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700">
                   <Check className="size-2.5" />
                   Verificado
                 </span>
@@ -150,7 +159,11 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
           <ThumbsUp
             className={`size-3 ${hasMarkedHelpful ? "fill-current" : ""}`}
           />
-          <span>Útil ({review.helpful + (hasMarkedHelpful ? 1 : 0)})</span>
+          {/* O contador vem do objeto já atualizado pelo update otimista de
+              useReviews.markHelpful — somar +1 aqui contava o clique duas
+              vezes (e deixava um voto fantasma quando o RPC falhava e o hook
+              revertia). */}
+          <span>Útil ({review.helpful})</span>
         </button>
 
         {review.merchantReply && (

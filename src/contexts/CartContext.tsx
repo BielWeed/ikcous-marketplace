@@ -651,7 +651,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
 
       setCart((prev) =>
-        prev.map((item) => {
+        prev.flatMap((item) => {
           if (item.product.id === productId && item.variantId === variantId) {
             const variant = variantId
               ? item.product.variants?.find((v) => v.id === variantId)
@@ -659,6 +659,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             const availableStock = variant
               ? variant.stockIncrement
               : item.product.stock || 0;
+
+            // Estoque que virou 0 não pode virar item com quantidade 0: o
+            // seletor trava (o "-" em qtd <= 1, o "+" no max 0), o subtotal
+            // do item mostra R$ 0 e a recusa só apareceria no servidor, no
+            // fim do checkout. O item sai do carrinho — como já acontecia
+            // quando a própria cliente pede quantidade 0 — com tombstone,
+            // a mesma mecânica de removeFromCart, para o sync não o
+            // ressuscitar de outra aba.
+            if (availableStock <= 0) {
+              toast.error("Este produto está esgotado e saiu do seu carrinho.");
+              const tombstones = loadTombstones();
+              const key = `${item.product.id}-${item.variantId || ""}`;
+              tombstones.set(key, { key, deletedAt: Date.now() });
+              saveTombstones(tombstones);
+              return [];
+            }
+
             const nextQuantity = Math.min(
               quantity,
               availableStock,
@@ -666,22 +683,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             );
 
             if (quantity > availableStock) {
-              if (availableStock <= 0) {
-                toast.error("Este produto está esgotado.");
-              } else {
-                toast.error(
-                  `Limite de estoque atingido (${availableStock} unidades).`,
-                );
-              }
+              toast.error(
+                `Limite de estoque atingido (${availableStock} unidades).`,
+              );
             }
 
-            return {
-              ...item,
-              quantity: nextQuantity,
-              lastModifiedAt: Date.now(),
-            };
+            return [
+              {
+                ...item,
+                quantity: nextQuantity,
+                lastModifiedAt: Date.now(),
+              },
+            ];
           }
-          return item;
+          return [item];
         }),
       );
     },

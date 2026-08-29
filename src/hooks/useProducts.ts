@@ -175,6 +175,46 @@ async function syncOfflineUpdates(): Promise<boolean> {
   }
 }
 
+// Regex do prefixo que `issueReceipt` (src/utils/truth_gate.ts) grava em
+// TODA exceção que `TruthGate.verifyProductAxiom`/`verifyVariantAxiom`
+// lançam — "Validação de Produto Falhou: ..." ou "Validação de Variante
+// Falhou: ...". É o ÚNICO texto que os três pontos abaixo podem gerar sem
+// nenhuma chamada de rede ter acontecido ainda (addProduct e updateProduct
+// chamam o TruthGate ANTES do `.insert()`/`.update()`, e o ramo offline de
+// updateProduct só chama o TruthGate, nada mais) — por isso é seguro passar
+// direto: nasceu no próprio app, em português, e diz qual regra falhou.
+const PREFIXO_ERRO_TRUTHGATE = /^Validação de (Produto|Variante) Falhou:/;
+
+/**
+ * Traduz a recusa crua de cadastrar/atualizar produto (INSERT/UPDATE em
+ * `vw_produtos_admin`, ou a validação do TruthGate que roda antes deles nos
+ * três pontos que chamam esta função) para o que a lojista lê na tela.
+ *
+ * Qualquer coisa que NÃO seja a mensagem do TruthGate — erro do PostgREST
+ * (nome de coluna, restrição, código Postgres), falha de rede, ou causa
+ * nunca vista — não tem tradução específica conhecida aqui: sem uma
+ * definição viva das colunas/constraints de `vw_produtos_admin` para mapear
+ * causa por causa (ao contrário de `mensagemAmigavelErroPedido`, que tem o
+ * `RAISE EXCEPTION` da própria RPC em português como fonte), o único jeito
+ * de não presumir é cair no genérico de acordo com a ação em curso.
+ */
+export function mensagemAmigavelErroProduto(
+  error: unknown,
+  acao: "cadastrar" | "atualizar",
+): string {
+  const detalhes = (error ?? {}) as { message?: unknown };
+  const textoOriginal =
+    typeof detalhes.message === "string" ? detalhes.message : "";
+
+  if (PREFIXO_ERRO_TRUTHGATE.test(textoOriginal)) {
+    return textoOriginal;
+  }
+
+  return acao === "cadastrar"
+    ? "Não foi possível cadastrar o produto agora. Confira os dados e tente novamente."
+    : "Não foi possível atualizar o produto agora. Confira os dados e tente novamente.";
+}
+
 export function useProducts({ autoFetch = true } = {}) {
   const {
     products: contextProducts,
@@ -271,7 +311,15 @@ export function useProducts({ autoFetch = true } = {}) {
 
         const { data: p, error: pErr } = await pQuery;
 
-        if (pErr) throw pErr;
+        // B2 da 2a revisao: PGRST116 e "0 linhas casam" do .single() —
+        // produto que de FACTO nao existe ou foi soft-deleted. Sem esta
+        // guarda, o pErr ia para o throw e a view dizia "verifique a
+        // conexao" para um produto que simplesmente nao esta mais la.
+        // O padrao certo ja existia em UserProfileView.tsx:131.
+        if (pErr) {
+          if ((pErr as any).code === "PGRST116") return null;
+          throw pErr;
+        }
 
         const { data: v, error: vErr } = await supabase
           .from("product_variants")
@@ -292,9 +340,6 @@ export function useProducts({ autoFetch = true } = {}) {
         if (productData) {
           return mapProductFromDB(productData);
         }
-        return null;
-      } catch (err) {
-        console.error("Error fetching product:", err);
         return null;
       } finally {
         setLoading(false);
@@ -597,7 +642,7 @@ export function useProducts({ autoFetch = true } = {}) {
         }
       } catch (err: any) {
         console.error("Error adding product:", err);
-        toast.error(err.message || "Erro ao cadastrar produto");
+        toast.error(mensagemAmigavelErroProduto(err, "cadastrar"));
         throw err;
       }
     },
@@ -635,7 +680,7 @@ export function useProducts({ autoFetch = true } = {}) {
           TruthGate.verifyProductAxiom(optimisticProduct ?? updates);
         } catch (err: any) {
           console.error("[useProducts] Offline validation failed:", err);
-          toast.error(err.message || "Erro ao atualizar produto");
+          toast.error(mensagemAmigavelErroProduto(err, "atualizar"));
           throw err;
         }
 
@@ -773,7 +818,7 @@ export function useProducts({ autoFetch = true } = {}) {
         }
       } catch (err: any) {
         console.error("Error updating product:", err);
-        toast.error(err.message || "Erro ao atualizar produto");
+        toast.error(mensagemAmigavelErroProduto(err, "atualizar"));
         throw err;
       }
     },
@@ -1198,9 +1243,21 @@ export function useProducts({ autoFetch = true } = {}) {
 
   const getFreeShippingEligibleProducts = useCallback(
     (cartProductIds: string[], limit = 10) => {
+      // A faixa "falta X para o frete grátis" (ShippingProgress) tem um
+      // "Adicionar" próprio que não passa pela tela do produto -- diferente
+      // do ProductCard, que já recusa adicionar produto com variação ativa
+      // sem escolha. Em vez de sugerir e barrar (três toques a mais para a
+      // cliente), a lista nem oferece produto que exigiria escolha: o
+      // mesmo critério do ProductCard (`variants?.some(v => v.active)`).
       const res: Product[] = [];
       for (const p of products) {
-        if (!cartProductIds.includes(p.id) && p.isActive && p.stock > 0) {
+        const hasActiveVariant = p.variants?.some((v) => v.active) ?? false;
+        if (
+          !cartProductIds.includes(p.id) &&
+          p.isActive &&
+          p.stock > 0 &&
+          !hasActiveVariant
+        ) {
           res.push(p);
           if (res.length >= limit) break;
         }

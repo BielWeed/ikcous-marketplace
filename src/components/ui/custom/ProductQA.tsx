@@ -18,6 +18,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
   const {
     questions,
     loading,
+    error,
     getQuestionsByProduct,
     addQuestion,
     addAnswer,
@@ -44,15 +45,32 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
 
   const handleAsk = async () => {
     if (!newQuestion.trim()) return;
-    await addQuestion({ productId, question: newQuestion });
-    setNewQuestion("");
+    // addQuestion devolve null quando o envio falha (o hook trata o erro
+    // com toast e NÃO lança): limpar o campo incondicionalmente apagaria o
+    // texto que a cliente acabou de escrever — em rede fraca ela perdia a
+    // pergunta junto com o toast que some em segundos. Só limpa em sucesso,
+    // o mesmo contrato que ReviewForm já usa.
+    const enviada = await addQuestion({
+      productId,
+      question: newQuestion,
+    });
+    if (enviada) {
+      setNewQuestion("");
+    }
   };
 
   const handleReply = async (questionId: string) => {
     if (!replyText.trim()) return;
-    await addAnswer({ questionId, answer: replyText });
-    setReplyText("");
-    setReplyingTo(null);
+    // Mesma regra do handleAsk: addAnswer devolve false na falha — fechar
+    // a caixa e limpar a resposta aí seria jogar fora o texto digitado.
+    const respondida = await addAnswer({
+      questionId,
+      answer: replyText,
+    });
+    if (respondida) {
+      setReplyText("");
+      setReplyingTo(null);
+    }
     getQuestionsByProduct(productId);
   };
 
@@ -174,6 +192,25 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
               Sincronizando conversas...
             </p>
           </div>
+        ) : error && questions.length === 0 ? (
+          // Falha de carregamento não é "sem perguntas": sem este ramo, a
+          // tela convidava a cliente a "ser o primeiro" num produto que a
+          // consulta não conseguiu trazer — e podia ter histórico respondido.
+          <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-gradient-to-b from-zinc-50/50 to-zinc-100/10 px-6 py-12 text-center shadow-sm">
+            <div className="mb-4 flex size-10 items-center justify-center rounded-full border border-amber-200/60 bg-amber-50 shadow-sm">
+              <MessageSquare className="size-4 text-amber-500" />
+            </div>
+            <p className="text-sm font-bold tracking-tight text-zinc-900">
+              Não conseguimos carregar as perguntas
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">{error}</p>
+            <button
+              onClick={() => getQuestionsByProduct(productId)}
+              className="mt-4 rounded-full bg-zinc-900 px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:opacity-90 active:scale-95"
+            >
+              Tentar de novo
+            </button>
+          </div>
         ) : questions.length === 0 ? (
           <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-gradient-to-b from-zinc-50/50 to-zinc-100/10 px-6 py-12 text-center shadow-sm">
             <div className="relative mb-4 flex size-14 items-center justify-center">
@@ -258,7 +295,7 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                         {q.customerName}
                       </span>
                       {q.isVerified && (
-                        <span className="flex items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-600">
+                        <span className="flex items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700">
                           <Check className="size-2.5" />
                           Comprador
                         </span>

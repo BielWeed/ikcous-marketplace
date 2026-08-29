@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
+import { MENSAGEM_ERRO_LOGIN_GENERICA } from "@/lib/mensagens-auth";
 import type { View } from "@/types";
 import { type Variants, motion } from "framer-motion";
 import {
@@ -131,14 +132,23 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
 
     try {
       if (viewMode === "login") {
-        const { success, error } = await login(email.trim(), password);
+        // A1-fix3 (R1) — `audience` é OBRIGATÓRIO em `login` (AuthContext):
+        // esta é a tela do CLIENTE, então "customer" explícito, nunca um
+        // default silencioso (ver comentário de `MENSAGEM_ERRO_LOGIN_GENERICA`
+        // em `@/lib/mensagens-auth.ts` para o porquê — não mais em
+        // AuthContext.tsx, A1-fix4 moveu a constante).
+        const { success, error } = await login(
+          email.trim(),
+          password,
+          "customer",
+        );
         if (success) {
           toast.success("Acesso concedido. Bem-vindo!");
           if (onSuccess) onSuccess();
           else onNavigate("profile");
         } else if (error) {
           // Tratamento de Erro - Localização de mensagens do Supabase
-          let message = "Ocorreu um erro ao entrar. Tente novamente.";
+          let message = MENSAGEM_ERRO_LOGIN_GENERICA;
 
           // #200 — o Supabase Auth devolve HTTP 400 tanto para "Invalid
           // login credentials" quanto para "Email not confirmed" (registro
@@ -169,15 +179,67 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
             // JSX) só aparece quando esta flag está ligada.
             setEmailNaoConfirmado(true);
           } else if (
+            error.code === "user_banned" ||
+            error.message?.includes("User is banned")
+          ) {
+            // A1-fix3 (achado BLOQUEANTE) — PRECISA vir antes do `else if
+            // (error.status === 400 ...)` abaixo. Conferido na FONTE do
+            // GoTrue (github.com/supabase/auth, internal/api/token.go,
+            // ResourceOwnerPasswordGrant): `user.IsBanned()` devolve
+            // `apierrors.NewBadRequestError(ErrorCodeUserBanned, "User is
+            // banned")`, e `NewBadRequestError` é HTTP 400 (não 403 — a
+            // versão anterior deste comentário estava errada; conferido em
+            // quatro versões do GoTrue: master, v2.170.0, v2.158.0,
+            // v2.99.0). Sem este ramo explícito, `error.status === 400`
+            // capturava `user_banned` como se fosse credencial errada: a
+            // pessoa com a SENHA CERTA lia "E-mail ou senha incorretos"
+            // para sempre.
+            //
+            // A1-fix5 — ressalva: "400, não 403" vale só no password grant
+            // (este caminho). `user_banned` É 403 em OUTROS endpoints do
+            // GoTrue (internal/api/auth.go:38, internal/api/verify.go:670,727,
+            // via `NewForbiddenError`). E uma nuance que falta acima: no
+            // `token.go`, `IsBanned()` é checado ANTES de `Authenticate()` —
+            // então uma conta banida devolve `user_banned` com a senha CERTA
+            // OU ERRADA, não só com a certa.
+            //
+            // A mensagem fica a genérica (`message` já é
+            // `MENSAGEM_ERRO_LOGIN_GENERICA` acima) por decisão — não uma
+            // frase própria "sua conta está banida". Isso não é "não
+            // enumerar por elegância": o GoTrue já devolve `code:
+            // "user_banned"` no CORPO da resposta, visível nas ferramentas
+            // do navegador — a fronteira do vazamento é a API, não a tela,
+            // e ela já está aberta. Mandar para a genérica aqui não fecha
+            // enumeração nenhuma (quem sonda de fora já sabe pelo corpo da
+            // resposta); só evita inventar/confirmar uma frase que a UI não
+            // tem como verificar por conta própria.
+          } else if (
             error.status === 400 ||
             error.message?.includes("Invalid login credentials")
           ) {
             message = "E-mail ou senha incorretos. Verifique suas credenciais.";
           } else if (error.status === 429) {
             message = "Muitas tentativas. Tente novamente em alguns minutos.";
-          } else if (error.message) {
-            message = error.message;
           }
+          // Não existe mais um `else if (error.message) { message =
+          // error.message; }` aqui de propósito. Esse ramo pegava QUALQUER
+          // outra causa — provedor de e-mail desativado (`code
+          // "email_provider_disabled"`, HTTP 422 — conferido na fonte:
+          // `apierrors.NewUnprocessableEntityError`), erro 500 do servidor,
+          // exceção interna do GoTrue — e jogava a frase crua, em inglês, na
+          // tela de quem está tentando entrar na loja. `user_banned` tem
+          // ramo PRÓPRIO acima (não cai mais aqui). O que sobra é uma
+          // família heterogênea sem sinal estável para diferenciar (ver
+          // AuthApiError / AuthRetryableFetchError / AuthUnknownError em
+          // node_modules/@supabase/auth-js/dist/module/lib/errors.d.ts): não
+          // existe UMA frase específica que sirva para todas, então a
+          // tradução certa é deixar `message` na genérica já atribuída acima
+          // (`MENSAGEM_ERRO_LOGIN_GENERICA`, importada de
+          // `@/lib/mensagens-auth.ts`, linha 6 deste arquivo — não mais de
+          // AuthContext.tsx, A1-fix4 moveu a constante) —
+          // mesma constante que `AuthContext.login` usa no toast para o
+          // mesmo caso, para que a pessoa nunca leia duas frases diferentes
+          // para o mesmo erro).
 
           setLoginError(message);
         }
@@ -727,7 +789,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         >
           <p className="px-4 text-[10px] font-black uppercase tracking-[0.4em] text-zinc-300">
             {/* Sem cidade configurada, mostra só o nome, sem o "•" solto. */}
-            {branding.appName}
+            {config.storeName?.trim() || branding.appName}
             {config.storeCity &&
               ` • ${config.storeCity}${config.storeState ? `, ${config.storeState}` : ""}`}
           </p>

@@ -1159,8 +1159,8 @@ Deno.test("mapearStatusOrder: pendências viram aguardando", () => {
   assertEquals(mapearStatusOrder("action_required", "waiting_transfer"), "aguardando");
 });
 
-Deno.test("mapearStatusOrder: processed + partially_refunded vira estornado, NÃO pago — pega quem mapeia só pelo status", () => {
-  assertEquals(mapearStatusOrder("processed", "partially_refunded"), "estornado");
+Deno.test("mapearStatusOrder: processed + partially_refunded devolve null, NÃO estornado — PEDIDO-05: este banco não tem coluna de valor estornado, então marcar o pedido inteiro como 'estornado' apagaria a venda TOTAL dos relatórios por causa de uma devolução PARCIAL (ex.: R$ 5 de um pedido de R$ 200)", () => {
+  assertEquals(mapearStatusOrder("processed", "partially_refunded"), null);
 });
 
 Deno.test("mapearStatusOrder: refunded + refunded vira estornado", () => {
@@ -1196,7 +1196,7 @@ Deno.test("mapearStatusOrder devolve null para combinação desconhecida — nun
 
 // --- MAPA_STATUS_ORDER: os 13 pares mapeiam para o payment_status certo ---
 
-Deno.test("MAPA_STATUS_ORDER: os 14 pares mapeiam para o MESMO payment_status que mapearStatusOrder já devolve — a tabela não tem mais chave 'front'", () => {
+Deno.test("MAPA_STATUS_ORDER: os 13 pares mapeiam para o MESMO payment_status que mapearStatusOrder já devolve — a tabela não tem mais chave 'front'", () => {
   // CHECKOUT-080 (#213): até esta tarefa, MAPA_STATUS_ORDER guardava
   // `{ banco, front? }` — 6 dos 14 pares (estornos, chargeback, `expired`)
   // não tinham `front` de propósito, porque o vocabulário clássico do MP
@@ -1204,7 +1204,7 @@ Deno.test("MAPA_STATUS_ORDER: os 14 pares mapeiam para o MESMO payment_status qu
   // apagou `traduzirStatusOrderParaClassico` e passou a emitir direto o
   // `payment_status` deste banco para o front. A tabela virou
   // `Record<string, string>` (par → payment_status) — o que precisa
-  // continuar coberto é que os 13 pares batem no MESMO destino de sempre.
+  // continuar coberto é que os pares batem no MESMO destino de sempre.
   //
   // Achado do lint (ITEM 1, PR anterior): indexar `MAPA_STATUS_ORDER[par]`
   // por VARIÁVEL dispara o "Generic Object Injection Sink" do eslint
@@ -1217,7 +1217,6 @@ Deno.test("MAPA_STATUS_ORDER: os 14 pares mapeiam para o MESMO payment_status qu
   assertEquals(MAPA_STATUS_ORDER["action_required:waiting_payment"], "aguardando");
   assertEquals(MAPA_STATUS_ORDER["action_required:waiting_capture"], "aguardando");
   assertEquals(MAPA_STATUS_ORDER["action_required:waiting_transfer"], "aguardando");
-  assertEquals(MAPA_STATUS_ORDER["processed:partially_refunded"], "estornado");
   assertEquals(MAPA_STATUS_ORDER["refunded:refunded"], "estornado");
   assertEquals(MAPA_STATUS_ORDER["charged_back:in_process"], "estornado");
   assertEquals(MAPA_STATUS_ORDER["charged_back:settled"], "estornado");
@@ -1226,11 +1225,18 @@ Deno.test("MAPA_STATUS_ORDER: os 14 pares mapeiam para o MESMO payment_status qu
   assertEquals(MAPA_STATUS_ORDER["failed:failed"], "recusado");
   assertEquals(MAPA_STATUS_ORDER["expired:expired"], "expirado");
 
-  // Conta as chaves para pegar um par ADICIONADO ou REMOVIDO — as 14
-  // asserções acima sozinhas não acusariam uma 15ª chave sobrando na tabela.
+  // PEDIDO-05: "processed:partially_refunded" SAIU da tabela de propósito —
+  // não é mais um par conhecido que aponta para "estornado". A CHAVE em si
+  // precisa estar ausente (não só o valor diferente de "estornado"), senão um
+  // mutante que trocasse o valor por qualquer outra string do conjunto
+  // fechado passaria despercebido por esta suíte.
+  assertEquals("processed:partially_refunded" in MAPA_STATUS_ORDER, false);
+
+  // Conta as chaves para pegar um par ADICIONADO ou REMOVIDO — as asserções
+  // acima sozinhas não acusariam uma 14ª chave sobrando na tabela.
   assertEquals(
     Object.keys(MAPA_STATUS_ORDER).length,
-    14,
-    "MAPA_STATUS_ORDER deveria ter exatamente os 14 pares conhecidos — ver a lista acima",
+    13,
+    "MAPA_STATUS_ORDER deveria ter exatamente os 13 pares conhecidos — ver a lista acima",
   );
 });

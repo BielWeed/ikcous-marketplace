@@ -3,6 +3,7 @@ import { useNotificationCenter } from "@/contexts/NotificationContextCore";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell,
+  BellOff,
   Check,
   CheckCheck,
   ChevronRight,
@@ -17,11 +18,17 @@ interface NotificationsViewProps {
   readonly onNavigate?: (view: any, id?: string) => void;
 }
 
-type TabType = "todas" | "pedidos" | "promocoes" | "avisos";
+type TabType = "todas" | "avisos";
 
 export function NotificationsView({ onNavigate }: NotificationsViewProps) {
-  const { notifications, markAllAsRead, deleteNotification, markAsRead } =
-    useNotificationCenter();
+  const {
+    notifications,
+    erro,
+    refresh,
+    markAllAsRead,
+    deleteNotification,
+    markAsRead,
+  } = useNotificationCenter();
 
   const [activeTab, setActiveTab] = useState<TabType>("todas");
 
@@ -30,8 +37,16 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
     try {
       const date = new Date(dateStr);
       const now = new Date();
-      const diffTime = Math.abs(now.getTime() - date.getTime());
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      // "Hoje" e "Ontem" são dias de CALENDÁRIO, não janelas de 24h: aviso
+      // criado às 23:50 de ontem e lido às 00:10 de hoje é de ONTEM, mas a
+      // diferença em milissegundos dá 0 dia e o floor dizia "Hoje às 23:50".
+      // Comparar início do dia resolve; e sem o Math.abs, created_at no
+      // futuro (clock skew) cai no formato completo em vez de "Hoje".
+      const inicioDoDia = (d: Date) =>
+        new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      const diffDays = Math.round(
+        (inicioDoDia(now) - inicioDoDia(date)) / (1000 * 60 * 60 * 24),
+      );
 
       if (diffDays === 0) {
         return `Hoje às ${date.toLocaleTimeString("pt-BR", {
@@ -132,9 +147,6 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
     const unread = notifications.filter((n) => !n.read);
     return {
       todas: unread.length,
-      pedidos: unread.filter((n) => n.type === "order" || n.type === "delivery")
-        .length,
-      promocoes: unread.filter((n) => n.type === "promotion").length,
       avisos: unread.filter(
         (n) =>
           n.type === "system" || n.type === "aviso" || n.type === "sucesso",
@@ -145,12 +157,6 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
   // Filtered notifications based on active tab
   const filteredNotifications = useMemo(() => {
     switch (activeTab) {
-      case "pedidos":
-        return notifications.filter(
-          (n) => n.type === "order" || n.type === "delivery",
-        );
-      case "promocoes":
-        return notifications.filter((n) => n.type === "promotion");
       case "avisos":
         return notifications.filter(
           (n) =>
@@ -195,7 +201,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
           borderClass: "border-emerald-100 dark:border-emerald-950/40",
           cardBg: "bg-emerald-50/10 dark:bg-emerald-950/5",
           dotColor: "bg-emerald-500",
-          accentColor: "text-emerald-600 dark:text-emerald-400",
+          accentColor: "text-emerald-700 dark:text-emerald-400",
           actionText: "Ver Detalhes",
         };
       default:
@@ -213,16 +219,6 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
 
   const emptyStateConfig = useMemo(() => {
     switch (activeTab) {
-      case "pedidos":
-        return {
-          title: "Nenhum status de pedido",
-          desc: "Suas atualizações de entrega, confirmações e status de rastreamento aparecerão nesta aba.",
-        };
-      case "promocoes":
-        return {
-          title: "Nenhuma oferta ativa",
-          desc: "Fique de olho! Cupons exclusivos e promoções relâmpago serão enviados para você aqui.",
-        };
       case "avisos":
         return {
           title: "Sem avisos ou comunicados",
@@ -231,7 +227,13 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
       default:
         return {
           title: "Sua caixa está limpa!",
-          desc: "Tudo em ordem. Avisaremos você sobre promoções, cupons e atualizações dos seus pedidos aqui.",
+          // A frase antiga prometia "promoções, cupons e atualizações dos seus
+          // pedidos" -- as MESMAS três coisas que as abas removidas prometiam e
+          // que o banco proíbe: o CHECK de `notificacoes` não aceita esses tipos,
+          // e o único escritor do produto grava sempre "aviso". Este é o estado
+          // vazio da aba PADRÃO, então era a primeira frase que toda cliente nova
+          // lia -- mais visível que as abas que saíram.
+          desc: "Tudo em ordem. Quando a loja enviar um aviso ou comunicado, ele aparece aqui.",
         };
     }
   }, [activeTab]);
@@ -279,8 +281,6 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
           {(
             [
               { id: "todas", label: "Todas" },
-              { id: "pedidos", label: "Pedidos" },
-              { id: "promocoes", label: "Ofertas" },
               { id: "avisos", label: "Avisos" },
             ] as const
           ).map((tab) => {
@@ -411,6 +411,27 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
               })}
             </AnimatePresence>
           </motion.div>
+        ) : erro && filteredNotifications.length === 0 ? (
+          /* Estado de ERRO — falha de consulta não é caixa limpa: sem este
+           * ramo, a tela dizia "Tudo em ordem" para uma cliente com avisos
+           * que a consulta não conseguiu trazer. */
+          <div className="flex h-full flex-col items-center justify-center px-6 py-20 text-center">
+            <div className="relative mb-6 flex size-20 items-center justify-center rounded-3xl bg-amber-50 shadow-inner dark:bg-amber-950/40">
+              <BellOff className="size-9 text-amber-500" />
+            </div>
+            <h2 className="mb-2 text-base font-black uppercase tracking-wider text-zinc-800 dark:text-zinc-200">
+              Não conseguimos carregar
+            </h2>
+            <p className="mb-8 max-w-xs text-xs font-semibold leading-relaxed text-zinc-400 dark:text-zinc-500">
+              {erro} Verifique sua conexão e tente de novo.
+            </p>
+            <Button
+              onClick={() => void refresh()}
+              className="rounded-2xl bg-zinc-900 px-6 py-4 text-xs font-bold text-white shadow-md transition-all hover:bg-zinc-800 hover:shadow-lg dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              Tentar de novo
+            </Button>
+          </div>
         ) : (
           /* Premium Empty State */
           <div className="flex h-full flex-col items-center justify-center px-6 py-20 text-center">

@@ -72,6 +72,15 @@ export function calculateSmartFallback(origin: string, dest: string, baseFee: nu
  * lojista configurou no painel — número dela, escolhido por ela.
  *
  * @returns o preço em reais, ou `null` quando não há como cotar honestamente.
+ *
+ * ⚠️ DESLIGADA DO `catch` DE TOPO EM 25/08/2026: a escada por região que ela
+ * devolve não bate com o que a RPC do checkout cobra para um id `flat-fee-%`
+ * (`store_config.shipping_fee`, sempre — ver `precoResolvidoSemCache`
+ * abaixo). O `catch` de topo agora mostra `taxaDaLoja` direto quando
+ * `taxaDaLojaConfigurada` é `true`, e falha fechado quando não é — nunca mais
+ * a estimativa por distância. Esta função continua exportada e testada
+ * porque descreve, isolada, um comportamento que já existiu em produção;
+ * nenhum caminho do `handler` a chama mais.
  */
 export function precoDeContingenciaDoTopo(
     originCep?: string,
@@ -167,6 +176,98 @@ function fireAndForget(query: PromiseLike<unknown>, label: string): void {
         },
         (err) => console.error(label, err),
     )
+}
+
+/**
+ * O oposto do `fireAndForget` acima: espera a gravação terminar e devolve o
+ * erro, se houve.
+ *
+ * Duas formas de falhar precisam sair pelo mesmo lugar — o PostgREST devolve
+ * `{ error }` sem rejeitar, e rede/permissão rejeitam a promessa. As duas
+ * viram um valor de retorno, e NENHUMA vira exceção: se a exceção subisse, o
+ * `catch` de topo desta função a converteria num preço de contingência com
+ * status 200 — ou seja, o preço sairia mesmo sem a cotação gravada, que é
+ * exatamente o defeito que este caminho existe para fechar.
+ *
+ * Recebe uma função (e não o builder já criado) porque o builder do
+ * supabase-js é lazy: assim a query só é disparada aqui dentro, com o
+ * `try/catch` já em volta.
+ */
+async function gravarCotacao(gravar: () => PromiseLike<unknown>): Promise<unknown | null> {
+    try {
+        const resultado = await gravar()
+        const erro = (resultado as { error?: unknown } | null)?.error
+        if (erro) {
+            console.error('Failed to cache shipping options:', erro)
+            return erro
+        }
+        return null
+    } catch (err) {
+        console.error('Failed to cache shipping options:', err)
+        return err ?? new Error('Falha desconhecida ao gravar a cotação')
+    }
+}
+
+/**
+ * Texto legível de um erro que pode ser exceção (`Error`) ou objeto do
+ * PostgREST (`{ message, code }`) — as duas formas que `gravarCotacao`
+ * devolve. Só vai para `shipping_calculation_logs`, que é tabela de admin;
+ * nunca para o corpo que a cliente recebe.
+ */
+function mensagemDoErro(erro: unknown): string {
+    const mensagem = (erro as { message?: unknown } | null)?.message
+    if (typeof mensagem === 'string' && mensagem.length > 0) return mensagem
+    return String(erro)
+}
+
+/**
+ * A RPC que valida o pedido resolve o preço de ALGUMAS opções direto da
+ * `store_config`, sem olhar `shipping_quotes_cache`. Estas são elas.
+ *
+ * São DUAS RPCs, e o checkout escolhe entre elas em `useOrders.ts:1060`:
+ * `create_marketplace_order_v24` no pagamento online e
+ * `create_marketplace_order_v23` no resto. Um classificador só serve para as
+ * duas porque os ramos de frete delas são hoje IDÊNTICOS — conferido linha a
+ * linha na definição viva, `20260821000200_cupom_sem_limite_e_ilimitado.sql`
+ * (v23 a partir de :138, v24 a partir de :383). Se uma `v25` chegar com ramo
+ * diferente, nada aqui avisa: é preciso reconferir esta lista à mão.
+ *
+ * A cópia literal dos ramos:
+ *
+ *   ELSIF p_shipping_option_id LIKE 'flat-fee-%'   -> store_config.shipping_fee
+ *   ELSIF p_shipping_option_id = 'local-delivery'  -> store_config.local_delivery_fee
+ *   ELSIF p_destination_cep IS NOT NULL            -> SELECT em shipping_quotes_cache
+ *
+ * Ou seja: `melhor-envio-*` e `frenet-*` caem no SELECT do cache e são
+ * recusadas sem a linha gravada; as duas de cima passam do mesmo jeito.
+ *
+ * ⚠️ A cópia é literal sobre QUAL ramo a RPC toma, não sobre QUANTO ela
+ * cobra: casar o ramo NÃO BASTA, porque o preço que vai valer é o da
+ * `store_config` (`COALESCE(shipping_fee, 0)` / `local_delivery_fee`). Opção
+ * cujo preço é CALCULADO não pode entrar neste classificador nem que o id
+ * case com o prefixo — é o caso de `flat-fee-contingency`, que sai de
+ * `calculateSmartFallback` e só é inofensiva hoje porque nasce no ramo em que
+ * a gravação nem chega a ser tentada; movida para o `else`, ela faria a
+ * cliente ver um preço que a RPC não vai honrar — e o pedido nem chega a
+ * fechar pelo da `store_config`, porque as duas RPCs comparam o total que o
+ * carrinho mandou com o que elas mesmas recalculam e RECUSAM a divergência
+ * acima de cinco centavos (`ABS(v_calculated_total - p_total_amount) > 0.05`
+ * -> `RAISE EXCEPTION`, v23 em :212 e v24 em :457 de
+ * `20260821000200_cupom_sem_limite_e_ilimitado.sql`). O prejuízo, portanto,
+ * não é sangria silenciosa do bolso da lojista: é venda perdida no último
+ * clique, sem que nada apareça deste lado.
+ *
+ * Por isso a falha de gravação não pode derrubar a resposta inteira: ela só
+ * pode derrubar o que a validação do pedido realmente recusaria.
+ *
+ * Casa por igualdade e por prefixo exatamente como o SQL (`=` e `LIKE
+ * 'flat-fee-%'`). Qualquer id que não se encaixe nesses dois ramos conta como
+ * "precisa do cache" — o lado seguro é recusar, nunca vender por um preço que
+ * o banco vai rejeitar no último clique.
+ */
+export function precoResolvidoSemCache(id: unknown): boolean {
+    if (typeof id !== 'string') return false
+    return id === 'local-delivery' || id.startsWith('flat-fee-')
 }
 
 // Helper to check if destination is a local CEP
@@ -292,19 +393,45 @@ async function verifyIsAdmin(authHeader: string | null, supabaseUrl: string, ser
 }
 
 const isTesting = Deno.mainModule.endsWith("_test.ts") || Deno.mainModule.endsWith("_test.js") || Deno.mainModule.includes("index_test");
-if (!isTesting) {
-serve(async (req: Request) => {
+
+/**
+ * Costura de teste, a mesma que `criar-pagamento` e `reconciliar-pagamentos`
+ * já usam: o handler é uma função exportada e o cliente do Supabase pode ser
+ * substituído por um dublê. Sem isso, o corpo do handler ficava dentro de
+ * `serve(...)` e NENHUM teste conseguia exercitar a resposta HTTP — só as
+ * funções puras do topo do arquivo. Em produção nada muda: `deps` chega vazio
+ * e o cliente real é criado como sempre.
+ */
+export type CalculateShippingDeps = {
+    supabase?: any
+}
+
+export async function handler(req: Request, deps: CalculateShippingDeps = {}): Promise<Response> {
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
     }
 
-    // Espelho das tres coisas que a contingencia de topo precisa saber para
-    // cotar. Elas nascem `const` dentro do `try` -- o `catch` nao as enxerga,
-    // e era por isso que ele so' sabia devolver um numero cravado.
-    let cepDeDestino = ''
-    let cepDeOrigem = ''
+    // Espelho do que a contingencia de topo precisa saber para cotar. Nasce
+    // `const` dentro do `try` -- o `catch` nao os enxerga -- e por isso a
+    // contingência de baixo (a que faltava, até 18/08/2026) só sabia devolver
+    // um número cravado.
+    //
+    // `taxaDaLoja` sozinho não basta: até 25/08/2026 a contingência de topo
+    // usava `precoDeContingenciaDoTopo` (a escada por região de
+    // `calculateSmartFallback`) e precisava dos CEPs para calcular a
+    // distância. Essa escada foi retirada — ver o `catch` de topo abaixo —
+    // porque o preço que ela inventava divergia do que a RPC realmente
+    // cobra para qualquer id `flat-fee-%` (`store_config.shipping_fee`).
+    // `taxaDaLojaConfigurada` é o que resta: sem ele, `taxaDaLoja` não diz se
+    // é uma taxa REAL configurada pela loja ou o `0` que nasce de
+    // `Number(null)` quando o provedor não é `flat_fee` e nada foi
+    // configurado (ver `flatFeeConfigurada` acima). É essa distinção que
+    // decide, nos dois fallbacks abaixo, entre mostrar a taxa fixa de
+    // verdade ou falhar fechado — os CEPs deixaram de ser necessários porque
+    // uma taxa FIXA não depende de distância nenhuma.
     let taxaDaLoja: number | undefined
+    let taxaDaLojaConfigurada = false
 
     try {
         const body = await req.json()
@@ -313,7 +440,7 @@ serve(async (req: Request) => {
         // Initialize Supabase clients
         const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
         const supabaseServiceRole = readKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY')
-        const supabaseClient = createClient(supabaseUrl, supabaseServiceRole)
+        const supabaseClient = deps.supabase ?? createClient(supabaseUrl, supabaseServiceRole)
 
         // ROUTE: test_credentials
         if (action === 'test_credentials') {
@@ -442,7 +569,6 @@ serve(async (req: Request) => {
 
         // Clean CEP (only digits)
         const cleanCep = cep.replace(/\D/g, '')
-        cepDeDestino = cleanCep
         if (cleanCep.length !== 8) {
             return new Response(
                 JSON.stringify({ error: 'CEP inválido' }),
@@ -475,8 +601,8 @@ serve(async (req: Request) => {
 
         const originCep = storeConfig.origin_cep.replace(/\D/g, '')
         const flatFee = Number(storeConfig.shipping_fee)
-        cepDeOrigem = originCep
         taxaDaLoja = flatFee
+        taxaDaLojaConfigurada = flatFeeConfigurada(storeConfig.shipping_fee)
         const enabledMethods = storeConfig.enabled_shipping_methods || ['sedex', 'pac']
         
         const shippingCoverage = storeConfig.shipping_coverage || 'national'
@@ -532,7 +658,8 @@ serve(async (req: Request) => {
                             deliveryDays: 1,
                             provider: 'local'
                         }
-                    ]
+                    ],
+                    cotacaoIncompleta: false
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
@@ -580,7 +707,8 @@ serve(async (req: Request) => {
                             deliveryDays: 3,
                             provider: 'free'
                         }
-                    ]
+                    ],
+                    cotacaoIncompleta: false
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
@@ -589,7 +717,7 @@ serve(async (req: Request) => {
         // 4. If provider is flat_fee, return immediately
         if (provider === 'flat_fee' || !cart || !Array.isArray(cart) || cart.length === 0) {
             return new Response(
-                JSON.stringify({ options: getFlatFeeResponse() }),
+                JSON.stringify({ options: getFlatFeeResponse(), cotacaoIncompleta: false }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
@@ -624,7 +752,7 @@ serve(async (req: Request) => {
             )
 
             return new Response(
-                JSON.stringify({ options: cachedQuote.options }),
+                JSON.stringify({ options: cachedQuote.options, cotacaoIncompleta: false }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
@@ -644,7 +772,7 @@ serve(async (req: Request) => {
                 credsError
             )
             return new Response(
-                JSON.stringify({ options: getFlatFeeResponse() }),
+                JSON.stringify({ options: getFlatFeeResponse(), cotacaoIncompleta: false }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
@@ -668,7 +796,8 @@ serve(async (req: Request) => {
                             deliveryDays: 3,
                             provider: 'free'
                         }
-                    ]
+                    ],
+                    cotacaoIncompleta: false
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
@@ -836,75 +965,224 @@ serve(async (req: Request) => {
             shippingOptions = [localOption, ...shippingOptions.filter(opt => opt.id !== 'local-delivery')]
         }
 
-        // If no options returned (or API failed), use smart fallback
-        if (shippingOptions.length === 0) {
-            const fallbackPrice = calculateSmartFallback(originCep, cleanCep, flatFee)
-            shippingOptions = [
-                {
-                    id: 'flat-fee-contingency',
-                    name: 'Entrega Padrão (Contingência)',
-                    price: fallbackPrice,
-                    deliveryDays: 3,
-                    provider: 'flat_fee'
-                }
-            ]
+        // A lista devolvida é a lista INTEIRA? Só deixa de ser quando a
+        // gravação da cotação falha e opções que dependiam dela são removidas
+        // (ver abaixo). O campo viaja nas SETE rotas normais de 200 — as seis
+        // saídas antecipadas mais o `return` final —, inclusive quando é
+        // `false`: campo que só aparece quando é verdadeiro é campo que quem
+        // consome esquece de checar, e a tela passa a "funcionar" por omissão.
+        //
+        // A oitava rota que responde 200 com `options` NÃO leva o campo: a
+        // contingência do `catch` de topo, que já se identifica por
+        // `fallback: true`. É o caminho de exceção inesperada, deixado como
+        // está de propósito — mas quem consome não pode presumir o campo
+        // presente em toda resposta com preço.
+        let cotacaoIncompleta = false
 
-            // Log contingency
-            fireAndForget(
-                supabaseClient.from('shipping_calculation_logs').insert({
-                    origin_cep: originCep,
-                    destination_cep: cleanCep,
-                    provider: provider,
-                    cart_items: cart,
-                    response_time_ms: latency,
-                    status: 'contingency',
-                    error_message: apiError || 'Nenhum método de envio retornado.'
-                }),
-                'Failed to log contingency:',
-            )
+        // Transportadora falhou ou não devolveu nenhuma opção habilitada.
+        //
+        // ATÉ 25/08/2026 este ramo inventava um preço por `calculateSmartFallback`
+        // (estimativa por REGIÃO de CEP) e o devolvia com id `flat-fee-contingency`.
+        // A RPC que valida o pedido ignora esse preço para QUALQUER id
+        // `flat-fee-%` e cobra `COALESCE(store_config.shipping_fee, 0)` — ver
+        // `precoResolvidoSemCache` acima e
+        // `20260960000000_variacao_obrigatoria_no_servidor.sql:223-224`. Como a
+        // estimativa por região quase nunca bate com a taxa fixa da loja, a
+        // cliente preenchia endereço e pagamento, clicava em Finalizar, e a RPC
+        // recusava por divergência de total — venda perdida no último clique,
+        // sem nada aparecer deste lado.
+        //
+        // A regra que fecha o buraco: só mostrar um preço que a RPC REALMENTE
+        // vai cobrar. Isso só existe quando a loja configurou uma taxa fixa de
+        // verdade (`flatFeeConfigurada`) — nesse caso `getFlatFeeResponse()`
+        // devolve exatamente essa taxa, idêntica ao que a RPC vai ler de
+        // `store_config`. Sem taxa fixa configurada não há preço honesto: a
+        // função falha fechado, e o carrinho volta a usar a taxa que a própria
+        // loja definiu no painel (ver `ShippingCalculator.tsx`).
+        if (shippingOptions.length === 0) {
+            // A guarda é o que `getFlatFeeResponse()` REALMENTE devolve, não
+            // `flatFeeConfigurada` sozinha: `getFlatFeeResponse()` também
+            // entrega `local-delivery` quando `isLocal`, campo que
+            // `flatFeeConfigurada(storeConfig.shipping_fee)` nem olha. Hoje o
+            // bloco que faz o prepend de `local-delivery` (acima) já garante
+            // `shippingOptions.length >= 1` sempre que `isLocal` é `true`,
+            // então este ramo só é alcançado com `isLocal` falso — mas
+            // autenticar o resultado de verdade, em vez de um campo que só
+            // por coincidência concorda com ele hoje, é o que impede a guarda
+            // de voltar a divergir se aquele bloco for reordenado.
+            const opcoesDeContingencia = getFlatFeeResponse()
+            if (opcoesDeContingencia.length > 0) {
+                shippingOptions = opcoesDeContingencia
+
+                // Log contingency — não precisa aguardar: já existe um preço
+                // válido para entregar, então atrasar a resposta não evita
+                // nenhum prejuízo (ao contrário do ramo de erro logo abaixo).
+                fireAndForget(
+                    supabaseClient.from('shipping_calculation_logs').insert({
+                        origin_cep: originCep,
+                        destination_cep: cleanCep,
+                        provider: provider,
+                        cart_items: cart,
+                        response_time_ms: latency,
+                        status: 'contingency',
+                        error_message: apiError || 'Nenhum método de envio retornado.'
+                    }),
+                    'Failed to log contingency:',
+                )
+            } else {
+                // Sem taxa fixa configurada, todo preço aqui seria chute. O log
+                // é AGUARDADO pelo mesmo motivo do 503 mais abaixo: aqui não há
+                // preço para entregar, então esperar não tira nada de ninguém, e
+                // é a ÚNICA janela que a lojista tem para essa falha.
+                //
+                // O status é 'error', não 'contingency': este ramo não entrega
+                // NENHUM preço — a resposta é 503 e ninguém compra. O painel
+                // (`AdminShippingView.tsx`) pinta 'contingency' de âmbar,
+                // reservado a "deu certo pelo plano B", e só 'error' de
+                // vermelho. O irmão deste ramo, logo acima, entrega preço de
+                // verdade e por isso continua 'contingency' com razão — aqui
+                // não há razão nenhuma.
+                const logEmVoo = Promise.resolve(
+                    supabaseClient.from('shipping_calculation_logs').insert({
+                        origin_cep: originCep,
+                        destination_cep: cleanCep,
+                        provider: provider,
+                        cart_items: cart,
+                        response_time_ms: latency,
+                        status: 'error',
+                        error_message: apiError || 'Nenhum método de envio retornado.'
+                    }),
+                )
+                fireAndForget(logEmVoo, 'Failed to log contingency:')
+                await logEmVoo.catch(() => {})
+
+                return new Response(
+                    JSON.stringify({ error: 'Não foi possível calcular o frete agora. Tente novamente em instantes.' }),
+                    { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
         } else {
-            // Save to cache
-            fireAndForget(
-                supabaseClient.from('shipping_quotes_cache').insert({
+            // Save to cache — AGUARDANDO, e a resposta sai daqui.
+            //
+            // Esta linha é a cotação que a validação do pedido vai exigir na
+            // hora de fechar a compra. Enquanto ela era `fireAndForget`, o
+            // preço ia para o navegador com a gravação ainda em voo — e a doc
+            // do Supabase é explícita: promessa não aguardada pode morrer no
+            // encerramento da instância (`EarlyDrop`). A cliente então
+            // preenchia endereço, escolhia pagamento, clicava em finalizar, e
+            // só ali era recusada. Falhar aqui custa um clique; falhar lá
+            // custa a compra inteira.
+            const erroDeGravacao = await gravarCotacao(
+                () => supabaseClient.from('shipping_quotes_cache').insert({
                     origin_cep: originCep,
                     destination_cep: cleanCep,
                     cart_hash: cartHash,
                     options: shippingOptions
                 }),
-                'Failed to cache shipping options:',
             )
 
-            // Log success
-            fireAndForget(
+            // Log — DEPOIS de saber se a gravação deu certo, e derivado dela.
+            //
+            // `shipping_calculation_logs` é a única janela da lojista para o
+            // frete, e o painel pinta `status === 'success'` de verde
+            // "Sucesso". Enquanto a resposta era 200 com preço, gravar
+            // 'success' aqui era verdade. Com a recusa abaixo, deixou de ser:
+            // numa loja em que a gravação esteja falhando, ninguém compra e o
+            // único lugar onde ela veria a quebra afirmaria que está tudo bem.
+            //
+            // A query é materializada numa Promise de verdade porque o ramo
+            // que responde 503 precisa AGUARDÁ-LA (ver abaixo), e o builder do
+            // supabase-js é lazy: chamar `.then` nele duas vezes gravaria duas
+            // linhas. `Promise.resolve` dispara a query UMA vez, e o
+            // `fireAndForget` logo abaixo recebe a Promise já pronta — para
+            // ele, `Promise.resolve` de uma Promise nativa é identidade.
+            const logEmVoo = Promise.resolve(
                 supabaseClient.from('shipping_calculation_logs').insert({
                     origin_cep: originCep,
                     destination_cep: cleanCep,
                     provider: provider,
                     cart_items: cart,
                     response_time_ms: latency,
-                    status: 'success'
+                    status: erroDeGravacao ? 'error' : 'success',
+                    error_message: erroDeGravacao
+                        ? `Falha ao gravar a cotação: ${mensagemDoErro(erroDeGravacao)}`
+                        : null,
                 }),
-                'Failed to log success:',
             )
+            fireAndForget(logEmVoo, 'Failed to log shipping calculation:')
+
+            if (erroDeGravacao) {
+                // Sem a linha gravada, cai a opção cujo preço a validação do
+                // pedido buscaria NO CACHE. O que a RPC resolve pela
+                // `store_config` continua válido e continua vendável — ver
+                // `precoResolvidoSemCache`. Recusar essas junto era perder uma
+                // venda que o checkout teria aceitado.
+                const opcoesQueDispensamOCache = shippingOptions.filter(opt => precoResolvidoSemCache(opt?.id))
+
+                if (opcoesQueDispensamOCache.length === 0) {
+                    // Aqui a recusa é a resposta certa: todo preço restante
+                    // dependia da linha que não foi gravada. Responder erro
+                    // AGORA é a forma barata de falhar — a cliente reaperta
+                    // "calcular"; falhar no último clique custa a compra.
+                    //
+                    // E o log espera AQUI, pelo mesmo motivo que a gravação da
+                    // cotação virou `await`: promessa não aguardada pode morrer
+                    // no encerramento da instância. Neste ramo a linha do log é
+                    // a ÚNICA coisa que a lojista recebe — e a falha é
+                    // correlacionada, porque a mesma causa que derruba o insert
+                    // do cache derruba o insert do log. Sem esperar, o sintoma
+                    // dela é "ninguém compra" sem linha nenhuma no painel, nem
+                    // verde nem vermelha. Custo zero: aqui não há preço para
+                    // entregar, então atrasar a resposta não tira nada de
+                    // ninguém — o mesmo não vale para o 200 acima.
+                    //
+                    // O `catch` vazio é obrigatório: `fireAndForget` já
+                    // registrou o erro no console, e uma exceção solta aqui
+                    // subiria ao `catch` de topo, que a converteria num 200 com
+                    // preço de contingência — exatamente o que esta recusa
+                    // existe para impedir.
+                    await logEmVoo.catch(() => {})
+
+                    return new Response(
+                        JSON.stringify({ error: 'Não foi possível registrar a cotação de frete. Tente calcular novamente.' }),
+                        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    )
+                }
+
+                // Incompleta é sobre o que FOI TIRADO, não sobre ter havido
+                // erro: se nada precisava do cache, a lista continua inteira.
+                cotacaoIncompleta = opcoesQueDispensamOCache.length < shippingOptions.length
+                shippingOptions = opcoesQueDispensamOCache
+            }
         }
 
         return new Response(
-            JSON.stringify({ options: shippingOptions }),
+            JSON.stringify({ options: shippingOptions, cotacaoIncompleta }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
 
     } catch (err) {
         console.error('[calculate-shipping] Top-level Edge Function Error:', err)
-        
-        // Contingência de último recurso, pela escada de região — nunca mais um
-        // preço cravado. Ver `precoDeContingenciaDoTopo` no topo do arquivo.
-        try {
-            const preco = precoDeContingenciaDoTopo(cepDeOrigem, cepDeDestino, taxaDaLoja)
 
-            // Sem os dois CEPs não há distância, e sem distância todo preço é
-            // chute. Responder erro faz o carrinho aplicar a taxa que a lojista
-            // configurou, em vez de a gente inventar uma barata por ela.
-            if (preco === null) {
+        // MESMO DEFEITO DO OUTRO FALLBACK, NUM SEGUNDO LUGAR: até 25/08/2026
+        // esta contingência de último recurso usava `precoDeContingenciaDoTopo`
+        // — a escada por região de `calculateSmartFallback` — e devolvia a
+        // estimativa com id `flat-fee-fallback`. A RPC que valida o pedido
+        // ignora esse preço para qualquer id `flat-fee-%` e cobra
+        // `COALESCE(store_config.shipping_fee, 0)` (ver `precoResolvidoSemCache`
+        // acima). A escada quase nunca bate com a taxa fixa real da loja, então
+        // mostrar a estimativa aqui também levava ao "os valores do pedido
+        // mudaram" no último clique.
+        //
+        // A correção é a mesma: só mostrar um preço que a RPC vai honrar. Isso
+        // só existe quando `store_config` já foi lida com sucesso (senão nem
+        // `taxaDaLojaConfigurada` teria como ser `true`) E a loja tem uma taxa
+        // fixa configurada de verdade — nesse caso o preço mostrado é
+        // `taxaDaLoja`, o MESMO valor que a RPC vai ler de
+        // `store_config.shipping_fee`, sem passar pela escada. Sem isso, não há
+        // preço honesto: falha fechado, exatamente como quando faltam os CEPs.
+        try {
+            if (!taxaDaLojaConfigurada) {
                 return new Response(
                     JSON.stringify({ error: err.message }),
                     { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -915,7 +1193,7 @@ serve(async (req: Request) => {
                 {
                     id: 'flat-fee-fallback',
                     name: 'Entrega Padrão (Contingência)',
-                    price: preco,
+                    price: taxaDaLoja,
                     deliveryDays: 2,
                     provider: 'flat_fee'
                 }
@@ -931,5 +1209,8 @@ serve(async (req: Request) => {
             )
         }
     }
-})
 }
+
+// `(req) => handler(req)`, e não `serve(handler)` direto: o `serve` do std
+// passa um segundo argumento (ConnInfo) que cairia em `deps`.
+if (!isTesting) serve((req: Request) => handler(req));

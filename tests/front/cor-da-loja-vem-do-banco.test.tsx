@@ -1,0 +1,478 @@
+// @vitest-environment jsdom
+//
+// CONTRATO DE COR que este arquivo prova (a mesma regra documentada em
+// src/config/branding.ts e src/contexts/StoreContext.tsx):
+//
+//   1. O branding do BUILD (applyBranding em main.tsx) é a semente imediata
+//      anti-flash no :root — e no meta theme-color.
+//   2. O primary_color do BANCO vence assim que a config chega (fetch, cache
+//      do DataVault, updateConfig ou realtime) ou muda depois.
+//   3. O default DE CÓDIGO (#000000 do defaultStoreConfig) não é cor de
+//      banco: não pode pisar a semente do build durante o mount, na janela
+//      em que o banco ainda não respondeu.
+//
+// (a) e (c) usam render real do StoreProvider (mesmo padrão de
+// tests/front/store-context-nao-mexe-em-dark.test.tsx) porque a cor é
+// aplicada por useEffect/efeitos imperativos no documentElement — dublê de
+// contexto não provaria nada. (b) renderiza o <App /> inteiro porque o meta
+// theme-color é responsabilidade do App (mesmo efeito que aplica o
+// themeMode); os componentes de shell são dublados para o render não puxar
+// a árvore de views inteira.
+import { act } from "react";
+import { type Root, createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import App from "@/App";
+import { applyBranding, branding, hexToTailwindHsl } from "@/config/branding";
+import { StoreProvider } from "@/contexts/StoreContext";
+
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: null,
+    isAdmin: false,
+    adminStatus: "user",
+    loading: false,
+    isPasswordRecovery: false,
+  }),
+}));
+
+vi.mock("@/hooks/useLeaderElection", () => ({
+  useLeaderElection: () => ({ isLeader: false }),
+}));
+
+// DataVault sem cache: `getById` resolvendo `null` pula o ramo de config
+// vinda do IndexedDB (indisponível no jsdom puro) e isola o teste no que vem
+// do `select().single()` do Supabase dublado.
+vi.mock("@/lib/dataVault", () => ({
+  DataVault: {
+    init: vi.fn().mockResolvedValue({
+      getById: vi.fn().mockResolvedValue(null),
+      getAll: vi.fn().mockResolvedValue([]),
+      put: vi.fn().mockResolvedValue(undefined),
+      replaceAll: vi.fn().mockResolvedValue(undefined),
+      setLastSync: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    }),
+  },
+}));
+
+vi.mock("@/lib/realtimeSyncEngine", () => ({
+  RealtimeSyncEngine: {
+    start: vi.fn(() => () => {}),
+    onSync: vi.fn(() => () => {}),
+  },
+}));
+
+// A linha do banco que `select("*").single()` devolve — cada teste ajusta
+// antes de renderizar. `mapConfig` lê em tempo de render, então mudar a
+// variável entre testes funciona mesmo com o módulo já carregado.
+let linhaDoBanco: Record<string, unknown> = { id: 1 };
+// Quando true, o builder devolve um thenable que nunca resolve — simula a
+// janela anti-flash em que o banco ainda não respondeu.
+let fetchPendente = false;
+// Quando true, o builder REJEITA — simula o banco respondendo com FALHA
+// (rede caiu, Supabase fora). É o quarto quadrante do contrato de cor: o
+// `finally` de fetchConfig liga isLoaded com a config intacta no default.
+let fetchFalha = false;
+
+// Builder encadeável e "thenable" — cobre `.from().select().single()` (usado
+// por fetchConfig) e `.from().select().is().limit().order()` (fetchProducts)
+// sem replicar a assinatura exata de cada chamada. Mesmo dublê de
+// tests/front/store-config-identidade-da-loja.test.ts.
+function construtorEncadeavel(resultado: { data: unknown; error: unknown }) {
+  const alvo: any = () => construtorEncadeavel(resultado);
+  return new Proxy(alvo, {
+    get(_t, prop) {
+      if (prop === "then") {
+        return (resolve: (v: unknown) => void) => resolve(resultado);
+      }
+      return () => construtorEncadeavel(resultado);
+    },
+    apply() {
+      return construtorEncadeavel(resultado);
+    },
+  });
+}
+
+// Cadeia idem à de cima, mas o `await` nunca resolve.
+function construtorQueNaoResolve(): any {
+  const alvo: any = () => construtorQueNaoResolve();
+  return new Proxy(alvo, {
+    get(_t, prop) {
+      if (prop === "then") {
+        return (resolve: (v: unknown) => void) =>
+          new Promise<never>(() => {}).then(resolve);
+      }
+      return construtorQueNaoResolve();
+    },
+    apply: () => construtorQueNaoResolve(),
+  });
+}
+
+// Cadeia que REJEITA no primeiro `await` — o banco respondeu, com falha.
+// Rejeita chamando o `reject` do awaiter direto, SEM promessa intermediária:
+// `Promise.reject().then(...)` deixa promessa órfã e vira "unhandled
+// rejection" no vitest (medido ao rodar este arquivo).
+function construtorQueRejeita(): any {
+  const alvo: any = () => construtorQueRejeita();
+  return new Proxy(alvo, {
+    get(_t, prop) {
+      if (prop === "then") {
+        return (
+          _resolve: (v: unknown) => void,
+          reject: (e: unknown) => void,
+        ) => {
+          if (reject) reject(new Error("supabase fora do ar (dublê)"));
+        };
+      }
+      return construtorQueRejeita();
+    },
+    apply: () => construtorQueRejeita(),
+  });
+}
+
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    from: () => {
+      if (fetchFalha) return construtorQueRejeita();
+      if (fetchPendente) return construtorQueNaoResolve();
+      return construtorEncadeavel({ data: linhaDoBanco, error: null });
+    },
+    rpc: () => construtorEncadeavel({ data: null, error: null }),
+  },
+}));
+
+// ── Dublês de shell do <App /> (para o teste do meta theme-color) ──
+// O objetivo é chegar ao AppContent com seus efeitos reais sem montar a
+// árvore de views inteira (Header, BottomNav, HomeView etc.).
+vi.mock("@/hooks/useProducts", () => ({
+  useProducts: () => ({ products: [], loading: false }),
+}));
+vi.mock("@/hooks/useViewTransition", () => ({
+  useViewTransition: () => ({ navigate: vi.fn(), isSupported: false }),
+}));
+vi.mock("@/hooks/usePrefetchOnHover", () => ({
+  usePrefetchOnHover: () => ({
+    prefetchView: vi.fn(),
+    prefetchAll: vi.fn(),
+    prefetchViewPromise: vi.fn(() => Promise.resolve()),
+  }),
+}));
+vi.mock("@/hooks/useCacheWarmer", () => ({ useCacheWarmer: vi.fn() }));
+vi.mock("@/hooks/useNetworkAdaptive", () => ({
+  useNetworkAdaptive: () => ({ isSlow: () => false }),
+}));
+vi.mock("@/hooks/usePredictiveNavigation", () => ({
+  usePredictiveNavigation: vi.fn(),
+}));
+vi.mock("@/hooks/useBehavioralPrefetch", () => ({
+  useBehavioralPrefetch: vi.fn(),
+}));
+vi.mock("@/hooks/useWebVitals", () => ({ useWebVitals: vi.fn() }));
+vi.mock("@/hooks/useSwipeBack", () => ({ useSwipeBack: vi.fn() }));
+vi.mock("@/hooks/useCart", () => ({
+  useCartState: () => ({ cartCount: 0 }),
+  useCartActions: () => ({ addToCart: vi.fn() }),
+}));
+vi.mock("@/hooks/useFavorites", () => ({
+  useFavorites: () => ({
+    favorites: [],
+    toggleFavorite: vi.fn(),
+    loading: false,
+  }),
+}));
+vi.mock("@/hooks/useAppBadge", () => ({
+  useAppBadge: () => ({ setBadge: vi.fn(), clearBadge: vi.fn() }),
+}));
+vi.mock("@/hooks/useUpdateCheck", () => ({
+  useUpdateCheck: () => ({
+    checkUpdate: vi.fn(),
+    updateAvailable: false,
+    newVersion: null,
+    performNuclearPurge: vi.fn(),
+  }),
+}));
+vi.mock("@/hooks/useRealtimeUpdate", () => ({ useRealtimeUpdate: vi.fn() }));
+vi.mock("@/contexts/CartContext", () => ({
+  CartProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+vi.mock("@/contexts/FavoritesContext", () => ({
+  FavoritesProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+vi.mock("@/components/ui/custom/Header", () => ({ Header: () => null }));
+vi.mock("@/components/ui/custom/BottomNav", () => ({
+  BottomNav: () => null,
+}));
+vi.mock("@/components/ui/custom/CartReminder", () => ({
+  CartReminder: () => null,
+}));
+vi.mock("@/components/pwa/PushNotificationBanner", () => ({
+  PushNotificationBanner: () => null,
+}));
+vi.mock("@/components/pwa/UpdateNotification", () => ({
+  UpdateNotification: () => null,
+}));
+vi.mock("@/components/debug/DebugPanel", () => ({ DebugPanel: () => null }));
+vi.mock("@/components/ui/sonner", () => ({ Toaster: () => null }));
+vi.mock("@/components/ui/alert-dialog", () => ({
+  AlertDialog: () => null,
+  AlertDialogAction: () => null,
+  AlertDialogCancel: () => null,
+  AlertDialogContent: () => null,
+  AlertDialogDescription: () => null,
+  AlertDialogFooter: () => null,
+  AlertDialogHeader: () => null,
+  AlertDialogTitle: () => null,
+}));
+vi.mock("@/views/customer/HomeView", () => ({ HomeView: () => null }));
+
+// @ts-expect-error flag interna do React, sem tipo público — mesmo padrão
+// dos outros testes de componente deste projeto.
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const COR_DO_BANCO = "#059669";
+
+function metaThemeColor(): HTMLMetaElement | null {
+  return document.head.querySelector('meta[name="theme-color"]');
+}
+
+// Node 25 pisa em `localStorage`/`sessionStorage` globais antes do jsdom —
+// mesmo contorno de auth-logout-cleanup.test.tsx.
+function criarStorageFake() {
+  const armazem = new Map<string, string>();
+  return {
+    getItem: (chave: string) => armazem.get(chave) ?? null,
+    setItem: (chave: string, valor: string) => {
+      armazem.set(chave, valor);
+    },
+    removeItem: (chave: string) => {
+      armazem.delete(chave);
+    },
+    clear: () => {
+      armazem.clear();
+    },
+    key: (index: number) => Array.from(armazem.keys()).at(index) ?? null,
+    get length() {
+      return armazem.size;
+    },
+  };
+}
+
+// jsdom não implementa matchMedia nem IntersectionObserver (o App usa ambos
+// em efeitos de layout); visualViewport não existe e o efeito já retorna cedo.
+function stubsDeBrowser() {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+}
+
+let raiz: Root;
+let hospedeiro: HTMLDivElement;
+
+beforeEach(() => {
+  linhaDoBanco = { id: 1 };
+  fetchPendente = false;
+  fetchFalha = false;
+  stubsDeBrowser();
+  vi.stubGlobal("localStorage", criarStorageFake());
+  vi.stubGlobal("sessionStorage", criarStorageFake());
+  document.documentElement.style.removeProperty("--primary");
+  // Simula o index.html (dono de outro agente): meta theme-color fixo em
+  // preto até alguém da aplicação atualizá-lo em runtime.
+  let meta = metaThemeColor();
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.setAttribute("name", "theme-color");
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute("content", "#000000");
+  hospedeiro = document.createElement("div");
+  document.body.appendChild(hospedeiro);
+  raiz = createRoot(hospedeiro);
+});
+
+afterEach(() => {
+  act(() => {
+    raiz.unmount();
+  });
+  hospedeiro.remove();
+  vi.unstubAllGlobals();
+});
+
+describe("StoreContext — a cor da loja vem do banco (contrato: build semeia, banco vence)", () => {
+  it("(a) config com primary_color atualiza a CSS var --primary do documentElement", async () => {
+    linhaDoBanco = { id: 1, primary_color: COR_DO_BANCO };
+
+    await act(async () => {
+      raiz.render(
+        <StoreProvider>
+          <span />
+        </StoreProvider>,
+      );
+    });
+    // Duas voltas de microtarefa: fetchConfig é assíncrono (await no
+    // `.select().single()` dublado) e só depois disso setConfig/applyBranding rodam.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe(
+      hexToTailwindHsl(COR_DO_BANCO),
+    );
+  });
+
+  it("(c) a semente do build sobrevive ao mount enquanto o banco não responde", async () => {
+    fetchPendente = true;
+
+    // O que main.tsx faz no boot da aplicação: semeia o :root (e o meta) com
+    // a cor do branding de build, antes de qualquer dado.
+    applyBranding();
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe(
+      hexToTailwindHsl(branding.theme.primary),
+    );
+
+    await act(async () => {
+      raiz.render(
+        <StoreProvider>
+          <span />
+        </StoreProvider>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // O default de código (#000000) não veio do banco: a semente precisa
+    // continuar intacta — nem a CSS var, nem o meta.
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe(
+      hexToTailwindHsl(branding.theme.primary),
+    );
+    expect(metaThemeColor()?.getAttribute("content")).toBe(
+      branding.theme.primary,
+    );
+  });
+});
+
+describe("App — o meta theme-color acompanha a cor primária efetiva (banco > build)", () => {
+  it("(b) config com primary_color atualiza o meta theme-color em runtime", async () => {
+    linhaDoBanco = { id: 1, primary_color: COR_DO_BANCO };
+
+    await act(async () => {
+      raiz.render(<App />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(metaThemeColor()?.getAttribute("content")).toBe(COR_DO_BANCO);
+  });
+
+  // O QUARTO QUADRANTE, que faltava (revisão cruzada 20260825-1015 — o
+  // defeito real do b531ca9 morava exatamente aqui): o fetch da config
+  // REJEITOU (rede caiu, Supabase fora). `isLoaded` vira true no `finally`
+  // e `config.primaryColor` fica AUSENTE (o default de código não tem mais
+  // reserva de cor — sentinela é ausência). O contrato manda: sem cor não se
+  // pinta — o meta fica na semente do build (barra preta com o app na cor da
+  // marca era o defeito original). A regra mora em corPrimariaEfetiva.
+  it("(d) fetch da config FALHANDO: isLoaded=true + config no default → meta fica na semente do build, não em #000000", async () => {
+    fetchFalha = true;
+
+    await act(async () => {
+      raiz.render(<App />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(metaThemeColor()?.getAttribute("content")).toBe(
+      branding.theme.primary,
+    );
+    // A asserção que caça o defeito de volta: o meta NÃO pode ter virado o
+    // default de código. Se este teste um dia falhar em silêncio, é a barra
+    // do celular voltando a ficar preta no caminho de falha.
+    expect(metaThemeColor()?.getAttribute("content")).not.toBe("#000000");
+  });
+
+  // QUINTO quadrante (revisão 20260825-1305 — por que o 498ccea BLOQUEAVA):
+  // o FIXTURE REALISTA. Linha com `primary_color = '#000000'` vinda do banco,
+  // que é o que o schema ainda produz em banco onde a 20260980000000 não
+  // rodou e o que linhas antigas carregam. A MANCHETE do design confirmado
+  // (resposta GLM 1249, endossada no confirm do Claude): este fixture mostra
+  // a SEMENTE do build — guarda temporária no corPrimariaEfetiva: sem tela
+  // de escrever cor, preto no banco é resíduo de fábrica ou escrita manual,
+  // escolha de lojista não é. Os DOIS consumidores concordam (nenhum pinta),
+  // que é a consistência que o 1305 exigia — divergência nenhuma, preto
+  // lugar nenhum. Quando a tela de escrever cor existir (pedido 004), a
+  // guarda SAI e este teste INVERTE de propósito: preto passa a ser escolha.
+  it("(e) linha do banco COM primary_color '#000000' (fixture realista): semente do build nos DOIS consumidores — guarda temporária", async () => {
+    linhaDoBanco = { id: 1, primary_color: "#000000" };
+
+    await act(async () => {
+      raiz.render(<App />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe(
+      "",
+    );
+    expect(metaThemeColor()?.getAttribute("content")).toBe(
+      branding.theme.primary,
+    );
+    expect(metaThemeColor()?.getAttribute("content")).not.toBe("#000000");
+  });
+
+  // SEXTO quadrante — o estado que só a migration 20260980000000 torna
+  // alcançável em produção: linha SEM primary_color (NULL/ausente) chegando
+  // com sucesso. Ausente é ausente: NENHUM consumidor pinta — o --primary
+  // continua como o build semeou (aqui: ninguém seta) e o meta fica na
+  // semente. Se um dia voltar a fabricar cor para loja sem escolha, este
+  // teste cai primeiro.
+  it("(f) linha do banco SEM primary_color (pós-migration): nada pinta — semente do build nos dois", async () => {
+    linhaDoBanco = { id: 1 };
+
+    await act(async () => {
+      raiz.render(<App />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe(
+      "",
+    );
+    expect(metaThemeColor()?.getAttribute("content")).toBe(
+      branding.theme.primary,
+    );
+  });
+});

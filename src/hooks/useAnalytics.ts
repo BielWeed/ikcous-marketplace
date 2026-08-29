@@ -3,6 +3,13 @@ import { DataVault } from "@/lib/dataVault";
 import { supabase } from "@/lib/supabase";
 import { useCallback, useEffect, useState } from "react";
 
+// A RPC `get_admin_analytics_v2` tem `p_limit_days DEFAULT 90`: chamada sem
+// argumento, ela devolve só 90 dias de `revenueHistory` — e o botão "Tudo"
+// do gráfico do painel promete o histórico inteiro. Dez anos cobrem a vida
+// de qualquer loja deste app; os dias vazios antes da primeira venda são
+// aparados na exibição (`desdeOPrimeiroDiaDeMovimento`), não aqui.
+export const JANELA_TUDO_DIAS = 3650;
+
 async function callRpcWithRetry<T>(
   fn: () => Promise<{ data: T | null; error: any }>,
   retries = 3,
@@ -99,20 +106,26 @@ export interface DashboardStats {
   /** Pedidos com `status = 'delivered'`, desde sempre. Opcional: campo novo
    * na RPC `get_admin_analytics_v2`, ainda não aplicado em toda base. */
   deliveredTotal?: number;
-  /** Pedidos com `payment_status IN ('pago','pago_apos_expirar') AND status =
-   * 'cancelled'` — dinheiro recebido em pedido cancelado. São DUAS portas, e
-   * a segunda é a mais provável: o cliente que paga o PIX fora do prazo
-   * (`pago_apos_expirar`), e o pedido já pago que o admin cancela pelo painel
-   * (`pago`), que abre com um clique. Quem ler só a primeira e escrever um
-   * rótulo tipo "pagos depois de expirar" reproduz o defeito que este campo
-   * existe para consertar — foi o que quase aconteceu aqui. Mesma ressalva de
-   * `deliveredTotal` acima. */
+  /** Pedidos com `payment_status IN ('pago','pago_apos_expirar',
+   * 'recebido_na_entrega') AND status = 'cancelled'` — dinheiro recebido em
+   * pedido cancelado. São TRÊS portas desde a migration `20261021000000`
+   * (Task 2 de docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md):
+   * o cliente que paga o PIX fora do prazo (`pago_apos_expirar`), o pedido
+   * já pago que o admin cancela pelo painel (`pago`), que abre com um
+   * clique, e agora a loja confirmando que recebeu na mão
+   * (`recebido_na_entrega`, sem gateway nenhum). Quem ler só uma delas e
+   * escrever um rótulo tipo "pagos depois de expirar" reproduz o defeito
+   * que este campo existe para consertar — foi o que quase aconteceu aqui.
+   * Mesma ressalva de `deliveredTotal` acima. */
   paidOnCancelled?: number;
 }
 
 // Memory cache for SWR pattern
 let cachedStats: DashboardStats | null = null;
 let cachedCategoryData: any = null;
+// PAINEL-10: o cache era servido para QUALQUER range se o throttle
+// ainda não tinha expirado — período B mostrava números de A.
+let cachedCategoryRange: string | null = null;
 let lastStatsFetchTime = 0;
 let lastCategoryFetchTime = 0;
 const REVALIDATION_THROTTLE_MS = 30000; // 30 seconds
@@ -137,6 +150,61 @@ export function clearAnalyticsCache() {
   cachedCategoryData = null;
   lastStatsFetchTime = 0;
   lastCategoryFetchTime = 0;
+}
+
+/**
+ * Traduz um erro bruto do banco/rede para a frase que a lojista lê no painel.
+ *
+ * REGRA DE OURO: cada ramo abaixo só promete uma causa quando dá para
+ * DISTINGUIR essa causa de todas as outras que caem no mesmo ponto — os
+ * quatro catch deste hook recebem erros da mesma fonte (RPC via
+ * callRpcWithRetry), então qualquer erro que não bata num padrão inequívoco
+ * fica na frase genérica. Errar para a genérica é seguro; instrução
+ * específica errada ("faça login" quando logar não resolve) não é.
+ *
+ * O texto original do erro NÃO se perde: quem chama SEMPRE registra o erro
+ * completo no console.error junto desta frase.
+ */
+function mensagemParaLojista(erro: unknown, acaoQueFalhou: string): string {
+  const sinal =
+    typeof erro === "object" && erro !== null
+      ? (erro as { code?: unknown; message?: unknown })
+      : {};
+  const codigo = typeof sinal.code === "string" ? sinal.code : "";
+  const texto = typeof sinal.message === "string" ? sinal.message : "";
+
+  // Sessão: só quando o próprio token diz que venceu/é inválido (PGRST301 é
+  // o código do PostgREST para JWT problemático). Um 401 genérico NÃO entra
+  // aqui — pode ser chave de API errada, e "entre novamente" não resolveria.
+  if (
+    /\bjwt\b/i.test(texto) ||
+    /session expired/i.test(texto) ||
+    codigo === "PGRST301"
+  ) {
+    return "Sua sessão expirou. Entre novamente com sua conta e tente de novo.";
+  }
+  // Permissão: recusa do Postgres (42501) ou negação de RLS. Não promete que
+  // logar resolve — pode ser configuração de acesso no servidor.
+  if (
+    codigo === "42501" ||
+    /permission denied/i.test(texto) ||
+    /row-level security/i.test(texto)
+  ) {
+    return "Sem permissão para acessar estes dados agora. Confirme que você entrou com a conta de administradora da loja.";
+  }
+  // Rede: textos canônicos de fetch falhado nos principais navegadores
+  // (Chrome/Firefox/Safari/Node). Sem conexão, nenhuma consulta sai do lugar.
+  if (
+    /failed to fetch|networkerror|fetch failed|load failed|network request failed/i.test(
+      texto,
+    )
+  ) {
+    return "Sem conexão com o servidor. Verifique sua internet e tente de novo.";
+  }
+  // Tudo o resto (função RPC inexistente, erro 5xx, timeout, erro sem
+  // mensagem): sem como nomear a causa com o que chegou — frase honesta que
+  // dita a ação que costuma resolver.
+  return `Não foi possível ${acaoQueFalhou} agora. Tente atualizar a página; se continuar, tente mais tarde.`;
 }
 
 export function useAnalytics() {
@@ -249,6 +317,7 @@ export function useAnalytics() {
               async () => {
                 const { data, error } = await supabase.rpc(
                   "get_admin_analytics_v2",
+                  { p_limit_days: JANELA_TUDO_DIAS },
                 );
                 return { data: data as DashboardStats | null, error };
               },
@@ -271,6 +340,13 @@ export function useAnalytics() {
             }
           } catch (e) {
             console.error("Background fetch stats failed:", e);
+            // PAINEL-02: sem isto, a falha persistente do background
+            // deixava o cache velho servindo indefinidamente como se
+            // fosse atual. O dashboard ja renderiza o error state
+            // (linha 284) — agora ele fica sabendo.
+            setError(
+              "Não foi possível atualizar agora — exibindo a última atualização.",
+            );
           }
         })();
         return cachedStats;
@@ -284,6 +360,7 @@ export function useAnalytics() {
           async () => {
             const { data, error } = await supabase.rpc(
               "get_admin_analytics_v2",
+              { p_limit_days: JANELA_TUDO_DIAS },
             );
             return { data: data as DashboardStats | null, error };
           },
@@ -308,7 +385,7 @@ export function useAnalytics() {
         return cachedStats;
       } catch (err: any) {
         console.error("Error fetching executive summary:", err);
-        setError(err.message || "Error fetching executive summary");
+        setError(mensagemParaLojista(err, "carregar o resumo do painel"));
         return null;
       } finally {
         setSummaryLoading(false);
@@ -355,9 +432,11 @@ export function useAnalytics() {
       }
 
       const now = Date.now();
+      const rangeKey = `${start}:${end}`;
       const shouldRevalidate =
         forceRefresh ||
         !cachedCategoryData ||
+        cachedCategoryRange !== rangeKey || // PAINEL-10: range diferente = cache inválido
         now - lastCategoryFetchTime > REVALIDATION_THROTTLE_MS;
 
       if (cachedCategoryData && !shouldRevalidate) {
@@ -379,11 +458,14 @@ export function useAnalytics() {
             );
             if (err) {
               console.error("Background fetch category failed:", err);
-              setCategoryError(err.message || "Erro ao atualizar categorias");
+              setCategoryError(
+                mensagemParaLojista(err, "atualizar os dados de categorias"),
+              );
               return;
             }
             if (data) {
               cachedCategoryData = data;
+              cachedCategoryRange = rangeKey; // PAINEL-10
               lastCategoryFetchTime = Date.now();
               setCategoryData(data);
               setCategoryError(null);
@@ -401,7 +483,9 @@ export function useAnalytics() {
             }
           } catch (e: any) {
             console.error("Background fetch category failed:", e);
-            setCategoryError(e?.message || "Erro ao atualizar categorias");
+            setCategoryError(
+              mensagemParaLojista(e, "atualizar os dados de categorias"),
+            );
           }
         })();
         return cachedCategoryData;
@@ -417,6 +501,7 @@ export function useAnalytics() {
         );
         if (error) throw error;
         cachedCategoryData = data;
+        cachedCategoryRange = rangeKey; // PAINEL-10
         lastCategoryFetchTime = Date.now();
         setCategoryData(data);
         setCategoryError(null);
@@ -435,7 +520,9 @@ export function useAnalytics() {
         return data;
       } catch (err: any) {
         console.error("Error fetching category analytics:", err);
-        setCategoryError(err?.message || "Erro ao carregar categorias");
+        setCategoryError(
+          mensagemParaLojista(err, "carregar os dados de categorias"),
+        );
         return null;
       } finally {
         setCategoryLoading(false);

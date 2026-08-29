@@ -2,6 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
+import { desdeOPrimeiroDiaDeMovimento } from "@/utils/desde-o-primeiro-dia-de-movimento";
 import { Activity, BarChart3 } from "lucide-react";
 import { memo, useEffect, useMemo, useState, useTransition } from "react";
 import {
@@ -66,14 +67,32 @@ export const OperationalPerformanceChart = memo(
     // Filter history based on timeframe before processing
     const revenueHistory = stats?.revenueHistory;
     const filteredRevenueHistory = useMemo(() => {
-      return revenueHistory
-        ? timeframe === "30"
-          ? revenueHistory.slice(-30)
-          : timeframe === "90"
-            ? revenueHistory.slice(-90)
-            : revenueHistory
-        : [];
+      if (!revenueHistory) return [];
+      if (timeframe === "30") return revenueHistory.slice(-30);
+      if (timeframe === "90") return revenueHistory.slice(-90);
+      // "Tudo": a janela cobre anos, então os dias zerados ANTES da
+      // primeira venda são aparados — a loja não nasceu 10 anos atrás.
+      return desdeOPrimeiroDiaDeMovimento(revenueHistory);
     }, [revenueHistory, timeframe]);
+
+    // Faturamento Total / Pedidos / Ticket Médio do bloco de resumo, somados
+    // a partir dos MESMOS dias que alimentam as barras (`filteredRevenueHistory`).
+    // Antes, esses três números vinham de `stats.executive`, que a RPC marca
+    // "-- executive stats (all-time)" — a lojista trocava o período no
+    // seletor e via o gráfico mudar, mas os números ao lado continuavam
+    // sendo o total histórico da loja inteira.
+    const periodTotals = useMemo(() => {
+      const revenue = filteredRevenueHistory.reduce(
+        (sum, day) => sum + (day.revenue ?? 0),
+        0,
+      );
+      const orders = filteredRevenueHistory.reduce(
+        (sum, day) => sum + (day.orders ?? 0),
+        0,
+      );
+      const avgTicket = orders > 0 ? revenue / orders : 0;
+      return { revenue, orders, avgTicket };
+    }, [filteredRevenueHistory]);
 
     // Process data for ROI chart
     const processedRoiData = useMemo(() => {
@@ -213,10 +232,9 @@ export const OperationalPerformanceChart = memo(
                     Faturamento Total:{" "}
                     <strong className="text-[11px] font-black italic tracking-tighter text-white sm:text-sm">
                       R${" "}
-                      {(stats.executive?.totalRevenue ?? 0).toLocaleString(
-                        "pt-BR",
-                        { maximumFractionDigits: 0 },
-                      )}
+                      {periodTotals.revenue.toLocaleString("pt-BR", {
+                        maximumFractionDigits: 0,
+                      })}
                     </strong>
                   </span>
                 </div>
@@ -225,7 +243,7 @@ export const OperationalPerformanceChart = memo(
                   <span>
                     Pedidos:{" "}
                     <strong className="text-[11px] font-black italic tracking-tighter text-white sm:text-sm">
-                      {stats.executive?.totalOrders ?? 0}
+                      {periodTotals.orders}
                     </strong>
                   </span>
                 </div>
@@ -235,11 +253,9 @@ export const OperationalPerformanceChart = memo(
                     Ticket Médio:{" "}
                     <strong className="text-[11px] font-black italic tracking-tighter text-white sm:text-sm">
                       R${" "}
-                      {(
-                        stats.averageTicket ??
-                        stats.executive?.avgTicket ??
-                        0
-                      ).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}
+                      {periodTotals.avgTicket.toLocaleString("pt-BR", {
+                        maximumFractionDigits: 0,
+                      })}
                     </strong>
                   </span>
                 </div>

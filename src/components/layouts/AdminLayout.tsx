@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { branding } from "@/config/branding";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { useConnectionDiagnostics } from "@/hooks/useOnlineStatus";
 import { useOrders } from "@/hooks/useOrders";
@@ -20,6 +21,7 @@ import {
   prefetchReviewsData,
 } from "@/utils/admin_cache";
 import { haptic } from "@/utils/haptic";
+import { paiDaTelaDoAdmin } from "@/utils/pai-da-tela-do-admin";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
@@ -27,6 +29,7 @@ import {
   Bell,
   Layers,
   LayoutGrid,
+  Megaphone,
   Package,
   Plus,
   Settings,
@@ -34,7 +37,43 @@ import {
   Users,
 } from "lucide-react";
 import React from "react";
-import { useDocumentMeta } from "@/hooks/useDocumentMeta";
+
+/**
+ * Pedidos que ainda exigem ação do lojista — espelha o predicado de
+ * `today_pending` na RPC `get_admin_analytics_v2` (o cartão "Ações
+ * Pendentes" da tela de Pedidos). Um pedido em "Em Separação" ainda
+ * precisa ser embalado e enviado, então conta igual a um pedido novo.
+ *
+ * Achado 10 da auditoria de 20/08/2026: o crachá desta barra e o cartão
+ * contavam coisas diferentes ("pending" contra "pending"+"new"+"processing")
+ * e discordavam na tela. Exportada para o mesmo texto ser usado nos dois
+ * lados em vez de duas listas soltas voltarem a divergir.
+ *
+ * `"new"` é um valor histórico da coluna `status` no banco — o enum
+ * `OrderStatus` do front nunca o modelou — mantido aqui só para bater com
+ * o que a RPC de fato soma.
+ */
+export const STATUS_PEDIDOS_COM_ACAO_PENDENTE = [
+  "pending",
+  "new",
+  "processing",
+] as const;
+
+/**
+ * Retentativa automática quando a rodada de contagens FALHA — sem ela, a
+ * bolinha vermelha acesa por dúvida (`naoConseguiuConferirAvisos`) não
+ * apaga sozinha numa aba do painel aberta em primeiro plano, numa loja sem
+ * movimento: nenhum dos gatilhos existentes (troca de foco, tempo real,
+ * BroadcastChannel) dispara ali, e não há intervalo nenhum rodando.
+ *
+ * Só agenda quando a ÚLTIMA rodada falhou — rodada que deu certo não agenda
+ * nada, senão troca-se um defeito por consumo de rede e bateria em toda aba
+ * aberta. Recuo exponencial (4s, 8s, 16s) e teto de 3 tentativas: depois
+ * disso o sino continua aceso, mas para de bater na rede sozinho — o
+ * próximo gatilho natural (foco, tempo real, broadcast) resolve.
+ */
+const RETENTATIVA_BASE_MS = 4000;
+const RETENTATIVA_MAX_TENTATIVAS = 3;
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -65,11 +104,35 @@ export function AdminLayout({
 
   const [pendingOrdersCount, setPendingOrdersCount] = React.useState(0);
   const [pendingQuestionsCount, setPendingQuestionsCount] = React.useState(0);
+  const [pendingReviewsCount, setPendingReviewsCount] = React.useState(0);
+  // Defeito medido em 25/08/2026: quando uma das tres consultas abaixo
+  // falhava, a contagem dela ficava parada em 0 e o sino apagava — a mesma
+  // tela de "nada pendente". Este estado guarda o terceiro caso, que nao e'
+  // nem "tem pendencia" nem "nao tem": e' "nao consegui conferir". Ele zera
+  // sozinho a cada nova rodada de `fetchInitialCounts` que der certo.
+  const [naoConseguiuConferirAvisos, setNaoConseguiuConferirAvisos] =
+    React.useState(false);
 
   React.useEffect(() => {
     let isMounted = true;
     let ordersChannel: any = null;
     let questionsChannel: any = null;
+    // Numero da rodada corrente. Sem ele, a rodada VELHA que termina por
+    // ULTIMO vence — inclusive escrevendo o veredito velho (falhou) por
+    // cima do veredito novo (deu certo). Mesmo padrao de
+    // `useAvisosDoLojista.ts:152-158`, que existe pelo mesmo motivo medido
+    // la: duas rodadas em voo ao mesmo tempo, quatro gatilhos que podem
+    // disparar `fetchInitialCounts` (visivel, realtime de pedidos, realtime
+    // de perguntas/respostas, BroadcastChannel) e agora um quinto (a
+    // retentativa abaixo).
+    let rodadaAtual = 0;
+    // Estado da retentativa automatica (ressalva 1). Vive aqui, e nao em
+    // `React.useRef`, pelo mesmo motivo de `isMounted`: reinicia sozinho
+    // quando o efeito inteiro reinicia (troca de `isLeader`), que e o
+    // comportamento certo — uma nova rodada de assinaturas comeca um novo
+    // ciclo de retentativa do zero.
+    let tentativaDeRetentativa = 0;
+    let timeoutDeRetentativa: ReturnType<typeof setTimeout> | null = null;
     const bc =
       typeof window !== "undefined"
         ? new BroadcastChannel("ikcous_admin_layout_badges")
@@ -77,14 +140,28 @@ export function AdminLayout({
     let bcListener: ((event: MessageEvent) => void) | null = null;
 
     const fetchInitialCounts = async () => {
+      const rodada = ++rodadaAtual;
+      // Só esta rodada pode gravar estado: se uma rodada mais nova já
+      // começou (ou o componente saiu), o veredito desta aqui chegou
+      // atrasado e não vale mais nada.
+      const podeGravar = () => isMounted && rodada === rodadaAtual;
+
+      // Desconhecido nunca e' sucesso: se alguma das tres consultas falhar,
+      // o sino tem que acender por causa da duvida, mesmo que as contagens
+      // que DERAM certo estejam todas zeradas. `falhouAlgumaConsulta` comeca
+      // limpo a cada rodada — uma rodada nova que der tudo certo apaga o
+      // aviso de falha da rodada anterior.
+      let falhouAlgumaConsulta = false;
       try {
         // Fetch pending orders count
         const { count: ordersCount, error: ordersErr } = await supabase
           .from("marketplace_orders")
           .select("*", { count: "exact", head: true })
-          .eq("status", "pending");
+          .in("status", STATUS_PEDIDOS_COM_ACAO_PENDENTE);
 
-        if (!ordersErr && ordersCount !== null && isMounted) {
+        if (ordersErr) {
+          falhouAlgumaConsulta = true;
+        } else if (ordersCount !== null && podeGravar()) {
           setPendingOrdersCount(ordersCount);
         }
 
@@ -99,14 +176,64 @@ export function AdminLayout({
           },
         );
 
-        if (!qErr && qData && isMounted) {
+        if (qErr) {
+          falhouAlgumaConsulta = true;
+        } else if (qData && podeGravar()) {
           setPendingQuestionsCount(qData.total_count || 0);
+        }
+
+        // Avaliação sem resposta também acende o sino: ela entra na lista da
+        // tela de Notificações e é trabalho parado esperando pelo lojista.
+        // `.is(null)` é o mesmo critério de `useAvisosDoLojista` — duas
+        // contagens diferentes para a mesma pergunta seria pior que nenhuma.
+        const { count: reviewsCount, error: reviewsErr } = await supabase
+          .from("reviews")
+          .select("*", { count: "exact", head: true })
+          .is("merchant_reply", null);
+
+        if (reviewsErr) {
+          falhouAlgumaConsulta = true;
+        } else if (reviewsCount !== null && podeGravar()) {
+          setPendingReviewsCount(reviewsCount);
         }
       } catch (err) {
         console.error("[AdminLayout] Error fetching initial counts:", err);
+        falhouAlgumaConsulta = true;
+      } finally {
+        if (podeGravar()) {
+          setNaoConseguiuConferirAvisos(falhouAlgumaConsulta);
+
+          if (timeoutDeRetentativa) {
+            clearTimeout(timeoutDeRetentativa);
+            timeoutDeRetentativa = null;
+          }
+
+          if (falhouAlgumaConsulta) {
+            if (tentativaDeRetentativa < RETENTATIVA_MAX_TENTATIVAS) {
+              const tentativa = tentativaDeRetentativa;
+              tentativaDeRetentativa = tentativa + 1;
+              const atraso = RETENTATIVA_BASE_MS * 2 ** tentativa;
+              timeoutDeRetentativa = setTimeout(() => {
+                timeoutDeRetentativa = null;
+                if (isMounted) {
+                  fetchInitialCounts();
+                }
+              }, atraso);
+            }
+          } else {
+            tentativaDeRetentativa = 0;
+          }
+        }
       }
     };
 
+    // LIMITACAO CONHECIDA, de proposito: nao ha canal de tempo real para
+    // `reviews`. A contagem de avaliacoes sem resposta so e' lida na busca
+    // inicial e nas revalidacoes de `visibilitychange` — uma avaliacao que
+    // chegue com o painel aberto so acende a bolinha na proxima vez que a
+    // aba voltar ao foco. Assinar mais uma tabela mexe na eleicao de lider e
+    // no ciclo de vida dos canais, que e' onde moram os defeitos de
+    // concorrencia deste arquivo; o atraso ate o proximo foco custa menos.
     const subscribe = () => {
       if (ordersChannel || questionsChannel) return; // already subscribed
 
@@ -244,6 +371,10 @@ export function AdminLayout({
       document.removeEventListener("visibilitychange", handleVisibility);
       unsubscribe();
       bc?.close();
+      if (timeoutDeRetentativa) {
+        clearTimeout(timeoutDeRetentativa);
+        timeoutDeRetentativa = null;
+      }
     };
   }, [isLeader]);
 
@@ -368,6 +499,32 @@ export function AdminLayout({
     { icon: Settings, label: "Ajustes", view: "admin-settings" },
   ];
 
+  /**
+   * Para onde o sino do cabeçalho leva: sempre a tela de Notificações, onde
+   * os avisos ficam listados. Não há escolha de destino aqui de propósito —
+   * o sino é a porta da tela, e quem decide o que olhar primeiro é o lojista
+   * lendo a lista, não um `if` adivinhando qual alerta ele quis ver.
+   */
+  const notificationBellTarget: View = "admin-notifications";
+
+  /**
+   * A bolinha vermelha acende quando ha algo esperando pelo lojista — OU
+   * quando o app nao conseguiu conferir se ha. `naoConseguiuConferirAvisos`
+   * entra aqui pelo mesmo motivo da tela de Notificacoes (AdminNotifications
+   * View) nunca mostrar "Tudo em dia" com uma fonte caida: falha e "nada
+   * pendente" nao podem parecer a mesma tela, senao o lojista nao tem motivo
+   * nenhum para abrir o sino e descobrir o pedido que estava esperando.
+   *
+   * Uma constante so, e nao a condicao repetida em cada porta: sao dois
+   * lugares que levam a mesma tela (o sino do celular e a barra lateral do
+   * computador), e duas copias da mesma regra e' onde elas divergem depois.
+   */
+  const temAvisoNoSino =
+    naoConseguiuConferirAvisos ||
+    pendingOrdersCount > 0 ||
+    pendingQuestionsCount > 0 ||
+    pendingReviewsCount > 0;
+
   const { isOffline, latency, quality } = useConnectionDiagnostics();
   const [showSyncFlash, setShowSyncFlash] = React.useState(false);
   const prevOfflineRef = React.useRef(isOffline);
@@ -483,31 +640,31 @@ export function AdminLayout({
     globalThis.location &&
     new URLSearchParams(globalThis.location.search).has("id");
 
-  const getParentView = (view: View): View | "profile" => {
-    if (isOrderDetailsSubView) {
-      return "admin-orders";
+  // Guarda a view ANTERIOR a `currentView`, para o botão "Voltar" de
+  // "admin-push" saber de onde a pessoa veio (sidebar, menu do cliente,
+  // banner...) em vez de sempre cair em "admin-settings". O sino NÃO está
+  // mais nessa lista: ele leva às Notificações do lojista, não ao envio para
+  // clientes. Só
+  // atualiza quando a view muda de fato — a origem tem que continuar
+  // apontando para a tela anterior enquanto "admin-push" está em foco.
+  //
+  // `origemDaView` fica em estado, não em ref: `getParentView` é chamado
+  // durante a renderização (aqui embaixo, e dentro dos dois `navItems.map`
+  // da sidebar), e a regra `react-hooks/refs` do eslint proíbe ler
+  // `ref.current` em render — só em efeito ou handler. O `useRef` que o
+  // efeito usa para lembrar a view anterior fica isolado dentro do próprio
+  // `useEffect`, nunca lido em render.
+  const [origemDaView, setOrigemDaView] = React.useState<View | null>(null);
+  const viewAnteriorRef = React.useRef<View>(currentView);
+  React.useEffect(() => {
+    if (viewAnteriorRef.current !== currentView) {
+      setOrigemDaView(viewAnteriorRef.current);
+      viewAnteriorRef.current = currentView;
     }
-    switch (view) {
-      case "admin-coupon-form":
-        return "admin-coupons";
-      case "admin-product-form":
-      case "admin-coupons":
-      case "admin-shipping":
-        return "admin-products";
-      case "admin-user-detail":
-        return "admin-customers";
-      case "admin-push":
-      case "admin-banners":
-      case "admin-carousels":
-      case "admin-whatsapp-config":
-        return "admin-settings";
-      case "admin-reviews":
-      case "admin-qa":
-        return "admin-orders";
-      default:
-        return "profile";
-    }
-  };
+  }, [currentView]);
+
+  const getParentView = (view: View): View | "profile" =>
+    paiDaTelaDoAdmin(view, origemDaView, !!isOrderDetailsSubView);
 
   const parentView = getParentView(currentView);
   const isSubView = parentView !== "profile" || isOrderDetailsSubView;
@@ -697,8 +854,39 @@ export function AdminLayout({
             <ArrowLeft className="size-4 text-zinc-400" />{" "}
             <span>{isSubView ? "Voltar" : "Perfil"}</span>
           </Button>
+          {/*
+            A porta das Notificações no COMPUTADOR. O sino mora no cabeçalho
+            `lg:hidden` e esta `<aside>` é `hidden ... lg:flex`: são larguras
+            opostas, então uma porta só no sino deixaria a tela inalcançável
+            acima de 1024px. Foi exatamente esse o defeito que a revisão de
+            contexto limpo pegou — zero portas visíveis no computador.
+          */}
           <Button
             variant="ghost"
+            aria-label="Notificações"
+            onClick={() => {
+              haptic.light();
+              onNavigate(notificationBellTarget);
+            }}
+            onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
+            onMouseLeave={handleMouseLeave}
+            className="relative flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
+          >
+            <Bell className="size-4 text-admin-gold" />{" "}
+            <span>Notificações</span>
+            {temAvisoNoSino && (
+              <span className="absolute right-4 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
+            )}
+          </Button>
+          {/*
+            "Avisar clientes" é a tela que ENVIA push para quem compra — o
+            oposto da tela de cima, que só RECEBE. O rótulo "Push" dizia o
+            mecanismo e não o efeito, e com dois sinos no mesmo bloco os dois
+            botões se confundiriam: por isso o megafone.
+          */}
+          <Button
+            variant="ghost"
+            aria-label="Avisar clientes"
             onClick={() => {
               haptic.light();
               onNavigate("admin-push");
@@ -707,7 +895,8 @@ export function AdminLayout({
             onMouseLeave={handleMouseLeave}
             className="flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
           >
-            <Bell className="size-4 text-admin-gold" /> <span>Push</span>
+            <Megaphone className="size-4 text-admin-gold" />{" "}
+            <span>Avisar clientes</span>
           </Button>
         </div>
       </aside>
@@ -833,16 +1022,17 @@ export function AdminLayout({
                 <Button
                   variant="ghost"
                   size="icon"
+                  aria-label="Notificações"
                   className="relative size-7 transform-gpu rounded-full border border-white/5 bg-zinc-900 hover:bg-zinc-800 active:scale-95"
                   onClick={() => {
                     haptic.light();
-                    onNavigate("admin-push");
+                    onNavigate(notificationBellTarget);
                   }}
-                  onMouseEnter={() => handleMouseEnter("admin-push")}
+                  onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
                   onMouseLeave={handleMouseLeave}
                 >
                   <Bell className="size-3.5 text-admin-gold" />
-                  {(pendingOrdersCount > 0 || pendingQuestionsCount > 0) && (
+                  {temAvisoNoSino && (
                     <span className="absolute right-1 top-1 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
                   )}
                 </Button>

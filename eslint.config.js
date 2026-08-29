@@ -84,6 +84,34 @@ export default defineConfig([
           "text-red-450",
           "text-red-650",
         ],
+        // 🔴 Sem estas linhas a catraca local levava HORAS. Medido em 28/08/2026.
+        //
+        // O default do plugin e'
+        //   ['**/*.css', '!**/node_modules', '!**/.*', '!**/dist', '!**/build']
+        // e `!**/node_modules` nega a ENTRADA do diretorio, nao o CONTEUDO dele:
+        // `node_modules/**/*.css` continua casando com `**/*.css`. Resultado, a
+        // regra `no-custom-classname` varre `node_modules` inteiro para achar os
+        // 3 arquivos de CSS do projeto -- e repete isso A CADA ARQUIVO LINTADO,
+        // porque o cache dela e' TTL de 5 s (`lib/util/cssFiles.js`) enquanto a
+        // varredura leva 22 s. A memoria dele nasce vencida, sempre.
+        //
+        //   !**/node_modules      21.959 ms  ->  97 classes
+        //   !**/node_modules/**      160 ms  ->  97 classes, lista IDENTICA
+        //
+        // 137x, e nao e' afrouxamento: a LISTA de classes e' a mesma, item a
+        // item. Vezes 529 arquivos, os 22 s sao as 2h31min que uma rodada
+        // chegou a consumir em 27/08 antes de ser morta.
+        //
+        // Se um dia isto voltar a demorar, o sinal e' grosseiro (alguem vai
+        // esperar horas de novo) e o primeiro suspeito e' esta lista ter sido
+        // perdida numa atualizacao do plugin.
+        cssFiles: [
+          "**/*.css",
+          "!**/node_modules/**",
+          "!**/.*/**",
+          "!**/dist/**",
+          "!**/build/**",
+        ],
       },
     },
   },

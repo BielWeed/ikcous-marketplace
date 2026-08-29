@@ -20,6 +20,11 @@ import {
   getPredefinedCoverSvg,
 } from "@/utils/covers";
 import { haptic } from "@/utils/haptic";
+import {
+  formatarWhatsAppDigitando,
+  formatarWhatsAppParaExibicao,
+  validarWhatsApp,
+} from "@/utils/telefone";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -36,11 +41,12 @@ import {
   UploadCloud,
   User,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 export function AccountSettingsView() {
-  const { user, profile, fetchProfile, updateProfile } = useAuth();
+  const { user, profile, fetchProfile, updateProfile, updatePassword } =
+    useAuth();
   const [loading, setLoading] = useState(false);
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [activeTab, setActiveTab] = useState<"profile" | "security">("profile");
@@ -231,42 +237,121 @@ export function AccountSettingsView() {
     email: "",
   });
 
+  // CONTA-01: a carga do perfil tem três estados OBSERVÁVEIS, não só
+  // "chegou dado válido". Antes desta correção o `useEffect` abaixo só
+  // tratava `if (data && !error)`, sem nenhum `else` — em falha de rede o
+  // formulário renderizava vazio como se o cadastro estivesse vazio de
+  // verdade, com o botão Salvar já clicável, e salvar apagava o nome e o
+  // WhatsApp reais (o `COALESCE` do banco não protege contra string vazia).
+  const [profileLoadState, setProfileLoadState] = useState<
+    "loading" | "loaded" | "error"
+  >("loading");
+
+  // CONTA-07 (auditoria de 26/08/2026) — a fonte da verdade do WhatsApp
+  // enquanto a pessoa não mexeu no campo é O BANCO, nunca o valor mostrado
+  // na tela. `formatarWhatsApp` (@/utils/telefone) TRUNCA para 11 dígitos de
+  // propósito — é a mesma regra que o rastreio de pedido exige — então um
+  // WhatsApp de 13 dígitos (ex.: "+55 34 99999-8888" cadastrado sem o app
+  // barrar) virava, só de CARREGAR a tela, um número de 11 dígitos válido
+  // pela validação — e se a pessoa salvasse só o nome, o número mutilado
+  // regravava por cima do real, com "sucesso". Este flag marca se a PESSOA
+  // editou o campo; só então `profileData.phone` (mascarado, já truncado) é
+  // o valor correto para mandar à RPC.
+  //
+  // CONTA-08 (mesma auditoria) — a gravação parar de mentir não bastava: a
+  // EXIBIÇÃO na carga usava a mesma `formatarWhatsApp` truncada, então a
+  // pessoa que só queria CONFERIR o WhatsApp via um número de 11 dígitos
+  // que não era o gravado, sem nenhum sinal de que aquilo estava truncado.
+  // `carregarPerfil` (abaixo) usa `formatarWhatsAppParaExibicao`, que só
+  // mascara quando o valor gravado cabe na máscara.
+  const [whatsappEditado, setWhatsappEditado] = useState(false);
+
   const [passwordData, setPasswordData] = useState({
     newPassword: "",
     confirmPassword: "",
   });
 
-  useEffect(() => {
-    if (user) {
-      const fetchLocalProfile = async () => {
-        const { data, error } = await (supabase as any).rpc(
-          "get_my_complete_profile",
-        );
+  const carregarPerfil = useCallback(async () => {
+    if (!user) return;
+    setProfileLoadState("loading");
+    try {
+      const { data, error } = await (supabase as any).rpc(
+        "get_my_complete_profile",
+      );
 
-        if (data && !error) {
-          const profile = (data as any)[0];
-          if (profile) {
-            setProfileData({
-              name: profile.full_name || "",
-              phone: profile.whatsapp || "",
-              email: user.email || "",
-            });
-          }
-        }
-      };
-      fetchLocalProfile();
+      if (error || !data) {
+        console.error("Error fetching profile:", error);
+        setProfileLoadState("error");
+        return;
+      }
+
+      const profile = (data as any)[0];
+      if (!profile) {
+        setProfileLoadState("error");
+        return;
+      }
+
+      setProfileData({
+        name: profile.full_name || "",
+        phone: formatarWhatsAppParaExibicao(profile.whatsapp || ""),
+        email: user.email || "",
+      });
+      // Toda carga é um cadastro "não editado" de novo — inclusive ao
+      // tentar de novo depois de um erro.
+      setWhatsappEditado(false);
+      setProfileLoadState("loaded");
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+      setProfileLoadState("error");
     }
   }, [user]);
 
+  useEffect(() => {
+    carregarPerfil();
+  }, [carregarPerfil]);
+
   const handleUpdateProfile = async () => {
     if (!user) return;
+
+    // Camada 2 de defesa do CONTA-01: mesmo que o botão tivesse sido
+    // clicado com a carga ainda não terminada (bug futuro na trava de UI
+    // abaixo, ou o `disabled` sendo contornado por fora), esta função se
+    // recusa a mandar `profileData` derivado de uma carga que não
+    // aconteceu — nunca sobrescreve o cadastro real com o estado inicial
+    // vazio.
+    if (profileLoadState !== "loaded") {
+      toast.error("Aguarde os dados carregarem antes de salvar.", {
+        description: "Ainda não conseguimos confirmar seus dados atuais.",
+      });
+      return;
+    }
+
+    // A validação só se aplica ao que a PESSOA digitou. Um WhatsApp inválido
+    // que já estava salvo (dado legado) não pode travar a troca do nome —
+    // ele nem vai ser reenviado (ver `p_whatsapp` abaixo).
+    if (whatsappEditado) {
+      const digitosWhatsapp = profileData.phone.replace(/\D/g, "");
+      if (digitosWhatsapp.length > 0 && !validarWhatsApp(profileData.phone)) {
+        toast.error("WhatsApp inválido", {
+          description:
+            "Informe DDD + número, com 10 ou 11 dígitos — por exemplo (34) 3333-4444 ou (34) 99999-8888.",
+        });
+        return;
+      }
+    }
+
     setLoading(true);
     try {
+      // `update_my_profile_secure` faz `whatsapp = COALESCE(p_whatsapp,
+      // whatsapp)` (SECURITY DEFINER, supabase/migrations) — mandar `null`
+      // quando o campo não foi editado faz o banco PRESERVAR o valor real
+      // que já estava salvo, em vez de regravar por cima com o que a tela
+      // mostra (que pode estar truncado/mascarado por `formatarWhatsApp`).
       const { error } = await (supabase as any).rpc(
         "update_my_profile_secure",
         {
           p_full_name: profileData.name,
-          p_whatsapp: profileData.phone,
+          p_whatsapp: whatsappEditado ? profileData.phone : null,
         },
       );
 
@@ -298,19 +383,51 @@ export function AccountSettingsView() {
 
     setUpdatingPassword(true);
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: passwordData.newPassword,
+      // A mensagem por causa (senha fraca, senha repetida, sessão pedindo
+      // login de novo etc.) já é traduzida dentro de `updatePassword`
+      // (AuthContext.tsx) — inclusive o toast de sucesso e o de erro. Chamar
+      // `supabase.auth.updateUser` direto aqui duplicava essa tradução e
+      // deixava a mensagem crua do GoTrue (`error.message` em inglês)
+      // vazar para quem só quer trocar a senha.
+      const success = await updatePassword(passwordData.newPassword);
+      if (success) {
+        setPasswordData({ newPassword: "", confirmPassword: "" });
+      }
+    } catch (error) {
+      // `updatePassword` (AuthContext.tsx) não tem try/catch próprio em
+      // volta de `supabase.auth.updateUser`: se o PUT no GoTrue tiver
+      // sucesso — a senha JÁ trocou no servidor — e só a gravação da
+      // sessão nova no storage falhar depois (ex.: `QuotaExceededError` do
+      // `localStorage`, comum no Safari/iOS com a cota cheia), a promessa
+      // REJEITA mesmo assim. Sem este `catch`, a rejeição virava promessa
+      // não tratada (React não trata o retorno de um handler de evento) e
+      // a pessoa não via nada — nem sucesso, nem erro — com a senha antiga
+      // já morta.
+      //
+      // A frase não pode dizer "não foi possível alterar": mentiria no
+      // caso em que a senha já mudou. Ela também não pode mandar "entrar
+      // novamente": a pessoa está LOGADA em Conta > Segurança, e sair é o
+      // movimento mais arriscado possível nesse estado — além de tirá-la da
+      // única tela onde a senha nova, ainda preenchida no formulário,
+      // continua visível.
+      //
+      // A saída verificada: tocar em "Atualizar Senha" de novo, com os
+      // campos como estão, resolve a ambiguidade em UMA tentativa, sem sair
+      // da conta e sem digitar nada. Confirmado nas duas pontas — doc do
+      // Supabase ("A user that is updating their password must use a
+      // different password than the one currently used") e
+      // @supabase/auth-js@2.110.1 (GoTrueClient.js:2829-2833: erro do
+      // servidor lança ANTES de `_saveSession`, então a segunda tentativa
+      // não pode cair no mesmo erro de storage) — e `AuthContext.tsx` já
+      // traduz `same_password` para "A nova senha precisa ser diferente da
+      // senha atual.": se a troca já tinha acontecido, é essa confirmação
+      // que a pessoa vê; se não tinha, a troca acontece agora.
+      console.error("Erro inesperado ao trocar senha:", error);
+      toast.error("Não conseguimos confirmar se a sua senha foi alterada.", {
+        description:
+          "Toque em Atualizar Senha de novo, sem mudar os campos: se aparecer que a nova senha precisa ser diferente da atual, é porque a troca já deu certo. Se precisar entrar de novo, use a senha nova — e, se ela não funcionar, a antiga.",
+        duration: 10000,
       });
-
-      if (error) throw error;
-
-      toast.success("Senha alterada com sucesso!");
-      setPasswordData({ newPassword: "", confirmPassword: "" });
-    } catch (error: any) {
-      console.error("Password update error:", error);
-      toast.error(
-        `Erro ao alterar senha: ${error.message || "Erro inesperado"}`,
-      );
     } finally {
       setUpdatingPassword(false);
     }
@@ -468,6 +585,32 @@ export function AccountSettingsView() {
                 </div>
 
                 <div className="space-y-3.5">
+                  {profileLoadState === "loading" && (
+                    <div className="flex items-center justify-center gap-2 rounded-xl border border-zinc-100 bg-zinc-50/50 py-6">
+                      <Loader2 className="size-4 animate-spin text-zinc-400" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                        Carregando seus dados...
+                      </p>
+                    </div>
+                  )}
+
+                  {profileLoadState === "error" && (
+                    <div className="flex flex-col items-center gap-2 rounded-xl border border-red-100 bg-red-50/30 p-4 text-center">
+                      <AlertTriangle className="size-4 text-red-500" />
+                      <p className="text-xs font-semibold text-red-700">
+                        Não conseguimos carregar seus dados de perfil.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={carregarPerfil}
+                        className="h-8 rounded-xl border-red-200 px-3 text-[10px] font-bold uppercase tracking-wider text-red-600 hover:bg-red-50"
+                      >
+                        Tentar de novo
+                      </Button>
+                    </div>
+                  )}
+
                   <div className="space-y-1">
                     <label
                       htmlFor="full_name"
@@ -484,13 +627,14 @@ export function AccountSettingsView() {
                         name="full_name"
                         autoComplete="name"
                         value={profileData.name}
+                        disabled={profileLoadState !== "loaded"}
                         onChange={(e) =>
                           setProfileData((p) => ({
                             ...p,
                             name: e.target.value,
                           }))
                         }
-                        className="h-10 rounded-xl border border-zinc-200 bg-zinc-50/70 pl-10 pr-4 text-sm font-semibold shadow-none transition-all hover:bg-zinc-50 focus-visible:border-zinc-900 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-900"
+                        className="h-10 rounded-xl border border-zinc-200 bg-zinc-50/70 pl-10 pr-4 text-sm font-semibold shadow-none transition-all hover:bg-zinc-50 focus-visible:border-zinc-900 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
                       />
                     </div>
                   </div>
@@ -510,14 +654,22 @@ export function AccountSettingsView() {
                         id="phone"
                         name="phone"
                         autoComplete="tel"
+                        inputMode="numeric"
                         value={profileData.phone}
-                        onChange={(e) =>
+                        disabled={profileLoadState !== "loaded"}
+                        onChange={(e) => {
+                          setWhatsappEditado(true);
                           setProfileData((p) => ({
                             ...p,
-                            phone: e.target.value,
-                          }))
-                        }
-                        className="h-10 rounded-xl border border-zinc-200 bg-zinc-50/70 pl-10 pr-4 text-sm font-semibold shadow-none transition-all hover:bg-zinc-50 focus-visible:border-zinc-900 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-900"
+                            // CONTA-09 (auditoria de 26/08/2026, camada 5) —
+                            // `formatarWhatsApp` puro trunca e REINTERPRETA
+                            // dígitos acima de 11 em silêncio; usar a versão
+                            // com guarda para não fabricar um número
+                            // diferente do que a pessoa digitou/colou.
+                            phone: formatarWhatsAppDigitando(e.target.value),
+                          }));
+                        }}
+                        className="h-10 rounded-xl border border-zinc-200 bg-zinc-50/70 pl-10 pr-4 text-sm font-semibold shadow-none transition-all hover:bg-zinc-50 focus-visible:border-zinc-900 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
                         placeholder="(00) 00000-0000"
                       />
                     </div>
@@ -526,8 +678,8 @@ export function AccountSettingsView() {
                   <motion.div whileTap={{ scale: 0.995 }} className="pt-1">
                     <Button
                       onClick={handleUpdateProfile}
-                      disabled={loading}
-                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[11px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-primary/90"
+                      disabled={loading || profileLoadState !== "loaded"}
+                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[11px] font-bold uppercase tracking-wider text-white shadow-sm transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {loading ? (
                         <Loader2 className="size-4 animate-spin" />

@@ -147,7 +147,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
         .channel("admin-dashboard-products")
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "products" },
+          { event: "*", schema: "public", table: "produtos" },
           handleDbChange,
         )
         .subscribe();
@@ -433,9 +433,13 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                 médio por categoria de produto.
               </li>
               <li>
-                <strong className="text-white">Produtos Mais Vendidos:</strong>{" "}
-                Ranking de popularidade e unidades despachadas de cada produto
-                do catálogo.
+                <strong className="text-white">
+                  Produtos Mais Lucrativos:
+                </strong>{" "}
+                Os cinco produtos com maior lucro (preço de venda menos o custo
+                cadastrado) em pedidos válidos de todo o período. Produto sem
+                custo cadastrado conta custo zero — cadastre o custo para o
+                ranking refletir a margem de verdade.
               </li>
             </ul>
           </div>

@@ -124,6 +124,20 @@ describe("filterOrdersByPaymentStatus", () => {
   });
 });
 
+// Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
+// — lacuna de funcionalidade (não é um dos sete pontos de dinheiro, mas foi
+// medida junto): o lojista não tinha como filtrar a lista por "recebido na
+// entrega" porque o valor não estava no array que alimenta o dropdown.
+describe("PAYMENT_STATUS_FILTER_VALUES", () => {
+  it("inclui 'recebido_na_entrega' — sem isto o dropdown não oferece a opção", async () => {
+    const { PAYMENT_STATUS_FILTER_VALUES } = await import(
+      "@/views/admin/AdminOrdersView"
+    );
+
+    expect(PAYMENT_STATUS_FILTER_VALUES).toContain("recebido_na_entrega");
+  });
+});
+
 describe("PaymentStatusBadge", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
@@ -206,6 +220,7 @@ function pedidoFake(id: string, paymentStatus: PaymentStatus | null): Order {
     paymentStatus,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    cancelledAfterShipping: false,
   };
 }
 
@@ -266,6 +281,14 @@ describe("AdminOrdersView — estado vazio da lista (Item 1 da revisão)", () =>
   });
 
   it("lista vazia de verdade, SEM filtro ativo: mostra 'Ainda não tem nenhum pedido'", async () => {
+    // O padrão da tela virou "Em Aberto" (`filter = "open"`), que é filtro de
+    // verdade: ele exclui cancelado e entregue no banco. Então "sem filtro
+    // ativo" deixou de ser o estado inicial e passou a exigir esta semeadura
+    // explícita — senão o teste cai no estado vazio FILTRADO, que diz outra
+    // coisa de propósito ("nenhum pedido corresponde ao que está sendo
+    // mostrado agora"), justamente para a tela não afirmar que a loja não tem
+    // pedido nenhum quando existem 72 cancelados fora do filtro.
+    window.localStorage.setItem("admin_orders_filter_v2", JSON.stringify("all"));
     mockOrders = [];
     mockTotalOrders = 0;
 

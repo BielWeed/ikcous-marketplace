@@ -90,10 +90,9 @@ export function mapProductFromDB(
     const updatedAt = row.ultima_atualizacao || row.updated_at || createdAt;
     const createdTime = new Date(createdAt).getTime();
 
-    const formattedName =
-      name === "boobie goods" || name === "Boobie Goods"
-        ? "Bobbie Goods"
-        : name;
+    // Quem manda no catálogo é a lojista: o nome vem exatamente como ela
+    // cadastrou, sem reescrita silenciosa no código. Já existiu um `if` aqui
+    // trocando "boobie goods"/"Boobie Goods" por "Bobbie Goods".
 
     const variantStock =
       Array.isArray(row.product_variants) &&
@@ -107,7 +106,7 @@ export function mapProductFromDB(
 
     return {
       id: row.id,
-      name: formattedName,
+      name,
       description,
       price,
       costPrice,
@@ -117,6 +116,10 @@ export function mapProductFromDB(
       images,
       category,
       stock: variantStock,
+      estoqueMinimo:
+        row.estoque_minimo === undefined
+          ? null
+          : (row.estoque_minimo as number | null),
       sold: Number(row.sold) || 0,
       isActive,
       isBestseller,
@@ -248,6 +251,14 @@ export function mapOrderFromDB(
     notes: row.notes || undefined,
     couponCode: row.coupon_code || undefined,
     trackingCode: row.tracking_code || undefined,
+    // Colunas da migration 20260970000000 (Task 1, em paralelo): ainda não
+    // regeneradas em database.types.ts, por isso o cast — igual ao total_amount acima.
+    cancelledAfterShipping: (row as any).cancelled_after_shipping === true,
+    returnedToSellerAt: (row as any).returned_to_seller_at ?? null,
+    // Colunas da migration 20261020000000: ainda não regeneradas em
+    // database.types.ts, por isso o cast — igual às duas linhas acima.
+    pagamentoRecebidoEm: (row as any).pagamento_recebido_em ?? null,
+    pagamentoRecebidoPor: (row as any).pagamento_recebido_por ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

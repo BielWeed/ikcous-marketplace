@@ -35,6 +35,10 @@ interface SearchViewProps {
   initialQuery?: string;
   onBack: () => void;
   selectedProductId?: string;
+  /** Avisa quem montou a tela que o termo de busca mudou — sem isso, quem
+   * segura a cópia "dona" do termo (a barra do Header) nunca fica sabendo
+   * que o "Limpar Tudo" do estado vazio zerou a busca aqui dentro. */
+  onQueryChange?: (query: string) => void;
 }
 
 interface SearchInputProps {
@@ -79,6 +83,7 @@ export const SearchView = React.memo(function SearchView({
   initialQuery = "",
   onBack,
   selectedProductId,
+  onQueryChange,
 }: SearchViewProps) {
   const { config } = useStore();
   const { prefetchView } = usePrefetchOnHover();
@@ -172,12 +177,24 @@ export const SearchView = React.memo(function SearchView({
     ...Array.from(new Set(allProducts.map((p) => p.category))),
   ];
 
+  // Só filtros — categoria, preço e ordenação. É o handler do "Limpar Tudo"
+  // do painel "Refinar Busca", e o trabalho dele sempre foi esse: preservar
+  // o termo digitado (BUSCA-011).
   const handleClearFilters = useCallback(() => {
     setCategory("Todas");
     setMinPrice("");
     setMaxPrice("");
     setSort("newest");
   }, [setCategory, setMinPrice, setMaxPrice, setSort]);
+
+  // Filtros E termo — é o handler do "Limpar Tudo" do estado vazio ("Ué,
+  // nenhum resultado?"). Avisa o pai (onQueryChange) porque a cópia "dona"
+  // do termo mora fora desta tela, na barra de busca do Header.
+  const handleClearSearch = useCallback(() => {
+    handleClearFilters();
+    setQuery("");
+    onQueryChange?.("");
+  }, [handleClearFilters, setQuery, onQueryChange]);
 
   // Initialize query from props if needed
   useEffect(() => {
@@ -342,7 +359,6 @@ export const SearchView = React.memo(function SearchView({
                     isFavorite={isFavorite(product.id)}
                     onToggleFavorite={toggleFavorite}
                     onClick={handleProductClick}
-                    isEligibleForFreeShipping={config.freeShippingMin > 0}
                     showRating={config.enableReviews}
                     onMouseEnter={handlePrefetchProductDetail}
                     onTouchStart={handlePrefetchProductDetail}
@@ -380,7 +396,7 @@ export const SearchView = React.memo(function SearchView({
               </p>
               <Button
                 variant="outline"
-                onClick={handleClearFilters}
+                onClick={handleClearSearch}
                 className="mt-8 h-12 rounded-2xl border-zinc-200 px-8 text-[10px] font-black uppercase tracking-widest text-zinc-900"
               >
                 Limpar Tudo
@@ -394,7 +410,9 @@ export const SearchView = React.memo(function SearchView({
                   Editor's Choice
                 </span>
                 <h3 className="text-2xl font-black tracking-tighter text-zinc-900">
-                  Trending na {branding.appName}
+                  {/* Nome do banco primeiro, branding.json como fallback —
+                      mesma preferência do Header e da Home. */}
+                  Trending na {config.storeName?.trim() || branding.appName}
                 </h3>
               </div>
               <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
@@ -405,7 +423,6 @@ export const SearchView = React.memo(function SearchView({
                     isFavorite={isFavorite(product.id)}
                     onToggleFavorite={toggleFavorite}
                     onClick={handleProductClick}
-                    isEligibleForFreeShipping={config.freeShippingMin > 0}
                     showRating={config.enableReviews}
                     onMouseEnter={handlePrefetchProductDetail}
                     onTouchStart={handlePrefetchProductDetail}

@@ -14,7 +14,7 @@ import { useCart } from "@/hooks/useCart";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { useOrders } from "@/hooks/useOrders";
+import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
 import { supabase } from "@/lib/supabase";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
@@ -286,25 +286,65 @@ export function CheckoutView({
     }
   }, [storeConfigLoaded, profile, user]);
 
+  // A quem os campos de endereço ATUALMENTE pertencem: o último CEP cuja
+  // busca foi aplicada. `null` só quando o campo nasce vazio — aí não existe
+  // outro CEP "dono" do que a pessoa já digitou à mão, e um campo que o
+  // ViaCEP não determina fica como está. Mesmo desenho de AddressForm.tsx
+  // (linhas 81-83), e pela mesma razão: `cep` aqui NASCE preenchido de
+  // `ikcous_last_shipping_cep` (visita anterior), e um campo pré-preenchido
+  // nunca dispara `onChange` — sem esta semente, `cepAssociadoRef` ficava
+  // `null` para sempre nesse caminho, `eraDeOutroCep` nunca era `true`, e a
+  // rua completada à mão para o CEP antigo sobrevivia misturada com a
+  // cidade/estado de um CEP novo digitado por cima (achado da revisão de
+  // 25/08/2026).
+  const cepAssociadoRef = useRef<string | null>(
+    (() => {
+      const cepDaVisitaAnterior = localStorage.getItem(
+        "ikcous_last_shipping_cep",
+      );
+      return cepDaVisitaAnterior
+        ? formatarCep(cepDaVisitaAnterior).limpo
+        : null;
+    })(),
+  );
+  // CEP da busca em voo, gravado pelo `onChange` do campo ANTES de chamar
+  // `buscarCep` — ver o comentário equivalente em AddressForm.tsx.
+  const cepEmBuscaRef = useRef<string>("");
+
   // Busca de CEP do checkout de convidado — mesma implementação do
   // AddressForm, atrás de useBuscaCep (#184 corrida, #185 timeout, #186
-  // abort no desmonte).
+  // abort no desmonte). Campo que o ViaCEP não devolveu (CEP de localidade
+  // única) só é limpo se pertencia a um CEP DIFERENTE do que acabou de
+  // responder — ver AddressForm.tsx para o mecanismo completo.
   const { buscando: isSearchingCep, buscar: buscarCep } = useBuscaCep(
     (endereco) => {
-      if (endereco.logradouro)
+      const cepDaResposta = cepEmBuscaRef.current;
+      const eraDeOutroCep =
+        cepAssociadoRef.current !== null &&
+        cepAssociadoRef.current !== cepDaResposta;
+
+      if (endereco.logradouro) {
         form.setValue("street", endereco.logradouro, {
           shouldValidate: true,
         });
-      if (endereco.bairro)
+      } else if (eraDeOutroCep) {
+        form.setValue("street", "", { shouldValidate: true });
+      }
+      if (endereco.bairro) {
         form.setValue("neighborhood", endereco.bairro, {
           shouldValidate: true,
         });
+      } else if (eraDeOutroCep) {
+        form.setValue("neighborhood", "", { shouldValidate: true });
+      }
       if (endereco.localidade)
         form.setValue("city", endereco.localidade, {
           shouldValidate: true,
         });
       if (endereco.uf)
         form.setValue("state", endereco.uf, { shouldValidate: true });
+
+      cepAssociadoRef.current = cepDaResposta;
     },
   );
 
@@ -709,10 +749,7 @@ export function CheckoutView({
       parado = true;
       clearInterval(intervalId);
       if (typeof document !== "undefined") {
-        document.removeEventListener(
-          "visibilitychange",
-          aoVoltarAFicarVisivel,
-        );
+        document.removeEventListener("visibilitychange", aoVoltarAFicarVisivel);
       }
     };
   }, [aguardandoPagamento, orderId, statusPagamentoPix, user?.id]);
@@ -973,14 +1010,17 @@ export function CheckoutView({
       });
     } catch (error: any) {
       console.error("Error creating order:", error);
-      const errorMessage =
-        error.message || "Ocorreu um erro ao processar seu pedido.";
-      toast.error(`Falha no Pedido: ${errorMessage}`);
-      // Fallback alert if toast fails or for critical notice
-      if (!error.message)
-        globalThis.alert(
-          "Ocorreu um erro ao criar o pedido. Por favor, tente novamente.",
-        );
+      // Este catch recebe o MESMO erro que useOrders.ts (createOrder) já
+      // relança depois do próprio toast interno — mesma tradução aqui, para
+      // não haver dois textos diferentes para a mesma falha.
+      //
+      // O alert() de emergência que existia aqui foi removido: a condição
+      // era `if (!error.message)`, ou seja, disparava só quando NÃO havia
+      // texto cru — quanto mais incompreensível o erro, MENOS aviso o
+      // comprador recebia. Agora mensagemAmigavelErroPedido NUNCA devolve
+      // vazio, então o toast sempre carrega uma frase utilizável e o alerta
+      // deixou de ter um gatilho útil.
+      toast.error(`Falha no Pedido: ${mensagemAmigavelErroPedido(error)}`);
     } finally {
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -1376,7 +1416,11 @@ export function CheckoutView({
 
                           const isNational =
                             config.shippingCoverage === "national";
-                          if (isNational) {
+                          // `limpo.length === 8` é portante, não só filtro
+                          // de busca — ver o comentário equivalente em
+                          // AddressForm.tsx.
+                          if (isNational && limpo.length === 8) {
+                            cepEmBuscaRef.current = limpo;
                             await buscarCep(limpo);
                           }
                         }}
@@ -1748,8 +1792,8 @@ export function CheckoutView({
                   Aviso de Região
                 </h4>
                 <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
-                  Nossos serviços de entrega premium estão ativos
-                  exclusivamente em{" "}
+                  Nossos serviços de entrega premium estão ativos exclusivamente
+                  em{" "}
                   <span className="font-black text-slate-900">
                     {config.storeCity}
                     {config.storeState ? `, ${config.storeState}` : ""}
@@ -2065,7 +2109,9 @@ export function CheckoutView({
                           </span>
                         )}
                         {cart.length > 0 && (
-                          <span className="sr-only">, toque para ver os itens</span>
+                          <span className="sr-only">
+                            , toque para ver os itens
+                          </span>
                         )}
                       </button>
 
@@ -2074,7 +2120,9 @@ export function CheckoutView({
                           haptic.medium();
                           handleSubmitEvent();
                         }}
-                        disabled={!isValid || isSubmitting || semFreteSelecionado}
+                        disabled={
+                          !isValid || isSubmitting || semFreteSelecionado
+                        }
                         className={cn(
                           "h-12 px-6 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
                           !isValid || isSubmitting || semFreteSelecionado
@@ -2159,7 +2207,7 @@ function SuccessView({
           </p>
         </div>
         {appliedCoupon && (
-          <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-100/50 bg-emerald-50 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-600">
+          <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-100/50 bg-emerald-50 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700">
             Vantagem Ativa: R$ {discount.toFixed(2).replace(".", ",")} OFF
           </div>
         )}
@@ -2222,13 +2270,12 @@ function PagamentoConfirmadoView({
             #{orderId.slice(-6).toUpperCase()}
           </span>
         </p>
-        <p className="text-lg font-black text-emerald-600">
+        <p className="text-lg font-black text-emerald-700">
           R$ {valor.toFixed(2).replace(".", ",")} recebido
         </p>
         <div className="mx-auto max-w-[300px]">
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
-            Seu pagamento foi confirmado e a loja já está preparando seu
-            pedido.
+            Seu pagamento foi confirmado e a loja já está preparando seu pedido.
           </p>
         </div>
       </div>

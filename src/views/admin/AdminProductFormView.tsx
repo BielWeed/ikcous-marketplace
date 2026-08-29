@@ -30,6 +30,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
+import { temGrupoDemais, travaDeUmGrupoSo } from "@/utils/um-grupo-de-variacao";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -56,7 +57,13 @@ import {
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-const compressImage = (
+// Exportado só para o teste chamar direto (não passa pelo componente inteiro)
+// — continua sendo um detalhe interno desta tela, não uma API pública. Nome
+// `compressProductImage` (não `compressImage`) de propósito: já existe um
+// `compressImage` em `src/utils/avatars.ts` (assinatura incompatível,
+// `string` → `Promise<string>`), e o TypeScript pega o auto-import errado
+// quando os dois se chamam igual.
+export const compressProductImage = (
   file: File,
   maxWidth = 1200,
   maxHeight = 1200,
@@ -98,6 +105,15 @@ const compressImage = (
         return;
       }
 
+      // JPEG não tem canal alfa: sem pintar um fundo antes, a área
+      // transparente de um PNG (produto recortado, sem fundo) é composta
+      // sobre PRETO por padrão do canvas no `toBlob` abaixo — a foto que
+      // vende o produto na vitrine aparece com um retângulo preto atrás.
+      // Mesmo conserto de `src/utils/avatars.ts`/`src/utils/covers.ts`:
+      // branco, ANTES do `drawImage`, mantendo `image/jpeg` (o upload e o
+      // resto do app já esperam esse tipo).
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
 
       canvas.toBlob(
@@ -366,14 +382,19 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     }));
   };
 
+  // Um produto so pode ter UM grupo de variacao -- ver `um-grupo-de-variacao.ts`.
+  // Enquanto nao ha nenhuma variante, sugerir os grupos comuns ajuda; a partir
+  // da primeira, sugerir "Tamanho" a quem ja escolheu "Cor" seria convidar
+  // para o estado que a trava logo abaixo recusa.
+  const gruposJaUsados = formData.variants.map((v) => v.name).filter(Boolean);
   const suggestedAttributes = Array.from(
-    new Set([
-      "Cor",
-      "Tamanho",
-      "Voltagem",
-      ...formData.variants.map((v) => v.name),
-    ]),
+    new Set(
+      gruposJaUsados.length > 0
+        ? gruposJaUsados
+        : ["Cor", "Tamanho", "Voltagem"],
+    ),
   ).filter(Boolean);
+  const produtoTemGrupoDemais = temGrupoDemais(formData.variants);
 
   useEffect(() => {
     formData.images.forEach((url) => {
@@ -492,7 +513,29 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     if (productId) {
       const loadProduct = async () => {
         setIsLoading(true);
-        const product = await fetchProduct(productId);
+        // PAINEL-06: distinguir "não existe" de "não consegui carregar".
+        // Antes: fetchProduct engolia erro de rede e devolvia null —
+        // a view dizia "não encontrado" e expulsava o lojista.
+        let product: ReturnType<typeof fetchProduct> extends Promise<infer T>
+          ? T
+          : never = null;
+        try {
+          product = await fetchProduct(productId);
+        } catch (err) {
+          console.error("[ProductForm] Erro ao carregar produto:", err);
+          toast.error("Erro ao carregar produto. Verifique a conexão.");
+          setIsLoading(false);
+          // B3 da 2a revisao: SEM isto, o formulario vazio renderizava
+          // normalmente — e Salvar com currentProduct null chamava
+          // updateProduct com o objeto inteiro, APAGANDO os dados do
+          // produto real (imagem_urls=[], custo=null, sold=0).
+          // B3: currentProduct ja esta null (produto nao carregou) —
+          // handleSubmit usa currentProduct para decidir update vs insert,
+          // entao um save daqui seria um INSERT vazio, nao um UPDATE
+          // destrutivo. Mas para nao deixar o lojista parado num form que
+          // parece editavel, a tela de erro deve ocupar o render inteiro.
+          return;
+        }
         if (product) {
           const productFields = {
             name: product.name,
@@ -860,7 +903,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       );
       try {
         const compressedFiles = await Promise.all(
-          files.map((file) => compressImage(file)),
+          files.map((file) => compressProductImage(file)),
         );
 
         setImageUploadStep("uploading");
@@ -919,6 +962,26 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     }
     if (!variantFormData.value.trim()) {
       toast.error("O valor do atributo (ex: Espacial Grey) é obrigatório.");
+      return;
+    }
+
+    // Um grupo por produto. Com dois, o estoque passa a ser somado em dobro, o
+    // carrinho funde combinacoes diferentes numa linha so e o pedido guarda
+    // metade da escolha -- quem compra um P e um M recebe dois P. O porque
+    // inteiro, medido, esta em `src/utils/um-grupo-de-variacao.ts`.
+    const trava = travaDeUmGrupoSo(
+      formData.variants,
+      editingVariant?.id ?? null,
+      variantFormData.name,
+    );
+    if (trava.bloqueia) {
+      toast.error(`Este produto já usa "${trava.grupoEmUso}"`, {
+        description:
+          "Cada produto aceita um tipo de variação só. Para vender cor e " +
+          "tamanho juntos, crie as opções combinadas dentro do mesmo tipo " +
+          '(ex: "Rosa P", "Rosa M") — assim o estoque e o pedido saem certos.',
+        duration: 10000,
+      });
       return;
     }
 
@@ -1246,6 +1309,43 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     (!costError || costError.startsWith("Aviso")) &&
     !originalPriceError &&
     !stockError;
+
+  // B3 da 2a revisao: produto pediu para editar mas nao carregou —
+  // formulario vazio editavel e armadilha (save destrutivo). Erro na tela.
+  if (productId && !isLoading && !currentProduct) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
+        <div className="flex size-16 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10">
+          <svg
+            className="size-8 text-red-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+            />
+          </svg>
+        </div>
+        <p className="mt-6 text-[10px] font-black uppercase tracking-[0.2em] text-red-400">
+          Não foi possível carregar este produto
+        </p>
+        <p className="mt-1 text-[9px] text-zinc-500">
+          Verifique a conexão — o formulário fica bloqueado para proteger os
+          dados
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
+        >
+          Recarregar
+        </button>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -2237,6 +2337,28 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             </button>
           </div>
 
+          {/* O produto ja esta no estado que mente: dois grupos de variacao.
+              A trava impede chegar aqui, mas produto antigo pode ja estar --
+              e nesse caso o numero de estoque na tela acima esta errado. Dizer
+              isso e' melhor que somar em silencio. */}
+          {produtoTemGrupoDemais && (
+            <div className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+              <p className="text-[11px] font-black uppercase tracking-widest text-amber-400">
+                Este produto tem tipos de variação demais
+              </p>
+              <p className="text-[10px] font-medium leading-relaxed text-amber-200/80">
+                Cada produto aceita <b>um tipo só</b> de variação. Com mais de
+                um, o estoque mostrado acima soma as opções em dobro e o pedido
+                do cliente guarda só metade da escolha — quem pedir um P e um M
+                recebe dois P.
+              </p>
+              <p className="text-[10px] font-medium leading-relaxed text-amber-200/80">
+                Para consertar, edite as variações abaixo e junte tudo num tipo
+                só, com as opções combinadas (ex: <i>Rosa P</i>, <i>Rosa M</i>).
+              </p>
+            </div>
+          )}
+
           {/* Variants Guide Section */}
           <AnimatePresence>
             {expandedHelp.productVariants && (
@@ -2254,7 +2376,10 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4">
                   <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
                     Variações permitem vender o mesmo produto com diferentes
-                    opções de cor, tamanho, voltagem, etc.
+                    opções — cor, tamanho, voltagem. Cada produto aceita{" "}
+                    <b className="text-zinc-350">um tipo só</b>: para vender cor
+                    e tamanho juntos, combine os dois no valor da opção (ex:
+                    Nome: <i>Modelo</i>, Valores: <i>Rosa P</i>, <i>Rosa M</i>).
                   </p>
                   <ul className="list-none space-y-2 pl-0 text-[10px] font-medium text-zinc-500">
                     <li className="flex items-start gap-2.5">
@@ -3271,7 +3396,10 @@ const VariantItem = React.memo(function VariantItem({
         )}
         <div>
           <div className="mb-1 flex items-center gap-2">
-            <span className="text-xs font-black uppercase italic tracking-tight text-white">
+            <span
+              data-testid="variante-cadastrada"
+              className="text-xs font-black uppercase italic tracking-tight text-white"
+            >
               {variant.name}: {variant.value}
             </span>
             {!variant.active && (

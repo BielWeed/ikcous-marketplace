@@ -92,7 +92,7 @@ export async function prefetchCouponsData() {
         value: c.value,
         minPurchase: c.min_purchase ?? undefined,
         usageLimit: c.usage_limit ?? undefined,
-        usageCount: c.usage_count || 0,
+        usageCount: c.usage_count ?? 0, // PAINEL-12: alinhado com o hook
         validUntil: c.valid_until ?? undefined,
         active: c.active ?? true,
       }));

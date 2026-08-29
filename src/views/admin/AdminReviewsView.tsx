@@ -70,6 +70,17 @@ const itemVariants: Variants = {
   },
 };
 
+// Sem avaliação nenhuma a taxa é INDEFINIDA, não zero e não cem — o "—" marca isso.
+// Com avaliação, zero medido continua sendo "0%" (não vira "—").
+function formatRate(
+  count: number,
+  total: number,
+): { text: string; width: number } {
+  if (total <= 0) return { text: "—", width: 0 };
+  const percent = Math.round((count / total) * 100);
+  return { text: `${percent}%`, width: percent };
+}
+
 export const AdminReviewsView = memo(function AdminReviewsView({
   active = true,
   onSetDirty,
@@ -137,9 +148,16 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
   const [isSubmittingReply, setIsSubmittingReply] = useState(false);
-  const [averageRating, setAverageRating] = useState("0.0");
   const [globalVerifiedCount, setGlobalVerifiedCount] = useState(0);
   const [globalRepliedCount, setGlobalRepliedCount] = useState(0);
+  // Globais de verdade (achado 5 + migration 20261002000000): média e total
+  // que NÃO seguem o filtro — os cartões "Global/no total" leem daqui.
+  // "—" quando a RPC antiga ainda esta no ar (sem as chaves global_*):
+  // zero antes do apply e indistinguivel de loja sem avaliacao NENHUMA
+  // (CORRIGE 2 da revisao 2305 — a mesma honestidade do formatRate).
+  const [globaisDisponiveis, setGlobaisDisponiveis] = useState(true);
+  const [globalTotal, setGlobalTotal] = useState(0);
+  const [globalAvgRating, setGlobalAvgRating] = useState("0.0");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [viewMode, setViewMode] = useLocalStorage<"detailed" | "compact">(
     "admin_reviews_view_mode",
@@ -167,9 +185,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         });
         if (result) {
           setTotalReviews(result.total);
-          setAverageRating(result.averageRating?.toFixed(1) || "0.0");
           setGlobalVerifiedCount(result.globalVerifiedCount || 0);
           setGlobalRepliedCount(result.globalRepliedCount || 0);
+          // L4: default PESSIMISTA - caminho sem o campo (fallback
+          // nao-admin, catch) e "nao sei", nunca zero confiante.
+          setGlobaisDisponiveis(result.globaisDisponiveis === true);
+          setGlobalTotal(result.globalTotal || 0);
+          setGlobalAvgRating(result.globalAverageRating?.toFixed(1) || "0.0");
 
           const maxPage = Math.max(0, Math.ceil(result.total / pageSize) - 1);
           if (pageToFetch > maxPage) {
@@ -239,17 +261,14 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   }, [active, onSetDirty]);
 
   const totalPages = Math.ceil(totalReviews / pageSize);
-  const avgRating = averageRating;
 
+  const mediaGlobalExibida = globaisDisponiveis ? globalAvgRating : "—";
+  const totalGlobalExibido = globaisDisponiveis ? globalTotal : "—";
   // Global Dynamic metrics for display
-  const verifiedRate =
-    totalReviews > 0
-      ? Math.round((globalVerifiedCount / totalReviews) * 100)
-      : 100;
-  const responseRate =
-    totalReviews > 0
-      ? Math.round((globalRepliedCount / totalReviews) * 100)
-      : 0;
+  // Denominadores GLOBAIS (achado 5): as taxas usam o total sem filtro —
+  // filtro vazio nunca mais fabrica "100%" de zero.
+  const verifiedRate = formatRate(globalVerifiedCount, globalTotal);
+  const responseRate = formatRate(globalRepliedCount, globalTotal);
 
   const handleDelete = async (id: string) => {
     if (isOffline) {
@@ -323,11 +342,15 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         iconBg: "bg-admin-gold/10 border-admin-gold/20",
         hoverBorder:
           "hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)]",
-        value: averageRating,
+        // Global de verdade (achado 5): a média do cartão "Média Global"
+        // não segue o filtro — lê o campo global da RPC (20261002000000).
+        value: mediaGlobalExibida,
         accent: "text-admin-gold",
         content: (
           <div className="mt-2 flex items-center gap-1.5 animate-in fade-in">
-            {renderStars(Math.round(Number(averageRating) || 0))}
+            {globaisDisponiveis
+              ? renderStars(Math.round(Number(globalAvgRating) || 0))
+              : null}
           </div>
         ),
         footer: "Satisfação dos compradores",
@@ -340,7 +363,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         iconBg: "bg-emerald-500/10 border-emerald-500/20",
         hoverBorder:
           "hover:border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.05)]",
-        value: totalReviews,
+        // Global de verdade (achado 5): "Total Recebido" é o total sem
+        // filtro — o filtrado continua governando o paginador.
+        value: totalGlobalExibido,
         accent: "text-emerald-400",
         content: (
           <div className="mt-3 flex items-center gap-1.5 animate-in fade-in">
@@ -360,13 +385,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         iconBg: "bg-sky-500/10 border-sky-500/20",
         hoverBorder:
           "hover:border-sky-500/30 hover:shadow-[0_0_30px_rgba(14,165,233,0.05)]",
-        value: `${responseRate}%`,
+        value: responseRate.text,
         accent: "text-sky-400",
         content: (
           <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-900 animate-in fade-in">
             <div
               className="h-full rounded-full bg-sky-500 transition-all duration-500"
-              style={{ width: `${responseRate}%` }}
+              style={{ width: `${responseRate.width}%` }}
             />
           </div>
         ),
@@ -380,13 +405,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         iconBg: "bg-purple-500/10 border-purple-500/20",
         hoverBorder:
           "hover:border-purple-500/30 hover:shadow-[0_0_30px_rgba(168,85,247,0.05)]",
-        value: `${verifiedRate}%`,
+        value: verifiedRate.text,
         accent: "text-purple-400",
         content: (
           <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-900 animate-in fade-in">
             <div
               className="bg-purple-550 h-full rounded-full transition-all duration-500"
-              style={{ width: `${verifiedRate}%` }}
+              style={{ width: `${verifiedRate.width}%` }}
             />
           </div>
         ),
@@ -394,12 +419,25 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       },
     ],
     [
-      averageRating,
-      totalReviews,
       responseRate,
       globalRepliedCount,
       verifiedRate,
       globalVerifiedCount,
+      // Fila 1935, item 3 (catraca do lint). A razão honesta — contestação
+      // da revisão 2305, aceita: formatRate devolve objeto NOVO a cada
+      // render, logo verifiedRate/responseRate já invalidavam o memo em
+      // todo render e "cartões velhos" era bug inalcançável. As deps
+      // corretas valem por exhaustive-deps e robustez futura (se um dia
+      // as taxas forem memoizadas, o memo passa a reter — e as deps
+      // certas é o que o salvará). averageRating/totalReviews saíram:
+      // os cartões não leem mais as métricas FILTRADAS desde o conserto 3.
+      globalAvgRating,
+      // B2 da revisao final (3a vez nesta peca): os TRES valores lidos no
+      // memo entram nas deps; globalTotal sai (nao e lido aqui desde que
+      // mediaGlobalExibida/totalGlobalExibido nasceram).
+      globaisDisponiveis,
+      mediaGlobalExibida,
+      totalGlobalExibido,
     ],
   );
 
@@ -506,7 +544,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                 >
                   <Star className="size-3 fill-admin-gold text-admin-gold" />
                   <span className="text-[9px] font-black tracking-widest text-white sm:text-[10px]">
-                    {avgRating}
+                    {/* CORRIGE 1 da revisao 2305: o title diz "Média
+                      global" — o valor é o GLOBAL, nunca o filtrado. */}
+                    {mediaGlobalExibida}
                   </span>
                   <span className="hidden text-[8px] font-bold text-zinc-500 sm:inline">
                     MÉDIA

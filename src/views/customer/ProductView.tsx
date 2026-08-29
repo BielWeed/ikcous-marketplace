@@ -569,9 +569,11 @@ export const ProductView = React.memo(function ProductView({
       )
     : 0;
 
-  // Um produto é elegível para frete grátis se o frete grátis estiver habilitado na loja
-  const isEligibleForFreeShipping =
-    config.freeShippingMin > 0 || product.freeShipping;
+  // O selo/aviso de frete grátis desta tela só pode afirmar o que é
+  // verdade PARA ESTE produto: `config.freeShippingMin` é a regra por
+  // valor de compra da loja inteira (carrinho + login), não uma garantia
+  // deste produto isolado -- ver o mesmo raciocínio em ProductCard.tsx.
+  const isEligibleForFreeShipping = product.freeShipping;
 
   const handleAddToCart = (e?: React.MouseEvent<HTMLButtonElement>) => {
     if (cartStatus !== "idle") return;
@@ -581,9 +583,15 @@ export const ProductView = React.memo(function ProductView({
     );
 
     if (missingVariations.length > 0) {
-      toast.warning(`Por favor, selecione: ${missingVariations.join(", ")}`, {
-        description:
-          "Selecione todas as opções de variação antes de adicionar ao carrinho.",
+      // O título fica curto e fixo para nunca truncar -- o nome do grupo
+      // que falta mora na descrição, que tem espaço de sobra e quebra em
+      // várias linhas. Antes era o contrário: o grupo ficava no fim de um
+      // título que cortava com reticências, e a pessoa nunca descobria o
+      // que faltava escolher.
+      const artigoEOpcao =
+        missingVariations.length === 1 ? "a opção de" : "as opções de";
+      toast.warning("Falta escolher", {
+        description: `Escolha ${artigoEOpcao} ${missingVariations.join(", ")} antes de adicionar ao carrinho.`,
       });
       return;
     }
@@ -612,9 +620,30 @@ export const ProductView = React.memo(function ProductView({
   const handleShare = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
     e?.preventDefault();
+    // O texto de compartilhar vem dos presets da tela de Atendimento
+    // (AdminWhatsAppConfigView), que vendem mensagem pronta com [nome],
+    // [preco] e [link]. Texto COM marcador é mensagem completa da lojista:
+    // substitui e não gruda o sufixo padrão; texto SEM marcador (o default)
+    // mantém o comportamento de sempre — nome e preço colados na frente.
+    const temMarcador = /\[(nome|preco|link)\]/i.test(config.shareText);
+    // Esta é uma decisão SEPARADA: só quando [link] está no preset é que a
+    // substituição já colocou a URL dentro do texto. Um preset com [nome]
+    // ou [preco] mas sem [link] (ex.: "[nome] por [preco]. Acesse nossa
+    // loja!") cai no ramo temMarcador acima, mas continua sem URL nenhuma —
+    // e é essa URL que falta colar no fim, no caminho do clipboard.
+    const temMarcadorDeLink = /\[link\]/i.test(config.shareText);
+    const textoDoShare = temMarcador
+      ? config.shareText
+          .replace(/\[nome\]/gi, product.name)
+          .replace(
+            /\[preco\]/gi,
+            `R$ ${product.price.toFixed(2).replace(".", ",")}`,
+          )
+          .replace(/\[link\]/gi, globalThis.location.href)
+      : `${config.shareText} ${product.name} por R$${product.price.toFixed(2)}`;
     const shareData = {
       title: product.name,
-      text: `${config.shareText} ${product.name} por R$${product.price.toFixed(2)}`,
+      text: textoDoShare,
       url: globalThis.location.href,
     };
 
@@ -625,11 +654,25 @@ export const ProductView = React.memo(function ProductView({
         console.log("Share cancelled");
       }
     } else {
-      navigator.clipboard.writeText(`${shareData.text} - ${shareData.url}`);
-      toast.success("Link copiado!", {
-        description:
-          "O link do produto foi copiado para a área de transferência.",
-      });
+      // A URL só fica de fora quando [link] já a colocou dentro do texto
+      // substituído. Em qualquer outro caso — sem marcador nenhum, ou com
+      // marcador mas sem [link] — ela continua entrando como sufixo, como
+      // sempre entrou.
+      const textoParaCopiar = temMarcadorDeLink
+        ? textoDoShare
+        : `${textoDoShare} - ${shareData.url}`;
+      try {
+        await navigator.clipboard.writeText(textoParaCopiar);
+        toast.success("Link copiado!", {
+          description:
+            "O link do produto foi copiado para a área de transferência.",
+        });
+      } catch {
+        toast.error("Não consegui copiar", {
+          description:
+            "Seu navegador bloqueou a cópia. Copie o endereço da barra do navegador.",
+        });
+      }
     }
   };
 
@@ -822,6 +865,7 @@ export const ProductView = React.memo(function ProductView({
           </button>
           <button
             onClick={handleShare}
+            aria-label="Compartilhar"
             className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
           >
             <Share2 className="size-4.5 text-zinc-600" />
@@ -882,7 +926,7 @@ export const ProductView = React.memo(function ProductView({
                     ? "text-zinc-500"
                     : isLowStock
                       ? "text-rose-600"
-                      : "text-emerald-600"
+                      : "text-emerald-700"
                 }
               >
                 {isOutOfStock

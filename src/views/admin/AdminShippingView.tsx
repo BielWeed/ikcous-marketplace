@@ -3,6 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -71,6 +72,17 @@ export const AdminShippingView = memo(function AdminShippingView({
     [key: string]: any;
   }>({});
   const [, setLoadingCreds] = useState(false);
+  // PAINEL-01 da auditoria: sem esta guarda, o save com creds nao carregadas
+  // (fetch falhou ou nao resolveu a tempo) grava `credentials: {}` por cima
+  // do token real — perda de dado com toast de sucesso. `credsLoaded` so
+  // vira true quando o fetch devolveu dados de verdade.
+  const [credsLoaded, setCredsLoaded] = useState(false);
+  // Achado 2 da auditoria rodada 2 (26/08/2026): sem este estado, a falha do
+  // fetch só existia no console. `credsLoaded` ficava false para sempre, os
+  // `disabled` da correção anterior travavam a seção inteira, e a tela dizia
+  // "Recarregando…" para um movimento que nunca aconteceria. Erro que a tela
+  // não conta é erro que a pessoa não tem como contornar.
+  const [credsError, setCredsError] = useState(false);
 
   // Connection Test State
   const [isTestingCreds, setIsTestingCreds] = useState(false);
@@ -82,6 +94,7 @@ export const AdminShippingView = memo(function AdminShippingView({
   // Calculation Logs State
   const [logs, setLogs] = useState<any[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logsError, setLogsError] = useState(false);
   const [isLogsOpen, setIsLogsOpen] = useState(false);
 
   // Dropdown State
@@ -93,6 +106,10 @@ export const AdminShippingView = memo(function AdminShippingView({
   // Fetch shipping credentials from Supabase
   const fetchShippingCreds = useCallback(async () => {
     setLoadingCreds(true);
+    // Limpa o erro da rodada anterior no início de CADA busca — senão uma
+    // falha antiga fica grudada na tela depois de um "Tentar de novo" que deu
+    // certo. (Mesmo padrão que `fetchLogs` já usa para `logsError`.)
+    setCredsError(false);
     try {
       const { data, error } = await supabase
         .from("store_shipping_credentials")
@@ -104,9 +121,16 @@ export const AdminShippingView = memo(function AdminShippingView({
         });
         setShippingCreds(credsMap);
         setOriginalShippingCreds(JSON.parse(JSON.stringify(credsMap)));
+        setCredsLoaded(true); // PAINEL-01: so libera o save de creds com dados de verdade
+      } else if (error) {
+        // PAINEL-01: falha no fetch NAO pode deixar o save sobrescrever o
+        // token real com vazio — a guarda `credsLoaded` no handleSave usa isto.
+        console.error("[AdminShippingView] Credenciais não carregaram:", error);
+        setCredsError(true);
       }
     } catch (err) {
       console.error("Error fetching shipping credentials:", err);
+      setCredsError(true);
     } finally {
       setLoadingCreds(false);
     }
@@ -115,6 +139,10 @@ export const AdminShippingView = memo(function AdminShippingView({
   // Fetch calculation logs
   const fetchLogs = useCallback(async () => {
     setLoadingLogs(true);
+    // Limpa o erro da rodada anterior no início de CADA busca — senão uma
+    // falha antiga fica grudada na tela depois de um "Atualizar" que deu
+    // certo.
+    setLogsError(false);
     try {
       const { data, error } = await supabase
         .from("shipping_calculation_logs")
@@ -125,14 +153,37 @@ export const AdminShippingView = memo(function AdminShippingView({
       setLogs(data || []);
     } catch (err) {
       console.error("[ShippingLogs] Error fetching logs:", err);
+      setLogsError(true);
     } finally {
       setLoadingLogs(false);
     }
   }, []);
 
+  // ── Achado 3 da auditoria rodada 2 (26/08/2026) ──────────────────────────
+  // O efeito abaixo redispara quando `active` volta a `true` (a view do painel
+  // nunca desmonta) e quando a identidade de `config` muda (realtime, outra
+  // aba, save em outra tela). Sem guarda, ele reescrevia o formulário inteiro
+  // e jogava fora o que o lojista tinha acabado de digitar, sem aviso.
+  //
+  // A guarda NÃO pode ser só "está sujo": `formData` nasce com valores neutros
+  // (`freeShippingMin: 0`, `originCep: ""`), então numa loja configurada o
+  // formulário já é "sujo" contra o config ANTES da primeira sincronização —
+  // e a tela abriria eternamente vazia. Por isso são duas condições, e a
+  // primeira carga sempre passa.
+  const jaSincronizouRef = useRef(false);
+  const isFormDirtyRef = useRef(false);
+
   // Sync state on load or activation
   useEffect(() => {
     if (isLoaded && config) {
+      if (jaSincronizouRef.current && isFormDirtyRef.current) {
+        // Há trabalho não salvo na tela. Nem o formulário nem as credenciais
+        // são recarregados: `fetchShippingCreds` sobrescreveria um token
+        // recém-digitado pelo mesmo caminho (`isFormDirty` cobre token e
+        // sandbox, ver o useMemo abaixo).
+        return;
+      }
+      jaSincronizouRef.current = true;
       setFormData({
         freeShippingMin: Number(config.freeShippingMin ?? 0),
         shippingFee: Number(config.shippingFee ?? 0),
@@ -243,6 +294,11 @@ export const AdminShippingView = memo(function AdminShippingView({
   // Report dirty state to AdminLayout
   useEffect(() => {
     onSetDirty?.(isFormDirty);
+    // Achado 3: o espelho que o efeito de sincronização lê. Ele é declarado
+    // ANTES deste na ordem do componente, então lê o valor do commit anterior
+    // — que é exatamente a pergunta certa: "a pessoa já tinha mexido quando
+    // esta config nova chegou?".
+    isFormDirtyRef.current = isFormDirty;
   }, [isFormDirty, onSetDirty]);
 
   // Test connection credentials
@@ -294,7 +350,10 @@ export const AdminShippingView = memo(function AdminShippingView({
       console.error("[TestCredentials] Error:", err);
       setTestResult({
         success: false,
-        message: err.message || "Erro de comunicação com a Edge Function.",
+        message: mensagemAmigavelErroEdgeFunction(err, {
+          mensagemGenerica:
+            "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+        }),
       });
       toast.error("Erro ao testar credenciais");
     } finally {
@@ -339,8 +398,12 @@ export const AdminShippingView = memo(function AdminShippingView({
       }
 
       // 2. Save credentials in database if not flat_fee
+      // PAINEL-01: só gravar creds que CARREGARAM — se o fetch falhou ou não
+      // resolveu, `shippingCreds` está vazio e o upsert destruiria o token
+      // real com `credentials: {}`. As configurações GERAIS seguem salvando;
+      // só a credencial fica de fora até a próxima leitura bem-sucedida.
       const provider = formData.shippingProvider;
-      if (provider !== "flat_fee") {
+      if (provider !== "flat_fee" && credsLoaded) {
         const creds = shippingCreds[provider] || {};
         const { error: credsError } = await supabase
           .from("store_shipping_credentials")
@@ -359,8 +422,11 @@ export const AdminShippingView = memo(function AdminShippingView({
       setOriginalShippingCreds(JSON.parse(JSON.stringify(shippingCreds)));
       onSetDirty?.(false);
       haptic.success();
+      const credsPuladas = provider !== "flat_fee" && !credsLoaded;
       toast.success("Configurações salvas!", {
-        description: "As regras e chaves de frete foram salvas com sucesso.",
+        description: credsPuladas
+          ? "Regras salvas. As chaves de frete NÃO foram salvas (falha na leitura)."
+          : "As regras e chaves de frete foram salvas com sucesso.",
       });
     } catch (err) {
       console.error("[AdminShippingView] Error saving configs:", err);
@@ -1078,6 +1144,35 @@ export const AdminShippingView = memo(function AdminShippingView({
                 {/* API Token & Credentials Box */}
                 {formData.shippingProvider !== "flat_fee" && (
                   <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-3.5 space-y-3 animate-in fade-in duration-200">
+                    {/* Achado 2 da auditoria rodada 2: a leitura das chaves
+                        falhou. Sem este bloco a seção inteira ficava travada
+                        pelos `disabled` abaixo, sem uma palavra de explicação e
+                        sem nenhuma forma de sair do estado morto a não ser
+                        recarregar a página na mão. */}
+                    {credsError && (
+                      <div className="flex flex-col gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="mt-px size-3.5 shrink-0 text-red-400" />
+                          <p className="text-[11px] font-semibold leading-snug text-red-300">
+                            Não foi possível carregar as chaves de frete.
+                            <span className="mt-0.5 block font-normal text-red-300/70">
+                              O token e o modo Sandbox ficam bloqueados até a
+                              leitura funcionar — assim nada é gravado por cima
+                              do que já está salvo.
+                            </span>
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            fetchShippingCreds();
+                          }}
+                          className="self-start rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:border-amber-500/30"
+                        >
+                          Tentar de novo
+                        </button>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-xs font-bold text-white">
                         <Lock className="size-3.5 text-amber-400" />
@@ -1094,19 +1189,36 @@ export const AdminShippingView = memo(function AdminShippingView({
                           <span className="text-[10px] font-medium text-zinc-400">
                             Sandbox
                           </span>
-                          <Switch
-                            checked={!!shippingCreds.melhor_envio?.sandbox}
-                            onCheckedChange={(checked) => {
-                              setShippingCreds((prev) => ({
-                                ...prev,
-                                melhor_envio: {
-                                  ...prev.melhor_envio,
-                                  sandbox: checked,
-                                },
-                              }));
-                            }}
-                            className="scale-75 data-[state=checked]:bg-amber-500"
-                          />
+                          {!credsLoaded ? (
+                            // Achado 2: enquanto a busca está MESMO em curso, a
+                            // tela diz que está carregando. Quando ela falhou,
+                            // quem fala é o aviso com o botão de tentar de novo
+                            // (acima) — e não uma palavra que promete um
+                            // movimento automático que nunca vem.
+                            <span className="text-[9px] font-bold uppercase tracking-widest text-amber-500">
+                              {credsError ? "Indisponível" : "Carregando…"}
+                            </span>
+                          ) : (
+                            <Switch
+                              checked={!!shippingCreds.melhor_envio?.sandbox}
+                              // B3 da 3a revisao: mesma trava do token — sem
+                              // isto, mudar Sandbox com carga falhada era
+                              // descartado em silencio com toast verde (a loja
+                              // seguia em modo de teste achando que estava em
+                              // producao).
+                              disabled={!credsLoaded}
+                              onCheckedChange={(checked) => {
+                                setShippingCreds((prev) => ({
+                                  ...prev,
+                                  melhor_envio: {
+                                    ...prev.melhor_envio,
+                                    sandbox: checked,
+                                  },
+                                }));
+                              }}
+                              className="scale-75 data-[state=checked]:bg-amber-500"
+                            />
+                          )}
                         </div>
                       )}
                     </div>
@@ -1114,6 +1226,11 @@ export const AdminShippingView = memo(function AdminShippingView({
                     <div className="flex gap-2">
                       <input
                         type="password"
+                        // B1 da 1a revisao: sem esta trava, o campo ficava
+                        // editavel quando a carga falhou — o lojista digitava
+                        // o token de novo e o save silenciosamente o descartava
+                        // (a guarda credsLoaded pulava o upsert) com toast verde.
+                        disabled={!credsLoaded}
                         value={
                           shippingCreds[formData.shippingProvider]?.token || ""
                         }
@@ -1128,7 +1245,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                           }));
                         }}
                         placeholder="Cole seu Bearer/API Token aqui..."
-                        className="h-9 flex-1 rounded-lg border border-white/10 bg-black/60 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-amber-500 focus:outline-none"
+                        className="h-9 flex-1 rounded-lg border border-white/10 bg-black/60 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-amber-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
                       />
                       <button
                         type="button"
@@ -1218,7 +1335,10 @@ export const AdminShippingView = memo(function AdminShippingView({
             )}
 
             {/* Section 4: Logs & Histórico de Cotações */}
-            <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4 backdrop-blur-md shadow-xl">
+            <div
+              id="shipping-logs-section"
+              className="rounded-2xl border border-white/10 bg-zinc-900/60 p-4 backdrop-blur-md shadow-xl"
+            >
               <button
                 type="button"
                 onClick={() => setIsLogsOpen((prev) => !prev)}
@@ -1247,6 +1367,29 @@ export const AdminShippingView = memo(function AdminShippingView({
                       <Skeleton className="h-8 w-full rounded-lg bg-white/5" />
                       <Skeleton className="h-8 w-full rounded-lg bg-white/5" />
                     </div>
+                  ) : logsError ? (
+                    // Consulta que falhou não pode se parecer com "vazio de
+                    // verdade" — quem for diagnosticar por que um cliente
+                    // não conseguiu cotar precisa saber que o histórico não
+                    // carregou, não achar que ele está genuinamente limpo.
+                    <div className="py-4 text-center text-xs font-semibold text-red-400">
+                      Não foi possível carregar o histórico de cotações. Tente
+                      novamente em "Atualizar".
+                    </div>
+                  ) : logs.length === 0 &&
+                    (config?.shippingProvider || "flat_fee") === "flat_fee" ? (
+                    // Com Taxa Única Fixa a edge function responde o frete
+                    // na hora, sem consultar transportadora — por isso este
+                    // histórico fica em zero por desenho, não porque
+                    // ninguém tentou calcular frete. Ele volta a receber
+                    // linhas se a loja trocar para Melhor Envio ou Frenet.
+                    <p className="py-4 text-center text-xs text-zinc-400">
+                      Nenhuma cotação para mostrar: com a Taxa Única Fixa o app
+                      já responde o frete direto, sem consultar transportadora,
+                      então não existe cotação para registrar aqui. Este
+                      histórico passa a receber linhas se a loja trocar para
+                      Melhor Envio ou Frenet.
+                    </p>
                   ) : logs.length === 0 ? (
                     <p className="py-4 text-center text-xs italic text-zinc-500">
                       Nenhuma cotação registrada recentemente.
@@ -1314,12 +1457,25 @@ export const AdminShippingView = memo(function AdminShippingView({
                   )}
 
                   <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-1">
-                    <span>Exibindo as 15 consultas mais recentes</span>
+                    {logs.length > 0 && (
+                      // "Exibindo as 15" com 0 linha era a mesma mentira do
+                      // resto da seção: prometia exibir 15 de coisa nenhuma.
+                      // Agora reflete a contagem real, e some quando não há
+                      // linha nenhuma para exibir.
+                      <span>
+                        Exibindo {logs.length === 1 ? "a" : "as"} {logs.length}{" "}
+                        {logs.length === 1 ? "consulta" : "consultas"} mais
+                        recente{logs.length === 1 ? "" : "s"}
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={fetchLogs}
                       disabled={loadingLogs}
-                      className="flex items-center gap-1 font-bold text-amber-400 hover:underline"
+                      // `ml-auto` porque o texto ao lado agora some quando
+                      // não há linha: sem ele, o `justify-between` fica com
+                      // um filho só e o botão pula para a esquerda.
+                      className="ml-auto flex items-center gap-1 font-bold text-amber-400 hover:underline"
                     >
                       <RefreshCw
                         className={`size-3 ${loadingLogs ? "animate-spin" : ""}`}

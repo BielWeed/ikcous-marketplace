@@ -87,6 +87,27 @@ export function useBuscaCep(aoEncontrar: (endereco: EnderecoDoCep) => void): {
       const res = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`, {
         signal: controller.signal,
       });
+
+      // Um 500 (ou outro erro HTTP) do ViaCEP costuma vir com corpo HTML —
+      // tentar `.json()` nele estoura `SyntaxError` e cai no mesmo buraco
+      // mudo do catch. Confere `ok` ANTES de tentar interpretar o corpo.
+      // `=== false` e não `!res.ok`: um `Response` de verdade nunca deixa
+      // `ok` indefinido, mas os mocks de `use-busca-cep.test.tsx` (e dos
+      // outros consumidores do hook: AddressForm e o checkout de convidado)
+      // simulam só `{ json }` — tratar "não confirmado bom" como erro
+      // quebraria esses testes por um detalhe de mock, não por um defeito
+      // real. Ver relatório do item 2 (bloqueio de 26/08/2026): `!res.ok`
+      // quebra 7 arquivos de teste fora do escopo daquela correção.
+      if (res.ok === false) {
+        if (sequencia !== sequenciaRef.current || desmontadoRef.current) {
+          return;
+        }
+        toast.error(
+          "Não foi possível buscar o CEP agora. Preencha o endereço manualmente.",
+        );
+        return;
+      }
+
       const data = await res.json();
 
       // Uma busca mais nova já começou enquanto esta estava em voo, ou o
@@ -124,6 +145,15 @@ export function useBuscaCep(aoEncontrar: (endereco: EnderecoDoCep) => void): {
         return;
       }
       console.error("Error fetching CEP:", err);
+      // Qualquer outra falha (offline, DNS, portal cativo, ViaCEP fora do
+      // ar) chega aqui como `TypeError` do próprio `fetch`. Sem toast, a
+      // cliente só via o spinner parar e concluía — errado — que o CEP não
+      // existia.
+      if (sequencia === sequenciaRef.current && !desmontadoRef.current) {
+        toast.error(
+          "Não foi possível buscar o CEP agora. Preencha o endereço manualmente.",
+        );
+      }
     } finally {
       clearTimeout(timer);
       // Só a busca corrente desliga o spinner — uma resposta velha não

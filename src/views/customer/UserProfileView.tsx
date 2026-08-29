@@ -94,6 +94,13 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
   const [reviews, setReviews] = useState<UserReview[]>([]);
   const [questions, setQuestions] = useState<UserQuestion[]>([]);
   const [loading, setLoading] = useState(true);
+  // Falha de rede não é "usuário removido", e sub-consulta que falhou não
+  // pode anunciar "0 Avaliações" — zero que quer dizer "não consegui medir".
+  const [loadError, setLoadError] = useState(false);
+  const [reviewsError, setReviewsError] = useState(false);
+  const [questionsError, setQuestionsError] = useState(false);
+  // Retry: remarca a tentativa e o effect refaz a carga.
+  const [tentativa, setTentativa] = useState(0);
   const [activeTab, setActiveTab] = useState<"reviews" | "questions">(
     "reviews",
   );
@@ -108,47 +115,72 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
 
     const loadPublicProfileData = async () => {
       setLoading(true);
+      setLoadError(false);
       try {
-        // 1. Fetch public profile details
+        // 1. Fetch public profile details. PGRST116 = 0 linhas: o perfil
+        // NÃO EXISTE e a mensagem atual ("não encontrado/removido") é
+        // verdade. Qualquer outro erro é FALHA — e falha não pode virar
+        // "usuário removido" na tela de quem só teve a rede oscilando.
         const { data: profileData, error: profileError } = await supabase
           .from("public_profiles")
           .select("*")
           .eq("id", userId)
           .single();
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          if ((profileError as { code?: string }).code !== "PGRST116") {
+            setLoadError(true);
+            return;
+          }
+          setProfile(null);
+          return;
+        }
         setProfile(profileData as PublicProfile);
 
-        // 2. Fetch public reviews with product details
-        const { data: reviewsData, error: reviewsError } = await supabase
-          .from("reviews")
-          .select("*, product:produtos(id, nome, imagem_url)")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false });
+        // 2. Fetch public reviews — cada sub-consulta com seu próprio erro:
+        // uma falhar não pode apagar o resto nem mentir zero no contador.
+        try {
+          const { data: reviewsData, error: reviewsErr } = await supabase
+            .from("reviews")
+            .select("*, product:produtos(id, nome, imagem_url)")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false });
 
-        if (reviewsError) throw reviewsError;
-        setReviews((reviewsData || []) as UserReview[]);
+          if (reviewsErr) throw reviewsErr;
+          setReviews((reviewsData || []) as UserReview[]);
+          setReviewsError(false);
+        } catch (err) {
+          console.error("Error loading public reviews:", err);
+          setReviewsError(true);
+        }
 
         // 3. Fetch public questions with product details and answers
-        const { data: questionsData, error: questionsError } = await supabase
-          .from("questions")
-          .select(
-            "*, product:produtos(id, nome, imagem_url), answers:answers(*)",
-          )
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false });
+        try {
+          const { data: questionsData, error: questionsErr } = await supabase
+            .from("questions")
+            .select(
+              "*, product:produtos(id, nome, imagem_url), answers:answers(*)",
+            )
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false });
 
-        if (questionsError) throw questionsError;
-        setQuestions((questionsData || []) as UserQuestion[]);
+          if (questionsErr) throw questionsErr;
+          setQuestions((questionsData || []) as UserQuestion[]);
+          setQuestionsError(false);
+        } catch (err) {
+          console.error("Error loading public questions:", err);
+          setQuestionsError(true);
+        }
       } catch (err) {
         console.error("Error loading public profile data:", err);
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
     };
 
     loadPublicProfileData();
-  }, [userId]);
+  }, [userId, tentativa]);
 
   const handleProductClick = (productId: string) => {
     haptic.light();
@@ -220,6 +252,28 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
             ))}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="pb-customer flex min-h-full flex-col items-center justify-center p-6 text-center">
+        <div className="mb-4 flex size-16 items-center justify-center rounded-3xl bg-amber-50 text-amber-500">
+          <User className="size-8" />
+        </div>
+        <h3 className="text-lg font-bold text-zinc-900">
+          Não conseguimos carregar este perfil
+        </h3>
+        <p className="mt-1 max-w-xs text-sm leading-relaxed text-zinc-500">
+          Verifique sua conexão e tente de novo.
+        </p>
+        <button
+          onClick={() => setTentativa((t) => t + 1)}
+          className="mt-6 flex items-center gap-2 rounded-full border border-zinc-200 px-6 py-3 text-xs font-bold uppercase tracking-wider text-zinc-900 shadow-sm transition-all hover:bg-zinc-50 active:scale-95"
+        >
+          Tentar de novo
+        </button>
       </div>
     );
   }
@@ -306,7 +360,8 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
         >
           <div className="group flex flex-col items-center justify-center rounded-3xl border border-zinc-100 bg-white p-4 text-center shadow-sm transition-all duration-300 hover:shadow-md">
             <span className="text-2xl font-black leading-none tracking-tight text-zinc-950 transition-transform duration-300 group-hover:scale-110">
-              {reviews.length}
+              {/* Falha da sub-consulta não conta zero: "—" é não sei, 0 é zero. */}
+              {reviewsError ? "—" : reviews.length}
             </span>
             <span className="mt-1 text-[9px] font-black uppercase tracking-widest text-zinc-400">
               Avaliações
@@ -314,7 +369,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
           </div>
           <div className="group flex flex-col items-center justify-center rounded-3xl border border-zinc-100 bg-white p-4 text-center shadow-sm transition-all duration-300 hover:shadow-md">
             <span className="text-2xl font-black leading-none tracking-tight text-zinc-950 transition-transform duration-300 group-hover:scale-110">
-              {questions.length}
+              {questionsError ? "—" : questions.length}
             </span>
             <span className="mt-1 text-[9px] font-black uppercase tracking-widest text-zinc-400">
               Perguntas
@@ -450,7 +505,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                           )}
 
                           {rev.verified && (
-                            <div className="mt-1 flex items-center gap-0.5 text-[8px] font-bold uppercase tracking-widest text-emerald-600">
+                            <div className="mt-1 flex items-center gap-0.5 text-[8px] font-bold uppercase tracking-widest text-emerald-700">
                               <Check className="size-2.5" />
                               Compra verificada
                             </div>

@@ -9,6 +9,19 @@
 // falha de soft-delete: o admin via os DOIS toasts ao mesmo tempo ("Erro ao
 // excluir produto" do hook + "Produto Removido" da view).
 //
+// Achado 16 da auditoria de 20/08/2026
+// (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): o "conserto 4"
+// acima consertou só a metade da FALHA — o comentário que ele deixou em
+// `AdminProductsView.tsx` dizia isso mesmo ("o caso de sucesso ficou de
+// fora"). No SUCESSO, a view continuava mostrando o próprio
+// `toast.success("Produto Removido", {...})` incondicional, duplicando o
+// `toast.success("Produto removido")` que o hook já mostra sozinho — dois
+// avisos empilhados para uma exclusão só. A correção do achado 16 remove o
+// da view: o aviso de sucesso passa a morar só no hook (mockado neste
+// arquivo, então invisível aqui), a mesma regra que a FALHA já seguia. Por
+// isso o primeiro teste abaixo mudou de "a view mostra" para "a view NÃO
+// mostra mais" — ver também admin-products-um-so-aviso-ao-excluir.test.tsx.
+//
 // Este arquivo monta `AdminProductsView` de verdade (sem @testing-library,
 // mesmo padrão de admin-product-form-draft-e-duplo-clique.test.tsx: createRoot
 // + act do React puro) e mocka os componentes Radix (`dropdown-menu`,
@@ -238,18 +251,13 @@ describe("AdminProductsView — conserto 4: toast de sucesso só some com delete
     });
   }
 
-  it("deleteProduct devolve true: mostra 'Produto Removido'", async () => {
+  it("deleteProduct devolve true: a VIEW não mostra mais 'Produto Removido' — achado 16, quem avisa agora é só o hook", async () => {
     deleteProduct.mockResolvedValue(true);
 
     await montarEExcluir();
 
     expect(deleteProduct).toHaveBeenCalledWith("prod-1");
-    expect(toastSuccess).toHaveBeenCalledWith(
-      "Produto Removido",
-      expect.objectContaining({
-        description: "O produto foi excluído com sucesso.",
-      }),
-    );
+    expect(toastSuccess).not.toHaveBeenCalled();
   });
 
   it("deleteProduct devolve false: NÃO mostra 'Produto Removido' (o hook já avisou o erro)", async () => {

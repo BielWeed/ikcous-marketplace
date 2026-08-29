@@ -65,7 +65,6 @@
 -- PostgreSQL database dump
 --
 
-\restrict ZEJ03sZ5WLRTbXXkN9Eq1IHGArmg5qA5xBCSHuCVHfKjVNDSrifAn6UtMnM4Ppv
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -86,7 +85,7 @@ SET row_security = off;
 -- Name: public; Type: SCHEMA; Schema: -; Owner: -
 --
 
-CREATE SCHEMA public;
+CREATE SCHEMA IF NOT EXISTS public;
 
 
 --
@@ -5932,5 +5931,4 @@ CREATE POLICY vor_receipts_insert_policy ON public.vor_receipts FOR INSERT TO "a
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ZEJ03sZ5WLRTbXXkN9Eq1IHGArmg5qA5xBCSHuCVHfKjVNDSrifAn6UtMnM4Ppv
 

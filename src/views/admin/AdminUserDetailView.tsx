@@ -75,6 +75,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const { isAdmin } = useAuth();
   const isOffline = useOnlineStatus();
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -91,12 +92,18 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
   const handleCopy = (text: string, field: "id" | "email" | "whatsapp") => {
     haptic.light();
-    navigator.clipboard.writeText(text);
-    setCopiedField(field);
-    toast.success(
-      `${field === "id" ? "ID" : field === "email" ? "E-mail" : "Telefone"} copiado com sucesso!`,
-    );
-    setTimeout(() => setCopiedField(null), 2000);
+    const label =
+      field === "id" ? "ID" : field === "email" ? "E-mail" : "Telefone";
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopiedField(field);
+        toast.success(`${label} copiado com sucesso!`);
+        setTimeout(() => setCopiedField(null), 2000);
+      })
+      .catch(() => {
+        toast.error("Não foi possível copiar. Copie manualmente.");
+      });
   };
 
   useEffect(() => {
@@ -109,6 +116,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const fetchUserData = useCallback(async () => {
     if (!isAdmin) return;
     setLoading(true);
+    setLoadFailed(false);
     try {
       const { data, error } = await supabase.rpc("get_admin_user_detail", {
         p_user_id: userId,
@@ -190,6 +198,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     } catch (err) {
       console.error("[AdminUserDetail] Error fetching data:", err);
       toast.error("Erro ao carregar dados do usuário");
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -215,6 +224,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       let query = supabase
         .from("cart_items")
         .delete()
+        .select("id")
         .eq("user_id", userId)
         .eq("product_id", productId);
 
@@ -224,9 +234,30 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         query = query.is("variant_id", null);
       }
 
-      const { error } = await query;
+      const { data, error } = await query;
 
       if (error) throw error;
+
+      // A policy de DELETE de `cart_items` não tem `is_admin()` (só
+      // `auth.uid() = user_id`), diferente da de SELECT. Quando a lojista
+      // apaga o carrinho de outra pessoa, o Postgres descarta todas as
+      // linhas e o PostgREST responde sucesso com ZERO linhas — sem
+      // `.select()` isso passava batido pelo `if (error) throw` e a tela
+      // comemorava uma remoção que não aconteceu.
+      if (!data || data.length === 0) {
+        // Zero linhas tem DOIS motivos possiveis, e a frase precisa caber
+        // nos dois: a policy barrou (carrinho de outra pessoa) OU o item
+        // ja tinha saido do carrinho -- que acontece na propria ficha da
+        // lojista, onde a policy LIBERA. Afirmar so a permissao mentiria
+        // sobre o carrinho dela mesma.
+        toast.error(
+          "Nada foi removido. O item pode já ter saído do carrinho, ou o app não tem permissão para alterar o carrinho de outra pessoa.",
+        );
+        // Relê mesmo na falha: no caso "já saiu", é isto que tira da tela a
+        // linha fantasma. No caso da policy é uma ida à rede a mais, barata.
+        fetchUserData();
+        return;
+      }
 
       toast.success("Item removido com sucesso!");
       fetchUserData();
@@ -248,12 +279,25 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       return;
     }
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("cart_items")
         .delete()
+        .select("id")
         .eq("user_id", userId);
 
       if (error) throw error;
+
+      // Mesmo defeito do item único: policy de DELETE sem `is_admin()`
+      // descarta as linhas de outro usuário e o PostgREST devolve sucesso
+      // com ZERO linhas. `.select()` é o que revela isso.
+      if (!data || data.length === 0) {
+        // Mesmos dois motivos do item unico -- ver o comentario la em cima.
+        toast.error(
+          "Nada foi removido. O carrinho pode já estar vazio, ou o app não tem permissão para alterar o carrinho de outra pessoa.",
+        );
+        fetchUserData();
+        return;
+      }
 
       toast.success("Carrinho limpo com sucesso!");
       fetchUserData();
@@ -274,6 +318,22 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             className="border-blue-200 bg-blue-100 text-blue-800"
           >
             Novo
+          </Badge>
+        );
+      case "pending":
+        // Achado 14 da auditoria de 20/08/2026: "pending" é o estado inicial
+        // de TODO pedido (create_marketplace_order_v23/v24 gravam isso no
+        // INSERT) e caía no `default`, aparecendo cru em inglês. A palavra
+        // usada aqui é a mesma que `statusConfig.pending.label`
+        // (OrderStatusBadge.tsx) já usa no selo real de todo pedido, em
+        // todo o app — inclusive do lado do cliente. "Pendente" seria um
+        // segundo nome para o mesmo status.
+        return (
+          <Badge
+            variant="secondary"
+            className="border-blue-200 bg-blue-100 text-blue-800"
+          >
+            Novo Pedido
           </Badge>
         );
       case "processing":
@@ -306,6 +366,16 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       case "cancelled":
         return <Badge variant="destructive">Cancelado</Badge>;
       default:
+        // Com "pending" coberto acima, este `default` só é alcançado por um
+        // valor fora dos cinco de `OrderStatus` — hoje, na prática,
+        // "returned" (ver o comentário maior logo abaixo sobre
+        // `pedidosQueContam`: o tipo não lista esse valor, mas o banco pode
+        // gravá-lo). Mostrar o valor cru é feio, mas NÃO some com o dado —
+        // trocar por "—" ou string vazia esconderia justamente o status que
+        // ninguém tratou ainda. Traduzir "returned" aqui seria alinhar o
+        // tipo ao banco, que este mesmo arquivo já registrou como conserto
+        // de outro tamanho (mexe em todo `switch` sobre `OrderStatus`) e
+        // ficou de fora de propósito.
         return <Badge variant="outline">{status}</Badge>;
     }
   };
@@ -359,17 +429,22 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     dinheiro é uma SEGUNDA passada, só para a soma do LTV, em cima do mesmo
     `pedidosQueContam` — a contagem de pedidos não muda.
 
-    A regra de "dinheiro reconhecido" é a mesma das migrations
-    `20260822000100` e `20260823000000`: `paymentStatus` nulo CONTA (pedido
-    pago na entrega, ou histórico sem cobrança online, mesma leitura do
-    mapper — ver mappers.ts:244-246); só ficam de fora 'aguardando',
-    'recusado', 'expirado' e 'estornado'.
+    A regra de "dinheiro reconhecido" MUDOU com a migration `20261021000000`
+    (Task 2 de docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md):
+    `payment_status` nulo DEIXOU de contar. Até ali, nulo era o ÚNICO jeito
+    de representar "pago na entrega", e por isso contava; agora a loja
+    registra esse recebimento explicitamente (RPC
+    `registrar_pagamento_recebido`, que grava `payment_status =
+    'recebido_na_entrega'`), e nulo volta a significar só "sem pagamento
+    confirmado". Contam: 'pago', 'pago_apos_expirar' e
+    'recebido_na_entrega'. Ficam de fora: nulo, 'aguardando', 'recusado',
+    'expirado' e 'estornado'.
   */
   const pedidosPagos = pedidosQueContam.filter(
     (o) =>
-      o.paymentStatus == null ||
       o.paymentStatus === "pago" ||
-      o.paymentStatus === "pago_apos_expirar",
+      o.paymentStatus === "pago_apos_expirar" ||
+      o.paymentStatus === "recebido_na_entrega",
   );
 
   const totalSpent = pedidosPagos.reduce((sum, o) => sum + o.total, 0);
@@ -462,7 +537,19 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         </div>
       </div>
 
-      {loading ? (
+      {loadFailed && !loading ? (
+        <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-red-400">
+            Não foi possível carregar os dados deste cliente
+          </p>
+          <button
+            onClick={() => fetchUserData()}
+            className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      ) : loading ? (
         renderContentSkeleton()
       ) : (
         <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -762,7 +849,16 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                   key={order.id}
                                   className="cursor-pointer border-none border-zinc-800 transition-colors hover:bg-zinc-800/40"
                                   onClick={() =>
-                                    onNavigate("order-details", order.id)
+                                    // "order-details" é a tela do CLIENTE
+                                    // (App.tsx) e busca em `fetchUserOrders()`
+                                    // filtrado por `user_id` do usuário
+                                    // logado — nunca acha o pedido de outra
+                                    // pessoa. O painel abre pedido avulso por
+                                    // "admin-orders" (AdminOrdersView), que
+                                    // recebe o id como `selectedOrderId` e
+                                    // busca em `marketplace_orders` sem esse
+                                    // filtro.
+                                    onNavigate("admin-orders", order.id)
                                   }
                                 >
                                   <TableCell className="px-6 py-4 font-mono text-[11px] font-bold text-zinc-300">

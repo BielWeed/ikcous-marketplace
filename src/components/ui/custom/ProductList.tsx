@@ -144,7 +144,6 @@ export const ProductList = React.memo(function ProductList({
               onMouseEnter={handlePrefetchProductDetail}
               onTouchStart={handlePrefetchProductDetail}
               priority={index < 4}
-              isEligibleForFreeShipping={config.freeShippingMin > 0}
               selectedProductId={selectedProductId}
               showRating={config.enableReviews}
             />

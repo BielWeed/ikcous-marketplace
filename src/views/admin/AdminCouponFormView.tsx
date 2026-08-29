@@ -5,9 +5,13 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import type { Coupon, View } from "@/types";
 import { haptic } from "@/utils/haptic";
+import {
+  dataEscolhidaParaValidade,
+  validadeParaDataDoInput,
+} from "@/utils/validade-do-cupom";
 import { AlertTriangle, Calendar, Ticket } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -240,7 +244,10 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                     Mínimo Compra
                   </p>
                   <p className="text-xs font-bold text-zinc-400 leading-none">
-                    R$ {Number(formData.minPurchase || 0).toFixed(0)}
+                    {/* Achado 15 da auditoria de 20/08/2026 — mesmo defeito
+                        do card em AdminCouponsView.tsx: `.toFixed(0)`
+                        arredondava R$ 49,90 para "R$ 50". */}
+                    {formatCurrency(formData.minPurchase || 0)}
                   </p>
                 </div>
               </div>
@@ -448,24 +455,18 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                   name="validUntil"
                   type="date"
                   autoComplete="off"
-                  value={(() => {
-                    if (!formData.validUntil) return "";
-                    const d = new Date(formData.validUntil);
-                    return !Number.isNaN(d.getTime())
-                      ? d.toISOString().split("T")[0]
-                      : "";
-                  })()}
+                  value={validadeParaDataDoInput(formData.validUntil)}
                   disabled={isOffline || isSubmitting}
                   onChange={(e) => {
                     if (!e.target.value) {
                       setFormData({ ...formData, validUntil: undefined });
                       return;
                     }
-                    const d = new Date(e.target.value);
-                    if (!Number.isNaN(d.getTime())) {
+                    const validade = dataEscolhidaParaValidade(e.target.value);
+                    if (validade) {
                       setFormData({
                         ...formData,
-                        validUntil: d.toISOString(),
+                        validUntil: validade,
                       });
                     }
                   }}

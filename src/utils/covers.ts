@@ -184,6 +184,13 @@ export const compressCoverImage = (
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext("2d");
+      // Mesmo defeito de avatars.ts/compressImage: sem fundo pintado antes,
+      // a area transparente de um PNG vira preto no JPEG. Ver o comentario
+      // la para o porque de branco + manter image/jpeg.
+      if (ctx) {
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0, 0, width, height);
+      }
       ctx?.drawImage(img, 0, 0, width, height);
       resolve(canvas.toDataURL("image/jpeg", 0.85)); // 85% quality
     };

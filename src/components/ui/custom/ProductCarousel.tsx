@@ -162,7 +162,6 @@ export const ProductCarousel = React.memo(function ProductCarousel({
                 onMouseEnter={handlePrefetchProductDetail}
                 onTouchStart={handlePrefetchProductDetail}
                 priority={index < 3}
-                isEligibleForFreeShipping={config.freeShippingMin > 0}
                 selectedProductId={selectedProductId}
                 showRating={config.enableReviews}
               />

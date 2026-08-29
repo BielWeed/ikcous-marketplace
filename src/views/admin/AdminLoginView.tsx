@@ -1,5 +1,6 @@
 import { branding } from "@/config/branding";
 import { useAuth } from "@/hooks/useAuth";
+import { MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA } from "@/lib/mensagens-auth";
 import type { View } from "@/types";
 import { ArrowRight, Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import type React from "react";
@@ -12,6 +13,75 @@ interface AdminLoginViewProps {
 
 // Simple admin password - in production, this should be handled server-side
 // Password legacy removed
+
+// Defeito relatado: a tela desestruturava só `{ success }` do retorno de
+// `login` (AuthContext) e por isso só conseguia emitir UMA frase — inclusive
+// num bloqueio por excesso de tentativas (429), quando ela afirmava "senha
+// incorreta" com a senha CERTA e o lojista tentava de novo, estendendo o
+// próprio bloqueio. Mesma tradução por causa de AuthContext.login (doc
+// oficial do Supabase Auth: https://supabase.com/docs/guides/auth/debugging/error-codes),
+// copiada aqui porque a mensagem é específica desta tela ("administrativos").
+//
+// A1-fix2 (achado BLOQUEANTE) — o ramo genérico abaixo tinha um literal
+// PRÓPRIO ("Não foi possível entrar. Tente novamente."), diferente do que o
+// TOAST global de `login` disparava para o mesmo erro
+// (`MENSAGEM_ERRO_LOGIN_GENERICA`, que fala em "fale com a loja"). Duas
+// frases diferentes na tela ao mesmo tempo, e a que sobrava mandava o DONO
+// da loja falar com a loja. Agora o ramo GENÉRICO usa
+// `MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA` (`@/lib/mensagens-auth.ts` — não
+// mais AuthContext.tsx, A1-fix4 moveu a constante), a MESMA frase
+// que `login(email, senha, "admin")` (abaixo, em handleSubmit) usa para o
+// toast — nunca mais duas versões do mesmo erro NESSE ramo. Os outros três
+// ramos (e-mail não confirmado, 429, credenciais inválidas) continuam com
+// literal PRÓPRIO desta tela ("administrativos"), de propósito — a
+// divergência ali é deliberada, não o defeito que este comentário descreve.
+function mensagemDeErroAdminLogin(error: any): string {
+  if (
+    error?.code === "email_not_confirmed" ||
+    error?.message?.includes("Email not confirmed")
+  ) {
+    return "Este e-mail administrativo ainda não foi confirmado. Verifique a caixa de entrada.";
+  }
+  if (error?.status === 429) {
+    // Verificado na doc oficial: o limite de login é POR ENDEREÇO IP, não
+    // por usuário — não revela se a senha está certa ou errada.
+    return "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.";
+  }
+  if (
+    error?.code === "user_banned" ||
+    error?.message?.includes("User is banned")
+  ) {
+    // A1-fix3 (achado BLOQUEANTE) — PRECISA vir antes do `if (error?.status
+    // === 400 ...)` abaixo. `user_banned` é HTTP 400 (conferido na fonte do
+    // GoTrue: internal/api/token.go, `user.IsBanned()` devolve
+    // `apierrors.NewBadRequestError`, não `NewForbiddenError`/403 — a versão
+    // anterior deste arquivo não tinha ramo nenhum para isto e o `status ===
+    // 400` genérico abaixo capturava a conta banida como credencial errada).
+    //
+    // A1-fix5 — ressalva: "400, não 403" vale só no password grant (este
+    // caminho). `user_banned` É 403 em OUTROS endpoints do GoTrue
+    // (internal/api/auth.go:38, internal/api/verify.go:670,727, via
+    // `NewForbiddenError`). E uma nuance que falta acima: `IsBanned()` é
+    // checado ANTES de `Authenticate()` — a conta banida devolve
+    // `user_banned` com a senha CERTA OU ERRADA, não só com a certa.
+    // Fica a genérica-do-lojista, não uma frase própria de banimento — ver
+    // o comentário de `MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA` em
+    // `@/lib/mensagens-auth.ts` para o motivo (não mais em AuthContext.tsx,
+    // A1-fix4 moveu a constante).
+    return MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA;
+  }
+  if (
+    error?.status === 400 ||
+    error?.message?.includes("Invalid login credentials")
+  ) {
+    return "Email ou senha administrativos incorretos.";
+  }
+  // Causa não distinguível (rede, erro inesperado do servidor, provedor de
+  // e-mail desativado): nunca presumir "senha incorreta" sem confirmação, e
+  // nunca instruir "fale com a loja" — quem lê esta tela É a loja. Conta
+  // banida tem ramo PRÓPRIO acima (não cai mais aqui).
+  return MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA;
+}
 
 export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
   const [email, setEmail] = useState("");
@@ -27,14 +97,26 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
     setIsLoading(true);
 
     try {
-      const { success } = await login(email, password);
+      // A1-fix2 — "admin" faz `login` (AuthContext) disparar o toast global
+      // com `MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA` no ramo genérico, em vez
+      // da frase escrita para o cliente ("fale com a loja"). É a MESMA
+      // frase que `mensagemDeErroAdminLogin` usa para o banner inline.
+      const { success, error: loginError } = await login(
+        email,
+        password,
+        "admin",
+      );
       if (success) {
         onLogin();
       } else {
-        setError("Email ou senha administrativos incorretos.");
+        setError(mensagemDeErroAdminLogin(loginError));
       }
     } catch (err) {
-      setError("Ocorreu um erro ao tentar fazer login.");
+      // Só roda se `login` LANÇAR (não devolver `{ error }`) — não gera um
+      // toast divergente (não há toast neste caminho), mas ainda assim não
+      // pode inventar uma TERCEIRA frase para uma causa que é a mesma
+      // família "não distinguível" do ramo genérico de `mensagemDeErroAdminLogin`.
+      setError(MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA);
       console.error(err);
     } finally {
       setIsLoading(false);

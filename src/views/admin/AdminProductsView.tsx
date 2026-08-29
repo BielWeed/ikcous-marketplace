@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { AdminErrorState } from "@/components/admin/AdminErrorState";
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import {
   AdminKpiCarousel,
@@ -193,7 +194,21 @@ export const AdminProductsView = memo(function AdminProductsView({
     }
   }, [active]);
 
-  const firstLoadRef = useRef(true);
+  // Achado 11 da auditoria de 20/08/2026: a busca da lista só dispara 320 ms
+  // depois de a tela abrir (o `setTimeout` do efeito logo abaixo), e nesse
+  // intervalo `loading` (do `useProducts`) ainda é `false` — só vira `true`
+  // DENTRO de `loadProducts`, chamado só depois do atraso. A condição do
+  // estado vazio (`products?.length === 0`) já era verdadeira nessa janela:
+  // "ainda não perguntei" virava "perguntei e não há nada". `hasLoadedOnce`
+  // fecha essa janela (existia um `firstLoadRef` aqui antes, mas era um
+  // `ref` nunca LIDO em lugar nenhum do arquivo — não fazia nada). `loadError`
+  // é o terceiro estado que faltava: sem ele, a correção óbvia (trocar a
+  // condição por `loading || !hasLoadedOnce`) trocaria "nenhum produto" por
+  // um esqueleto ETERNO sempre que a busca falhasse de verdade — mentira
+  // diferente, mesma gravidade.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const effectiveLoading = loading || !hasLoadedOnce;
   const shouldScrollToTop = useRef(false);
 
   useEffect(() => {
@@ -217,6 +232,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           category: filterCategory === "all" ? undefined : filterCategory,
         });
         if (result) {
+          setLoadError(false);
           setTotalProducts(result.total);
           cachedProductsTotal = result.total;
 
@@ -224,9 +240,16 @@ export const AdminProductsView = memo(function AdminProductsView({
           if (pageToFetch > maxPage) {
             setCurrentPage(maxPage);
           }
+        } else {
+          // `loadProducts` nunca lança aqui: numa falha real ela já mostrou
+          // `toast.error` e devolveu `null` (abort de uma busca superada
+          // também devolve `null`, sem toast — o pior caso é este banner
+          // aparecer por um instante numa corrida de busca/filtro, e sumir
+          // sozinho na resposta seguinte).
+          setLoadError(true);
         }
       } finally {
-        firstLoadRef.current = false;
+        setHasLoadedOnce(true);
       }
     },
     [loadProducts, pageSize, searchTerm, filterCategory, setCurrentPage],
@@ -288,10 +311,19 @@ export const AdminProductsView = memo(function AdminProductsView({
 
   // Lógica de cálculo financeiro global (SWR / Server-Side)
   const financialStats = useMemo(() => {
-    const invested = stats?.inventory?.totalCost ?? 0;
-    const potentialValue = stats?.inventory?.totalValue ?? 0;
-    const potentialProfit = potentialValue - invested;
-    const avgRoi = invested > 0 ? (potentialProfit / invested) * 100 : 0;
+    // PAINEL-05: `null` quando a analytics nao respondeu — os cartoes
+    // exibem "—" em vez de R$ 0,00 (zero falso afirma que o estoque
+    // nao vale nada; o travessao nao afirma nada).
+    const invested = stats?.inventory?.totalCost ?? null;
+    const potentialValue = stats?.inventory?.totalValue ?? null;
+    const potentialProfit =
+      invested !== null && potentialValue !== null
+        ? potentialValue - invested
+        : null;
+    const avgRoi =
+      invested !== null && invested > 0 && potentialProfit !== null
+        ? (potentialProfit / invested) * 100
+        : null;
 
     return {
       invested,
@@ -310,7 +342,10 @@ export const AdminProductsView = memo(function AdminProductsView({
       {
         id: "capital-alocado",
         label: "Capital Alocado",
-        value: `R$ ${financialStats.invested.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+        value:
+          financialStats.invested !== null
+            ? `R$ ${financialStats.invested.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+            : "—",
         icon: Wallet,
         accent: "text-emerald-500",
         subValue: "Capital Líquido",
@@ -318,7 +353,10 @@ export const AdminProductsView = memo(function AdminProductsView({
       {
         id: "lucro-potencial",
         label: "Lucro Potencial",
-        value: `R$ ${financialStats.potential.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+        value:
+          financialStats.potential !== null
+            ? `R$ ${financialStats.potential.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+            : "—",
         icon: TrendingUp,
         accent: "text-admin-gold",
         subValue: "Margem Bruta",
@@ -326,7 +364,10 @@ export const AdminProductsView = memo(function AdminProductsView({
       {
         id: "roi-portfolio",
         label: "ROI do Portfólio",
-        value: `${financialStats.avgRoi.toFixed(2)}%`,
+        value:
+          financialStats.avgRoi !== null
+            ? `${financialStats.avgRoi.toFixed(2)}%`
+            : "—",
         icon: DollarSign,
         accent: "text-blue-500",
         subValue: "Rendimento %",
@@ -337,10 +378,12 @@ export const AdminProductsView = memo(function AdminProductsView({
         value: `${totalProducts} itens`,
         icon: Package,
         accent: "text-purple-500",
-        subValue: "Catálogo Geral",
+        // PAINEL-09: o número é o total FILTRADO (total_count da RPC com
+        // busca), não o catálogo geral — o subtítulo mentia.
+        subValue: searchTerm ? "Resultados da busca" : "Catálogo Geral",
       },
     ],
-    [financialStats, totalProducts],
+    [financialStats, totalProducts, searchTerm], // C2 da 1a revisao: +1 warning sem esta dep
   );
 
   // Achado 7 da auditoria de 20/08/2026
@@ -422,17 +465,19 @@ export const AdminProductsView = memo(function AdminProductsView({
     }
     try {
       // `deleteProduct` nunca lança — captura tudo internamente e devolve
-      // `true`/`false` (já mostrando o toast de erro dela mesma numa
-      // falha). Descartar esse retorno fazia o admin ver DOIS toasts
-      // contraditórios numa falha de soft-delete: "Erro ao excluir
-      // produto" (do hook) e "Produto Removido" (daqui, incondicional). O
-      // toast de sucesso só aparece quando o hook confirma o sucesso.
+      // `true`/`false`, já mostrando o toast (sucesso OU erro) dela mesma.
+      // Achado 16 da auditoria de 20/08/2026: esta view chegou a duplicar o
+      // aviso de SUCESSO aqui (`toast.success("Produto Removido", {...})`
+      // incondicional), e o admin via dois avisos empilhados para uma
+      // exclusão só. O caminho de FALHA já seguia a regra certa — só o
+      // hook avisa, com `toast.error`, e o `else` abaixo fica calado —
+      // porque é o hook quem sabe o resultado no instante em que ele
+      // acontece, o mesmo padrão de TODA outra mutação do hook (criar,
+      // atualizar, alternar status, variantes). A correção do sucesso é a
+      // mesma regra: o aviso mora só lá, esta view não repete.
       const sucesso = await deleteProduct(productToDelete);
       if (sucesso) {
         haptic.success();
-        toast.success("Produto Removido", {
-          description: "O produto foi excluído com sucesso.",
-        });
         // Achado da revisão do Achado 7: `AlertDialogAction` do Radix é
         // `Dialog.Close` e fecha o diálogo síncrono no clique, antes de
         // qualquer `await` — mas o `finally` abaixo (`setProductToDelete`)
@@ -722,7 +767,7 @@ export const AdminProductsView = memo(function AdminProductsView({
 
         {/* Grid view of Products as Assets */}
         <LocalErrorBoundary>
-          {!loading && products?.length === 0 ? null : (
+          {!effectiveLoading && products?.length === 0 ? null : (
             <div className="relative min-h-[400px]">
               {showVisualLoading && <div className="admin-sync-progress-bar" />}
               {viewMode === "detailed" ? (
@@ -730,7 +775,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                   key="detailed-grid"
                   className="grid min-h-[400px] grid-cols-1 gap-8 pb-10 duration-200 animate-in fade-in md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
                 >
-                  {loading && products.length === 0
+                  {effectiveLoading && products.length === 0
                     ? Array.from({ length: 8 }).map((_, i) => (
                         <div
                           key={i}
@@ -779,7 +824,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                   key="compact-grid"
                   className="grid min-h-[250px] grid-cols-2 gap-3 pb-10 duration-200 animate-in fade-in sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
                 >
-                  {loading && products.length === 0
+                  {effectiveLoading && products.length === 0
                     ? Array.from({ length: 12 }).map((_, i) => (
                         <div
                           key={i}
@@ -852,8 +897,8 @@ export const AdminProductsView = memo(function AdminProductsView({
           </div>
         )}
 
-        {/* Empty State */}
-        {!loading && products?.length === 0 && (
+        {/* Empty State — só depois que o servidor REALMENTE respondeu "nenhum" */}
+        {!effectiveLoading && !loadError && products?.length === 0 && (
           <div className="admin-glass relative flex flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-white/5 px-6 py-12 text-center">
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-admin-gold/[0.02] to-transparent" />
             <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
@@ -863,6 +908,17 @@ export const AdminProductsView = memo(function AdminProductsView({
               Nenhum produto cadastrado
             </h3>
           </div>
+        )}
+
+        {/* Erro ao carregar — estado distinto do vazio real e do
+            carregamento: achado 11 avisava que trocar a mentira "vazio" por
+            um esqueleto eterno na falha seria trocar uma mentira por outra. */}
+        {!effectiveLoading && loadError && products?.length === 0 && (
+          <AdminErrorState
+            title="Erro ao Carregar Produtos"
+            onRetry={() => loadData(currentPage)}
+            isLoading={loading}
+          />
         )}
 
         {/* Modal de Ajuda Global */}
@@ -1722,7 +1778,7 @@ const AdminProductCard = memo(function AdminProductCard({
                     {totalProfit === null
                       ? "—"
                       : `+ R$ ${totalProfit.toLocaleString("pt-BR", {
-                          minimumFractionDigits: 0,
+                          minimumFractionDigits: 2,
                         })}`}
                   </p>
                 </div>

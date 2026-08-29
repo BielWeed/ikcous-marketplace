@@ -34,10 +34,10 @@ fixa de R$ 10.
 | 10 ✅ | Cupons → "Após esse prazo, o cupom é **desativado automaticamente pelo sistema**" | Não existe nada que desative. O cupom vencido continua com o selo verde "ATIVO" e continua contando no KPI "Cupons Ativos" | quem vende | **Médio** |
 | 11 ✅ | Histórico de Push → selo verde "**ENVIADA**" em toda linha | O selo é texto fixo. Um envio em que ninguém recebeu grava 0 e ainda aparece "0 clientes · ENVIADA" | quem vende | **Médio-baixo** |
 | 12 ✅ | Push → "Receberão: **8 clientes**" e "Enviar Notificação Agora (8 clientes)" | São 8 **aparelhos**, de 1 cliente identificado e 6 inscrições sem dono. Um cliente com três aparelhos conta como três | quem vende | **Baixo** |
-| 13 | Frete → "Histórico de Cotações & Audit Logs / Exibindo as 15 consultas mais recentes" | Com o provedor Taxa Única Fixa — o padrão e o atual — **nada é registrado ali, nunca**. A tela diz "Nenhuma cotação registrada recentemente" | quem vende | **Baixo** |
-| 14 | No extrato do cliente, a situação "**pending**" | É o único status sem tradução da tabela. Os outros dizem Cancelado, Entregue, Enviado | quem vende | **Baixo** |
-| 15 | Cupom → "Mínimo Compra **R$ 50**" | O valor é exibido sem centavos. Um mínimo de R$ 49,90 aparece como R$ 50 no card e na pré-visualização | quem compra e quem vende | **Baixo** |
-| 16 | Cupons → "Permitir que clientes usem cupons **no carrinho**" e "receber **discounts** especiais" | O campo de cupom fica no checkout, não no carrinho; e "discounts" está em inglês no meio da frase | quem vende | **Baixo** |
+| 13 ✅ | Frete → "Histórico de Cotações & Audit Logs / Exibindo as 15 consultas mais recentes" | Com o provedor Taxa Única Fixa — o padrão e o atual — **nada é registrado ali, nunca**. A tela diz "Nenhuma cotação registrada recentemente" | quem vende | **Baixo** |
+| 14 ✅ | No extrato do cliente, a situação "**pending**" | É o único status sem tradução da tabela. Os outros dizem Cancelado, Entregue, Enviado | quem vende | **Baixo** |
+| 15 ✅ | Cupom → "Mínimo Compra **R$ 50**" | O valor é exibido sem centavos. Um mínimo de R$ 49,90 aparece como R$ 50 no card e na pré-visualização | quem compra e quem vende | **Baixo** |
+| 16 ✅ | Cupons → "Permitir que clientes usem cupons **no carrinho**" e "receber **discounts** especiais" | O campo de cupom fica no checkout, não no carrinho; e "discounts" está em inglês no meio da frase | quem vende | **Baixo** |
 
 ---
 
@@ -754,11 +754,16 @@ Vale registrar, porque foram candidatos a achado que caíram na verificação:
 
 ---
 
-## 17 ⚠️. Achado novo: o "LTV Total" de cada cliente conta pedido que ninguém pagou
+## 17 ✅. Achado novo: o "LTV Total" de cada cliente conta pedido que ninguém pagou
 
-> **Estado: a metade de tela está fechada; a metade de banco está ESCRITA e PROVADA.**
-> `AdminUserDetailView.tsx` já soma só dinheiro reconhecido (commit `d821611`). Enquanto a
-> migration não estiver no banco, a ficha e a lista divergem em sentido contrário ao de antes.
+> **Estado: FECHADO — a metade de tela E as duas migrations do par estão no banco.**
+> `AdminUserDetailView.tsx` já soma só dinheiro reconhecido (commit `d821611`), e o par
+> `20260823000000`+`20260824000000` **já foi aplicado**. Conferido em 20/08/2026 por
+> **comportamento**, não pelo ledger: o `pg_get_functiondef` das funções vivas traz o filtro
+> `payment_status IN ('pago', 'pago_apos_expirar')` **2 vezes** em `get_admin_customers_paged`
+> e **1 vez** em `get_segmented_push_targets` — exatamente a contagem de cada arquivo
+> descontando as linhas de comentário (3−1 e 3−2). A redação anterior deste bloco dizia que a
+> metade de banco seguia só "escrita e provada", e envelheceu; ficha e lista **não** divergem.
 >
 > 🔴 **A `20260823000000` e a `20260824000000` são um PAR e entram JUNTAS, nunca separadas.**
 > A `20260823000000` reescreve `get_admin_customers_paged` (a lista de Clientes); a

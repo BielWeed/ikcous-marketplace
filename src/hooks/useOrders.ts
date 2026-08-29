@@ -28,8 +28,17 @@ const validateStatusUpdate = (
       throw new Error(errorMsg);
     }
 
-    if (order && order.status !== "pending") {
-      const errorMsg = "Apenas pedidos pendentes podem ser cancelados";
+    // Regra do Gabriel (24/08/2026): o divisor e' se o produto SAIU, nao se
+    // foi pago. Nao enviado (pending/processing) e enviado (shipping) podem
+    // ser cancelados; entregue nao — produto entregue e' devolucao, outro
+    // assunto. Espelha a mesma trava do servidor
+    // (update_order_status_atomic, supabase/migrations/20260970000000_
+    // cancelamento_respeita_o_envio.sql).
+    if (
+      order &&
+      !["pending", "processing", "shipping"].includes(order.status)
+    ) {
+      const errorMsg = "Este pedido não pode mais ser cancelado";
       if (!silent) toast.error(errorMsg);
       throw new Error(errorMsg);
     }
@@ -206,6 +215,568 @@ export function escolherRecargaDeReconexao(deps: {
     );
 }
 
+/**
+ * Traduz a recusa crua da CRIAÇÃO do pedido (create_marketplace_order_v23/
+ * v24, supabase/migrations/20260821000200_cupom_sem_limite_e_ilimitado.sql)
+ * numa mensagem que quem está comprando entende. Exportada porque
+ * CheckoutView.tsx recebe o MESMO erro relançado por `createOrder` (abaixo)
+ * e precisa da MESMA tradução — duplicar aqui e lá divergiria assim que a
+ * RPC mudasse.
+ *
+ * Toda saída, fora do ramo P0001, é string ESTÁTICA: nome de coluna,
+ * restrição ou stack trace não pode chegar à tela. O erro completo segue
+ * vivo no console.error de quem chamou.
+ *
+ * O DEFAULT FALHA FECHADO (achado B da revisão de 22/08/2026): só o que
+ * está COMPROVADAMENTE revertido pode dizer "tente de novo" sem ressalva.
+ * Tudo o mais herda a ressalva de duplicidade, inclusive causa nunca vista
+ * antes.
+ *
+ * A REGRA POR FORMATO, não por lista (achado da revisão de 22/08/2026,
+ * A2-fix2 — substitui a lista fixa de 5 códigos que existia aqui antes):
+ *
+ *   `code` no formato de SQLSTATE — 5 caracteres, cada um dígito ou letra
+ *   maiúscula ([0-9A-Z]{5}) — é o formato de TODO código de erro que o
+ *   próprio Postgres emite (RAISE com ERRCODE explícito ou implícito,
+ *   deadlock, violação de restrição, timeout, esgotamento de conexão etc.),
+ *   catalogado ou não. Medido nas RPCs vivas create_marketplace_order_v23/
+ *   v24 com sonda somente-leitura (22/08/2026): 0 bloco EXCEPTION WHEN, 10
+ *   RAISE EXCEPTION POR FUNÇÃO (20 somando as duas), 0 USING ERRCODE — ou
+ *   seja, cada chamada de RPC do PostgREST é UMA transação sem nada que
+ *   engula erro no meio do caminho.
+ *   Logo, se um erro com SQLSTATE chega ao cliente, é porque o statement
+ *   abortou dentro do Postgres, e aborto de statement reverte a transação
+ *   inteira. O pedido NÃO foi criado — sem precisar manter uma lista fixa
+ *   que fica sub-inclusiva a cada causa nova (deadlock 40P01, lock timeout
+ *   55P03, violação de restrição 23505/23514/23502, conexões esgotadas
+ *   53300, e qualquer SQLSTATE ainda não visto).
+ *
+ *   Duas exceções tratadas à parte, porque NÃO são SQLSTATE:
+ *   - "P0001" (RAISE EXCEPTION dentro da própria função — endereço
+ *     inválido, quantidade inválida, produto indisponível, estoque
+ *     insuficiente, entrega local fora da faixa, cotação de frete expirada,
+ *     cupom inválido/expirado, valores do pedido mudaram): TEM formato
+ *     SQLSTATE, mas ganha tratamento especial porque a própria função
+ *     escreve o texto já em português — usa-se o texto real em vez da
+ *     frase genérica.
+ *   - "PGRST202" (PostgREST: função não existe no cache de schema),
+ *     "PGRST301" (JWT inválido ou expirado) e "PGRST302" (papel anônimo
+ *     desabilitado, sem sessão): nenhum tem formato SQLSTATE (8 caracteres,
+ *     prefixo do PostgREST) — são código do PostgREST, e os três acontecem
+ *     na fase de autenticação, ANTES de qualquer requisição chegar ao
+ *     Postgres (confirmado na doc oficial:
+ *     docs.postgrest.org/en/v12/references/errors.html) — a chamada nunca
+ *     chega a invocar a função.
+ *
+ *   QUALQUER OUTRA COISA — code ausente ou vazio (falha de rede: "Failed to
+ *   fetch", formato real de postgrest-js quando o fetch lança; ou resposta
+ *   que não é JSON — 502/504/524 de gateway, que postgrest-js devolve como
+ *   `{ message: <corpo> }` SEM `code` nenhum), ou code que não bate o
+ *   formato (minúsculo, tamanho diferente de 5 — não pode ter vindo do
+ *   Postgres) — NÃO permite concluir que o pedido foi criado ou não.
+ *   Mandar "tente de novo" sem ressalva aqui é o que duplica pedido —
+ *   estoque debitado duas vezes, cupom de uso único consumido duas vezes.
+ */
+const FORMATO_SQLSTATE = /^[0-9A-Z]{5}$/;
+// Códigos do PostgREST (nunca SQLSTATE) sobre os quais se pode afirmar que a
+// chamada nem chegou a invocar a função no Postgres — ver docstring acima.
+const CODIGOS_POSTGREST_REVERTIDO_COMPROVADO = new Set([
+  "PGRST202",
+  "PGRST301",
+  "PGRST302",
+]);
+
+export const mensagemAmigavelErroPedido = (error: unknown): string => {
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
+  const textoOriginal =
+    typeof detalhes.message === "string" ? detalhes.message : "";
+
+  if (codigo === "P0001" && textoOriginal) {
+    return textoOriginal;
+  }
+
+  if (
+    CODIGOS_POSTGREST_REVERTIDO_COMPROVADO.has(codigo) ||
+    FORMATO_SQLSTATE.test(codigo)
+  ) {
+    return "Não foi possível criar seu pedido agora. Tente novamente em instantes.";
+  }
+
+  // DEFAULT FALHA FECHADO: code ausente, vazio, ou fora do formato de
+  // SQLSTATE não permite concluir que o pedido NÃO foi criado. Isso já
+  // cobre falha de rede sozinho — postgrest-js nunca preenche `code` para
+  // erro de fetch ou gateway (ver node_modules/@supabase/postgrest-js/
+  // dist/index.cjs:359 e :432) — então não há ramo separado para detectar
+  // "failed to fetch" por texto: ele cairia aqui de qualquer forma, e um
+  // ramo próprio só duplicaria a mesma frase (achado A da revisão de
+  // 22/08/2026 — o ramo antigo devolvia byte a byte o mesmo texto deste
+  // default).
+  return "Não conseguimos confirmar se o pedido foi enviado. Verifique se ele já apareceu antes de tentar de novo.";
+};
+
+/**
+ * Traduz a recusa crua da CONSULTA do pedido por código (get_orders_by_
+ * otp_v1) para quem está acompanhando sem conta.
+ *
+ * 🔴 ESTADO DE BANCO NÃO MORA EM COMENTÁRIO DE CÓDIGO. Várias migrations
+ * definem esta função ao longo do tempo (a mais recente delas foi escrita
+ * para acrescentar `payment_status` ao JSON — ver `src/lib/mappers.ts:246`
+ * — e o nome do arquivo descreve o que ela resolve: rastreio por código
+ * volta a mostrar o pagamento). QUAL migration está VIVA no banco muda a
+ * qualquer hora — inclusive enquanto este arquivo continua aberto na sua
+ * tela, se outra frente aplicar uma migration nesse meio-tempo. Antes de
+ * copiar QUALQUER corpo desta função para escrever uma migration nova,
+ * confirme a definição viva de novo — não confie no que uma versão antiga
+ * deste comentário disse:
+ *
+ *   1. Sonda somente-leitura (é o corpo que ela devolver que manda, nunca
+ *      o que está escrito aqui):
+ *      `BEGIN READ ONLY; SELECT pg_get_functiondef(oid) FROM pg_proc
+ *      WHERE proname = 'get_orders_by_otp_v1'; ROLLBACK;`
+ *   2. Confirme que nenhuma migration mais nova sobre esta função está
+ *      pendente: `node scripts/db-reconcilia-ledger.cjs
+ *      --listar-pendentes`.
+ *
+ * Copiar o corpo errado faz um `CREATE OR REPLACE` apagar `payment_status`
+ * do JSON de novo — a tela de rastreio por código volta a mostrar todo
+ * pedido como se não houvesse cobrança nenhuma, inclusive um já pago.
+ *
+ * Essa função NUNCA dá RAISE: toda recusa de código (errado, expirado,
+ * bloqueado por excesso de tentativas) já volta em português dentro de
+ * `data.ok === false`, tratada ANTES de qualquer coisa chegar aqui (ver
+ * fetchOrdersByOtp abaixo). Ou seja: tudo que cai nesta função é falha em
+ * CHEGAR à verificação — nunca o código em si —, e usar "Código inválido ou
+ * expirado" para essas causas mentiria e mandaria a pessoa pedir um código
+ * novo à toa.
+ */
+export const mensagemAmigavelErroOtp = (error: unknown): string => {
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
+  const textoOriginal =
+    typeof detalhes.message === "string" ? detalhes.message : "";
+  const pista = `${codigo} ${textoOriginal}`.toLowerCase();
+
+  if (
+    pista.includes("failed to fetch") ||
+    pista.includes("networkerror") ||
+    pista.includes("network request failed") ||
+    pista.includes("load failed")
+  ) {
+    return "Sem conexão com o servidor. Verifique sua internet e tente novamente.";
+  }
+
+  return "Não conseguimos verificar seu código agora. Tente novamente em instantes.";
+};
+
+/**
+ * Traduz a recusa crua de `update_order_status_atomic` (RPC chamada por
+ * `updateOrderStatus`, abaixo — supabase/migrations/20260901000000_
+ * devolver_uso_de_cupom_ao_desfazer_pedido.sql tem a definição viva) para o
+ * que quem mexe no pedido lê na tela.
+ *
+ * Confirmado na fonte, não presumido: a função inteira não tem NENHUM
+ * `RAISE ... USING ERRCODE` — todo `RAISE EXCEPTION` dela (sessão ausente,
+ * pedido não encontrado, permissão negada, transição de status não
+ * permitida) sai com o SQLSTATE padrão do plpgsql (`P0001`, raise_exception)
+ * e texto JÁ em português, iguais aos de `mensagemAmigavelErroPedido` acima.
+ * Por isso o mesmo tratamento: `code === "P0001"` é a RPC falando por conta
+ * própria — passa direto.
+ *
+ * Sem a ressalva de duplicidade de `mensagemAmigavelErroPedido`: repetir uma
+ * atualização de status não duplica efeito nenhum. A própria função é
+ * idempotente na única operação com efeito colateral (a restituição de
+ * estoque do cancelamento só roda `IF v_old_status IS DISTINCT FROM
+ * 'cancelled'` — reenviar o mesmo cancelamento não devolve estoque duas
+ * vezes), então "tente novamente" é seguro para QUALQUER causa que não seja
+ * P0001, sem precisar distinguir formato de SQLSTATE.
+ */
+export const mensagemAmigavelErroAtualizacaoStatus = (
+  error: unknown,
+): string => {
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
+  const textoOriginal =
+    typeof detalhes.message === "string" ? detalhes.message : "";
+
+  // `validateStatusUpdate` (topo deste arquivo) lança ANTES de qualquer
+  // chamada de rede, com uma das duas frases fixas abaixo — já em
+  // português, escritas pelo próprio app. Ela já dispara o SEU PRÓPRIO
+  // `toast.error` com o mesmo texto (quando `!silent`); sem este
+  // passthrough, este catch trocaria essa segunda leitura por uma frase
+  // genérica diferente, o que pareceria dois erros DIFERENTES para o mesmo
+  // clique. Comparação por texto exato — e não "sem `code`" — porque uma
+  // falha de rede pura (ex.: `TypeError: Failed to fetch`) também chega sem
+  // `code`, e essa SIM precisa cair no genérico.
+  if (
+    textoOriginal === "Usuários só podem cancelar pedidos" ||
+    textoOriginal === "Este pedido não pode mais ser cancelado"
+  ) {
+    return textoOriginal;
+  }
+
+  if (codigo === "P0001" && textoOriginal) {
+    return textoOriginal;
+  }
+
+  return "Não foi possível atualizar o status do pedido agora. Tente novamente em instantes.";
+};
+
+/**
+ * Funde a linha que o realtime do Supabase entrega em `payload.new` sobre o
+ * pedido que já está em memória (PEDIDO-04, achado da auditoria de
+ * 26/08/2026). Extraída do corpo de `handleRealtimeUpdate` só para poder ser
+ * testada sem montar o WebSocket inteiro — mesma ideia de
+ * `escolherRecargaDeReconexao`, acima.
+ *
+ * O DEFEITO QUE ISTO SUBSTITUI: `handleRealtimeUpdate` remontava o pedido com
+ * uma lista fechada de campos (`status`, `trackingCode` — confirmado em
+ * `git show HEAD:src/hooks/useOrders.ts` antes desta correção) escrita à mão.
+ * O realtime do Postgres entrega a LINHA INTEIRA em `payload.new` — não um diff — e
+ * `payment_status` (e `total`) nunca estavam na lista. Resultado: o PIX
+ * confirmava, o webhook gravava `payment_status = 'pago'` no banco, e quem
+ * estava com a tela "Meus Pedidos" aberta continuava vendo "Aguardando
+ * pagamento" até sair e voltar — e essa mesma leitura errada era regravada no
+ * cache do localStorage, então a PRÓXIMA abertura também nascia errada.
+ *
+ * A CORREÇÃO NÃO É ACRESCENTAR `payment_status` À LISTA — é eliminar a lista.
+ * `mapOrderFromDB` (src/lib/mappers.ts) já cobre TODOS os campos da própria
+ * linha de `marketplace_orders`, e é o MESMO mapeador que `handleRealtimeInsert`
+ * (logo acima) já usa para o INSERT. Uma lista escrita à mão é a causa raiz;
+ * trocar de lista mantém a causa viva para o próximo campo que alguém
+ * esquecer.
+ *
+ * O QUE FALTA NA LINHA DO REALTIME, E POR QUE ISTO PRECISA DE CUIDADO: o
+ * realtime entrega só a linha de `marketplace_orders`, sem as junções que
+ * `fetchUserOrders`/`loadOrders`/`handleRealtimeInsert` pedem (`items` via
+ * `marketplace_order_items`, `address` via `user_addresses`). Sem essas
+ * junções, `mapOrderFromDB` devolveria `items: []` — apagando da tela os
+ * itens de um pedido que já existia — E, para cliente LOGADO com endereço
+ * salvo, o endereço de entrega inteiro em branco: `create_marketplace_order_
+ * v23`/`v24` gravam `customer_data.address = null` nesse caso (`supabase/
+ * migrations/20260960000000_variacao_obrigatoria_no_servidor.sql:344-350`),
+ * e `typeof null === "object"` faz `mapOrderFromDB` cair nesse `null` (que é
+ * falsy) e depois no `customer_data` cru, que não tem `street`/`number`/etc.
+ *
+ * ACHADO BLOQUEANTE DA REVISÃO DESTA CORREÇÃO (26/08/2026): a primeira
+ * versão só protegia `items`, e essa mesma correção passou a zerar o
+ * "Endereço de Entrega" na ficha de pedido aberta a cada atualização em
+ * tempo real — o PIX confirmando, ou a própria lojista mudando o status.
+ * `CamposPreservadosDaMemoria`, abaixo, é a resposta: os campos que
+ * `mapOrderFromDB` deriva de uma junção que a linha do realtime nunca traz
+ * saem do PEDIDO EM MEMÓRIA, nunca do resultado de `mapOrderFromDB(linhaNova)`.
+ *
+ * ⚠️ ISTO NÃO GENERALIZA, e é importante não acreditar que generaliza: o tipo
+ * é um `Pick` de DOIS NOMES ESCRITOS À MÃO. Se alguém acrescentar uma junção
+ * nova ao select (por exemplo `coupon:coupons(*)`), mapeá-la em
+ * `mapOrderFromDB` e NÃO vier aqui, o código compila, os testes passam, e cada
+ * atualização em tempo real apaga esse campo da tela aberta e grava o apagado
+ * no cache do aparelho. Não há trava automática para o campo ESQUECIDO —
+ * a checagem do TypeScript só pega campo a mais ou a menos no literal.
+ * Quem acrescentar junção tem de vir aqui na mão. Isto não
+ * perde nenhuma atualização legítima: nem `customer_name` nem `customer_data`
+ * (as duas colunas que alimentam `customer`) são reescritas por RPC nenhuma
+ * depois da criação do pedido — confirmado varrendo `supabase/` inteiro por
+ * `customer_data\s*=`/`customer_name\s*=` fora de INSERT/jsonb_build_object
+ * (0 ocorrências). `items` já tinha a mesma garantia, e é por isso que os dois
+ * podem ser tratados igual aqui.
+ */
+// Os dois campos abaixo — `items` e `customer` — são os campos preservados da
+// memória de que o docstring acima fala. "Derivado de JOIN" é o nome do RISCO,
+// não da fonte: `customer` também carrega `customer_name` e `customer_data`,
+// que são COLUNAS de `marketplace_orders`, não junção nenhuma. Preservá-las
+// aqui é seguro pelo mesmo motivo que `items` é — nenhuma RPC as reescreve
+// depois da criação do pedido (varredura no docstring acima: 0 ocorrências de
+// `customer_data\s*=`/`customer_name\s*=` fora de INSERT/jsonb_build_object)
+// —, não porque tenham vindo de um JOIN de verdade.
+type CamposPreservadosDaMemoria = Pick<Order, "items" | "customer">;
+
+export function mesclarAtualizacaoRealtime(
+  pedidoAtual: Order,
+  linhaNova: Parameters<typeof mapOrderFromDB>[0],
+): Order {
+  const mapeado = mapOrderFromDB(linhaNova);
+  // Escritos por nome, não num laço percorrendo uma lista de chaves: a
+  // versão anterior (`for (const campo of [...]) resultado[campo] =
+  // pedidoAtual[campo]`) acessava os dois objetos por chave vinda de
+  // variável, e isso é exatamente o padrão que `security/detect-object-
+  // injection` existe para pegar — disparava uma vez na leitura e outra na
+  // escrita. Só há dois campos hoje: se um terceiro precisar da mesma
+  // proteção, adicione-o AQUI e no tipo `CamposPreservadosDaMemoria` acima —
+  // o literal do objeto abaixo tem checagem de excesso/falta do TypeScript
+  // contra esse tipo, então campo sobrando ou faltando vira erro de build.
+  const preservados: CamposPreservadosDaMemoria = {
+    items: pedidoAtual.items,
+    customer: pedidoAtual.customer,
+  };
+  return { ...pedidoAtual, ...mapeado, ...preservados };
+}
+
+/**
+ * Deriva o novo valor de `cancelledAfterShipping` para o UPDATE OTIMISTA de
+ * `updateOrderStatus` (achado da Task 5 do plano de cancelamento-com-
+ * estorno, 26/08/2026) — espelha, do lado do cliente e SEM esperar a
+ * resposta do servidor, a regra gravada pela migration `20260970000000` em
+ * `update_order_status_atomic`: só vira `true` quando o pedido está sendo
+ * cancelado agora e o status ANTERIOR (antes desta chamada) era `shipping`.
+ * Cancelar a partir de `pending`/`processing` mantém `false` — o produto
+ * nunca saiu, não há nada para "esperar voltar". Fora do caminho de
+ * cancelamento, o valor atual é preservado tal como está (o campo é
+ * histórico e nunca volta a `false` sozinho, ver comentário da coluna na
+ * migration).
+ */
+export function derivarCancelledAfterShipping(
+  statusAnterior: OrderStatus,
+  novoStatus: OrderStatus,
+  valorAtual: boolean,
+): boolean {
+  if (novoStatus === "cancelled" && statusAnterior === "shipping") {
+    return true;
+  }
+  return valorAtual;
+}
+
+/**
+ * Estado da conexão realtime do canal de pedidos (auditoria de 26/08/2026,
+ * achado do selo "Operações ao Vivo"/"Moderação Ativa" no painel). O
+ * `channel.subscribe` abaixo (dentro de `useOrders`, seção "Realtime
+ * subscription for orders") já tratava `SUBSCRIBED`, `CHANNEL_ERROR`,
+ * `TIMED_OUT` e `CLOSED` — só que NENHUM dos quatro ramos tinha `setState`:
+ * o handler falava só com `console.*` e `handleReconnect()`. Sem estado
+ * exportado, nenhuma tela tinha como saber se o canal estava vivo — o selo
+ * não estava mal ligado, ele não tinha a que se ligar.
+ *
+ * QUATRO estados, de propósito — nunca um booleano. Colapsar "ainda não sei"
+ * em "não conectado" foi o que produziu metade dos selos que mentem nesta
+ * auditoria: um selo que mostra "desconectado" durante o primeiro segundo de
+ * toda abertura é o MESMO defeito com outro sinal.
+ *
+ * - "conectando": o efeito de inscrição acabou de montar e NENHUMA resposta
+ *   do canal chegou ainda — nem sucesso, nem erro. É o "ainda não sei", e
+ *   dura só o instante inicial de toda abertura.
+ * - "conectado": o último status que o canal reportou foi "SUBSCRIBED".
+ * - "reconectando": o canal caiu (CHANNEL_ERROR/TIMED_OUT/CLOSED, ou uma
+ *   falha ao criar o canal) e a retentativa automática já existente
+ *   (`handleReconnect`, INALTERADA por esta mudança) está em curso. Visível
+ *   em vez de silenciosa.
+ * - "desconectado": NENHUMA inscrição está ativa para esta instância do
+ *   hook — `enabled === false` ou sem usuário logado. Nunca usado para "caiu
+ *   e está tentando de novo"; esse caso é sempre "reconectando", porque o
+ *   hook nunca desiste sozinho — `handleReconnect` tenta para sempre.
+ */
+export type EstadoConexaoRealtime =
+  | "conectando"
+  | "conectado"
+  | "reconectando"
+  | "desconectado";
+
+/**
+ * Traduz o status cru que o supabase-js entrega ao callback de
+ * `channel.subscribe` no `EstadoConexaoRealtime` que a UI pode mostrar sem
+ * mentir. Extraída para ser testável sem montar o WebSocket — mesma ideia de
+ * `escolherRecargaDeReconexao` e `mesclarAtualizacaoRealtime`, acima.
+ *
+ * Só "SUBSCRIBED" vira "conectado". QUALQUER outra coisa — CHANNEL_ERROR,
+ * TIMED_OUT, CLOSED, e qualquer status futuro do SDK que este código ainda
+ * não conheça — vira "reconectando", porque o handler que chama esta função
+ * SEMPRE aciona `handleReconnect()` para os três primeiros. "desconectado"
+ * nunca sai daqui: é reservado para quando NENHUMA inscrição está ativa (ver
+ * o docstring de `EstadoConexaoRealtime`, acima).
+ */
+export function proximoEstadoConexao(
+  statusCanal: string,
+): EstadoConexaoRealtime {
+  if (statusCanal === "SUBSCRIBED") return "conectado";
+  return "reconectando";
+}
+
+interface EstadoConexaoCompartilhado {
+  status: EstadoConexaoRealtime;
+  listeners: Set<(status: EstadoConexaoRealtime) => void>;
+}
+
+/**
+ * Guarda o estado de conexão POR CANAL (`channelId`, a mesma chave de
+ * `globalOrderSubscriptions`, acima) — nunca por instância do hook. O
+ * WebSocket real é compartilhado entre todas as instâncias que apontam para
+ * o mesmo canal (duas telas montadas ao mesmo tempo, ou várias na mesma
+ * página); se o estado fosse por instância, cada uma reagiria à própria
+ * cópia e divergiria da real (item 5 do pedido).
+ *
+ * Mapa SEPARADO de `globalOrderSubscriptions` de propósito: aquele guarda o
+ * canal e os callbacks de EVENTO (INSERT/UPDATE/DELETE); este guarda só o
+ * estado de CONEXÃO. Separar os dois deixa esta parte testável sem montar
+ * `SharedSubscription` inteira, e não arrisca o resto do fluxo de evento
+ * (`mesclarAtualizacaoRealtime` e vizinhos), que acabaram de sair de
+ * revisão.
+ */
+const globalConnectionStatus = new Map<string, EstadoConexaoCompartilhado>();
+
+/**
+ * Atualiza o estado de conexão de um canal e avisa todas as instâncias
+ * inscritas nele. Idempotente por design (item "cuidado com o custo de
+ * render" do pedido): se o status novo é IGUAL ao que já estava, não
+ * notifica ninguém. Sem isto, uma rede ruim que gera CHANNEL_ERROR repetido
+ * chamaria `setState` a cada tentativa — mesmo o estado visível
+ * ("reconectando") nunca mudando — provocando re-render em cascata numa
+ * tela com lista grande.
+ */
+export function definirStatusConexao(
+  channelId: string,
+  status: EstadoConexaoRealtime,
+): void {
+  const atual = globalConnectionStatus.get(channelId);
+  if (atual) {
+    if (atual.status === status) return;
+    atual.status = status;
+    for (const listener of atual.listeners) {
+      // Um listener que lance não pode interromper a notificação dos
+      // seguintes — hoje só há um por instância do hook (`setConnectionStatus`)
+      // e ele não lança, mas duas telas montadas ao mesmo tempo já são dois
+      // listeners no MESMO Set.
+      try {
+        listener(status);
+      } catch (e) {
+        console.error("[Realtime] Order connection status listener error:", e);
+      }
+    }
+    return;
+  }
+  globalConnectionStatus.set(channelId, { status, listeners: new Set() });
+}
+
+/**
+ * Inscreve uma instância do hook nas mudanças de estado de um canal. Devolve
+ * o status ATUAL (para a instância que monta depois de outra já estar
+ * conectada não passar pelo "conectando" à toa) e uma função para cancelar a
+ * inscrição no cleanup do efeito.
+ */
+export function assinarStatusConexao(
+  channelId: string,
+  listener: (status: EstadoConexaoRealtime) => void,
+): { statusAtual: EstadoConexaoRealtime; cancelar: () => void } {
+  let entry = globalConnectionStatus.get(channelId);
+  if (!entry) {
+    entry = { status: "conectando", listeners: new Set() };
+    globalConnectionStatus.set(channelId, entry);
+  }
+  entry.listeners.add(listener);
+  const entryFinal = entry;
+  return {
+    statusAtual: entryFinal.status,
+    cancelar: () => entryFinal.listeners.delete(listener),
+  };
+}
+
+/**
+ * Decide se ESTE `channel.subscribe` callback ainda pode escrever no estado
+ * de conexão compartilhado — condicionado à IDENTIDADE DO CANAL (é ele que
+ * está registrado agora para este `channelId`?), NUNCA ao `isUnmounting` da
+ * instância do hook que o criou.
+ *
+ * ACHADO B1 DA REVISÃO DE 26/08/2026: a versão anterior guardava a escrita
+ * atrás de `if (isUnmounting) return`, onde `isUnmounting` é uma flag POR
+ * INSTÂNCIA, fechada sobre a execução do efeito que criou o canal. O canal
+ * físico SOBREVIVE ao desmonte de quem o criou — o remount reaproveita via
+ * `refCount++` (ramo `existing` de `setupRealtime`, abaixo) e NUNCA chama
+ * `channel.subscribe` de novo. O callback registrado na criação continua
+ * sendo a ÚNICA fonte de status daquele canal. Guardar por `isUnmounting`
+ * da instância CRIADORA congelava o estado para sempre assim que ela
+ * desmontava, mesmo com outra instância viva usando o MESMO canal —
+ * cliente troca "Meus Pedidos" pela ficha de um pedido (mesmo `channelId`),
+ * entra num elevador, o socket cai: selo verde numa tela morta,
+ * indefinidamente.
+ *
+ * A guarda certa é por CANAL, não por instância: só recusa a escrita quando
+ * o canal desta execução já foi SUBSTITUÍDO por um canal novo no mapa
+ * compartilhado (teardown completo seguido de recriação) — nesse caso sim,
+ * o callback é ruído de um canal morto e não pode sobrescrever o estado do
+ * canal atual.
+ *
+ * `subscriptions` é passado explicitamente (em vez de ler
+ * `globalOrderSubscriptions` direto) para poder ser testado sem montar o
+ * canal real do Supabase.
+ */
+export function podeEscreverStatusDoCanal(
+  channelId: string,
+  channel: unknown,
+  subscriptions: Map<string, { channel: unknown }>,
+): boolean {
+  return subscriptions.get(channelId)?.channel === channel;
+}
+
+/**
+ * Remove a entrada de um canal do mapa de status compartilhado. Chamado do
+ * teardown DEFINITIVO — depois do debounce de 4s, quando o `refCount`
+ * continua em zero e o canal é mesmo removido (não só um remount que o
+ * reaproveitou).
+ *
+ * ACHADO C1 DA REVISÃO DE 26/08/2026: nenhuma referência ao mapa fazia
+ * `delete`. Depois do último canal cair e o debounce de limpeza rodar, a
+ * entrada ficava parada no ÚLTIMO status conhecido — "conectado", na
+ * maioria dos casos, porque é o estado que mais tempo passa estável. Um
+ * remount que aconteça DEPOIS dessa limpeza (ex.: cliente sai de "Meus
+ * Pedidos", passa 30s numa página de produto, perde a rede, volta) lia esse
+ * verde vencido no PRIMEIRO render, antes de qualquer canal novo existir —
+ * e ficava assim até o SDK esgotar o próprio tempo (10s por padrão).
+ */
+export function limparStatusConexao(channelId: string): void {
+  globalConnectionStatus.delete(channelId);
+}
+
+/**
+ * Decide o que fazer com uma mensagem recebida no `BroadcastChannel`
+ * compartilhado entre abas, para o canal `channelId` desta instância.
+ * Extraída para ser testável sem `BroadcastChannel` real — mesma ideia de
+ * `escolherRecargaDeReconexao`, acima.
+ *
+ * ACHADO C2 DA REVISÃO DE 26/08/2026: o ramo NÃO-LÍDER nunca chamava
+ * `definirStatusConexao` — a semente ficava em "conectando" para sempre,
+ * mesmo essa aba recebendo atualização de PEDIDO de verdade pelo mesmo
+ * `BroadcastChannel` (é o `order_change` que o líder já emite). Com zero
+ * consumidor do campo isso era acidentalmente inofensivo; com telas do
+ * painel lendo o campo, um selo que nunca sai de "conectando…" ensina a
+ * pessoa a ignorar TODOS os selos, inclusive o da aba líder, onde ele está
+ * certo e importa. A saúde do socket da aba não-líder É a saúde do socket
+ * do líder — o broadcast dele é a ÚNICA fonte dela.
+ *
+ * Mensagem de tipo desconhecido (`channelId` de outra aba, ou um `type`
+ * que esta versão do app ainda não conhece) é ignorada de propósito — não
+ * pode quebrar uma aba rodando versão diferente do app.
+ */
+export function processarMensagemBroadcast(
+  mensagem: {
+    type?: unknown;
+    channelId?: unknown;
+    payload?: unknown;
+    status?: unknown;
+  },
+  channelId: string,
+  isLeader: boolean,
+  acoes: {
+    onEvent: (payload: unknown) => void;
+    definirStatus: (channelId: string, status: EstadoConexaoRealtime) => void;
+    responderStatusAtual: () => void;
+  },
+): void {
+  if (mensagem?.channelId !== channelId) return;
+
+  if (mensagem.type === "order_change") {
+    // O líder já processou o evento direto do canal real — o broadcast é
+    // só para as OUTRAS abas.
+    if (!isLeader) acoes.onEvent(mensagem.payload);
+  } else if (mensagem.type === "conn_status") {
+    // O líder é a FONTE deste campo, nunca o destino: ele já sabe o status
+    // real do próprio socket.
+    if (!isLeader && typeof mensagem.status === "string") {
+      acoes.definirStatus(channelId, mensagem.status as EstadoConexaoRealtime);
+    }
+  } else if (mensagem.type === "conn_status_request") {
+    // Só o líder tem o socket para responder por.
+    if (isLeader) acoes.responderStatusAtual();
+  }
+}
+
 export function useOrders(
   enabled = true,
   isAdmin = false,
@@ -236,6 +807,13 @@ export function useOrders(
   const [totalOrders, setTotalOrders] = useState(() => {
     return isAdmin ? cachedAdminTotalOrders : 0;
   });
+  // Estado da conexão realtime exposto para a UI — ver o docstring de
+  // `EstadoConexaoRealtime`, acima. "conectando" é o valor inicial correto
+  // mesmo quando `enabled` é false: o efeito de inscrição, logo abaixo,
+  // corrige para "desconectado" no primeiro render quando não há inscrição
+  // nenhuma para fazer.
+  const [connectionStatus, setConnectionStatus] =
+    useState<EstadoConexaoRealtime>("conectando");
 
   // Synchronously load cache on mount or when user changes
   useEffect(() => {
@@ -435,6 +1013,122 @@ export function useOrders(
     [loadOrders],
   );
 
+  /**
+   * Referência PRÓPRIA de pedidos cancelados — Task 5, BLOQUEIA 1 da
+   * revisão de 26/08/2026: os baldes de mercadoria ("esperando o produto
+   * voltar") e de dinheiro ("estorno devido") em AdminOrdersView.tsx
+   * precisam enxergar TODO pedido cancelado da loja, não só a página que o
+   * filtro/busca/período/paginação da tela principal trouxe. `filter` da
+   * tela nasce "open" (exclui `cancelled`) — se os baldes dependessem de
+   * `orders`, o painel nunca montaria no estado padrão da tela.
+   *
+   * Consulta PRÓPRIA, com filtro FIXO (`p_status: "cancelled"`), sem busca
+   * e sem período — a mesma RPC `get_admin_orders_paged`, com um
+   * `AbortController` independente do de `loadOrders` (cancelar uma
+   * consulta não pode abortar a outra). Pagina até cobrir `total_count`:
+   * uma única chamada com `p_page_size` fixo perderia pedido cancelado além
+   * do primeiro lote assim que a loja passar dos ~72 de hoje (achado
+   * 20/08/2026, docstring de `filter` acima).
+   */
+  const cancelledOrdersAbortControllerRef = useRef<AbortController | null>(
+    null,
+  );
+  const [pedidosCancelados, setPedidosCancelados] = useState<Order[]>([]);
+  const [carregandoPedidosCancelados, setCarregandoPedidosCancelados] =
+    useState(false);
+  /**
+   * Achados B e D da revisão de 26/08/2026 (rodada 4, BLOQUEIA): erro
+   * engolido pela RPC (o `catch` abaixo — SEM toast e sem propagar, isso
+   * continua certo, não pode derrubar a lista principal) e truncagem pelo
+   * teto de páginas (`MAX_PAGES`, abaixo — o teto em si está certo, não foi
+   * mexido) têm o MESMO efeito na tela: `pedidosCancelados` fica menor que
+   * a realidade. Sem sinal nenhum, os dois containers de
+   * AdminOrdersView.tsx (que só renderizam com `lista.length > 0`)
+   * desaparecem exatamente como desapareceriam se não houvesse pedido
+   * nenhum pendente — a lojista lia "nada pendente" quando a verdade era
+   * "não sei". Este flag é a diferença entre as duas leituras.
+   */
+  const [pedidosCanceladosIncompleto, setPedidosCanceladosIncompleto] =
+    useState(false);
+
+  const fetchPedidosCancelados = useCallback(async () => {
+    if (!enabled) return [];
+
+    if (cancelledOrdersAbortControllerRef.current) {
+      cancelledOrdersAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    cancelledOrdersAbortControllerRef.current = controller;
+    const signal = controller.signal;
+
+    const PAGE_SIZE = 200;
+    // Teto de segurança contra loop sem fim se `total_count` vier
+    // inconsistente — não contra loja real: 25 * 200 = 5000 pedidos
+    // cancelados.
+    const MAX_PAGES = 25;
+
+    setCarregandoPedidosCancelados(true);
+    try {
+      let page = 0;
+      let acumulado: Order[] = [];
+      let totalCount = 0;
+      do {
+        const query = (supabase.rpc as any)("get_admin_orders_paged", {
+          p_search: "",
+          p_status: "cancelled",
+          p_start_date: "",
+          p_end_date: "",
+          p_page: page,
+          p_page_size: PAGE_SIZE,
+        }).abortSignal(signal);
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        const orderData = data?.data || [];
+        totalCount = Number(data?.total_count) || 0;
+        acumulado = acumulado.concat(
+          orderData.map((item: any) => mapOrderFromDB(item)),
+        );
+        page += 1;
+      } while (acumulado.length < totalCount && page < MAX_PAGES);
+
+      setPedidosCancelados(acumulado);
+      // Achado D: o teto de páginas pode encerrar o laço antes de cobrir
+      // `totalCount` — sem esta linha a lista truncada era gravada como se
+      // fosse a íntegra, e a tela não tinha como diferenciar as duas.
+      setPedidosCanceladosIncompleto(acumulado.length !== totalCount);
+      return acumulado;
+    } catch (err: any) {
+      if (
+        err?.name === "AbortError" ||
+        err?.message === "Fetch is aborted" ||
+        err?.message?.includes("aborted")
+      ) {
+        return [];
+      }
+      // SEM toast e sem propagar: esta falha NÃO pode derrubar a lista
+      // principal de pedidos, que é o trabalho do dia da lojista (BLOQUEIA
+      // 1 da revisão de 26/08/2026). O painel de mercadoria/estorno
+      // simplesmente fica sem dado até a próxima tentativa — mas passa a
+      // avisar que o que tem (ou a falta) pode não ser a realidade
+      // (achado B).
+      console.error("Error loading cancelled orders panel:", err);
+      setPedidosCanceladosIncompleto(true);
+      return [];
+    } finally {
+      // ANOTADO da revisão de 26/08/2026 (rodada 4): se uma chamada mais
+      // nova disparar antes desta terminar (dois cliques seguidos, ou o
+      // achado A desta rodada chamando de novo enquanto a 1ª ainda está em
+      // voo), este `finally` roda para a chamada VELHA e pode marcar
+      // `false` por cima do `true` que a chamada NOVA acabou de setar.
+      // Inofensivo enquanto `carregandoPedidosCancelados` continuar sem
+      // consumidor (nem AdminOrdersView.tsx, nem os testes leem este
+      // campo) — deixa de ser no dia em que alguém ligar um spinner nele.
+      setCarregandoPedidosCancelados(false);
+    }
+  }, [enabled]);
+
   const handleRealtimeInsert = useCallback(
     async (newPayload: any) => {
       const { data, error } = await supabase
@@ -471,11 +1165,7 @@ export function useOrders(
       setOrders((prev) => {
         const updated = prev.map((o) =>
           o.id === updatedOrder.id
-            ? {
-                ...o,
-                status: updatedOrder.status,
-                trackingCode: updatedOrder.tracking_code,
-              }
+            ? mesclarAtualizacaoRealtime(o, updatedOrder)
             : o,
         );
         if (user?.id && !isAdmin) {
@@ -484,8 +1174,17 @@ export function useOrders(
         }
         return updated;
       });
+      // Achado A da revisão de 26/08/2026 (rodada 4), mesma razão de
+      // `updateOrderStatus` acima — mas para a origem que NÃO passa por
+      // ele: o cliente cancela o próprio pedido, ou outra sessão admin
+      // cancela, e o evento chega por realtime com esta tela aberta. Sem
+      // isto, o card "Produtos que ainda não voltaram" também ficava
+      // parado até a lojista trocar de aba.
+      if (isAdmin && updatedOrder.status === "cancelled") {
+        fetchPedidosCancelados().catch(() => {});
+      }
     },
-    [isAdmin, user?.id],
+    [isAdmin, user?.id, fetchPedidosCancelados],
   );
 
   const handleRealtimeDelete = useCallback(
@@ -535,11 +1234,29 @@ export function useOrders(
 
   // Realtime subscription for orders
   useEffect(() => {
-    if (!enabled || !user?.id) return;
+    if (!enabled || !user?.id) {
+      // Nenhuma inscrição vai acontecer nesta montagem — "conectando" aqui
+      // mentiria que uma tentativa está em curso. Só o estado LOCAL desta
+      // instância muda: como `assinarStatusConexao` nunca chega a rodar
+      // neste ramo, nenhuma entrada é criada em `globalConnectionStatus`
+      // para este `channelId` por causa desta instância — não há o que
+      // `limparStatusConexao` (achado C1, acima) precise desfazer aqui.
+      setConnectionStatus("desconectado");
+      return;
+    }
 
     const channelId = isAdmin
       ? "admin_order_updates"
       : `order_updates_${user.id}`;
+    // Sincroniza esta instância com o estado JÁ conhecido do canal
+    // compartilhado (item 5 do pedido: duas telas montadas ao mesmo tempo
+    // têm que ler o MESMO estado, não uma cópia própria) e passa a ouvir
+    // as próximas mudanças.
+    const statusInscricao = assinarStatusConexao(
+      channelId,
+      setConnectionStatus,
+    );
+    setConnectionStatus(statusInscricao.statusAtual);
     let isUnmounting = false;
     let isConnecting = false;
     let retryCount = 0;
@@ -551,7 +1268,51 @@ export function useOrders(
       typeof window !== "undefined"
         ? new BroadcastChannel("ikcous_orders_realtime")
         : null;
+    // Listener ÚNICO, anexado independente de liderança (achado C2 da
+    // revisão de 26/08/2026 — antes só a aba NÃO-líder ouvia, e só para
+    // "order_change"). `processarMensagemBroadcast` decide o que fazer com
+    // cada tipo de mensagem; ver o docstring dela, acima, para o porquê de
+    // cada ramo.
+    // ⚠️ ACHADO B-1 DA REVISÃO DE 26/08/2026, TAPADO PELA METADE — leia antes
+    // de mexer. Este `bc` pertence à INSTÂNCIA e é fechado no teardown dela
+    // (`bc?.close()`, no fim deste efeito). Mas o CANAL de realtime sobrevive
+    // à instância que o criou (`refCount` + debounce de 4 s), e o callback de
+    // `channel.subscribe` registrado por ela continua rodando. Resultado: ele
+    // chamava `bc.postMessage` num canal já fechado, o que lança
+    // `InvalidStateError` — e o `realtime-js` invoca esse callback CRU, sem
+    // try/catch, então virava rejeição não tratada em produção. Isso disparava
+    // mesmo com ZERO consumidor do estado de conexão.
+    //
+    // Esta flag para o ESTOURO. Ela NÃO conserta o defeito: a mensagem
+    // continua não chegando na segunda aba, que segue mostrando o último
+    // status recebido. O conserto de verdade é dar ao canal de aviso o tempo
+    // de vida do CANAL, não o da instância — mesma lição do B1 anterior (o
+    // estado é por canal; quem publica o estado também tem de ser). Está
+    // documentado como ABERTO, e por isso o selo de "Operações ao Vivo" NÃO
+    // pode ser ligado a este campo ainda.
+    let bcFechado = false;
+    // Um ponto só de publicação: qualquer `postMessage` deste efeito passa
+    // por aqui, para que a flag acima não dependa de alguém lembrar dela.
+    const publicarNoBc = (mensagem: unknown) => {
+      if (bcFechado) return;
+      bc?.postMessage(mensagem);
+    };
     let bcListener: ((event: MessageEvent) => void) | null = null;
+    if (bc) {
+      bcListener = (event: MessageEvent) => {
+        processarMensagemBroadcast(event.data, channelId, isLeader, {
+          onEvent: (payload) => onEvent(payload),
+          definirStatus: definirStatusConexao,
+          responderStatusAtual: () => {
+            const atual = globalConnectionStatus.get(channelId)?.status;
+            if (atual) {
+              publicarNoBc({ type: "conn_status", channelId, status: atual });
+            }
+          },
+        });
+      };
+      bc.addEventListener("message", bcListener);
+    }
 
     const onEvent = async (payload: any) => {
       if (isUnmounting) return;
@@ -607,7 +1368,7 @@ export function useOrders(
           },
           async (payload) => {
             // Leader posts message to other tabs
-            bc?.postMessage({ type: "order_change", channelId, payload });
+            publicarNoBc({ type: "order_change", channelId, payload });
 
             const sub = globalOrderSubscriptions.get(channelId);
             if (sub) {
@@ -633,6 +1394,35 @@ export function useOrders(
 
         channel.subscribe(async (status: any, err?: any) => {
           isConnecting = false;
+
+          // B1 (revisão de 26/08/2026): a ESCRITA do estado vem ANTES da
+          // guarda de instância, condicionada à IDENTIDADE DO CANAL —
+          // `podeEscreverStatusDoCanal` (ver o docstring dela, acima) nunca
+          // olha `isUnmounting`. O canal físico sobrevive ao desmonte de
+          // quem o criou (remount reaproveita via refCount++, sem chamar
+          // `channel.subscribe` de novo), e este callback continua sendo a
+          // ÚNICA fonte de status daquele canal.
+          if (
+            podeEscreverStatusDoCanal(
+              channelId,
+              channel,
+              globalOrderSubscriptions,
+            )
+          ) {
+            const novoStatus = proximoEstadoConexao(status);
+            definirStatusConexao(channelId, novoStatus);
+            // C2: a aba NÃO-líder aprende a saúde deste socket pelo MESMO
+            // BroadcastChannel que já leva `order_change` — a saúde dela É
+            // a saúde do líder, porque este broadcast é a única fonte dela.
+            publicarNoBc({
+              type: "conn_status",
+              channelId,
+              status: novoStatus,
+            });
+          }
+
+          // Guarda por INSTÂNCIA, inalterada: só governa `handleReconnect`
+          // e `retryCount`, que continuam fora do escopo desta correção.
           if (isUnmounting) return;
 
           if (status === "SUBSCRIBED") {
@@ -667,6 +1457,10 @@ export function useOrders(
       } catch (err) {
         console.error("[Realtime] Orders critical setup error:", err);
         isConnecting = false;
+        // A criação do canal falhou antes de chegar a `channel.subscribe` —
+        // não há status do SDK para traduzir aqui, mas `handleReconnect()`,
+        // logo abaixo, vai tentar de novo do mesmo jeito.
+        definirStatusConexao(channelId, "reconectando");
         handleReconnect();
       }
     };
@@ -711,20 +1505,10 @@ export function useOrders(
       console.log(
         `[Realtime-Orders] Secondary tab listening via BroadcastChannel: ${channelId}`,
       );
-      if (bc) {
-        bcListener = (event: MessageEvent) => {
-          if (
-            event.data?.type === "order_change" &&
-            event.data?.channelId === channelId
-          ) {
-            console.log(
-              "[Realtime-Orders-Secondary] Received order change broadcast event",
-            );
-            onEvent(event.data.payload);
-          }
-        };
-        bc.addEventListener("message", bcListener);
-      }
+      // C2: pede ao líder o status ATUAL logo ao montar — sem isto, uma
+      // aba não-líder que abre e não vê nenhuma transição de status fica
+      // em "conectando" até a próxima queda do socket do líder.
+      publicarNoBc({ type: "conn_status_request", channelId });
     }
 
     const handleVisibilityChange = () => {
@@ -766,6 +1550,7 @@ export function useOrders(
 
     return () => {
       isUnmounting = true;
+      statusInscricao.cancelar();
       clearTimeout(reconnectTimeout);
       clearTimeout(visibilityTimeout);
       clearTimeout(onlineTimeout);
@@ -788,6 +1573,12 @@ export function useOrders(
               const currentSub = globalOrderSubscriptions.get(channelId);
               if (currentSub && currentSub.refCount <= 0) {
                 globalOrderSubscriptions.delete(channelId);
+                // C1: apaga a entrada do estado de conexão JUNTO com a do
+                // canal — sem isto ela ficava presa no último status
+                // conhecido, e o próximo remount lia um verde vencido antes
+                // de qualquer canal novo existir. Ver o docstring de
+                // `limparStatusConexao`, acima.
+                limparStatusConexao(channelId);
                 supabase.removeChannel(currentSub.channel).catch(() => {});
                 console.log(
                   `[Realtime] Cleaned up shared channel after debounce: ${channelId}`,
@@ -799,11 +1590,13 @@ export function useOrders(
             );
           }
         }
-      } else {
-        if (bcListener && bc) {
-          bc.removeEventListener("message", bcListener);
-        }
       }
+      // Listener único (achado C2) — removido independente de liderança,
+      // porque agora é anexado independente dela também.
+      if (bcListener && bc) {
+        bc.removeEventListener("message", bcListener);
+      }
+      bcFechado = true;
       bc?.close();
     };
   }, [enabled, user?.id, isAdmin, isLeader]);
@@ -830,6 +1623,21 @@ export function useOrders(
           if (o.id === orderId) {
             const updatedOrder = Object.assign({}, o);
             updatedOrder.status = status;
+            // Achado da Task 5 (26/08/2026): sem isto, cancelar pelo painel
+            // um pedido JÁ ENVIADO entrava no cache com
+            // `cancelledAfterShipping: false` até o servidor responder.
+            // Achado da revisão de 26/08/2026 (rodada 4): isto NÃO alimenta
+            // `baldeDeEstorno` — desde o BLOQUEIA 1 da rodada anterior os
+            // dois baldes leem `pedidosCancelados` (a consulta PRÓPRIA, ver
+            // `fetchPedidosCancelados`), nunca `orders`/`cachedAdminOrders`.
+            // A derivação aqui continua certa por manter ESTE campo coerente
+            // nesta fatia de estado enquanto o servidor não responde — só a
+            // razão de existir mudou.
+            updatedOrder.cancelledAfterShipping = derivarCancelledAfterShipping(
+              o.status,
+              status,
+              o.cancelledAfterShipping,
+            );
             return updatedOrder;
           }
           return o;
@@ -840,6 +1648,12 @@ export function useOrders(
             if (o.id === orderId) {
               const updatedOrder = Object.assign({}, o);
               updatedOrder.status = status;
+              updatedOrder.cancelledAfterShipping =
+                derivarCancelledAfterShipping(
+                  o.status,
+                  status,
+                  o.cancelledAfterShipping,
+                );
               return updatedOrder;
             }
             return o;
@@ -894,6 +1708,19 @@ export function useOrders(
 
         clearAnalyticsCache();
         if (!silent) toast.success("Status atualizado com sucesso");
+        // Achado A da revisão de 26/08/2026 (rodada 4, BLOQUEIA): os dois
+        // baldes de mercadoria/estorno de AdminOrdersView.tsx dependem de
+        // `pedidosCancelados` — a consulta PRÓPRIA acima, em
+        // `fetchPedidosCancelados` — e nada disparava essa consulta de
+        // novo quando ESTE clique era a origem do cancelamento. Sem isto,
+        // a lojista cancelava um pedido já enviado e o card "Produtos que
+        // ainda não voltaram" só aparecia depois de trocar de aba e
+        // voltar. `isAdmin`: cliente também chama `updateOrderStatus` para
+        // cancelar o próprio pedido (CheckoutView/OrderDetailsView) — essa
+        // RPC é do painel admin, não faz sentido chamá-la do lado dele.
+        if (isAdmin && status === "cancelled") {
+          fetchPedidosCancelados().catch(() => {});
+        }
       } catch (err: any) {
         console.error("Error updating status:", err);
         cachedAdminOrders = cachedAdminOrders
@@ -905,11 +1732,176 @@ export function useOrders(
           const cacheKey = `ikcous_orders_cache_${user.id}`;
           localStorage.setItem(cacheKey, JSON.stringify(originalOrders));
         }
-        if (!silent) toast.error(err.message || "Erro ao atualizar status");
+        if (!silent) toast.error(mensagemAmigavelErroAtualizacaoStatus(err));
         throw err;
       }
     },
-    [isAdmin, orders, user?.id],
+    [isAdmin, orders, user?.id, fetchPedidosCancelados],
+  );
+
+  /**
+   * Confirma que o produto de um pedido cancelado-após-envio voltou à mão da
+   * lojista — chama a RPC `confirmar_retorno_do_produto` (migration
+   * `20260970000000`, ainda NÃO aplicada no banco enquanto esta tela não
+   * estiver no ar: ver "A ordem de aplicação" no plano). É esse clique que
+   * devolve o item ao estoque; sem ele, a mercadoria fica fora do catálogo
+   * para sempre — a migration tirou o retorno automático que existia antes.
+   *
+   * Não move dinheiro nenhum: o app não estorna sozinho. Isto só marca que a
+   * MERCADORIA voltou — quem governa o card de mercadoria é
+   * `precisaConfirmarRetornoDoProduto` (AdminOrdersView.tsx), não
+   * `baldeDeEstorno` (achado da revisão de 26/08/2026, rodada 4: a versão
+   * anterior deste comentário estava errada duas vezes — o card some por
+   * `precisaConfirmarRetornoDoProduto`, e um pedido nunca pago jamais vira
+   * "devolver_agora", só sai do card de mercadoria).
+   */
+  const confirmarRetornoDoProduto = useCallback(async (orderId: string) => {
+    try {
+      const { data, error } = await (supabase.rpc as any)(
+        "confirmar_retorno_do_produto",
+        { p_order_id: orderId },
+      );
+
+      if (error) throw error;
+
+      // A idempotência (RPC devolve `ja_confirmado: true` sem re-mexer no
+      // estoque num segundo clique) mora no banco — aqui só refletimos o
+      // que ele confirmou. `returned_to_seller_at` vem da RPC quando
+      // presente; senão, "agora" é a melhor aproximação otimista.
+      const returnedAt: string =
+        typeof data?.returned_to_seller_at === "string"
+          ? data.returned_to_seller_at
+          : new Date().toISOString();
+
+      cachedAdminOrders = (cachedAdminOrders || []).map((o) =>
+        o.id === orderId ? { ...o, returnedToSellerAt: returnedAt } : o,
+      );
+
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId ? { ...o, returnedToSellerAt: returnedAt } : o,
+        ),
+      );
+
+      // Mesma atualização no painel de mercadoria/estorno (`pedidosCancelados`,
+      // acima): é ela — e não `orders` — quem alimenta os dois baldes de
+      // AdminOrdersView.tsx desde o BLOQUEIA 1 da revisão de 26/08/2026.
+      // Sem isto, um clique bem-sucedido continuaria mostrando o pedido
+      // no balde "esperando o produto voltar" até a próxima recarga.
+      setPedidosCancelados((prev) =>
+        prev.map((o) =>
+          o.id === orderId ? { ...o, returnedToSellerAt: returnedAt } : o,
+        ),
+      );
+
+      clearAnalyticsCache();
+      // O toast tem que dizer a verdade do QUE ESTE clique fez: no
+      // segundo clique a RPC devolve `ja_confirmado: true` sem tocar no
+      // estoque (idempotência, ver a migration) — dizer "Estoque
+      // atualizado" nesse caso afirma um fato que este clique não
+      // cumpriu (achado da revisão de 26/08/2026).
+      if (data?.ja_confirmado) {
+        toast.success(
+          "Este retorno já tinha sido confirmado antes. Nada mudou no estoque.",
+        );
+      } else {
+        toast.success("Retorno do produto confirmado. Estoque atualizado.");
+      }
+      return data;
+    } catch (err: any) {
+      // Achado E da revisão de 26/08/2026 (rodada 4, BLOQUEIA): este
+      // catch só roda quando a RPC falha — e a falha acontece ANTES de
+      // qualquer escrita de estado (elas ficam todas depois do
+      // `if (error) throw error;`, acima). Um rollback aqui nunca desfaz
+      // nada DESTA chamada; ele restaura um retrato tirado no início
+      // dela, que pode já estar velho por causa de OUTRA atualização
+      // (realtime, ou outro clique) que aconteceu enquanto esta RPC
+      // estava em voo — e aí o rollback apaga essa outra atualização em
+      // vez de desfazer a própria. A correção é subtrativa: sem estado
+      // otimista para desfazer, não há nada para restaurar.
+      console.error("Error confirming product return:", err);
+      toast.error("Não foi possível confirmar o retorno do produto.", {
+        description: err?.message,
+      });
+      throw err;
+    }
+  }, []);
+
+  /**
+   * Registra que a loja recebeu (ou desfez o recebimento de) um pagamento na
+   * entrega — chama a RPC `registrar_pagamento_recebido` (migration
+   * `20261020000000`, Task 1 do plano
+   * docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md). A verdade
+   * gravada é a que o BANCO devolveu, não a otimista: a RPC é idempotente e
+   * um segundo clique devolve `ja_estava: true` sem ter mexido em nada, então
+   * ler `data?.payment_status`/`data?.pagamento_recebido_em` da resposta
+   * cobre os dois casos com o mesmo código.
+   *
+   * `clearAnalyticsCache()` no fim é o que faz o número de "Receita Hoje"
+   * mudar depois deste clique — sem ele, `useAnalytics` continuaria
+   * devolvendo o resultado guardado em cache de módulo.
+   */
+  const registrarPagamentoRecebido = useCallback(
+    async (orderId: string, recebido: boolean) => {
+      try {
+        const { data, error } = await (supabase.rpc as any)(
+          "registrar_pagamento_recebido",
+          { p_order_id: orderId, p_recebido: recebido },
+        );
+
+        if (error) throw error;
+
+        const paymentStatus = data?.payment_status ?? null;
+        const pagamentoRecebidoEm = data?.pagamento_recebido_em ?? null;
+        // Achado da Task 3c (revisões da Task 3/3b): faltava aqui — o
+        // mapper já copia `pagamento_recebido_por` (mappers.ts:261), mas os
+        // três `.map` abaixo só propagavam `paymentStatus` e
+        // `pagamentoRecebidoEm`. Sem ele, a sequência marcar → desfazer →
+        // marcar deixava `pagamentoRecebidoPor` preso no valor da montagem
+        // inicial até a próxima recarga.
+        const pagamentoRecebidoPor = data?.pagamento_recebido_por ?? null;
+
+        // Os três campos num objeto só, e não repetidos em cada `.map`: era
+        // justamente a repetição que deixou `pagamentoRecebidoPor` de fora
+        // dos três lugares. Com uma fonte só, um campo novo no futuro entra
+        // nos três de uma vez, ou não entra em nenhum -- nunca em dois.
+        const camposDoRecebimento = {
+          paymentStatus,
+          pagamentoRecebidoEm,
+          pagamentoRecebidoPor,
+        };
+
+        cachedAdminOrders = (cachedAdminOrders || []).map((o) =>
+          o.id === orderId ? { ...o, ...camposDoRecebimento } : o,
+        );
+
+        setOrders((prev) =>
+          prev.map((o) =>
+            o.id === orderId ? { ...o, ...camposDoRecebimento } : o,
+          ),
+        );
+
+        // Mesma atualização no painel de mercadoria/estorno
+        // (`pedidosCancelados`) que `confirmarRetornoDoProduto` já faz: é
+        // ela — e não `orders` — quem alimenta os dois baldes de
+        // AdminOrdersView.tsx desde o BLOQUEIA 1 da revisão de 26/08/2026.
+        setPedidosCancelados((prev) =>
+          prev.map((o) =>
+            o.id === orderId ? { ...o, ...camposDoRecebimento } : o,
+          ),
+        );
+
+        clearAnalyticsCache();
+        return data;
+      } catch (err: any) {
+        console.error("Error registering payment received:", err);
+        toast.error("Não foi possível registrar o pagamento recebido.", {
+          description: err?.message,
+        });
+        throw err;
+      }
+    },
+    [],
   );
 
   const fetchOrderHistory = useCallback(async (orderId: string) => {
@@ -1118,7 +2110,7 @@ export function useOrders(
         };
       } catch (err: any) {
         console.error("Error creating order:", err);
-        toast.error(err.message || "Erro ao processar pedido");
+        toast.error(mensagemAmigavelErroPedido(err));
         throw err;
       }
     },
@@ -1310,17 +2302,41 @@ export function useOrders(
             );
             return [];
           }
-          return (((data as any).orders as any[]) || []).map((item) =>
+          const orders = (((data as any).orders as any[]) || []).map((item) =>
             mapOrderFromDB(item),
           );
+          if (orders.length === 0) {
+            // B2 da revisão de 22/08/2026: a verificação deu certo
+            // (`data.ok === true`) mas não sobrou pedido para devolver. A
+            // ÚNICA causa viva disso é uma corrida DENTRO desta própria
+            // chamada de RPC — o pedido foi apagado entre o SELECT que acha
+            // o código e o RETURN que monta o JSON (a FK de
+            // otp_verifications.order_id é NOT NULL + ON DELETE CASCADE:
+            // fora dessa janela estreita a linha do OTP já teria sido
+            // apagada junto, e cairia no ramo `!data.ok` acima). Este é o
+            // ÚNICO lugar onde essa causa é conhecida — por isso o toast
+            // mora aqui, e não em OrderSearch.tsx.
+            toast.error(
+              "Seu código foi verificado, mas esse pedido não está mais disponível. Fale com a loja.",
+            );
+          }
+          return orders;
         }
 
-        // Resposta no formato antigo (array cru): acontece se o front subir
-        // antes da migration. Continua funcionando em vez de quebrar a tela.
+        // Ramo defensivo, hoje MORTO contra o banco vivo: resposta no
+        // formato antigo (array cru), sem o envelope `{ ok, orders }`. Toda
+        // versão de get_orders_by_otp_v1 desde a AUTH-010 (#118) — inclusive
+        // a que está viva agora, ver docstring de mensagemAmigavelErroOtp
+        // acima sobre COMO confirmar qual é — devolve SEMPRE o envelope com
+        // `ok`, então o `if (data && "ok" in data)` logo acima captura toda
+        // resposta real, e este `return` nunca executa hoje. Mantido como
+        // salvaguarda contra uma versão anterior da função (rollback, ou
+        // downgrade de schema); se a função nunca mais voltar ao formato de
+        // array cru, este ramo pode ser removido com segurança.
         return ((data as any[]) || []).map((item) => mapOrderFromDB(item));
       } catch (err: any) {
         console.error("Error fetching orders by OTP:", err);
-        toast.error(err.message || "Código inválido ou expirado");
+        toast.error(mensagemAmigavelErroOtp(err));
         return [];
       } finally {
         setLoading(false);
@@ -1428,6 +2444,9 @@ export function useOrders(
       if (adminOrdersAbortControllerRef.current) {
         adminOrdersAbortControllerRef.current.abort();
       }
+      if (cancelledOrdersAbortControllerRef.current) {
+        cancelledOrdersAbortControllerRef.current.abort();
+      }
     };
   }, []);
 
@@ -1436,10 +2455,25 @@ export function useOrders(
     loading,
     isLoaded: !loading,
     totalOrders,
+    // Estado da conexão realtime (auditoria de 26/08/2026) — ver o
+    // docstring de `EstadoConexaoRealtime`, acima. Quatro valores possíveis:
+    // "conectando" | "conectado" | "reconectando" | "desconectado". Nunca
+    // colapsar num booleano na tela que consumir isto.
+    realtimeConnectionStatus: connectionStatus,
     fetchUserOrders,
     loadOrders, // New pagination function
     fetchOrders, // Legacy alias
     updateOrderStatus,
+    confirmarRetornoDoProduto,
+    registrarPagamentoRecebido,
+    // Painel de mercadoria/estorno (Task 5, BLOQUEIA 1 da revisão de
+    // 26/08/2026) — ver o docstring de `fetchPedidosCancelados`, acima.
+    pedidosCancelados,
+    carregandoPedidosCancelados,
+    // Achados B/D da revisão de 26/08/2026 (rodada 4) — ver o docstring de
+    // `pedidosCanceladosIncompleto`, acima.
+    pedidosCanceladosIncompleto,
+    fetchPedidosCancelados,
     fetchOrdersByWhatsapp,
     generateOrderOtp,
     fetchOrdersByOtp,

@@ -40,7 +40,10 @@ export function useCoupons(autoFetch = false) {
           value: c.value,
           minPurchase: c.min_purchase ?? undefined,
           usageLimit: c.usage_limit ?? undefined,
-          usageCount: (c as any).used_count || c.usage_count || 0, // Fallback for both old and new schema
+          // PAINEL-12: schema so tem usage_count (baseline:423/689) — o
+          // used_count era codigo morto. `?? 0` em vez de `|| 0`: 0 real
+          // continua 0, null (coluna nao veio) nao vira 0 falso.
+          usageCount: c.usage_count ?? 0,
           validUntil: c.valid_until ?? undefined,
           active: c.active ?? true,
         })) || [];

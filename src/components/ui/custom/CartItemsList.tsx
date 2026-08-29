@@ -27,6 +27,24 @@ const CartItemCard = memo(function CartItemCard({
   // Removed unused config destructuring
   useStore();
 
+  // O carrinho tem que mostrar a mesma coisa que o checkout
+  // (CheckoutView.tsx:891): preferir `variantNames`, que ja vem
+  // montado como "Grupo: Opcao" (ProductView.tsx:593-595). Item
+  // gravado no localStorage (marketplace_cart_v1) ANTES de
+  // `variantNames` existir nao tem esse campo -- por isso o fallback
+  // busca o par completo (nome do grupo + valor da opcao), nunca so
+  // o `name`, que e' o defeito medido ("BRINQUEDO . COR").
+  const variantText =
+    item.variantNames ||
+    (item.variantId
+      ? (() => {
+          const variant = item.product.variants?.find(
+            (v) => v.id === item.variantId,
+          );
+          return variant ? `${variant.name}: ${variant.value}` : undefined;
+        })()
+      : undefined);
+
   return (
     <motion.div
       layout={removingId !== null}
@@ -63,16 +81,10 @@ const CartItemCard = memo(function CartItemCard({
                 <div className="flex flex-wrap items-center gap-1.5">
                   <p className="select-none truncate text-[9px] font-bold uppercase tracking-wider text-zinc-400">
                     {item.product.category}
-                    {item.variantId && item.product.variants && (
+                    {variantText && (
                       <>
                         <span className="mx-1 text-zinc-300">•</span>
-                        <span className="text-zinc-500">
-                          {
-                            item.product.variants.find(
-                              (v) => v.id === item.variantId,
-                            )?.name
-                          }
-                        </span>
+                        <span className="text-zinc-500">{variantText}</span>
                       </>
                     )}
                   </p>
@@ -121,7 +133,7 @@ const CartItemCard = memo(function CartItemCard({
                             ?.toFixed(2)
                             .replace(".", ",")}
                         </span>
-                        <span className="py-0.25 rounded bg-emerald-50 px-1 text-[8px] font-black uppercase text-emerald-600">
+                        <span className="py-0.25 rounded bg-emerald-50 px-1 text-[8px] font-black uppercase text-emerald-700">
                           -
                           {Math.round(
                             ((item.product.originalPrice! - price) /
