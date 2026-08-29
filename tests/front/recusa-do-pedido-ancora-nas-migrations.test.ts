@@ -38,6 +38,15 @@ const FRASES_DO_BANCO = [
   "Entrega local não disponível para o CEP informado.",
   "A cotação de frete expirou. Calcule o frete novamente e refaça o pedido.",
   "Cupom % inválido ou expirado.",
+  // Item 16 do laudo de 29/08 (migration 20261025000000): a recusa final do
+  // cupom diz o MOTIVO. Os cinco literais são os RAISE novos das funções
+  // create_marketplace_order_v23 e v24 — se algum sumir do SQL, a regra
+  // irmã em recusaDoPedido.ts vira morta e a recusa cai no caso genérico.
+  "O cupom % não existe. Confira o código.",
+  "O cupom % está desativado pela loja.",
+  "O cupom % expirou em %.",
+  "O cupom % já atingiu o limite de usos.",
+  "O cupom % exige uma compra mínima de R$ %.",
   "Os valores do pedido mudaram. Atualize o carrinho e tente novamente.",
   "Estoque insuficiente para o produto %",
 ];
