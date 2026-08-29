@@ -2,19 +2,31 @@
 -- (o filtro de Status de Pagamento filtra no banco — p_payment_status na
 -- get_admin_orders_paged)
 --
--- NÃO HÁ SQL NOVO: o corpo anterior da função está INTEIRO na
--- 20260961000000_busca_por_telefone_normaliza_digitos.sql. O desfazer é
--- re-aplicar aquele arquivo (CREATE OR REPLACE idempotente):
+-- ⚠️ LEIA A ORDEM — O OVERLOAD É A ARMADILHA.
 --
---   node scripts/db-apply.cjs \
---     supabase/migrations/20260961000000_busca_por_telefone_normaliza_digitos.sql
+-- A 20261028000000 NÃO substitui a função de 6 argumentos: CREATE OR
+-- REPLACE com assinatura nova cria um OVERLOAD — depois dela o banco tem
+-- get_admin_orders_paged de 6 args (corpo velho) E de 7 args (corpo novo).
 --
--- ⚠️ ORDEM DE VOLTAR: BANCO PRIMEIRO, front depois (ou o deploy inteiro de
--- uma vez). O front novo chama a RPC com p_payment_status; com o banco
--- velho (função de 6 argumentos), o PostgREST não encontra a assinatura e
--- a listagem do painel quebra com PGRST202. A ordem de SUBIR é a mesma:
--- migration antes do deploy do front.
+-- ORDEM CORRETA PARA VOLTAR ATRÁS:
+--
+--   1. PRIMEIRO reverter o deploy do front (o front novo chama a RPC com
+--      p_payment_status; derrubar o overload com o front novo no ar quebra
+--      a listagem do painel com PGRST202 — a chamada de 7 argumentos não
+--      casa com nenhuma função).
+--
+--   2. Re-aplicar a 20260961000000_busca_por_telefone_normaliza_digitos.sql
+--      (restaura o CORPO da função de 6 args — CREATE OR REPLACE
+--      idempotente):
+--
+--        node scripts/db-apply.cjs \
+--          supabase/migrations/20260961000000_busca_por_telefone_normaliza_digitos.sql
+--
+--   3. SÓ ENTAIL derrubar o overload de 7 argumentos, que ficaria órfão:
+--
+--        DROP FUNCTION IF EXISTS
+--          public.get_admin_orders_paged(text, text, text, text, integer,
+--                                        integer, text);
 --
 -- EFEITO COLATERAL HONESTO: sem o conserto, o filtro de pagamento volta a
--- cortar só a página aberta no painel (o defeito do item 10 do laudo
--- volta).
+-- cortar só a página aberta no painel (o defeito do item 10 do laudo volta).

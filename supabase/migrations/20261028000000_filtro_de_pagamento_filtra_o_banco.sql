@@ -189,10 +189,10 @@ BEGIN
             OR o.status = p_status
           )
           -- Achado 10 do laudo (29/08): o filtro de pagamento existia so na
-      -- tela — o painel buscava a pagina inteira e cortava em memoria,
-      -- entao dormia enquanto o resultado cabia numa pagina. Filtra no
-      -- banco, na contagem E nos dados; 'sem_cobranca' cobre o NULL
-      -- (mesma regra de paymentStatusKey no front).
+          -- tela — o painel buscava a pagina inteira e cortava em memoria,
+          -- entao dormia enquanto o resultado cabia numa pagina. Filtra no
+          -- banco, na contagem E nos dados; 'sem_cobranca' cobre o NULL
+          -- (mesma regra de paymentStatusKey no front).
       AND (
         p_payment_status = 'all'
         OR (p_payment_status = 'sem_cobranca' AND o.payment_status IS NULL)

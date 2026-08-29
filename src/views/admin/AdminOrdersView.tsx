@@ -307,10 +307,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     "admin_orders_filter_v2",
     "open",
   );
-  // Filtro de payment_status: client-side, sobre a página já carregada — a
-  // RPC get_admin_orders_paged não tem parâmetro pra isso (mudar a RPC é
-  // migration, fora do escopo desta tarefa). Por isso não reduz totalOrders
-  // nem totalPages, só a lista visível na página atual.
+  // Filtro de payment_status: filtra NO BANCO (migration 20261028000000 —
+  // p_payment_status na get_admin_orders_paged): a lista inteira e o total
+  // da paginação respeitam o filtro. O recorte em memória
+  // (filterOrdersByPaymentStatus, abaixo) é defesa, não a regra.
   const [paymentFilter, setPaymentFilter] =
     useLocalStorage<PaymentStatusFilter>("admin_orders_payment_filter", "all");
   const [viewMode, setViewMode] = useState<"detailed" | "compact">(() => {

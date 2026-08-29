@@ -141,9 +141,23 @@ describe("loadOrders — o filtro de pagamento chega ao banco", () => {
     expect(chamadaDaListagem().p_payment_status).toBe("all");
   });
 
-  it("'sem_cobranca' atravessa intacto (a regra do NULL mora no banco, na migration)", () => {
-    // Regra de casa: a regra de negócio não pode divergir entre lugares —
-    // o front NÃO reescreve 'sem_cobranca', só entrega o valor.
-    expect("sem_cobranca").toBeTruthy();
+  it("'sem_cobranca' atravessa intacto (a regra do NULL mora no banco, na migration)", async () => {
+    // É exatamente o caso que um `paymentStatus || "all"` malfeito quebraria:
+    // 'sem_cobranca' é string verdadeira e não pode virar 'all' no caminho.
+    await comHook();
+    await act(async () => {
+      await gancho.loadOrders(
+        0,
+        10,
+        "all",
+        "",
+        undefined,
+        undefined,
+        false,
+        "sem_cobranca",
+      );
+    });
+
+    expect(chamadaDaListagem().p_payment_status).toBe("sem_cobranca");
   });
 });
