@@ -1,3 +1,4 @@
+import { defaultStoreConfig } from "@/config/cor-da-loja";
 // Follow-up obrigatório da revisão do PR #349 (item 6 do laudo de 29/08):
 // o horário de funcionamento passou a ser exibido na vitrine, e o DEFAULT DE
 // FÁBRICA ("Seg-Sáb: 9h às 18h", coluna business_hours no baseline + seed do
@@ -10,7 +11,6 @@
 // runtime deixa de ter reserva. Este teste crava a metade do runtime: o
 // default do app é "" — sem valor = a loja não disse.
 import { describe, expect, it } from "vitest";
-import { defaultStoreConfig } from "@/config/cor-da-loja";
 
 describe("defaultStoreConfig — o horário de fábrica não tem reserva", () => {
   it("businessHours nasce vazio, não com o expediente inventado", () => {
@@ -19,8 +19,6 @@ describe("defaultStoreConfig — o horário de fábrica não tem reserva", () =>
 
   it("não é só o default: nenhum lugar do config traz o literal de fábrica", () => {
     const valores = Object.values(defaultStoreConfig);
-    expect(
-      valores.filter((v) => v === "Seg-Sáb: 9h às 18h"),
-    ).toHaveLength(0);
+    expect(valores.filter((v) => v === "Seg-Sáb: 9h às 18h")).toHaveLength(0);
   });
 });
