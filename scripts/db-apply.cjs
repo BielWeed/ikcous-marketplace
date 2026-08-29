@@ -640,14 +640,16 @@ const VERIFICACOES = {
         // identificador solto. Aparece 2x no corpo (medido): a consulta
         // existe duplicada, uma na CONTAGEM e outra nos DADOS.
         {
-          texto: "length(v_search_digitos) >= 4\n            AND regexp_replace(",
+          texto:
+            "length(v_search_digitos) >= 4\n            AND regexp_replace(",
           vezes: 2,
         },
         // O coalesce com o jsonb: e ele que faz os pedidos de coluna nula (a
         // RPC legada nunca preencheu) serem achaveis. 0 ocorrencia na anterior.
         // 2x no corpo (medido): CONTAGEM e DADOS, como a guarda acima.
         {
-          texto: "coalesce(o.customer_phone, o.customer_data->>'whatsapp', ''),",
+          texto:
+            "coalesce(o.customer_phone, o.customer_data->>'whatsapp', ''),",
           vezes: 2,
         },
         // Daqui para baixo: o que tem de SOBREVIVER ao REPLACE. Estes aparecem
@@ -1318,6 +1320,31 @@ const VERIFICACOES = {
         "p.created_at >= NOW() - INTERVAL '7 days'",
         // A guarda de admin continua na primeira linha (SECURITY DEFINER).
         "Acesso negado: privilégios de administrador necessários.",
+      ],
+    },
+  ],
+  "20261025000000_cupom_diz_por_que_e_recusado.sql": [
+    {
+      // Item 16 do laudo de 29/08: a recusa final do cupom diz o MOTIVO.
+      // Os 5 RAISE novos, exatamente 1 ocorrência por corpo — se a contagem
+      // mudar, um motivo perdeu a frase ou o corpo divergiu do desenhado.
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        { texto: "O cupom % não existe. Confira o código.", vezes: 1 },
+        { texto: "O cupom % está desativado pela loja.", vezes: 1 },
+        { texto: "O cupom % expirou em %.", vezes: 1 },
+        { texto: "O cupom % já atingiu o limite de usos.", vezes: 1 },
+        { texto: "O cupom % exige uma compra mínima de R$ %.", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        { texto: "O cupom % não existe. Confira o código.", vezes: 1 },
+        { texto: "O cupom % está desativado pela loja.", vezes: 1 },
+        { texto: "O cupom % expirou em %.", vezes: 1 },
+        { texto: "O cupom % já atingiu o limite de usos.", vezes: 1 },
+        { texto: "O cupom % exige uma compra mínima de R$ %.", vezes: 1 },
       ],
     },
   ],
