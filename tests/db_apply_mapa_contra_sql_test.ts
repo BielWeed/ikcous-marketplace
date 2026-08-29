@@ -286,7 +286,7 @@ Deno.test("cada marcador do mapa casa no .sql da própria migration, na contagem
         const r = conferirMarcador(corpo, marcador);
         if (r.ok) continue;
         divergencias.push(
-          `${arquivo} / ${checagem.funcao}: aparece ${r.achou}x no arquivo, o mapa declara ${r.esperado}x — ${JSON.stringify(r.texto.slice(0, 70))}`,
+          `${arquivo} / ${checagem.funcao}: aparece ${r.achou}x no corpo da função, o mapa declara ${r.esperado}x — ${JSON.stringify(r.texto.slice(0, 70))}`,
         );
       }
     }

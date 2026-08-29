@@ -1256,6 +1256,13 @@ const VERIFICACOES = {
         // 10x no corpo (medido): o predicado da receita reconhecida repete em
         // cada uma das portas de dinheiro da funcao. Contagem exata para a
         // queda de QUALQUER porta acusar, em vez de imprimir ok com as outras.
+        //
+        // 🔴 RESALVA da contagem: `vezes: 10` detecta MUDANCA DE QUANTIDADE,
+        // nao de IDENTIDADE — apagar uma das portas e acrescentar outra em
+        // outro ponto continua 10 e o marcador NAO acusa. Quem cobre o caso
+        // que importa (dinheiro que o lojista recebeu e precisa devolver) e
+        // o 13o ponto, abaixo, com marcador proprio e unico. Nao leia o
+        // `vezes: 10` como prova forte: e' prova de que sao DEZ.
         {
           texto:
             "payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')",
