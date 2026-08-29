@@ -28,7 +28,7 @@ const path = require("node:path");
 const { Client } = require("pg");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const { resolverCaminhoMigration } = require("./ler-migration");
+const { resolverCaminhoMigration } = require("./ler-migration.cjs");
 const NOME_DA_MIGRATION =
   "20260804000000_add_is_admin_guard_to_category_analytics.sql";
 const MIGRATION = resolverCaminhoMigration(NOME_DA_MIGRATION);

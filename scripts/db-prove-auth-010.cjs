@@ -35,7 +35,7 @@ const path = require("node:path");
 const { Client } = require("pg");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const { resolverCaminhoMigration } = require("./ler-migration");
+const { resolverCaminhoMigration } = require("./ler-migration.cjs");
 const NOME_DA_MIGRATION = "20260805010000_bind_guest_otp_to_single_order.sql";
 const MIGRATION = resolverCaminhoMigration(NOME_DA_MIGRATION);
 

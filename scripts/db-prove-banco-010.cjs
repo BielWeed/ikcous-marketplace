@@ -39,7 +39,7 @@ const path = require("node:path");
 const { Client } = require("pg");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const { resolverCaminhoMigration } = require("./ler-migration");
+const { resolverCaminhoMigration } = require("./ler-migration.cjs");
 const NOME_DA_MIGRATION =
   "20260805000000_restore_admin_view_and_hide_custo.sql";
 const MIGRATION = resolverCaminhoMigration(NOME_DA_MIGRATION);

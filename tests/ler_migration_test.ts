@@ -64,3 +64,38 @@ Deno.test("lerMigration lanca FALHA ALTA nomeando os dois andares", () => {
     "_arquivadas",
   );
 });
+
+Deno.test(
+  "todo require relativo em scripts/*.cjs resolve para arquivo EXISTENTE",
+  () => {
+    // O BLOQUEIA da revisão do #331: os 6 consumidores nasceram com
+    // require("./ler-migration") SEM a extensão — o carregador do Node não
+    // adivinha .cjs, e os scripts morriam na linha 1 enquanto a suíte ficava
+    // verde (o teste do módulo exigia com extensão). Esta varredura prende a
+    // CLASSE: qualquer require relativo novo que não aponte para um arquivo
+    // que existe exatamente como escrito reprova aqui, nomeando arquivo e
+    // linha. Busca por string de propósito — regex com escape de aspa foi o
+    // que trouxe o no-useless-escape nesta mesma fileira.
+    for (const arquivo of Array.from(Deno.readDirSync("scripts")).filter((f) =>
+      f.name.endsWith(".cjs"),
+    )) {
+      const linhas = new TextDecoder().decode(
+        Deno.readFileSync(`scripts/${arquivo.name}`),
+      ).split("\n");
+      linhas.forEach((linha, indice) => {
+        const marcador = 'require("';
+        const inicio = linha.indexOf(marcador);
+        if (inicio === -1) return;
+        const depois = linha.slice(inicio + marcador.length);
+        const fim = depois.indexOf('")');
+        if (fim === -1) return;
+        const alvo = depois.slice(0, fim);
+        if (!alvo.startsWith(".")) return; // só require relativo; pacote de node_modules não é da conta
+        assert(
+          Deno.statSync(`scripts/${alvo}`).isFile,
+          `${arquivo.name}:${indice + 1} require("${alvo}") nao resolve para arquivo existente — falta extensão (.cjs) ou o caminho está errado`,
+        );
+      });
+    }
+  },
+);
