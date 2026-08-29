@@ -180,8 +180,11 @@ describe("A ajuda do dashboard documenta os KPIs que a tela realmente tem", () =
     ]) {
       expect(texto).toContain(kpiReal);
     }
-    // Os fantasmas: indicadores que a tela NUNCA teve e a ajuda ensinava.
+    // Os três fantasmas: indicadores que a tela NUNCA teve e a ajuda
+    // ensinava. O "Faturamento" com letra maiúscula é a marca do cartão
+    // fantasma — em minúsculo, a palavra é texto comum de outras seções.
     expect(texto).not.toContain("Capital Alocado");
     expect(texto).not.toContain("Lucro Potencial");
+    expect(texto).not.toContain("Faturamento");
   });
 });

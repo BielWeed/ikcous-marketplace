@@ -288,12 +288,6 @@ export function useAnalytics() {
 
   const fetchExecutiveSummary = useCallback(
     async (forceRefresh = false): Promise<DashboardStats | null> => {
-      // Registro a minha vez ANTES de qualquer await: a ordem das chamadas
-      // é a ordem em que foram iniciadas, e só a mais recente grava estado.
-      const minhaChamada = ++ultimaChamadaExecutiva;
-      const chamadaFicouAtrasada = () =>
-        minhaChamada !== ultimaChamadaExecutiva;
-
       if (!isAdmin) {
         console.warn(
           "[useAnalytics] fetchExecutiveSummary bypassed: user is not admin",
@@ -319,9 +313,18 @@ export function useAnalytics() {
         now - lastStatsFetchTime > REVALIDATION_THROTTLE_MS;
 
       if (cachedStats && !shouldRevalidate) {
-        // Stats are cached and fresh, return immediately
+        // Stats are cached and fresh, return immediately. Chamada que NÃO
+        // sai buscando não disputa a vez: registrar a minha vez aqui poderia
+        // calar uma busca em voo (revisão do PR #338, ressalva 1).
         return cachedStats;
       }
+
+      // Registro a minha vez ANTES de sair buscando: a ordem das chamadas
+      // que REALMENTE buscam é a ordem em que foram iniciadas, e só a mais
+      // recente grava estado (revisão do PR #338).
+      const minhaChamada = ++ultimaChamadaExecutiva;
+      const chamadaFicouAtrasada = () =>
+        minhaChamada !== ultimaChamadaExecutiva;
 
       if (cachedStats && !forceRefresh) {
         // Background revalidation

@@ -166,9 +166,10 @@ export const TABLE_CONFIGS: TableConfig[] = [
       value: raw.value,
       minPurchase: raw.min_purchase ?? undefined,
       usageLimit: raw.usage_limit ?? undefined,
-      // PAINEL-12: a coluna do schema é `usage_count` (baseline:423/689) —
-      // `used_count` era código morto. Alinhado com useCoupons.ts: uma leitura
-      // só, `?? 0` (zero real continua zero) — e `used_count` presente numa
+      // PAINEL-12: a coluna que o schema incrementa é `usage_count`
+      // (baseline:422, 688) — `used_count` existe na tabela, mas nenhum
+      // código escreve nela. Alinhado com useCoupons.ts: uma leitura só,
+      // `?? 0` (zero real continua zero) — e `used_count` presente numa
       // linha não vence mais a contagem verdadeira.
       usageCount: raw.usage_count ?? 0,
       validUntil: raw.valid_until ?? undefined,

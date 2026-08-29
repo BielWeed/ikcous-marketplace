@@ -377,8 +377,9 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                 </div>
                 <p className="text-xs leading-relaxed text-zinc-400">
                   O dinheiro que entrou de verdade no período: a soma dos
-                  pedidos pagos, já descontados os cupons. Não conta pedido
-                  cancelado nem pagamento que não foi confirmado.
+                  pedidos com pagamento reconhecido (PIX confirmado, gateway ou
+                  recebido na entrega), já descontados os cupons. Pedido
+                  cancelado não entra.
                 </p>
               </div>
 

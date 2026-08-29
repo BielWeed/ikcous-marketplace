@@ -34,9 +34,9 @@ vi.mock("@/hooks/useAuth", () => ({
     updateProfile,
     updatePassword,
     // A AuthView monta direto no modo "new-password" quando o contexto
-    // detecta recuperação de senha — é o caminho que tem validação local
-    // de tamanho (o cadastro não valida; a regra certa lá é o placeholder
-    // dizer a regra, tratado no JSX do conserto).
+    // detecta recuperação de senha — é o caminho que tinha validação local
+    // ensinando 6. O cadastro não valida tamanho na tela; lá quem recusa é
+    // o GoTrue, e o signUp já traduz `weak_password` para português.
     isPasswordRecovery: true,
   }),
 }));

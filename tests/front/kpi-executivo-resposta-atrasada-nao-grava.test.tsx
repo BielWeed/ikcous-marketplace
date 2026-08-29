@@ -151,4 +151,62 @@ describe("fetchExecutiveSummary: resposta atrasada de chamada antiga não grava 
 
     expect(captura.atual!.stats?.executive?.totalRevenue).toBe(222.22);
   });
+
+  it("erro atrasado de chamada antiga não apaga o resultado da mais recente", async () => {
+    let resolverA!: (v: unknown) => void;
+    let resolverB!: (v: unknown) => void;
+    rpc
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolverA = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolverB = resolve;
+          }),
+      );
+
+    const { useAnalytics } = await import("@/hooks/useAnalytics");
+    const captura: { atual?: ReturnType<typeof useAnalytics> } = {};
+    function Hospedeiro() {
+      const h = useAnalytics();
+      useEffect(() => {
+        captura.atual = h;
+      });
+      return null;
+    }
+    await act(async () => {
+      raiz.render(<Hospedeiro />);
+    });
+
+    let promessaA!: Promise<unknown>;
+    await act(async () => {
+      promessaA = captura.atual!.fetchExecutiveSummary(
+        true,
+      ) as Promise<unknown>;
+      captura.atual!.fetchExecutiveSummary(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // B (recente) chega com sucesso; A (antiga) falha DEPOIS.
+    await act(async () => {
+      resolverB({ data: statsComVolume(222.22), error: null });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    });
+    expect(captura.atual!.stats?.executive?.totalRevenue).toBe(222.22);
+
+    await act(async () => {
+      resolverA({ data: null, error: { message: "boom" } });
+      await promessaA;
+    });
+
+    // O retrato de B continua na tela e o erro atrasado de A não o cala.
+    expect(captura.atual!.stats?.executive?.totalRevenue).toBe(222.22);
+    expect(captura.atual!.error).toBeNull();
+  });
 });
