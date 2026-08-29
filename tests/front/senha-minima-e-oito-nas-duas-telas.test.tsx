@@ -59,12 +59,10 @@ vi.mock("@/contexts/StoreContext", () => ({
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     auth: {
-      getSession: vi
-        .fn()
-        .mockResolvedValue({
-          data: { session: { user: USUARIO } },
-          error: null,
-        }),
+      getSession: vi.fn().mockResolvedValue({
+        data: { session: { user: USUARIO } },
+        error: null,
+      }),
       updateUser: vi.fn(),
     },
     rpc: vi.fn().mockResolvedValue({ data: [], error: null }),
