@@ -41,12 +41,9 @@ const path = require("node:path");
 const { Client } = require("pg");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const MIGRATION = path.join(
-  PROJECT_ROOT,
-  "supabase",
-  "migrations",
-  "20260805120000_otp_aponta_para_o_projeto_certo.sql",
-);
+const { resolverCaminhoMigration } = require("./ler-migration");
+const NOME_DA_MIGRATION = "20260805120000_otp_aponta_para_o_projeto_certo.sql";
+const MIGRATION = resolverCaminhoMigration(NOME_DA_MIGRATION);
 
 const PROJETO_CERTO = "cafkrminfnokvgjqtkle";
 const PROJETO_ERRADO = "jvgyjlbjhbfrncwbytls";
@@ -99,9 +96,10 @@ async function tentar(client, rotulo, fn) {
 }
 
 async function main() {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename
-  if (!fs.existsSync(MIGRATION))
-    throw new Error(`Migration não encontrada: ${MIGRATION}`);
+  if (!MIGRATION)
+    throw new Error(
+      `Migration não encontrada (raiz nem _arquivadas): ${NOME_DA_MIGRATION}`,
+    );
   // eslint-disable-next-line security/detect-non-literal-fs-filename
   const sqlMigration = fs.readFileSync(MIGRATION, "utf8");
 

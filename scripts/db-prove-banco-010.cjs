@@ -39,12 +39,10 @@ const path = require("node:path");
 const { Client } = require("pg");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const MIGRATION = path.join(
-  PROJECT_ROOT,
-  "supabase",
-  "migrations",
-  "20260805000000_restore_admin_view_and_hide_custo.sql",
-);
+const { resolverCaminhoMigration } = require("./ler-migration");
+const NOME_DA_MIGRATION =
+  "20260805000000_restore_admin_view_and_hide_custo.sql";
+const MIGRATION = resolverCaminhoMigration(NOME_DA_MIGRATION);
 
 const claims = (sub, admin) =>
   sub === null
@@ -124,8 +122,8 @@ async function como(client, { papel, sub, admin }, sql, params = []) {
 }
 
 async function main() {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename
-  if (!fs.existsSync(MIGRATION)) throw new Error(`Nao achei ${MIGRATION}`);
+  if (!MIGRATION)
+    throw new Error(`Nao achei (raiz nem _arquivadas): ${NOME_DA_MIGRATION}`);
 
   const client = new Client({
     connectionString: lerDatabaseUrl(),

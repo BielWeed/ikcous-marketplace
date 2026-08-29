@@ -28,12 +28,10 @@ const path = require("node:path");
 const { Client } = require("pg");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const MIGRATION = path.join(
-  PROJECT_ROOT,
-  "supabase",
-  "migrations",
-  "20260804000000_add_is_admin_guard_to_category_analytics.sql",
-);
+const { resolverCaminhoMigration } = require("./ler-migration");
+const NOME_DA_MIGRATION =
+  "20260804000000_add_is_admin_guard_to_category_analytics.sql";
+const MIGRATION = resolverCaminhoMigration(NOME_DA_MIGRATION);
 
 // Range largo o bastante para pegar qualquer pedido já feito na loja.
 const INICIO = "2020-01-01T00:00:00Z";
@@ -108,10 +106,10 @@ async function chamarComo(client, rotulo, claims) {
 }
 
 async function main() {
-  // MIGRATION é constante de módulo, montada de __dirname. Falso positivo.
-  // eslint-disable-next-line security/detect-non-literal-fs-filename
-  if (!fs.existsSync(MIGRATION))
-    throw new Error(`Migration não encontrada: ${MIGRATION}`);
+  if (!MIGRATION)
+    throw new Error(
+      `Migration não encontrada (raiz nem _arquivadas): ${NOME_DA_MIGRATION}`,
+    );
 
   const client = new Client({
     connectionString: lerDatabaseUrl(),
