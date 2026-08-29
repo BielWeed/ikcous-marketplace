@@ -119,8 +119,8 @@ BEGIN
     EXCEPTION WHEN OTHERS THEN
         -- O sino é best-effort: falha de aviso NUNCA reverte a mudança de
         -- status do pedido. O UPDATE segue; a falha fica LOGADA no servidor
-        -- (RAISE WARNING), não engolida em silêncio — defeito de configuração
-        -- (permissão, coluna renomeada) tem de aparecer nos logs.
+        -- para os logs do banco, não engolida em silêncio — defeito de
+        -- configuração (permissão, coluna renomeada) tem de aparecer.
         RAISE WARNING
             'notifica_cliente_de_mudanca_de_status: aviso do pedido % nao nasceu (%).',
             NEW.id, SQLERRM;
