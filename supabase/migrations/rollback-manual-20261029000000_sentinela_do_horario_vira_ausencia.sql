@@ -1,0 +1,34 @@
+-- ROLLBACK MANUAL da 20261029000000_sentinela_do_horario_vira_ausencia.sql
+-- (a sentinela do horário vira ausência — DROP DEFAULT + RPC sem COALESCE +
+-- limpeza do literal de fábrica com retrato)
+--
+-- ⚠️ ORDEM: reverter o FRONT PRIMEIRO (ou aceitar a vitrine nova lendo o
+-- sentinela voltando a aparecer — sem quebra, só exibição). O front novo
+-- (defaultStoreConfig.businessHours = "") lê o que o banco manda.
+--
+-- 1. Re-aplicar a 20260980000000_sentinela_de_cor_vira_ausencia.sql —
+--    restaura o CORPO da upsert_store_config com o COALESCE do horário
+--    (CREATE OR REPLACE idempotente):
+--
+--      node scripts/db-apply.cjs \
+--        supabase/migrations/20260980000000_sentinela_de_cor_vira_ausencia.sql
+--
+-- 2. Recriar o DEFAULT de fábrica:
+--
+--      ALTER TABLE public.store_config
+--        ALTER COLUMN business_hours
+--        SET DEFAULT 'Seg-Sáb: 9h às 18h';
+--
+-- 3. Restaurar os horários de fábrica a partir do RETRATO (só as linhas que
+--    a limpeza tocou; quem digitou horário próprio não é tocado):
+--
+--      UPDATE public.store_config s
+--         SET business_hours = 'Seg-Sáb: 9h às 18h'
+--       WHERE s.id IN (SELECT id FROM public._retrato_business_hours_20261029);
+--
+-- 4. A tabela do retrato fica (histórico do que houve); derrubar é decisão
+--    de um contract futuro, como o molde da cor prevê.
+--
+-- EFEITO COLATERAL HONESTO: a vitrine volta a publicar "Seg-Sáb: 9h às 18h"
+-- para loja que nunca configurou horário (o defeito do item 6 volta pela
+-- metade: o dado chega, mas inventado para quem não disse).
