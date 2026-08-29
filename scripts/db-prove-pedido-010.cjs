@@ -57,12 +57,10 @@ const path = require("node:path");
 const { Client } = require("pg");
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const MIGRATION = path.join(
-  PROJECT_ROOT,
-  "supabase",
-  "migrations",
-  "20260804010000_fix_order_owner_check_null_safety.sql",
-);
+const { resolverCaminhoMigration } = require("./ler-migration.cjs");
+const NOME_DA_MIGRATION =
+  "20260804010000_fix_order_owner_check_null_safety.sql";
+const MIGRATION = resolverCaminhoMigration(NOME_DA_MIGRATION);
 
 const ROLLBACK = path.join(
   PROJECT_ROOT,
@@ -220,9 +218,10 @@ async function tentar(client, { papel, sub, admin, orderId, novoStatus }) {
 }
 
 async function main() {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename
-  if (!fs.existsSync(MIGRATION))
-    throw new Error(`Migration não encontrada: ${MIGRATION}`);
+  if (!MIGRATION)
+    throw new Error(
+      `Migration não encontrada (raiz nem _arquivadas): ${NOME_DA_MIGRATION}`,
+    );
 
   const client = new Client({
     connectionString: lerDatabaseUrl(),

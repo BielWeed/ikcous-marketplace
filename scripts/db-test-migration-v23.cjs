@@ -18,12 +18,9 @@ const PROJECT_ROOT = path.resolve(__dirname, "..");
 // a 20260729000002 e' anterior a baseline 20260806 e agora mora la'.
 // Resolve da raiz primeiro (dia em que ela voltar, se voltar), senao do
 // arquivo — o leitor nao quebra por causa do andar onde o .sql vive.
+const { resolverCaminhoMigration } = require("./ler-migration.cjs");
 const NOME_DA_MIGRATION = "20260729000002_shipping_quote_validation_v23.sql";
-const MIGRATION = [
-  path.join(PROJECT_ROOT, "supabase/migrations", NOME_DA_MIGRATION),
-  path.join(PROJECT_ROOT, "supabase/migrations/_arquivadas", NOME_DA_MIGRATION),
-  // eslint-disable-next-line security/detect-non-literal-fs-filename
-].find((caminho) => fs.existsSync(caminho));
+const MIGRATION = resolverCaminhoMigration(NOME_DA_MIGRATION);
 if (!MIGRATION) {
   console.error(
     `${NOME_DA_MIGRATION}: nao encontrada nem na raiz nem em _arquivadas/`,
