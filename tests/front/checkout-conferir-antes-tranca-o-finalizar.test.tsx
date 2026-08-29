@@ -128,6 +128,22 @@ function localizarBotaoFecharAviso() {
   ) as HTMLButtonElement | null;
 }
 
+// Âncora do aviso que instrui como destravar o botão em `conferir_antes`.
+// Por `data-testid`, não por texto: o painel `SaidaDaRecusa` imprime a
+// mensagem do banco LITERAL (SaidaDaRecusa.tsx:101-103), e uma RPC nova
+// poderia escrever uma frase que casasse com uma âncora de texto — o que
+// faria este helper achar o `<p>` do painel em vez do aviso. O teste abaixo
+// ainda confere o TEXTO do aviso numa asserção própria (não só a presença):
+// perder essa checagem reabriria a frase antiga, que causou o bloqueio sem
+// instrução de saída que este componente existe para consertar.
+function localizarAvisoDeComoDestravar() {
+  return (
+    document.body.querySelector(
+      '[data-testid="aviso-como-destravar-finalizar"]',
+    ) ?? undefined
+  );
+}
+
 async function preencherEClicarFinalizar() {
   await act(async () => {
     digitar("checkout-name", "Cliente Teste");
@@ -218,6 +234,30 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
 
     const botaoFinalizar = localizarBotaoFinalizar()!;
     expect(botaoFinalizar.disabled).toBe(true);
+
+    // O aviso que ensina como destravar o botão tem de estar na tela —
+    // é o motivo deste PR: antes dele, quem compra sem conta ficava
+    // travado sem nenhuma instrução de saída.
+    expect(localizarAvisoDeComoDestravar()).not.toBeUndefined();
+    // A âncora agora é o `data-testid`, não o texto — então o TEXTO precisa
+    // de asserção própria, senão o teste passa a aceitar qualquer frase
+    // ali dentro, inclusive a antiga ("Confira se o pedido já apareceu na
+    // sua lista..."), que foi exatamente o que causou o bloqueio sem saída
+    // que este aviso existe para resolver.
+    expect(localizarAvisoDeComoDestravar()?.textContent).toContain(
+      "não foi criado",
+    );
+
+    // A trava existe para impedir o SEGUNDO pedido, não só para deixar o
+    // botão cinza: `disabled === true` prova o mecanismo, não a
+    // consequência. `HTMLElement.click()` em botão `disabled` não dispara o
+    // handler no jsdom, então este clique é uma prova válida (e mais forte)
+    // de que nenhum pedido novo se cria por cima do aviso.
+    await act(async () => {
+      botaoFinalizar.click();
+      await esperarMicrotarefas();
+    });
+    expect(createOrder).toHaveBeenCalledTimes(1);
   });
 
   it("recusa com SQLSTATE (ex.: falha transitória do Postgres): o painel de tentar_de_novo aparece e o Finalizar Pedido continua HABILITADO", async () => {
@@ -248,6 +288,10 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
     // travar o botão empurraria a pessoa para um desvio que a própria regra
     // diz que não precisa existir.
     expect(botaoFinalizar.disabled).toBe(false);
+
+    // O aviso de "como destravar" só faz sentido quando o botão está
+    // travado. Em tentar_de_novo ele não trava, então o aviso não aparece.
+    expect(localizarAvisoDeComoDestravar()).toBeUndefined();
   });
 
   it("fechar o painel de conferir_antes (botão 'Fechar o aviso') destrava o Finalizar Pedido de novo", async () => {
@@ -276,6 +320,9 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
 
     // O painel sumiu (a prova de que fechar realmente rodou)...
     expect(document.querySelector('[role="alert"]')).toBeNull();
+    // ...e o aviso de "como destravar" some junto: ele só faz sentido
+    // enquanto o painel que ele explica está na tela.
+    expect(localizarAvisoDeComoDestravar()).toBeUndefined();
     // ...e o botão volta a decidir sozinho, sem a trava do painel morto.
     // Isto é o que prova que a trava é um ATO deliberado (fechar o aviso),
     // não uma porta fechada de vez.
