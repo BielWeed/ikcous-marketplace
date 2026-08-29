@@ -1290,6 +1290,37 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261022000000_categorias_contam_so_dinheiro_reconhecido.sql": [
+    {
+      funcao: "get_category_analytics",
+      esperado: [
+        // O filtro NOVO desta migration: o literal das 3 portas, no formato
+        // `o.` qualificado do JOIN — exatamente 1 ocorrência no corpo. Se a
+        // contagem mudar, a categoria voltou a somar dinheiro sem dono ou
+        // ganhou uma porta sem registro.
+        {
+          texto:
+            "AND (o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega'))",
+          vezes: 1,
+        },
+        // A guarda de admin continua na primeira linha (SECURITY DEFINER).
+        "Acesso negado: privilégios de administrador necessários.",
+      ],
+    },
+  ],
+  "20261023000000_push_conta_sem_baixar_credencial.sql": [
+    {
+      funcao: "get_segmented_push_count",
+      esperado: [
+        // Ramo VIP: o critério de dinheiro reconhecido + o corte de LTV.
+        "HAVING SUM(o.total::numeric) >= p_min_ltv",
+        // Ramo "new": a janela dos 7 dias, idêntica à original.
+        "p.created_at >= NOW() - INTERVAL '7 days'",
+        // A guarda de admin continua na primeira linha (SECURITY DEFINER).
+        "Acesso negado: privilégios de administrador necessários.",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
