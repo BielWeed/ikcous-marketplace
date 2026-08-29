@@ -365,51 +365,55 @@ export const AdminDashboardView = memo(function AdminDashboardView({
               Principais Indicadores (KPIs)
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* Os quatro indicadores descritos aqui são EXATAMENTE os
+                  cartões que a tela renderiza (KpiSummaryCards.tsx:
+                  buildKpiCards) — a ajuda anterior documentava três KPIs
+                  que esta tela nunca teve (Capital Alocado, Lucro Potencial,
+                  Faturamento). */}
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Wallet className="size-4 text-emerald-500" />
-                  Capital Alocado
+                  Volume Total
                 </div>
                 <p className="text-xs leading-relaxed text-zinc-400">
-                  Representa o custo total acumulado de todos os produtos
-                  físicos no estoque atualmente. É a multiplicação do preço de
-                  custo de cada item pela quantidade disponível.
+                  O dinheiro que entrou de verdade no período: a soma dos
+                  pedidos com pagamento reconhecido (PIX confirmado, gateway ou
+                  recebido na entrega), já descontados os cupons. Pedido
+                  cancelado não entra.
                 </p>
               </div>
 
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <TrendingUp className="size-4 text-admin-gold" />
-                  Lucro Potencial
+                  <Activity className="size-4 text-admin-gold" />
+                  Total de Pedidos
                 </div>
                 <p className="text-xs leading-relaxed text-zinc-400">
-                  O lucro bruto estimado que a loja receberá quando todas as
-                  unidades em estoque forem vendidas pelos respectivos preços de
-                  venda cadastrados.
+                  Quantas compras foram feitas no período — cada pedido
+                  confirmado conta uma vez, de qualquer valor.
                 </p>
               </div>
 
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <Activity className="size-4 text-sky-500" />
-                  Faturamento
-                </div>
-                <p className="text-xs leading-relaxed text-zinc-400">
-                  Volume financeiro bruto total gerado pelas vendas
-                  faturadas/pagas no período. Reflete a tração geral e o volume
-                  de transações.
-                </p>
-              </div>
-
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <BarChart3 className="size-4 text-purple-500" />
+                  <BarChart3 className="size-4 text-sky-500" />
                   Ticket Médio
                 </div>
                 <p className="text-xs leading-relaxed text-zinc-400">
-                  O valor médio consumido por pedido (Faturamento dividido pelo
-                  total de pedidos pagos). Útil para entender o comportamento de
-                  compra do cliente.
+                  Quanto vale, em média, cada pedido: o Volume Total dividido
+                  pelo número de pedidos. Ajuda a entender o tamanho típico de
+                  uma compra na loja.
+                </p>
+              </div>
+
+              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
+                  <TrendingUp className="size-4 text-purple-500" />
+                  Clientes Únicos
+                </div>
+                <p className="text-xs leading-relaxed text-zinc-400">
+                  Quantas pessoas diferentes compraram no período — cada cliente
+                  conta uma vez, mesmo que tenha feito vários pedidos.
                 </p>
               </div>
             </div>

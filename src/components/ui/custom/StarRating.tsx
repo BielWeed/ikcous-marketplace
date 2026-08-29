@@ -16,7 +16,7 @@ export const StarRating = memo(function StarRating({
   maxRating = 5,
   onRatingChange,
   // LOJA-01 (auditoria 26/08/2026): exibição é a REGRA neste componente --
-  // ProductCard, PremiumOffers, CompareView e ProductView renderizam
+  // ProductCard, PremiumOffers e ProductView renderizam
   // avaliação pura, sem controlar nota nenhuma, e três deles esqueciam de
   // passar `readonly`, deixando o cursor de mãozinha e o hover de campo de
   // entrada num clique que só abre o produto. Campo de nota clicável de

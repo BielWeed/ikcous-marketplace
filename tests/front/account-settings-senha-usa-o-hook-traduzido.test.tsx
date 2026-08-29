@@ -228,20 +228,21 @@ describe("AccountSettingsView — trocar senha delega a mensagem para o hook tra
     const { toast } = await import("sonner");
     await montarNaAbaDeSeguranca();
 
-    // 6+ caracteres: passa da validação LOCAL de tamanho mínimo (que é outra
-    // regra, não tocada por esta correção) e chega até `updatePassword` — é
-    // aí, do lado do GoTrue, que uma causa como `weak_password` (que exige
-    // mais do que só comprimento) ou `same_password` pode reprovar mesmo
-    // assim.
-    await preencherESubmeter("senha1");
+    // 8+ caracteres: passa da validação LOCAL de tamanho mínimo (regra nova
+    // do lote 1 de 29/08 — a tela cobrava 6, o GoTrue exige 8, ver
+    // senha-minima-e-oito-nas-duas-telas.test.tsx) e chega até
+    // `updatePassword` — é aí, do lado do GoTrue, que uma causa como
+    // `weak_password` (que exige mais do que só comprimento) ou
+    // `same_password` pode reprovar mesmo assim.
+    await preencherESubmeter("senha123");
 
     expect(updatePassword).toHaveBeenCalledTimes(1);
-    expect(updatePassword).toHaveBeenCalledWith("senha1");
+    expect(updatePassword).toHaveBeenCalledWith("senha123");
 
     const campoSenha = document.getElementById(
       "new_password",
     ) as HTMLInputElement;
-    expect(campoSenha.value).toBe("senha1");
+    expect(campoSenha.value).toBe("senha123");
     // Anotado 2 da revisão: quem avisa da falha é o PRÓPRIO `updatePassword`
     // (AuthContext.tsx) — sem esta asserção, um `toast.error` acrescentado
     // por engano no ramo `if (!success)` (toast duplicado) sobreviveria

@@ -281,8 +281,11 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           toast.error(res.message || "Erro ao solicitar link de recuperação.");
         }
       } else if (viewMode === "new-password") {
-        if (!password.trim() || password.length < 6) {
-          toast.error("A senha deve ter pelo menos 6 caracteres.");
+        // O GoTrue exige 8 (medido na auditoria de 20/08: senha de 7 volta
+        // "at least 8 characters"). A tela precisa cobrar a MESMA regra que
+        // o servidor, senão o cliente confia no app e leva recusa em inglês.
+        if (!password.trim() || password.length < 8) {
+          toast.error("A senha deve ter pelo menos 8 caracteres.");
           setIsLoading(false);
           return;
         }

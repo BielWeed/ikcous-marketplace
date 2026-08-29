@@ -376,8 +376,9 @@ export function AccountSettingsView() {
       return;
     }
 
-    if (passwordData.newPassword.length < 6) {
-      toast.error("A senha deve ter pelo menos 6 caracteres");
+    // Mesma regra do GoTrue (8) — ver conserto irmão em AuthView.tsx.
+    if (passwordData.newPassword.length < 8) {
+      toast.error("A senha deve ter pelo menos 8 caracteres");
       return;
     }
 
@@ -781,7 +782,7 @@ export function AccountSettingsView() {
                           }))
                         }
                         className="h-10 rounded-xl border border-zinc-200 bg-zinc-50/70 pl-10 pr-4 text-sm font-semibold shadow-none transition-all hover:bg-zinc-50 focus-visible:border-zinc-900 focus-visible:bg-white focus-visible:ring-1 focus-visible:ring-zinc-900"
-                        placeholder="Mínimo 6 caracteres"
+                        placeholder="Mínimo 8 caracteres"
                         required
                       />
                     </div>

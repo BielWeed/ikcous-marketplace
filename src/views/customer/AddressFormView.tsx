@@ -56,7 +56,7 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
               <p className="text-[10px] font-black uppercase leading-tight tracking-[0.2em] text-zinc-400">
                 {addressId
                   ? "Atualize os dados para entrega"
-                  : "Onde entregaremos seu produto da ICKOUS?"}
+                  : "Onde entregaremos seu produto da IKCOUS?"}
               </p>
             </div>
           </div>

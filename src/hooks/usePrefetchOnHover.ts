@@ -25,7 +25,6 @@ const VIEW_PREFETCH_MAP: Record<string, () => Promise<unknown>> = {
   "account-settings": () => import("@/views/customer/AccountSettingsView"),
   "order-details": () => import("@/views/customer/OrderDetailsView"),
   search: () => import("@/views/customer/SearchView"),
-  compare: () => import("@/views/customer/CompareView"),
   favorites: () => import("@/views/customer/FavoritesView"),
 
   // --- ADMIN VIEWS ---
