@@ -8,8 +8,4 @@
 -- Sem BEGIN/COMMIT de proposito: com eles o ROLLBACK do script de prova vira
 -- no-op e a mudanca fica gravada no banco mesmo assim.
 
-DROP FUNCTION IF EXISTS public.get_segmented_push_count(
-    p_segment text DEFAULT 'all'::text,
-    p_min_ltv numeric DEFAULT 150,
-    p_days_inactive integer DEFAULT 30
-);
+DROP FUNCTION IF EXISTS public.get_segmented_push_count(text, numeric, integer);

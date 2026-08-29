@@ -29,7 +29,8 @@
 -- este agente):
 --
 --   -- 1. A conta da função nova BATE com o tamanho da lista da original,
---   --    segmento a segmento (a original continua existindo para o ENVIO):
+--   --    segmento a segmento (a original continua existindo para o ENVIO).
+--   --    O par uuid usa um id real de perfil com inscrição:
 --   SELECT
 --     (SELECT count(*) FROM get_segmented_push_targets('vip'))      AS alvos_vip,
 --     get_segmented_push_count('vip')                               AS conta_vip,
@@ -38,7 +39,13 @@
 --     (SELECT count(*) FROM get_segmented_push_targets('new'))      AS alvos_new,
 --     get_segmented_push_count('new')                               AS conta_new,
 --     (SELECT count(*) FROM get_segmented_push_targets('all'))      AS alvos_all,
---     get_segmented_push_count('all')                               AS conta_all;
+--     get_segmented_push_count('all')                               AS conta_all,
+--     (SELECT count(*) FROM get_segmented_push_targets(
+--        (SELECT user_id FROM push_subscriptions WHERE user_id IS NOT NULL LIMIT 1)
+--      ))                                                           AS alvos_uuid,
+--     get_segmented_push_count(
+--        (SELECT user_id FROM push_subscriptions WHERE user_id IS NOT NULL LIMIT 1)
+--      )                                                            AS conta_uuid;
 --     -> espera alvos_* = conta_* em todos os pares
 --
 --   -- 2. Nenhuma coluna de credencial no retorno:
