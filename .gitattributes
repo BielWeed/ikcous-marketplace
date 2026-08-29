@@ -1,0 +1,46 @@
+# Fim de linha determinístico no checkout deste repositório.
+#
+# POR QUE ESTE ARQUIVO EXISTE (medido em 27/08/2026, commit base `816bffc`):
+# `core.autocrlf=true` vem de `C:/Program Files/Git/etc/gitconfig` — nível
+# SISTEMA, sobrevive a qualquer clone e a qualquer worktree novo nesta
+# máquina, e este repositório não tinha `.gitattributes` nenhum para
+# sobrepor isso. No commit base são 899 arquivos versionados, 889 blobs de
+# TEXTO — todos já em LF puro dentro do git; a corrupção acontecia só no
+# CHECKOUT, nunca no commit. A contagem de disco (541 em CRLF) foi medida à
+# parte, na árvore principal (`d3935226`, 8 arquivos a mais que o `816bffc`
+# deste commit base); e 216 de 216 `.sql` viravam CRLF num worktree recém-
+# criado. Isso derrubava `scripts/db-prove-rollback.cjs`, que compara o
+# texto do rollback com `pg_get_functiondef` do Postgres verbatim: um CR a
+# mais reprovava como "divergência de conteúdo" com as duas strings
+# visualmente idênticas.
+#
+# `* text=auto eol=lf`
+#   Marca todo arquivo como texto (o git decide isso por heurística, como já
+#   fazia) e força o fim de linha do checkout e do índice para LF. Isto NÃO
+#   reescreve nenhum blob já commitado: os 889 blobs de texto existentes já
+#   estão em LF puro, então normalizar é NO-OP para o histórico — a regra só
+#   passa a valer para o que for gravado a partir de agora e para o que sai
+#   no próximo `checkout`.
+* text=auto eol=lf
+
+# `.png`/`.ico` são os únicos 10 binários versionados hoje (8 `.png`, 2
+# `.ico`). Marcá-los explicitamente, em vez de confiar na heurística do
+# `text=auto`, fecha qualquer chance de um deles ser tratado como texto e ter
+# o fim de linha "normalizado" — o que corromperia a imagem. O CR que
+# aparece nos bytes desses arquivos é dado de imagem, não fim de linha, e não
+# deve ser tocado.
+*.png binary
+*.ico binary
+
+# Exceção deliberada: `.bat` fica em CRLF. Precaução, não reprodução: nesta
+# máquina (Windows 11, build 26200) um `.bat` com `@echo off`, bloco
+# multi-linha entre parênteses, `goto :label` e `for /f` deu saída idêntica
+# gravado em LF puro ou em CRLF — não foi possível reproduzir aqui o
+# `cmd.exe` interpretando mal um `.bat` em LF. A regra continua sendo a
+# escolha certa mesmo assim: não foi testada em versões mais antigas do
+# Windows nem em Windows Server, onde o comportamento pode divergir, e os
+# dois `.bat` deste repositório (`scripts/scratch_audit.bat` e
+# `supabase/setup/Executar_Verificacao_Completa.bat`) são feitos para
+# alguém clicar duas vezes — vale mais a exceção explícita, conservadora,
+# do que arriscar isso pela regra genérica.
+*.bat text eol=crlf
