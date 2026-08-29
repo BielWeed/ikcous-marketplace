@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
 import type { View } from "@/types";
 import { motion } from "framer-motion";
 import { ArrowRight, CheckCircle2, Home, Package } from "lucide-react";
@@ -8,6 +9,8 @@ interface OrderSuccessViewProps {
 }
 
 export function OrderSuccessView({ onNavigate }: OrderSuccessViewProps) {
+  const { user } = useAuth();
+
   return (
     <div className="flex min-h-full flex-col items-center justify-center bg-white px-6 py-12 text-center">
       <motion.div
@@ -22,9 +25,17 @@ export function OrderSuccessView({ onNavigate }: OrderSuccessViewProps) {
       <h1 className="mb-4 text-3xl font-black tracking-tighter text-zinc-900">
         Pedido Realizado!
       </h1>
+      {/* Item 11 do laudo de 29/08: a promessa tinha que virar verdade — a
+          trigger tr_pedido_avisa_o_cliente (20261026000000) insere um aviso no
+          sino a cada mudança de status. Como o convidado não tem conta (logo
+          não tem sino), a promessa é POR VERDADE: logado lê o aviso no app;
+          convidado lê o caminho que existe de verdade, o código do
+          comprovante em "Meus Pedidos". */}
       <p className="mb-12 max-w-xs leading-relaxed text-zinc-500">
-        Seu pedido foi recebido com sucesso e já está sendo processado. Você
-        receberá atualizações em breve.
+        Seu pedido foi recebido com sucesso e já está sendo processado.{" "}
+        {user
+          ? "A cada atualização — preparo, envio, entrega — você recebe um aviso aqui no app."
+          : 'Com o código do comprovante, você acompanha cada atualização em "Meus Pedidos".'}
       </p>
 
       <div className="grid w-full max-w-xs gap-4">
