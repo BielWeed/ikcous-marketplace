@@ -5,7 +5,16 @@
 // arrasta useAuth, useOrders, useCoupons, confetti e Supabase, e nada disso é o
 // que esta tarefa muda.
 import { decidirSaidaDoCheckout } from "@/views/customer/CheckoutView";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// CheckoutView importa `supabase` de "@/lib/supabase" (para o fluxo real de
+// pedido), e aquele módulo valida variável de ambiente na própria avaliação
+// (`src/lib/env.ts`, via `src/lib/supabase.ts:6`). Esta máquina tem `.env`;
+// o CI não tem nenhum, e o import explode antes do primeiro teste rodar —
+// mesmo padrão de `checkout-view-erro-de-pedido-traduzido.test.tsx:93`. O
+// teste aqui só usa a função pura `decidirSaidaDoCheckout`, então o valor
+// mockado nunca é chamado; ele existe só para o módulo carregar sem `.env`.
+vi.mock("@/lib/supabase", () => ({ supabase: {} }));
 
 // As frases vêm das migrations que criam `create_marketplace_order_v23/v24` —
 // não são inventadas aqui. A âncora que impede elas de mudarem no SQL sem
