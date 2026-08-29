@@ -922,7 +922,9 @@ export function useOrders(
       } finally {
         setLoading(false);
       }
-  }, [user, enabled]);
+    },
+    [user, enabled],
+  );
 
   // Load orders with pagination (Admin) - Optimized
   const loadOrders = useCallback(
