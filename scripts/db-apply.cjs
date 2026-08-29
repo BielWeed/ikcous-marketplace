@@ -1348,6 +1348,23 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261026000000_o_pedido_avisa_o_cliente.sql": [
+    {
+      // Item 11 do laudo de 29/08: cada mudança de status do pedido nasce um
+      // aviso no sino do cliente. As 4 frases e as 2 guardas, exatamente 1x
+      // no corpo da função da trigger — se a contagem mudar, uma transição
+      // perdeu a frase ou a guarda do convidado/corrida sumiu.
+      funcao: "notifica_cliente_de_mudanca_de_status",
+      esperado: [
+        { texto: "Pedido em preparo", vezes: 1 },
+        { texto: "Pedido a caminho", vezes: 1 },
+        { texto: "Pedido entregue", vezes: 1 },
+        { texto: "Pedido cancelado", vezes: 1 },
+        { texto: "NEW.user_id IS NULL", vezes: 1 },
+        { texto: "OLD.status IS NOT DISTINCT FROM NEW.status", vezes: 1 },
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
