@@ -1,0 +1,14 @@
+-- ROLLBACK MANUAL de 20261034000000_drop_overload_velho_get_admin_orders_paged.sql
+--
+-- O que a migration fez: DROP da sobrecarga de 6 args
+-- (text, text, text, text, integer, integer) de get_admin_orders_paged.
+--
+-- Para desfazer, recrie a assinatura de 6 args com o corpo que ela tinha:
+-- reexecutar o CREATE OR REPLACE FUNCTION de 6 args que está em
+--   supabase/migrations/20260961000000_busca_por_telefone_normaliza_digitos.sql
+-- (foi a última migration a escrever o corpo da 6-args antes deste DROP).
+--
+-- ATENÇÃO: recriar a 6-args REACENDE a bomba de ambiguidade — qualquer
+-- chamada de 6 args volta a explodir com "is not unique" enquanto as duas
+-- assinaturas coexistirem. Só faça isso se a 7-args tiver de ser abortada
+-- por inteiro (e nesse caso desfazer também a 20261028000000).
