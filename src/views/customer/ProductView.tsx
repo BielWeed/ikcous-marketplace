@@ -1089,13 +1089,18 @@ export const ProductView = React.memo(function ProductView({
             </div>
           )}
 
-          <button
-            onClick={handleWhatsApp}
-            title="Dúvidas no WhatsApp"
-            className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600 transition-all duration-300 hover:bg-emerald-500 hover:text-white active:scale-95"
-          >
-            <MessageCircle className="size-5" />
-          </button>
+          {/* O botão de WhatsApp só existe com número configurado pela loja —
+              sem cadastro ele SOME, nunca aponta para número inventado
+              (laudo caça-bugs 30/08 + decisão do Gabriel no mesmo dia). */}
+          {(config.whatsappNumber || "").replace(/\D/g, "").length >= 10 && (
+            <button
+              onClick={handleWhatsApp}
+              title="Dúvidas no WhatsApp"
+              className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600 transition-all duration-300 hover:bg-emerald-500 hover:text-white active:scale-95"
+            >
+              <MessageCircle className="size-5" />
+            </button>
+          )}
 
           <button
             onClick={handleAddToCart}

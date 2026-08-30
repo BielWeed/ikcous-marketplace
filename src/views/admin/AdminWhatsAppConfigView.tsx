@@ -2,6 +2,7 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { AnimatePresence, motion, useDragControls } from "framer-motion";
 import {
   AlertTriangle,
   Check,
@@ -21,7 +22,6 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion, useDragControls } from "framer-motion";
 import { toast } from "sonner";
 
 const PRESETS = [
@@ -562,13 +562,13 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
     }
     if (isSaving) return;
 
-    if (!formData.whatsappNumber) {
-      toast.error("WhatsApp é obrigatório");
-      return;
-    }
-
+    // Campo vazio grava NULL (laudo caça-bugs 30/08 + decisão do Gabriel:
+    // WhatsApp é configuração DA lojista). Antes era "obrigatório" com
+    // formulário pré-preenchido pelo fallback de fábrica — o efeito líquido
+    // era replantar o nove-noves que a limpeza do banco tinha removido.
+    // Preenchido, segue a régua de sempre: 10-11 dígitos (DDD + número).
     let cleanWhatsApp = formData.whatsappNumber.replace(/\D/g, "");
-    if (cleanWhatsApp.length < 10) {
+    if (cleanWhatsApp.length > 0 && cleanWhatsApp.length < 10) {
       toast.error("WhatsApp inválido");
       return;
     }
@@ -584,8 +584,10 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
       // "atualizados com sucesso" sobre uma gravação que falhou — e o número de
       // WhatsApp é o único canal de fechamento de pedido da loja (ADMIN-010, #94).
       const salvou = await updateConfig({
-        whatsappNumber: cleanWhatsApp,
-        businessHours: formData.businessHours,
+        // Vazio grava NULL — o mesmo contrato do campo de horário nos
+        // Ajustes: ausência honesta, nunca um valor que a loja não digitou.
+        whatsappNumber: cleanWhatsApp || null,
+        businessHours: formData.businessHours.trim() || null,
         shareText: formData.shareText,
       });
       if (!salvou) return;
@@ -754,7 +756,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                   delay={350}
                   value={formData.businessHours}
                   onFlush={onChangeBusinessHours}
-                  placeholder="Ex: Seg-Sáb: 9h às 18h"
+                  placeholder="Ex: Ter a Sáb, 9h às 18h"
                   className="h-10 rounded-xl border-white/10 bg-black/40 pl-11 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:ring-admin-gold/50"
                   autoComplete="off"
                   disabled={isOffline}

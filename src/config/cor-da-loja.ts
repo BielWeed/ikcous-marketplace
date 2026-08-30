@@ -28,7 +28,13 @@ import type { StoreConfig } from "@/types";
 export const defaultStoreConfig: StoreConfig = {
   freeShippingMin: 350,
   shippingFee: 15,
-  whatsappNumber: "34999999999",
+  // whatsappNumber NÃO tem reserva de propósito (mesmo molde do businessHours
+  // abaixo). Valia "34999999999" — nove noves — e esse literal viajou do
+  // fallback de leitura para o banco de toda loja nova: a vitrine mostrava um
+  // botão de WhatsApp apontando para um número que não existe (laudo
+  // caça-bugs 30/08 + migration 20261033000000). Sem valor = a loja não
+  // disse; o botão só nasce quando a lojista configurar o dela.
+  whatsappNumber: "",
   shareText: "Olha que achei na IKCOUS!",
   // businessHours NÃO tem reserva de propósito (mesmo molde da sentinela de
   // cor da linha de baixo, e do originCep). Valia "Seg-Sáb: 9h às 18h", e

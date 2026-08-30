@@ -3,11 +3,14 @@
 --  Nenhum dado digitado por lojista é perdido: o rollback devolve APENAS
 --  os valores de fábrica aos lugares onde a migration os encontrou.)
 --
--- 1. Devolve os defaults de fábrica no ramo INSERT da RPC (estado exato da
---    20260980000000): reexecutar a função da migration anterior.
---    psql: \i supabase/migrations/20260980000000_sentinela_de_cor_vira_ausencia.sql
---    (o CREATE OR REPLACE dela contém o corpo antigo integral — o COALESCE
---     de 'Seg-Sáb: 9h às 18h' e '5534999999999' volta a valer.)
+-- 1. Devolve o corpo da RPC ao estado ANTERIOR REAL — a versão da
+--    20261029000000 (que já tinha removido o COALESCE de business_hours, mas
+--    mantinha o de whatsapp '5534999999999'). ATENÇÃO: reexecutar a
+--    20260980000000 (versão ainda mais antiga) restauraria TAMBÉM o
+--    COALESCE do horário, desfazendo duas frentes de uma vez.
+--    psql: \i supabase/migrations/20261029000000_*.sql
+--    (o CREATE OR REPLACE dela contém o corpo imediatamente anterior a esta
+--     migration.)
 --
 -- 2. Devolve as sentinelas aos registros limpos (apenas onde hoje estão
 --    NULL e a coluna não é tocada por outra regra):
