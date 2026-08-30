@@ -5,10 +5,8 @@
 -- O projeto de desenvolvimento tinha a extensao pre-instalada; um projeto
 -- Supabase novo nao traz. Assim ela nasce com o banco, idempotente.
 --
--- SEM BEGIN/COMMIT (regra da casa). Rollback manual: DROP EXTENSION IF
--- EXISTS unaccent; (antes de derrubar, conferir que nenhuma funcao de busca
--- depende dela — as do molde dependem).
+-- SEM BEGIN/COMMIT (regra da casa). Rollback manual versionado em
+-- rollback-manual-20261032000000_loja_nova_nasce_com_unaccent.sql.
 --
--- FICHA pos-aplicacao: SELECT extname FROM pg_extension WHERE extname='
--- unaccent' esperado 1 linha. (troque ' por apostofro simples)
+-- FICHA pos-aplicacao: SELECT extname FROM pg_extension WHERE extname = 'unaccent';  (esperado: 1 linha)
 CREATE EXTENSION IF NOT EXISTS unaccent;
