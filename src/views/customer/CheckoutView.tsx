@@ -16,6 +16,7 @@ import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
+import { cepEhLocal } from "@/lib/cep-local";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
 import {
   type AcaoDeRecusa,
@@ -278,7 +279,10 @@ export function CheckoutView({
       })
       .superRefine((data, ctx) => {
         if (!user) {
-          if (!data.cep || data.cep.length < 8) {
+          // 8 DÍGITOS, não 8 caracteres: "1234-678" tem 8 caracteres e 7
+          // dígitos — passava na régua antiga e virava endereço não
+          // entregável no pedido (laudo caça-bugs 30/08, achado 11).
+          if (!data.cep || data.cep.replace(/\D/g, "").length !== 8) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "CEP inválido",
@@ -869,6 +873,21 @@ export function CheckoutView({
 
   const isValid = form.formState.isValid;
 
+  // REGRA DO CONVIDADO (decisão do Gabriel, 30/08/2026 — laudo caça-bugs
+  // Savy, achado 3): convidado só compra com ENTREGA LOCAL; envio para outra
+  // cidade exige conta. Sem cadastro não existe rastreio honesto do pedido
+  // (o OTP precisa de e-mail, que o convidado não dá). A decisão final do
+  // frete é do servidor; esta checagem é o portão da tela, espelhando
+  // `is_local_cep` do banco via `cepEhLocal`. Sem CEP de origem configurado
+  // a regra fica silenciosa — sem origem o próprio `semFreteSelecionado`
+  // já trava o pedido, e o aviso aqui diria a mentira errada.
+  const cepDoConvidado = form.watch("cep");
+  const convidadoForaDaCidade =
+    !user &&
+    !!config.originCep &&
+    !!cepDoConvidado &&
+    !cepEhLocal(config.originCep, cepDoConvidado, config.localCepRange);
+
   // Achado da revisão (18/08/2026): a Tarefa 7 deste bloco fez a
   // `calculate-shipping` recusar cotar quando a loja não configurou o CEP de
   // origem — correto. Mas este botão só olhava `isValid` (validade do
@@ -916,7 +935,8 @@ export function CheckoutView({
     !isValid ||
     isSubmitting ||
     semFreteSelecionado ||
-    aguardandoConferenciaDaRecusa;
+    aguardandoConferenciaDaRecusa ||
+    convidadoForaDaCidade;
 
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
@@ -2297,6 +2317,33 @@ export function CheckoutView({
                         Volte ao carrinho e calcule o frete para continuar
                       </p>
                     )}
+                    {convidadoForaDaCidade && (
+                      // Motivo visível da regra do convidado (decisão do
+                      // Gabriel, 30/08/2026): entrega para fora da cidade é
+                      // só com conta — sem cadastro não há como acompanhar
+                      // o pedido. Botão apagado SEM este aviso virava
+                      // desistência silenciosa.
+                      <div className="mx-auto mt-2 flex max-w-md flex-col items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-center">
+                        <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-amber-600">
+                          <AlertCircle className="size-3.5 shrink-0" />
+                          Entrega fora da cidade é só com conta
+                        </p>
+                        <p className="text-[10px] leading-snug text-zinc-500">
+                          Crie sua conta para receber em outro CEP — assim você
+                          também acompanha seu pedido por aqui.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            haptic.light();
+                            onNavigate("auth");
+                          }}
+                          className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                        >
+                          Entrar ou criar conta
+                        </button>
+                      </div>
+                    )}
                     {aguardandoConferenciaDaRecusa && (
                       // A única porta de saída daqui era o "X" de 16px no
                       // painel abaixo (aria-label "Fechar o aviso"), sem
@@ -2413,7 +2460,7 @@ function SuccessView({
           <ArrowLeft className="size-5 rotate-180" />
         </button>
         <button
-          onClick={() => onNavigate("profile")}
+          onClick={() => onNavigate("orders")}
           className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
         >
           Ver Meus Pedidos
@@ -2473,7 +2520,7 @@ function PagamentoConfirmadoView({
 
       <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
         <button
-          onClick={() => onNavigate("profile")}
+          onClick={() => onNavigate("orders")}
           className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
         >
           Ver Meus Pedidos
@@ -2577,7 +2624,7 @@ function PagamentoForaDoPrazoView({
           </button>
         )}
         <button
-          onClick={() => onNavigate("profile")}
+          onClick={() => onNavigate("orders")}
           className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
         >
           Ver Meus Pedidos

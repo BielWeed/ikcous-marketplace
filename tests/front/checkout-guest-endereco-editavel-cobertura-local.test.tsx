@@ -31,6 +31,7 @@ const { mockConfig } = vi.hoisted(() => ({
   mockConfig: {
     shippingCoverage: "local" as "national" | "local",
     originCep: "38500-000" as string | undefined,
+      localCepRange: "01310-100",
     storeCity: "Uberlândia" as string | undefined,
     storeState: "MG" as string | undefined,
   },

@@ -72,4 +72,16 @@ describe("OrderSuccessView — a promessa de atualizações é por verdade", () 
     expect(texto).not.toContain("aviso aqui no app");
     expect(texto).not.toContain("receberá atualizações em breve");
   });
+
+  it("CONVIDADO não lê promessa de AUTOATENDIMENTO (a busca de pedido exige e-mail que ele não deu — laudo caça-bugs 30/08)", async () => {
+    usuarioAtual = null;
+    await montar();
+
+    const texto = hospedeiro.textContent ?? "";
+    // A frase antiga — 'Com o código do comprovante, você acompanha cada
+    // atualização em "Meus Pedidos"' — prometia um caminho que falha sempre
+    // para convidado. A nova manda para o canal que existe de verdade.
+    expect(texto).not.toContain("você acompanha cada atualização");
+    expect(texto).toContain("fale com a loja pelo WhatsApp");
+  });
 });

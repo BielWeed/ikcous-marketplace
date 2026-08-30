@@ -34,6 +34,11 @@ export interface CartState {
   cartTotal: number;
   cartCount: number;
   shippingFee: number;
+  /** VERDADE quando o frete exibido é chute, não preço: provedor de cotação
+   *  real (Melhor Envio/Frenet) sem cotação escolhida. A tela mostra "a
+   *  calcular" em vez de pregarrar `config.shippingFee` no total (laudo
+   *  caça-bugs 30/08, achado 7). */
+  freteIndefinido: boolean;
   selectedShippingOption: ShippingOption | null;
   /** CEP para o qual a cotação de frete escolhida foi calculada. O banco precisa
    *  dele para localizar a cotação gravada e confirmar o valor do frete. */
@@ -784,6 +789,31 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     user,
   ]);
 
+  // FRETE CHUTADO (laudo caça-bugs 30/08, achado 7): com provedor de cotação
+  // real e nenhuma cotação escolhida, o número em `shippingFee` é o fallback
+  // de fábrica — não é preço. A tela usa esta bandeira para dizer "a
+  // calcular" em vez de apresentar um total que vai mudar depois.
+  const freteIndefinido = React.useMemo(() => {
+    if (cart.length === 0) return false;
+    const hasFreeShippingItem = cart.some((item) => item.product.freeShipping);
+    if (hasFreeShippingItem) return false;
+    if (
+      config.freeShippingMin > 0 &&
+      cartTotal >= config.freeShippingMin &&
+      user
+    )
+      return false;
+    if (selectedShippingOption) return false;
+    return config.shippingProvider !== "flat_fee";
+  }, [
+    cart,
+    cartTotal,
+    config.freeShippingMin,
+    config.shippingProvider,
+    selectedShippingOption,
+    user,
+  ]);
+
   const cartTotalRef = useRef(cartTotal);
   const cartCountRef = useRef(cartCount);
   useEffect(() => {
@@ -802,6 +832,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       cartTotal,
       cartCount,
       shippingFee,
+      freteIndefinido,
       selectedShippingOption,
       shippingCep,
     }),
@@ -811,6 +842,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       cartTotal,
       cartCount,
       shippingFee,
+      freteIndefinido,
       selectedShippingOption,
       shippingCep,
     ],

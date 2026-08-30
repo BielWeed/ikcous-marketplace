@@ -84,6 +84,7 @@ export function CartView({
   const {
     cart: ctxCart,
     shippingFee: ctxShippingFee,
+    freteIndefinido,
     updateQuantity,
     removeFromCart,
     clearCart,
@@ -289,8 +290,11 @@ export function CartView({
     const diff = isRuleActive
       ? Math.max(0, config.freeShippingMin - subtotal)
       : 0;
-    const ship = ctxShippingFee;
-    const tot = subtotal + ship;
+    // FRETE INDEFINIDO (laudo caça-bugs 30/08, achado 7): com provedor de
+    // cotação real e nenhuma cotação escolhida, `ctxShippingFee` é o chute de
+    // fábrica — exibir `null` ("A calcular") e NÃO somar frete ao total.
+    const ship = freteIndefinido ? null : ctxShippingFee;
+    const tot = subtotal + (ship ?? 0);
     const save = ship === 0 ? config.shippingFee || 0 : 0;
     const nearly = Boolean(isRuleActive && progress >= 70 && progress < 100);
 
@@ -309,6 +313,7 @@ export function CartView({
     hasFreeShippingItem,
     cart.length,
     ctxShippingFee,
+    freteIndefinido,
     user,
   ]);
 
@@ -433,7 +438,7 @@ export function CartView({
 
                     {user && cart.length > 0 && (
                       <ShippingProgress
-                        shipping={shipping}
+                        shipping={shipping ?? 0}
                         savings={savings}
                         progressPercent={progressPercent}
                         amountToFree={amountToFree}
@@ -585,10 +590,16 @@ export function CartView({
                             "font-black tracking-tight",
                             shipping === 0
                               ? "text-emerald-500"
-                              : "text-zinc-950",
+                              : shipping === null
+                                ? "text-zinc-500"
+                                : "text-zinc-950",
                           )}
                         >
-                          {shipping === 0 ? "GRÁTIS" : formatCurrency(shipping)}
+                          {shipping === 0
+                            ? "GRÁTIS"
+                            : shipping === null
+                              ? "A calcular"
+                              : formatCurrency(shipping)}
                         </span>
                       </div>
 
