@@ -12,13 +12,19 @@ import { describe, expect, it } from "vitest";
  * pelo sino (o caminho mais comum, porque o sino aparece em toda tela do
  * admin) apertava Voltar e caía em Configurações, longe de onde estava.
  *
- * Esta função recebe a ORIGEM (a view anterior, guardada num `useRef` no
- * `AdminLayout`) e, só para "admin-push", devolve a origem em vez da tabela
- * fixa — desde que a origem seja uma tela do admin diferente da própria
- * "admin-push". As outras entradas da tabela ("admin-banners",
- * "admin-carousels", "admin-whatsapp-config") continuam batendo sempre em
- * "admin-settings": elas só são alcançadas por Configurações, então mudar
- * isso não resolve bug nenhum e está fora do escopo desta correção.
+ * Esta função recebe a ORIGEM (a view anterior, guardada em ESTADO —
+ * `origemDaView`, um `useState` no `AdminLayout`, porque a regra
+ * react-hooks/refs proíbe ler ref em render) e, para as telas com
+ * comportamento sensível à origem — hoje "admin-push" e
+ * "admin-notifications" — devolve a origem em vez da tabela fixa, desde que
+ * a origem seja uma tela do admin diferente da própria tela. Sem origem do
+ * admin, "admin-push" cai em "admin-settings" e "admin-notifications" em
+ * "admin-dashboard" (decisão do Gabriel, 30/08/2026: o botão da tela de
+ * notificações dizia "Perfil" e levava ao Perfil). As outras entradas da
+ * tabela ("admin-banners", "admin-carousels", "admin-whatsapp-config")
+ * continuam batendo sempre em "admin-settings": elas só são alcançadas por
+ * Configurações, então mudar isso não resolve bug nenhum e está fora do
+ * escopo desta correção.
  */
 describe("paiDaTelaDoAdmin", () => {
   it("admin-push com origem admin-customers volta para admin-customers", () => {

@@ -29,7 +29,7 @@ import type { View } from "@/types";
  *      painel; qualquer coisa de fora cai no fallback).
  *   3. `view === "admin-notifications"` com uma `origem` válida (mesma
  *      regra) — devolve a origem; sem ela, "admin-dashboard".
- *   4. a mesma tabela fixa de sempre. "admin-push" e "admin-notifications"
+ *   4. a tabela fixa (com o caso novo "admin-notifications" → "admin-dashboard"). "admin-push" e "admin-notifications"
  *      são as únicas com comportamento sensível à origem — "admin-banners",
  *      "admin-carousels" e "admin-whatsapp-config" continuam caindo em
  *      "admin-settings" mesmo com origem preenchida, porque elas só são
