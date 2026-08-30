@@ -505,7 +505,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                     const isSandbox = credentials.sandbox === true
                     const baseUrl = isSandbox 
                         ? 'https://sandbox.melhorenvio.com.br' 
-                        : 'https://api.melhorenvio.com.br'
+                        : 'https://melhorenvio.com.br'
                         
                     const response = await fetch(`${baseUrl}/api/v2/me`, {
                         headers: {
@@ -877,7 +877,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 const isSandbox = credentials.sandbox === true
                 const baseUrl = isSandbox 
                     ? 'https://sandbox.melhorenvio.com.br' 
-                    : 'https://api.melhorenvio.com.br'
+                    : 'https://melhorenvio.com.br'
 
                 const response = await fetch(`${baseUrl}/api/v2/me/shipment/calculate`, {
                     method: 'POST',
