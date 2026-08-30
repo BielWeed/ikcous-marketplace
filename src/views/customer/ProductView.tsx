@@ -1387,6 +1387,10 @@ export const ProductView = React.memo(function ProductView({
                 ))}
           </div>
         </div>
+
+        {/* Reserva o fim da página para as barras fixas (compra dockada +
+            navegação inferior) não cobrirem a última fileira de cards. */}
+        <div aria-hidden="true" className="h-44 md:h-36" />
       </div>
 
       {typeof window !== "undefined" &&
