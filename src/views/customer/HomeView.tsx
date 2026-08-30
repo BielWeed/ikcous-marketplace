@@ -9,6 +9,7 @@ import type { Product, SortOption, View } from "@/types";
 import {
   ArrowDown,
   ArrowUp,
+  Clock,
   PackageSearch,
   SlidersHorizontal,
   TrendingUp,
@@ -542,6 +543,22 @@ export const HomeView = React.memo(function HomeView({
             />
           </div>
         )}
+
+      {/* Item 6 do laudo "o que falta" (29/08): o painel promete "Informa aos
+          clientes no PWA" e o horário nunca chegava — o dado existia no
+          config (business_hours), nada o exibia. Bloco discreto no fim da
+          vitrine, só quando a lojista preencheu. */}
+      {config.businessHours?.trim() && (
+        <div className="relative z-10 mt-8 rounded-[2rem] border border-zinc-100 bg-zinc-50/50 p-6 text-center">
+          <p className="flex items-center justify-center gap-2 text-sm font-bold text-zinc-700">
+            <Clock className="size-4 text-admin-gold" />
+            Horário de atendimento
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-zinc-500">
+            {config.businessHours}
+          </p>
+        </div>
+      )}
     </div>
   );
 });

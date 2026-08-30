@@ -1398,6 +1398,19 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261029000000_sentinela_do_horario_vira_ausencia.sql": [
+    {
+      // Follow-up obrigatório da revisão do #349 (item 6 do laudo): a
+      // sentinela do horário de fábrica morre no banco. O comentário da
+      // remoção aparece EXATAMENTE 2x no corpo da RPC viva — o da cor
+      // (molde, 20260980000000) e o novo do horário. 1x seria a sentinela do
+      // horário de volta ao INSERT; 3x, corpo divergente do desenhado.
+      funcao: "upsert_store_config",
+      esperado: [
+        { texto: "-- sentinela removida: ausente grava NULL", vezes: 2 },
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
