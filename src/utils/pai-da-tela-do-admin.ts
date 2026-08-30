@@ -29,10 +29,14 @@ import type { View } from "@/types";
  *      painel; qualquer coisa de fora cai no fallback).
  *   3. `view === "admin-notifications"` com uma `origem` válida (mesma
  *      regra) — devolve a origem; sem ela, "admin-dashboard".
- *   4. a tabela fixa (com o caso novo "admin-notifications" → "admin-dashboard"). "admin-push" e "admin-notifications"
- *      são as únicas com comportamento sensível à origem — "admin-banners",
- *      "admin-carousels" e "admin-whatsapp-config" continuam caindo em
- *      "admin-settings" mesmo com origem preenchida, porque elas só são
+ *   4. `view === "admin-whatsapp-config"` com uma `origem` válida (mesma
+ *      regra) — devolve a origem; sem ela, "admin-dashboard". A tela é
+ *      alcançada pelo banner "Atendimento & Vendas" do painel principal E
+ *      por Ajustes; voltar sempre para "admin-settings" largava quem veio
+ *      pelo banner no lugar errado (achado do Gabriel com print, 30/08).
+ *   5. a tabela fixa (com os casos "admin-push", "admin-notifications" e
+ *      "admin-whatsapp-config" movidos para as regras acima). "admin-banners"
+ *      e "admin-carousels" continuam caindo em "admin-settings": hoje só são
  *      alcançadas por Configurações.
  */
 export function paiDaTelaDoAdmin(
@@ -67,6 +71,20 @@ export function paiDaTelaDoAdmin(
     return origem;
   }
 
+  // Atendimento (WhatsApp da operação): mesma regra sensível à origem — a
+  // tela tem DUAS portas (banner "Atendimento & Vendas" do painel principal
+  // e Ajustes) e o Voltar fixo em "admin-settings" largava quem veio pelo
+  // banner no lugar errado (achado do Gabriel com print, 30/08/2026). Sem
+  // origem do admin conhecida, cai no painel principal.
+  if (
+    view === "admin-whatsapp-config" &&
+    origem != null &&
+    origem !== "admin-whatsapp-config" &&
+    origem.startsWith("admin-")
+  ) {
+    return origem;
+  }
+
   switch (view) {
     case "admin-coupon-form":
       return "admin-coupons";
@@ -79,8 +97,9 @@ export function paiDaTelaDoAdmin(
     case "admin-push":
     case "admin-banners":
     case "admin-carousels":
-    case "admin-whatsapp-config":
       return "admin-settings";
+    case "admin-whatsapp-config":
+      return "admin-dashboard";
     case "admin-notifications":
       return "admin-dashboard";
     case "admin-reviews":
