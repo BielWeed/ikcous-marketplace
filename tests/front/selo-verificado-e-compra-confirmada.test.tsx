@@ -129,7 +129,11 @@ describe("AdminReviewsView — o selo Verificado é da compra, não do clique", 
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     }));
-    const armazem = new Map<string, string>();
+    const armazem = new Map<string, string>([
+      // O badge com TEXTO "Compra Verificada" vive no card DETAILED — o modo
+      // padrão é "compact" (só ícone, sem texto para o textContent ler).
+      ["admin_reviews_view_mode", "detailed"],
+    ]);
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
       setItem: (chave: string, valor: string) => {
@@ -183,15 +187,15 @@ describe("AdminReviewsView — o selo Verificado é da compra, não do clique", 
     ).toHaveLength(0);
   });
 
-  it("o badge derivado continua lendo a coluna verified (verificada mostra, outra não)", async () => {
+  it("a review VERIFICADA carrega a marca de compra; a não-verificada não", async () => {
     await montar();
 
-    const texto = hospedeiro.textContent ?? "";
-    // As duas reviews estão na tela:
-    expect(texto).toContain("Compradora");
-    expect(texto).toContain("Visitante");
-    // O badge POR CARD da review verificada (singular — o KPI do topo é o
-    // plural "Compras Verificadas"):
-    expect(texto).toContain("Compra Verificada");
+    // No modo compacto (padrão) a marca de compra é o ícone de escudo
+    // esmeralda ao lado do nome — sem texto. O KPI do topo tem o SEU
+    // escudo, roxo: a contagem é dele, não dos cards.
+    const marcas = hospedeiro.querySelectorAll(
+      "svg.lucide-shield-check.text-emerald-450",
+    );
+    expect(marcas.length).toBe(1);
   });
 });
