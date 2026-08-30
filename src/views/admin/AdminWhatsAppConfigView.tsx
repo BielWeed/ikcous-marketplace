@@ -684,9 +684,13 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                 Número que receberá contatos diretos de clientes.
               </p>
               <div className="group relative">
-                <div className="pointer-events-none absolute left-3.5 top-1/2 flex -translate-y-1/2 items-center gap-1.5 border-r border-white/10 pr-2.5">
+                {/* Âncora no PRIMEIRO 20px do bloco (centro do input h-10),
+                    não em `top-1/2`: o bloco cresce para baixo quando a
+                    validação acusa erro, e o meio do bloco empurrava o
+                    ícone/+55 para fora da linha do campo. */}
+                <div className="pointer-events-none absolute left-3.5 top-5 flex h-5 -translate-y-1/2 items-center gap-1.5 border-r border-white/10 pr-2.5">
                   <MessageCircle className="size-3.5 text-[#25d366]" />
-                  <span className="text-[11px] font-black text-zinc-500">
+                  <span className="text-[11px] font-black leading-none text-zinc-500">
                     +55
                   </span>
                 </div>
@@ -698,12 +702,15 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                   delay={350}
                   value={formData.whatsappNumber}
                   onFlush={onChangeWhatsappNumber}
-                  placeholder="Ex: (34) 99999-9999"
+                  placeholder="(00) 00000-0000"
                   className="h-10 rounded-xl border-white/10 bg-black/40 pl-16 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:ring-admin-gold/50"
                   autoComplete="tel"
                   disabled={isOffline}
                   validate={(val) => {
-                    if (!val) return "WhatsApp é obrigatório";
+                    // Campo OPCIONAL (decisão do Gabriel, 30/08): vazio é
+                    // estado legítimo — o botão de WhatsApp some da loja.
+                    // Erro só quando digitar errado.
+                    if (!val) return null;
                     const clean = val.replace(/\D/g, "");
                     if (clean.length < 10 || clean.length > 11) {
                       return "Informe DDD + número (10 ou 11 dígitos)";
@@ -718,11 +725,8 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                   <span>Formato e Protocolo</span>
                 </div>
                 <p className="text-[9px] leading-relaxed text-zinc-400">
-                  Informe DDD + número (ex:{" "}
-                  <code className="font-mono font-bold text-admin-gold">
-                    34999999999
-                  </code>
-                  ). O código{" "}
+                  Campo opcional: vazio, e o botão de WhatsApp some da loja.
+                  Preenchido, use DDD + número — o código{" "}
                   <code className="font-mono text-zinc-300">55</code> é
                   adicionado automaticamente.
                 </p>
