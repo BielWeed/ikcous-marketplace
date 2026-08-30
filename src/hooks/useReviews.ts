@@ -498,6 +498,10 @@ export function useReviews() {
           rating: item.rating,
           comment: item.comment || "",
           verified: item.verified ?? false,
+          // Item 8: o fallback (rota quando a RPC falha) NÃO pode perder a
+          // fila — sem isto, pendente chega undefined e o painel anuncia
+          // "nenhuma avaliação na fila" em plena fila.
+          status: item.status ?? "publicada",
           helpful: item.helpful ?? 0,
           createdAt: item.created_at,
           merchantReply: item.merchant_reply,

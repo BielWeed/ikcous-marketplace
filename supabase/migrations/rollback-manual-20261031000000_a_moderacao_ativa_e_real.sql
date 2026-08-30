@@ -15,6 +15,14 @@
 --      CREATE POLICY reviews_select_policy ON public.reviews
 --        FOR SELECT USING (true);
 --
+-- 2b. Devolver a policy INSERT ao estado do PR #350 (re-aplicar a
+--     20261030000000_o_selo_verificado_e_a_compra.sql — CREATE OR REPLACE
+--     da RPC + DROP/CREATE da policy com `verified = false` e SEM a trava
+--     de status):
+--
+--      node scripts/db-apply.cjs \
+--        supabase/migrations/20261030000000_o_selo_verificado_e_a_compra.sql
+--
 -- 3. APAGAR a coluna (com ela, as pendentes — o retrato delas é a própria
 --    fila que nunca chegou a ser lida; não há histórico precioso:
 --    avaliação pendente nunca foi vista por cliente):

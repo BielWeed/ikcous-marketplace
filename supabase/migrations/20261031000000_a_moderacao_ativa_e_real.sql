@@ -42,6 +42,12 @@
 --   FROM pg_policy WHERE polname = 'reviews_select_policy';
 --   -- esperado: expressão contendo 'status' e 'publicada'
 --
+--   -- 2b. A policy INSERT só aceita avaliação PENDENTE (a fila não é
+--   --     contornável pela API — mesmo furo que o #350 fechou para o selo):
+--   SELECT pg_get_expr(qual, polrelid) AS com_check
+--   FROM pg_policy WHERE polname = 'reviews_insert_policy';
+--   -- esperado: expressão contendo "status = 'pendente'" e 'verified = false'
+--
 --   -- 3. Prova funcional dos TRÊS papéis (com uma avaliação pendente de
 --   --    teste; APAGAR depois):
 --   --    UPDATE reviews SET status = 'pendente' WHERE id = '<avaliação de teste>';
@@ -66,4 +72,28 @@ CREATE POLICY reviews_select_policy ON public.reviews
     status = 'publicada'
     OR user_id = auth.uid()
     OR public.is_admin()
+  );
+
+-- ============================================================
+-- Fecha o MESMO furo que o #350 fechou para o `verified`, agora para o
+-- `status`: sem esta trava na WITH CHECK, qualquer authenticated postava a
+-- avaliação DIRETO na API com status = 'publicada' — nascendo no ar, fora
+-- da fila, e o painel voltava a prometer uma moderação que o banco não
+-- garante. Com `status = 'pendente'` na WITH CHECK, TODO insert novo entra
+-- na fila; o admin nunca insere avaliação pelo app (só aprova/apaga/
+-- responde), então ninguém perde função.
+-- ============================================================
+
+DROP POLICY IF EXISTS reviews_insert_policy ON public.reviews;
+
+CREATE POLICY reviews_insert_policy ON public.reviews
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (SELECT auth.uid()) = user_id
+    AND verified = false
+    AND status = 'pendente'
+    AND COALESCE(
+      (SELECT sc.enable_reviews FROM public.store_config sc WHERE sc.id = 1),
+      true
+    )
   );

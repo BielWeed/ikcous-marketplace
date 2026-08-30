@@ -86,11 +86,15 @@ function esperarMicrotarefas(): Promise<void> {
 describe("AdminReviewsView — a fila de moderação é real", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
+  // O armazem do localStorage dublado fica no escopo do describe para o
+  // teste do modo detailed pré-carregar a chave.
+  const armazem = new Map<string, string>();
 
   beforeEach(() => {
     h.estado.loading = true;
     h.estado.adminReviews = [];
     vi.clearAllMocks();
+    armazem.clear();
 
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
@@ -104,7 +108,6 @@ describe("AdminReviewsView — a fila de moderação é real", () => {
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     }));
-    const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
       setItem: (chave: string, valor: string) => {
@@ -202,16 +205,30 @@ describe("AdminReviewsView — a fila de moderação é real", () => {
   });
 
   it("no modo DETAILED o pendente ganha o botão com texto 'Aprovar e Publicar'", async () => {
-    const armazem = (localStorage.setItem as any).mock ? null : null;
-    // Pré-carrega o modo detailed no localStorage dublado (o useLocalStorage
-    // lê no primeiro render).
-    const chaveStore = "admin_reviews_view_mode";
-    const itemAtual = (localStorage.getItem as any)
-      ? localStorage.getItem(chaveStore)
-      : null;
-    void itemAtual;
-    void armazem;
-    void chaveStore;
+    // Pré-carrega o modo detailed no armazem do localStorage dublado (o
+    // useLocalStorage lê no primeiro render). O valor vai COMO JSON — o
+    // hook faz JSON.parse do que está guardado.
+    armazem.set("admin_reviews_view_mode", JSON.stringify("detailed"));
+    h.estado.adminReviews = [
+      {
+        id: "rev-p",
+        productId: "prod-1",
+        productName: "Produto Teste",
+        customerName: "Recém-chegada",
+        rating: 5,
+        comment: "Avaliação nova aguardando",
+        verified: false,
+        status: "pendente",
+        helpful: 0,
+        createdAt: new Date("2026-08-30").toISOString(),
+      },
+    ];
+    await montar();
+
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).toContain("Em moderação");
+    expect(texto).toContain("Aprovar e Publicar");
+    expect(h.aprovarReview).not.toHaveBeenCalled();
   });
 
   it("sem pendentes: a fila fica vazia e as publicadas não ganham botão", async () => {
