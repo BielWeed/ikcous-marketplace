@@ -878,12 +878,15 @@ export function CheckoutView({
   // cidade exige conta. Sem cadastro não existe rastreio honesto do pedido
   // (o OTP precisa de e-mail, que o convidado não dá). A decisão final do
   // frete é do servidor; esta checagem é o portão da tela, espelhando
-  // `is_local_cep` do banco via `cepEhLocal`.
+  // `is_local_cep` do banco via `cepEhLocal`. Sem CEP de origem configurado
+  // a regra fica silenciosa — sem origem o próprio `semFreteSelecionado`
+  // já trava o pedido, e o aviso aqui diria a mentira errada.
   const cepDoConvidado = form.watch("cep");
   const convidadoForaDaCidade =
     !user &&
+    !!config.originCep &&
     !!cepDoConvidado &&
-    !cepEhLocal(config.originCep ?? "", cepDoConvidado, config.localCepRange);
+    !cepEhLocal(config.originCep, cepDoConvidado, config.localCepRange);
 
   // Achado da revisão (18/08/2026): a Tarefa 7 deste bloco fez a
   // `calculate-shipping` recusar cotar quando a loja não configurou o CEP de
