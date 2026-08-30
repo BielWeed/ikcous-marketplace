@@ -2329,8 +2329,8 @@ export function CheckoutView({
                           Entrega fora da cidade é só com conta
                         </p>
                         <p className="text-[10px] leading-snug text-zinc-500">
-                          Crie sua conta para receber em outro CEP — assim
-                          você também acompanha seu pedido por aqui.
+                          Crie sua conta para receber em outro CEP — assim você
+                          também acompanha seu pedido por aqui.
                         </p>
                         <button
                           type="button"

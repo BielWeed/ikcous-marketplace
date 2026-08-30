@@ -38,7 +38,11 @@ export function cepEhLocal(
 
       // "38500000-38505000": dois blocos longos = faixa explícita.
       // "38500-000": 5+3 dígitos = um único CEP formatado.
-      if (partes.length === 2 && partes[0].length >= 6 && partes[1].length >= 6) {
+      if (
+        partes.length === 2 &&
+        partes[0].length >= 6 &&
+        partes[1].length >= 6
+      ) {
         const inicio = Number(partes[0].padEnd(8, "0"));
         const fim = Number(partes[1].padEnd(8, "9"));
         faixas.push(inicio <= fim ? [inicio, fim] : [fim, inicio]);
@@ -47,7 +51,11 @@ export function cepEhLocal(
       }
     }
 
-    if (faixas.some(([inicio, fim]) => destinoValor >= inicio && destinoValor <= fim)) {
+    if (
+      faixas.some(
+        ([inicio, fim]) => destinoValor >= inicio && destinoValor <= fim,
+      )
+    ) {
       return true;
     }
 

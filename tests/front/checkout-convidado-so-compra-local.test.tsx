@@ -120,7 +120,10 @@ describe("CheckoutView (convidado) — só compra com entrega local", () => {
         armazem.delete(chave);
       },
     });
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);

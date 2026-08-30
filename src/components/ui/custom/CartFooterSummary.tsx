@@ -2,7 +2,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
 import { motion } from "framer-motion";
 import { ArrowRight, Sparkles as SparklesIcon } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 interface CartFooterSummaryProps {

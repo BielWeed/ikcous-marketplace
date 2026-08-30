@@ -436,7 +436,7 @@ export function CartView({
                       </div>
                     )}
 
-                      {user && cart.length > 0 && (
+                    {user && cart.length > 0 && (
                       <ShippingProgress
                         shipping={shipping ?? 0}
                         savings={savings}

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { cepEhLocal } from "@/lib/cep-local";
+import { describe, expect, it } from "vitest";
 
 // Contrato espelhado de `is_local_cep` (baseline SQL) e `isLocalCep` (edge
 // calculate-shipping). Se uma das três cópias mudar, as outras mudam junto —
@@ -24,17 +24,27 @@ describe("cepEhLocal — espelha is_local_cep do banco", () => {
   });
 
   it("faixa explícita longa: destino dentro e fora", () => {
-    expect(cepEhLocal("38500-000", "38503-123", "38500000-38505000")).toBe(true);
-    expect(cepEhLocal("38500-000", "38506-000", "38500000-38505000")).toBe(false);
+    expect(cepEhLocal("38500-000", "38503-123", "38500000-38505000")).toBe(
+      true,
+    );
+    expect(cepEhLocal("38500-000", "38506-000", "38500000-38505000")).toBe(
+      false,
+    );
   });
 
   it("faixa invertida ainda casa (a cópia ordena)", () => {
-    expect(cepEhLocal("38500-000", "38501-000", "38505000-38500000")).toBe(true);
+    expect(cepEhLocal("38500-000", "38501-000", "38505000-38500000")).toBe(
+      true,
+    );
   });
 
   it("dois CEPs completos no formato do placeholder = início e fim de faixa", () => {
-    expect(cepEhLocal("38500-000", "38500-500", "38500-000, 38500-999")).toBe(true);
-    expect(cepEhLocal("38500-000", "38501-000", "38500-000, 38500-999")).toBe(false);
+    expect(cepEhLocal("38500-000", "38500-500", "38500-000, 38500-999")).toBe(
+      true,
+    );
+    expect(cepEhLocal("38500-000", "38501-000", "38500-000, 38500-999")).toBe(
+      false,
+    );
   });
 
   it("CEP único na faixa: casa exato com 8 dígitos", () => {

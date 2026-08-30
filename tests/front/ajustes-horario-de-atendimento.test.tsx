@@ -103,9 +103,7 @@ describe("AdminSettingsView — Horário de atendimento", () => {
 
   it("o campo existe e nasce com o horário já salvo no banco", async () => {
     await abrirTela();
-    expect(pegarCampo("store-business-hours").value).toBe(
-      "Seg-Sáb: 9h às 18h",
-    );
+    expect(pegarCampo("store-business-hours").value).toBe("Seg-Sáb: 9h às 18h");
   });
 
   it("grava o horário que a lojista digitar", async () => {
