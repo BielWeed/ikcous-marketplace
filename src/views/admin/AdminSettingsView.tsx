@@ -44,6 +44,9 @@ const StoreLocationSection = memo(function StoreLocationSection() {
   const { config, updateConfig } = useStore();
   const [storeCity, setStoreCity] = useState(config.storeCity ?? "");
   const [storeState, setStoreState] = useState(config.storeState ?? "");
+  const [businessHours, setBusinessHours] = useState(
+    config.businessHours ?? "",
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   // A tela pode montar antes do StoreContext terminar de carregar o config
@@ -52,7 +55,8 @@ const StoreLocationSection = memo(function StoreLocationSection() {
   useEffect(() => {
     setStoreCity(config.storeCity ?? "");
     setStoreState(config.storeState ?? "");
-  }, [config.storeCity, config.storeState]);
+    setBusinessHours(config.businessHours ?? "");
+  }, [config.storeCity, config.storeState, config.businessHours]);
 
   const handleSave = async () => {
     if (isSaving) return;
@@ -64,11 +68,16 @@ const StoreLocationSection = memo(function StoreLocationSection() {
       const salvou = await updateConfig({
         storeCity: storeCity.trim() || null,
         storeState: storeState.trim().toUpperCase() || null,
+        // Horário de atendimento no mesmo molde (laudo caça-bugs 30/08:
+        // a sentinela 'Seg-Sáb: 9h às 18h' chegou a ser publicada como se
+        // fosse dado real). Vazio = a loja não disse, e a vitrine omite o
+        // bloco — nunca publica expediente que ninguém digitou.
+        businessHours: businessHours.trim() || null,
       });
       // O toast de erro já sai de dentro do StoreContext (ADMIN-010, #94) --
       // aqui só não seguimos em frente quando o retorno não for `true`.
       if (!salvou) return;
-      toast.success("Localização da loja salva");
+      toast.success("Dados da loja salvos");
     } finally {
       setIsSaving(false);
     }
@@ -81,15 +90,16 @@ const StoreLocationSection = memo(function StoreLocationSection() {
           <MapPin className="size-5 text-admin-gold" strokeWidth={2.5} />
         </div>
         <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">
-          Localização da Loja
+          Localização e Horário da Loja
         </h2>
       </div>
 
       <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
         <div className="flex flex-col gap-3">
           <p className="text-left text-[9.5px] leading-snug text-zinc-400">
-            Cidade e estado aparecem para quem compra. Deixe em branco o que a
-            loja ainda não quer mostrar -- o app omite, nunca inventa.
+            Cidade, estado e horário aparecem para quem compra. Deixe em
+            branco o que a loja ainda não quer mostrar -- o app omite, nunca
+            inventa.
           </p>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_100px]">
@@ -126,6 +136,23 @@ const StoreLocationSection = memo(function StoreLocationSection() {
                 className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-center font-mono text-xs font-semibold uppercase text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
               />
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="store-business-hours"
+              className="text-xs font-semibold text-zinc-300"
+            >
+              Horário de atendimento
+            </label>
+            <input
+              id="store-business-hours"
+              type="text"
+              value={businessHours}
+              onChange={(e) => setBusinessHours(e.target.value)}
+              placeholder="Ex: Seg-Sáb: 9h às 18h"
+              className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-xs font-semibold text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
+            />
           </div>
 
           <div className="mt-1 flex justify-end">

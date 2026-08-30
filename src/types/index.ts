@@ -244,7 +244,8 @@ export interface StoreConfig {
   shippingFee: number;
   whatsappNumber: string;
   shareText: string;
-  businessHours: string;
+  /** Expediente exibido na vitrine. Vazio/`null` = a loja não disse — o app omite, nunca inventa (laudo caça-bugs 30/08 + migration 20261033000000). */
+  businessHours?: string | null;
   enableReviews: boolean;
   enableCoupons: boolean;
   logoUrl?: string;
