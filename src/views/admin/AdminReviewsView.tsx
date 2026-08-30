@@ -31,7 +31,6 @@ import {
   Package,
   Search,
   ShieldCheck,
-  ShieldOff,
   Sparkles,
   Star,
   ThumbsUp,
@@ -90,7 +89,6 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     loading,
     getAllReviews,
     deleteReview,
-    toggleVerified,
     addMerchantReply,
     subscribeToReviews,
   } = useReviews();
@@ -287,30 +285,6 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       setPage((p) => p - 1);
     } else {
       triggerRefresh();
-    }
-  };
-
-  const handleToggleVerified = async (
-    reviewId: string,
-    currentVerified: boolean,
-  ) => {
-    if (isOffline) {
-      haptic.error();
-      toast.error("Você está offline", {
-        description:
-          "Não é possível alterar a verificação de avaliações sem conexão.",
-      });
-      return;
-    }
-    haptic.light();
-    try {
-      await toggleVerified(reviewId, currentVerified);
-      haptic.success();
-      triggerRefresh();
-    } catch (err) {
-      haptic.error();
-      console.error("Erro ao alternar verificação:", err);
-      toast.error("Erro ao alternar status de verificação.");
     }
   };
 
@@ -907,25 +881,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
                     {/* Action Bar */}
                     <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-6">
-                      <button
-                        onClick={() => {
-                          handleToggleVerified(review.id, review.verified);
-                        }}
-                        className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${
-                          review.verified
-                            ? "border border-white/5 bg-zinc-900 text-zinc-400 hover:bg-zinc-800"
-                            : "bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 hover:scale-[1.02]"
-                        }`}
-                      >
-                        {review.verified ? (
-                          <ShieldOff className="size-3.5" />
-                        ) : (
-                          <ShieldCheck className="size-3.5" />
-                        )}
-                        {review.verified
-                          ? "Remover Verificação"
-                          : "Verificar Compra"}
-                      </button>
+                      {/* Item 7 do laudo de 29/08: o botão manual
+                          "Verificar Compra/Remover Verificação" SAIU — o selo
+                          é derivado da compra com dinheiro reconhecido pelas
+                          triggers da 20261030000000, e interruptor manual
+                          voltaria a significar "alguém clicou". O badge ao
+                          lado continua lendo a MESMA coluna `verified`. */}
 
                       {!review.merchantReply && (
                         <button
@@ -1189,23 +1150,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                     {/* Actions */}
                     <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/5 pt-4">
                       <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => {
-                            handleToggleVerified(review.id, review.verified);
-                          }}
-                          className={`rounded-xl p-2 transition-all duration-300 ${
-                            review.verified
-                              ? "border border-white/5 bg-zinc-900 text-zinc-550 hover:bg-zinc-800"
-                              : "bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 hover:scale-105"
-                          }`}
-                          title={
-                            review.verified
-                              ? "Remover Verificação"
-                              : "Verificar Compra"
-                          }
-                        >
-                          <ShieldCheck className="size-4" />
-                        </button>
+                        {/* Item 7: o botão de verificação manual SAIU (as
+                            triggers da 20261030000000 derivam o selo da
+                            compra). O selo visual do card continua lendo a
+                            coluna `verified`. */}
 
                         {!review.merchantReply && (
                           <button

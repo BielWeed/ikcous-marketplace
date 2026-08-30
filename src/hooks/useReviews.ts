@@ -536,35 +536,9 @@ export function useReviews() {
     [isAdmin],
   );
 
-  const toggleVerified = useCallback(
-    async (reviewId: string, currentVerified: boolean) => {
-      if (!isAdmin) {
-        toast.error("Permissão negada");
-        return;
-      }
-      try {
-        const { error } = await supabase
-          .from("reviews" as any)
-          .update({ verified: !currentVerified })
-          .eq("id", reviewId);
-
-        if (error) throw error;
-
-        setAdminReviews((prev) =>
-          prev.map((r) =>
-            r.id === reviewId ? { ...r, verified: !currentVerified } : r,
-          ),
-        );
-        toast.success(
-          !currentVerified ? "Avaliação verificada." : "Verificação removida.",
-        );
-      } catch (error) {
-        console.error("Error toggling verified:", error);
-        toast.error("Erro ao atualizar avaliação.");
-      }
-    },
-    [isAdmin],
-  );
+  // toggleVerified REMOVIDO (item 7 do laudo de 29/08): o selo "Verificado"
+  // é derivado da compra com dinheiro reconhecido pelas triggers da
+  // 20261030000000 — interruptor manual significava "alguém clicou".
 
   const addMerchantReply = useCallback(
     async (reviewId: string, reply: string) => {
@@ -718,7 +692,6 @@ export function useReviews() {
     markHelpful,
     getAllReviews,
     deleteReview,
-    toggleVerified,
     addMerchantReply,
     subscribeToReviews,
   };

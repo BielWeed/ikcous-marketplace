@@ -1411,6 +1411,32 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261030000000_o_selo_verificado_e_a_compra.sql": [
+    {
+      // Item 7 do laudo de 29/08: o selo "Verificado" = compra com dinheiro
+      // reconhecido. As 3 portas precisam estar em CADA UMA das duas funções
+      // (reviews e orders) — literal único da casa, contagem exata 1x por
+      // corpo. Menos que isso, uma das portas de entrada do selo ficou muda.
+      funcao: "marca_avaliacao_nasce_verificada",
+      esperado: [
+        {
+          texto:
+            "'pago', 'pago_apos_expirar', 'recebido_na_entrega'",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "marca_avaliacoes_do_pedido_verificadas",
+      esperado: [
+        {
+          texto:
+            "'pago', 'pago_apos_expirar', 'recebido_na_entrega'",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
