@@ -43,6 +43,7 @@ vi.mock("@/contexts/StoreContext", () => ({
     config: {
       shippingCoverage: "local",
       originCep: "38500-000",
+      localCepRange: "01310-100",
       enableCoupons: true,
       whatsappNumber: "34999998888",
     },
