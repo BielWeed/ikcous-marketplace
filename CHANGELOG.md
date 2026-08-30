@@ -7,6 +7,66 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.13.0] - 2026-08-30
+
+A loja avisa o cliente na hora certa (cada passo do pedido, e o "Pagamento
+confirmado!" quando o PIX cai), o selo "Verificado" nasce da compra real, e
+avaliação nova só vai ao ar depois da aprovação da loja. No painel: filtro de
+pagamento que conta certo, fila de moderação de verdade, e custo vazio deixa
+de virar margem mentirosa.
+
+### Para quem COMPRA
+
+- **O sino agora avisa cada passo do pedido.** Pedido aceito, em preparo, a
+  caminho, entregue ou cancelado: o aviso nasce sozinho da mudança real de
+  status — antes, o cliente só ficava sabendo se abrisse o pedido na sorte.
+- **"Pagamento confirmado!" quando o PIX cai.** O aviso que o cliente mais
+  espera não depende mais de o pedido mudar de status. E se o dinheiro entrar
+  depois de o pedido já ter sido cancelado ou expirado, a frase é honesta:
+  a loja já foi avisada e vai resolver com você.
+- **Selo "Verificado" só para quem realmente comprou.** A avaliação com selo
+  vem de uma compra com dinheiro reconhecido pela loja; quem já avaliava
+  ganha o selo quando o pagamento entra (com efeito retroativo). O selo é
+  derivado do pedido — não existe botão para forjar.
+- **Avaliação nova passa pela fila da loja.** Sua avaliação chega ao lojista e
+  aparece na vitrine depois da aprovação — o app avisa isso na hora de enviar.
+  Avaliações já publicadas continuam no ar.
+- **O horário de funcionamento da loja aparece na vitrine.** Quando o lojista
+  preenche, o cliente vê antes de bater na porta fechada.
+
+### Para quem VENDE
+
+- **O filtro de Status de Pagamento agora filtra NO banco.** Antes ele
+  recortava só a página em tela: com muitos pedidos, o total continuava
+  contando tudo. Agora lista e contagem vêm filtradas do banco de verdade.
+- **Fila de moderação de verdade no painel.** Avaliação nova entra como "Em
+  moderação" e vai ao ar só no seu "Aprovar e Publicar". E a fila não é
+  contornável por fora: o banco recusa avaliação que tentar nascer publicada
+  por atalho.
+- **Custo vazio deixa de virar margem mentirosa.** Produto brinde ou sem custo
+  pode ficar com o campo vazio: a margem aparece como 100% com a marca "Custo
+  Suspeito", em vez do sistema inventar R$ 0 de custo.
+- **A recusa do cupom diz o PORQUÊ.** Não existe, desativado, expirou (com a
+  data), limite de usos ou compra mínima não atingida: cada caso com a frase
+  certa no checkout.
+- **O histórico de cotações de frete registra o provedor padrão.** A cotação
+  de taxa fixa entra no histórico junto com as do Melhor Envio (deploy da
+  função de frete feito nesta versão).
+- **O horário de funcionamento que você preenche chega ao cliente — com
+  sentinela.** Se a configuração sumir do banco, a vitrine NÃO inventa
+  expediente de fábrica.
+- **O preview do carrossel e a vitrine ordenam igual.** O que você organiza no
+  painel é exatamente a ordem que o cliente vê na loja.
+
+### Ferramenta (não muda nada na loja)
+
+- Cadastro exige senha de 8 caracteres; a marca própria deixa de ser "ICKOUS";
+  a ajuda do dashboard aponta para o lugar certo; o contador de usos do cupom
+  espelha o que o banco gravou; o KPI executivo não pega pedido fora de
+  ordem; a rota órfã de comparação saiu do app.
+- O painel de push mede o público-alvo SEM baixar a credencial de envio, e as
+  categorias do painel contam só dinheiro reconhecido pela loja.
+
 ## [1.12.0] - 2026-08-29
 
 O checkout para de engolir as recusas do banco: a pessoa vê O QUE deu errado
