@@ -87,19 +87,43 @@ describe("paiDaTelaDoAdmin", () => {
     expect(paiDaTelaDoAdmin("home" as never, null, false)).toBe("profile");
   });
 
-  it("admin-notifications e' tela de topo — o pai e' 'profile', nao uma subtela", () => {
-    // A tela nova NAO entra na tabela de `paiDaTelaDoAdmin` de proposito: ela
-    // e' tela de topo do painel, alcancada pelo sino de qualquer lugar. O
-    // `default` do switch ja devolve "profile", que e' o certo — e este caso
-    // existe para PRENDER isso: quem no futuro acrescentar a tela na tabela
-    // (ou copiar o tratamento especial do "admin-push" para ela) derruba este
-    // teste em vez de descobrir pelo botao Voltar levando para o lugar errado.
-    expect(paiDaTelaDoAdmin("admin-notifications", null, false)).toBe(
-      "profile",
-    );
+  it("admin-notifications com origem admin-orders volta para admin-orders (a tela anterior real)", () => {
+    // Decisão do Gabriel (30/08/2026), na prévia da cliente-01: o botão que
+    // dizia "Perfil" na tela de notificações do painel estava errado — o
+    // esperado é VOLTAR para a tela do admin de onde a pessoa veio. O teste
+    // antigo prendia o comportamento velho ("tela de topo", pai "profile")
+    // e foi reescrito junto com a decisão.
     expect(paiDaTelaDoAdmin("admin-notifications", "admin-orders", false)).toBe(
-      "profile",
+      "admin-orders",
     );
+  });
+
+  it("admin-notifications com origem admin-dashboard volta para admin-dashboard", () => {
+    expect(
+      paiDaTelaDoAdmin("admin-notifications", "admin-dashboard", false),
+    ).toBe("admin-dashboard");
+  });
+
+  it("admin-notifications com origem null cai no fallback admin-dashboard", () => {
+    // Recarregar a página direto na tela de notificações não tem origem.
+    expect(paiDaTelaDoAdmin("admin-notifications", null, false)).toBe(
+      "admin-dashboard",
+    );
+  });
+
+  it("admin-notifications com origem de FORA do admin (profile, home) cai em admin-dashboard", () => {
+    expect(paiDaTelaDoAdmin("admin-notifications", "profile", false)).toBe(
+      "admin-dashboard",
+    );
+    expect(paiDaTelaDoAdmin("admin-notifications", "home", false)).toBe(
+      "admin-dashboard",
+    );
+  });
+
+  it("admin-notifications com origem ela mesma nunca volta para si mesma — cai em admin-dashboard", () => {
+    expect(
+      paiDaTelaDoAdmin("admin-notifications", "admin-notifications", false),
+    ).toBe("admin-dashboard");
   });
 
   it("PRECEDÊNCIA: sub-view de detalhe de pedido vence tudo, mesmo com view admin-push e origem admin-customers", () => {
