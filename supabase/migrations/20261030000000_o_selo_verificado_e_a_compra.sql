@@ -54,6 +54,11 @@
 --   --    INSERT de avaliação do MESMO usuário/produto de um pedido pago
 --   --    existente, direto na tabela: esperado verified = true já no RETURNING.
 --   --    E o inverso: avaliação de usuário SEM compra nasce verified = false.
+--
+--   -- 4. A insert policy recusa selo forjado direto na API:
+--   SELECT pg_get_expr(qual, polrelid) AS com_check_de_verified
+--   FROM pg_policy WHERE polname = 'reviews_insert_policy';
+--   -- esperado: expressão contendo 'verified = false'
 
 -- ============================================================
 -- Função da trigger de reviews (quem já comprou, nasce verificado)
@@ -130,3 +135,26 @@ UPDATE public.reviews r
          AND oi.product_id = r.product_id
          AND o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')
    );
+
+-- ============================================================
+-- Fecha o furo que as triggers abrem não fechariam: a insert policy
+-- (20260812020000) não restringe `verified`, então qualquer authenticated
+-- podia inserir avaliação com verified = true DIRETO NA API — o selo
+-- continuaria fabricável por quem não comprou, exatamente o que o item 7
+-- descreve. Com `verified = false` na WITH CHECK, o INSERT forjado é
+-- recusado; quem comprou de verdade é promovido pela trigger 1 DEPOIS do
+-- insert (AFTER INSERT → UPDATE), fora do alcance da policy.
+-- ============================================================
+
+DROP POLICY IF EXISTS reviews_insert_policy ON public.reviews;
+
+CREATE POLICY reviews_insert_policy ON public.reviews
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (SELECT auth.uid()) = user_id
+    AND verified = false
+    AND COALESCE(
+      (SELECT sc.enable_reviews FROM public.store_config sc WHERE sc.id = 1),
+      true
+    )
+  );

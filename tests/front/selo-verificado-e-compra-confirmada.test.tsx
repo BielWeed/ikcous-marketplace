@@ -190,8 +190,8 @@ describe("AdminReviewsView — o selo Verificado é da compra, não do clique", 
     // As duas reviews estão na tela:
     expect(texto).toContain("Compradora");
     expect(texto).toContain("Visitante");
-    // E a marcação de verificada existe na tela (badge derivado do banco):
-    // `Compras Verificadas` é o KPI do topo alimentado pela contagem.
-    expect(texto).toContain("Compras Verificadas");
+    // O badge POR CARD da review verificada (singular — o KPI do topo é o
+    // plural "Compras Verificadas"):
+    expect(texto).toContain("Compra Verificada");
   });
 });
