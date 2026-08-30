@@ -1,0 +1,14 @@
+-- A busca do painel e da loja ignora acentos via unaccent; sem a extensao
+-- instalada, o banco de uma loja NOVA quebra o painel de produtos na
+-- primeira chamada (achado real: cliente-01/Savy, 30/08/2026 —
+-- get_admin_products_paged com "function unaccent(text) does not exist").
+-- O projeto de desenvolvimento tinha a extensao pre-instalada; um projeto
+-- Supabase novo nao traz. Assim ela nasce com o banco, idempotente.
+--
+-- SEM BEGIN/COMMIT (regra da casa). Rollback manual: DROP EXTENSION IF
+-- EXISTS unaccent; (antes de derrubar, conferir que nenhuma funcao de busca
+-- depende dela — as do molde dependem).
+--
+-- FICHA pos-aplicacao: SELECT extname FROM pg_extension WHERE extname='
+-- unaccent' esperado 1 linha. (troque ' por apostofro simples)
+CREATE EXTENSION IF NOT EXISTS unaccent;
