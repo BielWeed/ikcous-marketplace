@@ -989,126 +989,140 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
         </div>
       </div>
 
-      {/* Slide-Up Bottom Sheet for Presets */}
-      <AnimatePresence>
-        {isPresetsOpen &&
-          typeof document !== "undefined" &&
-          createPortal(
-            <div className="fixed inset-0 z-[100] flex items-end justify-center">
-              {/* Backdrop overlay */}
-              {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+      {/* Slide-Up Bottom Sheet for Presets.
+          CORREÇÃO (laudo caça-bugs Savy, 30/08 — achado do Gabriel com print):
+          o portal morava DENTRO do <AnimatePresence>, que só aceita elementos
+          de animação como filho direto e DESCARTAVA o portal em silêncio — o
+          clique abria o estado, mas o painel nunca renderizava. Agora o
+          portal fica fora e o AnimatePresence recebe o contêiner motion como
+          filho direto (com key), restaurando também a animação de saída. */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {isPresetsOpen && (
               <motion.div
+                key="presets-sheet"
+                className="fixed inset-0 z-[100] flex items-end justify-center"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                onClick={() => setIsPresetsOpen(false)}
-                className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-pointer"
-              />
-
-              {/* Bottom Sheet Container */}
-              <motion.div
-                drag="y"
-                dragListener={false}
-                dragControls={dragControls}
-                dragConstraints={{ top: 0 }}
-                dragElastic={{ top: 0, bottom: 0.8 }}
-                dragMomentum={false}
-                onDragEnd={(_, info) => {
-                  if (info.offset.y > 150 || info.velocity.y > 500) {
-                    setIsPresetsOpen(false);
-                  }
-                }}
-                initial={{ y: "100%" }}
-                animate={{ y: 0 }}
-                exit={{ y: "100%" }}
-                transition={{ type: "spring", damping: 30, stiffness: 350 }}
-                className="relative z-10 w-full max-w-2xl rounded-t-[2rem] border-t border-white/10 bg-[#09090b] px-4 pb-8 pt-4 shadow-2xl flex flex-col max-h-[85vh] touch-none"
               >
-                {/* Grab handle and Header drag target */}
-                <div
-                  onPointerDown={(e) => dragControls.start(e)}
-                  className="w-full cursor-grab active:cursor-grabbing pb-3 pt-1 touch-none flex flex-col items-center select-none"
+                {/* Backdrop overlay */}
+                {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => setIsPresetsOpen(false)}
+                  className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-pointer"
+                />
+
+                {/* Bottom Sheet Container */}
+                <motion.div
+                  drag="y"
+                  dragListener={false}
+                  dragControls={dragControls}
+                  dragConstraints={{ top: 0 }}
+                  dragElastic={{ top: 0, bottom: 0.8 }}
+                  dragMomentum={false}
+                  onDragEnd={(_, info) => {
+                    if (info.offset.y > 150 || info.velocity.y > 500) {
+                      setIsPresetsOpen(false);
+                    }
+                  }}
+                  initial={{ y: "100%" }}
+                  animate={{ y: 0 }}
+                  exit={{ y: "100%" }}
+                  transition={{ type: "spring", damping: 30, stiffness: 350 }}
+                  className="relative z-10 w-full max-w-2xl rounded-t-[2rem] border-t border-white/10 bg-[#09090b] px-4 pb-8 pt-4 shadow-2xl flex flex-col max-h-[85vh] touch-none"
                 >
-                  {/* Top decorative handle */}
-                  <div className="mb-4 h-1.5 w-12 rounded-full bg-zinc-800" />
+                  {/* Grab handle and Header drag target */}
+                  <div
+                    onPointerDown={(e) => dragControls.start(e)}
+                    className="w-full cursor-grab active:cursor-grabbing pb-3 pt-1 touch-none flex flex-col items-center select-none"
+                  >
+                    {/* Top decorative handle */}
+                    <div className="mb-4 h-1.5 w-12 rounded-full bg-zinc-800" />
 
-                  {/* Header content inside the drag area to make it easy to drag */}
-                  <div className="flex items-center justify-between border-b border-white/5 pb-4 w-full text-left pointer-events-none">
-                    <div>
-                      <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
-                        <Sparkles className="size-4 text-purple-400" />
-                        Modelos de Mensagem (Presets)
-                      </h3>
-                      <p className="text-[10px] text-zinc-500 mt-0.5">
-                        Selecione um dos 30 modelos prontos de compartilhamento
-                        de produto.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-4 mt-2">
-                  {/* Search Bar */}
-                  <div className="relative">
-                    <input
-                      id="preset-search-input"
-                      name="presetSearch"
-                      type="text"
-                      placeholder="Pesquisar por modelo, tom ou palavra-chave..."
-                      value={presetSearch}
-                      onChange={(e) => setPresetSearch(e.target.value)}
-                      className="h-10 w-full rounded-xl border border-white/10 bg-black/40 px-4 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:border-purple-500/50 outline-none"
-                      autoComplete="off"
-                    />
-                  </div>
-
-                  {/* Presets List Scrollable */}
-                  <div className="overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh]">
-                    {filteredPresets.length > 0 ? (
-                      filteredPresets.map((preset) => (
-                        <button
-                          key={preset.name}
-                          type="button"
-                          onClick={() => {
-                            applyPreset(preset.text);
-                            setIsPresetsOpen(false);
-                          }}
-                          className="flex flex-col items-start gap-1.5 rounded-xl border border-white/5 bg-zinc-950/60 p-3.5 text-left transition-all hover:border-purple-500/30 hover:bg-purple-950/5 active:scale-[0.98] group"
-                        >
-                          <div className="flex items-center justify-between w-full">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-purple-400 group-hover:text-purple-300">
-                              {preset.name}
-                            </span>
-                            <span className="rounded-full border border-purple-500/10 bg-purple-500/5 px-2 py-0.5 text-[7px] font-black uppercase tracking-wider text-purple-500">
-                              Aplicar
-                            </span>
-                          </div>
-                          <p className="text-[9px] leading-relaxed text-zinc-400 line-clamp-3 bg-black/30 p-2 rounded-lg border border-white/5 w-full font-mono font-medium">
-                            {preset.text}
-                          </p>
-                          <span className="text-[8px] text-zinc-500 italic mt-0.5">
-                            {preset.description}
-                          </span>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="col-span-full py-8 text-center flex flex-col items-center justify-center gap-2">
-                        <p className="text-xs text-zinc-600 font-bold uppercase tracking-wider">
-                          Nenhum modelo encontrado
-                        </p>
-                        <p className="text-[10px] text-zinc-700">
-                          Tente pesquisar usando outro termo.
+                    {/* Header content inside the drag area to make it easy to drag */}
+                    <div className="flex items-center justify-between border-b border-white/5 pb-4 w-full text-left pointer-events-none">
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
+                          <Sparkles className="size-4 text-purple-400" />
+                          Modelos de Mensagem (Presets)
+                        </h3>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                          Selecione um dos 30 modelos prontos de
+                          compartilhamento de produto.
                         </p>
                       </div>
-                    )}
+                    </div>
                   </div>
-                </div>
+
+                  <div className="flex flex-col gap-4 mt-2">
+                    {/* Search Bar */}
+                    <div className="relative">
+                      <input
+                        id="preset-search-input"
+                        name="presetSearch"
+                        type="text"
+                        placeholder="Pesquisar por modelo, tom ou palavra-chave..."
+                        value={presetSearch}
+                        onChange={(e) => setPresetSearch(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/40 px-4 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:border-purple-500/50 outline-none"
+                        autoComplete="off"
+                      />
+                    </div>
+
+                    {/* Presets List Scrollable */}
+                    <div className="overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh]">
+                      {filteredPresets.length > 0 ? (
+                        filteredPresets.map((preset) => (
+                          <button
+                            key={preset.name}
+                            type="button"
+                            onClick={() => {
+                              applyPreset(preset.text);
+                              setIsPresetsOpen(false);
+                            }}
+                            className="flex flex-col items-start gap-1.5 rounded-xl border border-white/5 bg-zinc-950/60 p-3.5 text-left transition-all hover:border-purple-500/30 hover:bg-purple-950/5 active:scale-[0.98] group"
+                          >
+                            <div className="flex items-center justify-between w-full">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-purple-400 group-hover:text-purple-300">
+                                {preset.name}
+                              </span>
+                              <span className="rounded-full border border-purple-500/10 bg-purple-500/5 px-2 py-0.5 text-[7px] font-black uppercase tracking-wider text-purple-500">
+                                Aplicar
+                              </span>
+                            </div>
+                            <p className="text-[9px] leading-relaxed text-zinc-400 line-clamp-3 bg-black/30 p-2 rounded-lg border border-white/5 w-full font-mono font-medium">
+                              {preset.text}
+                            </p>
+                            <span className="text-[8px] text-zinc-500 italic mt-0.5">
+                              {preset.description}
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="col-span-full py-8 text-center flex flex-col items-center justify-center gap-2">
+                          <p className="text-xs text-zinc-600 font-bold uppercase tracking-wider">
+                            Nenhum modelo encontrado
+                          </p>
+                          <p className="text-[10px] text-zinc-700">
+                            Tente pesquisar usando outro termo.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
               </motion.div>
-            </div>,
-            document.body,
-          )}
-      </AnimatePresence>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
     </div>
   );
 });
