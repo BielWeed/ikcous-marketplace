@@ -436,7 +436,12 @@ export function CartView({
                       </div>
                     )}
 
-                    {user && cart.length > 0 && (
+                    {/* Frete indefinido esconde o cartão de progresso: com
+                        `shipping ?? 0` ele anunciava "Frete VIP Liberado" em
+                        verde enquanto o rodapé dizia "A calcular" — duas
+                        frases opostas na mesma tela (revisão da frente
+                        horário-e-convidado, achado baixa). */}
+                    {user && cart.length > 0 && !freteIndefinido && (
                       <ShippingProgress
                         shipping={shipping ?? 0}
                         savings={savings}
