@@ -73,10 +73,43 @@ describe("paiDaTelaDoAdmin", () => {
     );
   });
 
-  it("admin-whatsapp-config com origem admin-orders continua admin-settings", () => {
+  it("admin-whatsapp-config com origem admin-orders volta para admin-orders (origem manda)", () => {
     expect(
       paiDaTelaDoAdmin("admin-whatsapp-config", "admin-orders", false),
+    ).toBe("admin-orders");
+  });
+
+  it("admin-whatsapp-config com origem admin-dashboard volta para admin-dashboard (banner 'Atendimento & Vendas')", () => {
+    // Achado do Gabriel (30/08, print na mão): ele entrou no Atendimento pelo
+    // banner do painel principal, apertou Voltar e caiu em Ajustes — a tabela
+    // antiga não sabia que o banner existe.
+    expect(
+      paiDaTelaDoAdmin("admin-whatsapp-config", "admin-dashboard", false),
+    ).toBe("admin-dashboard");
+  });
+
+  it("admin-whatsapp-config com origem admin-settings volta para admin-settings", () => {
+    expect(
+      paiDaTelaDoAdmin("admin-whatsapp-config", "admin-settings", false),
     ).toBe("admin-settings");
+  });
+
+  it("admin-whatsapp-config com origem null cai no fallback admin-dashboard", () => {
+    expect(paiDaTelaDoAdmin("admin-whatsapp-config", null, false)).toBe(
+      "admin-dashboard",
+    );
+  });
+
+  it("admin-whatsapp-config com origem de FORA do admin (home) cai em admin-dashboard", () => {
+    expect(paiDaTelaDoAdmin("admin-whatsapp-config", "home", false)).toBe(
+      "admin-dashboard",
+    );
+  });
+
+  it("admin-whatsapp-config com origem ela mesma nunca volta para si mesma — cai em admin-dashboard", () => {
+    expect(
+      paiDaTelaDoAdmin("admin-whatsapp-config", "admin-whatsapp-config", false),
+    ).toBe("admin-dashboard");
   });
 
   it("a tabela antiga continua de pé para as demais views", () => {
