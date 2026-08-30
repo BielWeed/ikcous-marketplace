@@ -1,0 +1,34 @@
+-- ROLLBACK MANUAL da 20261031000000_a_moderacao_ativa_e_real.sql
+-- (a "Moderação Ativa" vira moderação real — coluna status + RLS filtrando
+-- pendente)
+--
+-- ⚠️ ORDEM: reverter o FRONT PRIMEIRO. O front novo grava `status:
+-- 'pendente'` no INSERT; com a coluna ausente no banco, o PostgREST recusa
+-- todo INSERT de avaliação (PGRST204 — coluna não encontrada no payload).
+--
+-- 1. Reverter o deploy do front (ou aceitar que avaliações quebram até o
+--    passo 2).
+--
+-- 2. Devolver a policy SELECT ao estado anterior (tudo legível):
+--
+--      DROP POLICY IF EXISTS reviews_select_policy ON public.reviews;
+--      CREATE POLICY reviews_select_policy ON public.reviews
+--        FOR SELECT USING (true);
+--
+-- 2b. Devolver a policy INSERT ao estado do PR #350 (re-aplicar a
+--     20261030000000_o_selo_verificado_e_a_compra.sql — CREATE OR REPLACE
+--     da RPC + DROP/CREATE da policy com `verified = false` e SEM a trava
+--     de status):
+--
+--      node scripts/db-apply.cjs \
+--        supabase/migrations/20261030000000_o_selo_verificado_e_a_compra.sql
+--
+-- 3. APAGAR a coluna (com ela, as pendentes — o retrato delas é a própria
+--    fila que nunca chegou a ser lida; não há histórico precioso:
+--    avaliação pendente nunca foi vista por cliente):
+--
+--      ALTER TABLE public.reviews DROP COLUMN IF EXISTS status;
+--
+-- EFEITO COLATERAL HONESTO: volta o defeito do item 8 — toda avaliação vai
+-- ao ar na hora, e o rótulo "Moderação Ativa" do painel volta a ser
+-- decoração.
