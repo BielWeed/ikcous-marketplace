@@ -1,0 +1,25 @@
+-- ROLLBACK MANUAL da 20261025000000_cupom_diz_por_que_e_recusado.sql
+-- (o cupom diz por que foi recusado — RAISE específico por motivo nas
+-- create_marketplace_order_v23 e v24)
+--
+-- NÃO HÁ SQL NECESSÁRIO: esta migration fez CREATE OR REPLACE das duas
+-- funções, e o CORPO ANTERIOR DELAS ESTÁ INTIERO na
+-- 20260960000000_variacao_obrigatoria_no_servidor.sql. O desfazer é
+-- re-aplicar aquele arquivo (CREATE OR REPLACE é idempotente):
+--
+--   node scripts/db-apply.cjs \
+--     supabase/migrations/20260960000000_variacao_obrigatoria_no_servidor.sql
+--
+-- (ou colar o conteúdo dela no SQL editor do Supabase)
+--
+-- Prova de que o corpo anterior está lá: as duas funções na 20260960 são o
+-- estado que este PR parte como base — o bloco "5. Coupon Validation" com o
+-- RAISE único 'Cupom % inválido ou expirado.' e SEM a variável
+-- v_cupom_recusado.
+--
+-- EFEITO COLATERAL HONESTO: o painel volta a mostrar "inválido ou expirado"
+-- para todo motivo de recusa de cupom (o defeito do item 16 do laudo volta),
+-- e as regras novas em src/lib/recusaDoPedido.ts ficam DORMENTES (as frases
+-- novas deixam de existir no banco; a âncora do teste
+-- recusa-do-pedido-ancora-nas-migrations.test.ts continua de pé porque lê o
+-- ARQUIVO de migration em disco, não o banco). Nada quebra.

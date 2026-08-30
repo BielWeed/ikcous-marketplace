@@ -193,6 +193,10 @@ export interface Review {
   comment: string;
   images?: string[];
   verified: boolean;
+  // Item 8 do laudo de 29/08: moderação REAL. Ausente = 'publicada'
+  // (avaliações antigas e dublês de teste); 'pendente' só é visível ao
+  // autor e ao admin (policy da 20261031000000).
+  status?: "publicada" | "pendente";
   helpful: number;
   merchantReply?: string;
   createdAt: string;
@@ -299,7 +303,6 @@ export type View =
   | "profile"
   | "orders"
   | "order-details"
-  | "compare"
   | "recently-viewed"
   | "login"
   | "admin-login"

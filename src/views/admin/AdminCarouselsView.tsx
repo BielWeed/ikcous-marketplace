@@ -5,6 +5,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { cn, normalizeText } from "@/lib/utils";
+import { ordenarParaVitrine } from "@/lib/vitrine";
 import type { View } from "@/types";
 import {
   ArrowDown,
@@ -266,10 +267,12 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
       } else if (sec.id === "bestsellers") {
         map[sec.id] = products.filter((p) => p.isBestseller).slice(0, max);
       } else {
-        // new_arrivals or default custom
-        map[sec.id] = [...products]
-          .sort((a, b) => (b.createdTime ?? 0) - (a.createdTime ?? 0))
-          .slice(0, max);
+        // new_arrivals or default custom — a MESMA ordenação da loja
+        // (ordenarParaVitrine, src/lib/vitrine.ts): sem-estoque no fim antes
+        // de cortar. Item 15 do laudo de 29/08: o preview ordenava só por
+        // data e a lojista montava a vitrine vendo uma ordem que a loja não
+        // mostrava.
+        map[sec.id] = ordenarParaVitrine(products).slice(0, max);
       }
     });
 

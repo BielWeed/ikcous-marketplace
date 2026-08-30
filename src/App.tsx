@@ -93,11 +93,6 @@ const SearchView = lazyWithPreload(() =>
     default: m.SearchView,
   })),
 );
-const CompareView = lazyWithPreload(() =>
-  import("@/views/customer/CompareView").then((m) => ({
-    default: m.CompareView,
-  })),
-);
 const FavoritesView = lazyWithPreload(() =>
   import("@/views/customer/FavoritesView").then((m) => ({
     default: m.FavoritesView,
@@ -127,7 +122,6 @@ const VIEW_COMPONENTS = {
   orders: CartView,
   "order-details": OrderDetailsView,
   "recently-viewed": HomeView,
-  compare: CompareView,
   "account-settings": AccountSettings,
   "admin-products": AdminArea,
   "admin-product-form": AdminArea,
@@ -1467,7 +1461,6 @@ const AppContent = () => {
         "orders",
         "order-details",
         "recently-viewed",
-        "compare",
         "account-settings",
         "admin-dashboard",
         "admin-products",
@@ -2174,20 +2167,6 @@ const AppContent = () => {
               key: user?.id ? `address-form-${user.id}` : "address-form-guest",
               addressId: selectedProductId,
               onBack: handleBack,
-            }}
-          />
-        );
-
-      case "compare":
-        return (
-          <PreloadedOrLazy
-            component={CompareView}
-            props={{
-              products: [],
-              onNavigate: handleNavigate,
-              onRemoveProduct: () => {},
-              onClearAll: () => {},
-              onProductClick: handleProductClick,
             }}
           />
         );

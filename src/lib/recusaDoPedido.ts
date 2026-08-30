@@ -116,6 +116,32 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
     padrao: /^Escolha uma variação para o produto ([\s\S]*)\.$/,
     acao: "escolher_variacao",
   },
+  // Item 16 do laudo de 29/08: a recusa final do cupom diz o MOTIVO real
+  // (migration 20261025000000 — RAISE específico por causa nas v23 e v24).
+  // Todas levam à mesma ação: remover o cupom. `[\s\S]` e não `.` pelo
+  // mesmo motivo das regras de produto: o código é digitado pelo lojista.
+  // A frase antiga fica por último para a corrida residual (cupom mudou
+  // entre as duas consultas no banco) e para banco ainda sem a migration.
+  {
+    padrao: /^O cupom ([\s\S]+) não existe\. Confira o código\.$/,
+    acao: "remover_cupom",
+  },
+  {
+    padrao: /^O cupom ([\s\S]+) está desativado pela loja\.$/,
+    acao: "remover_cupom",
+  },
+  {
+    padrao: /^O cupom ([\s\S]+) expirou em \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}\.$/,
+    acao: "remover_cupom",
+  },
+  {
+    padrao: /^O cupom ([\s\S]+) já atingiu o limite de usos\.$/,
+    acao: "remover_cupom",
+  },
+  {
+    padrao: /^O cupom ([\s\S]+) exige uma compra mínima de R\$ \d+,\d{2}\.$/,
+    acao: "remover_cupom",
+  },
   { padrao: /^Cupom .+ inválido ou expirado\.$/, acao: "remover_cupom" },
   { padrao: /^A cotação de frete expirou\./, acao: "recotar_frete" },
   {

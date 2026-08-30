@@ -275,15 +275,19 @@ export const AdminPushView = memo(function AdminPushView({
       "inactive",
       "new",
     ] as const;
+    // Laudo 29/08 (achado config 18): medir público não precisa baixar a
+    // credencial de envio de cada aparelho. `get_segmented_push_count`
+    // replica os filtros da `get_segmented_push_targets` e devolve só o
+    // número — a original fica para o ENVIO, que precisa das linhas.
     const resultados = await Promise.all(
       segmentosNaoSelecionaveisPeloTodos.map(async (seg) => {
         try {
           const { data, error } = await (supabase.rpc as any)(
-            "get_segmented_push_targets",
+            "get_segmented_push_count",
             { p_segment: seg },
           );
-          if (error || !data) return null;
-          return (data as any[]).length;
+          if (error || data === null || data === undefined) return null;
+          return Number(data);
         } catch (err) {
           console.error(`Erro ao medir o segmento ${seg}:`, err);
           return null;
@@ -319,14 +323,16 @@ export const AdminPushView = memo(function AdminPushView({
     // contador, 20/08/2026).
     setPredictedReach(null);
     try {
+      // Mesma emenda da medição dos segmentos: a previsão de alcance é um
+      // número — a função de contagem devolve ele sem baixar credencial.
       const { data, error } = await (supabase.rpc as any)(
-        "get_segmented_push_targets",
+        "get_segmented_push_count",
         {
           p_segment: segment,
         },
       );
-      if (!error && data) {
-        setPredictedReach((data as any[]).length);
+      if (!error && data !== null && data !== undefined) {
+        setPredictedReach(Number(data));
       } else {
         setPredictedReach(null);
       }

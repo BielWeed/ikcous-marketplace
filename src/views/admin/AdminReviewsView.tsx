@@ -31,7 +31,6 @@ import {
   Package,
   Search,
   ShieldCheck,
-  ShieldOff,
   Sparkles,
   Star,
   ThumbsUp,
@@ -90,7 +89,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     loading,
     getAllReviews,
     deleteReview,
-    toggleVerified,
+    aprovarReview,
     addMerchantReply,
     subscribeToReviews,
   } = useReviews();
@@ -270,6 +269,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   const verifiedRate = formatRate(globalVerifiedCount, globalTotal);
   const responseRate = formatRate(globalRepliedCount, globalTotal);
 
+  // Item 8 do laudo de 29/08: a fila de moderação de verdade — avaliações
+  // pendentes de aprovação (status ausente = 'publicada', para dublês e
+  // dados antigos).
+  const avaliacoesPendentes = adminReviews.filter(
+    (r) => r.status === "pendente",
+  );
+
   const handleDelete = async (id: string) => {
     if (isOffline) {
       haptic.error();
@@ -290,27 +296,24 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     }
   };
 
-  const handleToggleVerified = async (
-    reviewId: string,
-    currentVerified: boolean,
-  ) => {
+  const handleAprovar = async (reviewId: string) => {
     if (isOffline) {
       haptic.error();
       toast.error("Você está offline", {
         description:
-          "Não é possível alterar a verificação de avaliações sem conexão.",
+          "Não é possível publicar avaliações sem conexão. A fila fica salva.",
       });
       return;
     }
     haptic.light();
     try {
-      await toggleVerified(reviewId, currentVerified);
+      await aprovarReview(reviewId);
       haptic.success();
       triggerRefresh();
     } catch (err) {
       haptic.error();
-      console.error("Erro ao alternar verificação:", err);
-      toast.error("Erro ao alternar status de verificação.");
+      console.error("Erro ao publicar avaliação:", err);
+      toast.error("Erro ao publicar avaliação.");
     }
   };
 
@@ -369,10 +372,22 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         accent: "text-emerald-400",
         content: (
           <div className="mt-3 flex items-center gap-1.5 animate-in fade-in">
-            <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
-            <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-              Moderação Ativa
-            </span>
+            {/* Item 8 do laudo de 29/08: a moderação é REAL (migration
+                20261031000000). O rótulo pulsante era decoração: não havia
+                fila nenhuma. Agora o cartão mostra a fila de verdade —
+                quantas avaliações aguardam aprovação da lojista. */}
+            {avaliacoesPendentes.length > 0 ? (
+              <>
+                <span className="size-1.5 animate-pulse rounded-full bg-amber-400" />
+                <span className="text-[9px] font-bold uppercase tracking-widest text-amber-400">
+                  {avaliacoesPendentes.length} aguardando sua aprovação
+                </span>
+              </>
+            ) : (
+              <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                Nenhuma avaliação na fila de moderação
+              </span>
+            )}
           </div>
         ),
         footer: "Depoimentos coletados",
@@ -438,6 +453,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       globaisDisponiveis,
       mediaGlobalExibida,
       totalGlobalExibido,
+      // Item 8 do laudo de 29/08: o cartão "Total Recebido" agora mostra a
+      // fila de moderação (contagem de pendentes, derivada da lista).
+      avaliacoesPendentes.length,
     ],
   );
 
@@ -840,6 +858,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                               <Package className="size-3.5 text-admin-gold" />
                               {review.productName}
                             </span>
+                            {review.status === "pendente" && (
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-black text-amber-400">
+                                Em moderação
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -907,25 +930,27 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
                     {/* Action Bar */}
                     <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-6">
-                      <button
-                        onClick={() => {
-                          handleToggleVerified(review.id, review.verified);
-                        }}
-                        className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${
-                          review.verified
-                            ? "border border-white/5 bg-zinc-900 text-zinc-400 hover:bg-zinc-800"
-                            : "bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 hover:scale-[1.02]"
-                        }`}
-                      >
-                        {review.verified ? (
-                          <ShieldOff className="size-3.5" />
-                        ) : (
+                      {/* Item 7 do laudo de 29/08: o botão manual
+                          "Verificar Compra/Remover Verificação" SAIU — o selo
+                          é derivado da compra com dinheiro reconhecido pelas
+                          triggers da 20261030000000, e interruptor manual
+                          voltaria a significar "alguém clicou". O badge ao
+                          lado continua lendo a MESMA coluna `verified`. */}
+
+                      {/* Item 8 do laudo de 29/08: a fila de moderação é
+                          real — pendente ganha o botão de publicar. */}
+                      {review.status === "pendente" && (
+                        <button
+                          onClick={() => {
+                            handleAprovar(review.id);
+                          }}
+                          disabled={isOffline}
+                          className="flex items-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-black shadow-lg shadow-emerald-500/20 transition-all duration-300 hover:scale-[1.02] disabled:pointer-events-none disabled:opacity-40"
+                        >
                           <ShieldCheck className="size-3.5" />
-                        )}
-                        {review.verified
-                          ? "Remover Verificação"
-                          : "Verificar Compra"}
-                      </button>
+                          Aprovar e Publicar
+                        </button>
+                      )}
 
                       {!review.merchantReply && (
                         <button
@@ -1184,28 +1209,36 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                           </p>
                         </div>
                       )}
+
+                      {/* Item 8 do laudo de 29/08: a fila de moderação é
+                          real — pendente fica marcada no modo compacto. */}
+                      {review.status === "pendente" && (
+                        <span className="inline-flex w-fit items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-amber-400">
+                          Em moderação
+                        </span>
+                      )}
                     </div>
 
                     {/* Actions */}
                     <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/5 pt-4">
                       <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => {
-                            handleToggleVerified(review.id, review.verified);
-                          }}
-                          className={`rounded-xl p-2 transition-all duration-300 ${
-                            review.verified
-                              ? "border border-white/5 bg-zinc-900 text-zinc-550 hover:bg-zinc-800"
-                              : "bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 hover:scale-105"
-                          }`}
-                          title={
-                            review.verified
-                              ? "Remover Verificação"
-                              : "Verificar Compra"
-                          }
-                        >
-                          <ShieldCheck className="size-4" />
-                        </button>
+                        {/* Item 7: o botão de verificação manual SAIU (as
+                            triggers da 20261030000000 derivam o selo da
+                            compra). O selo visual do card continua lendo a
+                            coluna `verified`. */}
+
+                        {review.status === "pendente" && (
+                          <button
+                            onClick={() => {
+                              handleAprovar(review.id);
+                            }}
+                            disabled={isOffline}
+                            className="rounded-xl bg-emerald-500 p-2 text-black shadow-md shadow-emerald-500/10 transition-all hover:scale-105 disabled:pointer-events-none disabled:opacity-40"
+                            title="Aprovar e Publicar"
+                          >
+                            <ShieldCheck className="size-4" />
+                          </button>
+                        )}
 
                         {!review.merchantReply && (
                           <button

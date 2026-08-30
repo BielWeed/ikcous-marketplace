@@ -309,16 +309,24 @@ describe("addReview — o erro cru do banco não vaza para a tela", () => {
     const sucesso = toast.success as ReturnType<typeof vi.fn>;
     const erro = toast.error as ReturnType<typeof vi.fn>;
     expect(sucesso).toHaveBeenCalledTimes(1);
-    expect(sucesso.mock.calls[0]?.[0]).toBe("Avaliação enviada com sucesso!");
+    // Item 8 do laudo de 29/08: com a moderação real (20261031000000), a
+    // avaliação nasce pendente e o aviso diz a verdade sobre quando ela
+    // aparece.
+    expect(sucesso.mock.calls[0]?.[0]).toBe(
+      "Recebemos sua avaliação! Ela aparece no produto após a aprovação da loja.",
+    );
     expect(erro).not.toHaveBeenCalled();
 
-    // Mesma gravação: payload idêntico ao que ia antes da correção.
+    // Mesma gravação: payload idêntico ao que ia antes da correção, com o
+    // acréscimo do item 8 do laudo (a avaliação nasce PENDENTE — moderação
+    // real, migration 20261031000000).
     expect(h.inserts).toEqual([
       {
         product_id: "prod-1",
         user_id: "comprador-teste",
         rating: 5,
         comment: "Produto ótimo",
+        status: "pendente",
       },
     ]);
     // Mesmo refresh: getReviewsByProduct consultou o produto avaliado.

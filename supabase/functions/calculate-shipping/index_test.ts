@@ -7,6 +7,7 @@ import {
   handler,
   isLocalCep,
   precoDeContingenciaDoTopo,
+  montarLogDaCotacaoFlatFee,
   precoResolvidoSemCache,
   validarOrigemEFrete,
 } from "./index.ts";
@@ -985,4 +986,43 @@ Deno.test("loja SEM taxa fixa mas com entrega local disponível, transportadora 
   // Controle: sem taxa fixa configurada, `flatFeeConfigurada` sozinha
   // continua `false` aqui — a diferença é isLocal, não o valor da taxa.
   assertEquals(flatFeeConfigurada(configLocalSemTaxa.shipping_fee), false);
+});
+
+// ── Achado 9 do laudo de 29/08: o ramo de TAXA FIXA respondia antes de
+// gravar log — o "Histórico de Cotações" nunca mostrava o provedor padrão.
+// O montarLogDaCotacaoFlatFee monta o registro com o MESMO formato dos
+// outros logs; estas provas fixam o formato que o painel lê.
+Deno.test("montarLogDaCotacaoFlatFee - taxa fixa de verdade: provider limpo e status success", () => {
+  const log = montarLogDaCotacaoFlatFee(
+    "38500000",
+    "35000000",
+    "flat_fee",
+    [{ productId: "p1", quantity: 2 }],
+    1,
+  );
+  assertEquals(log.provider, "flat_fee");
+  assertEquals(log.status, "success");
+  assertEquals(log.origin_cep, "38500000");
+  assertEquals(log.destination_cep, "35000000");
+  assertEquals(log.cart_items.length, 1);
+});
+
+Deno.test("montarLogDaCotacaoFlatFee - carrinho vazio de OUTRO provider: sufixo honesto", () => {
+  // Este ramo também atende carrinho ausente/vazio de qualquer provedor —
+  // dizer só "flat_fee" mentiria sobre quem respondeu.
+  const log = montarLogDaCotacaoFlatFee("38500000", "35000000", "melhor_envio", [], 1);
+  assertEquals(log.provider, "flat_fee (sem itens)");
+  assertEquals(log.status, "success");
+});
+
+Deno.test("montarLogDaCotacaoFlatFee - resposta SEM opção nenhuma: status empty, não success", () => {
+  // Taxa fixa não configurada e sem entrega local: a lista vem vazia — o
+  // histórico não pode confundir com uma cotação bem sucedida.
+  const log = montarLogDaCotacaoFlatFee("38500000", "35000000", "flat_fee", [], 0);
+  assertEquals(log.status, "empty");
+});
+
+Deno.test("montarLogDaCotacaoFlatFee - cart ausente vira [] (a coluna é NOT NULL)", () => {
+  const log = montarLogDaCotacaoFlatFee("38500000", "35000000", "flat_fee", null, 1);
+  assertEquals(log.cart_items, []);
 });

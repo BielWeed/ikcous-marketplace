@@ -174,6 +174,7 @@ export function useReviews() {
         rating: item.rating,
         comment: item.comment,
         verified: item.verified,
+        status: item.status,
         helpful: item.helpful,
         createdAt: item.created_at,
         merchantReply: item.merchant_reply,
@@ -224,14 +225,22 @@ export function useReviews() {
             user_id: user.id,
             rating: review.rating,
             comment: review.comment,
-            // verified: true // Logic to check if user bought product could go here later
+            // Item 8 do laudo de 29/08: a "Moderação Ativa" é real — toda
+            // avaliação nova nasce PENDENTE e só vai ao ar quando a loja
+            // aprova (migration 20261031000000: o público não lê pendente;
+            // o próprio autor vê a sua). O selo "Verificado" é derivado da
+            // compra pelas triggers da 20261030000000, independentemente do
+            // status de moderação.
+            status: "pendente",
           })
           .select()
           .single();
 
         if (error) throw error;
 
-        toast.success("Avaliação enviada com sucesso!");
+        toast.success(
+          "Recebemos sua avaliação! Ela aparece no produto após a aprovação da loja.",
+        );
 
         // Refresh reviews
         await getReviewsByProduct(review.productId);
@@ -363,6 +372,7 @@ export function useReviews() {
             rating: item.rating,
             comment: item.comment || "",
             verified: item.verified ?? false,
+            status: item.status ?? "publicada",
             helpful: item.helpful ?? 0,
             createdAt: item.created_at,
             merchantReply: item.merchant_reply,
@@ -488,6 +498,10 @@ export function useReviews() {
           rating: item.rating,
           comment: item.comment || "",
           verified: item.verified ?? false,
+          // Item 8: o fallback (rota quando a RPC falha) NÃO pode perder a
+          // fila — sem isto, pendente chega undefined e o painel anuncia
+          // "nenhuma avaliação na fila" em plena fila.
+          status: item.status ?? "publicada",
           helpful: item.helpful ?? 0,
           createdAt: item.created_at,
           merchantReply: item.merchant_reply,
@@ -536,8 +550,14 @@ export function useReviews() {
     [isAdmin],
   );
 
-  const toggleVerified = useCallback(
-    async (reviewId: string, currentVerified: boolean) => {
+  // toggleVerified REMOVIDO (item 7 do laudo de 29/08): o selo "Verificado"
+  // é derivado da compra com dinheiro reconhecido pelas triggers da
+  // 20261030000000 — interruptor manual significava "alguém clicou".
+
+  // Item 8 do laudo de 29/08: a fila de moderação é REAL — aprovar publica
+  // a avaliação pendente (a recusa continua sendo o apagar de sempre).
+  const aprovarReview = useCallback(
+    async (reviewId: string) => {
       if (!isAdmin) {
         toast.error("Permissão negada");
         return;
@@ -545,22 +565,20 @@ export function useReviews() {
       try {
         const { error } = await supabase
           .from("reviews" as any)
-          .update({ verified: !currentVerified })
+          .update({ status: "publicada" })
           .eq("id", reviewId);
 
         if (error) throw error;
 
         setAdminReviews((prev) =>
           prev.map((r) =>
-            r.id === reviewId ? { ...r, verified: !currentVerified } : r,
+            r.id === reviewId ? { ...r, status: "publicada" as const } : r,
           ),
         );
-        toast.success(
-          !currentVerified ? "Avaliação verificada." : "Verificação removida.",
-        );
+        toast.success("Avaliação publicada.");
       } catch (error) {
-        console.error("Error toggling verified:", error);
-        toast.error("Erro ao atualizar avaliação.");
+        console.error("Error approving review:", error);
+        toast.error("Erro ao publicar avaliação.");
       }
     },
     [isAdmin],
@@ -718,7 +736,7 @@ export function useReviews() {
     markHelpful,
     getAllReviews,
     deleteReview,
-    toggleVerified,
+    aprovarReview,
     addMerchantReply,
     subscribeToReviews,
   };

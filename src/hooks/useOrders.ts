@@ -161,6 +161,7 @@ export type ConsultaAdmin = [
   startDate?: string,
   endDate?: string,
   silent?: boolean,
+  paymentStatus?: string,
 ];
 
 /**
@@ -201,8 +202,16 @@ export function escolherRecargaDeReconexao(deps: {
 
   if (!ultimaConsultaAdmin) return () => Promise.resolve();
 
-  const [page, pageSize, statusFilter, searchQuery, startDate, endDate] =
-    ultimaConsultaAdmin;
+  const [
+    page,
+    pageSize,
+    statusFilter,
+    searchQuery,
+    startDate,
+    endDate,
+    ,
+    paymentStatus,
+  ] = ultimaConsultaAdmin;
 
   return () =>
     loadOrders(
@@ -213,6 +222,7 @@ export function escolherRecargaDeReconexao(deps: {
       startDate,
       endDate,
       true,
+      paymentStatus,
     );
 }
 
@@ -936,6 +946,7 @@ export function useOrders(
       startDate?: string,
       endDate?: string,
       silent = false,
+      paymentStatus?: string,
     ) => {
       if (!enabled) return { orders: [], total: 0 };
 
@@ -949,6 +960,7 @@ export function useOrders(
         startDate,
         endDate,
         silent,
+        paymentStatus,
       ];
 
       if (adminOrdersAbortControllerRef.current) {
@@ -969,6 +981,9 @@ export function useOrders(
           p_end_date: endDate || "",
           p_page: page,
           p_page_size: pageSize,
+          // Achado 10 do laudo (29/08): o filtro de pagamento passa a
+          // filtrar NO BANCO (migration 20261028000000) — contagem e dados.
+          p_payment_status: paymentStatus || "all",
         }).abortSignal(signal);
 
         const { data, error } = await query;

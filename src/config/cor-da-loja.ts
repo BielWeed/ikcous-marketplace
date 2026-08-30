@@ -30,7 +30,12 @@ export const defaultStoreConfig: StoreConfig = {
   shippingFee: 15,
   whatsappNumber: "34999999999",
   shareText: "Olha que achei na IKCOUS!",
-  businessHours: "Seg-Sáb: 9h às 18h",
+  // businessHours NÃO tem reserva de propósito (mesmo molde da sentinela de
+  // cor da linha de baixo, e do originCep). Valia "Seg-Sáb: 9h às 18h", e
+  // isso fazia a vitrine publicar um expediente que ninguém digitou (item 6
+  // do laudo de 29/08 + migration 20261029000000, que matou o default no
+  // banco). Sem valor = a loja não disse.
+  businessHours: "",
   enableReviews: true,
   enableCoupons: true,
   // primaryColor NÃO tem reserva de propósito (como o originCep abaixo).

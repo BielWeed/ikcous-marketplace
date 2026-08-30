@@ -1,0 +1,73 @@
+-- Custo zero DEIXA DE SER ausência: produtos.custo passa a aceitar NULL.
+--
+-- O defeito (laudo "o que falta" 29/08, item 3, degrau 1 — mente em
+-- silêncio): o formulário de produto manda `costPrice: null` quando o campo
+-- custo fica vazio (ADMIN-050), mas o insert do useProducts achatava com
+-- `|| 0` porque esta coluna era NOT NULL. Resultado: o brinde de custo zero
+-- cadastrado DE PROPÓSITO e o produto sem custo medido entravam idênticos no
+-- banco, e o painel não tinha como acertar os dois casos — ou afirma
+-- "margem de 100%" para quem ninguém mediu, ou esconde o zero medido.
+--
+-- A mesma mudança, nas três pontas, no PR que traz este arquivo:
+--   1. useProducts.addProduct grava `custo: productData.costPrice ?? null`
+--      (null = ausência, 0 = zero medido);
+--   2. a duplicação de produto herda o estado real (`?? null`);
+--   3. o gatilho do achado 8 (AdminProductsView, hasCost) é cumprido:
+--      `costPrice != null` — brinde medido afirma margem 100% + etiqueta
+--      "Custo Suspeito"; "Sem Custo Cadastrado" fica só para o null.
+--
+-- POR QUE A TRAVA ERA SÓ ESTA: a escrita do painel passa pela view
+-- vw_produtos_admin, que é AUTO-UPDATABLE de tabela única (SELECT ... FROM
+-- produtos WHERE is_admin() WITH CASCADED CHECK OPTION — baseline
+-- 20260806000000:4330). Não existe trigger INSTEAD OF nessa view; o desenho
+-- anterior (mesa 29/08 14:30) dizia "conferir a trigger" e a conferência
+-- respondeu: não há trigger, a única trava de nullability era esta coluna.
+--
+-- QUEM LÊ custo no banco NÃO QUEBRA com NULL (medido no baseline):
+--   get_admin_analytics_v2 capital: COALESCE(SUM(custo * estoque), 0) —
+--     NULL * estoque = NULL e o SUM ignora: produto sem custo simplesmente
+--     não entra no capital (honesto);
+--   lucro/custo vendido: já usam COALESCE(p.custo, 0);
+--   endpoint de detalhe (produtos_admin): repassa p.custo cru.
+--
+-- ORDEM DE IMPLANTAÇÃO: aplicar ESTA migration ANTES de publicar qualquer
+-- release que contenha o PR do front — front novo gravando null em banco
+-- com NOT NULL rejeita todo cadastro de produto sem custo. O risco vale
+-- para os TRÊS caminhos de escrita: o insert (useProducts.addProduct), a
+-- duplicação (AdminProductsView) e o caminho de UPDATE — este último já
+-- atravessava null desde o ADMIN-050 (o form manda null para LIMPAR e a
+-- guarda `!== undefined` deixa passar), então em banco velho LIMPAR o custo
+-- na edição de um produto JÁ falhava antes deste PR; a migration é o que
+-- faz esse caminho preexistente voltar a funcionar de verdade.
+--
+-- SEM BEGIN/COMMIT (regra da casa: com eles o ROLLBACK da prova vira no-op
+-- e a mudança fica gravada mesmo assim).
+--
+-- NÃO aplicar sem prova e sem o Gabriel autorizar NESTA sessão.
+--
+-- FICHA DE VERIFICAÇÃO pos-aplicação (rodar contra o banco; nao rodada por
+-- este agente):
+--
+--   -- 1. A coluna aceita NULL (is_nullable = 'YES'):
+--   SELECT is_nullable
+--   FROM information_schema.columns
+--   WHERE table_schema = 'public'
+--     AND table_name = 'produtos'
+--     AND column_name = 'custo';
+--
+--   -- 2. Insert SEM custo entra pela view e nasce com custo NULL
+--   --    (rodar autenticado como admin; APAGAR a prova em seguida):
+--   INSERT INTO public.vw_produtos_admin
+--     (nome, descricao, preco_venda, estoque, categoria, ativo,
+--      imagem_urls, tags, sold)
+--   VALUES
+--     ('__PROVA_CUSTO_NULO__', 'prova da 20261024000000', 1, 0, 'Geral',
+--      false, '{}', '{}', 0)
+--   RETURNING id, custo;                       -- esperado: custo NULL
+--
+--   DELETE FROM public.produtos WHERE nome = '__PROVA_CUSTO_NULO__';
+--
+--   -- 3. O capital do painel continua fechando (SUM ignora os NULL):
+--   SELECT COALESCE(SUM(custo * estoque), 0) FROM public.produtos;
+
+ALTER TABLE public.produtos ALTER COLUMN custo DROP NOT NULL;

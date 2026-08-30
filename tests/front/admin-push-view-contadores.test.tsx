@@ -91,7 +91,16 @@ vi.mock("@/lib/supabase", () => ({
       };
     },
     rpc: (nome: string, args: { p_segment: string }) => {
-      if (nome !== "get_segmented_push_targets") {
+      // Lote 2 (laudo 29/08, achado config 18): a MEDIÇÃO do público passou
+      // a usar `get_segmented_push_count` (devolve o número, sem baixar
+      // credencial de envio). A `get_segmented_push_targets` (linhas com
+      // auth/endpoint/p256dh) ficou para o ENVIO. O dublê responde às duas
+      // com a mesma população, para provar que os números exibidos batem
+      // com o banco de onde vier a função.
+      if (
+        nome !== "get_segmented_push_targets" &&
+        nome !== "get_segmented_push_count"
+      ) {
         return Promise.resolve({
           data: null,
           error: new Error("rpc desconhecida"),
@@ -106,6 +115,9 @@ vi.mock("@/lib/supabase", () => ({
           data: null,
           error: new Error("sem segmento"),
         });
+      }
+      if (nome === "get_segmented_push_count") {
+        return Promise.resolve({ data: linhas.length, error: null });
       }
       return Promise.resolve({ data: linhas, error: null });
     },
@@ -394,8 +406,11 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     });
     expect(texto()).toContain("Receberão: 2 aparelhos");
 
-    // 2) A partir de agora, a RPC do segmento "inactive" fica PRESA num
-    // Promise que só este teste resolve — simula a medição em voo.
+    // 2) A partir de agora, a RPC de MEDIÇÃO do segmento "inactive" fica
+    // PRESA num Promise que só este teste resolve — simula a medição em
+    // voo. (Lote 2: a medição é a `get_segmented_push_count`; a condição
+    // pega as duas para continuar provando a fronteira se a função da
+    // medição voltar a ser a de alvos.)
     const controlador: { resolver: (() => void) | null } = { resolver: null };
     const travada = new Promise<void>((resolve) => {
       controlador.resolver = () => resolve();
@@ -405,7 +420,8 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     (supabase as any).rpc = vi.fn(
       async (nome: string, args: { p_segment: string }) => {
         if (
-          nome === "get_segmented_push_targets" &&
+          (nome === "get_segmented_push_count" ||
+            nome === "get_segmented_push_targets") &&
           args.p_segment === "inactive"
         ) {
           await travada;

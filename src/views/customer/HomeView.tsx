@@ -4,10 +4,12 @@ import { useStore } from "@/contexts/StoreContext";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
 import { cn, normalizeText } from "@/lib/utils";
+import { ordenarParaVitrine } from "@/lib/vitrine";
 import type { Product, SortOption, View } from "@/types";
 import {
   ArrowDown,
   ArrowUp,
+  Clock,
   PackageSearch,
   SlidersHorizontal,
   TrendingUp,
@@ -179,16 +181,11 @@ export const HomeView = React.memo(function HomeView({
   }, [produtosAVenda, selectedCategory, searchQuery, sortBy]);
 
   const newArrivals = useMemo(() => {
+    // A ordenação mora em ordenarParaVitrine (src/lib/vitrine.ts) — a MESMA
+    // função que o preview do painel usa (item 15 do laudo de 29/08: preview
+    // e loja ordenavam diferente). Comportamento byte a byte o de antes.
     return (
-      [...produtosAVenda]
-        .sort((a, b) => {
-          const aAvailable = a.stock > 0 ? 1 : 0;
-          const bAvailable = b.stock > 0 ? 1 : 0;
-          if (aAvailable !== bAvailable) {
-            return bAvailable - aAvailable;
-          }
-          return (b.createdTime ?? 0) - (a.createdTime ?? 0);
-        })
+      ordenarParaVitrine(produtosAVenda)
         // LIMITE_MAX_ITENS_CARROSSEL, nunca literal: o 6 fixo travava a vitrine
         // abaixo do que o seletor de maxItems promete (defeito 20260825-1050).
         // O corte real por seção continua no render, pelo `max` escolhido.
@@ -546,6 +543,22 @@ export const HomeView = React.memo(function HomeView({
             />
           </div>
         )}
+
+      {/* Item 6 do laudo "o que falta" (29/08): o painel promete "Informa aos
+          clientes no PWA" e o horário nunca chegava — o dado existia no
+          config (business_hours), nada o exibia. Bloco discreto no fim da
+          vitrine, só quando a lojista preencheu. */}
+      {config.businessHours?.trim() && (
+        <div className="relative z-10 mt-8 rounded-[2rem] border border-zinc-100 bg-zinc-50/50 p-6 text-center">
+          <p className="flex items-center justify-center gap-2 text-sm font-bold text-zinc-700">
+            <Clock className="size-4 text-admin-gold" />
+            Horário de atendimento
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-zinc-500">
+            {config.businessHours}
+          </p>
+        </div>
+      )}
     </div>
   );
 });

@@ -66,6 +66,53 @@ describe("classificarRecusaDoPedido", () => {
     expect(r.acao).toBe("remover_cupom");
   });
 
+  // Item 16 do laudo de 29/08: a recusa final do pedido diz o MOTIVO real
+  // (migration 20261025000000, nas funções v23 e v24). Cada frase nova tem
+  // de continuar oferecendo a mesma ação: remover o cupom.
+  it("cupom inexistente -> remover o cupom, preservando a frase do banco", () => {
+    const r = classificarRecusaDoPedido(
+      p0001("O cupom BEMVINDO10 não existe. Confira o código."),
+    );
+    expect(r.acao).toBe("remover_cupom");
+    expect(r.mensagem).toBe("O cupom BEMVINDO10 não existe. Confira o código.");
+  });
+
+  it("cupom desativado pela loja -> remover o cupom", () => {
+    const r = classificarRecusaDoPedido(
+      p0001("O cupom INVERNO está desativado pela loja."),
+    );
+    expect(r.acao).toBe("remover_cupom");
+  });
+
+  it("cupom expirado com data -> remover o cupom", () => {
+    const r = classificarRecusaDoPedido(
+      p0001("O cupom INVERNO expirou em 01/08/2026 23:59."),
+    );
+    expect(r.acao).toBe("remover_cupom");
+  });
+
+  it("cupom com limite de usos atingido -> remover o cupom", () => {
+    const r = classificarRecusaDoPedido(
+      p0001("O cupom PRIMEIRA já atingiu o limite de usos."),
+    );
+    expect(r.acao).toBe("remover_cupom");
+  });
+
+  it("cupom com compra mínima não atingida -> remover o cupom, e a frase diz o valor", () => {
+    const r = classificarRecusaDoPedido(
+      p0001("O cupom LOJA10 exige uma compra mínima de R$ 150,00."),
+    );
+    expect(r.acao).toBe("remover_cupom");
+    expect(r.mensagem).toContain("R$ 150,00");
+  });
+
+  it("nome de cupom com quebra de linha NAO perde a acao", () => {
+    const r = classificarRecusaDoPedido(
+      p0001("O cupom BEM\nVINDO não existe. Confira o código."),
+    );
+    expect(r.acao).toBe("remover_cupom");
+  });
+
   it("entrega local fora da faixa -> trocar a entrega", () => {
     const r = classificarRecusaDoPedido(
       p0001("Entrega local não disponível para o CEP informado."),

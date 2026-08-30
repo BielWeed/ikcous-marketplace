@@ -640,14 +640,16 @@ const VERIFICACOES = {
         // identificador solto. Aparece 2x no corpo (medido): a consulta
         // existe duplicada, uma na CONTAGEM e outra nos DADOS.
         {
-          texto: "length(v_search_digitos) >= 4\n            AND regexp_replace(",
+          texto:
+            "length(v_search_digitos) >= 4\n            AND regexp_replace(",
           vezes: 2,
         },
         // O coalesce com o jsonb: e ele que faz os pedidos de coluna nula (a
         // RPC legada nunca preencheu) serem achaveis. 0 ocorrencia na anterior.
         // 2x no corpo (medido): CONTAGEM e DADOS, como a guarda acima.
         {
-          texto: "coalesce(o.customer_phone, o.customer_data->>'whatsapp', ''),",
+          texto:
+            "coalesce(o.customer_phone, o.customer_data->>'whatsapp', ''),",
           vezes: 2,
         },
         // Daqui para baixo: o que tem de SOBREVIVER ao REPLACE. Estes aparecem
@@ -1287,6 +1289,151 @@ const VERIFICACOES = {
       funcao: "get_segmented_push_targets",
       esperado: [
         "o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega')",
+      ],
+    },
+  ],
+  "20261022000000_categorias_contam_so_dinheiro_reconhecido.sql": [
+    {
+      funcao: "get_category_analytics",
+      esperado: [
+        // O filtro NOVO desta migration: o literal das 3 portas, no formato
+        // `o.` qualificado do JOIN — exatamente 1 ocorrência no corpo. Se a
+        // contagem mudar, a categoria voltou a somar dinheiro sem dono ou
+        // ganhou uma porta sem registro.
+        {
+          texto:
+            "AND (o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega'))",
+          vezes: 1,
+        },
+        // A guarda de admin continua na primeira linha (SECURITY DEFINER).
+        "Acesso negado: privilégios de administrador necessários.",
+      ],
+    },
+  ],
+  "20261023000000_push_conta_sem_baixar_credencial.sql": [
+    {
+      funcao: "get_segmented_push_count",
+      esperado: [
+        // Ramo VIP: o critério de dinheiro reconhecido + o corte de LTV.
+        "HAVING SUM(o.total::numeric) >= p_min_ltv",
+        // Ramo "new": a janela dos 7 dias, idêntica à original.
+        "p.created_at >= NOW() - INTERVAL '7 days'",
+        // A guarda de admin continua na primeira linha (SECURITY DEFINER).
+        "Acesso negado: privilégios de administrador necessários.",
+      ],
+    },
+  ],
+  "20261025000000_cupom_diz_por_que_e_recusado.sql": [
+    {
+      // Item 16 do laudo de 29/08: a recusa final do cupom diz o MOTIVO.
+      // Os 5 RAISE novos, exatamente 1 ocorrência por corpo — se a contagem
+      // mudar, um motivo perdeu a frase ou o corpo divergiu do desenhado.
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        { texto: "O cupom % não existe. Confira o código.", vezes: 1 },
+        { texto: "O cupom % está desativado pela loja.", vezes: 1 },
+        { texto: "O cupom % expirou em %.", vezes: 1 },
+        { texto: "O cupom % já atingiu o limite de usos.", vezes: 1 },
+        { texto: "O cupom % exige uma compra mínima de R$ %.", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        { texto: "O cupom % não existe. Confira o código.", vezes: 1 },
+        { texto: "O cupom % está desativado pela loja.", vezes: 1 },
+        { texto: "O cupom % expirou em %.", vezes: 1 },
+        { texto: "O cupom % já atingiu o limite de usos.", vezes: 1 },
+        { texto: "O cupom % exige uma compra mínima de R$ %.", vezes: 1 },
+      ],
+    },
+  ],
+  "20261026000000_o_pedido_avisa_o_cliente.sql": [
+    {
+      // Item 11 do laudo de 29/08: cada mudança de status do pedido nasce um
+      // aviso no sino do cliente. As 4 frases e as 2 guardas, exatamente 1x
+      // no corpo da função da trigger — se a contagem mudar, uma transição
+      // perdeu a frase ou a guarda do convidado/corrida sumiu.
+      funcao: "notifica_cliente_de_mudanca_de_status",
+      esperado: [
+        { texto: "Pedido em preparo", vezes: 1 },
+        { texto: "Pedido a caminho", vezes: 1 },
+        { texto: "Pedido entregue", vezes: 1 },
+        { texto: "Pedido cancelado", vezes: 1 },
+        { texto: "NEW.user_id IS NULL", vezes: 1 },
+        { texto: "OLD.status IS NOT DISTINCT FROM NEW.status", vezes: 1 },
+      ],
+    },
+  ],
+  "20261027000000_o_pagamento_avisa_o_cliente.sql": [
+    {
+      // Follow-up do item 11 (revisão do #343): o PIX caiu e o cliente é
+      // avisado. As 2 frases ('pago' e 'pago_apos_expirar') e as 2 guardas,
+      // exatamente 1x no corpo — 'expirado'/'estornado' ficam silenciosos
+      // por desenho, e a contagem da guarda prova que continua assim.
+      funcao: "notifica_cliente_de_mudanca_de_pagamento",
+      esperado: [
+        { texto: "Pagamento confirmado", vezes: 1 },
+        { texto: "tinha sido cancelado ou expirado", vezes: 1 },
+        { texto: "NEW.user_id IS NULL", vezes: 1 },
+        {
+          texto: "OLD.payment_status IS NOT DISTINCT FROM NEW.payment_status",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
+  "20261028000000_filtro_de_pagamento_filtra_o_banco.sql": [
+    {
+      // Item 10 do laudo de 29/08: o filtro de Status de Pagamento filtra
+      // NO BANCO. A cláusula nova aparece EXATAMENTE 2x no corpo (COUNT e
+      // dados) — de menos, um dos WHERE voltou a ignorar o filtro (a
+      // paginação volta a mentir); de mais, o corpo divergiu do desenhado.
+      funcao: "get_admin_orders_paged",
+      esperado: [
+        { texto: "p_payment_status = 'all'", vezes: 2 },
+        { texto: "o.payment_status = p_payment_status", vezes: 2 },
+        { texto: "p_payment_status = 'sem_cobranca'", vezes: 2 },
+        { texto: "p_payment_status text DEFAULT 'all'::text", vezes: 1 },
+      ],
+    },
+  ],
+  "20261029000000_sentinela_do_horario_vira_ausencia.sql": [
+    {
+      // Follow-up obrigatório da revisão do #349 (item 6 do laudo): a
+      // sentinela do horário de fábrica morre no banco. O comentário da
+      // remoção aparece EXATAMENTE 2x no corpo da RPC viva — o da cor
+      // (molde, 20260980000000) e o novo do horário. 1x seria a sentinela do
+      // horário de volta ao INSERT; 3x, corpo divergente do desenhado.
+      funcao: "upsert_store_config",
+      esperado: [
+        { texto: "-- sentinela removida: ausente grava NULL", vezes: 2 },
+      ],
+    },
+  ],
+  "20261030000000_o_selo_verificado_e_a_compra.sql": [
+    {
+      // Item 7 do laudo de 29/08: o selo "Verificado" = compra com dinheiro
+      // reconhecido. As 3 portas precisam estar em CADA UMA das duas funções
+      // (reviews e orders) — literal único da casa, contagem exata 1x por
+      // corpo. Menos que isso, uma das portas de entrada do selo ficou muda.
+      funcao: "marca_avaliacao_nasce_verificada",
+      esperado: [
+        {
+          texto:
+            "'pago', 'pago_apos_expirar', 'recebido_na_entrega'",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "marca_avaliacoes_do_pedido_verificadas",
+      esperado: [
+        {
+          texto:
+            "'pago', 'pago_apos_expirar', 'recebido_na_entrega'",
+          vezes: 1,
+        },
       ],
     },
   ],
