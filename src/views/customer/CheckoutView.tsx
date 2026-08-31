@@ -14,12 +14,12 @@ import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
-import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
-import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
 import { cepEhLocal } from "@/lib/cep-local";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
+import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import {
   type AcaoDeRecusa,
   type RecusaDoPedido,

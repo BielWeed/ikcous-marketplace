@@ -2,9 +2,9 @@ import { paymentStatusKey } from "@/components/admin/orders/OrderStatusBadge";
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { ReviewForm } from "@/components/ui/custom/ReviewForm";
 import { useStore } from "@/contexts/StoreContext";
-import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrders } from "@/hooks/useOrders";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type {

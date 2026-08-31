@@ -1,3 +1,4 @@
+import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
 // Laudo caça-bugs 31/08 (B2): a guarda do Finalizar vivia inline no
 // CheckoutView e ignorava a bandeira `freteIndefinido` — provedor de
 // cotação com taxa 0 deixava `shipping === 0`, a guarda velha não
@@ -12,7 +13,6 @@
 // (frete-indefinido-sem-cep-de-origem.test.tsx) → esta suíte prova a
 // guarda → o CheckoutView a consome com 1 linha visível no diff.
 import { describe, expect, it } from "vitest";
-import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
 
 const base = {
   carrinhoVazio: false,
@@ -31,20 +31,28 @@ describe("finalizarBloqueadoPorFrete — a guarda do dinheiro de frete", () => {
   });
 
   it("controle do B2: frete definido com shipping R$ 0 (taxa 0 de propósito) -> LIVRE", () => {
-    expect(finalizarBloqueadoPorFrete({ ...base, freteIndefinido: false })).toBe(
-      false,
-    );
+    expect(
+      finalizarBloqueadoPorFrete({ ...base, freteIndefinido: false }),
+    ).toBe(false);
   });
 
   it("o defeito ORIGINAL de 18/08: frete positivo sem opção escolhida -> TRAVADO (continua)", () => {
     expect(
-      finalizarBloqueadoPorFrete({ ...base, shipping: 15, temOpcaoSelecionada: false }),
+      finalizarBloqueadoPorFrete({
+        ...base,
+        shipping: 15,
+        temOpcaoSelecionada: false,
+      }),
     ).toBe(true);
   });
 
   it("frete positivo COM opção escolhida -> LIVRE", () => {
     expect(
-      finalizarBloqueadoPorFrete({ ...base, shipping: 15, temOpcaoSelecionada: true }),
+      finalizarBloqueadoPorFrete({
+        ...base,
+        shipping: 15,
+        temOpcaoSelecionada: true,
+      }),
     ).toBe(false);
   });
 

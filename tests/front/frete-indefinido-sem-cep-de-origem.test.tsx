@@ -1,9 +1,9 @@
+import { CartProvider, useCartContext } from "@/contexts/CartContext";
+import type { Product } from "@/types";
 import { act } from "react";
 import { useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CartProvider, useCartContext } from "@/contexts/CartContext";
-import type { Product } from "@/types";
 
 // @vitest-environment jsdom
 //
@@ -17,7 +17,6 @@ import type { Product } from "@/types";
 //
 // Mesmo harness de cart-context-variant-names.test.tsx: provider de
 // verdade, contextos vizinhos dublês, config mutável por teste.
-
 
 const { mockConfig } = vi.hoisted(() => ({
   mockConfig: {
@@ -69,9 +68,7 @@ function FreteIndefinidoReader({
   useEffect(() => {
     onValor(freteIndefinido);
   }, [freteIndefinido, onValor]);
-  return (
-    <button onClick={() => addToCart(produto(), 1)}>adicionar</button>
-  );
+  return <button onClick={() => addToCart(produto(), 1)}>adicionar</button>;
 }
 
 describe("freteIndefinido — taxa fixa sem CEP de origem também é 'a calcular'", () => {
@@ -85,7 +82,7 @@ describe("freteIndefinido — taxa fixa sem CEP de origem também é 'a calcular
     // e explode no primeiro getItem -- os irmaos (cart-context-*) stubam o
     // global com um armazem em Map. Mesmo padrao.
     const armazem = new Map<string, string>();
-    vi.stubGlobal('localStorage', {
+    vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
       setItem: (chave: string, valor: string) => {
         armazem.set(chave, valor);

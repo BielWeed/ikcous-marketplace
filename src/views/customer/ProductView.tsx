@@ -13,6 +13,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { useReviews } from "@/hooks/useReviews";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { cn } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -33,7 +34,6 @@ import {
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 
 const RECS_CACHE_KEY_PREFIX = "ikcous_recs_cache_";
 const memoryRecsCache = new Map<string, Product[]>();

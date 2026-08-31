@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/useAuth";
 import { useStore } from "@/contexts/StoreContext";
+import { useAuth } from "@/hooks/useAuth";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import type { View } from "@/types";
 import { motion } from "framer-motion";

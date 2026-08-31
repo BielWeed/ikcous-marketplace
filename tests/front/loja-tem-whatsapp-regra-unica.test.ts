@@ -1,3 +1,4 @@
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 // Laudo caça-bugs 31/08 (C1/C2): a régua "sem número de WhatsApp, o botão
 // some" vivia só no ProductView; OrderDetailsView, ProfileView e a promessa
 // do OrderSuccessView ficaram para trás e `wa.me/` sem destinatário voltou
@@ -9,7 +10,6 @@
 // (aceita), formatado com pontuação (aceita), com prefixo 55 (aceita),
 // null/undefined/vazio/letras (recusa — e nunca vira `wa.me/` vazio).
 import { describe, expect, it } from "vitest";
-import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 
 describe("lojaTemWhatsapp — a régua dos 10 dígitos, em um lugar só", () => {
   it("null, undefined, vazio e só pontuação NÃO têm WhatsApp", () => {
