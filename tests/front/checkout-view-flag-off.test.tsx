@@ -79,6 +79,10 @@ vi.mock("@/hooks/useCart", () => ({
     clearCart,
     selectedShippingOption: null,
     shippingCep: "38500-000",
+    // Setters consumidos pelo efeito da reconciliação de CEP (onda 4 do
+    // laudo 3108); a limpeza dele não afeta o que estes testes afirmam.
+    setSelectedShippingOption: vi.fn(),
+    setShippingCep: vi.fn(),
   }),
 }));
 

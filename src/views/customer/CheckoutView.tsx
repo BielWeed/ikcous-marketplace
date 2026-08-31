@@ -22,6 +22,7 @@ import {
   impressaoDaCompra,
 } from "@/lib/chave-do-pedido";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
+import { cotacaoValeParaDestino } from "@/lib/reconciliacao-de-cep";
 import {
   type AcaoDeRecusa,
   type RecusaDoPedido,
@@ -200,6 +201,8 @@ export function CheckoutView({
     addToCart,
     selectedShippingOption,
     shippingCep,
+    setSelectedShippingOption,
+    setShippingCep,
   } = useCart();
 
   const cart = propCart ?? ctxCart;
@@ -528,6 +531,32 @@ export function CheckoutView({
   // Android fechar o painel em vez de sair da tela de checkout.
   const [isSummaryPanelOpen, setIsSummaryPanelOpen] = useState(false);
   const hasPushedSummaryPanelState = useRef(false);
+
+  // A COTAÇÃO DE FRETE VALE PARA UM DESTINO (laudo 31/08, item E —
+  // reconciliação de CEP): o frete é cotado no CARRINHO (campo de CEP
+  // próprio da ShippingCalculator) e a entrega é endereçada AQUI — campos
+  // diferentes, e nada os amarrava: cotava no CEP A, entregava no B e
+  // pagava o frete de A. A metade SERVIDOR da cura (20261039000000) recusa
+  // o pedido divergente; aqui o cliente nem chega lá — mudou o destino,
+  // a opção cai e o carrinho volta a "A calcular" para re-cotar no CEP
+  // certo. Cotação ausente não decide (frete grátis/taxa fixa sem
+  // cotação): o portão do SERVIDOR é quem policia esses caminhos.
+  const cepDigitadoNoFormulario = form.watch("cep");
+  const cepDeEntrega = user
+    ? (addresses.find((a) => a.id === selectedAddressId)?.cep ?? null)
+    : (cepDigitadoNoFormulario || null);
+  useEffect(() => {
+    if (!shippingCep || !cepDeEntrega) return;
+    if (!cotacaoValeParaDestino(shippingCep, cepDeEntrega)) {
+      setSelectedShippingOption(null);
+      setShippingCep(null);
+    }
+  }, [
+    shippingCep,
+    cepDeEntrega,
+    setSelectedShippingOption,
+    setShippingCep,
+  ]);
   // Achado 8 da revisão (17/08/2026): o painel precisa devolver o foco ao
   // botão que o abriu quando fecha (teclado) — `wasOpenRef` evita focar o
   // gatilho já na montagem (isSummaryPanelOpen começa `false`).

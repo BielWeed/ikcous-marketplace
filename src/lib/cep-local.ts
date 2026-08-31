@@ -5,9 +5,13 @@
 //
 // POR QUE EXISTE: a regra do convidado (decisão do Gabriel, 30/08/2026 —
 // laudo caça-bugs Savy) precisa decidir NA TELA se o destino do convidado é
-// entrega local; a decisão final continua sendo do servidor. Se um dia o SQL
-// mudar, ESTE arquivo muda junto — as três cópias (SQL, edge, front) são
-// uma regra só, e o teste `cep-local-espelha-o-banco` guarda o contrato.
+// entrega local. ATÉ a migration 20261039000000 a frase "a decisão final é
+// do servidor" era mentira: a RPC aceitava qualquer CEP — era o achado A2
+// do laudo 31/08. Hoje as duas metades existem: esta cópia dá a resposta
+// rápida na tela e a RPC recusa no servidor com a MESMA regra
+// (`is_local_cep`). Se um dia o SQL mudar, ESTE arquivo muda junto — as
+// três cópias (SQL, edge, front) são uma regra só, e o teste
+// `cep-local-espelha-o-banco` guarda o contrato.
 //
 // Contrato: origem/destino sem dígitos -> false. Sem faixa configurada ->
 // mesmos 5 primeiros dígitos. Com faixa: tokens separados por vírgula;
