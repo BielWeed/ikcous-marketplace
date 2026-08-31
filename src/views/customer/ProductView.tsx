@@ -13,6 +13,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { useReviews } from "@/hooks/useReviews";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { cn } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -1092,7 +1093,7 @@ export const ProductView = React.memo(function ProductView({
           {/* O botão de WhatsApp só existe com número configurado pela loja —
               sem cadastro ele SOME, nunca aponta para número inventado
               (laudo caça-bugs 30/08 + decisão do Gabriel no mesmo dia). */}
-          {(config.whatsappNumber || "").replace(/\D/g, "").length >= 10 && (
+          {lojaTemWhatsapp(config.whatsappNumber) && (
             <button
               onClick={handleWhatsApp}
               title="Dúvidas no WhatsApp"

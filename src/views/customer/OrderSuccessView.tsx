@@ -1,5 +1,7 @@
 import { Button } from "@/components/ui/button";
+import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import type { View } from "@/types";
 import { motion } from "framer-motion";
 import { ArrowRight, CheckCircle2, Home, Package } from "lucide-react";
@@ -10,6 +12,12 @@ interface OrderSuccessViewProps {
 
 export function OrderSuccessView({ onNavigate }: OrderSuccessViewProps) {
   const { user } = useAuth();
+  const { config } = useStore();
+  // Laudo 31/08 (C2): a frase do convidado mandava falar pelo WhatsApp —
+  // mas a tela não tem botão nenhum e a loja pode não ter número (decisão
+  // de 30/08: WhatsApp é opcional). A promessa só menciona o canal que
+  // EXISTE. Mesma régua de dígitos do ProductView/OrderDetails/Profile.
+  const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
 
   return (
     <div className="flex min-h-full flex-col items-center justify-center bg-white px-6 py-12 text-center">
@@ -37,7 +45,9 @@ export function OrderSuccessView({ onNavigate }: OrderSuccessViewProps) {
         Seu pedido foi recebido com sucesso e já está sendo processado.{" "}
         {user
           ? "A cada atualização — preparo, envio, entrega — você recebe um aviso aqui no app."
-          : "Guarde o código do comprovante: é por ele que a loja localiza o seu pedido. Para acompanhar, fale com a loja pelo WhatsApp."}
+          : lojaTemWhatsappAgora
+            ? "Guarde o código do comprovante: é por ele que a loja localiza o seu pedido. Para acompanhar, fale com a loja pelo WhatsApp."
+            : "Guarde o código do comprovante: é por ele que a loja localiza o seu pedido. Guarde também o contato da loja — é por lá que você acompanha."}
       </p>
 
       <div className="grid w-full max-w-xs gap-4">

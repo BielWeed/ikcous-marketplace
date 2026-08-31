@@ -804,11 +804,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     )
       return false;
     if (selectedShippingOption) return false;
-    return config.shippingProvider !== "flat_fee";
+    // Laudo caça-bugs 31/08 (B1): sem CEP de origem a calculate-shipping
+    // recusa cotar QUALQUER coisa — taxa fixa incluída
+    // (`validarOrigemEFrete` checa a origem ANTES da taxa). O "R$ 15,00"
+    // exibido era preço mentiroso: sem origem o frete é "a calcular" mesmo,
+    // e o Finalizar fica travado até o lojista configurar.
+    return !config.originCep?.trim() || config.shippingProvider !== "flat_fee";
   }, [
     cart,
     cartTotal,
     config.freeShippingMin,
+    config.originCep,
     config.shippingProvider,
     selectedShippingOption,
     user,

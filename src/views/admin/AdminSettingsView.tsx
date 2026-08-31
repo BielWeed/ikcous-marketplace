@@ -148,7 +148,7 @@ const StoreLocationSection = memo(function StoreLocationSection() {
               type="text"
               value={businessHours}
               onChange={(e) => setBusinessHours(e.target.value)}
-              placeholder="Ex: Seg-Sáb: 9h às 18h"
+              placeholder="Ex: Ter a Sáb, 9h às 18h"
               className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-xs font-semibold text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
             />
           </div>
