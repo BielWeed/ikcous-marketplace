@@ -86,36 +86,75 @@ sw.addEventListener("fetch", (event: any) => {
   if (url.hostname.includes("supabase.co") && url.pathname.includes("auth"))
     return;
 
-  // 2. NETWORK FIRST: Navegação e metadados críticos
+  // 2. NAVEGAÇÃO: CACHE PRIMEIRO, REVALIDAÇÃO EM SEGUNDO PLANO
+  // (laudo ofensiva 3108, achado N4)
+  //
+  // O DEFEITO PROVADO EM 31/08 (3 reproduções, build de produção): o ramo
+  // era NETWORK-FIRST com fetch() DENTRO do respondWith — offline, o fetch
+  // interno morria, o fallback entregava o HTML do cache, mas TODOS os
+  // subrecursos (módulos e CSS) falhavam com net::ERR_FAILED: tela branca
+  // ao abrir/recarregar a PWA sem internet, MESMO com o precache cheio e o
+  // SW ativo (fetches DENTRO da página offline devolviam 200 do cache — o
+  // cache estava lá; o quebrado era este fluxo de navegação).
+  //
+  // A cura: a resposta vem DO CACHE na hora; a rede entra por
+  // `event.waitUntil` (fora da promessa respondWith) só para REVALIDAR a
+  // cópia para a próxima visita. Com `registerType: "prompt"` +
+  // useUpdateCheck, versão nova de app continua avisando pelo ciclo de
+  // update do SW — a revalidação em segundo plano não contorna o aviso.
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (response.ok && response.status === 200) {
-            try {
-              const copy = response.clone();
-              caches
-                .open(CACHE_NAME)
-                .then((cache) => cache.put(event.request, copy));
-            } catch (e) {
-              console.warn("[SW] Failed to clone navigation response:", e);
-            }
-          }
-          return response;
-        })
-        .catch((err) => {
-          console.log(
-            "[SW] Navigation fetch failed, attempting cache/SPA fallback:",
-            err,
+      caches.match(event.request).then((cached) => {
+        if (cached) {
+          event.waitUntil(
+            fetch(event.request)
+              .then((response) => {
+                if (response.ok && response.status === 200) {
+                  try {
+                    const copy = response.clone();
+                    caches
+                      .open(CACHE_NAME)
+                      .then((cache) => cache.put(event.request, copy));
+                  } catch (e) {
+                    console.warn(
+                      "[SW] Failed to clone navigation response:",
+                      e,
+                    );
+                  }
+                }
+              })
+              .catch(() => {}),
           );
-          return caches.match(event.request).then((response) => {
-            if (response) return response;
-            return caches.match("/index.html").then((fallback) => {
-              if (fallback) return fallback;
-              return caches.match("/");
+          return cached;
+        }
+        return fetch(event.request)
+          .then((response) => {
+            if (response.ok && response.status === 200) {
+              try {
+                const copy = response.clone();
+                caches
+                  .open(CACHE_NAME)
+                  .then((cache) => cache.put(event.request, copy));
+              } catch (e) {
+                console.warn("[SW] Failed to clone navigation response:", e);
+              }
+            }
+            return response;
+          })
+          .catch((err) => {
+            console.log(
+              "[SW] Navigation fetch failed, attempting cache/SPA fallback:",
+              err,
+            );
+            return caches.match(event.request).then((response) => {
+              if (response) return response;
+              return caches.match("/index.html").then((fallback) => {
+                if (fallback) return fallback;
+                return caches.match("/");
+              });
             });
           });
-        }),
+      }),
     );
     return;
   }
