@@ -575,11 +575,12 @@ export function CheckoutView({
   // estrago era só a recusa do servidor no último clique. Agora toda
   // mudança de subtotal revalida: válido, o desconto se atualiza; inválido
   // (mínimo de compra deixou de ser batido, expirou), o cupom SAI com o
-  // motivo na frente do cliente — sem chegar a recusar pedido. Falha de
-  // rede na revalidação mantém o cupom como está: o servidor confere de
-  // qualquer forma na criação. MORRE ANTES DO PRIMEIRO RETURN (regra dos
-  // hooks — o eslint pegou a 1ª versão deste efeito depois do return de
-  // carregamento).
+  // motivo na frente do cliente — sem chegar a recusar pedido. FALHA DE
+  // REDE na revalidação mantém o cupom como está — o validateCoupon não
+  // lança; ele devolve networkError (ressalva da revisão do PR #370), e o
+  // desconto duvidoso continua coberto pela validação da criação. MORRE
+  // ANTES DO PRIMEIRO RETURN (regra dos hooks — o eslint pegou a 1ª versão
+  // deste efeito depois do return de carregamento).
   const codigoDoCupom = appliedCoupon?.code ?? null;
   useEffect(() => {
     if (!codigoDoCupom) return;
@@ -588,6 +589,7 @@ export function CheckoutView({
       try {
         const resultado = await validateCoupon(codigoDoCupom, subtotal);
         if (!vivo) return;
+        if (resultado.networkError) return;
         if (resultado.valid) {
           setAppliedCoupon({
             code: codigoDoCupom,
@@ -598,7 +600,7 @@ export function CheckoutView({
           setCouponError(resultado.message || "Cupom inválido");
         }
       } catch {
-        // Sem rede agora: a validação de verdade é a da criação do pedido.
+        // Defesa: o validateCoupon não lança; se um dia lançar, mantém.
       }
     })();
     return () => {
