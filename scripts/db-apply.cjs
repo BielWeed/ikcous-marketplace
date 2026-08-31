@@ -1437,6 +1437,22 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261050000000_o_voto_util_tem_memoria_no_servidor.sql": [
+    {
+      // Laudo ofensiva 3108 (N2): o voto útil ganha memória no servidor. A
+      // deduplicação inteira mora na UNIQUE da tabela + no no-op da RPC. Os
+      // três marcadores precisam estar no corpo novo — sem o ON CONFLICT, a
+      // função volta a somar a cada chamada (o furo de antes); sem o
+      // IF NOT FOUND, o no-op deixa de ser silencioso; sem o RAISE, o voto
+      // anônimo entra. Vezes exata: cada guarda aparece UMA vez por corpo.
+      funcao: "increment_helpful",
+      esperado: [
+        { texto: "ON CONFLICT ON CONSTRAINT review_votes_um_voto_por_usuario DO NOTHING", vezes: 1 },
+        { texto: "IF NOT FOUND THEN", vezes: 1 },
+        { texto: "Acesso negado: usuário não autenticado.", vezes: 1 },
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
