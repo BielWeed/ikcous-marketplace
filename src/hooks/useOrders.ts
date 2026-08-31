@@ -2098,6 +2098,12 @@ export function useOrders(
         // 🛡️ SECURITY: Usando a RPC v22 Blindada (Zero-Trust)
         // O backend recalcula o total consultando os preços diretamente do banco (produtos/variants)
         // e usa o 'p_total_amount' como um Checksum para garantir integridade.
+        //
+        // IDEMPOTÊNCIA (laudo 31/08, A1): a chave da compra vem do CheckoutView
+        // (src/lib/chave-do-pedido.ts) e é a metade cliente da cura do pedido
+        // em dobro — rede cai DEPOIS do commit e a retentativa REPETE a chave;
+        // o servidor (20261038000000) devolve o pedido que já nasceu. Quem
+        // chama sem chave continua funcionando (DEFAULT NULL no banco).
         const { data, error } = await (supabase as any).rpc(rpc, {
           p_items: orderData.items.map((item: any) => ({
             product_id: item.product_id || item.productId,
@@ -2117,6 +2123,7 @@ export function useOrders(
           // confirmar o valor do frete. O preço enviado pelo cliente é ignorado.
           p_destination_cep: orderData.destinationCep || null,
           p_shipping_option_id: orderData.shippingOptionId || null,
+          p_idempotency_key: orderData.idempotencyKey || null,
         });
 
         if (error) throw error;
@@ -2152,7 +2159,10 @@ export function useOrders(
         };
       } catch (err: any) {
         console.error("Error creating order:", err);
-        toast.error(mensagemAmigavelErroPedido(err));
+        // UM AVISO SÓ (laudo 31/08, menor E): este hook RELANÇA o erro e a
+        // tela que chamou (CheckoutView) é quem avisa — toast + painel da
+        // recusa. O toast que existia aqui empilhava DOIS avisos da mesma
+        // falha, e o segundo ainda nascia sem o contexto que a tela acrescenta.
         throw err;
       }
     },
