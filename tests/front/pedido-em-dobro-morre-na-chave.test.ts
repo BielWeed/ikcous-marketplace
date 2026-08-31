@@ -21,17 +21,17 @@ import {
 } from "@/lib/chave-do-pedido";
 import { describe, expect, it } from "vitest";
 
-type ArmazenamentoFake = Record<string, string>;
-
-function storageFake(conteudo: ArmazenamentoFake = {}) {
+// Map, não Record: indexação por chave variável em objeto é sink de
+// injeção para o eslint (3 warnings que estourariam o teto do CI).
+function storageFake(pares: Array<[string, string]> = []) {
+  const conteudo = new Map(pares);
   return {
-    lido: conteudo,
-    getItem: (k: string) => conteudo[k] ?? null,
+    getItem: (k: string) => conteudo.get(k) ?? null,
     setItem: (k: string, v: string) => {
-      conteudo[k] = v;
+      conteudo.set(k, v);
     },
     removeItem: (k: string) => {
-      delete conteudo[k];
+      conteudo.delete(k);
     },
   };
 }
@@ -169,9 +169,9 @@ describe("criarGerenciadorDeChave — a chave sobrevive à retentativa e morre n
   });
 
   it("storage corrompido não derruba a compra: nasce chave nova", () => {
-    const armazem = storageFake({
-      "ikcous-chave-do-pedido": "{isso nao e json",
-    });
+    const armazem = storageFake([
+      ["ikcous-chave-do-pedido", "{isso nao e json"],
+    ]);
     const gerente = criarGerenciadorDeChave(armazem, chavesSequenciais());
 
     expect(gerente.chavePara(impressaoDaCompra(compraBase))).toBe("chave-1");
