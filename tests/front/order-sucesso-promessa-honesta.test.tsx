@@ -97,13 +97,15 @@ describe("OrderSuccessView — a promessa de atualizações é por verdade", () 
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("código do comprovante");
     expect(texto).toContain("fale com a loja pelo WhatsApp");
+    // E NÃO mostra as duas frases juntas (nota 6 da revisão do PR #367).
+    expect(texto).not.toContain("Guarde também o contato da loja");
     // A frase antiga do autoatendimento não volta (laudo 30/08).
     expect(texto).not.toContain("você acompanha cada atualização");
   });
 
   it("CONVIDADO com número CURTO (9 dígitos) não lê WhatsApp — mesma régua de dígitos do ProductView", async () => {
     usuarioAtual = null;
-    whatsappDaLoja = "99999999";
+    whatsappDaLoja = "999999999"; // 9 dígitos: um a menos que a régua
     await montar();
 
     const texto = hospedeiro.textContent ?? "";
