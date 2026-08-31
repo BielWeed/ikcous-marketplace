@@ -139,6 +139,12 @@ let mockSelectedShippingOption: {
   deliveryDays: 3,
   provider: "flat_fee",
 };
+// O dublê nasce SEM cotação (como o carrinho antes de cotar): o efeito da
+// reconciliação de CEP (onda 4 do laudo 3108) fica inerte — os cenários
+// daqui provam a escolha de pagamento e o envio, não a cotação, e a regra
+// da reconciliação tem provas próprias em
+// cotacao-vale-so-para-o-destino.test.ts e na migration 20261039000000.
+let mockShippingCep: string | null = null;
 
 vi.mock("@/hooks/useCart", () => ({
   useCart: () => ({
@@ -157,7 +163,15 @@ vi.mock("@/hooks/useCart", () => ({
       mockSelectedShippingOption = null;
     },
     selectedShippingOption: mockSelectedShippingOption,
-    shippingCep: "38500-000",
+    shippingCep: mockShippingCep,
+    // Setters consumidos pelo efeito da reconciliação de CEP (onda 4 do
+    // laudo 3108), espelhando o estado do dublê como o contexto real faz.
+    setSelectedShippingOption: (optao: typeof mockSelectedShippingOption) => {
+      mockSelectedShippingOption = optao;
+    },
+    setShippingCep: (cep: string | null) => {
+      mockShippingCep = cep;
+    },
   }),
 }));
 
