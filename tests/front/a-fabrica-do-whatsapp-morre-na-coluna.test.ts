@@ -16,7 +16,8 @@ const MIGRATIONS = import.meta.glob<string>("/supabase/migrations/*.sql", {
   eager: true,
 });
 
-const ARQUIVO = "/supabase/migrations/20261037000000_a_fabrica_do_whatsapp_morre_na_coluna.sql";
+const ARQUIVO =
+  "/supabase/migrations/20261037000000_a_fabrica_do_whatsapp_morre_na_coluna.sql";
 
 const sql = Object.values(MIGRATIONS).join("\n");
 
@@ -26,12 +27,18 @@ const sql = Object.values(MIGRATIONS).join("\n");
 // (guarda-de-cor-sai-junto-com-a-escrita.test.ts) e iterar Object.entries
 // com desestruturacao - mesma coisa aqui, embrulhada em helper.
 const ler = (sufixo: string): string => {
-  const par = Object.entries(MIGRATIONS).find(([caminho]) => caminho.endsWith(sufixo));
+  const par = Object.entries(MIGRATIONS).find(([caminho]) =>
+    caminho.endsWith(sufixo),
+  );
   return par ? par[1] : "";
 };
 
-const migration = ler("20261037000000_a_fabrica_do_whatsapp_morre_na_coluna.sql");
-const rollback = ler("rollback-manual-20261037000000_a_fabrica_do_whatsapp_morre_na_coluna.sql");
+const migration = ler(
+  "20261037000000_a_fabrica_do_whatsapp_morre_na_coluna.sql",
+);
+const rollback = ler(
+  "rollback-manual-20261037000000_a_fabrica_do_whatsapp_morre_na_coluna.sql",
+);
 
 describe("a fábrica do WhatsApp morre na coluna (20261037000000)", () => {
   it("o glob casou o diretório inteiro de migrations", () => {
@@ -51,18 +58,22 @@ describe("a fábrica do WhatsApp morre na coluna (20261037000000)", () => {
     // 20261029000000 — uma segunda linha aqui não erraria o banco (DROP sem
     // default é no-op), mas desmentiria o cabeçalho da própria migration.
     // A promessa deste arquivo é UMA coluna.
-    expect(migration).not.toMatch(/^\s*ALTER TABLE public\.store_config ALTER COLUMN business_hours DROP DEFAULT;/m);
+    expect(migration).not.toMatch(
+      /^\s*ALTER TABLE public\.store_config ALTER COLUMN business_hours DROP DEFAULT;/m,
+    );
   });
 
   it("não toca em linha de dado nenhuma (só metadado da coluna)", () => {
-    const semComentarios = migration.split("\n")
+    const semComentarios = migration
+      .split("\n")
       .filter((linha) => !linha.trim().startsWith("--"))
       .join("\n");
     expect(semComentarios).not.toMatch(/\b(UPDATE|DELETE|INSERT)\b/);
   });
 
   it("não tem BEGIN/COMMIT fora de comentário", () => {
-    const semComentarios = migration.split("\n")
+    const semComentarios = migration
+      .split("\n")
       .filter((linha) => !linha.trim().startsWith("--"))
       .join("\n");
     expect(semComentarios).not.toMatch(/\b(BEGIN|COMMIT)\s*;/);

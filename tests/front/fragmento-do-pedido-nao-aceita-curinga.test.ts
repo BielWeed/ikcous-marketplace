@@ -18,7 +18,8 @@ const MIGRATIONS = import.meta.glob<string>("/supabase/migrations/*.sql", {
   eager: true,
 });
 
-const ARQUIVO = "/supabase/migrations/20261035000000_fragmento_do_pedido_nao_aceita_curinga.sql";
+const ARQUIVO =
+  "/supabase/migrations/20261035000000_fragmento_do_pedido_nao_aceita_curinga.sql";
 
 const sql = Object.values(MIGRATIONS).join("\n");
 
@@ -28,12 +29,18 @@ const sql = Object.values(MIGRATIONS).join("\n");
 // (guarda-de-cor-sai-junto-com-a-escrita.test.ts) e iterar Object.entries
 // com desestruturacao - mesma coisa aqui, embrulhada em helper.
 const ler = (sufixo: string): string => {
-  const par = Object.entries(MIGRATIONS).find(([caminho]) => caminho.endsWith(sufixo));
+  const par = Object.entries(MIGRATIONS).find(([caminho]) =>
+    caminho.endsWith(sufixo),
+  );
   return par ? par[1] : "";
 };
 
-const migration = ler("20261035000000_fragmento_do_pedido_nao_aceita_curinga.sql");
-const rollback = ler("rollback-manual-20261035000000_fragmento_do_pedido_nao_aceita_curinga.sql");
+const migration = ler(
+  "20261035000000_fragmento_do_pedido_nao_aceita_curinga.sql",
+);
+const rollback = ler(
+  "rollback-manual-20261035000000_fragmento_do_pedido_nao_aceita_curinga.sql",
+);
 
 describe("o fragmento do pedido não aceita curinga (20261035000000)", () => {
   // As travas de vacuidade (mesma receita do teste-âncora de recusa): glob
@@ -73,7 +80,8 @@ describe("o fragmento do pedido não aceita curinga (20261035000000)", () => {
   });
 
   it("não tem BEGIN/COMMIT fora de comentário (o ROLLBACK da prova tem que valer)", () => {
-    const semComentarios = migration.split("\n")
+    const semComentarios = migration
+      .split("\n")
       .filter((linha) => !linha.trim().startsWith("--"))
       .join("\n");
     expect(semComentarios).not.toMatch(/\b(BEGIN|COMMIT)\s*;/);

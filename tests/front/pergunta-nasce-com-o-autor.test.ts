@@ -16,7 +16,8 @@ const MIGRATIONS = import.meta.glob<string>("/supabase/migrations/*.sql", {
   eager: true,
 });
 
-const ARQUIVO = "/supabase/migrations/20261036000000_pergunta_nasce_com_o_autor.sql";
+const ARQUIVO =
+  "/supabase/migrations/20261036000000_pergunta_nasce_com_o_autor.sql";
 
 const sql = Object.values(MIGRATIONS).join("\n");
 
@@ -26,12 +27,16 @@ const sql = Object.values(MIGRATIONS).join("\n");
 // (guarda-de-cor-sai-junto-com-a-escrita.test.ts) e iterar Object.entries
 // com desestruturacao - mesma coisa aqui, embrulhada em helper.
 const ler = (sufixo: string): string => {
-  const par = Object.entries(MIGRATIONS).find(([caminho]) => caminho.endsWith(sufixo));
+  const par = Object.entries(MIGRATIONS).find(([caminho]) =>
+    caminho.endsWith(sufixo),
+  );
   return par ? par[1] : "";
 };
 
 const migration = ler("20261036000000_pergunta_nasce_com_o_autor.sql");
-const rollback = ler("rollback-manual-20261036000000_pergunta_nasce_com_o_autor.sql");
+const rollback = ler(
+  "rollback-manual-20261036000000_pergunta_nasce_com_o_autor.sql",
+);
 
 describe("a pergunta nasce assinada pelo próprio autor (20261036000000)", () => {
   it("o glob casou o diretório inteiro de migrations", () => {
@@ -47,7 +52,9 @@ describe("a pergunta nasce assinada pelo próprio autor (20261036000000)", () =>
   });
 
   it("derruba a policy velha antes de recriar (idempotente)", () => {
-    expect(migration).toContain("DROP POLICY IF EXISTS questions_insert_policy");
+    expect(migration).toContain(
+      "DROP POLICY IF EXISTS questions_insert_policy",
+    );
     expect(migration).toContain("CREATE POLICY questions_insert_policy");
   });
 
@@ -60,7 +67,8 @@ describe("a pergunta nasce assinada pelo próprio autor (20261036000000)", () =>
   });
 
   it("não tem BEGIN/COMMIT fora de comentário", () => {
-    const semComentarios = migration.split("\n")
+    const semComentarios = migration
+      .split("\n")
       .filter((linha) => !linha.trim().startsWith("--"))
       .join("\n");
     expect(semComentarios).not.toMatch(/\b(BEGIN|COMMIT)\s*;/);
