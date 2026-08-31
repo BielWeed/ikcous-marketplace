@@ -14,6 +14,7 @@ import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
+import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
 import { cepEhLocal } from "@/lib/cep-local";
@@ -196,6 +197,7 @@ export function CheckoutView({
     addToCart,
     selectedShippingOption,
     shippingCep,
+    freteIndefinido: ctxFreteIndefinido,
   } = useCart();
 
   const cart = propCart ?? ctxCart;
@@ -906,8 +908,19 @@ export function CheckoutView({
   // cliente logado (CartContext.tsx:751-756) — então o único jeito de
   // `shipping` vir POSITIVO sem opção selecionada é o fallback do defeito
   // acima descrito.
-  const semFreteSelecionado =
-    cart.length > 0 && shipping > 0 && !selectedShippingOption;
+  // Laudo 31/08 (B2): a guarda migrou para `finalizarBloqueadoPorFrete`
+  // (src/lib/guarda-de-frete.ts) — função pura, testada com o par
+  // mutante-killer. A diferença da guarda velha: a bandeira
+  // `freteIndefinido` entra na conta — provedor de cotação com taxa 0
+  // configurada deixava `shipping === 0`, a guarda antiga não disparava, e
+  // o pedido fechava com frete R$ 0 sem cotação nenhuma, depois do
+  // carrinho ter dito "A calcular".
+  const semFreteSelecionado = finalizarBloqueadoPorFrete({
+    carrinhoVazio: cart.length === 0,
+    freteIndefinido: ctxFreteIndefinido,
+    shipping,
+    temOpcaoSelecionada: !!selectedShippingOption,
+  });
 
   // `SaidaDaRecusa` promete, por escrito, que `conferir_antes` nunca oferece
   // "tentar de novo" — é o caso em que não se sabe se o pedido nasceu, e

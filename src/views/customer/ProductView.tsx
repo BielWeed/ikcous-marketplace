@@ -33,6 +33,7 @@ import {
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 
 const RECS_CACHE_KEY_PREFIX = "ikcous_recs_cache_";
 const memoryRecsCache = new Map<string, Product[]>();
@@ -1092,7 +1093,7 @@ export const ProductView = React.memo(function ProductView({
           {/* O botão de WhatsApp só existe com número configurado pela loja —
               sem cadastro ele SOME, nunca aponta para número inventado
               (laudo caça-bugs 30/08 + decisão do Gabriel no mesmo dia). */}
-          {(config.whatsappNumber || "").replace(/\D/g, "").length >= 10 && (
+          {lojaTemWhatsapp(config.whatsappNumber) && (
             <button
               onClick={handleWhatsApp}
               title="Dúvidas no WhatsApp"

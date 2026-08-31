@@ -874,11 +874,19 @@ export const AdminShippingView = memo(function AdminShippingView({
                       existe para a loja perceber ANTES de salvar um
                       formulário vazio, achando que já está configurado. */}
                   {!formData.originCep && (
-                    <p className="flex items-center gap-1 text-[10px] font-medium text-amber-400">
-                      <AlertCircle className="size-3 shrink-0" />
-                      Obrigatório para calcular frete — sem ele, nenhuma cotação
-                      é gerada.
-                    </p>
+                    // Laudo 31/08 (B1): o hint antigo dizia "nenhuma cotação é
+                    // gerada" — verdade pela metade. A consequência real é a
+                    // loja FECHADA: sem cotação o Finalizar fica travado para
+                    // todo cliente (semFreteSelecionado / freteIndefinido).
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                      <p className="flex items-start gap-1.5 text-[10.5px] font-bold text-amber-300">
+                        <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                        SEM ISSO A LOJA NÃO VENDE: sem CEP de origem nenhuma
+                        cotação de frete é gerada e o botão "Finalizar Pedido"
+                        fica bloqueado para todo cliente. Preencha, confira o
+                        campo acima e SALVE para abrir as vendas.
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>

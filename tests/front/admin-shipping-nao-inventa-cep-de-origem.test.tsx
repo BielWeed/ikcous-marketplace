@@ -139,21 +139,24 @@ describe("AdminShippingView — não inventa CEP de origem", () => {
     expect(pegarBotaoSalvar().disabled).toBe(true);
   });
 
-  it("avisa que o CEP de origem é obrigatório para calcular frete quando está vazio", async () => {
+  it("avisa a consequência REAL do CEP vazio: sem ele a LOJA NÃO VENDE (laudo 31/08, B1)", async () => {
     mockConfig.originCep = undefined;
     await abrirTela();
 
-    expect(hospedeiro.textContent?.toLowerCase()).toContain(
-      "obrigatório para calcular frete",
-    );
+    const texto = hospedeiro.textContent?.toLowerCase() ?? "";
+    // O hint antigo dizia "obrigatório para calcular frete" — verdade pela
+    // metade: o lojista não sabia que a loja fica FECHADA (Finalizar
+    // travado para todo cliente). O aviso novo diz a consequência.
+    expect(texto).toContain("a loja não vende");
+    expect(texto).toContain("finalizar pedido");
   });
 
-  it("não mostra o aviso de CEP obrigatório quando a loja já configurou", async () => {
+  it("não mostra o aviso de loja-fechada quando a loja já configurou o CEP", async () => {
     mockConfig.originCep = "38400-000";
     await abrirTela();
 
     expect(hospedeiro.textContent?.toLowerCase()).not.toContain(
-      "obrigatório para calcular frete",
+      "a loja não vende",
     );
   });
 });

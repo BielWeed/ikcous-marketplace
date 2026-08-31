@@ -2,6 +2,7 @@ import { paymentStatusKey } from "@/components/admin/orders/OrderStatusBadge";
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { ReviewForm } from "@/components/ui/custom/ReviewForm";
 import { useStore } from "@/contexts/StoreContext";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrders } from "@/hooks/useOrders";
 import { supabase } from "@/lib/supabase";
@@ -372,6 +373,12 @@ export function OrderDetailsView({
     haptic.light();
   };
 
+  // Decisão de 30/08 (PRs #358-#365, "sem número, o botão some") chegou ao
+  // ProductView mas não aqui — laudo 31/08 (C1): com a sentinela de fábrica
+  // morta, `wa.me/` sem destinatário é link quebrado na tela de PÓS-VENDA.
+  // Mesma régua do ProductView: menos de 10 dígitos, sem botão.
+  const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
+
   if (loading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center space-y-4 bg-zinc-50/30">
@@ -438,12 +445,14 @@ export function OrderDetailsView({
               Detalhes da <span className="text-zinc-400">Entrega</span>
             </h1>
           </div>
-          <button
-            onClick={handleWhatsAppSupport}
-            className="flex size-10 items-center justify-center rounded-xl border border-emerald-100/50 bg-emerald-50 text-emerald-600 transition-all active:scale-90"
-          >
-            <MessageCircle className="size-5" />
-          </button>
+          {lojaTemWhatsappAgora && (
+            <button
+              onClick={handleWhatsAppSupport}
+              className="flex size-10 items-center justify-center rounded-xl border border-emerald-100/50 bg-emerald-50 text-emerald-600 transition-all active:scale-90"
+            >
+              <MessageCircle className="size-5" />
+            </button>
+          )}
         </div>
 
         {/* Quick Info Bar */}
