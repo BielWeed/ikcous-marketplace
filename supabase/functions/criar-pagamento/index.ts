@@ -200,10 +200,9 @@ export function expiracaoRealinhavel(
   return data;
 }
 
-export function subDoToken(authorization: string | null): string | null {
-  // Lê o `sub` sem validar assinatura DE PROPÓSITO: o gateway do Supabase já
-  // validou (verify_jwt = true). Aqui só se extrai a identidade. Com a chave
-  // anon não há `sub`, e o resultado é null — que é o caso do convidado.
+function payloadDoToken(authorization: string | null): any | null {
+  // Lê o payload sem validar assinatura DE PROPÓSITO: o gateway do Supabase
+  // já validou (verify_jwt = true). Aqui só se extrai identidade.
   try {
     const token = (authorization ?? "").replace(/^Bearer\s+/i, "");
     // JWT usa base64URL (RFC 4648 §5), não base64 puro: `-` no lugar de `+` e
@@ -213,11 +212,33 @@ export function subDoToken(authorization: string | null): string | null {
     // GoTrue. Sem normalizar, cliente LOGADO cai no catch, vira `sub: null`,
     // e leva 404 "Pedido não encontrado." no próprio pedido.
     const base64 = (token.split(".")[1] ?? "").replace(/-/g, "+").replace(/_/g, "/");
-    const payload = JSON.parse(atob(base64));
-    return typeof payload.sub === "string" ? payload.sub : null;
+    return JSON.parse(atob(base64));
   } catch {
     return null;
   }
+}
+
+export function subDoToken(authorization: string | null): string | null {
+  // Com a chave anon não há `sub`, e o resultado é null — o caso do
+  // convidado.
+  const payload = payloadDoToken(authorization);
+  return typeof payload?.sub === "string" ? payload.sub : null;
+}
+
+/**
+ * LAUDO 31/08 (menor E5): o e-mail do PAGADOR. A corrente de cima
+ * (`body.email` → `customer_data.email`) terminava no fallback
+ * `sem-email@ikcous.com.br` — que ia ao Mercado Pago como identidade de
+ * quem paga. Para cliente LOGADO existe um e-mail melhor, dentro do próprio
+ * token de sessão (claim `email` do GoTrue — a assinatura já foi validada
+ * pelo gateway). O fallback continua para a ponta que sobra (sessão sem
+ * claim de e-mail), mas deixou de ser o caminho normal.
+ */
+export function emailDoToken(authorization: string | null): string | null {
+  const payload = payloadDoToken(authorization);
+  return typeof payload?.email === "string" && payload.email.includes("@")
+    ? payload.email
+    : null;
 }
 
 /**
@@ -496,9 +517,12 @@ async function handler(
   }
 
   // decisao.acao === "criar" a partir daqui.
+  // LAUDO 31/08 (menor E5): o e-mail da sessão entra na corrente antes do
+  // fallback genérico — o MP passa a ver quem de verdade paga.
   const email =
     (body.email as string) ??
     (pedido.customer_data as Record<string, unknown>)?.email ??
+    emailDoToken(req.headers.get("Authorization")) ??
     "sem-email@ikcous.com.br";
 
   // Os quatro valores que os dois caminhos (PIX/Orders novo, cartão/clássico
