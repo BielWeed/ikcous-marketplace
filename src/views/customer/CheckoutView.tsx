@@ -365,6 +365,16 @@ export function CheckoutView({
   const hasInitializedRef = useRef(false);
   useEffect(() => {
     if (storeConfigLoaded && !hasInitializedRef.current) {
+      // O RASCUNHO É LIDO ANTES DE QUALQUER form.reset E ANTES DE ABRIR A
+      // TRAVA (corrida achada pela revisão do PR #374): `form.reset` emite
+      // SINCRONAMENTE para a assinatura do `form.watch`, e o callback grava
+      // rascunho — com a trava já aberta, o reset de defaults gravava um
+      // rascunho só-de-CEP POR CIMA do rascunho cheio antes da leitura
+      // (acontece quando a view monta antes da config da loja chegar — F5
+      // com IndexedDB lento). Lendo primeiro na memória, qualquer gravação
+      // transitória dos resets é substituída, logo depois, pela gravação dos
+      // valores restaurados.
+      const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
       hasInitializedRef.current = true;
       if (!form.formState.isDirty) {
         // Cidade e estado nascem vazios em QUALQUER cobertura de entrega —
@@ -385,7 +395,6 @@ export function CheckoutView({
         // o formulário inteiro e perder o cupom. O cupom volta só o CÓDIGO,
         // revalidado contra o subtotal atual no efeito logo abaixo; o que
         // deixou de valer não volta mentindo.
-        const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
         if (rascunho && rascunhoTemConteudo(rascunho)) {
           form.reset({
             name:
