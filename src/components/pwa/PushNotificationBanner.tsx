@@ -39,6 +39,16 @@ export function PushNotificationBanner({
       return;
     }
 
+    // 2-bis. NEM no caminho do dinheiro (laudo ofensiva 3108, achado N6):
+    // o modal é `fixed z-[999] bottom-20` — exatamente em cima da barra
+    // inferior que carrega o botão Finalizar no carrinho e no checkout.
+    // Medido em 31/08: o toque no Finalizar era interceptado pelo "Agora
+    // Não" do modal. Compra em andamento nunca compete com convite de push.
+    if (currentView === "cart" || currentView === "checkout") {
+      setIsVisible(false);
+      return;
+    }
+
     // 3. Se ja inscrito, ou permissao negada.
     //
     // "granted" sozinho NAO entra aqui: a permissao e concedida ANTES da

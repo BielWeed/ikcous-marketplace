@@ -25,6 +25,12 @@ import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
 import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { precoVendido } from "@/lib/preco-vendido";
+import {
+  lerRascunhoDoCheckout,
+  limparRascunhoDoCheckout,
+  rascunhoTemConteudo,
+  salvarRascunhoDoCheckout,
+} from "@/lib/rascunho-do-checkout";
 import { cotacaoValeParaDestino, soDigitos } from "@/lib/reconciliacao-de-cep";
 import {
   type AcaoDeRecusa,
@@ -359,6 +365,16 @@ export function CheckoutView({
   const hasInitializedRef = useRef(false);
   useEffect(() => {
     if (storeConfigLoaded && !hasInitializedRef.current) {
+      // O RASCUNHO É LIDO ANTES DE QUALQUER form.reset E ANTES DE ABRIR A
+      // TRAVA (corrida achada pela revisão do PR #374): `form.reset` emite
+      // SINCRONAMENTE para a assinatura do `form.watch`, e o callback grava
+      // rascunho — com a trava já aberta, o reset de defaults gravava um
+      // rascunho só-de-CEP POR CIMA do rascunho cheio antes da leitura
+      // (acontece quando a view monta antes da config da loja chegar — F5
+      // com IndexedDB lento). Lendo primeiro na memória, qualquer gravação
+      // transitória dos resets é substituída, logo depois, pela gravação dos
+      // valores restaurados.
+      const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
       hasInitializedRef.current = true;
       if (!form.formState.isDirty) {
         // Cidade e estado nascem vazios em QUALQUER cobertura de entrega —
@@ -372,6 +388,45 @@ export function CheckoutView({
           city: "",
           state: "",
         });
+
+        // RASCUNHO DA SESSÃO (laudo ofensiva 3108, N7): o que a pessoa já
+        // digitou num checkout desta sessão volta POR CIMA do reset — voltar
+        // ao carrinho para conferir qualquer coisa não custa mais redigitar
+        // o formulário inteiro e perder o cupom. O cupom volta só o CÓDIGO,
+        // revalidado contra o subtotal atual no efeito logo abaixo; o que
+        // deixou de valer não volta mentindo.
+        if (rascunho && rascunhoTemConteudo(rascunho)) {
+          form.reset({
+            name:
+              rascunho.nome ||
+              profile?.full_name ||
+              user?.user_metadata?.name ||
+              "",
+            whatsapp: rascunho.whatsapp || getDefaultWhatsApp(),
+            cep:
+              rascunho.cep ||
+              localStorage.getItem("ikcous_last_shipping_cep") ||
+              "",
+            street: rascunho.rua,
+            number: rascunho.numero,
+            neighborhood: rascunho.bairro,
+            city: rascunho.cidade,
+            state: rascunho.estado,
+            complement: rascunho.complemento,
+          });
+          setNotes(rascunho.notas);
+          // O dono dos campos de endereço passa a ser o CEP do rascunho —
+          // mesmo contrato da semente de `ikcous_last_shipping_cep` acima.
+          if (rascunho.cep) {
+            cepAssociadoRef.current = formatarCep(rascunho.cep).limpo;
+          }
+          // O cupom volta SÓ o código: o efeito de revalidação do E1
+          // (logo acima, [codigoDoCupom, subtotal]) decide em seguida —
+          // válido atualiza o desconto; inválido sai com o motivo na tela.
+          if (rascunho.cupom) {
+            setAppliedCoupon({ code: rascunho.cupom, discount: 0 });
+          }
+        }
       }
     }
   }, [storeConfigLoaded, profile, user]);
@@ -607,6 +662,82 @@ export function CheckoutView({
       vivo = false;
     };
   }, [codigoDoCupom, subtotal, validateCoupon]);
+
+  // GRAVAÇÃO DO RASCUNHO (laudo ofensiva 3108, N7): cada mudança de campo,
+  // de notas ou de cupom repõe o rascunho da sessão. Os espelhos em ref
+  // existem porque a assinatura do `form.watch` fecha sobre valores do
+  // momento da assinatura — estado dentro do callback sairia velho. O bloco
+  // inteiro mora ANTES do primeiro return da tela (regra dos hooks — a
+  // revisão do #370 já tinha pegado esta armadilha no efeito do cupom).
+  //
+  // DUAS TRAVAS contra o autossabotagem (o conserto apagar o que veio
+  // consertar): (1) NÃO grava antes do init/restore ter acontecido
+  // (`hasInitializedRef`) — a config da loja chega async, e um efeito de
+  // gravação rodando antes do restore sobrescreveria o rascunho com um
+  // vazio; (2) NÃO grava rascunho SEM CONTEÚDO — escrever vazio por cima de
+  // rascunho com dados é perda silenciosa.
+  const notasRef = useRef(notes);
+  const cupomRef = useRef(appliedCoupon);
+  useEffect(() => {
+    notasRef.current = notes;
+  }, [notes]);
+  useEffect(() => {
+    cupomRef.current = appliedCoupon;
+  }, [appliedCoupon]);
+  useEffect(() => {
+    const gravarRascunho = (valores: {
+      name?: string;
+      whatsapp?: string;
+      cep?: string;
+      street?: string;
+      number?: string;
+      neighborhood?: string;
+      city?: string;
+      state?: string;
+      complement?: string;
+    }) => {
+      if (!hasInitializedRef.current) return;
+      const rascunho = {
+        nome: valores.name ?? "",
+        whatsapp: valores.whatsapp ?? "",
+        cep: valores.cep ?? "",
+        numero: valores.number ?? "",
+        rua: valores.street ?? "",
+        bairro: valores.neighborhood ?? "",
+        cidade: valores.city ?? "",
+        estado: valores.state ?? "",
+        complemento: valores.complement ?? "",
+        notas: notasRef.current,
+        cupom: cupomRef.current?.code ?? null,
+      };
+      if (!rascunhoTemConteudo(rascunho)) return;
+      salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
+    };
+    const subscription = form.watch((valores) =>
+      gravarRascunho(valores as CheckoutFormValues),
+    );
+    return () => subscription.unsubscribe();
+  }, [form]);
+  // Notas e cupom não passam pelo form.watch (estado próprio) — gravação
+  // própria, lendo o formulário atual via getValues. Mesmas duas travas.
+  useEffect(() => {
+    if (!hasInitializedRef.current) return;
+    const rascunho = {
+      nome: form.getValues("name") ?? "",
+      whatsapp: form.getValues("whatsapp") ?? "",
+      cep: form.getValues("cep") ?? "",
+      numero: form.getValues("number") ?? "",
+      rua: form.getValues("street") ?? "",
+      bairro: form.getValues("neighborhood") ?? "",
+      cidade: form.getValues("city") ?? "",
+      estado: form.getValues("state") ?? "",
+      complemento: form.getValues("complement") ?? "",
+      notas: notes,
+      cupom: appliedCoupon?.code ?? null,
+    };
+    if (!rascunhoTemConteudo(rascunho)) return;
+    salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
+  }, [notes, appliedCoupon, form]);
   // Achado 8 da revisão (17/08/2026): o painel precisa devolver o foco ao
   // botão que o abriu quando fecha (teclado) — `wasOpenRef` evita focar o
   // gatilho já na montagem (isSummaryPanelOpen começa `false`).
@@ -1268,6 +1399,10 @@ export function CheckoutView({
       // com carrinho idêntico — tem de nascer com chave nova, não herdar a
       // resposta desta.
       gerenteDaChaveRef.current.esquecer();
+      // O rascunho morre junto (laudo 3108, N7): compra fechada não tem
+      // rascunho — vale para sucesso E para aguardando pagamento (o pedido
+      // nasceu nos dois; o que segue é pagamento, não digitação).
+      limparRascunhoDoCheckout(globalThis.sessionStorage);
       setOrderId(order.id);
       setValorDoPedido(finalTotal);
       // Snapshot ANTES do onClearCart() da linha seguinte — depois dele
