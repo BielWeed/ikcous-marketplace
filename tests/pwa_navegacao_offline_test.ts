@@ -18,8 +18,8 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 const DIR = fromFileUrl(new URL(".", import.meta.url));
-const sw = Deno.readTextFileSync(`${DIR}../src/sw/sw.ts`, "utf8");
-const guardian = Deno.readTextFileSync(`${DIR}../public/silent-guardian.js`, "utf8");
+const sw = Deno.readTextFileSync(`${DIR}../src/sw/sw.ts`);
+const guardian = Deno.readTextFileSync(`${DIR}../public/silent-guardian.js`);
 
 const norm = (s: string) => s.replace(/\s+/g, " ");
 
