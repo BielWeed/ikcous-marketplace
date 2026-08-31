@@ -17,6 +17,10 @@ import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
 import { cepEhLocal } from "@/lib/cep-local";
+import {
+  criarGerenciadorDeChave,
+  impressaoDaCompra,
+} from "@/lib/chave-do-pedido";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
 import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
@@ -440,6 +444,16 @@ export function CheckoutView({
     useState<RecusaDoPedido | null>(null);
   /** Ver `criarTravaDeEnvio`: fecha o botao no tique do clique (#27). */
   const travaDeEnvioRef = useRef(criarTravaDeEnvio());
+  // A CHAVE DA COMPRA (laudo 31/08, A1 — metade cliente da idempotência do
+  // pedido; a metade servidor é a migration 20261038000000). Gera um uuid
+  // POR COMPRA — impressão digital de itens+frete+cupom+total+CEP — repete
+  // a chave na retentativa (rede caiu DEPOIS do commit: o segundo clique
+  // legítimo recebe o pedido que JÁ nasceu, não um gêmeo) e esquece no
+  // sucesso. Morando em sessionStorage, sobrevive ao recarregar da página
+  // e morre ao fechar a aba; impressão nova (compra diferente) gira outra.
+  const gerenteDaChaveRef = useRef<ReturnType<
+    typeof criarGerenciadorDeChave
+  > | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [orderId, setOrderId] = useState("");
   // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
@@ -1154,11 +1168,35 @@ export function CheckoutView({
       status: "pending",
     };
 
+    // A chave desta compra: mesma impressão digital (mesma retentativa,
+    // mesmo F5) devolve a MESMA chave — é o que faz o servidor devolver o
+    // pedido original em vez de criar um gêmeo. Impressão nova (mudou
+    // carrinho, frete, cupom ou endereço) gira chave nova.
+    gerenteDaChaveRef.current ??= criarGerenciadorDeChave(
+      globalThis.sessionStorage,
+    );
+    orderData.idempotencyKey = gerenteDaChaveRef.current.chavePara(
+      impressaoDaCompra({
+        items: orderData.items,
+        totalAmount: orderData.totalAmount,
+        shippingCost: orderData.shippingCost,
+        destinationCep: orderData.destinationCep,
+        shippingOptionId: orderData.shippingOptionId,
+        couponCode: orderData.couponCode,
+        addressId: orderData.addressId,
+        cepDoEndereco: orderData.addressData?.cep ?? null,
+      }),
+    );
+
     try {
       const ehOnline = paymentMethod === "online";
       const order = await createOrder(orderData, {
         comPagamentoOnline: ehOnline,
       });
+      // O pedido entrou. A chave cumpriu seu papel: a PRÓXIMA compra — mesmo
+      // com carrinho idêntico — tem de nascer com chave nova, não herdar a
+      // resposta desta.
+      gerenteDaChaveRef.current.esquecer();
       setOrderId(order.id);
       setValorDoPedido(finalTotal);
       // Snapshot ANTES do onClearCart() da linha seguinte — depois dele

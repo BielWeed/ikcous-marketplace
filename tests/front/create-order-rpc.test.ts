@@ -1,6 +1,16 @@
+import { toast } from "sonner";
 import { useOrders } from "@/hooks/useOrders";
 import { supabase } from "@/lib/supabase";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+    loading: vi.fn(),
+    info: vi.fn(),
+  },
+}));
 
 /**
  * useOrders/createOrder — a escolha entre create_marketplace_order_v23 e
@@ -139,5 +149,74 @@ describe("createOrder avisa o lojista só quando o pedido é definitivo", () => 
       "notify-new-order",
       expect.anything(),
     );
+  });
+});
+
+/**
+ * IDEMPOTÊNCIA DA CRIAÇÃO (laudo caça-bugs 31/08, A1): rede cai DEPOIS do
+ * commit e a retentativa honesta recriava o pedido — estoque e cupom
+ * debitados em dobro. A cura tem duas metades: a CHAVE (CheckoutView +
+ * src/lib/chave-do-pedido.ts, provados lá) e o SERVIDOR (migration
+ * 20261038000000, devolve o pedido original quando a chave já existe).
+ * Este arquivo prova a COSTURA: a chave que o checkout decide é a que
+ * chega à RPC — e que, sem chave nenhuma, o null segue viagem (chamador
+ * antigo não quebra com o DEFAULT NULL do banco).
+ */
+describe("createOrder costura a chave da compra na RPC", () => {
+  beforeEach(() => {
+    vi.mocked(supabase.rpc).mockClear();
+    vi.mocked(supabase.functions.invoke).mockClear();
+  });
+
+  const argumentosDaRpc = () =>
+    vi.mocked(supabase.rpc).mock.calls[0]?.[1] as Record<string, unknown>;
+
+  it("a chave que vem no pedido chega à RPC como p_idempotency_key", async () => {
+    const { createOrder } = useOrders(false, false);
+    await createOrder({
+      ...DADOS_MINIMOS,
+      idempotencyKey: "chave-da-compra-1",
+    });
+
+    expect(argumentosDaRpc().p_idempotency_key).toBe("chave-da-compra-1");
+  });
+
+  it("sem chave manda null — o chamador antigo continua funcionando", async () => {
+    const { createOrder } = useOrders(false, false);
+    await createOrder(DADOS_MINIMOS);
+
+    expect(argumentosDaRpc().p_idempotency_key).toBeNull();
+  });
+
+  it("chave vazia também vira null (não string vazia)", async () => {
+    const { createOrder } = useOrders(false, false);
+    await createOrder({ ...DADOS_MINIMOS, idempotencyKey: "" });
+
+    expect(argumentosDaRpc().p_idempotency_key).toBeNull();
+  });
+});
+
+/**
+ * UM AVISO SÓ (laudo 31/08, menor E): a falha de criação empilhava DOIS
+ * toasts — o do hook e o da tela. O aviso único mora na TELA, porque é ela
+ * que acrescenta o painel da recusa ao lado; o hook apenas RELANÇA.
+ */
+describe("createOrder não avisa por conta própria quando a RPC recusa", () => {
+  beforeEach(() => {
+    vi.mocked(supabase.rpc).mockClear();
+    vi.mocked(supabase.functions.invoke).mockClear();
+    vi.mocked(toast.error).mockClear();
+  });
+
+  it("a recusa da RPC sobe como EXCEÇÃO sem toast do hook", async () => {
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: null,
+      error: { message: "Estoque insuficiente para o produto X" },
+    } as never);
+
+    const { createOrder } = useOrders(false, false);
+    await expect(createOrder(DADOS_MINIMOS)).rejects.toThrow();
+
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });
