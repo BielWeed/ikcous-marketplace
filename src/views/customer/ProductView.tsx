@@ -548,8 +548,12 @@ export const ProductView = React.memo(function ProductView({
     )
     .filter(Boolean);
 
+  // Laudo 31/08 (menor E): `||` tratava o override ZERO como ausência — o
+  // preço exibido de uma variação-brinde era o do produto. `??` só cai no
+  // acumulado quando a variação não tem override de verdade (null/undefined),
+  // a mesma semântica do COALESCE do servidor.
   const currentPrice = selectedVariantObjects.reduce(
-    (acc, v) => v?.priceOverride || acc,
+    (acc, v) => v?.priceOverride ?? acc,
     product.price,
   );
   const currentStock =

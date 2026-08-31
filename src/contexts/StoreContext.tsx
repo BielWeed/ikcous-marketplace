@@ -4,6 +4,7 @@ import { useSyncListener } from "@/hooks/useDataVault";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { DataVault } from "@/lib/dataVault";
 import { mapProductFromDB } from "@/lib/mappers";
+import { precoVendido } from "@/lib/preco-vendido";
 import { RealtimeSyncEngine } from "@/lib/realtimeSyncEngine";
 import { supabase } from "@/lib/supabase";
 import type { CartItem, Product, ShippingOption, StoreConfig } from "@/types";
@@ -488,9 +489,14 @@ export function StoreProvider({
             id: 1,
             free_shipping_min: 350,
             shipping_fee: 15,
-            whatsapp_number: defaultStoreConfig.whatsappNumber,
+            // Laudo 31/08 (menor E): a semente gravava "" (o default do
+            // front) em whatsapp_number/business_hours — uma SEGUNDA
+            // representação de "a loja não disse", ao lado do NULL que a
+            // 20261033000000 plantou no banco. NULL aqui: nasce sem número
+            // e sem horário de verdade, do jeito que a leitura já entende.
+            whatsapp_number: defaultStoreConfig.whatsappNumber || null,
             share_text: defaultStoreConfig.shareText,
-            business_hours: defaultStoreConfig.businessHours,
+            business_hours: defaultStoreConfig.businessHours || null,
             enable_reviews: defaultStoreConfig.enableReviews,
             enable_coupons: defaultStoreConfig.enableCoupons,
             // NULL EXPLÍCITO: a coluna tem DEFAULT '#000000' no banco
@@ -665,11 +671,13 @@ export function StoreProvider({
         if (updates.shippingFee !== undefined)
           dbUpdates.shipping_fee = updates.shippingFee;
         if (updates.whatsappNumber !== undefined)
-          dbUpdates.whatsapp_number = updates.whatsappNumber;
+          // Laudo 31/08 (menor E): limpar o campo no painel não replanta a
+          // sentinela "" que a 20261033000000 apagou do banco — vazio é NULL.
+          dbUpdates.whatsapp_number = updates.whatsappNumber || null;
         if (updates.shareText !== undefined)
           dbUpdates.share_text = updates.shareText;
         if (updates.businessHours !== undefined)
-          dbUpdates.business_hours = updates.businessHours;
+          dbUpdates.business_hours = updates.businessHours || null;
         if (updates.enableReviews !== undefined)
           dbUpdates.enable_reviews = updates.enableReviews;
         if (updates.enableCoupons !== undefined)
@@ -887,11 +895,15 @@ export function StoreProvider({
       if (hasFreeShippingItem) return 0;
 
       const totalAmount = cart.reduce((sum, item) => {
-        const price = item.variantId
-          ? item.product.variants?.find((v) => v.id === item.variantId)
-              ?.priceOverride || item.product.price
-          : item.product.price;
-        return sum + price * item.quantity;
+        // Laudo 31/08 (menor E): regra única do preço em preco-vendido.ts.
+        return (
+          sum +
+          precoVendido(
+            item.product,
+            item.product.variants?.find((v) => v.id === item.variantId),
+          ) *
+            item.quantity
+        );
       }, 0);
 
       // Frete grátis exige login — mesma regra do CartContext, da RPC

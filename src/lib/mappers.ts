@@ -177,7 +177,13 @@ export function mapVariantFromDB(row: VariantRow): ProductVariant {
     name: row.name || "Padrão",
     value: row.value || "",
     stockIncrement: Number(row.stock_increment) || 0,
-    priceOverride: row.price_override ? Number(row.price_override) : undefined,
+    // Laudo 31/08 (menor E, achado BLOQUEANTE da revisão do PR #370): o
+    // `? :` tratava override ZERO como ausência — o zero do banco virava
+    // undefined ANTES de chegar a `precoVendido`, e a variação-brinde volta
+    // a ser exibida pelo preço cheio depois de qualquer recarga. Só
+    // null/undefined (coluna vazia) é ausência de verdade.
+    priceOverride:
+      row.price_override == null ? undefined : Number(row.price_override),
     active: row.active ?? true,
     imageUrl: (row as any).image_url || undefined,
   };

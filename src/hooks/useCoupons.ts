@@ -70,7 +70,13 @@ export function useCoupons(autoFetch = false) {
     async (
       code: string,
       subtotal: number,
-    ): Promise<{ valid: boolean; discount: number; message?: string }> => {
+    ): Promise<{
+      valid: boolean;
+      discount: number;
+      message?: string;
+      /** Laudo 31/08 (E1): true = a CONSULTA falhou (não é recusa do cupom) — quem revalida em segundo plano mantém o cupom como está. */
+      networkError?: boolean;
+    }> => {
       try {
         // SecOps: validate_coupon_secure_v2 es SECURITY DEFINER
         const { data, error } = await supabase.rpc(
@@ -102,6 +108,7 @@ export function useCoupons(autoFetch = false) {
           valid: false,
           discount: 0,
           message: "Erro na conexão com servidor",
+          networkError: true,
         };
       }
     },

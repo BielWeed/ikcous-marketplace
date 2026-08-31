@@ -24,10 +24,8 @@ import {
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
 import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
-import {
-  cotacaoValeParaDestino,
-  soDigitos,
-} from "@/lib/reconciliacao-de-cep";
+import { precoVendido } from "@/lib/preco-vendido";
+import { cotacaoValeParaDestino, soDigitos } from "@/lib/reconciliacao-de-cep";
 import {
   type AcaoDeRecusa,
   type RecusaDoPedido,
@@ -555,7 +553,7 @@ export function CheckoutView({
   const cepDigitadoNoFormulario = form.watch("cep");
   const cepDeEntrega = user
     ? (addresses.find((a) => a.id === selectedAddressId)?.cep ?? null)
-    : (cepDigitadoNoFormulario || null);
+    : cepDigitadoNoFormulario || null;
   useEffect(() => {
     if (!shippingCep || !cepDeEntrega) return;
     // Ressalva R4 da revisão: CEP parcial é digitação em curso — decidir
@@ -568,12 +566,47 @@ export function CheckoutView({
       setSelectedShippingOption(null);
       setShippingCep(null);
     }
-  }, [
-    shippingCep,
-    cepDeEntrega,
-    setSelectedShippingOption,
-    setShippingCep,
-  ]);
+  }, [shippingCep, cepDeEntrega, setSelectedShippingOption, setShippingCep]);
+
+  // O CUPOM VALE PARA O CARRINHO DE AGORA (laudo 31/08, menor E): o cupom
+  // era conferido SÓ no momento de aplicar. O carrinho encolhia depois —
+  // item removido, quantidade menor — e o desconto continuava o antigo: a
+  // barra somava um total errado (podia até negativar) e quem impedia o
+  // estrago era só a recusa do servidor no último clique. Agora toda
+  // mudança de subtotal revalida: válido, o desconto se atualiza; inválido
+  // (mínimo de compra deixou de ser batido, expirou), o cupom SAI com o
+  // motivo na frente do cliente — sem chegar a recusar pedido. FALHA DE
+  // REDE na revalidação mantém o cupom como está — o validateCoupon não
+  // lança; ele devolve networkError (ressalva da revisão do PR #370), e o
+  // desconto duvidoso continua coberto pela validação da criação. MORRE
+  // ANTES DO PRIMEIRO RETURN (regra dos hooks — o eslint pegou a 1ª versão
+  // deste efeito depois do return de carregamento).
+  const codigoDoCupom = appliedCoupon?.code ?? null;
+  useEffect(() => {
+    if (!codigoDoCupom) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const resultado = await validateCoupon(codigoDoCupom, subtotal);
+        if (!vivo) return;
+        if (resultado.networkError) return;
+        if (resultado.valid) {
+          setAppliedCoupon({
+            code: codigoDoCupom,
+            discount: resultado.discount,
+          });
+        } else {
+          setAppliedCoupon(null);
+          setCouponError(resultado.message || "Cupom inválido");
+        }
+      } catch {
+        // Defesa: o validateCoupon não lança; se um dia lançar, mantém.
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [codigoDoCupom, subtotal, validateCoupon]);
   // Achado 8 da revisão (17/08/2026): o painel precisa devolver o foco ao
   // botão que o abriu quando fecha (teclado) — `wasOpenRef` evita focar o
   // gatilho já na montagem (isSummaryPanelOpen começa `false`).
@@ -2250,13 +2283,16 @@ export function CheckoutView({
                         <ul className="space-y-3">
                           {cart.map((item) => {
                             // Mesma fórmula de CartContext.tsx (cartTotal) —
-                            // não uma conta nova: preço da variante quando
-                            // houver, senão o preço do produto.
-                            const precoUnitario = item.variantId
-                              ? item.product.variants?.find(
-                                  (v) => v.id === item.variantId,
-                                )?.priceOverride || item.product.price
-                              : item.product.price;
+                            // não uma conta nova. Laudo 31/08 (menor E): a
+                            // regra única mora em preco-vendido.ts — `||`
+                            // cobrava o preço cheio de variação com override
+                            // ZERO.
+                            const precoUnitario = precoVendido(
+                              item.product,
+                              item.product.variants?.find(
+                                (v) => v.id === item.variantId,
+                              ),
+                            );
 
                             return (
                               <li

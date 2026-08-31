@@ -2,6 +2,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { mapProductFromDB } from "@/lib/mappers";
+import { precoVendido } from "@/lib/preco-vendido";
 import { supabase } from "@/lib/supabase";
 import type { CartItem, Product, ShippingOption } from "@/types";
 import React, {
@@ -750,11 +751,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const cartTotal = React.useMemo(() => {
     return cart.reduce((total, item) => {
-      const price = item.variantId
-        ? item.product.variants?.find((v) => v.id === item.variantId)
-            ?.priceOverride || item.product.price
-        : item.product.price;
-      return total + price * item.quantity;
+      // Laudo 31/08 (menor E): a regra do preço era copiada em quatro telas
+      // como `priceOverride || product.price` — e `||` trata 0 como
+      // ausência, cobrando o preço cheio de uma variação-brinde que o
+      // servidor (COALESCE) recusava com "os valores mudaram". A regra
+      // única agora mora em `precoVendido`.
+      return (
+        total +
+        precoVendido(
+          item.product,
+          item.product.variants?.find((v) => v.id === item.variantId),
+        ) *
+          item.quantity
+      );
     }, 0);
   }, [cart]);
 

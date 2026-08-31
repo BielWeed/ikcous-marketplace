@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
 import { useOrders } from "@/hooks/useOrders";
 import { useProducts } from "@/hooks/useProducts";
+import { precoVendido } from "@/lib/preco-vendido";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem, Order, Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -235,11 +236,16 @@ export function CartView({
     () =>
       cart.reduce((sum, item) => {
         if (!item?.product?.price) return sum;
-        const price = item.variantId
-          ? item.product.variants?.find((v) => v.id === item.variantId)
-              ?.priceOverride || item.product.price
-          : item.product.price;
-        return sum + price * (item.quantity || 0);
+        // Laudo 31/08 (menor E): regra única do preço em preco-vendido.ts —
+        // `||` cobrava o preço cheio de variação com override ZERO.
+        return (
+          sum +
+          precoVendido(
+            item.product,
+            item.product.variants?.find((v) => v.id === item.variantId),
+          ) *
+            (item.quantity || 0)
+        );
       }, 0),
     [cart],
   );
