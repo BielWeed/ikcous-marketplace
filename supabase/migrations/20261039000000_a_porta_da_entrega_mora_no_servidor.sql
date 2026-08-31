@@ -55,8 +55,19 @@
 --       '01310100', NULL, NULL);
 --     -> espera ERRO 'O frete foi cotado para outro CEP.'
 --   ROLLBACK;
---   -- 4. COBERTURA local (com shipping_coverage='local' numa loja de
---   --    prova): logado com endereço de fora recusa com a frase da loja.
+--   -- 4. COBERTURA local × LOGADO de fora (ressalva R3 da revisão):
+--   --    auth.uid() lê request.jwt.claims, então a prova vira logado com
+--   --    um SET LOCAL (usuário de teste com endereço de fora; o UPDATE da
+--   --    cobertura é desfeito pelo ROLLBACK):
+--   BEGIN;
+--     UPDATE public.store_config SET shipping_coverage = 'local' WHERE id = 1;
+--     SET LOCAL "request.jwt.claims" = '{"sub":"<uuid-de-usuario-de-teste>"}';
+--     SELECT public.create_marketplace_order_v24(
+--       '[{"product_id":"<uuid>","variant_id":null,"quantity":1}]'::jsonb,
+--       <preco>, 0, 'na_entrega', <address-id-de-endereco-de-fora-do-usuario>,
+--       NULL, 'Prova A2-logado', '5531999999999', NULL, NULL, NULL, NULL, NULL);
+--     -> espera ERRO 'Esta loja só faz entrega na cidade dela.'
+--   ROLLBACK;
 --
 -- ROLLBACK MANUAL: versionado em
 -- rollback-manual-20261039000000_a_porta_da_entrega_mora_no_servidor.sql

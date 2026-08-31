@@ -169,8 +169,8 @@ vi.mock("@/hooks/useCart", () => ({
     setSelectedShippingOption: (optao: typeof mockSelectedShippingOption) => {
       mockSelectedShippingOption = optao;
     },
-    setShippingCep: () => {
-      mockShippingCep = null;
+    setShippingCep: (cep: string | null) => {
+      mockShippingCep = cep;
     },
   }),
 }));

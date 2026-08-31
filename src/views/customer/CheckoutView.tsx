@@ -22,7 +22,10 @@ import {
   impressaoDaCompra,
 } from "@/lib/chave-do-pedido";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
-import { cotacaoValeParaDestino } from "@/lib/reconciliacao-de-cep";
+import {
+  cotacaoValeParaDestino,
+  soDigitos,
+} from "@/lib/reconciliacao-de-cep";
 import {
   type AcaoDeRecusa,
   type RecusaDoPedido,
@@ -547,6 +550,12 @@ export function CheckoutView({
     : (cepDigitadoNoFormulario || null);
   useEffect(() => {
     if (!shippingCep || !cepDeEntrega) return;
+    // Ressalva R4 da revisão: CEP parcial é digitação em curso — decidir
+    // com ele derrubaria uma opção válida no primeiro dígito de quem só
+    // REDIGITA o mesmo CEP. A divergência só interessa com CEP completo;
+    // a recusa fail-closed de um CEP incompleto é do SERVIDOR
+    // (20261039000000), que chega no clique.
+    if (soDigitos(cepDeEntrega).length < 8) return;
     if (!cotacaoValeParaDestino(shippingCep, cepDeEntrega)) {
       setSelectedShippingOption(null);
       setShippingCep(null);
