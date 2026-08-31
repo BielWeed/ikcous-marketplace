@@ -140,6 +140,37 @@ const json = (corpo: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+// Tolerância da conferência de valor (laudo caça-bugs 31/08, achado A3) —
+// a MESMA da criação de pedido: `create_marketplace_order_v23/v24` conferem
+// o total enviado pelo front a ±R$ 0,05. Abaixo disso é arredondamento de
+// centavo; acima é divergência de dinheiro.
+const TOLERANCIA_DE_VALOR = 0.05;
+
+/**
+ * Valor aprovado na grafia da Orders API (laudo 31/08, achado A3). MEDIDO
+ * contra a API real em 14/08/2026 (`_shared/mercadopago.ts:252-253`):
+ * `total_amount` e `transactions.payments[0].amount` são STRING com duas
+ * casas ("50.00"), não número. `Number("50.00")` é 50 — mas `Number(null)`
+ * é 0, e 0 aqui seria pedido de graça: só converte campo PRESENTE (string
+ * ou number); ausente vira `undefined`, que a conferência trata como "não
+ * deu para conferir", nunca como valor zero.
+ */
+function extrairValorDaOrder(order: Record<string, unknown>): number | undefined {
+  const brutoRaiz = order.total_amount;
+  if (typeof brutoRaiz === "string" || typeof brutoRaiz === "number") {
+    const valor = Number(brutoRaiz);
+    if (Number.isFinite(valor)) return valor;
+  }
+  const transactions = order.transactions as Record<string, unknown> | undefined;
+  const primeiro = (transactions?.payments as Array<Record<string, unknown>> | undefined)?.[0];
+  const brutoPagamento = primeiro?.amount;
+  if (typeof brutoPagamento === "string" || typeof brutoPagamento === "number") {
+    const valor = Number(brutoPagamento);
+    if (Number.isFinite(valor)) return valor;
+  }
+  return undefined;
+}
+
 /**
  * Dispara o push de "pedido pago" para os admins inscritos. Mesmo padrão de
  * `notify-new-order/index.ts:194-243`: carrega VAPID, monta o
@@ -462,16 +493,21 @@ async function handler(
     console.log(`webhook-mercadopago: type ausente, decidido pela forma do id -> rota "${rota}"`, dataIdStr);
   }
 
-  // As duas rotas convergem nestas quatro variáveis antes do restante do
-  // handler (RPC, push, logs) — que não muda entre elas. `statusBrutoParaLog`
+  // As duas rotas convergem nestas cinco variáveis antes do restante do
+  // handler (leitura do pedido, conferência de valor, RPC, push, logs) — o
+  // que não muda entre elas. `statusBrutoParaLog`
   // (achado de revisão, CHECKOUT-070 Tarefa 4) existe só para o log de
   // "status desconhecido" abaixo: sem ela, esse ramo — que existe
   // justamente para descobrir status NOVO do MP — não dizia qual status
-  // tinha chegado.
+  // tinha chegado. `valorPagoMp` (laudo 31/08, achado A3) é o valor que o
+  // MP APROVOU, na grafia de cada rota — undefined quando o corpo não
+  // trouxe número (a conferência trata ausência como "não deu para
+  // conferir", nunca como 0).
   let statusMapeado: string | null;
   let externalReference: unknown;
   let idParaRpc: string;
   let statusBrutoParaLog: string;
+  let valorPagoMp: number | undefined;
 
   if (rota === "payment") {
     const consulta = await consultarPagamento({
@@ -496,6 +532,9 @@ async function handler(
     externalReference = consulta.externalReference;
     idParaRpc = String(consulta.id);
     statusBrutoParaLog = consulta.status;
+    // Valor aprovado, direto da resposta autenticada (laudo 31/08, A3):
+    // undefined quando o corpo não trouxe número — nunca 0.
+    valorPagoMp = typeof consulta.valor === "number" ? consulta.valor : undefined;
   } else {
     const consulta = await consultarOrder({
       token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
@@ -542,6 +581,10 @@ async function handler(
     // resposta ok.
     idParaRpc = String(order.id);
     statusBrutoParaLog = `${statusRaiz}:${statusDetailRaiz}`;
+    // Valor aprovado na grafia da Orders API — STRING com duas casas na
+    // raiz (`total_amount`) ou em `transactions.payments[0].amount`
+    // (laudo 31/08, A3; conversão só de campo presente, ver helper).
+    valorPagoMp = extrairValorDaOrder(order);
   }
 
   if (statusMapeado === null) {
@@ -605,18 +648,17 @@ async function handler(
   // a RPC corre o risco de afrouxar essa disciplina no handler achando que a
   // rede de proteção está do outro lado — não está.
   //
-  // ⚠️ Silêncio que esta correção não fecha: o VALOR pago não é comparado
-  // com o `total` do pedido em lugar nenhum deste fluxo — e isso NUNCA foi
-  // diferente nesta rota (`payment`): não é uma conferência que se perdeu
-  // com esta correção, é o estado de sempre. A guarda (d) da RPC nunca deu
-  // essa conferência de graça aqui: o `gateway_payment_id` gravado é sempre
-  // o id da ORDER ("ORD...") e o que esta rota recebe do MP é o id CLÁSSICO
-  // numérico — os dois só coincidem em cobranças criadas antes da migração
-  // para a Orders API. Não há exploit construído hoje — o
-  // `external_reference` só é escrito por nós, e o PIX da Orders API tem um
-  // único pagamento por order — mas é uma checagem de valor que nunca
-  // existiu nesta rota e continua sem existir, até alguém decidir se vale a
-  // pena construí-la.
+  // ✅ CONFERÊNCIA DE VALOR (laudo caça-bugs 31/08, achado A3 — decisão do
+  // Gabriel: "siga"): o silêncio documentado neste parágrafo VIROU
+  // conferência. O VALOR que o MP aprovou, lido da resposta autenticada de
+  // cada rota (`valorPagoMp`), é comparado com o total do pedido no bloco
+  // de leitura logo abaixo — que agora é ÚNICO e serve as duas rotas. PIX
+  // parcial deixa de entrar como pedido pago, e a porta fecha ANTES do
+  // gatilho que este texto previa (religar cartão, Fase 3.5). A guarda (d)
+  // da RPC nunca deu essa conferência de graça nesta rota: o
+  // `gateway_payment_id` gravado é sempre o id da ORDER ("ORD...") e o que
+  // esta rota recebe do MP é o id CLÁSSICO numérico — era por isso que a
+  // conferência precisava morar AQUI, acima da RPC, e não dentro dela.
   //
   // 🔒 É POR ISSO que o bloco abaixo é restrito a `rota === "payment"`: na
   // rota `order` a (d) ainda compara duas fontes de verdade INDEPENDENTES (o
@@ -647,23 +689,69 @@ async function handler(
   // novo. Por isso a falha de leitura devolve 500 (evento mantido na fila do
   // MP, que reenvia) — o mesmo padrão que este handler já usa para toda
   // falha de banco (abaixo, "confirmar_pagamento falhou").
-  if (rota === "payment") {
-    const { data: pedidoParaGatewayId, error: erroLeituraGatewayId } = await supabase
-      .from("marketplace_orders")
-      .select("gateway_payment_id")
-      .eq("id", orderId)
-      .maybeSingle();
+  //
+  // A leitura é ÚNICA (laudo 31/08) e serve as DUAS conferências que
+  // precedem a RPC: o valor (abaixo) e o gateway_payment_id (bloco do
+  // `payment`, mais abaixo). Trocar duas leituras da mesma linha por uma
+  // não é economia de virtude: cada leitura extra é uma chance de as duas
+  // conferências verem linhas DIFERENTES num intervalo de reescrita.
+  const { data: linhaDoPedido, error: erroLeituraPedido } = await supabase
+    .from("marketplace_orders")
+    .select("total, total_amount, gateway_payment_id")
+    .eq("id", orderId)
+    .maybeSingle();
 
-    if (erroLeituraGatewayId) {
+  if (erroLeituraPedido) {
+    console.error(
+      "webhook-mercadopago: falha ao ler o pedido antes de confirmar — evento mantido na fila do MP",
+      orderId,
+      erroLeituraPedido,
+    );
+    return json({ error: "Erro ao consultar o pedido." }, 500);
+  }
+
+  // CONFERÊNCIA DE VALOR (laudo 31/08, achado A3): o valor que o MP APROVOU
+  // tem que bater com o total do pedido. PIX é pago de valor parcial no
+  // mundo real; sem esta porta, um pagamento parcial entrava como pedido
+  // pago — e o mesmo buraco ficaria aberto na religação do cartão.
+  //
+  // Divergente: NÃO confirma, NÃO push, e devolve 200 com rótulo próprio —
+  // reenvio do MP não muda o valor pago, e manter o evento na fila só
+  // geraria tempestade de reenvio. O dinheiro que entrou sem virar pedido
+  // pago é território da reconciliação (reconciliar-pagamentos), que é a
+  // dona desse estado; o log aqui é error de propósito, no padrão dos
+  // 'divergente'/'inexistente' da RPC.
+  //
+  // Valor AUSENTE na resposta do MP (campo que não veio — nunca 0): avisa e
+  // segue, que é o comportamento de antes. Falha AQUI não pode bloquear
+  // pedido legítimo: quem decide o valor aprovado é o MP, e a ausência do
+  // campo é sinal de forma nova de resposta, não de fraude. Pedido
+  // inexistente (linhaDoPedido null) também não trava aqui — a RPC tem o
+  // rótulo 'inexistente' próprio para isso.
+  if (linhaDoPedido && typeof valorPagoMp === "number") {
+    const brutoTotal =
+      (linhaDoPedido as Record<string, unknown>).total ??
+      (linhaDoPedido as Record<string, unknown>).total_amount;
+    const totalDoPedido = typeof brutoTotal === "number" ? brutoTotal : Number(brutoTotal);
+    if (
+      Number.isFinite(totalDoPedido) &&
+      Math.abs(valorPagoMp - totalDoPedido) > TOLERANCIA_DE_VALOR
+    ) {
       console.error(
-        "webhook-mercadopago: falha ao ler gateway_payment_id do pedido antes de confirmar — evento mantido na fila do MP",
-        orderId,
-        erroLeituraGatewayId,
+        "webhook-mercadopago: VALOR pago diverge do total do pedido — pedido NÃO confirmado; dinheiro a reconciliar",
+        { orderId, rota, valorPago: valorPagoMp, totalDoPedido, paymentId: idParaRpc },
       );
-      return json({ error: "Erro ao consultar o pedido." }, 500);
+      return json({ ok: true, ignorado: "valor divergente" }, 200);
     }
+  } else if (linhaDoPedido && valorPagoMp === undefined) {
+    console.warn(
+      "webhook-mercadopago: valor aprovado não veio na resposta do MP — conferência de valor não rodou (comportamento anterior)",
+      { orderId, rota },
+    );
+  }
 
-    const idGravadoNoBanco = (pedidoParaGatewayId as Record<string, unknown> | null)?.gateway_payment_id;
+  if (rota === "payment") {
+    const idGravadoNoBanco = (linhaDoPedido as Record<string, unknown> | null)?.gateway_payment_id;
     if (
       typeof idGravadoNoBanco === "string" &&
       idGravadoNoBanco.length > 0 &&

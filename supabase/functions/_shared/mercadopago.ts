@@ -669,6 +669,13 @@ type ResultadoPagamento =
       // grava este mesmo valor (montarCorpoPix/montarCorpoCartao, acima) na
       // criação; aqui é onde ele volta.
       externalReference?: string;
+      // Valor cobrado, na grafia da resposta clássica do MP
+      // (`transaction_amount`). A webhook-mercadopago usa para conferir o
+      // valor aprovado contra o total do pedido (laudo caça-bugs 31/08,
+      // achado A3). Opcional DE PROPÓSITO: ausente quando o corpo não
+      // trouxe número — quem consome trata ausência como "não deu para
+      // conferir", NUNCA como 0 (zero aqui seria pedido de graça).
+      valor?: number;
       qrCode?: string;
       qrCodeBase64?: string;
       ticketUrl?: string;
@@ -793,6 +800,12 @@ async function interpretarRespostaDePagamento(
     status: String(json.status),
     externalReference:
       typeof json.external_reference === "string" ? json.external_reference : undefined,
+    // Só número conta como valor: string do MP viria com casas ("50.00")
+    // na Orders API, mas o clássico traz número; qualquer outra coisa
+    // (string, null, ausente) vira undefined — "não deu para conferir",
+    // nunca 0. Ver o comentário do campo no tipo `ResultadoPagamento`.
+    valor:
+      typeof json.transaction_amount === "number" ? json.transaction_amount : undefined,
     qrCode: dados.qr_code as string | undefined,
     qrCodeBase64: dados.qr_code_base64 as string | undefined,
     ticketUrl: dados.ticket_url as string | undefined,
