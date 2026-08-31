@@ -29,16 +29,16 @@
 import { useEffect, useRef } from "react";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { beforeEach, describe, expect, it } from "vitest";
 import { useForm } from "react-hook-form";
+import { beforeEach, describe, expect, it } from "vitest";
 
+import type { ArmazenamentoSimples } from "@/lib/chave-do-pedido";
 import {
+  type RascunhoDoCheckout,
   lerRascunhoDoCheckout,
   rascunhoTemConteudo,
   salvarRascunhoDoCheckout,
-  type RascunhoDoCheckout,
 } from "@/lib/rascunho-do-checkout";
-import type { ArmazenamentoSimples } from "@/lib/chave-do-pedido";
 
 // @ts-expect-error flag interna do React — padrão dos testes de componente.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -57,7 +57,10 @@ interface Valores {
   complement: string;
 }
 
-function rascunhoDe(valores: Valores, cupom: string | null): RascunhoDoCheckout {
+function rascunhoDe(
+  valores: Valores,
+  cupom: string | null,
+): RascunhoDoCheckout {
   return {
     nome: valores.name,
     whatsapp: valores.whatsapp,
