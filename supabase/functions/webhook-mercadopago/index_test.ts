@@ -575,6 +575,38 @@ Deno.test("rota order: total_amount STRING '149.90' bate o total -> confirma (a 
   assertEquals(chamadasPush.length, 1);
 });
 
+Deno.test("rota order: sem total_amount na raiz, o fallback transactions.payments[0].amount ('10.00') diverge -> NÃO confirma", async () => {
+  // Nota 3 da revisão do PR #366: o caminho do fallback do
+  // `extrairValorDaOrder` não tinha teste próprio — uma mutação que
+  // quebrasse SÓ o fallback passaria batido. Aqui a raiz está ausente de
+  // propósito; o valor só existe dentro de transactions.payments[0].
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_DO_MP,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+    transactions: {
+      payments: [{ id: "PAY01KZZXXXXXXXXXXXXXXXXXXXXX", amount: "10.00" }],
+    },
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.ignorado, "valor divergente");
+  assertEquals(registro.chamadasRpc.length, 0);
+  assertEquals(chamadasPush.length, 0);
+});
+
 Deno.test("leitura do pedido falha -> 500 (evento fica na fila do MP), RPC não chamada", async () => {
   const registro = { chamadasRpc: [] };
   const supabase = clienteFalso({

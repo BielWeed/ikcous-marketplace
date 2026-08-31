@@ -54,6 +54,12 @@ function clienteFalso(opts: {
   erroCandidatos?: unknown;
   rpcConfirmarResultado?: string;
   rpcConfirmarError?: unknown;
+  // Conferência de valor (laudo 31/08, A3): total do pedido devolvido pela
+  // leitura de `marketplace_orders` (default 149.9 — os mocks antigos não
+  // tinham `from()` nenhum e os MPs mockados não trazem valor, então a
+  // conferência deles nem roda). `erroFrom` injeta falha de leitura.
+  pedidoTotal?: number | null;
+  erroFrom?: unknown;
   registro: { chamadasConfirmar: Array<{ args: Record<string, unknown> }>; chamouCandidatos: boolean };
 }) {
   return {
@@ -69,6 +75,25 @@ function clienteFalso(opts: {
         return { data: opts.rpcConfirmarResultado ?? "pago", error: null };
       }
       throw new Error(`rpc inesperada nos testes: ${nome}`);
+    },
+    from(_tabela: string) {
+      return {
+        select(_colunas: string) {
+          return {
+            eq(_coluna: string, _valor: unknown) {
+              return {
+                maybeSingle: async () =>
+                  opts.erroFrom
+                    ? { data: null, error: opts.erroFrom }
+                    : {
+                        data: { total: opts.pedidoTotal ?? 149.9, total_amount: null },
+                        error: null,
+                      },
+              };
+            },
+          };
+        },
+      };
     },
   };
 }
@@ -141,6 +166,100 @@ Deno.test("order aprovada (processed:accredited) -> confirmados:1, p_payment_id 
   assertEquals(registro.chamadasConfirmar[0].args.p_order_id, UUID_PEDIDO_1);
   assertEquals(registro.chamadasConfirmar[0].args.p_payment_id, idOrder);
   assertEquals(registro.chamadasConfirmar[0].args.p_status, "pago");
+});
+
+// --- 3.5 CONFERÊNCIA DE VALOR (laudo 31/08, A3; ressalva 1 da revisão do
+// PR #366): a reconciliação atinge PEDIDO VIVO — sem esta porta, o que o
+// webhook recusou por valor entrava aqui depois, por status. ----------------
+
+Deno.test("order aprovada com total_amount '10.00' de um pedido de R$ 149,90 -> NÃO confirma, ignorados:1", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const idOrder = "ORDTST04VALORDIVERGENTE";
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+  const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago", registro });
+  const fetchImpl = fetchConsulta(200, {
+    id: idOrder,
+    status: "processed",
+    status_detail: "accredited",
+    total_amount: "10.00",
+  });
+  const req = requisicaoComSegredo(SEGREDO);
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.confirmados, 0, "pagamento divergente NÃO pode virar pedido pago pelo cron");
+  assertEquals(corpo.ignorados, 1, "o divergente fica na fila, não é falha");
+  assertEquals(registro.chamadasConfirmar.length, 0);
+});
+
+Deno.test("order aprovada com total_amount STRING '149.90' batendo o total -> confirma (a conversão de string não mente)", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const idOrder = "ORDTST05VALORBATE";
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+  const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago", registro });
+  const fetchImpl = fetchConsulta(200, {
+    id: idOrder,
+    status: "processed",
+    status_detail: "accredited",
+    total_amount: "149.90",
+  });
+  const req = requisicaoComSegredo(SEGREDO);
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.confirmados, 1);
+  assertEquals(registro.chamadasConfirmar.length, 1);
+});
+
+Deno.test("candidato legado (clássico) aprovado com transaction_amount 100 de um pedido de R$ 149,90 -> NÃO confirma", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: "88888" }];
+  const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago", registro });
+  const fetchImpl = fetchConsulta(200, {
+    id: 88888,
+    status: "approved",
+    transaction_amount: 100,
+  });
+  const req = requisicaoComSegredo(SEGREDO);
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.confirmados, 0);
+  assertEquals(corpo.ignorados, 1);
+  assertEquals(registro.chamadasConfirmar.length, 0);
+});
+
+Deno.test("leitura do total falha -> falhas:1, NÃO confirma (sem a linha, nenhuma conferência tem o que comparar)", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const idOrder = "ORDTST06ERROLEITURA";
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+  const supabase = clienteFalso({
+    candidatos,
+    rpcConfirmarResultado: "pago",
+    erroFrom: { message: "conexão recusada" },
+    registro,
+  });
+  const fetchImpl = fetchConsulta(200, {
+    id: idOrder,
+    status: "processed",
+    status_detail: "accredited",
+    total_amount: "149.90",
+  });
+  const req = requisicaoComSegredo(SEGREDO);
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.falhas, 1);
+  assertEquals(corpo.confirmados, 0);
+  assertEquals(registro.chamadasConfirmar.length, 0);
 });
 
 // --- 4. order ainda aguardando o PIX ser pago -----------------------------------
@@ -372,6 +491,22 @@ Deno.test("confirmar_pagamento rejeita para um candidato e o outro é processado
       }
       throw new Error(`rpc inesperada nos testes: ${nome}`);
     },
+    // Conferência de valor (laudo 31/08): o handler lê o total do pedido
+    // antes de confirmar. Total que BATE — o intent deste teste é a
+    // continuidade após rejeição da RPC, não a conferência.
+    from(_tabela: string) {
+      return {
+        select(_colunas: string) {
+          return {
+            eq(_coluna: string, _valor: unknown) {
+              return {
+                maybeSingle: async () => ({ data: { total: 149.9, total_amount: null }, error: null }),
+              };
+            },
+          };
+        },
+      };
+    },
   };
   const fetchImpl = async (url: string) =>
     new Response(
@@ -467,6 +602,23 @@ Deno.test("invariante confirmados + ignorados + falhas === verificados, com cand
         return { data: "ignorado", error: null };
       }
       throw new Error(`rpc inesperada nos testes: ${nome}`);
+    },
+    // Conferência de valor (laudo 31/08): total que BATE para os candidatos
+    // aprovados — o intent deste teste é a INVARIANTE da soma, não a
+    // conferência (os MPs mockados não trazem valor, então ela nem roda,
+    // exceto 777 aprovado, que bate com 149.9 e confirma).
+    from(_tabela: string) {
+      return {
+        select(_colunas: string) {
+          return {
+            eq(_coluna: string, _valor: unknown) {
+              return {
+                maybeSingle: async () => ({ data: { total: 149.9, total_amount: null }, error: null }),
+              };
+            },
+          };
+        },
+      };
     },
   };
 

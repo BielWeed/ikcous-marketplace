@@ -657,6 +657,39 @@ export function extrairDataExpiracaoOrder(
     : null;
 }
 
+// Tolerância da conferência de valor (laudo caça-bugs 31/08, achado A3) —
+// a MESMA da criação de pedido: `create_marketplace_order_v23/v24` conferem
+// o total enviado pelo front a ±R$ 0,05. Abaixo disso é arredondamento de
+// centavo; acima é divergência de dinheiro. Compartilhada porque a conferência
+// vale nas DUAS portas de confirmação: webhook-mercadopago E
+// reconciliar-pagamentos (regra em um lugar só — lição #53).
+export const TOLERANCIA_DE_VALOR = 0.05;
+
+/**
+ * Valor aprovado na grafia da Orders API (laudo 31/08, achado A3). MEDIDO
+ * contra a API real em 14/08/2026 (`:252-253`, bloco de montarCorpoPix):
+ * `total_amount` e `transactions.payments[0].amount` são STRING com duas
+ * casas ("50.00"), não número. `Number("50.00")` é 50 — mas `Number(null)`
+ * é 0, e 0 aqui seria pedido de graça: só converte campo PRESENTE (string
+ * ou number); ausente vira `undefined`, que a conferência trata como "não
+ * deu para conferir", nunca como valor zero.
+ */
+export function extrairValorDaOrder(order: Record<string, unknown>): number | undefined {
+  const brutoRaiz = order.total_amount;
+  if (typeof brutoRaiz === "string" || typeof brutoRaiz === "number") {
+    const valor = Number(brutoRaiz);
+    if (Number.isFinite(valor)) return valor;
+  }
+  const transactions = order.transactions as Record<string, unknown> | undefined;
+  const primeiro = (transactions?.payments as Array<Record<string, unknown>> | undefined)?.[0];
+  const brutoPagamento = primeiro?.amount;
+  if (typeof brutoPagamento === "string" || typeof brutoPagamento === "number") {
+    const valor = Number(brutoPagamento);
+    if (Number.isFinite(valor)) return valor;
+  }
+  return undefined;
+}
+
 type ResultadoPagamento =
   | {
       ok: true;
@@ -670,11 +703,12 @@ type ResultadoPagamento =
       // criação; aqui é onde ele volta.
       externalReference?: string;
       // Valor cobrado, na grafia da resposta clássica do MP
-      // (`transaction_amount`). A webhook-mercadopago usa para conferir o
-      // valor aprovado contra o total do pedido (laudo caça-bugs 31/08,
-      // achado A3). Opcional DE PROPÓSITO: ausente quando o corpo não
-      // trouxe número — quem consome trata ausência como "não deu para
-      // conferir", NUNCA como 0 (zero aqui seria pedido de graça).
+      // (`transaction_amount`). A webhook-mercadopago e a
+      // reconciliar-pagamentos usam para conferir o valor aprovado contra o
+      // total do pedido (laudo caça-bugs 31/08, achado A3). Opcional DE
+      // PROPÓSITO: ausente quando o corpo não trouxe número — quem consome
+      // trata ausência como "não deu para conferir", NUNCA como 0 (zero
+      // aqui seria pedido de graça).
       valor?: number;
       qrCode?: string;
       qrCodeBase64?: string;

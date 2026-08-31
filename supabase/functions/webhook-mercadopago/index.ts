@@ -67,9 +67,11 @@ import {
   avaliarAssinatura,
   consultarOrder,
   consultarPagamento,
+  extrairValorDaOrder,
   idEhClassico,
   mapearStatus,
   mapearStatusOrder,
+  TOLERANCIA_DE_VALOR,
 } from "../_shared/mercadopago.ts";
 import {
   carregarChavesVapid,
@@ -139,37 +141,6 @@ const json = (corpo: unknown, status = 200) =>
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-
-// Tolerância da conferência de valor (laudo caça-bugs 31/08, achado A3) —
-// a MESMA da criação de pedido: `create_marketplace_order_v23/v24` conferem
-// o total enviado pelo front a ±R$ 0,05. Abaixo disso é arredondamento de
-// centavo; acima é divergência de dinheiro.
-const TOLERANCIA_DE_VALOR = 0.05;
-
-/**
- * Valor aprovado na grafia da Orders API (laudo 31/08, achado A3). MEDIDO
- * contra a API real em 14/08/2026 (`_shared/mercadopago.ts:252-253`):
- * `total_amount` e `transactions.payments[0].amount` são STRING com duas
- * casas ("50.00"), não número. `Number("50.00")` é 50 — mas `Number(null)`
- * é 0, e 0 aqui seria pedido de graça: só converte campo PRESENTE (string
- * ou number); ausente vira `undefined`, que a conferência trata como "não
- * deu para conferir", nunca como valor zero.
- */
-function extrairValorDaOrder(order: Record<string, unknown>): number | undefined {
-  const brutoRaiz = order.total_amount;
-  if (typeof brutoRaiz === "string" || typeof brutoRaiz === "number") {
-    const valor = Number(brutoRaiz);
-    if (Number.isFinite(valor)) return valor;
-  }
-  const transactions = order.transactions as Record<string, unknown> | undefined;
-  const primeiro = (transactions?.payments as Array<Record<string, unknown>> | undefined)?.[0];
-  const brutoPagamento = primeiro?.amount;
-  if (typeof brutoPagamento === "string" || typeof brutoPagamento === "number") {
-    const valor = Number(brutoPagamento);
-    if (Number.isFinite(valor)) return valor;
-  }
-  return undefined;
-}
 
 /**
  * Dispara o push de "pedido pago" para os admins inscritos. Mesmo padrão de
@@ -715,11 +686,16 @@ async function handler(
   // mundo real; sem esta porta, um pagamento parcial entrava como pedido
   // pago — e o mesmo buraco ficaria aberto na religação do cartão.
   //
+  // A MESMA conferência existe na reconciliar-pagamentos (regra em um lugar
+  // só no _shared): sem ela lá, um divergente recusado aqui era confirmado
+  // depois pelo cron, por status, sem ninguém olhar o valor — a dobradiça
+  // do outro lado da porta (ressalva 1 da revisão do PR #366).
+  //
   // Divergente: NÃO confirma, NÃO push, e devolve 200 com rótulo próprio —
   // reenvio do MP não muda o valor pago, e manter o evento na fila só
   // geraria tempestade de reenvio. O dinheiro que entrou sem virar pedido
-  // pago é território da reconciliação (reconciliar-pagamentos), que é a
-  // dona desse estado; o log aqui é error de propósito, no padrão dos
+  // pago fica parado nos dois portões e cabe ao lojista resolver no painel
+  // do MP; o log aqui é error de propósito, no padrão dos
   // 'divergente'/'inexistente' da RPC.
   //
   // Valor AUSENTE na resposta do MP (campo que não veio — nunca 0): avisa e
@@ -733,12 +709,18 @@ async function handler(
       (linhaDoPedido as Record<string, unknown>).total ??
       (linhaDoPedido as Record<string, unknown>).total_amount;
     const totalDoPedido = typeof brutoTotal === "number" ? brutoTotal : Number(brutoTotal);
-    if (
-      Number.isFinite(totalDoPedido) &&
-      Math.abs(valorPagoMp - totalDoPedido) > TOLERANCIA_DE_VALOR
-    ) {
+    if (!Number.isFinite(totalDoPedido)) {
+      // Total imprestável no banco é IMPOSSÍVEL no schema vivo (NOT NULL com
+      // CHECK >= 0) — se um dia acontecer, tem que fazer barulho e seguir
+      // pelo comportamento de antes, não pular a conferência em silêncio
+      // (ressalva 2 da revisão do PR #366).
+      console.warn(
+        "webhook-mercadopago: total do pedido imprestável — conferência de valor não rodou",
+        { orderId, rota, brutoTotal },
+      );
+    } else if (Math.abs(valorPagoMp - totalDoPedido) > TOLERANCIA_DE_VALOR) {
       console.error(
-        "webhook-mercadopago: VALOR pago diverge do total do pedido — pedido NÃO confirmado; dinheiro a reconciliar",
+        "webhook-mercadopago: VALOR pago diverge do total do pedido — pedido NÃO confirmado; conferir no painel do MP",
         { orderId, rota, valorPago: valorPagoMp, totalDoPedido, paymentId: idParaRpc },
       );
       return json({ ok: true, ignorado: "valor divergente" }, 200);
