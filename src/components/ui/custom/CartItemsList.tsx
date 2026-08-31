@@ -1,5 +1,6 @@
 import { QuantitySelector } from "@/components/ui/custom/QuantitySelector";
 import { useStore } from "@/contexts/StoreContext";
+import { precoVendido } from "@/lib/preco-vendido";
 import { cn } from "@/lib/utils";
 import type { CartItem } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -119,7 +120,9 @@ const CartItemCard = memo(function CartItemCard({
                 const variant = item.variantId
                   ? item.product.variants?.find((v) => v.id === item.variantId)
                   : null;
-                const price = variant?.priceOverride || item.product.price;
+                // Laudo 31/08 (menor E): regra única em preco-vendido.ts —
+                // `||` tratava o override ZERO como ausência.
+                const price = precoVendido(item.product, variant);
                 const hasDiscount =
                   item.product.originalPrice &&
                   item.product.originalPrice > price;

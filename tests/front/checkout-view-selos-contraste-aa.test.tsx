@@ -112,11 +112,18 @@ vi.mock("@/hooks/useCart", () => ({
   }),
 }));
 
-vi.mock("@/hooks/useCoupons", () => ({
-  useCoupons: () => ({
-    validateCoupon: vi.fn(async () => couponResultado),
-  }),
-}));
+vi.mock("@/hooks/useCoupons", () => {
+  // O validateCoupon REAL é `useCallback([])` — estável entre renders. O
+  // dublê precisa ser estável TAMBÉM: o efeito de revalidação do cupom
+  // (laudo 31/08, menor E) depende dele, e uma função nova a cada render
+  // virava revalidação a cada render — loop infinito de render.
+  let validateCoupon: ReturnType<typeof vi.fn> | null = null;
+  return {
+    useCoupons: () => ({
+      validateCoupon: (validateCoupon ??= vi.fn(async () => couponResultado)),
+    }),
+  };
+});
 
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: (
