@@ -71,6 +71,7 @@ const itemVariants = {
 } as const;
 
 import { useStore } from "@/contexts/StoreContext";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { haptic } from "@/utils/haptic";
 
 interface ProfileViewProps {
@@ -298,6 +299,11 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
     globalThis.open(url, "_blank");
     haptic.light();
   };
+
+  // Laudo 31/08 (C1): mesma régua do ProductView e do OrderDetailsView —
+  // sem número configurado, o botão de WhatsApp do pedido some em vez de
+  // abrir `wa.me/` sem destinatário.
+  const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
 
   useEffect(() => {
     if (user) {
@@ -597,13 +603,15 @@ export function ProfileView({ onNavigate }: ProfileViewProps) {
                           Ver Detalhes
                           <ArrowRight className="ml-2 size-3 transition-transform group-hover:translate-x-1" />
                         </Button>
-                        <Button
-                          onClick={() => handleWhatsAppSupport(order.id)}
-                          className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl border-none bg-emerald-600 text-[10px] font-black uppercase tracking-widest text-white shadow-sm shadow-emerald-600/10 transition-all hover:bg-emerald-700 active:scale-95"
-                        >
-                          <MessageCircle className="size-4" />
-                          WhatsApp
-                        </Button>
+                        {lojaTemWhatsappAgora && (
+                          <Button
+                            onClick={() => handleWhatsAppSupport(order.id)}
+                            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl border-none bg-emerald-600 text-[10px] font-black uppercase tracking-widest text-white shadow-sm shadow-emerald-600/10 transition-all hover:bg-emerald-700 active:scale-95"
+                          >
+                            <MessageCircle className="size-4" />
+                            WhatsApp
+                          </Button>
+                        )}
                       </div>
                     </div>
                   );

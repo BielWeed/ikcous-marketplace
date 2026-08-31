@@ -18,6 +18,8 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
 import { cepEhLocal } from "@/lib/cep-local";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
+import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import {
   type AcaoDeRecusa,
   type RecusaDoPedido,
@@ -196,12 +198,18 @@ export function CheckoutView({
     addToCart,
     selectedShippingOption,
     shippingCep,
+    freteIndefinido: ctxFreteIndefinido,
   } = useCart();
 
   const cart = propCart ?? ctxCart;
   const subtotal = propSubtotal ?? ctxSubtotal;
   const shipping = propShipping ?? ctxShipping;
-  const total = propTotal ?? ctxSubtotal + ctxShipping;
+  // Laudo 31/08 (nota 3 da revisão do PR #367): com frete indefinido o
+  // fallback R$ 15 não é preço — o total exibido não o soma (o carrinho
+  // diz "A calcular"; nenhum pedido nasce nesse estado, o Finalizar
+  // está travado).
+  const total =
+    propTotal ?? ctxSubtotal + (ctxFreteIndefinido ? 0 : ctxShipping);
   const onClearCart = propOnClearCart ?? ctxClearCart;
   // CHECKOUT-090: realtime ligado (antes `useOrders(false, true)` desligava
   // o efeito inteiro na primeira linha de useOrders.ts — nenhuma assinatura
@@ -906,8 +914,19 @@ export function CheckoutView({
   // cliente logado (CartContext.tsx:751-756) — então o único jeito de
   // `shipping` vir POSITIVO sem opção selecionada é o fallback do defeito
   // acima descrito.
-  const semFreteSelecionado =
-    cart.length > 0 && shipping > 0 && !selectedShippingOption;
+  // Laudo 31/08 (B2): a guarda migrou para `finalizarBloqueadoPorFrete`
+  // (src/lib/guarda-de-frete.ts) — função pura, testada com o par
+  // mutante-killer. A diferença da guarda velha: a bandeira
+  // `freteIndefinido` entra na conta — provedor de cotação com taxa 0
+  // configurada deixava `shipping === 0`, a guarda antiga não disparava, e
+  // o pedido fechava com frete R$ 0 sem cotação nenhuma, depois do
+  // carrinho ter dito "A calcular".
+  const semFreteSelecionado = finalizarBloqueadoPorFrete({
+    carrinhoVazio: cart.length === 0,
+    freteIndefinido: ctxFreteIndefinido,
+    shipping,
+    temOpcaoSelecionada: !!selectedShippingOption,
+  });
 
   // `SaidaDaRecusa` promete, por escrito, que `conferir_antes` nunca oferece
   // "tentar de novo" — é o caso em que não se sabe se o pedido nasceu, e
@@ -1075,7 +1094,12 @@ export function CheckoutView({
     // "endereço de entrega" acima.
     if (semFreteSelecionado) {
       toast.error(
-        "Escolha uma opção de frete no carrinho antes de finalizar o pedido.",
+        semFreteSelecionado &&
+          ctxFreteIndefinido &&
+          config.shippingProvider === "flat_fee" &&
+          !config.originCep?.trim()
+          ? "A loja ainda está configurando o frete. Fale com a loja para combinar a entrega."
+          : "Escolha uma opção de frete no carrinho antes de finalizar o pedido.",
       );
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -2314,7 +2338,12 @@ export function CheckoutView({
                       // carrinho e calcular o frete.
                       <p className="mx-auto mt-2 flex max-w-md items-center gap-1.5 text-[10px] font-bold uppercase text-red-500">
                         <AlertCircle className="size-3.5 shrink-0" />
-                        Volte ao carrinho e calcule o frete para continuar
+                        {semFreteSelecionado &&
+                        ctxFreteIndefinido &&
+                        config.shippingProvider === "flat_fee" &&
+                        !config.originCep?.trim()
+                          ? "A loja ainda está configurando o frete — fale com a loja para combinar a entrega"
+                          : "Volte ao carrinho e calcule o frete para continuar"}
                       </p>
                     )}
                     {convidadoForaDaCidade && (
@@ -2571,9 +2600,13 @@ function PagamentoForaDoPrazoView({
   // dígitos) — não um novo. `numeroLimpo` vazio (config.whatsappNumber não
   // configurado) desliga o botão em vez de abrir um link quebrado.
   const numeroLimpo = (config.whatsappNumber || "").replace(/\D/g, "");
+  // Laudo 31/08 (C1, ressalva 1 da revisão do PR #367): a régua deste ponto
+  // era mais fraca (`!numeroLimpo` aceitava até 1 dígito) e abria
+  // `wa.me/` quebrado. Mesma régua única dos outros 4 pontos.
+  const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
 
   const handleFalarComALoja = () => {
-    if (!numeroLimpo) return;
+    if (!lojaTemWhatsappAgora) return;
     let phone = numeroLimpo;
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;

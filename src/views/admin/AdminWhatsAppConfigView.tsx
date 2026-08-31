@@ -774,7 +774,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                 <p className="text-[9px] leading-relaxed text-zinc-400">
                   •{" "}
                   <code className="font-mono text-zinc-300">
-                    Seg-Sáb: 9h às 18h
+                    Ter a Sáb: 9h às 18h
                   </code>
                   <br />•{" "}
                   <code className="font-mono text-zinc-300">
