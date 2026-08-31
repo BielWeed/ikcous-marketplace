@@ -12,6 +12,7 @@ import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   descricaoDoPedido,
   donoConfere,
+  emailDoToken,
   expiracaoRealinhavel,
   handler,
   pareceUuid,
@@ -2115,4 +2116,37 @@ Deno.test("nenhuma resposta escapa do helper json() por fora (new Response diret
       "`new Response` diretamente; um `new Response` a mais é uma recusa " +
       "escapando do teste de enumeração acima, que só casa `json(`.",
   );
+});
+
+// LAUDO 31/08 (menor E5): o e-mail do JWT de sessão entra na corrente do
+// pagador antes do fallback `sem-email@ikcous.com.br` — o MP passa a ver
+// quem de verdade paga quando o front e o pedido não trouxeram e-mail.
+
+Deno.test("emailDoToken lê o claim de e-mail do token de sessão", () => {
+  const payload = btoa(JSON.stringify({ sub: UUID, email: "joana@exemplo.com" }))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  const token = `cabecalho.${payload}.assinatura`;
+  assertEquals(emailDoToken(token), "joana@exemplo.com");
+});
+
+Deno.test("emailDoToken: sem claim de e-mail, lixo ou e-mail sem @ devolve null", () => {
+  const payload = btoa(JSON.stringify({ sub: UUID }))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  assertEquals(emailDoToken(`cabecalho.${payload}.assinatura`), null);
+  assertEquals(emailDoToken("lixo-nao-jwt"), null);
+  assertEquals(emailDoToken(null), null);
+  const soArroba = btoa(JSON.stringify({ email: "a@" }))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  assertEquals(emailDoToken(`cabecalho.${soArroba}.assinatura`), null);
+  const semArroba = btoa(JSON.stringify({ email: "nao-e-email" }))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  assertEquals(emailDoToken(`cabecalho.${semArroba}.assinatura`), null);
 });
