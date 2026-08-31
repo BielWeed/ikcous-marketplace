@@ -1,0 +1,45 @@
+-- A fábrica do WhatsApp morre na COLUNA (laudo caça-bugs do molde,
+-- 30-31/08/2026, achado C3 — a raiz que sobreviveu à noite dos 6 PRs).
+--
+-- CAUSA RAIZ PROVADA: a noite de 30/08 matou o WhatsApp de fábrica na RPC
+-- (20261033000000: INSERT sem COALESCE) e no DADO (limpeza das sentinelas),
+-- mas a coluna em si continua com DEFAULT de fábrica no molde:
+-- `store_config.whatsapp_number DEFAULT '5534999999999'`
+-- (baseline:4222). A RPC lista a coluna no INSERT, então hoje ninguém
+-- planta por ali — mas qualquer INSERT que OMITIR a coluna (seed de clone,
+-- script novo, trigger futura) nasce com o número inventado, em toda loja
+-- nova. É o passo 1 do molde de 4 passos da casa (20260980/20261029:
+-- DROP DEFAULT -> RPC -> retrato -> limpeza) que ficou de fora.
+--
+-- O que muda aqui:
+--   1. DROP DEFAULT da coluna whatsapp_number — ausente = NULL ("a loja
+--      não disse"), mesmo contrato da sentinela de cor (20260980000000),
+--      do horário (20261029000000, que já derrubou o DEFAULT da COLUNA
+--      business_hours) e da RPC (20261033000000).
+--
+-- Consumidores de `whatsapp_number` já tratam NULL (botão de WhatsApp some
+-- quando vazio — decisão de 30/08, PRs #358-#365). Nenhum dado é tocado:
+-- a migration é só de metadado da coluna.
+--
+-- SEM BEGIN/COMMIT (regra da casa: com eles o ROLLBACK da prova vira no-op).
+--
+-- FICHA DE VERIFICAÇÃO pos-aplicação (rodar contra o banco):
+--   -- 1. A coluna não tem mais default:
+--   SELECT column_default FROM information_schema.columns
+--     WHERE table_schema = 'public' AND table_name = 'store_config'
+--       AND column_name = 'whatsapp_number';
+--   -> espera NULL (antes: '5534999999999'::text)
+--   -- 2. INSERT que omite a coluna nasce sem número inventado (em
+--   --    transação com ROLLBACK):
+--   BEGIN;
+--     DELETE FROM store_config;  -- prova em transação, ROLLBACK no fim
+--     INSERT INTO store_config (id, free_shipping_min, shipping_fee)
+--       VALUES (1, 350, 15);
+--     SELECT coalesce(whatsapp_number, '(null)') FROM store_config;
+--     -> espera (null) (antes: 5534999999999)
+--   ROLLBACK;
+--
+-- ROLLBACK MANUAL: versionado em
+-- rollback-manual-20261037000000_a_fabrica_do_whatsapp_morre_na_coluna.sql
+
+ALTER TABLE public.store_config ALTER COLUMN whatsapp_number DROP DEFAULT;

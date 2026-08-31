@@ -43,9 +43,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   consultarOrder,
   consultarPagamento,
+  extrairValorDaOrder,
   idEhClassico,
   mapearStatus,
   mapearStatusOrder,
+  TOLERANCIA_DE_VALOR,
 } from "../_shared/mercadopago.ts";
 import { readKey } from "../_shared/webpush.ts";
 
@@ -163,6 +165,10 @@ async function handler(
       // esse ramo (que existe justamente para descobrir status NOVO do MP)
       // não dizia qual status tinha chegado.
       let statusBrutoParaLog: string;
+      // Valor que o MP APROVOU, na grafia de cada rota (laudo 31/08, A3) —
+      // undefined quando o corpo não trouxe número. A conferência contra o
+      // total do pedido fica logo abaixo do filtro de 'expirado'.
+      let valorAprovado: number | undefined;
 
       if (idEhClassico(candidato.gateway_payment_id)) {
         // Candidato LEGADO, criado antes da migração para a Orders API — vai
@@ -186,6 +192,7 @@ async function handler(
         }
         statusMapeado = mapearStatus(consultaClassica.status);
         statusBrutoParaLog = consultaClassica.status;
+        valorAprovado = typeof consultaClassica.valor === "number" ? consultaClassica.valor : undefined;
       } else {
         // Candidato NOVO — `gateway_payment_id` é um id de ORDER (prefixo
         // ORD/ORDTST) desde a Tarefa 2.
@@ -217,6 +224,7 @@ async function handler(
         const statusDetailRaiz = String(order.status_detail ?? "");
         statusMapeado = mapearStatusOrder(statusRaiz, statusDetailRaiz);
         statusBrutoParaLog = `${statusRaiz}:${statusDetailRaiz}`;
+        valorAprovado = extrairValorDaOrder(order);
       }
 
       // Usa o status que o MP DEVOLVEU, nunca inventa um. Status
@@ -249,6 +257,57 @@ async function handler(
         );
         ignorados++;
         continue;
+      }
+
+      // CONFERÊNCIA DE VALOR (laudo caça-bugs 31/08, achado A3 + ressalva 1
+      // da revisão do PR #366): a reconciliação atinge PEDIDO VIVO
+      // ('aguardando' + 'pending', migration 20261010000000) — sem esta
+      // porta, um pagamento divergente recusado pelo webhook era confirmado
+      // AQUI depois, por status, sem ninguém olhar o valor: a dobradiça do
+      // outro lado da porta que o webhook fechou. Mesma tolerância, mesma
+      // fonte (resposta autenticada do MP), mesmo "valor ausente = warn e
+      // segue" do webhook — regra em um lugar só (`_shared/mercadopago.ts`).
+      //
+      // Divergente: NÃO chama a RPC e entra em ignorados — o candidato fica
+      // na fila (reconcilia de novo no próximo ciclo) e o dinheiro divergente
+      // cabe ao lojista resolver no painel do MP. Log error, no padrão dos
+      // 'divergente'/'inexistente' da RPC.
+      if (statusMapeado === "pago" || statusMapeado === "pago_apos_expirar") {
+        const { data: linhaDoPedido, error: erroLeituraTotal } = await supabase
+          .from("marketplace_orders")
+          .select("total, total_amount")
+          .eq("id", candidato.order_id)
+          .maybeSingle();
+        if (erroLeituraTotal) throw erroLeituraTotal;
+
+        const brutoTotal =
+          (linhaDoPedido as Record<string, unknown> | null)?.total ??
+          (linhaDoPedido as Record<string, unknown> | null)?.total_amount;
+        const totalDoPedido = typeof brutoTotal === "number" ? brutoTotal : Number(brutoTotal);
+
+        if (linhaDoPedido && typeof valorAprovado === "number") {
+          if (
+            Number.isFinite(totalDoPedido) &&
+            Math.abs(valorAprovado - totalDoPedido) > TOLERANCIA_DE_VALOR
+          ) {
+            console.error(
+              "reconciliar-pagamentos: VALOR aprovado diverge do total do pedido — candidato NÃO confirmado; conferir no painel do MP",
+              {
+                order_id: candidato.order_id,
+                gateway_payment_id: candidato.gateway_payment_id,
+                valorAprovado,
+                totalDoPedido,
+              },
+            );
+            ignorados++;
+            continue;
+          }
+        } else if (linhaDoPedido && valorAprovado === undefined) {
+          console.warn(
+            "reconciliar-pagamentos: valor aprovado não veio na resposta do MP — conferência de valor não rodou",
+            candidato.order_id,
+          );
+        }
       }
 
       // A RPC é quem decide 'pago' vs 'pago_apos_expirar' (e idempotência,
