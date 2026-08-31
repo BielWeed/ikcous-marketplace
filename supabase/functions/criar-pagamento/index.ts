@@ -236,8 +236,12 @@ export function subDoToken(authorization: string | null): string | null {
  */
 export function emailDoToken(authorization: string | null): string | null {
   const payload = payloadDoToken(authorization);
-  return typeof payload?.email === "string" && payload.email.includes("@")
-    ? payload.email
+  // Ressalva 1 da revisão do PR #371: `includes("@")` deixava passar lixo
+  // tipo "a@" — e um e-mail esquisito vira 400 do MP onde antes ia o
+  // fallback. Formato mínimo com ponto no domínio.
+  const email = payload?.email;
+  return typeof email === "string" && /^\S+@\S+\.\S+$/.test(email)
+    ? email
     : null;
 }
 

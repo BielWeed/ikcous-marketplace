@@ -2139,6 +2139,11 @@ Deno.test("emailDoToken: sem claim de e-mail, lixo ou e-mail sem @ devolve null"
   assertEquals(emailDoToken(`cabecalho.${payload}.assinatura`), null);
   assertEquals(emailDoToken("lixo-nao-jwt"), null);
   assertEquals(emailDoToken(null), null);
+  const soArroba = btoa(JSON.stringify({ email: "a@" }))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  assertEquals(emailDoToken(`cabecalho.${soArroba}.assinatura`), null);
   const semArroba = btoa(JSON.stringify({ email: "nao-e-email" }))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
