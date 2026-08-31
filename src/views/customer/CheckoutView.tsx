@@ -660,6 +660,13 @@ export function CheckoutView({
   // momento da assinatura — estado dentro do callback sairia velho. O bloco
   // inteiro mora ANTES do primeiro return da tela (regra dos hooks — a
   // revisão do #370 já tinha pegado esta armadilha no efeito do cupom).
+  //
+  // DUAS TRAVAS contra o autossabotagem (o conserto apagar o que veio
+  // consertar): (1) NÃO grava antes do init/restore ter acontecido
+  // (`hasInitializedRef`) — a config da loja chega async, e um efeito de
+  // gravação rodando antes do restore sobrescreveria o rascunho com um
+  // vazio; (2) NÃO grava rascunho SEM CONTEÚDO — escrever vazio por cima de
+  // rascunho com dados é perda silenciosa.
   const notasRef = useRef(notes);
   const cupomRef = useRef(appliedCoupon);
   useEffect(() => {
@@ -680,7 +687,8 @@ export function CheckoutView({
       state?: string;
       complement?: string;
     }) => {
-      salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+      if (!hasInitializedRef.current) return;
+      const rascunho = {
         nome: valores.name ?? "",
         whatsapp: valores.whatsapp ?? "",
         cep: valores.cep ?? "",
@@ -692,7 +700,9 @@ export function CheckoutView({
         complemento: valores.complement ?? "",
         notas: notasRef.current,
         cupom: cupomRef.current?.code ?? null,
-      });
+      };
+      if (!rascunhoTemConteudo(rascunho)) return;
+      salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
     };
     const subscription = form.watch((valores) =>
       gravarRascunho(valores as CheckoutFormValues),
@@ -700,9 +710,10 @@ export function CheckoutView({
     return () => subscription.unsubscribe();
   }, [form]);
   // Notas e cupom não passam pelo form.watch (estado próprio) — gravação
-  // própria, lendo o formulário atual via getValues.
+  // própria, lendo o formulário atual via getValues. Mesmas duas travas.
   useEffect(() => {
-    salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+    if (!hasInitializedRef.current) return;
+    const rascunho = {
       nome: form.getValues("name") ?? "",
       whatsapp: form.getValues("whatsapp") ?? "",
       cep: form.getValues("cep") ?? "",
@@ -714,7 +725,9 @@ export function CheckoutView({
       complemento: form.getValues("complement") ?? "",
       notas: notes,
       cupom: appliedCoupon?.code ?? null,
-    });
+    };
+    if (!rascunhoTemConteudo(rascunho)) return;
+    salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
   }, [notes, appliedCoupon, form]);
   // Achado 8 da revisão (17/08/2026): o painel precisa devolver o foco ao
   // botão que o abriu quando fecha (teclado) — `wasOpenRef` evita focar o
