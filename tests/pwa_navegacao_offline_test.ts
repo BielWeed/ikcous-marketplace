@@ -11,7 +11,6 @@
 // service workers e forçava reload com parâmetro de purge na primeira
 // visita de cada cliente. Após o conserto, nenhum destes movimentos pode
 // voltar ao arquivo.
-import { readFileSync } from "node:fs";
 import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 import {
   assert,
@@ -19,8 +18,8 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 const DIR = fromFileUrl(new URL(".", import.meta.url));
-const sw = readFileSync(`${DIR}../src/sw/sw.ts`, "utf8");
-const guardian = readFileSync(`${DIR}../public/silent-guardian.js`, "utf8");
+const sw = Deno.readTextFileSync(`${DIR}../src/sw/sw.ts`, "utf8");
+const guardian = Deno.readTextFileSync(`${DIR}../public/silent-guardian.js`, "utf8");
 
 const norm = (s: string) => s.replace(/\s+/g, " ");
 
