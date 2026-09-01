@@ -2,6 +2,7 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { AnimatePresence, motion, useDragControls } from "framer-motion";
 import {
   AlertTriangle,
   Check,
@@ -21,7 +22,6 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion, useDragControls } from "framer-motion";
 import { toast } from "sonner";
 
 const PRESETS = [
@@ -562,13 +562,13 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
     }
     if (isSaving) return;
 
-    if (!formData.whatsappNumber) {
-      toast.error("WhatsApp é obrigatório");
-      return;
-    }
-
+    // Campo vazio grava NULL (laudo caça-bugs 30/08 + decisão do Gabriel:
+    // WhatsApp é configuração DA lojista). Antes era "obrigatório" com
+    // formulário pré-preenchido pelo fallback de fábrica — o efeito líquido
+    // era replantar o nove-noves que a limpeza do banco tinha removido.
+    // Preenchido, segue a régua de sempre: 10-11 dígitos (DDD + número).
     let cleanWhatsApp = formData.whatsappNumber.replace(/\D/g, "");
-    if (cleanWhatsApp.length < 10) {
+    if (cleanWhatsApp.length > 0 && cleanWhatsApp.length < 10) {
       toast.error("WhatsApp inválido");
       return;
     }
@@ -584,8 +584,10 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
       // "atualizados com sucesso" sobre uma gravação que falhou — e o número de
       // WhatsApp é o único canal de fechamento de pedido da loja (ADMIN-010, #94).
       const salvou = await updateConfig({
-        whatsappNumber: cleanWhatsApp,
-        businessHours: formData.businessHours,
+        // Vazio grava NULL — o mesmo contrato do campo de horário nos
+        // Ajustes: ausência honesta, nunca um valor que a loja não digitou.
+        whatsappNumber: cleanWhatsApp || null,
+        businessHours: formData.businessHours.trim() || null,
         shareText: formData.shareText,
       });
       if (!salvou) return;
@@ -682,9 +684,13 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                 Número que receberá contatos diretos de clientes.
               </p>
               <div className="group relative">
-                <div className="pointer-events-none absolute left-3.5 top-1/2 flex -translate-y-1/2 items-center gap-1.5 border-r border-white/10 pr-2.5">
+                {/* Âncora no PRIMEIRO 20px do bloco (centro do input h-10),
+                    não em `top-1/2`: o bloco cresce para baixo quando a
+                    validação acusa erro, e o meio do bloco empurrava o
+                    ícone/+55 para fora da linha do campo. */}
+                <div className="pointer-events-none absolute left-3.5 top-5 flex h-5 -translate-y-1/2 items-center gap-1.5 border-r border-white/10 pr-2.5">
                   <MessageCircle className="size-3.5 text-[#25d366]" />
-                  <span className="text-[11px] font-black text-zinc-500">
+                  <span className="text-[11px] font-black leading-none text-zinc-500">
                     +55
                   </span>
                 </div>
@@ -696,12 +702,15 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                   delay={350}
                   value={formData.whatsappNumber}
                   onFlush={onChangeWhatsappNumber}
-                  placeholder="Ex: (34) 99999-9999"
+                  placeholder="(00) 00000-0000"
                   className="h-10 rounded-xl border-white/10 bg-black/40 pl-16 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:ring-admin-gold/50"
                   autoComplete="tel"
                   disabled={isOffline}
                   validate={(val) => {
-                    if (!val) return "WhatsApp é obrigatório";
+                    // Campo OPCIONAL (decisão do Gabriel, 30/08): vazio é
+                    // estado legítimo — o botão de WhatsApp some da loja.
+                    // Erro só quando digitar errado.
+                    if (!val) return null;
                     const clean = val.replace(/\D/g, "");
                     if (clean.length < 10 || clean.length > 11) {
                       return "Informe DDD + número (10 ou 11 dígitos)";
@@ -716,11 +725,8 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                   <span>Formato e Protocolo</span>
                 </div>
                 <p className="text-[9px] leading-relaxed text-zinc-400">
-                  Informe DDD + número (ex:{" "}
-                  <code className="font-mono font-bold text-admin-gold">
-                    34999999999
-                  </code>
-                  ). O código{" "}
+                  Campo opcional: vazio, e o botão de WhatsApp some da loja.
+                  Preenchido, use DDD + número — o código{" "}
                   <code className="font-mono text-zinc-300">55</code> é
                   adicionado automaticamente.
                 </p>
@@ -754,7 +760,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                   delay={350}
                   value={formData.businessHours}
                   onFlush={onChangeBusinessHours}
-                  placeholder="Ex: Seg-Sáb: 9h às 18h"
+                  placeholder="Ex: Ter a Sáb, 9h às 18h"
                   className="h-10 rounded-xl border-white/10 bg-black/40 pl-11 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:ring-admin-gold/50"
                   autoComplete="off"
                   disabled={isOffline}
@@ -768,7 +774,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                 <p className="text-[9px] leading-relaxed text-zinc-400">
                   •{" "}
                   <code className="font-mono text-zinc-300">
-                    Seg-Sáb: 9h às 18h
+                    Ter a Sáb: 9h às 18h
                   </code>
                   <br />•{" "}
                   <code className="font-mono text-zinc-300">
@@ -983,126 +989,140 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
         </div>
       </div>
 
-      {/* Slide-Up Bottom Sheet for Presets */}
-      <AnimatePresence>
-        {isPresetsOpen &&
-          typeof document !== "undefined" &&
-          createPortal(
-            <div className="fixed inset-0 z-[100] flex items-end justify-center">
-              {/* Backdrop overlay */}
-              {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+      {/* Slide-Up Bottom Sheet for Presets.
+          CORREÇÃO (laudo caça-bugs Savy, 30/08 — achado do Gabriel com print):
+          o portal morava DENTRO do <AnimatePresence>, que só aceita elementos
+          de animação como filho direto e DESCARTAVA o portal em silêncio — o
+          clique abria o estado, mas o painel nunca renderizava. Agora o
+          portal fica fora e o AnimatePresence recebe o contêiner motion como
+          filho direto (com key), restaurando também a animação de saída. */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {isPresetsOpen && (
               <motion.div
+                key="presets-sheet"
+                className="fixed inset-0 z-[100] flex items-end justify-center"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                onClick={() => setIsPresetsOpen(false)}
-                className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-pointer"
-              />
-
-              {/* Bottom Sheet Container */}
-              <motion.div
-                drag="y"
-                dragListener={false}
-                dragControls={dragControls}
-                dragConstraints={{ top: 0 }}
-                dragElastic={{ top: 0, bottom: 0.8 }}
-                dragMomentum={false}
-                onDragEnd={(_, info) => {
-                  if (info.offset.y > 150 || info.velocity.y > 500) {
-                    setIsPresetsOpen(false);
-                  }
-                }}
-                initial={{ y: "100%" }}
-                animate={{ y: 0 }}
-                exit={{ y: "100%" }}
-                transition={{ type: "spring", damping: 30, stiffness: 350 }}
-                className="relative z-10 w-full max-w-2xl rounded-t-[2rem] border-t border-white/10 bg-[#09090b] px-4 pb-8 pt-4 shadow-2xl flex flex-col max-h-[85vh] touch-none"
               >
-                {/* Grab handle and Header drag target */}
-                <div
-                  onPointerDown={(e) => dragControls.start(e)}
-                  className="w-full cursor-grab active:cursor-grabbing pb-3 pt-1 touch-none flex flex-col items-center select-none"
+                {/* Backdrop overlay */}
+                {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => setIsPresetsOpen(false)}
+                  className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-pointer"
+                />
+
+                {/* Bottom Sheet Container */}
+                <motion.div
+                  drag="y"
+                  dragListener={false}
+                  dragControls={dragControls}
+                  dragConstraints={{ top: 0 }}
+                  dragElastic={{ top: 0, bottom: 0.8 }}
+                  dragMomentum={false}
+                  onDragEnd={(_, info) => {
+                    if (info.offset.y > 150 || info.velocity.y > 500) {
+                      setIsPresetsOpen(false);
+                    }
+                  }}
+                  initial={{ y: "100%" }}
+                  animate={{ y: 0 }}
+                  exit={{ y: "100%" }}
+                  transition={{ type: "spring", damping: 30, stiffness: 350 }}
+                  className="relative z-10 w-full max-w-2xl rounded-t-[2rem] border-t border-white/10 bg-[#09090b] px-4 pb-8 pt-4 shadow-2xl flex flex-col max-h-[85vh] touch-none"
                 >
-                  {/* Top decorative handle */}
-                  <div className="mb-4 h-1.5 w-12 rounded-full bg-zinc-800" />
+                  {/* Grab handle and Header drag target */}
+                  <div
+                    onPointerDown={(e) => dragControls.start(e)}
+                    className="w-full cursor-grab active:cursor-grabbing pb-3 pt-1 touch-none flex flex-col items-center select-none"
+                  >
+                    {/* Top decorative handle */}
+                    <div className="mb-4 h-1.5 w-12 rounded-full bg-zinc-800" />
 
-                  {/* Header content inside the drag area to make it easy to drag */}
-                  <div className="flex items-center justify-between border-b border-white/5 pb-4 w-full text-left pointer-events-none">
-                    <div>
-                      <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
-                        <Sparkles className="size-4 text-purple-400" />
-                        Modelos de Mensagem (Presets)
-                      </h3>
-                      <p className="text-[10px] text-zinc-500 mt-0.5">
-                        Selecione um dos 30 modelos prontos de compartilhamento
-                        de produto.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-4 mt-2">
-                  {/* Search Bar */}
-                  <div className="relative">
-                    <input
-                      id="preset-search-input"
-                      name="presetSearch"
-                      type="text"
-                      placeholder="Pesquisar por modelo, tom ou palavra-chave..."
-                      value={presetSearch}
-                      onChange={(e) => setPresetSearch(e.target.value)}
-                      className="h-10 w-full rounded-xl border border-white/10 bg-black/40 px-4 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:border-purple-500/50 outline-none"
-                      autoComplete="off"
-                    />
-                  </div>
-
-                  {/* Presets List Scrollable */}
-                  <div className="overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh]">
-                    {filteredPresets.length > 0 ? (
-                      filteredPresets.map((preset) => (
-                        <button
-                          key={preset.name}
-                          type="button"
-                          onClick={() => {
-                            applyPreset(preset.text);
-                            setIsPresetsOpen(false);
-                          }}
-                          className="flex flex-col items-start gap-1.5 rounded-xl border border-white/5 bg-zinc-950/60 p-3.5 text-left transition-all hover:border-purple-500/30 hover:bg-purple-950/5 active:scale-[0.98] group"
-                        >
-                          <div className="flex items-center justify-between w-full">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-purple-400 group-hover:text-purple-300">
-                              {preset.name}
-                            </span>
-                            <span className="rounded-full border border-purple-500/10 bg-purple-500/5 px-2 py-0.5 text-[7px] font-black uppercase tracking-wider text-purple-500">
-                              Aplicar
-                            </span>
-                          </div>
-                          <p className="text-[9px] leading-relaxed text-zinc-400 line-clamp-3 bg-black/30 p-2 rounded-lg border border-white/5 w-full font-mono font-medium">
-                            {preset.text}
-                          </p>
-                          <span className="text-[8px] text-zinc-500 italic mt-0.5">
-                            {preset.description}
-                          </span>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="col-span-full py-8 text-center flex flex-col items-center justify-center gap-2">
-                        <p className="text-xs text-zinc-600 font-bold uppercase tracking-wider">
-                          Nenhum modelo encontrado
-                        </p>
-                        <p className="text-[10px] text-zinc-700">
-                          Tente pesquisar usando outro termo.
+                    {/* Header content inside the drag area to make it easy to drag */}
+                    <div className="flex items-center justify-between border-b border-white/5 pb-4 w-full text-left pointer-events-none">
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
+                          <Sparkles className="size-4 text-purple-400" />
+                          Modelos de Mensagem (Presets)
+                        </h3>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                          Selecione um dos 30 modelos prontos de
+                          compartilhamento de produto.
                         </p>
                       </div>
-                    )}
+                    </div>
                   </div>
-                </div>
+
+                  <div className="flex flex-col gap-4 mt-2">
+                    {/* Search Bar */}
+                    <div className="relative">
+                      <input
+                        id="preset-search-input"
+                        name="presetSearch"
+                        type="text"
+                        placeholder="Pesquisar por modelo, tom ou palavra-chave..."
+                        value={presetSearch}
+                        onChange={(e) => setPresetSearch(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-white/10 bg-black/40 px-4 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:border-purple-500/50 outline-none"
+                        autoComplete="off"
+                      />
+                    </div>
+
+                    {/* Presets List Scrollable */}
+                    <div className="overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh]">
+                      {filteredPresets.length > 0 ? (
+                        filteredPresets.map((preset) => (
+                          <button
+                            key={preset.name}
+                            type="button"
+                            onClick={() => {
+                              applyPreset(preset.text);
+                              setIsPresetsOpen(false);
+                            }}
+                            className="flex flex-col items-start gap-1.5 rounded-xl border border-white/5 bg-zinc-950/60 p-3.5 text-left transition-all hover:border-purple-500/30 hover:bg-purple-950/5 active:scale-[0.98] group"
+                          >
+                            <div className="flex items-center justify-between w-full">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-purple-400 group-hover:text-purple-300">
+                                {preset.name}
+                              </span>
+                              <span className="rounded-full border border-purple-500/10 bg-purple-500/5 px-2 py-0.5 text-[7px] font-black uppercase tracking-wider text-purple-500">
+                                Aplicar
+                              </span>
+                            </div>
+                            <p className="text-[9px] leading-relaxed text-zinc-400 line-clamp-3 bg-black/30 p-2 rounded-lg border border-white/5 w-full font-mono font-medium">
+                              {preset.text}
+                            </p>
+                            <span className="text-[8px] text-zinc-500 italic mt-0.5">
+                              {preset.description}
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="col-span-full py-8 text-center flex flex-col items-center justify-center gap-2">
+                          <p className="text-xs text-zinc-600 font-bold uppercase tracking-wider">
+                            Nenhum modelo encontrado
+                          </p>
+                          <p className="text-[10px] text-zinc-700">
+                            Tente pesquisar usando outro termo.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
               </motion.div>
-            </div>,
-            document.body,
-          )}
-      </AnimatePresence>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
     </div>
   );
 });

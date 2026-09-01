@@ -199,6 +199,11 @@ function clienteFalso(opts: {
   rpcResultado?: string;
   rpcError?: unknown;
   pedido?: Record<string, unknown> | null;
+  // Falha de LEITURA injetada (laudo 31/08, conferência de valor): quando
+  // presente, todo `.from().select().eq().maybeSingle()` devolve
+  // `{ data: null, error }` — o handler tem que devolver 500 (evento fica
+  // na fila do MP) em vez de confirmar sem conferir.
+  erroFrom?: unknown;
   registro?: {
     chamadasRpc: Array<{ args: Record<string, unknown> }>;
     chamadasFrom?: Array<{ tabela: string; colunas: string; coluna: string; valor: unknown }>;
@@ -233,7 +238,12 @@ function clienteFalso(opts: {
                           colunasPedidas.has(chave),
                         ),
                       );
-              return { maybeSingle: async () => ({ data: projetado, error: null }) };
+              return {
+                maybeSingle: async () =>
+                  opts.erroFrom
+                    ? { data: null, error: opts.erroFrom }
+                    : { data: projetado, error: null },
+              };
             },
           };
         },
@@ -343,7 +353,7 @@ Deno.test("MP diz approved, gateway_payment_id gravado é ORD (Orders API) -> RP
   assertEquals(registro.chamadasRpc[0].args.p_order_id, UUID_PEDIDO);
   assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_GRAVADO_NO_BANCO);
   assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
-  assertEquals(chamadasAviso.length, 1, "deveria logar um aviso ao substituir o id pelo valor do banco");
+  assertEquals(chamadasAviso.length, 2, "deveria logar DOIS avisos: conferência de valor sem número (a resposta do mock não traz transaction_amount) e a substituição do id pelo valor do banco");
   // Achado de revisão (mutação "M12"): a versão anterior desta asserção
   // juntava TODOS os argumentos numa string só e perguntava se ela CONTINHA
   // os valores — trocar os dois campos do objeto logado entre si
@@ -353,34 +363,271 @@ Deno.test("MP diz approved, gateway_payment_id gravado é ORD (Orders API) -> RP
   // `assertStringIncludes(texto, "gateway_payment_id")` era satisfeita pela
   // MENSAGEM ESTÁTICA (que já contém esse literal), não pelo objeto — não
   // provava nada. Asserção POR CAMPO no objeto logado prova que cada valor
-  // foi para o rótulo certo.
-  const [, campos] = chamadasAviso[0] as [string, Record<string, unknown>];
+  // foi para o rótulo certo. (O aviso [0] é da conferência de valor sem
+  // número — laudo 31/08; o swap é o [1].)
+  const [, campos] = chamadasAviso[1] as [string, Record<string, unknown>];
   assertEquals(campos.orderId, UUID_PEDIDO);
   assertEquals(campos.idDevolvidoPeloMp, String(ID_PAGAMENTO_DO_MP));
   assertEquals(campos.idGravadoNoBanco, ID_GRAVADO_NO_BANCO);
   // Achado de revisão (mutação "M8"): prova que as DUAS leituras de
-  // `marketplace_orders` (a do gateway_payment_id e a do push) apontam para
-  // `orderId` (vindo da resposta autenticada do MP) — não para `dataIdStr`
-  // ("999", o id cru e forjável do corpo do webhook).
-  assertEquals(registro.chamadasFrom.length, 2, "deveria ter lido o pedido duas vezes: gateway_payment_id e push");
+  // `marketplace_orders` (a da conferência — valor + gateway_payment_id na
+  // mesma leitura única, laudo 31/08 — e a do push) apontam para `orderId`
+  // (vindo da resposta autenticada do MP) — não para `dataIdStr` ("999", o
+  // id cru e forjável do corpo do webhook).
+  assertEquals(registro.chamadasFrom.length, 2, "deveria ter lido o pedido duas vezes: a conferência única e o push");
   // Achado de revisão (mutação "M10"): as duas leituras pedem COLUNAS
-  // diferentes (a nova, "gateway_payment_id"; a do push, que já existia,
-  // "id, customer_name, total, total_amount") — por isso a asserção é POR
-  // LEITURA, não um laço uniforme. Trocar `.select("gateway_payment_id")`
-  // por `.select("id")` sobrevivia a todos os testes: o laço antigo conferia
-  // tabela/coluna/valor mas nunca `colunas`, e o PostgREST devolveria só
-  // `{ id }` — `?.gateway_payment_id` viraria `undefined`, a correção nunca
-  // dispararia, em silêncio, com os testes desta correção continuando
-  // verdes.
-  const [leituraGatewayId, leituraPush] = registro.chamadasFrom;
-  assertEquals(leituraGatewayId.tabela, "marketplace_orders");
-  assertEquals(leituraGatewayId.colunas, "gateway_payment_id");
-  assertEquals(leituraGatewayId.coluna, "id");
-  assertEquals(leituraGatewayId.valor, UUID_PEDIDO);
+  // diferentes (a nova, "total, total_amount, gateway_payment_id"; a do
+  // push, que já existia, "id, customer_name, total, total_amount") — por
+  // isso a asserção é POR LEITURA, não um laço uniforme. Trocar o select da
+  // conferência por `.select("id")` sobrevivia a todos os testes: o laço
+  // antigo conferia tabela/coluna/valor mas nunca `colunas`, e o PostgREST
+  // devolveria só `{ id }` — `?.gateway_payment_id` viraria `undefined`, a
+  // correção nunca dispararia, em silêncio, com os testes desta correção
+  // continuando verdes.
+  const [leituraConferencia, leituraPush] = registro.chamadasFrom;
+  assertEquals(leituraConferencia.tabela, "marketplace_orders");
+  assertEquals(leituraConferencia.colunas, "total, total_amount, gateway_payment_id");
+  assertEquals(leituraConferencia.coluna, "id");
+  assertEquals(leituraConferencia.valor, UUID_PEDIDO);
   assertEquals(leituraPush.tabela, "marketplace_orders");
   assertEquals(leituraPush.colunas, "id, customer_name, total, total_amount");
   assertEquals(leituraPush.coluna, "id");
   assertEquals(leituraPush.valor, UUID_PEDIDO);
+});
+
+// --- 3.5 CONFERÊNCIA DE VALOR (laudo caça-bugs 31/08, achado A3) -----------
+//
+// O que se prova aqui: o valor que o MP APROVOU (na resposta autenticada)
+// tem que bater com o total do pedido — PIX parcial deixa de virar "pedido
+// pago". Os mocks desta seção trazem `transaction_amount`/`total_amount`,
+// que os mocks ANTIGOS não traziam: ausência de valor = "não deu para
+// conferir" (comportamento anterior, com warn), e é justamente o que os
+// testes antigos acima exercitam sem saber.
+
+Deno.test("rota payment: MP aprovou R$ 100 de um pedido de R$ 149,90 -> NÃO confirma, sem push, 200 'valor divergente'", async () => {
+  const registro = { chamadasRpc: [], chamadasFrom: [] };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: ID_GRAVADO_NO_BANCO,
+  };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+    transaction_amount: 100,
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.ignorado, "valor divergente");
+  assertEquals(registro.chamadasRpc.length, 0, "a RPC NÃO pode ser chamada com valor divergente");
+  assertEquals(chamadasPush.length, 0, "pagamento divergente não pode virar push de 'pedido pago'");
+  // A recusa acontece DEPOIS da leitura única e ANTES da RPC: a leitura
+  // existe (a conferência precisa do total), a RPC não.
+  assertEquals(registro.chamadasFrom.length, 1);
+});
+
+Deno.test("rota payment: valor aprovado bate o total -> confirma (controle positivo da conferência)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: ID_GRAVADO_CLASSICO_DIFERENTE,
+  };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+    transaction_amount: 149.9,
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_order_id, UUID_PEDIDO);
+  assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
+  assertEquals(chamadasPush.length, 1);
+});
+
+Deno.test("rota payment: diferença de 4 centavos é arredondamento, não divergência (tolerância da criação do pedido)", async () => {
+  // Por que 150/149.96 e não um par colado em exatamente 0.05: subtração de
+  // ponto flutuante perto de 0.05 não é exata (149.9 - 149.85 =
+  // 0.05000000000004), e um teste de BORDA exata testaria o float64, não a
+  // regra. 4 centavos dentro, 6 centavos fora (teste seguinte) provam a
+  // tolerância por MISERICÓRDIA e por RECUSA, sem depender do último bit.
+  const registro = { chamadasRpc: [] };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 150,
+    total_amount: null,
+    gateway_payment_id: ID_GRAVADO_CLASSICO_DIFERENTE,
+  };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+    transaction_amount: 149.96,
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1, "0.04 < 0.05 — confirmar");
+});
+
+Deno.test("rota payment: diferença de 6 centavos é divergência de dinheiro (fora da tolerância)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 150,
+    total_amount: null,
+    gateway_payment_id: ID_GRAVADO_CLASSICO_DIFERENTE,
+  };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+    transaction_amount: 149.94,
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.ignorado, "valor divergente");
+  assertEquals(registro.chamadasRpc.length, 0, "0.06 > 0.05 — NÃO confirmar");
+});
+
+Deno.test("rota order: total_amount STRING '10.00' (grafia medida da Orders API) diverge do total -> NÃO confirma", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_DO_MP,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+    total_amount: "10.00",
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.ignorado, "valor divergente");
+  assertEquals(registro.chamadasRpc.length, 0);
+  assertEquals(chamadasPush.length, 0);
+});
+
+Deno.test("rota order: total_amount STRING '149.90' bate o total -> confirma (a conversão de string não mente)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_DO_MP,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+    total_amount: "149.90",
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
+  assertEquals(chamadasPush.length, 1);
+});
+
+Deno.test("rota order: sem total_amount na raiz, o fallback transactions.payments[0].amount ('10.00') diverge -> NÃO confirma", async () => {
+  // Nota 3 da revisão do PR #366: o caminho do fallback do
+  // `extrairValorDaOrder` não tinha teste próprio — uma mutação que
+  // quebrasse SÓ o fallback passaria batido. Aqui a raiz está ausente de
+  // propósito; o valor só existe dentro de transactions.payments[0].
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_DO_MP,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+    transactions: {
+      payments: [{ id: "PAY01KZZXXXXXXXXXXXXXXXXXXXXX", amount: "10.00" }],
+    },
+  });
+  const chamadasPush: unknown[] = [];
+  const enviarPush = async (args: unknown) => {
+    chamadasPush.push(args);
+  };
+
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.ignorado, "valor divergente");
+  assertEquals(registro.chamadasRpc.length, 0);
+  assertEquals(chamadasPush.length, 0);
+});
+
+Deno.test("leitura do pedido falha -> 500 (evento fica na fila do MP), RPC não chamada", async () => {
+  const registro = { chamadasRpc: [] };
+  const supabase = clienteFalso({
+    rpcResultado: "pago",
+    erroFrom: { message: "conexão recusada" },
+    registro,
+  });
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    external_reference: UUID_PEDIDO,
+    transaction_amount: 149.9,
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 500);
+  assertEquals(corpo.error, "Erro ao consultar o pedido.");
+  assertEquals(registro.chamadasRpc.length, 0, "sem a linha do pedido, nenhuma conferência tem o que comparar — não confirmar");
 });
 
 // --- 4. 'ja_pago' -> idempotência --------------------------------------------
@@ -1173,18 +1420,19 @@ Deno.test("rota payment: gateway_payment_id gravado é clássico (e DIFERENTE do
   assertEquals(registro.chamadasRpc.length, 1);
   assertEquals(registro.chamadasRpc[0].args.p_payment_id, String(ID_PAGAMENTO_DO_MP));
   assertEquals(
-    chamadasAviso.length,
+    chamadasAviso.filter((a) => String(a[0]).includes("gateway_payment_id gravado")).length,
     0,
-    "não deveria logar aviso quando os dois lados já falam a mesma língua",
+    "não deveria logar o aviso do SWAP quando os dois lados já falam a mesma língua. (Desde o laudo 31/08 existe OUTRO warn nesta rota — a conferência de valor avisando que o mock não trouxe transaction_amount; filtrar pelo aviso do swap, não por silêncio total.)",
   );
 });
 
 Deno.test("rota payment: falha ao ler gateway_payment_id do pedido -> 500, RPC NÃO chamada, evento mantido na fila do MP", async () => {
   const chamadasRpc: Array<{ args: Record<string, unknown> }> = [];
   const erroLeitura = { message: "connection reset" };
-  // Cliente falso PRÓPRIO deste teste (não `clienteFalso`): precisa devolver
-  // um `error` na leitura de `marketplace_orders`, o que `clienteFalso` não
-  // parametriza (ele só injeta erro no `.rpc()`).
+  // Cliente falso PRÓPRIO deste teste: precisa devolver um `error` na
+  // leitura de `marketplace_orders` (o `clienteFalso` ganhou `erroFrom` para
+  // isso na conferência de valor de 31/08; este teste é anterior, continua
+  // valendo como está, e cobre o MESMO 500 pelo caminho da leitura única).
   const supabase = {
     rpc: async (_nome: string, args: Record<string, unknown>) => {
       chamadasRpc.push({ args });

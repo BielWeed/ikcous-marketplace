@@ -1,0 +1,23 @@
+-- ROLLBACK MANUAL de 20261033000000_horario_e_whatsapp_nao_nascem_de_fabrica.sql
+-- (migration não estrutural: só o corpo da RPC + 2 UPDATEs de limpeza.
+--  Nenhum dado digitado por lojista é perdido: o rollback devolve APENAS
+--  os valores de fábrica aos lugares onde a migration os encontrou.)
+--
+-- 1. Devolve o corpo da RPC ao estado ANTERIOR REAL — a versão da
+--    20261029000000 (que já tinha removido o COALESCE de business_hours, mas
+--    mantinha o de whatsapp '5534999999999'). ATENÇÃO: reexecutar a
+--    20260980000000 (versão ainda mais antiga) restauraria TAMBÉM o
+--    COALESCE do horário, desfazendo duas frentes de uma vez.
+--    psql: \i supabase/migrations/20261029000000_*.sql
+--    (o CREATE OR REPLACE dela contém o corpo imediatamente anterior a esta
+--     migration.)
+--
+-- 2. Devolve as sentinelas aos registros limpos (apenas onde hoje estão
+--    NULL e a coluna não é tocada por outra regra):
+--    UPDATE store_config SET business_hours = 'Seg-Sáb: 9h às 18h'
+--     WHERE business_hours IS NULL;
+--    UPDATE store_config SET whatsapp_number = '34999999999'
+--     WHERE whatsapp_number IS NULL;
+--    (CUIDADO: isto re-planta fábrica em TODA linha NULL, inclusive lojas
+--     que nunca tiveram sentinela. Rodar só se o rollback for mesmo o
+--     caminho escolhido.)

@@ -271,6 +271,33 @@ export function precoResolvidoSemCache(id: unknown): boolean {
 }
 
 /**
+ * LAUDO 31/08 (D2): fetch com TEMPO DE ESPERA. Até hoje as quatro chamadas
+ * a Melhor Envio/Frenet deste arquivo penduravam sem limite — o DNS do ME
+ * já caiu de verdade nesta máquina (#356), e uma transportadora lenta
+ * segurava a cotação (e o cliente) indefinidamente. O AbortController
+ * corta no tempo; quem chama vê AbortError como qualquer falha de rede e
+ * cai na contingência que já existe.
+ *
+ * O `buscar` entra como parâmetro (o fetch de fora, injetável) para o
+ * index_test.ts provar o aborto com um fetch falso — em produção nada
+ * muda: chama-se com o `fetch` de sempre.
+ */
+export async function buscarComTempo(
+    buscar: typeof fetch,
+    url: string,
+    init: RequestInit = {},
+    tempoMs = 15000,
+): Promise<Response> {
+    const controle = new AbortController()
+    const despertar = setTimeout(() => controle.abort(), tempoMs)
+    try {
+        return await buscar(url, { ...init, signal: controle.signal })
+    } finally {
+        clearTimeout(despertar)
+    }
+}
+
+/**
  * Monta o registro do `shipping_calculation_logs` para a cotação de TAXA
  * FIXA (achado 9 do laudo de 29/08: esse ramo respondia antes de gravar log
  * — o histórico da lojista nunca mostrava o provedor padrão).
@@ -505,9 +532,9 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                     const isSandbox = credentials.sandbox === true
                     const baseUrl = isSandbox 
                         ? 'https://sandbox.melhorenvio.com.br' 
-                        : 'https://api.melhorenvio.com.br'
+                        : 'https://melhorenvio.com.br'
                         
-                    const response = await fetch(`${baseUrl}/api/v2/me`, {
+                    const response = await buscarComTempo(fetch, `${baseUrl}/api/v2/me`, {
                         headers: {
                             'Accept': 'application/json',
                             'Authorization': `Bearer ${token}`,
@@ -529,7 +556,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                         )
                     }
                 } else if (provider === 'frenet') {
-                    const response = await fetch('https://api.frenet.com.br/shipping/quote', {
+                    const response = await buscarComTempo(fetch, 'https://api.frenet.com.br/shipping/quote', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -877,9 +904,9 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 const isSandbox = credentials.sandbox === true
                 const baseUrl = isSandbox 
                     ? 'https://sandbox.melhorenvio.com.br' 
-                    : 'https://api.melhorenvio.com.br'
+                    : 'https://melhorenvio.com.br'
 
-                const response = await fetch(`${baseUrl}/api/v2/me/shipment/calculate`, {
+                const response = await buscarComTempo(fetch, `${baseUrl}/api/v2/me/shipment/calculate`, {
                     method: 'POST',
                     headers: {
                         'Accept': 'application/json',
@@ -948,7 +975,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                     }
                 })
 
-                const response = await fetch('https://api.frenet.com.br/shipping/quote', {
+                const response = await buscarComTempo(fetch, 'https://api.frenet.com.br/shipping/quote', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1206,6 +1233,16 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
     } catch (err) {
         console.error('[calculate-shipping] Top-level Edge Function Error:', err)
 
+        // LAUDO 31/08 (D2): o `err.message` que sobe até aqui pode carregar
+        // texto de API de terceiros (o errText do Melhor Envio/Frenet vem
+        // cru dentro dele) ou de banco — e até hoje esse texto era devolvido
+        // AO NAVEGADOR DO CLIENTE nos três retornos abaixo. O detalhe que
+        // presta fica no console.error acima, nos logs da função; quem paga
+        // lê uma frase utilizável. (O `err.message` do caminho
+        // `test_credentials` fica como está: é o painel da LOJISTA lendo o
+        // erro do token DELA.)
+        const mensagemSegura = 'Não foi possível calcular o frete agora. Tente novamente.'
+
         // MESMO DEFEITO DO OUTRO FALLBACK, NUM SEGUNDO LUGAR: até 25/08/2026
         // esta contingência de último recurso usava `precoDeContingenciaDoTopo`
         // — a escada por região de `calculateSmartFallback` — e devolvia a
@@ -1226,7 +1263,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         try {
             if (!taxaDaLojaConfigurada) {
                 return new Response(
-                    JSON.stringify({ error: err.message }),
+                    JSON.stringify({ error: mensagemSegura }),
                     { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 )
             }
@@ -1241,12 +1278,12 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                 }
             ]
             return new Response(
-                JSON.stringify({ options: fallbackOptions, fallback: true, error: err.message }),
+                JSON.stringify({ options: fallbackOptions, fallback: true, error: mensagemSegura }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         } catch {
             return new Response(
-                JSON.stringify({ error: err.message }),
+                JSON.stringify({ error: mensagemSegura }),
                 { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }

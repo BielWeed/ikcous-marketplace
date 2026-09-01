@@ -16,7 +16,22 @@ import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
+import { cepEhLocal } from "@/lib/cep-local";
+import {
+  criarGerenciadorDeChave,
+  impressaoDaCompra,
+} from "@/lib/chave-do-pedido";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
+import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { precoVendido } from "@/lib/preco-vendido";
+import {
+  lerRascunhoDoCheckout,
+  limparRascunhoDoCheckout,
+  rascunhoTemConteudo,
+  salvarRascunhoDoCheckout,
+} from "@/lib/rascunho-do-checkout";
+import { cotacaoValeParaDestino, soDigitos } from "@/lib/reconciliacao-de-cep";
 import {
   type AcaoDeRecusa,
   type RecusaDoPedido,
@@ -195,12 +210,20 @@ export function CheckoutView({
     addToCart,
     selectedShippingOption,
     shippingCep,
+    setSelectedShippingOption,
+    setShippingCep,
+    freteIndefinido: ctxFreteIndefinido,
   } = useCart();
 
   const cart = propCart ?? ctxCart;
   const subtotal = propSubtotal ?? ctxSubtotal;
   const shipping = propShipping ?? ctxShipping;
-  const total = propTotal ?? ctxSubtotal + ctxShipping;
+  // Laudo 31/08 (nota 3 da revisão do PR #367): com frete indefinido o
+  // fallback R$ 15 não é preço — o total exibido não o soma (o carrinho
+  // diz "A calcular"; nenhum pedido nasce nesse estado, o Finalizar
+  // está travado).
+  const total =
+    propTotal ?? ctxSubtotal + (ctxFreteIndefinido ? 0 : ctxShipping);
   const onClearCart = propOnClearCart ?? ctxClearCart;
   // CHECKOUT-090: realtime ligado (antes `useOrders(false, true)` desligava
   // o efeito inteiro na primeira linha de useOrders.ts — nenhuma assinatura
@@ -278,7 +301,10 @@ export function CheckoutView({
       })
       .superRefine((data, ctx) => {
         if (!user) {
-          if (!data.cep || data.cep.length < 8) {
+          // 8 DÍGITOS, não 8 caracteres: "1234-678" tem 8 caracteres e 7
+          // dígitos — passava na régua antiga e virava endereço não
+          // entregável no pedido (laudo caça-bugs 30/08, achado 11).
+          if (!data.cep || data.cep.replace(/\D/g, "").length !== 8) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "CEP inválido",
@@ -339,6 +365,16 @@ export function CheckoutView({
   const hasInitializedRef = useRef(false);
   useEffect(() => {
     if (storeConfigLoaded && !hasInitializedRef.current) {
+      // O RASCUNHO É LIDO ANTES DE QUALQUER form.reset E ANTES DE ABRIR A
+      // TRAVA (corrida achada pela revisão do PR #374): `form.reset` emite
+      // SINCRONAMENTE para a assinatura do `form.watch`, e o callback grava
+      // rascunho — com a trava já aberta, o reset de defaults gravava um
+      // rascunho só-de-CEP POR CIMA do rascunho cheio antes da leitura
+      // (acontece quando a view monta antes da config da loja chegar — F5
+      // com IndexedDB lento). Lendo primeiro na memória, qualquer gravação
+      // transitória dos resets é substituída, logo depois, pela gravação dos
+      // valores restaurados.
+      const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
       hasInitializedRef.current = true;
       if (!form.formState.isDirty) {
         // Cidade e estado nascem vazios em QUALQUER cobertura de entrega —
@@ -352,6 +388,45 @@ export function CheckoutView({
           city: "",
           state: "",
         });
+
+        // RASCUNHO DA SESSÃO (laudo ofensiva 3108, N7): o que a pessoa já
+        // digitou num checkout desta sessão volta POR CIMA do reset — voltar
+        // ao carrinho para conferir qualquer coisa não custa mais redigitar
+        // o formulário inteiro e perder o cupom. O cupom volta só o CÓDIGO,
+        // revalidado contra o subtotal atual no efeito logo abaixo; o que
+        // deixou de valer não volta mentindo.
+        if (rascunho && rascunhoTemConteudo(rascunho)) {
+          form.reset({
+            name:
+              rascunho.nome ||
+              profile?.full_name ||
+              user?.user_metadata?.name ||
+              "",
+            whatsapp: rascunho.whatsapp || getDefaultWhatsApp(),
+            cep:
+              rascunho.cep ||
+              localStorage.getItem("ikcous_last_shipping_cep") ||
+              "",
+            street: rascunho.rua,
+            number: rascunho.numero,
+            neighborhood: rascunho.bairro,
+            city: rascunho.cidade,
+            state: rascunho.estado,
+            complement: rascunho.complemento,
+          });
+          setNotes(rascunho.notas);
+          // O dono dos campos de endereço passa a ser o CEP do rascunho —
+          // mesmo contrato da semente de `ikcous_last_shipping_cep` acima.
+          if (rascunho.cep) {
+            cepAssociadoRef.current = formatarCep(rascunho.cep).limpo;
+          }
+          // O cupom volta SÓ o código: o efeito de revalidação do E1
+          // (logo acima, [codigoDoCupom, subtotal]) decide em seguida —
+          // válido atualiza o desconto; inválido sai com o motivo na tela.
+          if (rascunho.cupom) {
+            setAppliedCoupon({ code: rascunho.cupom, discount: 0 });
+          }
+        }
       }
     }
   }, [storeConfigLoaded, profile, user]);
@@ -428,6 +503,16 @@ export function CheckoutView({
     useState<RecusaDoPedido | null>(null);
   /** Ver `criarTravaDeEnvio`: fecha o botao no tique do clique (#27). */
   const travaDeEnvioRef = useRef(criarTravaDeEnvio());
+  // A CHAVE DA COMPRA (laudo 31/08, A1 — metade cliente da idempotência do
+  // pedido; a metade servidor é a migration 20261038000000). Gera um uuid
+  // POR COMPRA — impressão digital de itens+frete+cupom+total+CEP — repete
+  // a chave na retentativa (rede caiu DEPOIS do commit: o segundo clique
+  // legítimo recebe o pedido que JÁ nasceu, não um gêmeo) e esquece no
+  // sucesso. Morando em sessionStorage, sobrevive ao recarregar da página
+  // e morre ao fechar a aba; impressão nova (compra diferente) gira outra.
+  const gerenteDaChaveRef = useRef<ReturnType<
+    typeof criarGerenciadorDeChave
+  > | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [orderId, setOrderId] = useState("");
   // O prazo NÃO é estado daqui — chega do banco pela resposta da edge
@@ -510,6 +595,153 @@ export function CheckoutView({
   // Android fechar o painel em vez de sair da tela de checkout.
   const [isSummaryPanelOpen, setIsSummaryPanelOpen] = useState(false);
   const hasPushedSummaryPanelState = useRef(false);
+
+  // A COTAÇÃO DE FRETE VALE PARA UM DESTINO (laudo 31/08, item E —
+  // reconciliação de CEP): o frete é cotado no CARRINHO (campo de CEP
+  // próprio da ShippingCalculator) e a entrega é endereçada AQUI — campos
+  // diferentes, e nada os amarrava: cotava no CEP A, entregava no B e
+  // pagava o frete de A. A metade SERVIDOR da cura (20261039000000) recusa
+  // o pedido divergente; aqui o cliente nem chega lá — mudou o destino,
+  // a opção cai e o carrinho volta a "A calcular" para re-cotar no CEP
+  // certo. Cotação ausente não decide (frete grátis/taxa fixa sem
+  // cotação): o portão do SERVIDOR é quem policia esses caminhos.
+  const cepDigitadoNoFormulario = form.watch("cep");
+  const cepDeEntrega = user
+    ? (addresses.find((a) => a.id === selectedAddressId)?.cep ?? null)
+    : cepDigitadoNoFormulario || null;
+  useEffect(() => {
+    if (!shippingCep || !cepDeEntrega) return;
+    // Ressalva R4 da revisão: CEP parcial é digitação em curso — decidir
+    // com ele derrubaria uma opção válida no primeiro dígito de quem só
+    // REDIGITA o mesmo CEP. A divergência só interessa com CEP completo;
+    // a recusa fail-closed de um CEP incompleto é do SERVIDOR
+    // (20261039000000), que chega no clique.
+    if (soDigitos(cepDeEntrega).length < 8) return;
+    if (!cotacaoValeParaDestino(shippingCep, cepDeEntrega)) {
+      setSelectedShippingOption(null);
+      setShippingCep(null);
+    }
+  }, [shippingCep, cepDeEntrega, setSelectedShippingOption, setShippingCep]);
+
+  // O CUPOM VALE PARA O CARRINHO DE AGORA (laudo 31/08, menor E): o cupom
+  // era conferido SÓ no momento de aplicar. O carrinho encolhia depois —
+  // item removido, quantidade menor — e o desconto continuava o antigo: a
+  // barra somava um total errado (podia até negativar) e quem impedia o
+  // estrago era só a recusa do servidor no último clique. Agora toda
+  // mudança de subtotal revalida: válido, o desconto se atualiza; inválido
+  // (mínimo de compra deixou de ser batido, expirou), o cupom SAI com o
+  // motivo na frente do cliente — sem chegar a recusar pedido. FALHA DE
+  // REDE na revalidação mantém o cupom como está — o validateCoupon não
+  // lança; ele devolve networkError (ressalva da revisão do PR #370), e o
+  // desconto duvidoso continua coberto pela validação da criação. MORRE
+  // ANTES DO PRIMEIRO RETURN (regra dos hooks — o eslint pegou a 1ª versão
+  // deste efeito depois do return de carregamento).
+  const codigoDoCupom = appliedCoupon?.code ?? null;
+  useEffect(() => {
+    if (!codigoDoCupom) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const resultado = await validateCoupon(codigoDoCupom, subtotal);
+        if (!vivo) return;
+        if (resultado.networkError) return;
+        if (resultado.valid) {
+          setAppliedCoupon({
+            code: codigoDoCupom,
+            discount: resultado.discount,
+          });
+        } else {
+          setAppliedCoupon(null);
+          setCouponError(resultado.message || "Cupom inválido");
+        }
+      } catch {
+        // Defesa: o validateCoupon não lança; se um dia lançar, mantém.
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [codigoDoCupom, subtotal, validateCoupon, isOffline]);
+  // `isOffline` nos deps é a pílula da re-revisão do PR #374 (ressalva 2):
+  // em falha de REDE a revalidação mantém o cupom com desconto 0 e não
+  // havia retry — com a conexão de volta o efeito roda de novo e o desconto
+  // real chega (ou o motivo da recusa aparece na tela).
+
+  // GRAVAÇÃO DO RASCUNHO (laudo ofensiva 3108, N7): cada mudança de campo,
+  // de notas ou de cupom repõe o rascunho da sessão. Os espelhos em ref
+  // existem porque a assinatura do `form.watch` fecha sobre valores do
+  // momento da assinatura — estado dentro do callback sairia velho. O bloco
+  // inteiro mora ANTES do primeiro return da tela (regra dos hooks — a
+  // revisão do #370 já tinha pegado esta armadilha no efeito do cupom).
+  //
+  // DUAS TRAVAS contra o autossabotagem (o conserto apagar o que veio
+  // consertar): (1) NÃO grava antes do init/restore ter acontecido
+  // (`hasInitializedRef`) — a config da loja chega async, e um efeito de
+  // gravação rodando antes do restore sobrescreveria o rascunho com um
+  // vazio; (2) NÃO grava rascunho SEM CONTEÚDO — escrever vazio por cima de
+  // rascunho com dados é perda silenciosa.
+  const notasRef = useRef(notes);
+  const cupomRef = useRef(appliedCoupon);
+  useEffect(() => {
+    notasRef.current = notes;
+  }, [notes]);
+  useEffect(() => {
+    cupomRef.current = appliedCoupon;
+  }, [appliedCoupon]);
+  useEffect(() => {
+    const gravarRascunho = (valores: {
+      name?: string;
+      whatsapp?: string;
+      cep?: string;
+      street?: string;
+      number?: string;
+      neighborhood?: string;
+      city?: string;
+      state?: string;
+      complement?: string;
+    }) => {
+      if (!hasInitializedRef.current) return;
+      const rascunho = {
+        nome: valores.name ?? "",
+        whatsapp: valores.whatsapp ?? "",
+        cep: valores.cep ?? "",
+        numero: valores.number ?? "",
+        rua: valores.street ?? "",
+        bairro: valores.neighborhood ?? "",
+        cidade: valores.city ?? "",
+        estado: valores.state ?? "",
+        complemento: valores.complement ?? "",
+        notas: notasRef.current,
+        cupom: cupomRef.current?.code ?? null,
+      };
+      if (!rascunhoTemConteudo(rascunho)) return;
+      salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
+    };
+    const subscription = form.watch((valores) =>
+      gravarRascunho(valores as CheckoutFormValues),
+    );
+    return () => subscription.unsubscribe();
+  }, [form]);
+  // Notas e cupom não passam pelo form.watch (estado próprio) — gravação
+  // própria, lendo o formulário atual via getValues. Mesmas duas travas.
+  useEffect(() => {
+    if (!hasInitializedRef.current) return;
+    const rascunho = {
+      nome: form.getValues("name") ?? "",
+      whatsapp: form.getValues("whatsapp") ?? "",
+      cep: form.getValues("cep") ?? "",
+      numero: form.getValues("number") ?? "",
+      rua: form.getValues("street") ?? "",
+      bairro: form.getValues("neighborhood") ?? "",
+      cidade: form.getValues("city") ?? "",
+      estado: form.getValues("state") ?? "",
+      complemento: form.getValues("complement") ?? "",
+      notas: notes,
+      cupom: appliedCoupon?.code ?? null,
+    };
+    if (!rascunhoTemConteudo(rascunho)) return;
+    salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
+  }, [notes, appliedCoupon, form]);
   // Achado 8 da revisão (17/08/2026): o painel precisa devolver o foco ao
   // botão que o abriu quando fecha (teclado) — `wasOpenRef` evita focar o
   // gatilho já na montagem (isSummaryPanelOpen começa `false`).
@@ -869,6 +1101,21 @@ export function CheckoutView({
 
   const isValid = form.formState.isValid;
 
+  // REGRA DO CONVIDADO (decisão do Gabriel, 30/08/2026 — laudo caça-bugs
+  // Savy, achado 3): convidado só compra com ENTREGA LOCAL; envio para outra
+  // cidade exige conta. Sem cadastro não existe rastreio honesto do pedido
+  // (o OTP precisa de e-mail, que o convidado não dá). A decisão final do
+  // frete é do servidor; esta checagem é o portão da tela, espelhando
+  // `is_local_cep` do banco via `cepEhLocal`. Sem CEP de origem configurado
+  // a regra fica silenciosa — sem origem o próprio `semFreteSelecionado`
+  // já trava o pedido, e o aviso aqui diria a mentira errada.
+  const cepDoConvidado = form.watch("cep");
+  const convidadoForaDaCidade =
+    !user &&
+    !!config.originCep &&
+    !!cepDoConvidado &&
+    !cepEhLocal(config.originCep, cepDoConvidado, config.localCepRange);
+
   // Achado da revisão (18/08/2026): a Tarefa 7 deste bloco fez a
   // `calculate-shipping` recusar cotar quando a loja não configurou o CEP de
   // origem — correto. Mas este botão só olhava `isValid` (validade do
@@ -887,8 +1134,19 @@ export function CheckoutView({
   // cliente logado (CartContext.tsx:751-756) — então o único jeito de
   // `shipping` vir POSITIVO sem opção selecionada é o fallback do defeito
   // acima descrito.
-  const semFreteSelecionado =
-    cart.length > 0 && shipping > 0 && !selectedShippingOption;
+  // Laudo 31/08 (B2): a guarda migrou para `finalizarBloqueadoPorFrete`
+  // (src/lib/guarda-de-frete.ts) — função pura, testada com o par
+  // mutante-killer. A diferença da guarda velha: a bandeira
+  // `freteIndefinido` entra na conta — provedor de cotação com taxa 0
+  // configurada deixava `shipping === 0`, a guarda antiga não disparava, e
+  // o pedido fechava com frete R$ 0 sem cotação nenhuma, depois do
+  // carrinho ter dito "A calcular".
+  const semFreteSelecionado = finalizarBloqueadoPorFrete({
+    carrinhoVazio: cart.length === 0,
+    freteIndefinido: ctxFreteIndefinido,
+    shipping,
+    temOpcaoSelecionada: !!selectedShippingOption,
+  });
 
   // `SaidaDaRecusa` promete, por escrito, que `conferir_antes` nunca oferece
   // "tentar de novo" — é o caso em que não se sabe se o pedido nasceu, e
@@ -916,7 +1174,8 @@ export function CheckoutView({
     !isValid ||
     isSubmitting ||
     semFreteSelecionado ||
-    aguardandoConferenciaDaRecusa;
+    aguardandoConferenciaDaRecusa ||
+    convidadoForaDaCidade;
 
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
@@ -1055,7 +1314,12 @@ export function CheckoutView({
     // "endereço de entrega" acima.
     if (semFreteSelecionado) {
       toast.error(
-        "Escolha uma opção de frete no carrinho antes de finalizar o pedido.",
+        semFreteSelecionado &&
+          ctxFreteIndefinido &&
+          config.shippingProvider === "flat_fee" &&
+          !config.originCep?.trim()
+          ? "A loja ainda está configurando o frete. Fale com a loja para combinar a entrega."
+          : "Escolha uma opção de frete no carrinho antes de finalizar o pedido.",
       );
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -1110,11 +1374,39 @@ export function CheckoutView({
       status: "pending",
     };
 
+    // A chave desta compra: mesma impressão digital (mesma retentativa,
+    // mesmo F5) devolve a MESMA chave — é o que faz o servidor devolver o
+    // pedido original em vez de criar um gêmeo. Impressão nova (mudou
+    // carrinho, frete, cupom ou endereço) gira chave nova.
+    gerenteDaChaveRef.current ??= criarGerenciadorDeChave(
+      globalThis.sessionStorage,
+    );
+    orderData.idempotencyKey = gerenteDaChaveRef.current.chavePara(
+      impressaoDaCompra({
+        items: orderData.items,
+        totalAmount: orderData.totalAmount,
+        shippingCost: orderData.shippingCost,
+        destinationCep: orderData.destinationCep,
+        shippingOptionId: orderData.shippingOptionId,
+        couponCode: orderData.couponCode,
+        addressId: orderData.addressId,
+        cepDoEndereco: orderData.addressData?.cep ?? null,
+      }),
+    );
+
     try {
       const ehOnline = paymentMethod === "online";
       const order = await createOrder(orderData, {
         comPagamentoOnline: ehOnline,
       });
+      // O pedido entrou. A chave cumpriu seu papel: a PRÓXIMA compra — mesmo
+      // com carrinho idêntico — tem de nascer com chave nova, não herdar a
+      // resposta desta.
+      gerenteDaChaveRef.current.esquecer();
+      // O rascunho morre junto (laudo 3108, N7): compra fechada não tem
+      // rascunho — vale para sucesso E para aguardando pagamento (o pedido
+      // nasceu nos dois; o que segue é pagamento, não digitação).
+      limparRascunhoDoCheckout(globalThis.sessionStorage);
       setOrderId(order.id);
       setValorDoPedido(finalTotal);
       // Snapshot ANTES do onClearCart() da linha seguinte — depois dele
@@ -2130,13 +2422,16 @@ export function CheckoutView({
                         <ul className="space-y-3">
                           {cart.map((item) => {
                             // Mesma fórmula de CartContext.tsx (cartTotal) —
-                            // não uma conta nova: preço da variante quando
-                            // houver, senão o preço do produto.
-                            const precoUnitario = item.variantId
-                              ? item.product.variants?.find(
-                                  (v) => v.id === item.variantId,
-                                )?.priceOverride || item.product.price
-                              : item.product.price;
+                            // não uma conta nova. Laudo 31/08 (menor E): a
+                            // regra única mora em preco-vendido.ts — `||`
+                            // cobrava o preço cheio de variação com override
+                            // ZERO.
+                            const precoUnitario = precoVendido(
+                              item.product,
+                              item.product.variants?.find(
+                                (v) => v.id === item.variantId,
+                              ),
+                            );
 
                             return (
                               <li
@@ -2294,8 +2589,40 @@ export function CheckoutView({
                       // carrinho e calcular o frete.
                       <p className="mx-auto mt-2 flex max-w-md items-center gap-1.5 text-[10px] font-bold uppercase text-red-500">
                         <AlertCircle className="size-3.5 shrink-0" />
-                        Volte ao carrinho e calcule o frete para continuar
+                        {semFreteSelecionado &&
+                        ctxFreteIndefinido &&
+                        config.shippingProvider === "flat_fee" &&
+                        !config.originCep?.trim()
+                          ? "A loja ainda está configurando o frete — fale com a loja para combinar a entrega"
+                          : "Volte ao carrinho e calcule o frete para continuar"}
                       </p>
+                    )}
+                    {convidadoForaDaCidade && (
+                      // Motivo visível da regra do convidado (decisão do
+                      // Gabriel, 30/08/2026): entrega para fora da cidade é
+                      // só com conta — sem cadastro não há como acompanhar
+                      // o pedido. Botão apagado SEM este aviso virava
+                      // desistência silenciosa.
+                      <div className="mx-auto mt-2 flex max-w-md flex-col items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-center">
+                        <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-amber-600">
+                          <AlertCircle className="size-3.5 shrink-0" />
+                          Entrega fora da cidade é só com conta
+                        </p>
+                        <p className="text-[10px] leading-snug text-zinc-500">
+                          Crie sua conta para receber em outro CEP — assim você
+                          também acompanha seu pedido por aqui.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            haptic.light();
+                            onNavigate("auth");
+                          }}
+                          className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                        >
+                          Entrar ou criar conta
+                        </button>
+                      </div>
                     )}
                     {aguardandoConferenciaDaRecusa && (
                       // A única porta de saída daqui era o "X" de 16px no
@@ -2413,7 +2740,7 @@ function SuccessView({
           <ArrowLeft className="size-5 rotate-180" />
         </button>
         <button
-          onClick={() => onNavigate("profile")}
+          onClick={() => onNavigate("orders")}
           className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
         >
           Ver Meus Pedidos
@@ -2473,7 +2800,7 @@ function PagamentoConfirmadoView({
 
       <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
         <button
-          onClick={() => onNavigate("profile")}
+          onClick={() => onNavigate("orders")}
           className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-primary text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
         >
           Ver Meus Pedidos
@@ -2524,9 +2851,13 @@ function PagamentoForaDoPrazoView({
   // dígitos) — não um novo. `numeroLimpo` vazio (config.whatsappNumber não
   // configurado) desliga o botão em vez de abrir um link quebrado.
   const numeroLimpo = (config.whatsappNumber || "").replace(/\D/g, "");
+  // Laudo 31/08 (C1, ressalva 1 da revisão do PR #367): a régua deste ponto
+  // era mais fraca (`!numeroLimpo` aceitava até 1 dígito) e abria
+  // `wa.me/` quebrado. Mesma régua única dos outros 4 pontos.
+  const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
 
   const handleFalarComALoja = () => {
-    if (!numeroLimpo) return;
+    if (!lojaTemWhatsappAgora) return;
     let phone = numeroLimpo;
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
@@ -2577,7 +2908,7 @@ function PagamentoForaDoPrazoView({
           </button>
         )}
         <button
-          onClick={() => onNavigate("profile")}
+          onClick={() => onNavigate("orders")}
           className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
         >
           Ver Meus Pedidos

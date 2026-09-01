@@ -4,41 +4,20 @@
     document.documentElement.classList.add("splash-shown");
   }
 
-  // Ghost Purge Logic
-  const RESET_KEY = "pwa_reset_v17.0_all_views_scroll_perfect";
-  const isAlreadyReset = localStorage.getItem(RESET_KEY);
-
-  console.log("[SilentGuardian] Ghost Purge v17.0 check...");
-
-  if (!isAlreadyReset) {
-    console.log("[SilentGuardian] Initiating GHOST PURGE v17.0...");
-
-    // 1. Unregister ALL
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.getRegistrations().then((registrations) => {
-        for (const registration of registrations) registration.unregister();
-      });
-    }
-
-    // 2. Erase Caches
-    if ("caches" in globalThis) {
-      caches.keys().then((names) => {
-        for (const name of names) caches.delete(name);
-      });
-    }
-
-    // 3. Complete Storage Purge (Safe)
-    // No longer clearing localStorage to preserve auth session
-    sessionStorage.clear();
-
-    // 4. Mark v11.2_final
-    localStorage.setItem(RESET_KEY, "true");
-
-    // 5. Force clean reload with dummy paramilitary to avoid cached HTML (preserving query parameters)
-    const url = new URL(globalThis.location.href);
-    url.searchParams.set("gp_v11_4", Date.now().toString());
-    globalThis.location.replace(url.href);
-  }
+  // GHOST PURGE APOSENTADO (laudo ofensiva 3108, achado N5).
+  //
+  // O que vivia aqui ("Ghost Purge v17.0"): na primeira visita, desregistrar
+  // TODOS os service workers, apagar TODOS os caches e forçar um reload com
+  // um parâmetro de purge na URL. Era andaime de era de dev contra cache
+  // estragado de versões antigas; o efeito medido em 31/08: TODO visitante
+  // novo começava a sessão com a PWA desligada à mão (SW desregistrado +
+  // precache apagado + reload forçado) e offline o app nem tinha com o que
+  // contar.
+  //
+  // O purge que roda uma vez por navegador não precisa mais de chave de
+  // localStorage: quem precisava dele já o executou (a chave está gravada);
+  // quem nasce hoje nasce com o SW novo e o ramo de navegação cache-first
+  // (sw.ts) — apagar cache de terceiros na porta de entrada ficou proibido.
 
   // NUCLEAR FALLBACK: If React fails to remove the loader, do it ourselves after 20s
   setTimeout(() => {

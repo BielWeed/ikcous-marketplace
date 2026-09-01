@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { opcaoMaisBarata } from "@/lib/auto-selecao-de-frete";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
@@ -284,13 +285,16 @@ export function ShippingCalculator({
       localStorage.setItem(cacheKey, JSON.stringify(envelope));
       localStorage.setItem("ikcous_last_shipping_cep", cep);
 
-      // Auto-select cheapest option if not selected
+      // Auto-select: MENOR PREÇO, não o primeiro da lista (laudo 31/08,
+      // menor E — o comentário antigo dizia "cheapest" e o código pegava
+      // options[0]: o cliente nascia travado na opção cara). Empate, menor
+      // prazo. Regra pura em auto-selecao-de-frete.ts, provada por teste.
       if (calculatedOptions.length > 0) {
         const hasMatch = calculatedOptions.some(
           (opt) => opt.id === selectedOption?.id,
         );
         if (!hasMatch) {
-          onSelectOption(calculatedOptions[0]);
+          onSelectOption(opcaoMaisBarata(calculatedOptions)!);
         }
       }
       onCepValidated?.(cep);

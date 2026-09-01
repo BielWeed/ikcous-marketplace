@@ -1,0 +1,33 @@
+-- Derruba a sobrecarga VELHA (6 args) de get_admin_orders_paged — laudo
+-- caça-bugs Savy, 30/08/2026, achado do Gabriel com print (o painel do
+-- admin acendia o aviso amarelo "lista incompleta" numa loja com ZERO
+-- pedidos).
+--
+-- CAUSA RAIZ PROVADA NO BANCO DA CLIENTE-01: a migration
+-- 20261028000000 criou a assinatura de 7 args (p_payment_status DEFAULT
+-- 'all') mas deixou a de 6 args viva. Com duas sobrecargas que casam ao
+-- mesmo tempo, TODA chamada com os 6 parâmetros nomeados explode:
+--   ERROR: function get_admin_orders_paged(...) is not unique
+-- O painel de cancelados (useOrders.fetchPedidosCancelados) chama assim,
+-- o catch entende como falha e acende `pedidosCanceladosIncompleto` — o
+-- aviso amarelo — mesmo com a loja vazia.
+--
+-- Por que derrubar a 6-args é seguro: a 7-args tem
+-- `p_payment_status text DEFAULT 'all'` (comentário da 20261028000000,
+-- linha 13: "chamadores existentes não sabem dele e seguem iguais") —
+-- após o DROP, uma chamada de 6 args resolve na 7 com o MESMO
+-- comportamento de antes ('all' = sem filtro de pagamento).
+--
+-- SEM BEGIN/COMMIT (regra da casa).
+--
+-- FICHA DE VERIFICAÇÃO pos-aplicação:
+--   SELECT count(*)::int AS sobrecargas FROM pg_proc WHERE proname = 'get_admin_orders_paged';
+--   -> espera 1
+--   SELECT * FROM get_admin_orders_paged(p_search=>'', p_status=>'cancelled',
+--     p_start_date=>'', p_end_date=>'', p_page=>0, p_page_size=>200);
+--   -> espera jsonb com total_count (a chamada de 6 args NÃO explode mais)
+--
+-- ROLLBACK MANUAL: versionado em
+-- rollback-manual-20261034000000_drop_overload_velho_get_admin_orders_paged.sql
+
+DROP FUNCTION IF EXISTS public.get_admin_orders_paged(text, text, text, text, integer, integer);

@@ -26,6 +26,7 @@ vi.mock("@/contexts/StoreContext", () => ({
     config: {
       shippingCoverage: "local",
       originCep: "38500-000",
+      localCepRange: "01310-100",
       enableCoupons: false,
     },
     isLoaded: true,
@@ -72,6 +73,11 @@ vi.mock("@/hooks/useCart", () => ({
     clearCart,
     selectedShippingOption: null,
     shippingCep: "38500-000",
+    // O efeito da reconciliação de CEP (onda 4 do laudo 3108) consome os
+    // setters de verdade do contexto; o dublê precisa deles para o efeito
+    // rodar sem quebrar (a limpeza dele não afeta o que estes testes afirmam).
+    setSelectedShippingOption: vi.fn(),
+    setShippingCep: vi.fn(),
   }),
 }));
 

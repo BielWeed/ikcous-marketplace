@@ -2,6 +2,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { mapProductFromDB } from "@/lib/mappers";
+import { precoVendido } from "@/lib/preco-vendido";
 import { supabase } from "@/lib/supabase";
 import type { CartItem, Product, ShippingOption } from "@/types";
 import React, {
@@ -34,6 +35,11 @@ export interface CartState {
   cartTotal: number;
   cartCount: number;
   shippingFee: number;
+  /** VERDADE quando o frete exibido é chute, não preço: provedor de cotação
+   *  real (Melhor Envio/Frenet) sem cotação escolhida. A tela mostra "a
+   *  calcular" em vez de pregarrar `config.shippingFee` no total (laudo
+   *  caça-bugs 30/08, achado 7). */
+  freteIndefinido: boolean;
   selectedShippingOption: ShippingOption | null;
   /** CEP para o qual a cotação de frete escolhida foi calculada. O banco precisa
    *  dele para localizar a cotação gravada e confirmar o valor do frete. */
@@ -745,11 +751,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const cartTotal = React.useMemo(() => {
     return cart.reduce((total, item) => {
-      const price = item.variantId
-        ? item.product.variants?.find((v) => v.id === item.variantId)
-            ?.priceOverride || item.product.price
-        : item.product.price;
-      return total + price * item.quantity;
+      // Laudo 31/08 (menor E): a regra do preço era copiada em quatro telas
+      // como `priceOverride || product.price` — e `||` trata 0 como
+      // ausência, cobrando o preço cheio de uma variação-brinde que o
+      // servidor (COALESCE) recusava com "os valores mudaram". A regra
+      // única agora mora em `precoVendido`.
+      return (
+        total +
+        precoVendido(
+          item.product,
+          item.product.variants?.find((v) => v.id === item.variantId),
+        ) *
+          item.quantity
+      );
     }, 0);
   }, [cart]);
 
@@ -784,6 +798,37 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     user,
   ]);
 
+  // FRETE CHUTADO (laudo caça-bugs 30/08, achado 7): com provedor de cotação
+  // real e nenhuma cotação escolhida, o número em `shippingFee` é o fallback
+  // de fábrica — não é preço. A tela usa esta bandeira para dizer "a
+  // calcular" em vez de apresentar um total que vai mudar depois.
+  const freteIndefinido = React.useMemo(() => {
+    if (cart.length === 0) return false;
+    const hasFreeShippingItem = cart.some((item) => item.product.freeShipping);
+    if (hasFreeShippingItem) return false;
+    if (
+      config.freeShippingMin > 0 &&
+      cartTotal >= config.freeShippingMin &&
+      user
+    )
+      return false;
+    if (selectedShippingOption) return false;
+    // Laudo caça-bugs 31/08 (B1): sem CEP de origem a calculate-shipping
+    // recusa cotar QUALQUER coisa — taxa fixa incluída
+    // (`validarOrigemEFrete` checa a origem ANTES da taxa). O "R$ 15,00"
+    // exibido era preço mentiroso: sem origem o frete é "a calcular" mesmo,
+    // e o Finalizar fica travado até o lojista configurar.
+    return !config.originCep?.trim() || config.shippingProvider !== "flat_fee";
+  }, [
+    cart,
+    cartTotal,
+    config.freeShippingMin,
+    config.originCep,
+    config.shippingProvider,
+    selectedShippingOption,
+    user,
+  ]);
+
   const cartTotalRef = useRef(cartTotal);
   const cartCountRef = useRef(cartCount);
   useEffect(() => {
@@ -802,6 +847,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       cartTotal,
       cartCount,
       shippingFee,
+      freteIndefinido,
       selectedShippingOption,
       shippingCep,
     }),
@@ -811,6 +857,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       cartTotal,
       cartCount,
       shippingFee,
+      freteIndefinido,
       selectedShippingOption,
       shippingCep,
     ],

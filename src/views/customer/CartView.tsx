@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
 import { useOrders } from "@/hooks/useOrders";
 import { useProducts } from "@/hooks/useProducts";
+import { precoVendido } from "@/lib/preco-vendido";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem, Order, Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -84,6 +85,7 @@ export function CartView({
   const {
     cart: ctxCart,
     shippingFee: ctxShippingFee,
+    freteIndefinido,
     updateQuantity,
     removeFromCart,
     clearCart,
@@ -234,11 +236,16 @@ export function CartView({
     () =>
       cart.reduce((sum, item) => {
         if (!item?.product?.price) return sum;
-        const price = item.variantId
-          ? item.product.variants?.find((v) => v.id === item.variantId)
-              ?.priceOverride || item.product.price
-          : item.product.price;
-        return sum + price * (item.quantity || 0);
+        // Laudo 31/08 (menor E): regra única do preço em preco-vendido.ts —
+        // `||` cobrava o preço cheio de variação com override ZERO.
+        return (
+          sum +
+          precoVendido(
+            item.product,
+            item.product.variants?.find((v) => v.id === item.variantId),
+          ) *
+            (item.quantity || 0)
+        );
       }, 0),
     [cart],
   );
@@ -289,8 +296,11 @@ export function CartView({
     const diff = isRuleActive
       ? Math.max(0, config.freeShippingMin - subtotal)
       : 0;
-    const ship = ctxShippingFee;
-    const tot = subtotal + ship;
+    // FRETE INDEFINIDO (laudo caça-bugs 30/08, achado 7): com provedor de
+    // cotação real e nenhuma cotação escolhida, `ctxShippingFee` é o chute de
+    // fábrica — exibir `null` ("A calcular") e NÃO somar frete ao total.
+    const ship = freteIndefinido ? null : ctxShippingFee;
+    const tot = subtotal + (ship ?? 0);
     const save = ship === 0 ? config.shippingFee || 0 : 0;
     const nearly = Boolean(isRuleActive && progress >= 70 && progress < 100);
 
@@ -309,6 +319,7 @@ export function CartView({
     hasFreeShippingItem,
     cart.length,
     ctxShippingFee,
+    freteIndefinido,
     user,
   ]);
 
@@ -431,9 +442,14 @@ export function CartView({
                       </div>
                     )}
 
-                    {user && cart.length > 0 && (
+                    {/* Frete indefinido esconde o cartão de progresso: com
+                        `shipping ?? 0` ele anunciava "Frete VIP Liberado" em
+                        verde enquanto o rodapé dizia "A calcular" — duas
+                        frases opostas na mesma tela (revisão da frente
+                        horário-e-convidado, achado baixa). */}
+                    {user && cart.length > 0 && !freteIndefinido && (
                       <ShippingProgress
-                        shipping={shipping}
+                        shipping={shipping ?? 0}
                         savings={savings}
                         progressPercent={progressPercent}
                         amountToFree={amountToFree}
@@ -585,10 +601,16 @@ export function CartView({
                             "font-black tracking-tight",
                             shipping === 0
                               ? "text-emerald-500"
-                              : "text-zinc-950",
+                              : shipping === null
+                                ? "text-zinc-500"
+                                : "text-zinc-950",
                           )}
                         >
-                          {shipping === 0 ? "GRÁTIS" : formatCurrency(shipping)}
+                          {shipping === 0
+                            ? "GRÁTIS"
+                            : shipping === null
+                              ? "A calcular"
+                              : formatCurrency(shipping)}
                         </span>
                       </div>
 

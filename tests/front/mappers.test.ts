@@ -304,6 +304,20 @@ describe("mapVariantFromDB", () => {
       mapVariantFromDB(variante({ price_override: 89.9 })).priceOverride,
     ).toBe(89.9);
   });
+
+  it("override ZERO é um preço, não ausência (laudo 31/08, E2 — achado BLOQUEANTE da revisão do PR #370)", () => {
+    // O `? :` de antes tratava 0 como ausência: o zero do banco virava
+    // undefined ANTES de chegar a `precoVendido`, e a variação-brinde voltava
+    // a ser exibida pelo preço cheio depois de qualquer recarga de página —
+    // com a RPC recusando o pedido no último clique ("os valores mudaram").
+    expect(
+      mapVariantFromDB(variante({ price_override: 0 })).priceOverride,
+    ).toBe(0);
+    // null/undefined continuam sendo ausência de verdade (usa o preço do produto).
+    expect(
+      mapVariantFromDB(variante({ price_override: null })).priceOverride,
+    ).toBeUndefined();
+  });
 });
 
 describe("mapOrderFromDB", () => {

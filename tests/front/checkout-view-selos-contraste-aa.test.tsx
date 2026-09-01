@@ -43,6 +43,7 @@ vi.mock("@/contexts/StoreContext", () => ({
     config: {
       shippingCoverage: "local",
       originCep: "38500-000",
+      localCepRange: "01310-100",
       enableCoupons: true,
       whatsappNumber: "34999998888",
     },
@@ -104,14 +105,25 @@ vi.mock("@/hooks/useCart", () => ({
     addToCart,
     selectedShippingOption: null,
     shippingCep: "38500-000",
+    // Setters consumidos pelo efeito da reconciliação de CEP (onda 4 do
+    // laudo 3108); a limpeza dele não afeta o que estes testes afirmam.
+    setSelectedShippingOption: vi.fn(),
+    setShippingCep: vi.fn(),
   }),
 }));
 
-vi.mock("@/hooks/useCoupons", () => ({
-  useCoupons: () => ({
-    validateCoupon: vi.fn(async () => couponResultado),
-  }),
-}));
+vi.mock("@/hooks/useCoupons", () => {
+  // O validateCoupon REAL é `useCallback([])` — estável entre renders. O
+  // dublê precisa ser estável TAMBÉM: o efeito de revalidação do cupom
+  // (laudo 31/08, menor E) depende dele, e uma função nova a cada render
+  // virava revalidação a cada render — loop infinito de render.
+  let validateCoupon: ReturnType<typeof vi.fn> | null = null;
+  return {
+    useCoupons: () => ({
+      validateCoupon: (validateCoupon ??= vi.fn(async () => couponResultado)),
+    }),
+  };
+});
 
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: (

@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  buscarComTempo,
   calculateSmartFallback,
   flatFeeConfigurada,
   getCartHash,
@@ -1025,4 +1026,61 @@ Deno.test("montarLogDaCotacaoFlatFee - resposta SEM opção nenhuma: status empt
 Deno.test("montarLogDaCotacaoFlatFee - cart ausente vira [] (a coluna é NOT NULL)", () => {
   const log = montarLogDaCotacaoFlatFee("38500000", "35000000", "flat_fee", null, 1);
   assertEquals(log.cart_items, []);
+});
+
+// LAUDO 31/08 (D2): o Melhor Envio/Frenet podia pendurar a cotação para
+// sempre (sem timeout — o DNS do ME já caiu de verdade, #356) e o catch de
+// topo devolvia `err.message` CRU ao navegador — texto de API de terceiros
+// (e de banco) indo para o cliente.
+
+Deno.test("buscarComTempo - fetch que demora demais é ABORTADO no tempo", async () => {
+  let foiAbortado = false;
+  const buscarLento = (_url: string, init?: RequestInit) =>
+    new Promise<Response>((_ok, falhou) => {
+      init?.signal?.addEventListener("abort", () => {
+        foiAbortado = true;
+        falhou(new DOMException("The operation was aborted.", "AbortError"));
+      });
+    });
+
+  let saida: unknown = null;
+  try {
+    await buscarComTempo(buscarLento as any, "https://x", {}, 10);
+  } catch (e) {
+    saida = e;
+  }
+  assertEquals(foiAbortado, true);
+  assertEquals((saida as Error)?.name, "AbortError");
+});
+
+Deno.test("buscarComTempo - fetch rápido passa e leva o sinal", async () => {
+  let sinalRecebido: AbortSignal | null = null;
+  const buscarBom = (_url: string, init?: RequestInit) => {
+    sinalRecebido = init?.signal ?? null;
+    return Promise.resolve(new Response("ok"));
+  };
+  const resposta = await buscarComTempo(buscarBom as any, "https://x", {}, 1000);
+  assertEquals(await resposta.text(), "ok");
+  assertEquals(sinalRecebido instanceof AbortSignal, true);
+});
+
+Deno.test("o catch de topo NÃO devolve o texto cru do erro ao navegador", async () => {
+  const supabaseFurado = {
+    from: () => {
+      throw new Error(
+        'password authentication failed for user "supabase_admin"',
+      );
+    },
+  };
+  const req = new Request("https://edge/calculate-shipping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cep: "01310100", cart: [{ id: "p1", quantity: 1 }] }),
+  });
+  const resposta = await handler(req, { supabase: supabaseFurado });
+  const corpo = await resposta.json();
+  assertEquals(resposta.status, 500);
+  const texto = JSON.stringify(corpo);
+  assertEquals(texto.includes("password authentication"), false);
+  assertEquals(texto.includes("Não foi possível calcular o frete"), true);
 });

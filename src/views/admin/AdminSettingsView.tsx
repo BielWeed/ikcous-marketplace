@@ -8,7 +8,6 @@ import {
   Palette,
   RefreshCw,
   Save,
-  Send,
 } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -44,6 +43,9 @@ const StoreLocationSection = memo(function StoreLocationSection() {
   const { config, updateConfig } = useStore();
   const [storeCity, setStoreCity] = useState(config.storeCity ?? "");
   const [storeState, setStoreState] = useState(config.storeState ?? "");
+  const [businessHours, setBusinessHours] = useState(
+    config.businessHours ?? "",
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   // A tela pode montar antes do StoreContext terminar de carregar o config
@@ -52,7 +54,8 @@ const StoreLocationSection = memo(function StoreLocationSection() {
   useEffect(() => {
     setStoreCity(config.storeCity ?? "");
     setStoreState(config.storeState ?? "");
-  }, [config.storeCity, config.storeState]);
+    setBusinessHours(config.businessHours ?? "");
+  }, [config.storeCity, config.storeState, config.businessHours]);
 
   const handleSave = async () => {
     if (isSaving) return;
@@ -64,11 +67,16 @@ const StoreLocationSection = memo(function StoreLocationSection() {
       const salvou = await updateConfig({
         storeCity: storeCity.trim() || null,
         storeState: storeState.trim().toUpperCase() || null,
+        // Horário de atendimento no mesmo molde (laudo caça-bugs 30/08:
+        // a sentinela 'Seg-Sáb: 9h às 18h' chegou a ser publicada como se
+        // fosse dado real). Vazio = a loja não disse, e a vitrine omite o
+        // bloco — nunca publica expediente que ninguém digitou.
+        businessHours: businessHours.trim() || null,
       });
       // O toast de erro já sai de dentro do StoreContext (ADMIN-010, #94) --
       // aqui só não seguimos em frente quando o retorno não for `true`.
       if (!salvou) return;
-      toast.success("Localização da loja salva");
+      toast.success("Dados da loja salvos");
     } finally {
       setIsSaving(false);
     }
@@ -81,15 +89,15 @@ const StoreLocationSection = memo(function StoreLocationSection() {
           <MapPin className="size-5 text-admin-gold" strokeWidth={2.5} />
         </div>
         <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">
-          Localização da Loja
+          Localização e Horário da Loja
         </h2>
       </div>
 
       <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
         <div className="flex flex-col gap-3">
           <p className="text-left text-[9.5px] leading-snug text-zinc-400">
-            Cidade e estado aparecem para quem compra. Deixe em branco o que a
-            loja ainda não quer mostrar -- o app omite, nunca inventa.
+            Cidade, estado e horário aparecem para quem compra. Deixe em branco
+            o que a loja ainda não quer mostrar -- o app omite, nunca inventa.
           </p>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_100px]">
@@ -126,6 +134,23 @@ const StoreLocationSection = memo(function StoreLocationSection() {
                 className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-center font-mono text-xs font-semibold uppercase text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
               />
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="store-business-hours"
+              className="text-xs font-semibold text-zinc-300"
+            >
+              Horário de atendimento
+            </label>
+            <input
+              id="store-business-hours"
+              type="text"
+              value={businessHours}
+              onChange={(e) => setBusinessHours(e.target.value)}
+              placeholder="Ex: Ter a Sáb, 9h às 18h"
+              className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-xs font-semibold text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
+            />
           </div>
 
           <div className="mt-1 flex justify-end">
@@ -533,74 +558,14 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             </div>
 
             {/*
-              A porta das Notificacoes mora AQUI desde 24/08/2026, e antes nao
-              morava em lugar nenhum que o celular alcancasse.
-
-              Medido no painel rodando, em 375px, depois que o cartao repetido
-              saiu da tela de Clientes: ZERO portas visiveis para `admin-push`
-              no Painel, em Ajustes e em Clientes. O botao "Push" da barra
-              lateral nao conta — o `aside` e' `lg:flex` e some abaixo de
-              1024px. E o sino do topo, naquele dia, so levava aqui com ZERO
-              pedido e ZERO pergunta pendentes; com pendencia ia a Pedidos, de
-              proposito. Sobrava um caminho de quatro toques por dentro do
-              menu de um cliente.
-
-              Desde entao o sino deixou de escolher destino: ele leva SEMPRE
-              as Notificacoes do lojista, que sao outra tela — a que RECEBE
-              aviso. Esta aqui e a que ENVIA, e por isso o cartao se chama
-              "Avisar clientes": duas telas nao podem dividir o mesmo nome no
-              mesmo painel.
-
-              Ajustes e' o lugar certo por dois motivos que ja existiam: as
-              telas irmas (Banners, Carrosseis) moram aqui, e o Voltar de
-              `admin-push` ja apontava para ca. A tela tinha o pai sem ter o
-              filho.
+              A porta "Avisar clientes" morou AQUI de 24/08 a 30/08/2026 e
+              SAIU por decisão do Gabriel: o lugar dela é a tela de Clientes
+              (componente CustomerBanners), ao lado de "Canais de
+              Atendimento". O motivo que a trouxe para cá em 24/08 (zero
+              portas visíveis para `admin-push` no celular) já não existe: o
+              sino parou de escolher destino. O Voltar de `admin-push`
+              continua sensível à origem (pai-da-tela-do-admin).
             */}
-            <div className="space-y-3 delay-100 duration-300 animate-in fade-in slide-in-from-bottom-2">
-              <h2 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                Clientes &amp; Avisos
-              </h2>
-              <div className="grid grid-cols-1 gap-3">
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onNavigate("admin-push")}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onNavigate("admin-push");
-                    }
-                  }}
-                  className="group relative cursor-pointer overflow-hidden rounded-3xl border border-white/5 bg-zinc-950/40 p-5 shadow-xl transition-all duration-500 hover:border-blue-500/30 hover:bg-zinc-900/30 active:scale-[0.98]"
-                >
-                  {/* Ambient glow */}
-                  <div className="absolute -bottom-6 -right-6 size-24 rounded-full bg-blue-500/5 blur-2xl transition-all duration-700 group-hover:bg-blue-500/15" />
-
-                  <div className="relative flex h-full flex-col justify-between gap-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-blue-500/20 bg-blue-500/10 text-blue-400 transition-colors duration-300 group-hover:bg-blue-500 group-hover:text-black">
-                        <Send className="size-5" />
-                      </div>
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5 text-zinc-400 transition-all duration-300 group-hover:border-transparent group-hover:bg-blue-500 group-hover:text-black">
-                        <ArrowUpRight className="size-4 stroke-[2.5]" />
-                      </div>
-                    </div>
-                    <div>
-                      <span className="mb-1 block text-[9px] font-black uppercase tracking-widest text-blue-500">
-                        Engajamento
-                      </span>
-                      <h3 className="text-base font-black leading-tight tracking-tight text-white">
-                        Avisar clientes
-                      </h3>
-                      <p className="mt-1 text-xs text-zinc-500">
-                        Envie avisos no celular dos clientes — para todos, para
-                        quem compra sempre ou para uma pessoa só.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
 
             <StoreLocationSection />
 

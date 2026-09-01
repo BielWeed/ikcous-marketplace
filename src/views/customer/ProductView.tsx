@@ -13,6 +13,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { useReviews } from "@/hooks/useReviews";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { cn } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -547,8 +548,12 @@ export const ProductView = React.memo(function ProductView({
     )
     .filter(Boolean);
 
+  // Laudo 31/08 (menor E): `||` tratava o override ZERO como ausência — o
+  // preço exibido de uma variação-brinde era o do produto. `??` só cai no
+  // acumulado quando a variação não tem override de verdade (null/undefined),
+  // a mesma semântica do COALESCE do servidor.
   const currentPrice = selectedVariantObjects.reduce(
-    (acc, v) => v?.priceOverride || acc,
+    (acc, v) => v?.priceOverride ?? acc,
     product.price,
   );
   const currentStock =
@@ -1089,13 +1094,18 @@ export const ProductView = React.memo(function ProductView({
             </div>
           )}
 
-          <button
-            onClick={handleWhatsApp}
-            title="Dúvidas no WhatsApp"
-            className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600 transition-all duration-300 hover:bg-emerald-500 hover:text-white active:scale-95"
-          >
-            <MessageCircle className="size-5" />
-          </button>
+          {/* O botão de WhatsApp só existe com número configurado pela loja —
+              sem cadastro ele SOME, nunca aponta para número inventado
+              (laudo caça-bugs 30/08 + decisão do Gabriel no mesmo dia). */}
+          {lojaTemWhatsapp(config.whatsappNumber) && (
+            <button
+              onClick={handleWhatsApp}
+              title="Dúvidas no WhatsApp"
+              className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600 transition-all duration-300 hover:bg-emerald-500 hover:text-white active:scale-95"
+            >
+              <MessageCircle className="size-5" />
+            </button>
+          )}
 
           <button
             onClick={handleAddToCart}
@@ -1387,6 +1397,10 @@ export const ProductView = React.memo(function ProductView({
                 ))}
           </div>
         </div>
+
+        {/* Reserva o fim da página para as barras fixas (compra dockada +
+            navegação inferior) não cobrirem a última fileira de cards. */}
+        <div aria-hidden="true" className="h-44 md:h-36" />
       </div>
 
       {typeof window !== "undefined" &&

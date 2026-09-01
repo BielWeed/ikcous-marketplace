@@ -300,14 +300,20 @@ describe("mensagemAmigavelErroOtp — as causas do get_orders_by_otp_v1", () => 
   });
 });
 
-describe("createOrder toasta a versão traduzida, nunca o err.message cru (Ponto 2)", () => {
+describe("createOrder RELANÇA a recusa sem toast — o aviso único é da tela (Ponto 2)", () => {
+  // Laudo 31/08 (menor E): falha de criação empilhava DOIS toasts — este
+  // hook toastava E o CheckoutView toastava de novo, os dois com a MESMA
+  // tradução. O aviso único mora na tela, que é quem acrescenta o painel da
+  // recusa ao lado do toast; a garantia "nunca texto cru no toast" continua
+  // provada LÁ (checkout-view-erro-de-pedido-traduzido.test.tsx, render de
+  // verdade) e na tradução pura (describe acima).
   beforeEach(() => {
     vi.mocked(supabase.rpc).mockReset();
     vi.mocked(supabase.functions.invoke).mockReset();
     vi.mocked(toast.error).mockReset();
   });
 
-  it("RPC recusa com P0001 em português: o toast mostra o texto da RPC (já seguro)", async () => {
+  it("RPC recusa com P0001 em português: o erro SOBE sem toast do hook", async () => {
     vi.mocked(supabase.rpc).mockResolvedValue({
       data: null,
       error: { code: "P0001", message: "Cupom PROMO10 inválido ou expirado." },
@@ -316,12 +322,10 @@ describe("createOrder toasta a versão traduzida, nunca o err.message cru (Ponto
 
     await expect(createOrder(DADOS_MINIMOS)).rejects.toThrow();
 
-    expect(toast.error).toHaveBeenCalledWith(
-      "Cupom PROMO10 inválido ou expirado.",
-    );
+    expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it("RPC recusa com erro técnico cru: o toast NUNCA mostra o texto técnico", async () => {
+  it("RPC recusa com erro técnico cru: nada de toast do hook — o erro cru segue só no console de quem chamou", async () => {
     vi.mocked(supabase.rpc).mockResolvedValue({
       data: null,
       error: {
@@ -334,10 +338,7 @@ describe("createOrder toasta a versão traduzida, nunca o err.message cru (Ponto
 
     await expect(createOrder(DADOS_MINIMOS)).rejects.toThrow();
 
-    expect(toast.error).toHaveBeenCalledTimes(1);
-    const mensagemMostrada = String(vi.mocked(toast.error).mock.calls[0][0]);
-    expect(mensagemMostrada).not.toContain("constraint");
-    expect(mensagemMostrada).not.toContain("duplicate key");
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });
 

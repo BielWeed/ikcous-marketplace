@@ -26,6 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mapOrderFromDB, mapProductFromDB } from "@/lib/mappers";
+import { precoVendido } from "@/lib/preco-vendido";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
 import type { Address, CartItem, Order, View } from "@/types";
@@ -979,8 +980,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                   : null;
                                 const isVariantMissing =
                                   hasVariantId && !variant;
+                                // Laudo 31/08 (menor E): `||` tratava o
+                                // override ZERO como ausência e exibia o
+                                // preço cheio de uma variação-brinde.
                                 const unitPrice =
-                                  variant?.priceOverride || item.product.price;
+                                  precoVendido(item.product, variant);
 
                                 return (
                                   <TableRow
@@ -1066,8 +1070,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                         : null;
                                       return (
                                         acc +
-                                        (variant?.priceOverride ||
-                                          item.product.price) *
+                                        precoVendido(item.product, variant) *
                                           item.quantity
                                       );
                                     }, 0),

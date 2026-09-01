@@ -1,0 +1,20 @@
+-- ROLLBACK MANUAL de 20261040000000_a_idempotencia_insere_a_chave
+-- (conserto de execução das 20261038/39, 31/08/2026).
+--
+-- ⚠️ NÃO RESTAURA POR DESENHO: o estado anterior é uma função que NÃO CRIA
+-- PEDIDO (INSERT com coluna sem expressão — toda chamada com a chave morre
+-- em 'INSERT has more target columns than expressions'). Reverter devolve a
+-- quebra que impede o checkout do front com idempotência e REABRE a porta
+-- sem idempotência (achado A1 do laudo).
+--
+-- Se ainda assim precisar voltar ao estado das 38/39:
+--   1. Re-aplique os CREATE OR REPLACE das v23/v24 conforme
+--      rollback-manual-20261039000000 (corpos com idempotência, SEM o
+--      portão) ou as 20261038000000/39 originais;
+--   2. Recrie as sobrecargas antigas (12 argumentos, sem a chave) com os
+--      corpos da 20261025000000 (última mão nelas) — assinatura:
+--      create_marketplace_order_v23/v24(jsonb, numeric, numeric, text, uuid,
+--      text, text, text, text, jsonb, text, text).
+--
+-- Esta migration NÃO faz DML e NÃO muda schema de tabela: só corpos de
+-- função e DROP de sobrecarga. SEM BEGIN/COMMIT (regra da casa).

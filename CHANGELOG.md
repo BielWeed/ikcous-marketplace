@@ -7,6 +7,53 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.14.0] - 2026-09-01
+
+A semana que deixou a loja mais difícil de enganar e mais fácil de usar. No
+servidor: pedido não nasce em dobro, voto útil não pode mais ser fabricado,
+cupom exclusivo fica exclusivo de verdade, e entrega local passa a valer só
+para quem está na cidade. Na loja: PWA abre sem internet de verdade, o
+convite de notificações não trava mais o botão Finalizar, e o cupom aplicado
+sobrevive à volta ao carrinho.
+
+### Para quem COMPRA
+
+- **O pedido não nasce em dobro quando a rede cai.** Se a resposta se
+  perder depois de gravado, a retentativa devolve o pedido que já existe —
+  estoque e cupom não são debitados duas vezes.
+- **O cupom aplicado e o endereço digitado não somem mais** quando você
+  volta ao carrinho para conferir algo. E, com a internet de volta, o cupom
+  revalida sozinho — o desconto real aparece sem precisar reaplicar.
+- **A loja abre e recarrega sem internet.** A PWA agora serve a vitrine do
+  cache: sem sinal, abrir ou recarregar continua mostrando os produtos
+  (antes: tela branca). E o aviso de update não apaga mais o cache na
+  primeira visita de cada celular.
+- **O botão Finalizar não fica mais escondido** atrás do convite de
+  notificações — no carrinho e no checkout o convite sai do caminho.
+- **Entrega local só para quem está na cidade** (e agora o servidor confere:
+  convidado de fora é recusado, e a cotação de frete tem de ser do mesmo
+  CEP do endereço).
+
+### Para quem VENDE
+
+- **Voto útil com memória no servidor.** Cada cliente logado conta um voto
+  por avaliação — na API, não só no botão. Inflar avaliação pela força
+  bruta deixou de existir.
+- **Cupom exclusivo voltou a ser exclusivo.** A lista de cupons ativos não
+  é mais legível por visitantes; quem valida no checkout continua sendo o
+  servidor.
+- **Erros de rede não valem venda:** frete de transportadora só entra no
+  pedido se a cotação foi de verdade, do servidor, para o carrinho certo.
+
+### Para quem opera o molde
+
+- **Idempotência da criação de pedido** (p_idempotency_key nas v23/v24) e
+  **gate de entrega no servidor** (cobertura local, reconciliação CEP) —
+  migrations 20261035-40 + 50-52; ver fichas nos cabeçalhos.
+- **Ghost Purge aposentado** e **navegação do service worker cache-first**:
+  a PWA nasce viva e sobrevive offline; purge nuclear não roda sem rede.
+- Faxina: sonda de estoque quebrada (check_stock_v1) removida da porta.
+
 ## [1.13.0] - 2026-08-30
 
 A loja avisa o cliente na hora certa (cada passo do pedido, e o "Pagamento

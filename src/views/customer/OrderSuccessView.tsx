@@ -1,5 +1,7 @@
 import { Button } from "@/components/ui/button";
+import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import type { View } from "@/types";
 import { motion } from "framer-motion";
 import { ArrowRight, CheckCircle2, Home, Package } from "lucide-react";
@@ -10,6 +12,12 @@ interface OrderSuccessViewProps {
 
 export function OrderSuccessView({ onNavigate }: OrderSuccessViewProps) {
   const { user } = useAuth();
+  const { config } = useStore();
+  // Laudo 31/08 (C2): a frase do convidado mandava falar pelo WhatsApp —
+  // mas a tela não tem botão nenhum e a loja pode não ter número (decisão
+  // de 30/08: WhatsApp é opcional). A promessa só menciona o canal que
+  // EXISTE. Mesma régua de dígitos do ProductView/OrderDetails/Profile.
+  const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
 
   return (
     <div className="flex min-h-full flex-col items-center justify-center bg-white px-6 py-12 text-center">
@@ -28,14 +36,18 @@ export function OrderSuccessView({ onNavigate }: OrderSuccessViewProps) {
       {/* Item 11 do laudo de 29/08: a promessa tinha que virar verdade — a
           trigger tr_pedido_avisa_o_cliente (20261026000000) insere um aviso no
           sino a cada mudança de status. Como o convidado não tem conta (logo
-          não tem sino), a promessa é POR VERDADE: logado lê o aviso no app;
-          convidado lê o caminho que existe de verdade, o código do
-          comprovante em "Meus Pedidos". */}
+          não tem sino), a promessa é POR VERDADE: logado lê o aviso no app.
+          Laudo caça-bugs 30/08 (achado 3): a frase antiga do convidado
+          prometia autoatendimento que não existe — a busca de pedido exige
+          e-mail, que o convidado não informou. Agora o convidado lê o que é
+          real: guardar o código e falar com a loja pelo WhatsApp. */}
       <p className="mb-12 max-w-xs leading-relaxed text-zinc-500">
         Seu pedido foi recebido com sucesso e já está sendo processado.{" "}
         {user
           ? "A cada atualização — preparo, envio, entrega — você recebe um aviso aqui no app."
-          : 'Com o código do comprovante, você acompanha cada atualização em "Meus Pedidos".'}
+          : lojaTemWhatsappAgora
+            ? "Guarde o código do comprovante: é por ele que a loja localiza o seu pedido. Para acompanhar, fale com a loja pelo WhatsApp."
+            : "Guarde o código do comprovante: é por ele que a loja localiza o seu pedido. Guarde também o contato da loja — é por lá que você acompanha."}
       </p>
 
       <div className="grid w-full max-w-xs gap-4">

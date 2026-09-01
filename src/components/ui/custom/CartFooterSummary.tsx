@@ -2,12 +2,14 @@ import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
 import { motion } from "framer-motion";
 import { ArrowRight, Sparkles as SparklesIcon } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 interface CartFooterSummaryProps {
   cartCount: number;
-  shipping: number;
+  /** `null` = frete indefinido (cotação real ainda não escolhida): a barra
+   *  mostra "A calcular" em vez de um valor chutado (laudo caça-bugs 30/08). */
+  shipping: number | null;
   total: number;
   onNavigate: (view: View) => void;
 }
@@ -119,10 +121,18 @@ export function CartFooterSummary({
               <span
                 className={cn(
                   "text-xs font-black leading-none tracking-tight",
-                  shipping === 0 ? "text-emerald-500" : "text-zinc-600",
+                  shipping === 0
+                    ? "text-emerald-500"
+                    : shipping === null
+                      ? "text-zinc-500"
+                      : "text-zinc-600",
                 )}
               >
-                {shipping === 0 ? "GRÁTIS" : formatCurrency(shipping)}
+                {shipping === 0
+                  ? "GRÁTIS"
+                  : shipping === null
+                    ? "A calcular"
+                    : formatCurrency(shipping)}
               </span>
             </div>
 

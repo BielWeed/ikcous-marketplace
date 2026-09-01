@@ -8,7 +8,6 @@ import { haptic } from "@/utils/haptic";
 import useEmblaCarousel from "embla-carousel-react";
 import {
   Check,
-  Clock,
   Flame,
   Heart,
   Loader2,
@@ -28,24 +27,6 @@ interface PremiumOffersProps {
   title?: string;
 }
 
-// Helper to get time remaining until midnight
-function getTimeRemaining() {
-  const now = new Date();
-  const midnight = new Date();
-  midnight.setHours(24, 0, 0, 0);
-  const diff = midnight.getTime() - now.getTime();
-
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  const minutes = Math.floor((diff / (1000 * 60)) % 60);
-  const seconds = Math.floor((diff / 1000) % 60);
-
-  return {
-    hours: String(hours).padStart(2, "0"),
-    minutes: String(minutes).padStart(2, "0"),
-    seconds: String(seconds).padStart(2, "0"),
-  };
-}
-
 export const PremiumOffers = React.memo(function PremiumOffers({
   products,
   favorites,
@@ -57,7 +38,6 @@ export const PremiumOffers = React.memo(function PremiumOffers({
 }: PremiumOffersProps) {
   const { config } = useStore();
   const { prefetchView } = usePrefetchOnHover();
-  const [timeLeft, setTimeLeft] = useState(getTimeRemaining());
   const [activeHeroIndex, setActiveHeroIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 
@@ -88,14 +68,6 @@ export const PremiumOffers = React.memo(function PremiumOffers({
       emblaApi.off("reInit", onSelect);
     };
   }, [emblaApi, onSelect]);
-
-  // Ticking countdown timer
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeLeft(getTimeRemaining());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Auto-play timer for hero rotation
   useEffect(() => {
@@ -167,15 +139,11 @@ export const PremiumOffers = React.memo(function PremiumOffers({
           </h2>
         </div>
 
-        {/* Ultra-Compact Countdown Timer Badge */}
-        <div className="flex shrink-0 select-none items-center gap-1.5 rounded-full border border-secondary/20 bg-secondary/10 px-2.5 py-1 font-mono text-[10px] font-extrabold text-primary shadow-sm backdrop-blur-md">
-          <Clock className="size-3 shrink-0 animate-pulse text-primary" />
-          <span>{timeLeft.hours}</span>
-          <span className="animate-pulse font-normal text-primary/40">:</span>
-          <span>{timeLeft.minutes}</span>
-          <span className="animate-pulse font-normal text-primary/40">:</span>
-          <span>{timeLeft.seconds}</span>
-        </div>
+        {/* Ultra-Compact Countdown Timer Badge — APOSENTADO (laudo ofensiva
+            3108, achado N8; decisão do Gabriel: "faça você"). O contador zera
+            à meia-noite e recomeçava todos os dias: urgência fabricada, sem
+            prazo real por trás. Se um dia as ofertas ganharem fim de
+            verdade no banco, um contador pode voltar amarrado a esse dado. */}
       </div>
 
       {/* Main Grid: Hero Offer Carousel */}
