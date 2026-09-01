@@ -527,10 +527,13 @@ export function useReviews() {
   );
 
   const deleteReview = useCallback(
-    async (reviewId: string) => {
+    async (reviewId: string): Promise<boolean> => {
+      // Laudo 0109 (A-10): devolve booleano — true só quando o banco
+      // confirmou; false em falha (o toast de erro continua saindo daqui).
+      // Sem o retorno, o chamador vibrava "sucesso" em falha igual.
       if (!isAdmin) {
         toast.error("Permissão negada");
-        return;
+        return false;
       }
       try {
         const { error } = await supabase
@@ -542,9 +545,11 @@ export function useReviews() {
 
         setAdminReviews((prev) => prev.filter((r) => r.id !== reviewId));
         toast.success("Avaliação removida.");
+        return true;
       } catch (error) {
         console.error("Error deleting review:", error);
         toast.error("Erro ao remover avaliação.");
+        return false;
       }
     },
     [isAdmin],

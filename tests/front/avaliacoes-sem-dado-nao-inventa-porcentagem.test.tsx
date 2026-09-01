@@ -69,6 +69,19 @@ vi.mock("@/hooks/useReviews", () => ({
   }),
 }));
 
+// Laudo 0109 (A-4): a view importa o supabase para a contagem da fila de
+// moderação — sem este dublê, o cliente REAL estoura no jsdom. Estes testes
+// não olham a fila, então count 0 basta.
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({
+        eq: () => Promise.resolve({ count: 0, error: null }),
+      }),
+    }),
+  },
+}));
+
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: { enableReviews: true },

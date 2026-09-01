@@ -16,6 +16,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
 import {
@@ -145,8 +146,14 @@ export const AdminCouponsView = memo(function AdminCouponsView({
     }
   }, [active]);
 
-  const handleCopyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
+  // Laudo 0109 (A-8): a cópia só comemora se DEU certo — sem await/catch,
+  // "copiado" em verde aparecia até com a API recusando.
+  const handleCopyCode = async (code: string) => {
+    const ok = await copiarParaClipboard(code);
+    if (!ok) {
+      toast.error("Não foi possível copiar.");
+      return;
+    }
     setCopiedCode(code);
     toast.success(`Código "${code}" copiado!`);
     setTimeout(() => setCopiedCode(null), 2000);
@@ -168,7 +175,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
       await deleteCoupon(couponToDelete);
     } catch (error) {
       console.error("Error deleting coupon:", error);
-      toast.error("Erro ao excluir o cupom.");
+      // o toast de erro já foi dado no hook (useCoupons)
     } finally {
       setCouponToDelete(null);
     }
@@ -404,8 +411,8 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                     <div className="mt-3 pt-3 border-t border-white/5 text-[11px] leading-relaxed text-zinc-500 text-left space-y-1.5">
                       <p>
                         Ativando esta opção, seus clientes poderão digitar
-                        códigos de cupom (ex: GANHE10) no checkout para
-                        receber descontos especiais.
+                        códigos de cupom (ex: GANHE10) no checkout para receber
+                        descontos especiais.
                       </p>
                       <p>
                         Se desativado, o campo de cupom ficará totalmente oculto

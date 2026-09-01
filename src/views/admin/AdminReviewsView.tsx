@@ -12,6 +12,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useReviews } from "@/hooks/useReviews";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { supabase } from "@/lib/supabase";
 import { getAvatarGradient } from "@/lib/utils";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -157,6 +158,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   const [globaisDisponiveis, setGlobaisDisponiveis] = useState(true);
   const [globalTotal, setGlobalTotal] = useState(0);
   const [globalAvgRating, setGlobalAvgRating] = useState("0.0");
+  // Laudo 0109 (A-4): contagem REAL da fila de moderação, direto do banco —
+  // a lista carrega uma página (10 por página) e não enxerga pendentes das
+  // outras; o cartão que contava a página dizia "fila vazia" em plena fila.
+  const [pendentesNoBanco, setPendentesNoBanco] = useState(0);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [viewMode, setViewMode] = useLocalStorage<"detailed" | "compact">(
     "admin_reviews_view_mode",
@@ -196,6 +201,17 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           if (pageToFetch > maxPage) {
             setPage(maxPage);
           }
+        }
+
+        // Mesmo recarregamento da lista: aprovar/recusar/apagar passam por
+        // aqui (triggerRefresh), então a contagem do cartão acompanha. Erro
+        // na contagem mantém o valor anterior — zero confiante mentiria.
+        const { count, error } = await supabase
+          .from("reviews" as any)
+          .select("*", { count: "exact", head: true })
+          .eq("status", "pendente");
+        if (!error && typeof count === "number") {
+          setPendentesNoBanco(count);
         }
       } catch (err) {
         console.error("[AdminReviewsView] Failed to load reviews:", err);
@@ -269,13 +285,6 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   const verifiedRate = formatRate(globalVerifiedCount, globalTotal);
   const responseRate = formatRate(globalRepliedCount, globalTotal);
 
-  // Item 8 do laudo de 29/08: a fila de moderação de verdade — avaliações
-  // pendentes de aprovação (status ausente = 'publicada', para dublês e
-  // dados antigos).
-  const avaliacoesPendentes = adminReviews.filter(
-    (r) => r.status === "pendente",
-  );
-
   const handleDelete = async (id: string) => {
     if (isOffline) {
       haptic.error();
@@ -286,9 +295,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       return;
     }
     haptic.medium();
-    await deleteReview(id);
-    haptic.success();
+    // Laudo 0109 (A-10): o hook devolve booleano — vibração de sucesso e
+    // recarga só quando a exclusão de verdade aconteceu.
+    const ok = await deleteReview(id);
     setConfirmDeleteId(null);
+    if (!ok) return; // o toast de erro já foi dado no hook (useReviews)
+    haptic.success();
     if (adminReviews.length === 1 && page > 0) {
       setPage((p) => p - 1);
     } else {
@@ -374,13 +386,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           <div className="mt-3 flex items-center gap-1.5 animate-in fade-in">
             {/* Item 8 do laudo de 29/08: a moderação é REAL (migration
                 20261031000000). O rótulo pulsante era decoração: não havia
-                fila nenhuma. Agora o cartão mostra a fila de verdade —
-                quantas avaliações aguardam aprovação da lojista. */}
-            {avaliacoesPendentes.length > 0 ? (
+                fila nenhuma. Laudo 0109 (A-4): a contagem é do BANCO —
+                pendentesNoBanco —, não da página carregada na lista. */}
+            {pendentesNoBanco > 0 ? (
               <>
                 <span className="size-1.5 animate-pulse rounded-full bg-amber-400" />
                 <span className="text-[9px] font-bold uppercase tracking-widest text-amber-400">
-                  {avaliacoesPendentes.length} aguardando sua aprovação
+                  {pendentesNoBanco} aguardando sua aprovação
                 </span>
               </>
             ) : (
@@ -453,9 +465,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       globaisDisponiveis,
       mediaGlobalExibida,
       totalGlobalExibido,
-      // Item 8 do laudo de 29/08: o cartão "Total Recebido" agora mostra a
-      // fila de moderação (contagem de pendentes, derivada da lista).
-      avaliacoesPendentes.length,
+      // Item 8 do laudo de 29/08 + laudo 0109 (A-4): o cartão "Total
+      // Recebido" mostra a fila de moderação — contagem do BANCO.
+      pendentesNoBanco,
     ],
   );
 
@@ -1487,8 +1499,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   Compra Verificada
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Indica se o cliente de fato realizou a compra desse item pela
-                  plataforma. Você pode marcar ou desmarcar manualmente.
+                  Indica que a compra foi paga com pagamento reconhecido pela
+                  plataforma. O selo é automático: nasce da confirmação do
+                  pagamento — não existe interruptor para marcar ou desmarcar.
                 </p>
               </div>
 

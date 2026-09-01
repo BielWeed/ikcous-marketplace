@@ -17,6 +17,9 @@ const h = vi.hoisted(() => {
   const estado = {
     loading: true,
     adminReviews: [] as any[],
+    // Laudo 0109 (A-4): o cartão da fila lê a CONTAGEM DO BANCO, não a
+    // lista da página — o dublê do supabase abaixo devolve este número.
+    countPendentesNoBanco: 0,
   };
   const aprovarReview = vi.fn(async () => {});
 
@@ -45,6 +48,22 @@ vi.mock("@/hooks/useReviews", () => ({
     addMerchantReply: vi.fn(),
     subscribeToReviews: () => () => {},
   }),
+}));
+
+// Laudo 0109 (A-4): a view consulta o banco para contar a fila (count
+// exato, head). Sem este dublê, o cliente REAL do Supabase estoura no jsdom.
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({
+        eq: () =>
+          Promise.resolve({
+            count: h.estado.countPendentesNoBanco,
+            error: null,
+          }),
+      }),
+    }),
+  },
 }));
 
 vi.mock("@/contexts/StoreContext", () => ({
@@ -93,6 +112,7 @@ describe("AdminReviewsView — a fila de moderação é real", () => {
   beforeEach(() => {
     h.estado.loading = true;
     h.estado.adminReviews = [];
+    h.estado.countPendentesNoBanco = 0;
     vi.clearAllMocks();
     armazem.clear();
 
@@ -161,6 +181,7 @@ describe("AdminReviewsView — a fila de moderação é real", () => {
         createdAt: new Date("2026-08-30").toISOString(),
       },
     ];
+    h.estado.countPendentesNoBanco = 1;
     await montar();
 
     const texto = hospedeiro.textContent ?? "";
