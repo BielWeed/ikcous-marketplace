@@ -59,14 +59,12 @@ const CONSULTAS = [
   },
   {
     rotulo: "badge de moderação (AdminLayout:209)",
-    sql: () =>
-      `SELECT count(*) FROM reviews WHERE merchant_reply IS NULL`,
+    sql: () => `SELECT count(*) FROM reviews WHERE merchant_reply IS NULL`,
     indice: "idx_reviews_resposta_pendente",
   },
   {
     rotulo: "sync do carrinho (CartContext:212-214)",
-    sql: (idA) =>
-      `SELECT * FROM cart_items WHERE user_id = '${idA}'`,
+    sql: (idA) => `SELECT * FROM cart_items WHERE user_id = '${idA}'`,
     indice: "idx_cart_items_user_id",
   },
 ];
@@ -159,7 +157,9 @@ async function main() {
     for (const consulta of CONSULTAS) {
       const planoAntes = (
         await client.query(`EXPLAIN ${consulta.sql(idA)}`)
-      ).rows.map((r) => r["QUERY PLAN"]).join("\n");
+      ).rows
+        .map((r) => r["QUERY PLAN"])
+        .join("\n");
       asserir(
         !planoAntes.includes(consulta.indice),
         `controle negativo (sem índice): "${consulta.rotulo}" não cita ${consulta.indice}`,
@@ -180,9 +180,9 @@ async function main() {
 
     // ---- a PROVA: cada consulta do app usa o índice dela ------------------
     for (const consulta of CONSULTAS) {
-      const plano = (
-        await client.query(`EXPLAIN ${consulta.sql(idA)}`)
-      ).rows.map((r) => r["QUERY PLAN"]).join("\n");
+      const plano = (await client.query(`EXPLAIN ${consulta.sql(idA)}`)).rows
+        .map((r) => r["QUERY PLAN"])
+        .join("\n");
       asserir(
         plano.includes(consulta.indice),
         `com índice: "${consulta.rotulo}" usa ${consulta.indice}`,
@@ -201,12 +201,27 @@ async function main() {
               'idx_cart_items_user_id')`,
       )
     ).rows;
-    asserir(catalogo.length === 4, `pg_indexes lista os 4 índices (${catalogo.length})`);
     asserir(
-      catalogo.some((i) => /notificacoes USING btree \(usuario_id, created_at DESC\)/.test(i.indexdef)) &&
-        catalogo.some((i) => /\(created_at DESC\) WHERE \(usuario_id IS NULL\)/.test(i.indexdef)) &&
-        catalogo.some((i) => /reviews USING btree \(created_at DESC\) WHERE \(merchant_reply IS NULL\)/.test(i.indexdef)) &&
-        catalogo.some((i) => /cart_items USING btree \(user_id\)$/.test(i.indexdef)),
+      catalogo.length === 4,
+      `pg_indexes lista os 4 índices (${catalogo.length})`,
+    );
+    asserir(
+      catalogo.some((i) =>
+        /notificacoes USING btree \(usuario_id, created_at DESC\)/.test(
+          i.indexdef,
+        ),
+      ) &&
+        catalogo.some((i) =>
+          /\(created_at DESC\) WHERE \(usuario_id IS NULL\)/.test(i.indexdef),
+        ) &&
+        catalogo.some((i) =>
+          /reviews USING btree \(created_at DESC\) WHERE \(merchant_reply IS NULL\)/.test(
+            i.indexdef,
+          ),
+        ) &&
+        catalogo.some((i) =>
+          /cart_items USING btree \(user_id\)$/.test(i.indexdef),
+        ),
       "as definições batem com a migration (colunas, ordem DESC e predicados parciais)",
     );
   } finally {
