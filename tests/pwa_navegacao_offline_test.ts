@@ -57,3 +57,46 @@ Deno.test("silent-guardian - NAO forca reload com parametro de purge (N5)", () =
   assert(!guardian.includes("gp_v11_4"));
   assert(!guardian.includes("location.replace"));
 });
+
+Deno.test("SW - a revalidacao NAO grava HTML novo com update pendente (ressalva 1a do #375)", () => {
+  const inicio = sw.indexOf('event.request.mode === "navigate"');
+  const fim = sw.indexOf("// Se for Supabase");
+  const trecho = norm(sw.slice(inicio, fim));
+  const posGuard = trecho.indexOf("if (sw.registration.waiting) return;");
+  const posPut = trecho.indexOf("cache.put(event.request, copy)");
+  assert(
+    posGuard > -1,
+    "a guarda de update pendente sumiu do ramo de revalidacao",
+  );
+  assert(posPut > -1, "o cache.put da revalidacao sumiu");
+  assert(
+    posGuard < posPut,
+    "a guarda de waiting tem de vir ANTES do cache.put da revalidacao - sem ela, HTML novo entra no cache velho com chunks velhos (janela de ChunkLoadError)",
+  );
+});
+
+Deno.test("useUpdateCheck - purge nuclear nao roda sem internet (ressalva 1b do #375)", () => {
+  const u = Deno.readTextFileSync(`${DIR}../src/hooks/useUpdateCheck.ts`);
+  const trecho = u.slice(u.indexOf("ChunkLoadError auto-recovery"));
+  const posGuard = trecho.indexOf("navigator.onLine === false");
+  const posPurge = trecho.indexOf("performNuclearPurge(true)");
+  assert(
+    posGuard > -1,
+    "a guarda de offline sumiu do handler de ChunkLoadError",
+  );
+  assert(posPurge > -1);
+  assert(
+    posGuard < posPurge,
+    "a guarda de offline tem de vir ANTES do purge nuclear - offline, o purge apagaria o cache que mantem a loja de pe",
+  );
+});
+
+Deno.test("CheckoutView - o cupom revalida quando a conexao volta (ressalva 2 do #374)", () => {
+  const cv = Deno.readTextFileSync(
+    `${DIR}../src/views/customer/CheckoutView.tsx`,
+  );
+  assertStringIncludes(
+    norm(cv),
+    "[codigoDoCupom, subtotal, validateCoupon, isOffline]",
+  );
+});

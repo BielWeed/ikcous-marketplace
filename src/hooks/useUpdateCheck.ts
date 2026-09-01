@@ -350,6 +350,18 @@ export function useUpdateCheck() {
         msg.includes("css chunk load failed");
 
       if (isChunkError) {
+        // Pílula da revisão do PR #375 (ressalva 1b): chunk error com a
+        // máquina SEM internet é só a rede caída — o SW está servindo do
+        // cache e NADA aqui conserta isso. O purge nuclear neste estado
+        // apagaria exatamente o que mantém a loja de pé offline
+        // (transformando erro recuperável em tela de erro dura).
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          console.warn(
+            "[Update] 💥 ChunkLoadError ignorado: sem internet — cache offline preservado.",
+          );
+          return;
+        }
+
         console.error("[Update] 💥 ChunkLoadError detected");
 
         const lastReload = sessionStorage.getItem("pwa_chunk_error_reload");

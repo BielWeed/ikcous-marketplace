@@ -110,6 +110,12 @@ sw.addEventListener("fetch", (event: any) => {
             fetch(event.request)
               .then((response) => {
                 if (response.ok && response.status === 200) {
+                  // Pílula da revisão do PR #375 (ressalva 1a): com um
+                  // update PENDENTE (waiting), NÃO gravar HTML novo no
+                  // cache VELHO — a revalidação não pode misturar HTML
+                  // novo com chunks velhos enquanto o SW novo espera
+                  // ativação (a janela de ChunkLoadError da ressalva).
+                  if (sw.registration.waiting) return;
                   try {
                     const copy = response.clone();
                     caches
