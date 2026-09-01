@@ -121,8 +121,11 @@ async function main() {
     };
 
     const apagarDe = async (userId) =>
-      (await client.query("DELETE FROM cart_items WHERE user_id = $1", [userId]))
-        .rowCount;
+      (
+        await client.query("DELETE FROM cart_items WHERE user_id = $1", [
+          userId,
+        ])
+      ).rowCount;
 
     // ---- as DUAS policies, aplicadas inline (morrem no ROLLBACK) ---------
     const policyVelha = `
