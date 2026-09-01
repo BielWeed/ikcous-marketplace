@@ -32,13 +32,13 @@
 -- em cada loja vendida nova ela É o conserto.
 --
 -- COMO PROVAR (ficha db-prove, padrão da casa — medição em conexão nova):
---   node scripts/db-prove-grants-e-storage-nascem.cjs
+--   node scripts/db-prove-onda-a-clone-novo.cjs
 -- Provas de ROLLBACK: rollback-manual-20261070000000_*.sql versionado junto.
 --
 -- ROLLBACK (resumo): restaurar SELECT de TABELA para anon e authenticated —
--- ver rollback-manual-20261070000000_o_grant_de_custo_volta.sql. ATENÇÃO: o
--- rollback REABRE o vazamento da margem; só executar se a migration estiver
--- causando dano comprovado.
+-- ver rollback-manual-20261070000000_os_grants_de_coluna_nascem_no_repositorio.sql.
+-- ATENÇÃO: o rollback REABRE o vazamento da margem; só executar se a
+-- migration estiver causando dano comprovado.
 -- ============================================================================
 
 -- 1. anon perde o SELECT (o buraco do clone novo; no molde é no-op) ----------

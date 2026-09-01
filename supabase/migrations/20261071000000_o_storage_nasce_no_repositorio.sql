@@ -15,8 +15,9 @@
 -- O QUE ESTA MIGRATION FAZ (idempotente):
 --   1. cria os buckets que o front usa (useProducts/useBanners: `products`,
 --      `banners`), públicos como no molde (getPublicUrl serve por URL);
---   2. cria as NOVE policies admin-only de escrita (Insert/Update/Delete ×
---      bucket), no estilo da arquivada, guardadas por public.is_admin();
+--   2. cria as SEIS policies admin-only de escrita (Insert/Update/Delete ×
+--      buckets products/banners), no estilo da arquivada, guardadas por
+--      public.is_admin();
 --   3. DERUBA as três policies LARGAS de banner do molde
 --      ("Authenticated Upload/Delete/Update Banners Bucket" — qualquer
 --      usuário LOGADO podia subir/apagar banner pela API, sem ser admin;
@@ -32,7 +33,7 @@
 --     clone nasce sem elas; as do molde ficam (inofensivas).
 --
 -- COMO PROVAR (ficha db-prove, padrão da casa — medição em conexão nova):
---   node scripts/db-prove-grants-e-storage-nascem.cjs
+--   node scripts/db-prove-onda-a-clone-novo.cjs
 -- Provas de ROLLBACK: rollback-manual-20261071000000_*.sql versionado junto.
 -- SEM BEGIN/COMMIT (regra da casa: o ROLLBACK da prova viraria no-op).
 -- ============================================================================
