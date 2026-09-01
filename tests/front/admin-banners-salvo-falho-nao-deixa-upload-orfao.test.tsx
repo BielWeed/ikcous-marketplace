@@ -198,9 +198,7 @@ describe("AdminBannersView — salvar que falha não deixa upload órfão no buc
 
     // Diálogo aberto (botão "Salvar Banner" só existe dentro dele) e em
     // modo de criação.
-    expect(
-      localizarBotaoPorTexto(hospedeiro, "Salvar Banner"),
-    ).toBeDefined();
+    expect(localizarBotaoPorTexto(hospedeiro, "Salvar Banner")).toBeDefined();
 
     const arquivo = new File(["conteudo"], "upload-orfao.jpg", {
       type: "image/jpeg",
