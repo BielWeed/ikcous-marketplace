@@ -120,12 +120,13 @@ export function NotificationProvider({
         if (dosProprios.error) throw dosProprios.error;
         if (deCampanha.error) throw deCampanha.error;
 
-        const data = [...(dosProprios.data || []), ...(deCampanha.data || [])]
-          .sort(
-            (a, b) =>
-              new Date(b.created_at).getTime() -
-              new Date(a.created_at).getTime(),
-          );
+        const data = [
+          ...(dosProprios.data || []),
+          ...(deCampanha.data || []),
+        ].sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        );
 
         const estadoLocal = lerEstadoLocalDaCampanha(user.id);
         const campanhaIds = new Set<string>();

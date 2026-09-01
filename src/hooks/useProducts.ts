@@ -26,9 +26,7 @@ import { toast } from "sonner";
  * passou de `.move()` para `.copy()` pelo mesmo motivo — URLs legadas
  * compartilhadas.
  */
-export async function copiarImagemParaDuplicacao(
-  url: string,
-): Promise<string> {
+export async function copiarImagemParaDuplicacao(url: string): Promise<string> {
   const caminho = caminhoDaImagemDoProduto(url);
   if (!caminho) return url;
 

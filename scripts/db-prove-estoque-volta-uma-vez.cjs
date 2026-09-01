@@ -47,7 +47,7 @@ const MIGRATION = path.join(
   "supabase/migrations/20261060000000_o_estoque_volta_uma_vez_so.sql",
 );
 const NOME_PRODUTO = "SONDA PROVA A8 ESTOQUE";
-const CEP_LOCAL = "38500000"; // CEP de origem da loja de dev: entrega local certa
+const _CEP_LOCAL = "38500000"; // CEP de origem da loja de dev: entrega local certa
 
 let falhas = 0;
 function asserir(condicao, rotulo) {
@@ -64,9 +64,7 @@ async function main() {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado da RAIZ do repo, sem entrada externa
   const env = fs.readFileSync(envPath, "utf8");
   const linha = env.split(/\r?\n/).find((l) => l.startsWith("DATABASE_URL="));
-  const dbUrl = linha
-    .slice("DATABASE_URL=".length)
-    .replace(/^"|"$/g, "");
+  const dbUrl = linha.slice("DATABASE_URL=".length).replace(/^"|"$/g, "");
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
@@ -122,7 +120,7 @@ async function main() {
 
     const estoque = async () =>
       (
-        await client.query(`SELECT estoque FROM produtos WHERE id = $1`, [
+        await client.query("SELECT estoque FROM produtos WHERE id = $1", [
           produtoId,
         ])
       ).rows[0].estoque;
@@ -143,17 +141,14 @@ async function main() {
       await client.query(`SELECT id FROM profiles WHERE role = 'admin' LIMIT 1`)
     ).rows[0].id;
     const virarAdmin = async () => {
-      await client.query(`SET LOCAL ROLE authenticated`);
-      await client.query(
-        `SELECT set_config('request.jwt.claims', $1, true)`,
-        [
-          JSON.stringify({
-            sub: adminId,
-            role: "authenticated",
-            app_metadata: { role: "admin" },
-          }),
-        ],
-      );
+      await client.query("SET LOCAL ROLE authenticated");
+      await client.query(`SELECT set_config('request.jwt.claims', $1, true)`, [
+        JSON.stringify({
+          sub: adminId,
+          role: "authenticated",
+          app_metadata: { role: "admin" },
+        }),
+      ]);
     };
     const mudarStatus = async (pedidoId, novo) =>
       client.query(
@@ -180,7 +175,7 @@ async function main() {
       );
     }
     await client.query("ROLLBACK TO sp_antes");
-    await client.query(`SET LOCAL ROLE postgres`);
+    await client.query("SET LOCAL ROLE postgres");
     await client.query(`SELECT set_config('request.jwt.claims', '', true)`);
 
     // ======================================================================
@@ -220,7 +215,7 @@ async function main() {
       await mudarStatus(pedido, "cancelled");
       asserir((await estoque()) === 5, "1º cancelamento devolve o estoque (5)");
       const carimbo = await client.query(
-        `SELECT stock_returned_at FROM marketplace_orders WHERE id = $1`,
+        "SELECT stock_returned_at FROM marketplace_orders WHERE id = $1",
         [pedido],
       );
       asserir(
@@ -252,21 +247,19 @@ async function main() {
         "re-cancelado a partir de processing NÃO credita phantom (4) — guarda do cancelled_after_shipping",
       );
       const retorno = await client.query(
-        `SELECT public.confirmar_retorno_do_produto($1) AS r`,
+        "SELECT public.confirmar_retorno_do_produto($1) AS r",
         [pedido],
       );
       asserir(
-        retorno.rows[0].r.ok === true &&
-          (await estoque()) === 5,
+        retorno.rows[0].r.ok === true && (await estoque()) === 5,
         "confirmar_retorno_do_produto credita o retorno (5)",
       );
       const segunda = await client.query(
-        `SELECT public.confirmar_retorno_do_produto($1) AS r`,
+        "SELECT public.confirmar_retorno_do_produto($1) AS r",
         [pedido],
       );
       asserir(
-        segunda.rows[0].r.ja_confirmado === true &&
-          (await estoque()) === 5,
+        segunda.rows[0].r.ja_confirmado === true && (await estoque()) === 5,
         "segundo 'produto voltou' é no-op (5) — idempotência mantida",
       );
     }
@@ -300,7 +293,7 @@ async function main() {
       );
     }
 
-    await client.query(`SET LOCAL ROLE postgres`);
+    await client.query("SET LOCAL ROLE postgres");
     await client.query(`SELECT set_config('request.jwt.claims', '', true)`);
   } finally {
     // O ROLLBACK é o ponto inteiro do script: nada do que foi feito aqui

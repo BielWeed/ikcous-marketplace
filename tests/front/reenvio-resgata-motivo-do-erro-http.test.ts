@@ -23,9 +23,9 @@ import { desfechoDoReenvio } from "@/hooks/useOrders";
 describe("desfechoDoReenvio — o motivo do 502 não pode se perder no caminho", () => {
   it("sem erro: devolve o corpo como veio", async () => {
     expect(await desfechoDoReenvio({ ok: true }, null)).toEqual({ ok: true });
-    expect(await desfechoDoReenvio({ ok: false, motivo: "ja_enviado" }, null)).toEqual(
-      { ok: false, motivo: "ja_enviado" },
-    );
+    expect(
+      await desfechoDoReenvio({ ok: false, motivo: "ja_enviado" }, null),
+    ).toEqual({ ok: false, motivo: "ja_enviado" });
   });
 
   it("erro HTTP com corpo JSON: resgata o motivo — sem_remetente é alcançável", async () => {

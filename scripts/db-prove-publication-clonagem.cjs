@@ -72,7 +72,7 @@ async function main() {
     await client.query("BEGIN");
 
     // 1. Estado do molde hoje + no-op da migration
-    let antes = await membros(client);
+    const antes = await membros(client);
     const faltandoHoje = TABELAS.filter((t) => !antes.has(t));
     console.log(
       `\n[molde hoje] membros ausentes: ${faltandoHoje.length ? faltandoHoje.join(", ") : "nenhum (habilitado à mão)"}`,

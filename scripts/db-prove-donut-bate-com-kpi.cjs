@@ -95,9 +95,7 @@ async function main() {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado da RAIZ do repo, sem entrada externa
   const env = fs.readFileSync(path.join(RAIZ, ".env"), "utf8");
   const linha = env.split(/\r?\n/).find((l) => l.startsWith("DATABASE_URL="));
-  const dbUrl = linha
-    .slice("DATABASE_URL=".length)
-    .replace(/^"|"$/g, "");
+  const dbUrl = linha.slice("DATABASE_URL=".length).replace(/^"|"$/g, "");
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
@@ -139,28 +137,55 @@ async function main() {
 
     // Massa: 2 produtos (categorias A e B) + pedido total 140 + 2 itens.
     const pA = await massaGenerica(
-      client, "produtos",
-      { nome: `'${ETIQUETA} A'`, categoria: `'${CAT_A}'`, preco_venda: "100.00", estoque: "10", ativo: "true" },
+      client,
+      "produtos",
+      {
+        nome: `'${ETIQUETA} A'`,
+        categoria: `'${CAT_A}'`,
+        preco_venda: "100.00",
+        estoque: "10",
+        ativo: "true",
+      },
       ETIQUETA,
     );
     const pB = await massaGenerica(
-      client, "produtos",
-      { nome: `'${ETIQUETA} B'`, categoria: `'${CAT_B}'`, preco_venda: "50.00", estoque: "10", ativo: "true" },
+      client,
+      "produtos",
+      {
+        nome: `'${ETIQUETA} B'`,
+        categoria: `'${CAT_B}'`,
+        preco_venda: "50.00",
+        estoque: "10",
+        ativo: "true",
+      },
       ETIQUETA,
     );
     const pedido = await massaGenerica(
-      client, "marketplace_orders",
+      client,
+      "marketplace_orders",
       { status: "'processing'", payment_status: "'pago'", total: "140.00" },
       ETIQUETA,
     );
     await massaGenerica(
-      client, "marketplace_order_items",
-      { order_id: `'${pedido}'`, product_id: `'${pA}'`, quantity: "1", price: "100.00" },
+      client,
+      "marketplace_order_items",
+      {
+        order_id: `'${pedido}'`,
+        product_id: `'${pA}'`,
+        quantity: "1",
+        price: "100.00",
+      },
       ETIQUETA,
     );
     await massaGenerica(
-      client, "marketplace_order_items",
-      { order_id: `'${pedido}'`, product_id: `'${pB}'`, quantity: "1", price: "50.00" },
+      client,
+      "marketplace_order_items",
+      {
+        order_id: `'${pedido}'`,
+        product_id: `'${pB}'`,
+        quantity: "1",
+        price: "50.00",
+      },
       ETIQUETA,
     );
 
@@ -177,7 +202,9 @@ async function main() {
     // ======================================================================
     // FASE ANTES — a função viva de hoje, com o defeito documentado
     // ======================================================================
-    console.log("\n[ANTES] função viva (donut soma itens brutos — defeito esperado):");
+    console.log(
+      "\n[ANTES] função viva (donut soma itens brutos — defeito esperado):",
+    );
     await client.query("SAVEPOINT sp_antes");
     {
       await virarAdmin();
@@ -285,7 +312,10 @@ async function main() {
       Number(depois.pedidos) === Number(antes.pedidos) &&
       Number(depois.produtos) === Number(antes.produtos) &&
       Number(depois.itens) === Number(antes.itens);
-    asserir(limpo, `resíduo zero (antes ${antes.pedidos}/${antes.produtos}/${antes.itens}, depois ${depois.pedidos}/${depois.produtos}/${depois.itens})`);
+    asserir(
+      limpo,
+      `resíduo zero (antes ${antes.pedidos}/${antes.produtos}/${antes.itens}, depois ${depois.pedidos}/${depois.produtos}/${depois.itens})`,
+    );
     await client.end();
   }
 

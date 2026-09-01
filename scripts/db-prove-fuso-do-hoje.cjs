@@ -34,7 +34,8 @@ const { Client } = require("pg");
 const RAIZ = path.join(__dirname, "..");
 const MIGRATION = path.join(
   RAIZ,
-  "supabase/migrations/20261062" + "000000_o_hoje_do_painel_e_o_dia_do_lojista.sql",
+  "supabase/migrations/20261062" +
+    "000000_o_hoje_do_painel_e_o_dia_do_lojista.sql",
 );
 const NOME_PRODUTO = "SONDA LAUDO 0109 FUSO PRODUTO";
 
@@ -99,9 +100,7 @@ async function main() {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado da RAIZ do repo, sem entrada externa
   const env = fs.readFileSync(path.join(RAIZ, ".env"), "utf8");
   const linha = env.split(/\r?\n/).find((l) => l.startsWith("DATABASE_URL="));
-  const dbUrl = linha
-    .slice("DATABASE_URL=".length)
-    .replace(/^"|"$/g, "");
+  const dbUrl = linha.slice("DATABASE_URL=".length).replace(/^"|"$/g, "");
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
@@ -180,9 +179,14 @@ async function main() {
             [id],
           )
         ).rows[0].n;
-      asserir((await contaVelha(o1)) === 1,
-        "O1 (22:00 de Brasília de ONTEM) entra no 'Hoje' UTC — o defeito");
-      asserir((await contaVelha(o2)) === 1, "O2 (00:30 de hoje) entra (controle)");
+      asserir(
+        (await contaVelha(o1)) === 1,
+        "O1 (22:00 de Brasília de ONTEM) entra no 'Hoje' UTC — o defeito",
+      );
+      asserir(
+        (await contaVelha(o2)) === 1,
+        "O2 (00:30 de hoje) entra (controle)",
+      );
 
       await virarAdmin();
       const kpi = await client.query("SELECT get_admin_analytics_v2(1) AS r");
@@ -217,9 +221,14 @@ async function main() {
             [id],
           )
         ).rows[0].n;
-      asserir((await contaNova(o1)) === 0,
-        "O1 (pico de ontem) SAI do 'Hoje' — o dia virou o do lojista");
-      asserir((await contaNova(o2)) === 1, "O2 (00:30 de hoje) continua no 'Hoje'");
+      asserir(
+        (await contaNova(o1)) === 0,
+        "O1 (pico de ontem) SAI do 'Hoje' — o dia virou o do lojista",
+      );
+      asserir(
+        (await contaNova(o2)) === 1,
+        "O2 (00:30 de hoje) continua no 'Hoje'",
+      );
 
       const kpi = await client.query("SELECT get_admin_analytics_v2(1) AS r");
       const hojeDaFuncao = Number(kpi.rows[0].r.today.revenue);
@@ -295,7 +304,10 @@ async function main() {
     const limpo =
       Number(depois.pedidos) === Number(antes.pedidos) &&
       Number(depois.produtos) === Number(antes.produtos);
-    asserir(limpo, `resíduo zero (antes ${antes.pedidos}/${antes.produtos}, depois ${depois.pedidos}/${depois.produtos})`);
+    asserir(
+      limpo,
+      `resíduo zero (antes ${antes.pedidos}/${antes.produtos}, depois ${depois.pedidos}/${depois.produtos})`,
+    );
     await client.end();
   }
 

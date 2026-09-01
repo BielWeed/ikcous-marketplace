@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/lib/supabase";
 import { mensagemDeErroDoCupom } from "@/lib/erro-do-cupom";
+import { supabase } from "@/lib/supabase";
 import type { Coupon } from "@/types";
 import type { Database } from "@/types/supabase";
 import { cachedCouponsData, setCachedCouponsData } from "@/utils/admin_cache";

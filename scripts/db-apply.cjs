@@ -1420,8 +1420,7 @@ const VERIFICACOES = {
       funcao: "marca_avaliacao_nasce_verificada",
       esperado: [
         {
-          texto:
-            "'pago', 'pago_apos_expirar', 'recebido_na_entrega'",
+          texto: "'pago', 'pago_apos_expirar', 'recebido_na_entrega'",
           vezes: 1,
         },
       ],
@@ -1430,8 +1429,7 @@ const VERIFICACOES = {
       funcao: "marca_avaliacoes_do_pedido_verificadas",
       esperado: [
         {
-          texto:
-            "'pago', 'pago_apos_expirar', 'recebido_na_entrega'",
+          texto: "'pago', 'pago_apos_expirar', 'recebido_na_entrega'",
           vezes: 1,
         },
       ],
@@ -1447,7 +1445,11 @@ const VERIFICACOES = {
       // anônimo entra. Vezes exata: cada guarda aparece UMA vez por corpo.
       funcao: "increment_helpful",
       esperado: [
-        { texto: "ON CONFLICT ON CONSTRAINT review_votes_um_voto_por_usuario DO NOTHING", vezes: 1 },
+        {
+          texto:
+            "ON CONFLICT ON CONSTRAINT review_votes_um_voto_por_usuario DO NOTHING",
+          vezes: 1,
+        },
         { texto: "IF NOT FOUND THEN", vezes: 1 },
         { texto: "Acesso negado: usuário não autenticado.", vezes: 1 },
       ],
@@ -1464,9 +1466,7 @@ const VERIFICACOES = {
       // cancelado-após-envio credita phantom (a peça está com o cliente).
       // Vezes exata: cada guarda aparece UMA vez por corpo.
       funcao: "devolver_estoque",
-      esperado: [
-        { texto: "AND stock_returned_at IS NULL", vezes: 1 },
-      ],
+      esperado: [{ texto: "AND stock_returned_at IS NULL", vezes: 1 }],
     },
     {
       funcao: "update_order_status_atomic",
@@ -1486,9 +1486,20 @@ const VERIFICACOES = {
       // histórico com as duas pontas locais.
       funcao: "get_admin_analytics_v2",
       esperado: [
-        { texto: "date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'", vezes: 1 },
-        { texto: "date_trunc('day', (now() - interval '1 day') AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'", vezes: 1 },
-        { texto: "(o.created_at AT TIME ZONE 'America/Sao_Paulo')::date", vezes: 4 },
+        {
+          texto:
+            "date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'",
+          vezes: 1,
+        },
+        {
+          texto:
+            "date_trunc('day', (now() - interval '1 day') AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'",
+          vezes: 1,
+        },
+        {
+          texto: "(o.created_at AT TIME ZONE 'America/Sao_Paulo')::date",
+          vezes: 4,
+        },
         { texto: "- (p_limit_days || ' days')::interval)::date", vezes: 1 },
         { texto: "(now() AT TIME ZONE 'America/Sao_Paulo')::date,", vezes: 1 },
       ],
@@ -1505,8 +1516,15 @@ const VERIFICACOES = {
       funcao: "get_category_analytics",
       esperado: [
         { texto: "/ NULLIF(f.subtotal_pedido, 0)", vezes: 2 },
-        { texto: "SUM(SUM(i.valor_item)) OVER (PARTITION BY i.order_id)", vezes: 1 },
-        { texto: "AND (o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega'))", vezes: 1 },
+        {
+          texto: "SUM(SUM(i.valor_item)) OVER (PARTITION BY i.order_id)",
+          vezes: 1,
+        },
+        {
+          texto:
+            "AND (o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega'))",
+          vezes: 1,
+        },
         { texto: "GROUP BY f.nome_categoria", vezes: 1 },
       ],
     },
