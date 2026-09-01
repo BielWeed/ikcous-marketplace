@@ -275,7 +275,7 @@ describe("AdminOrdersView — estado vazio da lista (Item 1 da revisão)", () =>
     });
 
     expect(hospedeiro.textContent).toContain(
-      "Nenhum pedido desta página tem este status de pagamento",
+      "Nenhum pedido com esse filtro de pagamento",
     );
     expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
   });
@@ -288,7 +288,10 @@ describe("AdminOrdersView — estado vazio da lista (Item 1 da revisão)", () =>
     // coisa de propósito ("nenhum pedido corresponde ao que está sendo
     // mostrado agora"), justamente para a tela não afirmar que a loja não tem
     // pedido nenhum quando existem 72 cancelados fora do filtro.
-    window.localStorage.setItem("admin_orders_filter_v2", JSON.stringify("all"));
+    window.localStorage.setItem(
+      "admin_orders_filter_v2",
+      JSON.stringify("all"),
+    );
     mockOrders = [];
     mockTotalOrders = 0;
 
@@ -300,7 +303,7 @@ describe("AdminOrdersView — estado vazio da lista (Item 1 da revisão)", () =>
 
     expect(hospedeiro.textContent).toContain("Ainda não tem nenhum pedido");
     expect(hospedeiro.textContent).not.toContain(
-      "Nenhum pedido desta página tem este status de pagamento",
+      "Nenhum pedido com esse filtro de pagamento",
     );
   });
 });

@@ -11,8 +11,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order, OrderStatus, PaymentMethod, PaymentStatus } from "@/types";
 import {
   Check,
@@ -331,6 +333,8 @@ interface OrderCustomerCardProps {
   mapsUrlQuery: string;
   onCopyAddress: () => void;
   onWhatsAppDirect: () => void;
+  // Laudo 0109 (A-7): null = número não abre conversa — sem botão.
+  whatsappUrl: string | null;
 }
 
 function OrderCustomerCard({
@@ -340,6 +344,7 @@ function OrderCustomerCard({
   mapsUrlQuery,
   onCopyAddress,
   onWhatsAppDirect,
+  whatsappUrl,
 }: Readonly<OrderCustomerCardProps>) {
   return (
     <div className="admin-glass space-y-4 rounded-3xl border border-white/5 p-5">
@@ -370,14 +375,16 @@ function OrderCustomerCard({
             <p className="font-mono text-sm font-semibold text-white">
               {order.customer.whatsapp}
             </p>
-            <button
-              onClick={onWhatsAppDirect}
-              disabled={isOffline}
-              className="rounded p-1 text-emerald-400 transition-colors hover:bg-emerald-500/10 hover:text-emerald-300 disabled:pointer-events-none disabled:opacity-40"
-              title="Conversar no WhatsApp"
-            >
-              <MessageCircle className="size-4 fill-current" />
-            </button>
+            {whatsappUrl && (
+              <button
+                onClick={onWhatsAppDirect}
+                disabled={isOffline}
+                className="rounded p-1 text-emerald-400 transition-colors hover:bg-emerald-500/10 hover:text-emerald-300 disabled:pointer-events-none disabled:opacity-40"
+                title="Conversar no WhatsApp"
+              >
+                <MessageCircle className="size-4 fill-current" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1214,15 +1221,26 @@ export const OrderDetail = memo(function OrderDetail({
   }
   const mapsUrlQuery = mapsQueryParts.join(", ");
 
-  const handleCopyAddress = () => {
-    navigator.clipboard.writeText(displayAddress);
+  // Laudo 0109 (A-8): a cópia só comemora se DEU certo —
+  // `copiarParaClipboard` devolve false quando a API recusa (permissão,
+  // janela sem foco), e aí o aviso é de erro, não de sucesso.
+  const handleCopyAddress = async () => {
+    const ok = await copiarParaClipboard(displayAddress);
+    if (!ok) {
+      toast.error("Não foi possível copiar.");
+      return;
+    }
     setCopiedAddress(true);
     toast.success("Endereço copiado para a área de transferência!");
     setTimeout(() => setCopiedAddress(false), 2000);
   };
 
-  const handleCopyTracking = () => {
-    navigator.clipboard.writeText(localTrackingCode);
+  const handleCopyTracking = async () => {
+    const ok = await copiarParaClipboard(localTrackingCode);
+    if (!ok) {
+      toast.error("Não foi possível copiar.");
+      return;
+    }
     setCopiedTracking(true);
     toast.success("Código de rastreamento copiado!");
     setTimeout(() => setCopiedTracking(false), 2000);
@@ -1268,14 +1286,18 @@ export const OrderDetail = memo(function OrderDetail({
     }
   };
 
+  // Laudo 0109 (A-7): número sem DDD+numero não abre conversa válida.
+  // Sem link, o toque não abre janela nenhuma — e o botão nem renderiza
+  // (ver OrderCustomerCard abaixo).
+  const whatsappUrl = linkWhatsappDoCliente(order.customer?.whatsapp);
+
   const handleWhatsAppDirect = () => {
-    let phone = (order.customer?.whatsapp || "").replace(/\D/g, "");
-    if (phone.length === 11 || phone.length === 10) {
-      phone = `55${phone}`;
-    }
+    if (!whatsappUrl) return;
     const message = `Olá ${order.customer?.name || "Cliente"}! Entramos em contato sobre o seu pedido #${order.id.slice(-6)}.`;
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    globalThis.open(url, "_blank");
+    globalThis.open(
+      `${whatsappUrl}?text=${encodeURIComponent(message)}`,
+      "_blank",
+    );
   };
 
   return (
@@ -1317,6 +1339,7 @@ export const OrderDetail = memo(function OrderDetail({
               mapsUrlQuery={mapsUrlQuery}
               onCopyAddress={handleCopyAddress}
               onWhatsAppDirect={handleWhatsAppDirect}
+              whatsappUrl={whatsappUrl}
             />
             <OrderItemsCard
               items={order.items}

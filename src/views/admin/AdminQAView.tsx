@@ -322,13 +322,19 @@ export const AdminQAView = memo(function AdminQAView({
         { silent: true },
       );
 
-      if (success) {
-        toast.success("Resposta enviada com sucesso!");
-        setSelectedQuestion(null);
-        setAnswer("");
-        setRefreshTrigger((prev) => prev + 1);
-        getAllQuestions(page, pageSize, filter, searchQuery);
+      // Laudo 0109 (A-1): o hook com `silent` não toast e não lança — sem
+      // este ramo, falha (rede, permissão, sessão vencida) deixava a tela
+      // muda, com o diálogo aberto como se nada tivesse acontecido.
+      if (!success) {
+        toast.error("Não foi possível enviar a resposta. Tente de novo.");
+        return;
       }
+
+      toast.success("Resposta enviada com sucesso!");
+      setSelectedQuestion(null);
+      setAnswer("");
+      setRefreshTrigger((prev) => prev + 1);
+      getAllQuestions(page, pageSize, filter, searchQuery);
     } catch (error) {
       console.error("Error answering:", error);
       toast.error("Erro ao processar resposta");

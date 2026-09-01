@@ -372,6 +372,32 @@ export function StoreProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.primaryColor, applyBranding]);
 
+  // Laudo 0109 (P-5): a comparação que o fetchConfig já fazia (isIdentical),
+  // extraída para reuso no listener de realtime — MESMA semântica: chave a
+  // chave com `===`, o array enabledShippingMethods comparado item a item e
+  // homeSections POR VALOR (ressalva da revisão adversária: é array de
+  // OBJETOS e o round-trip do jsonb troca a referência a cada eco — pela
+  // guarda por `===` a loja com vitrines salvas re-renderizava igual).
+  const configIgual = useCallback(
+    (a: StoreConfig, b: StoreConfig): boolean =>
+      Object.keys(a).every((k) => {
+        if (k === "enabledShippingMethods") {
+          const arrA = a[k] || [];
+          const arrB = b[k] || [];
+          if (arrA.length !== arrB.length) return false;
+          return arrA.every((v, i) => v === arrB[i]);
+        }
+        if (k === "homeSections") {
+          if (Array.isArray(a[k]) && Array.isArray(b[k])) {
+            return homeSectionsForamGravadas(a[k], b[k]);
+          }
+          return (a as any)[k] === (b as any)[k];
+        }
+        return (a as any)[k] === (b as any)[k];
+      }),
+    [],
+  );
+
   const mapConfig = useCallback((data: any): StoreConfig => {
     const getVal = (snake: string, camel: string, fallback: any) => {
       if (data[snake] !== undefined && data[snake] !== null) return data[snake];
@@ -527,16 +553,7 @@ export function StoreProvider({
           if (!insertError && newData) {
             const mapped = mapConfig(newData);
             setConfig((prev) => {
-              const isIdentical = Object.keys(mapped).every((k) => {
-                if (k === "enabledShippingMethods") {
-                  const arrA = mapped[k] || [];
-                  const arrB = prev[k] || [];
-                  if (arrA.length !== arrB.length) return false;
-                  return arrA.every((v, i) => v === arrB[i]);
-                }
-                return (mapped as any)[k] === (prev as any)[k];
-              });
-              if (isIdentical) return prev;
+              if (configIgual(mapped, prev)) return prev;
               vaultRef.current
                 ?.put("store_config", { id: "singleton", ...mapped })
                 .catch(() => {});
@@ -548,16 +565,7 @@ export function StoreProvider({
       } else if (data) {
         const mapped = mapConfig(data);
         setConfig((prev) => {
-          const isIdentical = Object.keys(mapped).every((k) => {
-            if (k === "enabledShippingMethods") {
-              const arrA = mapped[k] || [];
-              const arrB = prev[k] || [];
-              if (arrA.length !== arrB.length) return false;
-              return arrA.every((v, i) => v === arrB[i]);
-            }
-            return (mapped as any)[k] === (prev as any)[k];
-          });
-          if (isIdentical) return prev;
+          if (configIgual(mapped, prev)) return prev;
           // Sempre pelo singleton: após um onversionchange (outra aba subiu a
           // versão) a conexão que vaultRef segurava está FECHADA — init()
           // devolve a viva/reaberta. Erro LOGADO: escrita engolida calada é
@@ -582,7 +590,7 @@ export function StoreProvider({
     } finally {
       setIsLoaded(true);
     }
-  }, [isAdmin, mapConfig, applyBranding]);
+  }, [isAdmin, mapConfig, applyBranding, configIgual]);
 
   const fetchProducts = useCallback(async () => {
     // Stale-While-Revalidate: IDB data already loaded in mount effect.
@@ -844,11 +852,14 @@ export function StoreProvider({
               "[StoreContext] New mandatory version detected via Realtime!",
             );
           }
-          setConfig(mapped);
+          // Laudo 0109 (P-5): mesma guarda do fetchConfig — eco do realtime
+          // com config IDÊNTICA não troca o objeto (cada eco re-renderizava
+          // a casa inteira de graça).
+          setConfig((prev) => (configIgual(mapped, prev) ? prev : mapped));
           applyBranding(corPrimariaEfetiva(mapped));
         }
       },
-      [mapConfig, applyBranding, config.minAppVersion],
+      [mapConfig, applyBranding, config.minAppVersion, configIgual],
     ),
   );
 

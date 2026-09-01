@@ -253,9 +253,7 @@ describe("AdminOrdersView — o filtro que abre a tela filtra de verdade", () =>
     await act(async () => {
       botaoTodos!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    await esperarAte(
-      () => armazem.get("admin_orders_current_page") === "0",
-    );
+    await esperarAte(() => armazem.get("admin_orders_current_page") === "0");
 
     expect(armazem.get("admin_orders_current_page")).toBe("0");
   });
@@ -326,9 +324,7 @@ describe("AdminOrdersView — o estado vazio não mente quando há filtro estrei
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
-    expect(hospedeiro.textContent).not.toContain(
-      "Ainda não tem nenhum pedido",
-    );
+    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
     expect(hospedeiro.textContent).toContain(
       "Nenhum pedido corresponde ao que está sendo mostrado agora",
     );
@@ -349,9 +345,7 @@ describe("AdminOrdersView — o estado vazio não mente quando há filtro estrei
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
-    expect(hospedeiro.textContent).not.toContain(
-      "Ainda não tem nenhum pedido",
-    );
+    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
     expect(hospedeiro.textContent).toContain(
       "Nenhum pedido corresponde ao que está sendo mostrado agora",
     );
@@ -409,11 +403,9 @@ describe("AdminOrdersView — o estado vazio não mente quando há filtro estrei
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
     expect(hospedeiro.textContent).toContain(
-      "Nenhum pedido desta página tem este status de pagamento",
+      "Nenhum pedido com esse filtro de pagamento",
     );
-    expect(hospedeiro.textContent).not.toContain(
-      "Ainda não tem nenhum pedido",
-    );
+    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
     expect(hospedeiro.textContent).not.toContain(
       "Nenhum pedido corresponde ao que está sendo mostrado agora",
     );

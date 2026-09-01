@@ -39,6 +39,7 @@ import { useViewTransition } from "@/hooks/useViewTransition";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order, OrderStatus, PaymentStatus, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { motion } from "framer-motion";
@@ -949,11 +950,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       const statusMsg = statusConfig[order.status] || statusConfig.pending;
       const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${order.id.slice(-6)} foi atualizado.\nStatus: ${statusMsg.label}\n\nObrigado por comprar na ${branding.appName}!`;
 
-      let phone = (order.customer?.whatsapp || "").replace(/\D/g, "");
-      if (phone.length === 11 || phone.length === 10) {
-        phone = `55${phone}`;
-      }
-      const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+      // Laudo 0109 (A-7): número sem DDD+numero não abre conversa válida.
+      // O util decide: sem link, o toque não abre janela nenhuma.
+      const link = linkWhatsappDoCliente(order.customer?.whatsapp);
+      if (!link) return;
+      const url = `${link}?text=${encodeURIComponent(message)}`;
       globalThis.open(url, "_blank");
     },
     [isOffline],
@@ -1638,18 +1639,18 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   <Package className="size-6 text-zinc-600" />
                 </div>
                 {paymentFilter !== "all" ? (
-                  // O filtro de payment_status é client-side sobre a página já
-                  // carregada (12 pedidos), não sobre os 64+ pedidos do banco —
-                  // "nenhum pedido" aqui é "nenhum NESTA página", nunca "não
-                  // existe nenhum pedido com este status". Ver Item 1 da
-                  // revisão da Task 9.
+                  // O filtro de payment_status roda NO BANCO (lista E
+                  // contagem). Lista vazia aqui é "não existe nenhum pedido
+                  // com este status" — a saída honesta é limpar o filtro.
+                  // Laudo 0109 (A-5): o texto antigo mandava paginar por um
+                  // filtro client-side que morreu.
                   <>
                     <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-                      Nenhum pedido desta página tem este status de pagamento
+                      Nenhum pedido com esse filtro de pagamento
                     </h3>
                     <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
-                      O filtro só olha a página atual. Navegue pelas páginas ou
-                      limpe o filtro para ver todos os pedidos.
+                      Nenhum pedido com esse status de pagamento. Limpe o filtro
+                      para ver todos os pedidos.
                     </p>
                   </>
                 ) : filter !== "all" ||
@@ -1995,15 +1996,19 @@ const AdminOrderCard = memo(function AdminOrderCard({
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onWhatsApp(order);
-                }}
-                className="relative z-10 flex size-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 shadow-xl transition-all hover:bg-emerald-500 hover:text-black"
-              >
-                <MessageCircle className="size-5" />
-              </button>
+              {/* Laudo 0109 (A-7, ressalva da revisão): sem número válido o
+                  toque não tinha efeito — botão mudo. Some como na ficha. */}
+              {linkWhatsappDoCliente(order.customer?.whatsapp) && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onWhatsApp(order);
+                  }}
+                  className="relative z-10 flex size-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 shadow-xl transition-all hover:bg-emerald-500 hover:text-black"
+                >
+                  <MessageCircle className="size-5" />
+                </button>
+              )}
               <div className="flex size-12 items-center justify-center text-zinc-500 transition-all duration-300 group-hover:text-admin-gold">
                 <ChevronRight className="size-6 transform filter transition-transform duration-300 group-hover:translate-x-1 group-hover:drop-shadow-[0_0_8px_rgba(212,175,55,0.5)]" />
               </div>
@@ -2156,16 +2161,20 @@ const AdminOrderCard = memo(function AdminOrderCard({
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onWhatsApp(order);
-            }}
-            className="relative z-10 flex size-11 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 shadow-lg transition-all hover:bg-emerald-500 hover:text-black active:scale-90"
-            title="WhatsApp"
-          >
-            <MessageCircle className="size-5" />
-          </button>
+          {/* Laudo 0109 (A-7, ressalva da revisão): mesmo padrão do modo
+              detailed — sem número válido o botão some. */}
+          {linkWhatsappDoCliente(order.customer?.whatsapp) && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onWhatsApp(order);
+              }}
+              className="relative z-10 flex size-11 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 shadow-lg transition-all hover:bg-emerald-500 hover:text-black active:scale-90"
+              title="WhatsApp"
+            >
+              <MessageCircle className="size-5" />
+            </button>
+          )}
           <ChevronRight className="size-4.5 transform text-zinc-500 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-admin-gold" />
         </div>
       </div>
