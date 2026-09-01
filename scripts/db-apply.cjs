@@ -1453,6 +1453,28 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261060000000_o_estoque_volta_uma_vez_so.sql": [
+    {
+      // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,
+      // guardado pela coluna-fato stock_returned_at (mesma família do
+      // coupon_usage_returned da Rodada 4). Sem o WHERE do carimbo,
+      // devolver_estoque volta a creditar a cada chamada (o buraco da
+      // oscilação cancelled→processing→cancelled, provado vivo: 5→6); sem a
+      // guarda do cancelled_after_shipping, o re-cancelamento de pedido
+      // cancelado-após-envio credita phantom (a peça está com o cliente).
+      // Vezes exata: cada guarda aparece UMA vez por corpo.
+      funcao: "devolver_estoque",
+      esperado: [
+        { texto: "AND stock_returned_at IS NULL", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "update_order_status_atomic",
+      esperado: [
+        { texto: "AND NOT v_cancelled_after_shipping THEN", vezes: 1 },
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
