@@ -1,4 +1,5 @@
 import { DataVault } from "@/lib/dataVault";
+import { conexaoDoNavegador, redeLenta } from "@/lib/rede-lenta";
 import { useEffect } from "react";
 
 const IDLE_TIMEOUT = 2000; // ms before starting warm
@@ -33,8 +34,16 @@ export function useCacheWarmer() {
           .flatMap((p) => p.images || (p.imagem_url ? [p.imagem_url] : []))
           .filter((url) => typeof url === "string" && url.trim() !== "");
 
+        // Laudo 0109 (C5): guarda de rede lenta — o mesmo critério do
+        // usePrefetchOnHover. Em 2G/slow-2g ou com economia de dados ligada,
+        // aquece SÓ as rotas críticas; as imagens (banners + 15 produtos em
+        // URL original) ficam para uma rede que aguenta.
+        const pularImagens = redeLenta(conexaoDoNavegador());
+
         // Collect critical routes and images
-        const urls = [...CRITICAL_URLS, ...bannerUrls, ...productUrls];
+        const urls = pularImagens
+          ? [...CRITICAL_URLS]
+          : [...CRITICAL_URLS, ...bannerUrls, ...productUrls];
 
         reg.active.postMessage({ type: "WARM_CACHE", urls });
 

@@ -946,7 +946,11 @@ export const AdminPushView = memo(function AdminPushView({
                         },
                         {
                           id: "vip",
-                          label: "Clientes Frequentes",
+                          // Laudo 0109 (A11): o rótulo descreve a regra real
+                          // do servidor (get_segmented_push_targets: LTV de
+                          // dinheiro RECONHECIDO >= R$ 150), não um apelido
+                          // que promete outra coisa.
+                          label: "Gastaram R$ 150+ (pagos)",
                           // `reachExibido`, não `effectiveReach`: o badge do
                           // segmento selecionado tem de poder mostrar "—"
                           // quando a medição está no ar ou falhou — se
@@ -960,14 +964,20 @@ export const AdminPushView = memo(function AdminPushView({
                         },
                         {
                           id: "inactive",
-                          label: "Sem comprar há 30d",
+                          // A11: o servidor olha o último pedido de
+                          // QUALQUER status (MAX sem filtro) — um pedido
+                          // cancelado ontem mantém o cliente fora daqui.
+                          label: "Sem pedidos há 30d (qualquer status)",
                           count: (segment === "inactive"
                             ? reachExibido
                             : segmentCounts.inactive) as ContagemMedida,
                         },
                         {
                           id: "new",
-                          label: "Novos Clientes",
+                          // A11: o segmento é nascimento de PERFIL nos
+                          // últimos 7 dias (profiles.created_at), não
+                          // "novos clientes" em sentido vago.
+                          label: "Cadastrados há ≤ 7 dias",
                           count: (segment === "new"
                             ? reachExibido
                             : segmentCounts.new) as ContagemMedida,

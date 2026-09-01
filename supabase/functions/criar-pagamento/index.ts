@@ -302,7 +302,12 @@ async function handler(
   const mpToken = Deno.env.get("MP_ACCESS_TOKEN");
   if (!mpToken) {
     console.error("criar-pagamento: MP_ACCESS_TOKEN ausente no ambiente");
-    return json({ error: "Pagamento indisponível." }, 503);
+    // Laudo 0109 (D1): sem chave, TENTAR DE NOVO bate na mesma recusa —
+    // é falha de configuração do operador, não do cliente. `terminal: true`
+    // tira o cliente do loop de "Tentar de novo" pelo contrato do
+    // CHECKOUT-050 (a categoria viaja no corpo, NUNCA por comparação de
+    // mensagem no front).
+    return json({ error: "Pagamento indisponível.", terminal: true }, 503);
   }
 
   // PEDIDO-07 (auditoria de 26/08/2026): este createClient PRECISA ficar
@@ -315,14 +320,16 @@ async function handler(
   // O QUE ESTA CORREÇÃO NÃO MUDA, DE PROPÓSITO: o laço de "Tentar de novo"
   // do cliente continua existindo depois dela, igual a antes. useOrders.ts
   // só para de tentar quando o CORPO da resposta traz `terminal: true`, e
-  // este 503 não traz — é da MESMA categoria recuperável que
-  // "MP_ACCESS_TOKEN ausente", checado poucas linhas acima (mesmo par
-  // status/mensagem), e index_test.ts documenta por quê: falta de env var
-  // no servidor não é um problema DO PEDIDO, é corrigível por um operador
-  // ajustando a variável dentro dos 30 minutos de vida do PIX — retentar é
-  // exatamente o comportamento certo aqui. O que esta correção resolve é só
-  // o throw cru escapando sem mensagem nenhuma; o cliente sempre continuou
-  // (e deve continuar) tentando de novo depois de "Pagamento indisponível.".
+  // este 503 NÃO traz — DIFERENTE do "MP_ACCESS_TOKEN ausente" (D1), que
+  // virou terminal, porque os dois têm escalas de conserto diferentes:
+  // chave de service role é ajuste de operador em MINUTOS (dentro da
+  // janela de 30 min do PIX, retentar é o comportamento certo); chaves do
+  // Mercado Pago numa loja nova são cadastro na aplicação MP do lojista —
+  // DIAS, não minutos, e ninguém avisa o cliente de nada enquanto isso.
+  // Falta de env var no servidor nunca é problema DO PEDIDO — a diferença
+  // é só o prazo de quem conserta. O que esta correção resolve é só o
+  // throw cru escapando sem mensagem nenhuma; o cliente sempre continuou
+  // (e deve continuar) tentando de novo depois deste 503 de service role.
   let supabase: ReturnType<typeof createClient>;
   if (deps.supabase) {
     supabase = deps.supabase;

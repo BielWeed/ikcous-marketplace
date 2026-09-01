@@ -1283,7 +1283,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     } catch (error) {
       setIsSubmitting(false);
       console.error("Erro ao salvar produto:", error);
-      toast.error("Erro ao processar as modificações do produto.");
+      // Laudo 0109 (A12): o toast ficou no hook (useProducts traduz o erro
+      // com mensagemAmigavelErroProduto e já avisou) — a tela não repete
+      // com um aviso genérico por cima (era o "dois toasts empilhados").
     }
   };
 

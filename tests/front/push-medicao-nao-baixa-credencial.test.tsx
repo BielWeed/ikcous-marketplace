@@ -178,7 +178,7 @@ describe("AdminPushView mede público sem baixar credencial de envio", () => {
     // Troca de segmento dispara a previsão de alcance — também pela count.
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = botoes.find((b) =>
-      (b.textContent ?? "").includes("Clientes Frequentes"),
+      (b.textContent ?? "").includes("Gastaram R$ 150+ (pagos)"),
     );
     expect(botaoVip).toBeTruthy();
     await act(async () => {
