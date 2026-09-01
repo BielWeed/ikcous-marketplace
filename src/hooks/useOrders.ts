@@ -952,7 +952,18 @@ export function useOrders(
           setOrders((atual) =>
             JSON.stringify(atual) === serializado ? atual : mappedOrders,
           );
-          localStorage.setItem(cacheKey, serializado);
+          // P-2 (laudo varredura 01/09): o setItem do cache está sob
+          // try/catch — localStorage cheio (QuotaExceededError) NÃO é erro
+          // de rede nem da leitura: é o armazenamento LOCAL do aparelho
+          // estourado. Cair no catch do fetch inteiro dava toast de "Erro
+          // ao carregar seus pedidos" com a rede funcionando. Loga e segue:
+          // a tela já está atualizada em memória e o cache se renova no
+          // próximo fetch que caiba.
+          try {
+            localStorage.setItem(cacheKey, serializado);
+          } catch (e) {
+            console.error("Error caching orders (storage full?):", e);
+          }
           return mappedOrders;
         }
         return [];
@@ -1205,12 +1216,13 @@ export function useOrders(
         const newOrder = mapOrderFromDB(data as any);
         setOrders((prev) => {
           if (prev.some((o) => o.id === newOrder.id)) return prev;
-          const updated = [newOrder, ...prev];
-          if (user?.id && !isAdmin) {
-            const cacheKey = `ikcous_orders_cache_${user.id}`;
-            localStorage.setItem(cacheKey, JSON.stringify(updated));
-          }
-          return updated;
+          // P-2 (laudo varredura 01/09): SEM gravação de cache aqui — os
+          // três updaters de realtime re-serializavam a lista inteira a
+          // cada evento (rajada de PIX = rajada de O(n)), e a linha do
+          // realtime vem SEM as junções (`items`/`address`) que o fetch
+          // traz. O estado EM MEMÓRIA continua sendo atualizado; o cache
+          // só se renova no fetch, que roda no mount.
+          return [newOrder, ...prev];
         });
         if (!isAdmin && !onRealtimeEventRef.current) {
           toast.info(`Novo pedido recebido! #${newOrder.id.slice(0, 8)}`);
@@ -1223,18 +1235,16 @@ export function useOrders(
   const handleRealtimeUpdate = useCallback(
     (updatedOrder: any) => {
       if (!updatedOrder.id) return;
-      setOrders((prev) => {
-        const updated = prev.map((o) =>
+      setOrders((prev) =>
+        prev.map((o) =>
           o.id === updatedOrder.id
             ? mesclarAtualizacaoRealtime(o, updatedOrder)
             : o,
-        );
-        if (user?.id && !isAdmin) {
-          const cacheKey = `ikcous_orders_cache_${user.id}`;
-          localStorage.setItem(cacheKey, JSON.stringify(updated));
-        }
-        return updated;
-      });
+        ),
+      );
+      // P-2 (laudo varredura 01/09): SEM gravação de cache aqui — mesmo
+      // motivo do insert acima (serialização por evento + linha sem
+      // junções). O cache se renova no fetch.
       // Achado A da revisão de 26/08/2026 (rodada 4), mesma razão de
       // `updateOrderStatus` acima — mas para a origem que NÃO passa por
       // ele: o cliente cancela o próprio pedido, ou outra sessão admin
@@ -1245,23 +1255,18 @@ export function useOrders(
         fetchPedidosCancelados().catch(() => {});
       }
     },
-    [isAdmin, user?.id, fetchPedidosCancelados],
+    [isAdmin, fetchPedidosCancelados],
   );
 
   const handleRealtimeDelete = useCallback(
     (oldId: string | undefined) => {
       if (oldId) {
-        setOrders((prev) => {
-          const updated = prev.filter((o) => o.id !== oldId);
-          if (user?.id && !isAdmin) {
-            const cacheKey = `ikcous_orders_cache_${user.id}`;
-            localStorage.setItem(cacheKey, JSON.stringify(updated));
-          }
-          return updated;
-        });
+        // P-2 (laudo varredura 01/09): SEM gravação de cache aqui — mesmo
+        // motivo do insert/update acima. O cache se renova no fetch.
+        setOrders((prev) => prev.filter((o) => o.id !== oldId));
       }
     },
-    [isAdmin, user?.id],
+    [],
   );
 
   const ultimaConsultaAdminRef = useRef<ConsultaAdmin | null>(null);
@@ -1723,8 +1728,8 @@ export function useOrders(
           return o;
         });
 
-        setOrders((prev) => {
-          const updated = prev.map((o) => {
+        setOrders((prev) =>
+          prev.map((o) => {
             if (o.id === orderId) {
               const updatedOrder = Object.assign({}, o);
               updatedOrder.status = status;
@@ -1737,13 +1742,12 @@ export function useOrders(
               return updatedOrder;
             }
             return o;
-          });
-          if (user?.id && !isAdmin) {
-            const cacheKey = `ikcous_orders_cache_${user.id}`;
-            localStorage.setItem(cacheKey, JSON.stringify(updated));
-          }
-          return updated;
-        });
+          }),
+        );
+        // P-2 (laudo varredura 01/09, ressalva da revisão da onda 3): SEM
+        // gravação de cache aqui — mesmo motivo dos updaters de realtime
+        // (serialização da lista inteira dentro do updater). O cache se
+        // renova no fetch.
 
         // Check if offline
         if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -1808,10 +1812,8 @@ export function useOrders(
           : null; // will revert below or use originalCache
         cachedAdminOrders = originalCache;
         setOrders(originalOrders);
-        if (user?.id && !isAdmin) {
-          const cacheKey = `ikcous_orders_cache_${user.id}`;
-          localStorage.setItem(cacheKey, JSON.stringify(originalOrders));
-        }
+        // P-2 (ressalva da revisão da onda 3): sem escrita de cache aqui
+        // também — a reversão é em memória; o cache se renova no fetch.
         if (!silent) toast.error(mensagemAmigavelErroAtualizacaoStatus(err));
         throw err;
       }
