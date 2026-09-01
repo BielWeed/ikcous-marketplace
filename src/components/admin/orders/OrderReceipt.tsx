@@ -4,6 +4,22 @@ import { memo } from "react";
 
 interface OrderReceiptProps {
   order: Order;
+  /**
+   * A-3 (laudo varredura 01/09): o nome da LOJA no papel impresso.
+   *
+   * O recibo é o único documento que sai impresso e vai para a mão da
+   * cliente — ele tem de dizer o nome DELA ("Ateliê da Maria"), não o do
+   * molde do build. A prop vem de cima (AdminOrdersView, que lê
+   * `config.storeName` via useStore, e passa por OrderDetail), porque ler o
+   * StoreContext AQUI quebraria a montagem isolada em teste (importar o
+   * contexto puxa `@/lib/supabase` na carga do módulo — createClient roda no
+   * top-level, e jsdom sem Web Worker explode; ver o teste
+   * recibo-impresso-nome-da-loja.test.tsx, que monta o recibo sozinho).
+   *
+   * Fallback preservado: quem montar sem a prop (os testes antigos) segue
+   * vendo o branding do build.
+   */
+  storeName?: string;
 }
 
 // O recibo e o unico documento desta tela que sai IMPRESSO e vai para a mao
@@ -20,13 +36,9 @@ function reais(valor: number): string {
 
 export const OrderReceipt = memo(function OrderReceipt({
   order,
+  storeName: storeNameProp,
 }: OrderReceiptProps) {
-  // Nome da loja no papel: branding do build. Aqui NÃO se lê config.storeName
-  // do banco: importar o StoreContext puxa @/lib/supabase na carga do módulo
-  // (createClient roda no top-level), e o recibo é montado isolado em teste
-  // (jsdom sem Web Worker) -- quebrava a suíte só de importar. Quando o teste
-  // puder prover/mocar o provider, trocar por config.storeName ?? branding.appName.
-  const storeName = branding.appName;
+  const storeName = storeNameProp ?? branding.appName;
   return (
     <>
       <div className="mx-auto hidden max-w-[80mm] border border-gray-200 bg-white p-8 font-mono text-sm text-black print:block">

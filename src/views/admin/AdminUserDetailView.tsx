@@ -239,12 +239,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
       if (error) throw error;
 
-      // A policy de DELETE de `cart_items` não tem `is_admin()` (só
-      // `auth.uid() = user_id`), diferente da de SELECT. Quando a lojista
-      // apaga o carrinho de outra pessoa, o Postgres descarta todas as
-      // linhas e o PostgREST responde sucesso com ZERO linhas — sem
-      // `.select()` isso passava batido pelo `if (error) throw` e a tela
-      // comemorava uma remoção que não aconteceu.
+      // A policy de DELETE de `cart_items` ganhou o ramo de admin na
+      // migration 20261067000000 (laudo 0109, A-2): `auth.uid() = user_id OR
+      // is_admin()` — a lojista AGORA apaga o carrinho de outra pessoa de
+      // verdade. A guarda abaixo continua valendo como fileira de defesa:
+      // se a policy voltar a mudar, o zero-linhas reaparece aqui em vez de
+      // a tela comemorar uma remoção que não aconteceu.
       if (!data || data.length === 0) {
         // Zero linhas tem DOIS motivos possiveis, e a frase precisa caber
         // nos dois: a policy barrou (carrinho de outra pessoa) OU o item

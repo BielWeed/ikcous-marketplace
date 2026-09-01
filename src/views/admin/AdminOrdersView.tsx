@@ -27,6 +27,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { branding } from "@/config/branding";
+import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -248,6 +249,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 }: Readonly<AdminOrdersViewProps>) {
   const { isSupported: isTransitionSupported } = useViewTransition();
   const isOffline = useOnlineStatus();
+  // A-3 (laudo varredura 01/09): o nome da LOJA para o recibo impresso.
+  // Este é o ancestral mais alto da cadeia do recibo (AdminOrdersView ->
+  // OrderDetail -> OrderReceipt) — o nome oficial nas telas é
+  // `config.storeName?.trim() || branding.appName`, e é ele que vai para o
+  // papel, não o branding do build.
+  const { config } = useStore();
+  const storeNameDaLoja = config.storeName?.trim() || branding.appName;
   const [recentOrderChanges, setRecentOrderChanges] = useState<
     Record<string, "INSERT" | "UPDATE">
   >({});
@@ -1035,6 +1043,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             onStatusChange={handleStatusChange}
             isOffline={isOffline}
             onRegistrarPagamento={registrarPagamentoRecebido}
+            storeName={storeNameDaLoja}
           />
         </div>
       </LocalErrorBoundary>
