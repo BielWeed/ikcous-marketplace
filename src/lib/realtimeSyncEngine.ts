@@ -698,6 +698,12 @@ export const RealtimeSyncEngine = {
               .from("coupons")
               .select("*")
               .order("created_at", { ascending: false })
+              // P-6 (laudo varredura 01/09, ressalva da revisão): teto no
+              // ramo admin — aqui é SEGURO limitar (replaceAll, sem
+              // reconciliação por exclusão, ao contrário do resumo de
+              // produtos, onde limitar causaria falso-sync). 500 cupons é
+              // catálogo de desconto além de qualquer loja deste molde.
+              .limit(500)
           : Promise.resolve({ data: null, error: null }),
         productsQuery,
       ]);

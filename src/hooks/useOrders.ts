@@ -1728,8 +1728,8 @@ export function useOrders(
           return o;
         });
 
-        setOrders((prev) => {
-          const updated = prev.map((o) => {
+        setOrders((prev) =>
+          prev.map((o) => {
             if (o.id === orderId) {
               const updatedOrder = Object.assign({}, o);
               updatedOrder.status = status;
@@ -1742,13 +1742,12 @@ export function useOrders(
               return updatedOrder;
             }
             return o;
-          });
-          if (user?.id && !isAdmin) {
-            const cacheKey = `ikcous_orders_cache_${user.id}`;
-            localStorage.setItem(cacheKey, JSON.stringify(updated));
-          }
-          return updated;
-        });
+          }),
+        );
+        // P-2 (laudo varredura 01/09, ressalva da revisão da onda 3): SEM
+        // gravação de cache aqui — mesmo motivo dos updaters de realtime
+        // (serialização da lista inteira dentro do updater). O cache se
+        // renova no fetch.
 
         // Check if offline
         if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -1813,10 +1812,8 @@ export function useOrders(
           : null; // will revert below or use originalCache
         cachedAdminOrders = originalCache;
         setOrders(originalOrders);
-        if (user?.id && !isAdmin) {
-          const cacheKey = `ikcous_orders_cache_${user.id}`;
-          localStorage.setItem(cacheKey, JSON.stringify(originalOrders));
-        }
+        // P-2 (ressalva da revisão da onda 3): sem escrita de cache aqui
+        // também — a reversão é em memória; o cache se renova no fetch.
         if (!silent) toast.error(mensagemAmigavelErroAtualizacaoStatus(err));
         throw err;
       }

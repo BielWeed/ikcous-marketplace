@@ -97,6 +97,9 @@ function construirQueryBuilder(tabela: string, banco: BancoDeTeste) {
   const builder: any = {
     select: () => builder,
     order: () => builder,
+    // P-6 (laudo varredura 01/09): o catchUp agora manda .limit(500) no
+    // ramo admin de cupons — o dublê apenas encadeia.
+    limit: () => builder,
     is(coluna: string, valor: any) {
       // O dublê recusa a coluna que a fonte não expõe, como o PostgREST faz
       // (42703, "column does not exist"). A projeção de `vw_produtos_public`

@@ -63,8 +63,12 @@ async function main() {
          coupon_code, tracking_code, customer_phone)
        SELECT
         (md5('sonda-prova-p3-' || g))::uuid,
-        (ARRAY['José da Silva','Maria de Fátima','João Souza','Sebastião Café','Águas Claras'])[1 + (g % 5)] || ' ' || g,
-        jsonb_build_object('whatsapp', '(34) 9' || lpad(((g % 10000))::text, 4, '0') || '-0001'),
+        -- O PREFIXO identifica a massa para o INSERT dos itens abaixo
+        -- (ressalva da revisão da onda 3: sem ele, a tabela de itens da
+        -- prova nascia vazia e o EXPLAIN do ramo EXISTS rodava sobre a
+        -- tabela real). O prefixo não afeta os termos de busca de baixo.
+        'SONDA PROVA P3 ' ||
+        (ARRAY['José da Silva','Maria de Fátima','João Souza','Sebastião Café','Águas Claras'])[1 + (g % 5)] || ' ' || g,        jsonb_build_object('whatsapp', '(34) 9' || lpad(((g % 10000))::text, 4, '0') || '-0001'),
         100, 100, 'pending', 'pix',
         CASE WHEN g % 3 = 0 THEN 'VERÃO10' || g ELSE NULL END,
         CASE WHEN g % 4 = 0 THEN 'JR' || lpad(g::text, 8, '0') ELSE NULL END,
