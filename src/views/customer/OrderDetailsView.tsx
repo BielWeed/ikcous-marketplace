@@ -23,6 +23,7 @@ import {
   Copy,
   CreditCard,
   Loader2,
+  Mail,
   MapPin,
   MessageCircle,
   Package,
@@ -173,7 +174,8 @@ export function OrderDetailsView({
   onBack,
   onNavigate: _onNavigate,
 }: OrderDetailsViewProps) {
-  const { orders, fetchUserOrders, updateOrderStatus } = useOrders(true, false);
+  const { orders, fetchUserOrders, updateOrderStatus, reenviarComprovante } =
+    useOrders(true, false);
   const { config } = useStore();
   const { user } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
@@ -378,6 +380,38 @@ export function OrderDetailsView({
   // morta, `wa.me/` sem destinatário é link quebrado na tela de PÓS-VENDA.
   // Mesma régua do ProductView: menos de 10 dígitos, sem botão.
   const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
+
+  // Laudo 0109 (B2): o comprovante saía só pela chamada solta do navegador
+  // na hora da compra — rede caída ou aba fechada no segundo errado e o
+  // e-mail nunca chegava, sem retry e sem ninguém saber. A trava de "um
+  // e-mail por pedido" é do banco (`reivindicar_email_de_confirmacao`), e
+  // os desfechos dela viram frases honestas: enviado de novo, já tinha
+  // saido, loja sem e-mail configurado, ou falha de agora.
+  const [isResendingReceipt, setIsResendingReceipt] = useState(false);
+  const handleResendReceipt = async () => {
+    if (!order || isResendingReceipt) return;
+    setIsResendingReceipt(true);
+    try {
+      const desfecho = await reenviarComprovante(order.id);
+      if (desfecho.ok) {
+        toast.success(
+          "Comprovante reenviado! Confira a caixa de entrada do e-mail deste pedido.",
+        );
+      } else if (desfecho.motivo === "ja_enviado") {
+        toast("O comprovante deste pedido já foi enviado por e-mail.");
+      } else if (desfecho.motivo === "sem_remetente") {
+        toast.error(
+          "A loja ainda não configurou o envio de e-mails. Fale com o lojista.",
+        );
+      } else {
+        toast.error(
+          "Não conseguimos reenviar o comprovante agora. Tente de novo em instantes.",
+        );
+      }
+    } finally {
+      setIsResendingReceipt(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -593,6 +627,27 @@ export function OrderDetailsView({
               </div>
             </div>
           )}
+
+          {/* Laudo 0109 (B2): segunda chance do comprovante — ver o
+              comentário do handleResendReceipt. Fora do bloco do cancelar
+              de propósito: o reenvio faz sentido em QUALQUER estágio do
+              pedido, inclusive entregue ou cancelado. */}
+          <div className="mt-4 border-t border-zinc-100 pt-4">
+            <button
+              onClick={handleResendReceipt}
+              disabled={isResendingReceipt}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-zinc-50 text-[9px] font-black uppercase tracking-widest text-zinc-500 transition-all hover:bg-zinc-100 active:scale-[0.98] disabled:opacity-50"
+            >
+              {isResendingReceipt ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Mail className="size-3.5" />
+              )}
+              {isResendingReceipt
+                ? "Reenviando"
+                : "Reenviar comprovante por e-mail"}
+            </button>
+          </div>
 
           {/* Exige sessão: o convidado chega nesta tela pelo fallback de
               sessionStorage do loadOrder, e update_order_status_atomic passou a

@@ -1,6 +1,7 @@
 import { LazyImage } from "@/components/LazyImage";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import { imagemRedimensionada } from "@/lib/imageUrl";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -161,11 +162,15 @@ export const ProductCard = memo(function ProductCard({
       tabIndex={0}
       onClick={handleCardClick}
       onMouseEnter={() => {
-        prefetchImage(product.images[0]);
+        prefetchImage(imagemRedimensionada(product.images[0], { width: 640 }));
         if (onMouseEnter) onMouseEnter(product.id);
       }}
       onTouchStart={() => {
-        prefetchImage(product.images[0]);
+        // Laudo 0109 (C1): o prefetch baixava a ORIGINAL em paralelo com a
+        // variante redimensionada que o LazyImage já baixava — download
+        // duplo no toque. 640 é o `src` padrão que o LazyImage deste card
+        // pede; a guarda de rede lenta segue dentro do prefetchImage.
+        prefetchImage(imagemRedimensionada(product.images[0], { width: 640 }));
         if (onTouchStart) onTouchStart(product.id);
       }}
       onKeyDown={handleCardKeyDown}

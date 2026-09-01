@@ -53,6 +53,10 @@ vi.mock("@/hooks/useProducts", () => ({
     toggleProductStatus,
     addProduct,
     loadProducts,
+    // Laudo 0109 (A2): a duplicação agora copia os arquivos do storage
+    // antes de criar a cópia — aqui basta a identidade, o storage não é o
+    // assunto deste arquivo.
+    copiarImagemParaDuplicacao: async (url: string) => url,
   }),
 }));
 
