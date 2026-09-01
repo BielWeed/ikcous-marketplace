@@ -54,12 +54,12 @@ const CONSULTAS = [
   {
     rotulo: "campanha global (NotificationContext:112-117)",
     sql: () =>
-      `SELECT * FROM notificacoes WHERE usuario_id IS NULL ORDER BY created_at DESC LIMIT 20`,
+      "SELECT * FROM notificacoes WHERE usuario_id IS NULL ORDER BY created_at DESC LIMIT 20",
     indice: "idx_notificacoes_globais_created",
   },
   {
     rotulo: "badge de moderação (AdminLayout:209)",
-    sql: () => `SELECT count(*) FROM reviews WHERE merchant_reply IS NULL`,
+    sql: () => "SELECT count(*) FROM reviews WHERE merchant_reply IS NULL",
     indice: "idx_reviews_resposta_pendente",
   },
   {
