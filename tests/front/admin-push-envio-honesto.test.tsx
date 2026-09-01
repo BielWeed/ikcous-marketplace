@@ -30,8 +30,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { estadoDoBanco } = vi.hoisted(() => ({
   estadoDoBanco: {
     subCount: 8,
-    // Segmentos usados pelos botões "Clientes Frequentes / Sem comprar há
-    // 30d / Novos Clientes" — não é o que este arquivo mede, mas o
+    // Segmentos usados pelos botões "Gastaram R$ 150+ (pagos) / Sem comprar há
+    // 30d / Cadastrados há ≤ 7 dias" — não é o que este arquivo mede, mas o
     // componente busca os três ao montar.
     porSegmento: {
       vip: [] as unknown[],
@@ -441,7 +441,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
   });
 
   it("segmento vazio (sem cliente específico): continua parando sem criar aviso no app — a trava da decisão 3", async () => {
-    // Mesma corrida do primeiro teste: o segmento "Sem comprar há 30d"
+    // Mesma corrida do primeiro teste: o segmento "Sem pedidos há 30d (qualquer status)"
     // tem 1 aparelho no instante em que é selecionado (habilita o botão),
     // e 0 no instante em que o `handleSend` mede de novo.
     estadoDoBanco.porSegmento.inactive = [
@@ -452,7 +452,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
 
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoInativo = botoes.find((b) =>
-      (b.textContent ?? "").includes("Sem comprar há 30d"),
+      (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
     );
     expect(botaoInativo).toBeTruthy();
     await act(async () => {
@@ -518,7 +518,9 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
 
       const botaoInativo = Array.from(
         hospedeiro.querySelectorAll("button"),
-      ).find((b) => (b.textContent ?? "").includes("Sem comprar há 30d"));
+      ).find((b) =>
+        (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
+      );
       expect(botaoInativo).toBeTruthy();
       await act(async () => {
         botaoInativo!.click();

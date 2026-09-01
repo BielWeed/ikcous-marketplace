@@ -8,6 +8,7 @@ import {
   Palette,
   RefreshCw,
   Save,
+  Wallet,
 } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -16,9 +17,20 @@ import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
 import { supabase } from "@/lib/supabase";
 
 import type { View } from "@/types";
+
+// Laudo 0109 (D1): o painel não tinha NENHUMA menção ao estado do
+// pagamento — o lojista descobria que a loja não aceita PIX pela queixa do
+// cliente. A flag vem do build (src/lib/flags.ts); a chave pública também
+// (mesmo deploy). Placeholder do .env.example é o "não configurada".
+const CHAVE_PUBLICA_MP = import.meta.env.VITE_MP_PUBLIC_KEY as
+  | string
+  | undefined;
+const CHAVE_PUBLICA_MP_OK =
+  !!CHAVE_PUBLICA_MP && CHAVE_PUBLICA_MP !== "YOUR_MP_PUBLIC_KEY_HERE";
 
 interface AdminSettingsViewProps {
   onNavigate: (view: View) => void;
@@ -424,7 +436,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   }, [active]);
 
   return (
-    <div className="h-auto bg-admin-bg pb-admin lg:pb-12 duration-200 animate-in fade-in">
+    <div className="pb-admin h-auto bg-admin-bg duration-200 animate-in fade-in lg:pb-12">
       {/* Elite Header */}
       <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
@@ -491,7 +503,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   {/* Ambient glow */}
                   <div className="absolute -bottom-6 -right-6 size-24 rounded-full bg-admin-gold/5 blur-2xl transition-all duration-700 group-hover:bg-admin-gold/15" />
 
-                  <div className="relative flex flex-col justify-between h-full gap-4">
+                  <div className="relative flex h-full flex-col justify-between gap-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-admin-gold/20 bg-admin-gold/10 text-admin-gold transition-colors duration-300 group-hover:bg-admin-gold group-hover:text-black">
                         <Palette className="size-5" />
@@ -531,7 +543,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   {/* Ambient glow */}
                   <div className="absolute -bottom-6 -right-6 size-24 rounded-full bg-amber-500/5 blur-2xl transition-all duration-700 group-hover:bg-amber-500/15" />
 
-                  <div className="relative flex flex-col justify-between h-full gap-4">
+                  <div className="relative flex h-full flex-col justify-between gap-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-amber-500/20 bg-amber-500/10 text-amber-500 transition-colors duration-300 group-hover:bg-amber-500 group-hover:text-black">
                         <Layers className="size-5" />
@@ -551,6 +563,69 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                         Customize títulos, reordene posições e ative ou desative
                         carrosséis de produtos.
                       </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card 3: Pagamento online — estado honesto (laudo 0109, D1).
+                    Não é porta: é o aviso que faltava para o lojista não
+                    descobrir pela queixa do cliente que as chaves não estão
+                    no lugar. */}
+                <div className="relative overflow-hidden rounded-3xl border border-white/5 bg-zinc-950/40 p-5 shadow-xl">
+                  <div className="relative flex h-full flex-col justify-between gap-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div
+                        className={`flex size-11 shrink-0 items-center justify-center rounded-2xl border ${
+                          PAGAMENTO_ONLINE_LIGADO && CHAVE_PUBLICA_MP_OK
+                            ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                            : "border-amber-500/20 bg-amber-500/10 text-amber-500"
+                        }`}
+                      >
+                        <Wallet className="size-5" />
+                      </div>
+                      <span
+                        className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ${
+                          PAGAMENTO_ONLINE_LIGADO
+                            ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                            : "border-white/5 bg-white/5 text-zinc-400"
+                        }`}
+                      >
+                        {PAGAMENTO_ONLINE_LIGADO ? "Ligado" : "Desligado"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="mb-1 block text-[9px] font-black uppercase tracking-widest text-admin-gold">
+                        Dinheiro do Pedido
+                      </span>
+                      <h3 className="text-base font-black leading-tight tracking-tight text-white">
+                        Pagamento online (PIX)
+                      </h3>
+                      {PAGAMENTO_ONLINE_LIGADO ? (
+                        CHAVE_PUBLICA_MP_OK ? (
+                          <p className="mt-1 text-xs text-zinc-500">
+                            Ligado e com chave pública no deploy. Antes de
+                            divulgar a loja, confira se os segredos
+                            MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET estão gravados
+                            no Supabase.
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-xs font-semibold text-red-400">
+                            A flag está LIGADA, mas a chave pública do Mercado
+                            Pago não está no deploy (VITE_MP_PUBLIC_KEY): a tela
+                            de pagamento nem carrega para o cliente ("Não foi
+                            possível carregar o pagamento."). Grave as chaves MP
+                            antes de divulgar a loja.
+                          </p>
+                        )
+                      ) : (
+                        <p className="mt-1 text-xs text-zinc-500">
+                          O cliente finaliza por pagamento na entrega. Para
+                          aceitar PIX/cartão: cadastre as chaves do Mercado Pago
+                          (VITE_MP_PUBLIC_KEY no deploy; MP_ACCESS_TOKEN e
+                          MP_WEBHOOK_SECRET nos segredos do Supabase) e ligue
+                          VITE_PAGAMENTO_ONLINE no deploy.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>

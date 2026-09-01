@@ -74,7 +74,9 @@ export function FreeShippingBlock({ onNavigate }: FreeShippingBlockProps) {
         </>
       );
     }
-    return "Faça login para ganhar frete grátis em suas compras.";
+    // Logado com carrinho vazio: pedir login para quem JÁ está logado é
+    // mentira (defeito da prova de rua, 01/09). O fato verdadeiro da loja:
+    return `Ganhe frete grátis em compras acima de ${formatCurrency(minShipping)}.`;
   };
 
   // Estado: Usuário não logado

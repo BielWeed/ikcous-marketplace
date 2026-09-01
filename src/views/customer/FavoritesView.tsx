@@ -107,7 +107,12 @@ export const FavoritesView = React.memo(function FavoritesView({
   }
 
   if (favorites.length === 0) {
-    const suggestedProducts = products?.slice(0, 4) || [];
+    // Defeito da prova de rua (01/09): para o DONO da loja (logado como
+    // admin) a lista do contexto carrega o catálogo INTEIRO, inclusive
+    // pausados — e a sugestão acabava anunciando produto que a loja não
+    // está vendendo. Sugestão só de produto ATIVO.
+    const suggestedProducts =
+      products?.filter((p) => p.isActive).slice(0, 4) || [];
 
     return (
       <div className="pb-customer relative flex min-h-full flex-col items-center justify-start overflow-x-hidden bg-gradient-to-b from-zinc-50 via-white to-white px-4 py-8 sm:px-6">

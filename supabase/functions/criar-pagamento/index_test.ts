@@ -650,6 +650,29 @@ Deno.test("handler: PIX leva o documento do pagador quando o front manda — A-2
   );
 });
 
+Deno.test("handler: MP_ACCESS_TOKEN ausente vira 503 TERMINAL (laudo 0109, D1) — configuração de longa duração não prende o cliente no 'Tentar de novo'", async () => {
+  // D1: a chave do Mercado Pago numa loja nova é cadastro na aplicação MP
+  // do lojista — DIAS, não minutos. Diferente da chave de service role
+  // (ajuste de operador em minutos, que segue recuperável DE PROPÓSITO),
+  // retentar dentro da janela de 30 min do PIX não resolve nada: o cliente
+  // sai do loop pelo contrato do CHECKOUT-050 (a categoria viaja no corpo,
+  // nunca por comparação de mensagem no front).
+  Deno.env.delete("MP_ACCESS_TOKEN");
+  Deno.env.set("SUPABASE_URL", "https://xyz.supabase.co");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase },
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 503);
+  assertEquals(corpo.error, "Pagamento indisponível.");
+  assertEquals(corpo.terminal, true);
+});
+
 Deno.test("handler: o corpo Orders enviado ao MP NÃO leva notification_url — a Orders API não tem esse campo (issue #212, operacional)", async () => {
   // Tarefa 2 (CHECKOUT-070), migração para a Orders API: este teste cobria
   // o caminho clássico (montarCorpoPix aceita notificationUrl e o handler
@@ -1960,6 +1983,11 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
     ["Pedido inválido.", "reenviar com um orderId em formato de UUID resolve"],
     [
       "Pagamento indisponível.",
+      // Laudo 0109 (D1): a entrada cobre hoje SÓ o 503 de service role
+      // ausente — o de MP_ACCESS_TOKEN ausente virou terminal: true
+      // (cadastro de chaves MP numa loja nova leva dias; o cliente não
+      // fica no loop). Ajuste de service role é de operador, em minutos:
+      // retentar dentro da janela do PIX é o comportamento certo.
       "falta de env var no servidor; nada do pedido está errado",
     ],
     [
@@ -2067,9 +2095,11 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // try, e uma falha de configuração (chave ausente) escapava o handler
   // inteiro como throw, não como `json(...)`. O catch novo reusa o MESMO
   // literal "Pagamento indisponível." que a checagem de MP_ACCESS_TOKEN já
-  // usa (mesma categoria: bug de configuração deste servidor, não do
-  // pedido) — por isso não precisou de entrada NOVA em recuperaveisConhecidas,
-  // só mais uma ocorrência do mesmo identificador.
+  // usa (mesmo literal, categorias DIVERGENTES desde a D1 — laudo 0109: o
+  // de MP token é terminal, o de service role segue recuperável; ver a
+  // justificativa da entrada na lista acima) — por isso não precisou de
+  // entrada NOVA em recuperaveisConhecidas, só mais uma ocorrência do
+  // mesmo identificador.
   //
   // 18, não mais 17: pagamento online exige conta (decisão do Gabriel,
   // 16/08/2026) acrescentou um ponto de retorno novo — `if (pedido.user_id

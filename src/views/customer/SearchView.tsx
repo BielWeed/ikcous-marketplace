@@ -160,9 +160,13 @@ export const SearchView = React.memo(function SearchView({
   useEffect(() => {
     setVisibleCount(12);
   }, [query, category, minPrice, maxPrice, sort]);
-  // Get trending products for empty state (prioritizing available products)
+  // Get trending products for empty state (prioritizing available products).
+  // Defeito irmão do da prova de rua (01/09, sugestões de favoritos): para o
+  // dono da loja (admin) a lista carrega o catálogo inteiro — trending só
+  // sugere produto ATIVO, pausado não é vitrine nem aqui.
   const trendingProducts = useMemo(() => {
-    return [...allProducts]
+    return allProducts
+      .filter((p) => p.isActive)
       .sort((a, b) => {
         const aAvailable = a.stock > 0 ? 1 : 0;
         const bAvailable = b.stock > 0 ? 1 : 0;

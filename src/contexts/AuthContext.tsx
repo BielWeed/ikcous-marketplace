@@ -403,6 +403,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (sessionRes === "timeout") {
           console.warn("[Auth] getSession timed out. Moving to listener.");
+          // Defeito da prova de rua (01/09): a promise do getSession continua
+          // viva, mas a resposta era DESCARTADA — no celular com rede lenta a
+          // sessão chegava depois e ninguém a aplicava: a loja tratava
+          // usuário logado como deslogado (banner "Faça login") até um
+          // re-render qualquer. A resposta tardia é aplicada aqui — com uma
+          // guarda: se JÁ existe usuário ativo (o listener processou algo
+          // mais novo, ex. login novo), a resposta do boot é velha e não
+          // derruba quem está ativo.
+          initPromise
+            .then((tardia) => {
+              const sessaoTardia = tardia?.data?.session;
+              if (!sessaoTardia?.user) return;
+              if (activeUserIdRef.current) return;
+              console.log(
+                "[Auth] Applying late session (arrived after boot timeout).",
+              );
+              activeUserIdRef.current = sessaoTardia.user.id;
+              setSession(sessaoTardia);
+              setUser(sessaoTardia.user);
+              void fetchProfile(sessaoTardia.user).catch(() => {});
+              void checkAdmin(sessaoTardia.user).catch(() => {});
+            })
+            .catch(() => {});
           setLoading(false);
           isFirstMount.current = false;
           return;

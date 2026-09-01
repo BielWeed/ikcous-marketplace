@@ -209,7 +209,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
   // botão inteiro. Conserto 2 (revisão de 20/08/2026): o rótulo "Sem
   // comprar há 30d" contém um "0" (o "0" de "30d"), então
   // `botao.textContent.toContain("0")` passava mesmo com o multiplicador
-  // antigo devolvendo "Sem comprar há 30d2" — o "2" ficava colado ao "d" e
+  // antigo devolvendo "Sem pedidos há 30d (qualquer status)2" — o "2" ficava colado ao "d" e
   // nenhum `\bN\b` casava. O contador vive no `<span>` com a classe
   // `font-mono`, que é o único span com essa classe dentro do botão.
   function numeroDoSegmento(
@@ -225,13 +225,13 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     // mostraria 3, 2 e 3 (30%, 25% e 45% de 8).
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = botoes.find((b) =>
-      (b.textContent ?? "").includes("Clientes Frequentes"),
+      (b.textContent ?? "").includes("Gastaram R$ 150+ (pagos)"),
     );
     const botaoInativo = botoes.find((b) =>
-      (b.textContent ?? "").includes("Sem comprar há 30d"),
+      (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
     );
     const botaoNovo = botoes.find((b) =>
-      (b.textContent ?? "").includes("Novos Clientes"),
+      (b.textContent ?? "").includes("Cadastrados há ≤ 7 dias"),
     );
 
     expect(numeroDoSegmento(botaoVip)).toBe("2");
@@ -249,7 +249,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoInativo = botoes.find((b) =>
-      (b.textContent ?? "").includes("Sem comprar há 30d"),
+      (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
     );
     expect(botaoInativo).toBeTruthy();
 
@@ -295,10 +295,14 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = botoes.find((b) =>
-      (b.textContent ?? "").includes("Clientes Frequentes"),
+      (b.textContent ?? "").includes("Gastaram R$ 150+ (pagos)"),
     );
-    expect(botaoVip?.textContent).toContain("—");
-    expect(botaoVip?.textContent).not.toMatch(/[023]\D*$/);
+    // A11: o rótulo agora DESCREVE a regra ("R$ 150+ (pagos)") — ou seja,
+    // tem dígitos no próprio rótulo. A asserção antiga lia o textContent do
+    // botão inteiro e caçava dígito no fim, o que o rótulo novo fabrica em
+    // falso; o contador vive no span.font-mono (mesma lição do Conserto 2
+    // lá em cima), então a leitura é DELE.
+    expect(numeroDoSegmento(botaoVip)).toBe("—");
 
     controlador.resolver?.();
     await act(async () => {
@@ -312,10 +316,10 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = botoes.find((b) =>
-      (b.textContent ?? "").includes("Clientes Frequentes"),
+      (b.textContent ?? "").includes("Gastaram R$ 150+ (pagos)"),
     );
     const botaoInativo = botoes.find((b) =>
-      (b.textContent ?? "").includes("Sem comprar há 30d"),
+      (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
     );
 
     expect(botaoVip?.textContent).toContain("—");
@@ -334,18 +338,18 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     const botoes = () => Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = () =>
       botoes().find((b) =>
-        (b.textContent ?? "").includes("Clientes Frequentes"),
+        (b.textContent ?? "").includes("Gastaram R$ 150+ (pagos)"),
       );
     const botaoInativo = () =>
       botoes().find((b) =>
-        (b.textContent ?? "").includes("Sem comprar há 30d"),
+        (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
       );
     const botaoEnviar = () =>
       botoes().find((b) =>
         (b.textContent ?? "").includes("Enviar Notificação Agora"),
       ) as HTMLButtonElement | undefined;
 
-    // 1) Seleciona "Clientes Frequentes" — mede 2 de verdade.
+    // 1) Seleciona "Gastaram R$ 150+ (pagos)" — mede 2 de verdade.
     await act(async () => {
       botaoVip()!.click();
     });
@@ -390,14 +394,14 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
     const botoes = () => Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = () =>
       botoes().find((b) =>
-        (b.textContent ?? "").includes("Clientes Frequentes"),
+        (b.textContent ?? "").includes("Gastaram R$ 150+ (pagos)"),
       );
     const botaoInativo = () =>
       botoes().find((b) =>
-        (b.textContent ?? "").includes("Sem comprar há 30d"),
+        (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
       );
 
-    // 1) Seleciona "Clientes Frequentes" e deixa medir de verdade: 2.
+    // 1) Seleciona "Gastaram R$ 150+ (pagos)" e deixa medir de verdade: 2.
     await act(async () => {
       botaoVip()!.click();
     });
@@ -481,7 +485,7 @@ describe("AdminPushView — os contadores de segmento são medidos, não multipl
 
     const botoes = Array.from(hospedeiro.querySelectorAll("button"));
     const botaoVip = botoes.find((b) =>
-      (b.textContent ?? "").includes("Clientes Frequentes"),
+      (b.textContent ?? "").includes("Gastaram R$ 150+ (pagos)"),
     );
     await act(async () => {
       botaoVip!.click();

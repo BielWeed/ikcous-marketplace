@@ -1283,7 +1283,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     } catch (error) {
       setIsSubmitting(false);
       console.error("Erro ao salvar produto:", error);
-      toast.error("Erro ao processar as modificações do produto.");
+      // Laudo 0109 (A12): o toast ficou no hook (useProducts traduz o erro
+      // com mensagemAmigavelErroProduto e já avisou) — a tela não repete
+      // com um aviso genérico por cima (era o "dois toasts empilhados").
     }
   };
 
@@ -1426,7 +1428,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   const hasActiveVariants = formData.variants.some((v) => v.active);
 
   return (
-    <div className="relative h-auto min-h-full overflow-x-hidden bg-zinc-950 pb-admin lg:pb-12 text-white">
+    <div className="relative h-auto min-h-full overflow-x-hidden bg-zinc-950 pb-[calc(11.25rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] lg:pb-28 text-white">
       {/* Background Decor */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute right-0 top-0 h-[500px] w-[500px] rounded-full bg-emerald-500/5 blur-[120px]" />
