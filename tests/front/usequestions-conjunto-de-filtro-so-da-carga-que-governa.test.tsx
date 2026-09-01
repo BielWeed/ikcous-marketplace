@@ -20,7 +20,15 @@
 // `answers-so-acordam-a-pagina-do-produto.test.tsx`.
 import { act, useEffect, useRef } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { beforeAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 // ── a fila de consultas de `questions`, com resolução controlada ─────────
 // Cada chamada de rede do hook consome o próximo item da fila. O teste
@@ -43,8 +51,9 @@ function criarConsultaPendente() {
   };
 }
 
-let filaDeConsultas: Array<{ consulta: ReturnType<typeof criarConsultaPendente> }> =
-  [];
+let filaDeConsultas: Array<{
+  consulta: ReturnType<typeof criarConsultaPendente>;
+}> = [];
 
 // ── observadores ──────────────────────────────────────────────────────────
 // `acordou` conta quantas respostas passaram pela guarda e dispararam o
@@ -234,6 +243,7 @@ describe("useQuestions — o conjunto do filtro é da carga que governa a tela",
         unsubscribe = subscribeToQuestions(() => {
           acordou += 1;
         }, "prod-1");
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- montagem ÚNICA de propósito: o hook real muda de identidade por render (o teste chama pela latest-ref getRef); re-rodar este efeito por identidade nova registraria o mesmo listener de novo.
       }, []);
       return null;
     }
@@ -278,10 +288,7 @@ describe("useQuestions — o conjunto do filtro é da carga que governa a tela",
   it("corrida A lenta x B rápida: quem termina POR ÚLTIMO não rouba o conjunto da carga que governa a tela", async () => {
     const cargaA = criarConsultaPendente(); // prod-1 (velha)
     const cargaB = criarConsultaPendente(); // prod-2 (nova)
-    filaDeConsultas = [
-      { consulta: cargaA },
-      { consulta: cargaB },
-    ];
+    filaDeConsultas = [{ consulta: cargaA }, { consulta: cargaB }];
     await montarProva();
 
     await act(async () => {
@@ -315,10 +322,7 @@ describe("useQuestions — o conjunto do filtro é da carga que governa a tela",
   it("a carga governante falhou: conjunto fica nulo — resposta de qualquer pergunta acorda (permissivo)", async () => {
     const cargaOk = criarConsultaPendente();
     const cargaFalha = criarConsultaPendente();
-    filaDeConsultas = [
-      { consulta: cargaOk },
-      { consulta: cargaFalha },
-    ];
+    filaDeConsultas = [{ consulta: cargaOk }, { consulta: cargaFalha }];
     await montarProva();
 
     // Carga inicial (prod-1) conclui: conjunto = {qa1}.
@@ -352,10 +356,7 @@ describe("useQuestions — o conjunto do filtro é da carga que governa a tela",
   it("a falha que chega é de uma carga VELHA (a tela já recarregou): o conjunto da carga nova permanece — o catch não reanula cegamente", async () => {
     const cargaB = criarConsultaPendente(); // prod-2 — pendente e depois falha
     const cargaC = criarConsultaPendente(); // prod-1 — conclui
-    filaDeConsultas = [
-      { consulta: cargaB },
-      { consulta: cargaC },
-    ];
+    filaDeConsultas = [{ consulta: cargaB }, { consulta: cargaC }];
     await montarProva();
 
     await act(async () => {

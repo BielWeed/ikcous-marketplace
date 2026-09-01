@@ -77,7 +77,9 @@ async function main() {
       [MASSA],
     );
     const produtoId = (
-      await client.query("SELECT id FROM produtos ORDER BY data_cadastro LIMIT 1")
+      await client.query(
+        "SELECT id FROM produtos ORDER BY data_cadastro LIMIT 1",
+      )
     ).rows[0]?.id;
     if (!produtoId) throw new Error("dev sem produto real para a FK do item");
     await client.query(
@@ -117,10 +119,17 @@ async function main() {
       ids: (r.data || []).map((p) => p.id).sort(),
     });
 
-    const TERMOS = ["José", "jose", "CAFÉ", "Maria de Fatima", "VERAO10", "7777"];
-    const antes = {};
+    const TERMOS = [
+      "José",
+      "jose",
+      "CAFÉ",
+      "Maria de Fatima",
+      "VERAO10",
+      "7777",
+    ];
+    const antes = new Map();
     for (const t of TERMOS) {
-      antes[t] = resumo(await chamarBusca(t));
+      antes.set(t, resumo(await chamarBusca(t)));
     }
 
     // ---- controle negativo: sem os índices, consulta crua NÃO usa índice --
@@ -128,13 +137,16 @@ async function main() {
       await client.query(
         "EXPLAIN SELECT count(*) FROM marketplace_orders WHERE unaccent(customer_name) ILIKE '%jose%'",
       )
-    ).rows.map((r) => r["QUERY PLAN"]).join("\n");
+    ).rows
+      .map((r) => r["QUERY PLAN"])
+      .join("\n");
     asserir(
       !planoAntes.includes("idx_orders_busca"),
       "controle negativo: consulta CRUA sem os índices não cita nenhum idx_orders_busca",
     );
 
     // ---- aplica a migration inteira (inline na transação) ----------------
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado da RAIZ do repo, sem entrada externa
     const migrationSql = fs.readFileSync(
       path.join(
         RAIZ,
@@ -149,7 +161,9 @@ async function main() {
       await client.query(
         "EXPLAIN SELECT count(*) FROM marketplace_orders WHERE public.f_unaccent(customer_name) ILIKE '%jose%'",
       )
-    ).rows.map((r) => r["QUERY PLAN"]).join("\n");
+    ).rows
+      .map((r) => r["QUERY PLAN"])
+      .join("\n");
     asserir(
       planoDepois.includes("idx_orders_busca_cliente"),
       "com os índices: EXPLAIN da consulta reescrita cita idx_orders_busca_cliente",
@@ -159,7 +173,9 @@ async function main() {
       await client.query(
         "EXPLAIN SELECT o.id FROM marketplace_orders o WHERE EXISTS (SELECT 1 FROM marketplace_order_items oi WHERE oi.order_id = o.id AND public.f_unaccent(oi.product_name) ILIKE '%cafeteira%')",
       )
-    ).rows.map((r) => r["QUERY PLAN"]).join("\n");
+    ).rows
+      .map((r) => r["QUERY PLAN"])
+      .join("\n");
     asserir(
       planoItens.includes("idx_order_items_busca_produto"),
       "com os índices: EXPLAIN da busca por PRODUTO cita idx_order_items_busca_produto",
@@ -169,7 +185,9 @@ async function main() {
       await client.query(
         `EXPLAIN SELECT count(*) FROM marketplace_orders WHERE length(regexp_replace(coalesce(customer_phone, customer_data->>'whatsapp', ''), '[^0-9]', '', 'g')) >= 4 AND regexp_replace(coalesce(customer_phone, customer_data->>'whatsapp', ''), '[^0-9]', '', 'g') LIKE '%977770001%'`,
       )
-    ).rows.map((r) => r["QUERY PLAN"]).join("\n");
+    ).rows
+      .map((r) => r["QUERY PLAN"])
+      .join("\n");
     asserir(
       planoFone.includes("idx_orders_busca_telefone"),
       "com os índices: EXPLAIN da busca por TELEFONE cita idx_orders_busca_telefone",
@@ -178,29 +196,36 @@ async function main() {
     // ---- resultados idênticos antes/depois para TODO termo ---------------
     for (const t of TERMOS) {
       const depois = resumo(await chamarBusca(t));
+      const era = antes.get(t);
       asserir(
-        depois.total === antes[t].total && depois.ids.join() === antes[t].ids.join(),
-        `resultados idênticos para "${t}" (total ${antes[t].total} = ${depois.total}, ${antes[t].ids.length} ids na página)`,
+        depois.total === era.total && depois.ids.join() === era.ids.join(),
+        `resultados idênticos para "${t}" (total ${era.total} = ${depois.total}, ${era.ids.length} ids na página)`,
       );
     }
 
     // ---- wrappers existem; sobrecarga única; pg_trgm instalado -----------
     asserir(
-      (await client.query(
-        "SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname IN ('f_unaccent','f_digitos')",
-      )).rows[0].n === 2,
+      (
+        await client.query(
+          "SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname IN ('f_unaccent','f_digitos')",
+        )
+      ).rows[0].n === 2,
       "wrappers f_unaccent e f_digitos existem no schema public",
     );
     asserir(
-      (await client.query(
-        "SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname = 'get_admin_orders_paged'",
-      )).rows[0].n === 1,
+      (
+        await client.query(
+          "SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname = 'get_admin_orders_paged'",
+        )
+      ).rows[0].n === 1,
       "get_admin_orders_paged continua com UMA sobrecarga viva",
     );
     asserir(
-      (await client.query(
-        "SELECT count(*)::int AS n FROM pg_indexes WHERE indexname IN ('idx_orders_busca_cliente','idx_orders_busca_cupom','idx_orders_busca_rastreio','idx_orders_busca_id','idx_orders_busca_telefone','idx_order_items_busca_produto')",
-      )).rows[0].n === 6,
+      (
+        await client.query(
+          "SELECT count(*)::int AS n FROM pg_indexes WHERE indexname IN ('idx_orders_busca_cliente','idx_orders_busca_cupom','idx_orders_busca_rastreio','idx_orders_busca_id','idx_orders_busca_telefone','idx_order_items_busca_produto')",
+        )
+      ).rows[0].n === 6,
       "os 6 índices GIN existem",
     );
 
@@ -228,7 +253,9 @@ async function main() {
     console.error(`\nPROVA INCOMPLETA: ${falhas} asserção(ões) falharam.`);
     process.exit(1);
   }
-  console.log("\nPROVA COMPLETA: todas as asserções passaram. Nada foi gravado (ROLLBACK).");
+  console.log(
+    "\nPROVA COMPLETA: todas as asserções passaram. Nada foi gravado (ROLLBACK).",
+  );
 }
 
 main().catch((e) => {

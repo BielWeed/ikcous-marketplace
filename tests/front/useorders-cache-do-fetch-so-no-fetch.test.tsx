@@ -58,8 +58,8 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
 
-import { toast } from "sonner";
 import { useOrders } from "@/hooks/useOrders";
+import { toast } from "sonner";
 
 let handlersDoCanal: Map<string, (payload: any) => void> = new Map();
 
