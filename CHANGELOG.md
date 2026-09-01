@@ -7,6 +7,48 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.15.0] - 2026-09-01
+
+A versão da prova de rua: o dono navegou a loja, apontou quatro defeitos e
+todos saem consertados — junto com a faxina dos avisos em tempo real e o
+tratamento honesto do pagamento online antes das chaves.
+
+### Para quem COMPRA
+
+- **"Você também pode gostar" carrega de verdade.** A seção não fica mais
+  presa no carregamento — e, quando o produto não tem recomendação, ela
+  some em vez de mostrar o título sobre um grid vazio.
+- **O banner de frete grátis não pede mais login para quem já está
+  logado.** Com internet lenta na abertura, a sessão que chegava depois do
+  boot era descartada e o app tratava o usuário como deslogado até ele
+  mexer no carrinho. Agora a sessão tardia é aplicada — e, logado, o aviso
+  diz o fato ("Ganhe frete grátis em compras acima de R$ X") em vez de
+  pedir o que você já fez.
+- **Produtos pausados não aparecem mais nas sugestões** ("Mais Amados da
+  Loja", com a lista de favoritos vazia) nem no trending da busca vazia.
+
+### Para quem VENDE
+
+- **O formulário de produto não fica mais coberto** pela tag flutuante
+  "Visualizar App" — o fim da tela (promoção, custo e preços) tem espaço
+  próprio no celular e no desktop.
+- **O painel para de gastar à toa:** uma rajada de eventos de pedido custa
+  UMA conferência dos sininhos, não três consultas por evento.
+
+### Para quem opera o molde
+
+- **Avisos em tempo real sem barulho (C4):** resposta de pergunta só acorda
+  a página daquele produto; mudança em um produto não redesenha a Home
+  inteira (merge fino por id, memória dos cards preservada); canal de
+  pedidos órfão aposentado.
+- **Faxina do laudo 0109:** rótulos do painel alinhados à regra real, fim
+  do duplo toast do cupom, guarda de corrida nos clientes de push, log de
+  push nasce zero nas DUAS assinaturas da RPC, warmer respeita rede lenta.
+- **Pagamento online honesto antes das chaves (D1):** sem chave do Mercado
+  Pago o erro é terminal (o cliente sai do loop "tentar de novo") e o
+  Ajustes ganha card próprio avisando que falta configurar.
+
+
 ## [1.14.0] - 2026-09-01
 
 A semana que deixou a loja mais difícil de enganar e mais fácil de usar. No
