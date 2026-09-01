@@ -887,9 +887,22 @@ export const RealtimeSyncEngine = {
         }
 
         // Find updated or new items
+        // P-6 (laudo varredura 01/09): o casamento era
+        // `localProducts.find(...)` DENTRO do laço sobre o resumo — O(n×m)
+        // a cada foco/retorno de conexão, crescendo com o catálogo. O Map
+        // indexa o local UMA vez (O(n+m)). A semântica NÃO muda: mesma
+        // chave (`p.id`), e o `if (!map.has(...))` preserva o
+        // primeiro-achado do `.find` no (inexistente em produção) caso de
+        // id repetido. NÃO adicionar `.limit()` no resumo: limite causaria
+        // falso-sync (produto fora do resumo pareceria excluído) — o
+        // resumo de 2 colunas é leve de propósito.
+        const localPorId = new Map<string, Product>();
+        for (const p of localProducts) {
+          if (!localPorId.has(p.id)) localPorId.set(p.id, p);
+        }
         const outOfDateIds: string[] = [];
         for (const serverProd of serverSummary) {
-          const localProd = localProducts.find((p) => p.id === serverProd.id);
+          const localProd = localPorId.get(serverProd.id);
           if (!localProd) {
             outOfDateIds.push(serverProd.id);
           } else {
