@@ -93,6 +93,26 @@ const bc =
     ? new BroadcastChannel("ikcous_questions_sync")
     : null;
 
+/**
+ * C4 (laudo novos-ângulos 01/09): decide se um evento de resposta acorda a
+ * página de produto aberta. A tabela `answers` não tem `product_id`, então
+ * o filtro é pelas perguntas QUE A PÁGINA JÁ CARREGOU: resposta de pergunta
+ * de fora não refaz a leitura.
+ *
+ * Passam de propósito (conservador — um refetch a mais é melhor que uma
+ * resposta que não aparece):
+ * - evento sem `question_id`: DELETE real replica só a PK no `old`;
+ * - página que ainda não carregou as próprias perguntas (conjunto nulo).
+ */
+const respostaAcordaAPagina = (
+  questionId: string | undefined,
+  perguntasDoProduto: Set<string> | null,
+): boolean => {
+  if (questionId === undefined) return true;
+  if (perguntasDoProduto === null) return true;
+  return perguntasDoProduto.has(questionId);
+};
+
 export function useQuestions() {
   const { user, isAdmin } = useAuth();
   const { isLeader } = useLeaderElection();
@@ -105,6 +125,10 @@ export function useQuestions() {
   // perguntar num produto que podia ter dez perguntas respondidas.
   const [error, setError] = useState<string | null>(null);
   const latestProductIdRef = useRef<string | null>(null);
+  // C4 (laudo 0109): ids das perguntas do produto que ESTA instância
+  // carregou por último — é o conjunto contra o qual o canal de `answers`
+  // é filtrado. `null` = página ainda não carregou (deixa passar).
+  const questionIdsDoProdutoRef = useRef<Set<string> | null>(null);
   const productQuestionsAbortControllerRef = useRef<AbortController | null>(
     null,
   );
@@ -113,6 +137,12 @@ export function useQuestions() {
   const getQuestionsByProduct = useCallback(
     async (productId: string) => {
       latestProductIdRef.current = productId;
+      // Ressalva 1 da revisão da frente C4: durante a recarga o conjunto é
+      // o ANTIGO — uma resposta a pergunta criada depois da última carga
+      // seria descartada e ficaria invisível até o próximo evento. Anulando
+      // o conjunto, a janela de carga inteira vira "passa tudo": a mesma
+      // semântica conservadora de página que ainda não carregou.
+      questionIdsDoProdutoRef.current = null;
 
       // 1. SWR Cache Sync
       const cached = getQuestionsCache(productId);
@@ -226,6 +256,13 @@ export function useQuestions() {
                 new Date(b.createdAt).getTime(),
             ),
         }));
+
+        // C4 (laudo 0109): atualiza o conjunto que filtra o canal de
+        // `answers` — incluindo perguntas recém-criadas pela própria
+        // página (o refetch depois de `addQuestion` repassa por aqui).
+        questionIdsDoProdutoRef.current = new Set(
+          formattedQuestions.map((q) => q.id),
+        );
 
         if (latestProductIdRef.current === productId) {
           setQuestions(formattedQuestions);
@@ -546,6 +583,10 @@ export function useQuestions() {
 
         if (error) throw error;
         setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+        // Ressalva 2 da revisão C4: pergunta excluída sai do conjunto —
+        // resposta futura a ela (excluída em cascata ou órfã) não gera
+        // refetch inútil.
+        questionIdsDoProdutoRef.current?.delete(questionId);
         if (!options?.silent) toast.success("Pergunta removida.");
         return true;
       } catch (error) {
@@ -610,8 +651,27 @@ export function useQuestions() {
               // PAINEL-11: canal de answers SEM filtro de produto — resposta
               // de QUALQUER produto chega aqui. O broadcast anterior etiquetava
               // com o productId LOCAL (errado para outros produtos); agora vai
-              // sem productId (sinal genérico que todas as abas aceitam).
-              bc?.postMessage({ type: "questions_change", payload });
+              // sem productId (sinal genérico que todas as abas aceitam), com
+              // o question_id do evento para cada aba aplicar a guarda.
+              const questionIdDoEvento =
+                (payload as any).new?.question_id ??
+                (payload as any).old?.question_id ??
+                undefined;
+              bc?.postMessage({
+                type: "questions_change",
+                questionId: questionIdDoEvento,
+                payload,
+              });
+              // C4 (laudo 0109): página de produto só refaz a leitura quando
+              // a resposta é de pergunta DESTE produto.
+              if (
+                !respostaAcordaAPagina(
+                  questionIdDoEvento,
+                  questionIdsDoProdutoRef.current,
+                )
+              ) {
+                return;
+              }
               if (onChange) {
                 onChange();
               } else if (productId) {
@@ -665,6 +725,19 @@ export function useQuestions() {
                 event.data?.productId === undefined) ||
               event.data?.productId === productId
             ) {
+              // C4 (laudo 0109): a MESMA guarda do canal do líder vale na aba
+              // secundária — respostas de perguntas de outro produto não
+              // acordam esta página. Mensagens sem question_id (canal de
+              // questions, DELETE real) passam como sempre.
+              if (
+                productId &&
+                !respostaAcordaAPagina(
+                  event.data?.questionId,
+                  questionIdsDoProdutoRef.current,
+                )
+              ) {
+                return;
+              }
               console.log(
                 "[Realtime-Questions-Secondary] Received change signal from Leader tab",
               );

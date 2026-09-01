@@ -500,11 +500,22 @@ describe("AdminLayout — rodada antiga não sobrescreve rodada nova (ressalva 3
     // manda quando algo muda. As três consultas dela respondem rápido (o
     // dublê padrão, sem falha) porque `ORDERS_DEFERRED` já foi consumido
     // pela rodada 1 e está `null`.
+    //
+    // C4 (laudo 0109): a mensagem da aba secundária não dispara a
+    // conferência na hora — cai na coalescência de badges (janela de
+    // 1s). A prova da corrida continua a mesma: a rodada 2 inteira
+    // acontece AQUI, e a rodada 1 só termina depois.
     expect(bcListeners.length).toBeGreaterThan(0);
     await act(async () => {
       for (const escuta of bcListeners) {
         escuta({ data: { type: "badge_update" } });
       }
+    });
+
+    // Atravessa a janela de coalescência (1s) e espera a rodada 2
+    // COMPLETAR — é ela que produz o veredito "deu certo".
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1100));
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
@@ -529,5 +540,5 @@ describe("AdminLayout — rodada antiga não sobrescreve rodada nova (ressalva 3
     // novo (deu certo) e a bolinha acenderia sozinha. Com o guard, a
     // rodada 1 se reconhece superada e não mexe em estado nenhum.
     expect(sino.querySelector("span")).toBeNull();
-  });
+  }, 10000);
 });

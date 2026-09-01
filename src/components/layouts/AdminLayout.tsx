@@ -133,6 +133,23 @@ export function AdminLayout({
     // ciclo de retentativa do zero.
     let tentativaDeRetentativa = 0;
     let timeoutDeRetentativa: ReturnType<typeof setTimeout> | null = null;
+    // C4 (laudo novos-ângulos 01/09): uma rajada de eventos de pedido
+    // (import, reconciliação, vários pagamentos) chamava fetchInitialCounts
+    // — três consultas — UMA VEZ POR EVENTO. A coalescência agenda a
+    // primeira conferência e absorve as demais da janela: rajada inteira
+    // custa UMA conferência. Montagem e retorno de foco continuam
+    // imediatos (quem acabou de abrir/voltar precisa do número agora).
+    const ATRASO_COALESCENCIA_BADGES_MS = 1000;
+    let timerDeConferencia: ReturnType<typeof setTimeout> | null = null;
+    const pedirConferenciaDeAvisos = () => {
+      if (timerDeConferencia) return;
+      timerDeConferencia = setTimeout(() => {
+        timerDeConferencia = null;
+        if (isMounted) {
+          fetchInitialCounts();
+        }
+      }, ATRASO_COALESCENCIA_BADGES_MS);
+    };
     const bc =
       typeof window !== "undefined"
         ? new BroadcastChannel("ikcous_admin_layout_badges")
@@ -245,7 +262,7 @@ export function AdminLayout({
             "postgres_changes",
             { event: "*", schema: "public", table: "marketplace_orders" },
             () => {
-              fetchInitialCounts();
+              pedirConferenciaDeAvisos();
               bc?.postMessage({ type: "badge_update" });
             },
           )
@@ -280,7 +297,7 @@ export function AdminLayout({
             "postgres_changes",
             { event: "*", schema: "public", table: "questions" },
             () => {
-              fetchInitialCounts();
+              pedirConferenciaDeAvisos();
               bc?.postMessage({ type: "badge_update" });
             },
           )
@@ -288,7 +305,7 @@ export function AdminLayout({
             "postgres_changes",
             { event: "*", schema: "public", table: "answers" },
             () => {
-              fetchInitialCounts();
+              pedirConferenciaDeAvisos();
               bc?.postMessage({ type: "badge_update" });
             },
           )
@@ -326,7 +343,7 @@ export function AdminLayout({
               console.log(
                 "[AdminLayout-Secondary] Badge update received via BroadcastChannel",
               );
-              fetchInitialCounts();
+              pedirConferenciaDeAvisos();
             }
           };
           bc.addEventListener("message", bcListener);
@@ -374,6 +391,10 @@ export function AdminLayout({
       if (timeoutDeRetentativa) {
         clearTimeout(timeoutDeRetentativa);
         timeoutDeRetentativa = null;
+      }
+      if (timerDeConferencia) {
+        clearTimeout(timerDeConferencia);
+        timerDeConferencia = null;
       }
     };
   }, [isLeader]);
