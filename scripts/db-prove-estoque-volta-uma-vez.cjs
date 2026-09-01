@@ -61,6 +61,7 @@ function asserir(condicao, rotulo) {
 
 async function main() {
   const envPath = path.join(RAIZ, ".env");
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado da RAIZ do repo, sem entrada externa
   const env = fs.readFileSync(envPath, "utf8");
   const linha = env.split(/\r?\n/).find((l) => l.startsWith("DATABASE_URL="));
   const dbUrl = linha
@@ -70,6 +71,7 @@ async function main() {
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
 
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo da migration desta frente, sem entrada externa
   const migration = fs.readFileSync(MIGRATION, "utf8");
 
   try {
@@ -109,6 +111,7 @@ async function main() {
                   ? "'{}'"
                   : null;
       if (generico === null) continue;
+      // eslint-disable-next-line security/detect-object-injection -- coluna vem do information_schema, script local sem entrada de rede
       cols[column_name] = generico;
     }
     const ins = await client.query(

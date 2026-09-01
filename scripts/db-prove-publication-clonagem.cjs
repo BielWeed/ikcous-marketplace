@@ -58,12 +58,14 @@ async function membros(client) {
 
 async function main() {
   const envPath = path.join(RAIZ, ".env");
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado da RAIZ do repo, sem entrada externa
   const env = fs.readFileSync(envPath, "utf8");
   const linha = env.split(/\r?\n/).find((l) => l.startsWith("DATABASE_URL="));
   const dbUrl = linha.slice("DATABASE_URL=".length).replace(/^"|"$/g, "");
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo da migration desta frente, sem entrada externa
   const migration = fs.readFileSync(MIGRATION, "utf8");
 
   try {
