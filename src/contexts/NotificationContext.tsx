@@ -96,14 +96,36 @@ export function NotificationProvider({
 
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from("notificacoes")
-          .select("*")
-          .or(`usuario_id.eq.${user.id},usuario_id.is.null`)
-          .order("created_at", { ascending: false })
-          .limit(50);
+        // Laudo 0109 (A9): a consulta única misturava avisos próprios com
+        // campanha (`usuario_id` nulo) num único `.limit(50)` por created_at
+        // — cliente frequente com 50+ avisos de status nunca via a campanha
+        // que o lojista mandou "para todos", nem no contador de não lidas.
+        // As duas pontas andam em paralelo, cada uma com o seu limite;
+        // campanha é rara (uma linha por envio), 20 já sobra.
+        const [dosProprios, deCampanha] = await Promise.all([
+          supabase
+            .from("notificacoes")
+            .select("*")
+            .eq("usuario_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(50),
+          supabase
+            .from("notificacoes")
+            .select("*")
+            .is("usuario_id", null)
+            .order("created_at", { ascending: false })
+            .limit(20),
+        ]);
 
-        if (error) throw error;
+        if (dosProprios.error) throw dosProprios.error;
+        if (deCampanha.error) throw deCampanha.error;
+
+        const data = [...(dosProprios.data || []), ...(deCampanha.data || [])]
+          .sort(
+            (a, b) =>
+              new Date(b.created_at).getTime() -
+              new Date(a.created_at).getTime(),
+          );
 
         const estadoLocal = lerEstadoLocalDaCampanha(user.id);
         const campanhaIds = new Set<string>();

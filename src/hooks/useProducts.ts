@@ -1,6 +1,10 @@
 import { useStore } from "@/contexts/StoreContext";
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  caminhoDaCopia,
+  caminhoDaImagemDoProduto,
+} from "@/lib/copiar-imagem-para-duplicacao";
 import { mapProductFromDB } from "@/lib/mappers";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { supabase } from "@/lib/supabase";
@@ -8,6 +12,40 @@ import type { Product, ProductVariant } from "@/types";
 import { TruthGate } from "@/utils/truth_gate";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+
+/**
+ * Laudo 0109 (A2): DUPLICAR produto copia cada imagem do storage para um
+ * arquivo próprio da cópia — reusar as URLs do original fazia a exclusão
+ * futura de uma das partes levar o arquivo da outra para backup/ e as
+ * fotos do sobrevivente sumirem. URL sem arquivo nosso atrás (placeholder,
+ * domínio externo) volta como está. Falha de cópia LANÇA: o chamador
+ * (`confirmDuplicate`) tem catch com toast — melhor não duplicar do que
+ * nascer compartilhando arquivo de novo em silêncio.
+ *
+ * Cobertura da outra ponta (exclusão): `backupStorageFile`, logo abaixo,
+ * passou de `.move()` para `.copy()` pelo mesmo motivo — URLs legadas
+ * compartilhadas.
+ */
+export async function copiarImagemParaDuplicacao(
+  url: string,
+): Promise<string> {
+  const caminho = caminhoDaImagemDoProduto(url);
+  if (!caminho) return url;
+
+  const novoCaminho = caminhoDaCopia(caminho);
+  const { error } = await supabase.storage
+    .from("products")
+    .copy(caminho, novoCaminho);
+  if (error) {
+    throw new Error(
+      `Não foi possível copiar a imagem do produto no storage: ${error.message}`,
+    );
+  }
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("products").getPublicUrl(novoCaminho);
+  return publicUrl;
+}
 
 async function callRpcWithRetry<T>(
   fn: () => Promise<{ data: T | null; error: any }>,
@@ -256,13 +294,20 @@ export function useProducts({ autoFetch = true } = {}) {
         const timestamp = Date.now();
         const newFilePath = `backup/${baseName}_${timestamp}.${ext}`;
 
+        // Laudo 0109 (A2): era `.move()` — e URLs de imagem são
+        // COMPARTILHADAS no acervo legado (produto duplicado antes de a
+        // duplicação copiar arquivos reusava os mesmos caminhos). Mover o
+        // arquivo do produto excluído deixava o outro produto apontando
+        // para um caminho vazio, sem erro em lugar nenhum. Copiar preserva
+        // os dois: o backup ganha a sua cópia, quem compartilhava a URL
+        // continua com o arquivo original no lugar.
         const { error } = await supabase.storage
           .from("products")
-          .move(filePath, newFilePath);
+          .copy(filePath, newFilePath);
 
         if (error) {
           console.error(
-            "[useProducts] Error moving file to backup in storage:",
+            "[useProducts] Error copying file to backup in storage:",
             error,
             filePath,
             newFilePath,
@@ -270,7 +315,7 @@ export function useProducts({ autoFetch = true } = {}) {
           return url;
         }
         console.log(
-          "[useProducts] Moved storage file to backup:",
+          "[useProducts] Copied storage file to backup:",
           filePath,
           "->",
           newFilePath,
@@ -1586,6 +1631,7 @@ export function useProducts({ autoFetch = true } = {}) {
     getRecommendations,
     getCartRecommendations,
     uploadProductImages,
+    copiarImagemParaDuplicacao,
     trackRecommendationClick,
     addVariant,
     updateVariant,

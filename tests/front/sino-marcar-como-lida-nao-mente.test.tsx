@@ -57,17 +57,6 @@ const { tabela } = vi.hoisted(() => ({
   },
 }));
 
-function linhasVisiveis() {
-  // Espelha notificacoes_select_policy: dono OU usuario_id nulo.
-  return tabela.linhas
-    .filter((l) => l.usuario_id === USUARIA.id || l.usuario_id === null)
-    .sort(
-      (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    )
-    .slice(0, 50);
-}
-
 // Só as três colunas que os .eq() do contexto realmente usam. Um `switch`
 // explícito em vez de acesso dinâmico (`linha[coluna]`) evita o
 // `security/detect-object-injection` do eslint — mesmo padrão de
@@ -175,14 +164,38 @@ vi.mock("@/lib/supabase", () => ({
         throw new Error(`tabela inesperada no mock: ${nomeDaTabela}`);
       }
       return {
-        select: () => ({
-          or: () => ({
+        select: () => {
+          // Laudo 0109 (A9): o contexto consulta em DUAS pontas — avisos
+          // próprios (.eq usuario_id) e campanha (.is usuario_id null) —
+          // cada uma com o seu `.limit`. O mock resolve cada ponta com as
+          // linhas que o banco devolveria para aquele filtro (a policy de
+          // SELECT continua valendo nas duas).
+          const linhasDoFiltro = (filtro: "proprias" | "campanha") =>
+            tabela.linhas
+              .filter((l) =>
+                filtro === "proprias"
+                  ? l.usuario_id === USUARIA.id
+                  : l.usuario_id === null,
+              )
+              .sort(
+                (a, b) =>
+                  new Date(b.created_at).getTime() -
+                  new Date(a.created_at).getTime(),
+              )
+              .slice(0, 50);
+          const comOrdenacao = (filtro: "proprias" | "campanha") => ({
             order: () => ({
               limit: () =>
-                Promise.resolve({ data: linhasVisiveis(), error: null }),
+                Promise.resolve({ data: linhasDoFiltro(filtro), error: null }),
             }),
-          }),
-        }),
+          });
+          return {
+            eq: (_coluna: string, valor: unknown) =>
+              comOrdenacao(valor === USUARIA.id ? "proprias" : "campanha"),
+            is: (_coluna: string, valor: unknown) =>
+              comOrdenacao(valor === null ? "campanha" : "proprias"),
+          };
+        },
         update: (patch: Record<string, unknown>) =>
           construirEncadeamentoDeUpdate(patch),
         delete: () => construirEncadeamentoDeDelete(),

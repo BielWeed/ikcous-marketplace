@@ -788,6 +788,44 @@ export function processarMensagemBroadcast(
   }
 }
 
+/**
+ * Laudo 0109 (B2), achado da revisão adversária: `functions.invoke`
+ * transforma status >= 400 em `FunctionsHttpError` e DESCARTA o corpo — e é
+ * no corpo que mora o `motivo` honesto do comprovante. O caso que dói:
+ * loja sem SMTP configurado devolve `sem_remetente` com HTTP 502 (ver
+ * `montarResposta` na function), que vira `error` sem corpo — sem este
+ * resgate, a tela mandaria "tente de novo em instantes" para um problema
+ * que retentativa NENHUMA resolve, e o ramo honesto dela seria código
+ * morto. Mesmo comportamento do transporte já documentado no fluxo do OTP
+ * deste arquivo. Função de módulo (não de hook) para a costura ser
+ * testável sem montar o hook inteiro.
+ */
+export async function desfechoDoReenvio(
+  data: unknown,
+  error: unknown,
+): Promise<{ ok: boolean; motivo?: string }> {
+  if (!error) {
+    return (
+      (data as { ok: boolean; motivo?: string }) || {
+        ok: false,
+        motivo: "envio_falhou",
+      }
+    );
+  }
+  const contexto = (
+    error as { context?: { json?: () => Promise<unknown> } } | null
+  )?.context;
+  if (typeof contexto?.json === "function") {
+    try {
+      const corpo = (await contexto.json()) as { motivo?: string };
+      if (corpo?.motivo) return { ok: false, motivo: corpo.motivo };
+    } catch {
+      // corpo não-JSON (proxy, HTML de erro): desfecho genérico mesmo.
+    }
+  }
+  return { ok: false, motivo: "envio_falhou" };
+}
+
 export function useOrders(
   enabled = true,
   isAdmin = false,
@@ -2078,6 +2116,30 @@ export function useOrders(
     }
   }, []);
 
+  /**
+   * Laudo 0109 (B2): o comprovante do pedido "na entrega" (o caminho
+   * padrão) saía SÓ pela chamada solta do navegador acima — aba fechada ou
+   * rede caída no segundo errado e o e-mail nunca sai, sem retry e sem
+   * ninguém saber. O botão "reenviar comprovante" da ficha do pedido é a
+   * segunda chance, e AQUI a chamada espera o desfecho para a tela contar a
+   * verdade. A trava contra e-mail repetido continua sendo a MESMA RPC do
+   * banco (`reivindicar_email_de_confirmacao`): quem já recebeu ganha o
+   * desfecho `ja_enviado`, não uma segunda mensagem — e o `send-order-
+   * confirmation` só libera a reserva de novo quando o envio de verdade
+   * falhou.
+   */
+  const reenviarComprovante = useCallback(async (orderId: string) => {
+    try {
+      const { data, error } = await (supabase as any).functions.invoke(
+        "send-order-confirmation",
+        { body: { orderId } },
+      );
+      return await desfechoDoReenvio(data, error);
+    } catch {
+      return { ok: false, motivo: "envio_falhou" as const };
+    }
+  }, []);
+
   const createOrder = useCallback(
     async (orderData: any, opts?: { comPagamentoOnline?: boolean }) => {
       // 🛡️ Checkout de Convidados: O login não é mais obrigatório no frontend.
@@ -2531,6 +2593,7 @@ export function useOrders(
     fetchOrdersByOtp,
     createOrder,
     criarPagamento,
+    reenviarComprovante,
     fetchDashboardSummary,
     fetchOrderHistory,
     subscribeToOrders,

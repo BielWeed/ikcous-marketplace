@@ -27,7 +27,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Chamada =
   | { tipo: "update"; tabela: string; payload: any; id: string }
-  | { tipo: "move"; from: string; to: string };
+  // Laudo 0109 (A2): o backup da mídia era `.move` no storage e passou a
+  // `.copy` — URLs legadas de imagem são compartilhadas (produto duplicado
+  // antes de a duplicação copiar arquivos) e mover o arquivo do produto
+  // excluído apagava as fotos do sobrevivente. A ORDEM das fases que este
+  // arquivo prende não muda: só a operação do storage, que agora é cópia.
+  | { tipo: "copy"; from: string; to: string };
 
 // Todo o estado mutável referenciado DENTRO dos factories de `vi.mock` abaixo
 // precisa nascer via `vi.hoisted` — este arquivo tem um `import` estático de
@@ -134,8 +139,8 @@ vi.mock("@/lib/supabase", () => ({
     }),
     storage: {
       from: () => ({
-        move: async (from: string, to: string) => {
-          mock.ordem.push({ tipo: "move", from, to });
+        copy: async (from: string, to: string) => {
+          mock.ordem.push({ tipo: "copy", from, to });
           return mock.resultadoMove();
         },
         getPublicUrl: (path: string) => ({
@@ -286,7 +291,7 @@ describe("useProducts.deleteProduct — #99 ordem das fases", () => {
 
     // As chamadas de `move` (mídia) só podem aparecer DEPOIS do índice 0.
     const indicesDeMove = mock.ordem
-      .map((c, i) => (c.tipo === "move" ? i : -1))
+      .map((c, i) => (c.tipo === "copy" ? i : -1))
       .filter((i) => i >= 0);
     expect(indicesDeMove.length).toBeGreaterThan(0);
     expect(Math.min(...indicesDeMove)).toBeGreaterThan(0);
@@ -308,7 +313,7 @@ describe("useProducts.deleteProduct — #99 ordem das fases", () => {
     // movida — antes do conserto, o laço de backup rodava ANTES do UPDATE,
     // então uma falha aqui já deixava as imagens órfãs no Storage mesmo com
     // o produto de volta na listagem.
-    const chamadasDeMove = mock.ordem.filter((c) => c.tipo === "move");
+    const chamadasDeMove = mock.ordem.filter((c) => c.tipo === "copy");
     expect(chamadasDeMove).toHaveLength(0);
 
     // Rollback: o produto continua na lista local.
@@ -381,7 +386,7 @@ describe("useProducts.deleteProduct — #99 ordem das fases", () => {
     expect(updatesEmProdutos).toHaveLength(1);
     expect((updatesEmProdutos[0] as any).payload.imagem_urls).toBeUndefined();
 
-    expect(mock.ordem.filter((c) => c.tipo === "move")).toHaveLength(0);
+    expect(mock.ordem.filter((c) => c.tipo === "copy")).toHaveLength(0);
   });
 
   it("os dois backups de imagem rodam em paralelo (Promise.all), não em sequência", async () => {
@@ -414,7 +419,7 @@ describe("useProducts.deleteProduct — #99 ordem das fases", () => {
 
     try {
       const chamadasDeMovePendentes = mock.ordem.filter(
-        (c) => c.tipo === "move",
+        (c) => c.tipo === "copy",
       );
       // As DUAS chamadas de move (uma por imagem) já foram disparadas, mesmo
       // com nenhuma delas ainda resolvida — só um Promise.all alcança isso.
@@ -557,7 +562,7 @@ describe("useProducts.deleteProducts (lote) — #99 mesma ordem do unitário", (
     expect((mock.ordem[0] as any).payload.imagem_urls).toBeUndefined();
 
     const indicesDeMove = mock.ordem
-      .map((c, i) => (c.tipo === "move" ? i : -1))
+      .map((c, i) => (c.tipo === "copy" ? i : -1))
       .filter((i) => i >= 0);
     expect(indicesDeMove.length).toBeGreaterThan(0);
     expect(Math.min(...indicesDeMove)).toBeGreaterThan(0);
@@ -577,7 +582,7 @@ describe("useProducts.deleteProducts (lote) — #99 mesma ordem do unitário", (
 
     // O primeiro produto do lote já falha no soft-delete — nenhuma foto foi
     // movida para nenhum dos dois produtos.
-    const chamadasDeMove = mock.ordem.filter((c) => c.tipo === "move");
+    const chamadasDeMove = mock.ordem.filter((c) => c.tipo === "copy");
     expect(chamadasDeMove).toHaveLength(0);
 
     expect(apiRef!.products.map((p) => p.id)).toContain("prod-del-1");
