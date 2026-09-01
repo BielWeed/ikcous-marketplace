@@ -352,6 +352,11 @@ export const AdminBannersView = memo(function AdminBannersView({
   const isOffline = useOnlineStatus();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const isSavedRef = useRef(false);
+  // Espelho em ref de isSubmitting: os caminhos de fechamento (Escape,
+  // botão voltar) capturam handleOpenChange em closure antiga — lendo o
+  // estado por ref, o bloqueio de fechamento durante a gravação vale
+  // mesmo vindo de closure velha.
+  const isSubmittingRef = useRef(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -1179,6 +1184,11 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
+      // Enquanto o add/update está em voo, fechar apagaria o upload que a
+      // gravação (se resolver) passaria a referenciar — banner quebrado no
+      // ar. Ignora a tentativa: no sucesso o diálogo se fecha sozinho; na
+      // falha ele segue aberto com o toast de erro e o lojista decide.
+      if (isSubmittingRef.current) return;
       setProductSearch("");
       setSelectedCouponCode("");
       if (!isSavedRef.current) {
@@ -1187,6 +1197,23 @@ export const AdminBannersView = memo(function AdminBannersView({
           formData.imageUrl !== editingBanner?.imageUrl
         ) {
           deleteStorageFile(formData.imageUrl).catch(() => {});
+          // O rascunho pode apontar para a URL recém-apagada — limpa o
+          // campo para a recuperação não restaurar uma imagem morta.
+          try {
+            const bruto = localStorage.getItem("admin_banner_form_draft");
+            if (bruto) {
+              const rascunho = JSON.parse(bruto);
+              if (rascunho?.formData?.imageUrl === formData.imageUrl) {
+                rascunho.formData.imageUrl = "";
+                localStorage.setItem(
+                  "admin_banner_form_draft",
+                  JSON.stringify(rascunho),
+                );
+              }
+            }
+          } catch {
+            // rascunho ausente ou corrompido: a recuperação já tolera.
+          }
         }
       }
     }
@@ -1357,6 +1384,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     }
     if (isSubmitting) return;
     setIsSubmitting(true);
+    isSubmittingRef.current = true;
     try {
       if (!formData.imageUrl) {
         toast.error("Imagem é obrigatória");
@@ -1395,19 +1423,24 @@ export const AdminBannersView = memo(function AdminBannersView({
           : {}),
       };
 
-      isSavedRef.current = true;
-      localStorage.removeItem("admin_banner_form_draft");
+      // A bandeira de "salvo" e a limpeza do rascunho só valem DEPOIS do
+      // salvar resolver: se o add/update falhar, o fechamento do diálogo
+      // continua limpando o upload que não virou banner (e o rascunho
+      // sobrevive para o lojista recuperar o formulário).
       if (editingBanner) {
         await updateBanner(editingBanner.id, dataToSubmit);
       } else {
         await addBanner(dataToSubmit as Required<Omit<Banner, "id">>);
       }
+      isSavedRef.current = true;
+      localStorage.removeItem("admin_banner_form_draft");
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Erro ao salvar banner:", error);
       toast.error("Erro ao salvar as configurações do banner.");
     } finally {
       setIsSubmitting(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -5099,6 +5132,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                   <Button
                     variant="ghost"
                     onClick={handleCloseDialog}
+                    disabled={isSubmitting}
                     className="h-9.5 flex-1 cursor-pointer rounded-xl text-[9.5px] font-black uppercase tracking-wider text-zinc-500 transition-all hover:bg-white/5 hover:text-white"
                   >
                     Cancelar
@@ -5131,6 +5165,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                     <Button
                       variant="ghost"
                       onClick={handleCloseDialog}
+                      disabled={isSubmitting}
                       className="h-9.5 flex-1 cursor-pointer rounded-xl text-[9.5px] font-black uppercase tracking-wider text-zinc-500 transition-all hover:bg-white/5 hover:text-white"
                     >
                       Cancelar
