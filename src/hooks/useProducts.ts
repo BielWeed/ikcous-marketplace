@@ -2,6 +2,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { mapProductFromDB } from "@/lib/mappers";
+import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { supabase } from "@/lib/supabase";
 import type { Product, ProductVariant } from "@/types";
 import { TruthGate } from "@/utils/truth_gate";
@@ -602,6 +603,10 @@ export function useProducts({ autoFetch = true } = {}) {
 
         if (data) {
           const newProduct = mapProductFromDB(data);
+          // Laudo 0109 (A3): true quando o insert das variações falhou — o
+          // produto existe, mas o lojista precisa saber que a grade ficou
+          // para trás (o toast de erro acima já disse; o de sucesso cala).
+          let variantesFalharam = false;
 
           if (productData.variants && productData.variants.length > 0) {
             const variantsToInsert = productData.variants.map((v) => ({
@@ -610,7 +615,8 @@ export function useProducts({ autoFetch = true } = {}) {
               value: v.value,
               sku: v.sku || null,
               stock_increment: v.stockIncrement,
-              price_override: v.priceOverride,
+              // Mesmo `?? null` do upsertVariants (laudo 0109, A1).
+              price_override: v.priceOverride ?? null,
               active: v.active,
               image_url: v.imageUrl || null,
             }));
@@ -620,7 +626,17 @@ export function useProducts({ autoFetch = true } = {}) {
               .select();
 
             if (varErr) {
+              variantesFalharam = true;
               console.error("Error adding variants on creation:", varErr);
+              // Laudo 0109 (A3): o erro era só console — a tela dizia
+              // "Produto cadastrado com sucesso!" e o produto nascia SEM a
+              // grade que o lojista digitou, sem aviso nenhum. O aviso diz o
+              // que aconteceu e o caminho de conserto (o produto existe; as
+              // variações é que precisam ser salvas de novo).
+              toast.error(
+                `O produto foi criado, mas as VARIAÇÕES não foram salvas. Abra "${productData.name}" e cadastre as variações de novo.`,
+                { duration: 10000 },
+              );
             } else if (insertedVariants) {
               newProduct.variants = (insertedVariants as any[]).map((v) => ({
                 id: v.id,
@@ -641,7 +657,12 @@ export function useProducts({ autoFetch = true } = {}) {
           setLocalProducts((prev) => [newProduct, ...prev]);
           clearAnalyticsCache();
           await refreshContext();
-          toast.success("Produto cadastrado com sucesso!");
+          // Não dizer "sucesso" em cima do aviso de variação falha (laudo
+          // 0109, A3): dois toasts com mensagens opostas na mesma tela é o
+          // ruído que ensina o lojista a ignorar os dois.
+          if (!variantesFalharam) {
+            toast.success("Produto cadastrado com sucesso!");
+          }
           return newProduct;
         }
       } catch (err: any) {
@@ -1151,13 +1172,18 @@ export function useProducts({ autoFetch = true } = {}) {
 
     for (const file of files) {
       try {
-        const fileExt = file.name.split(".").pop();
+        // Laudo 0109 (C2): o arquivo cru do celular (foto de 12 MP = vários
+        // MB) ia inteiro ao bucket e era servido a quem escapar do pipeline
+        // de render. Redimensiona ANTES do upload — e `redimensionarImagem`
+        // é fail-open: na falha volta o próprio arquivo, o upload segue.
+        const pronto = await redimensionarImagem(file);
+        const fileExt = pronto.name.split(".").pop();
         const fileName = `${crypto.randomUUID()}.${fileExt}`;
         const filePath = `${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from("products")
-          .upload(filePath, file);
+          .upload(filePath, pronto);
 
         if (uploadError) throw uploadError;
 
@@ -1373,8 +1399,12 @@ export function useProducts({ autoFetch = true } = {}) {
         if (updates.sku !== undefined) dbUpdates.sku = updates.sku || null;
         if (updates.stockIncrement !== undefined)
           dbUpdates.stock_increment = updates.stockIncrement;
+        // Chave presente grava — e vazio vira NULL de verdade (laudo 0109,
+        // A1). Sem o `?? null`, apagar o override da variação era impossível:
+        // o campo saía do form, o UPDATE não levava a coluna, o preço antigo
+        // sobrevivia. `sku` já tinha o mesmo tratamento aqui.
         if (updates.priceOverride !== undefined)
-          dbUpdates.price_override = updates.priceOverride;
+          dbUpdates.price_override = updates.priceOverride ?? null;
         if (updates.active !== undefined) dbUpdates.active = updates.active;
         if (updates.imageUrl !== undefined)
           dbUpdates.image_url = updates.imageUrl;
@@ -1505,7 +1535,13 @@ export function useProducts({ autoFetch = true } = {}) {
             value: v.value,
             sku: v.sku || null,
             stock_increment: v.stockIncrement,
-            price_override: v.priceOverride,
+            // `?? null` (laudo 0109, A1): `undefined` some na serialização do
+            // supabase-js, o UPDATE da variante existente saía SEM a coluna e
+            // o override antigo sobrevivia — a tela dizia "Variantes salvas"
+            // e a loja seguia cobrando o preço substituto apagado. Mesmo
+            // tratamento que `sku`/`image_url` já tinham: vazio vira NULL
+            // de verdade (0 legítimo continua 0).
+            price_override: v.priceOverride ?? null,
             active: v.active,
             image_url: v.imageUrl || null,
           };
