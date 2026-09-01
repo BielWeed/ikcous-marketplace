@@ -39,6 +39,18 @@ vi.mock("@/lib/supabase", () => ({
   },
 }));
 
+// A-3 (laudo varredura 01/09): AdminOrdersView passou a ler o nome da loja
+// (config.storeName) para o recibo impresso — mock mínimo do contexto, mesmo
+// padrão de admin-coupons-view-expirado.test.tsx. Sem ele o useStore lança
+// 'must be used within a StoreProvider' em toda montagem da view.
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: {},
+    isLoaded: true,
+    updateConfig: vi.fn(),
+  }),
+}));
+
 let mockOrders: Order[] = [];
 let mockTotalOrders = 0;
 let mockLoadOrders: ReturnType<typeof vi.fn>;
@@ -253,9 +265,7 @@ describe("AdminOrdersView — o filtro que abre a tela filtra de verdade", () =>
     await act(async () => {
       botaoTodos!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    await esperarAte(
-      () => armazem.get("admin_orders_current_page") === "0",
-    );
+    await esperarAte(() => armazem.get("admin_orders_current_page") === "0");
 
     expect(armazem.get("admin_orders_current_page")).toBe("0");
   });
@@ -326,9 +336,7 @@ describe("AdminOrdersView — o estado vazio não mente quando há filtro estrei
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
-    expect(hospedeiro.textContent).not.toContain(
-      "Ainda não tem nenhum pedido",
-    );
+    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
     expect(hospedeiro.textContent).toContain(
       "Nenhum pedido corresponde ao que está sendo mostrado agora",
     );
@@ -349,9 +357,7 @@ describe("AdminOrdersView — o estado vazio não mente quando há filtro estrei
     });
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
-    expect(hospedeiro.textContent).not.toContain(
-      "Ainda não tem nenhum pedido",
-    );
+    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
     expect(hospedeiro.textContent).toContain(
       "Nenhum pedido corresponde ao que está sendo mostrado agora",
     );
@@ -409,11 +415,9 @@ describe("AdminOrdersView — o estado vazio não mente quando há filtro estrei
     await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
 
     expect(hospedeiro.textContent).toContain(
-      "Nenhum pedido desta página tem este status de pagamento",
+      "Nenhum pedido com esse filtro de pagamento",
     );
-    expect(hospedeiro.textContent).not.toContain(
-      "Ainda não tem nenhum pedido",
-    );
+    expect(hospedeiro.textContent).not.toContain("Ainda não tem nenhum pedido");
     expect(hospedeiro.textContent).not.toContain(
       "Nenhum pedido corresponde ao que está sendo mostrado agora",
     );

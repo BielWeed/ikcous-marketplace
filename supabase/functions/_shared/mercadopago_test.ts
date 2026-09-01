@@ -28,6 +28,7 @@ import {
   montarCorpoCartao,
   montarCorpoPix,
   montarCorpoPixOrders,
+  TEMPO_LIMITE_MS,
 } from "./mercadopago.ts";
 
 Deno.test("mapearStatus traduz o que o MP devolve", () => {
@@ -1239,4 +1240,132 @@ Deno.test("MAPA_STATUS_ORDER: os 13 pares mapeiam para o MESMO payment_status qu
     13,
     "MAPA_STATUS_ORDER deveria ter exatamente os 13 pares conhecidos — ver a lista acima",
   );
+});
+
+// --- P-4 (laudo varredura 01/09): fetch com TEMPO DE ESPERA ---
+//
+// Até este conserto as quatro chamadas a API do MP deste arquivo
+// (criarOrder/consultarOrder/criarPagamento/consultarPagamento) penduravam
+// sem limite — gateway lento/pendurado segurava o checkout do PIX até o
+// wall-clock da plataforma. Mesmo padrão do `buscarComTempo` do
+// calculate-shipping (laudo 31/08, D2): AbortController + setTimeout +
+// clearTimeout no finally, e o aborto é visto por quem chama como falha de
+// rede comum (status 0), caindo no tratamento que já existe.
+
+// Gateway pendurado: a promessa nunca resolve por conta própria — só o aborto
+// a resolve (rejeitando), exatamente como um fetch real contra um servidor
+// que nunca responde.
+function buscarPendurado(_url: string, init?: RequestInit): Promise<Response> {
+  return new Promise((_ok, falhou) => {
+    init?.signal?.addEventListener(
+      "abort",
+      () => falhou(new DOMException("The operation was aborted.", "AbortError")),
+    );
+  });
+}
+
+Deno.test("P-4 - TEMPO_LIMITE_MS é 15s, o mesmo teto do padrão da casa (calculate-shipping)", () => {
+  assertEquals(TEMPO_LIMITE_MS, 15000);
+});
+
+Deno.test("P-4 - criarOrder com gateway pendurado devolve ok:false PELO TIMEOUT (não pendura)", async () => {
+  const inicio = Date.now();
+  const r = await criarOrder({
+    token: "t",
+    corpo: {},
+    chaveIdempotencia: "k",
+    fetchImpl: buscarPendurado as unknown as typeof fetch,
+    tempoLimiteMs: 20,
+  });
+  const duracao = Date.now() - inicio;
+  assertEquals(r.ok, false);
+  // status 0 = nem chegou a haver resposta HTTP — o aborto vira falha de
+  // rede comum, não erro estourando.
+  assertEquals(r.ok ? null : r.status, 0);
+  // Prova do "não pendura": voltou dezenas de ms (o teto do teste), não 15s
+  // do default nem o wall-clock da plataforma.
+  assertEquals(duracao < 5000, true);
+});
+
+Deno.test("P-4 - consultarOrder com gateway pendurado devolve ok:false PELO TIMEOUT", async () => {
+  const r = await consultarOrder({
+    token: "t",
+    orderId: "ORD01KZZ4D94WC79335A68CZ5NZ7X",
+    fetchImpl: buscarPendurado as unknown as typeof fetch,
+    tempoLimiteMs: 20,
+  });
+  assertEquals(r.ok, false);
+  assertEquals(r.ok ? null : r.status, 0);
+});
+
+Deno.test("P-4 - criarPagamento com gateway pendurado devolve ok:false PELO TIMEOUT", async () => {
+  const r = await criarPagamento({
+    token: "t",
+    corpo: {},
+    chaveIdempotencia: "k",
+    fetchImpl: buscarPendurado as unknown as typeof fetch,
+    tempoLimiteMs: 20,
+  });
+  assertEquals(r.ok, false);
+  assertEquals(r.ok ? null : r.status, 0);
+});
+
+Deno.test("P-4 - consultarPagamento com gateway pendurado devolve ok:false PELO TIMEOUT", async () => {
+  const r = await consultarPagamento({
+    token: "t",
+    paymentId: "123456789",
+    fetchImpl: buscarPendurado as unknown as typeof fetch,
+    tempoLimiteMs: 20,
+  });
+  assertEquals(r.ok, false);
+  assertEquals(r.ok ? null : r.status, 0);
+});
+
+Deno.test("P-4 - fetch lento mas DENTRO do tempo passa, e o fetch leva um sinal de aborto", async () => {
+  let sinalRecebido: AbortSignal | null = null;
+  const buscarLentoMasOk = (_url: string, init?: RequestInit) => {
+    sinalRecebido = init?.signal ?? null;
+    return new Promise<Response>((ok) => {
+      setTimeout(
+        () => ok(new Response(JSON.stringify({ id: "ORD01KZZ4D94WC79335A68CZ5NZ7X" }))),
+        20,
+      );
+    });
+  };
+  const r = await criarOrder({
+    token: "t",
+    corpo: {},
+    chaveIdempotencia: "k",
+    fetchImpl: buscarLentoMasOk as unknown as typeof fetch,
+    tempoLimiteMs: 60000,
+  });
+  assertEquals(r.ok, true);
+  assertEquals(sinalRecebido instanceof AbortSignal, true);
+});
+
+Deno.test("P-4 - o timer do timeout é LIMPO depois da resposta (sem leak)", async () => {
+  const clearTimeoutReal = globalThis.clearTimeout;
+  let foiLimpo = false;
+  (globalThis as unknown as Record<string, unknown>).clearTimeout = (
+    id: Parameters<typeof clearTimeoutReal>[0],
+  ) => {
+    foiLimpo = true;
+    return clearTimeoutReal(id);
+  };
+  try {
+    const r = await criarOrder({
+      token: "t",
+      corpo: {},
+      chaveIdempotencia: "k",
+      fetchImpl: (() =>
+        Promise.resolve(new Response(JSON.stringify({ id: "ORD01KZZ4D94WC79335A68CZ5NZ7X" })))) as unknown as typeof fetch,
+      tempoLimiteMs: 60000,
+    });
+    assertEquals(r.ok, true);
+    // Se o timer não fosse limpo, cada chamada deixaria 60s pendurados no
+    // event loop — o deno test esperaria cada um antes de encerrar.
+    assertEquals(foiLimpo, true);
+  } finally {
+    globalThis.clearTimeout = clearTimeoutReal;
+  }
 });

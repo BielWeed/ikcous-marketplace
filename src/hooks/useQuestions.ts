@@ -260,11 +260,18 @@ export function useQuestions() {
         // C4 (laudo 0109): atualiza o conjunto que filtra o canal de
         // `answers` — incluindo perguntas recém-criadas pela própria
         // página (o refetch depois de `addQuestion` repassa por aqui).
-        questionIdsDoProdutoRef.current = new Set(
-          formattedQuestions.map((q) => q.id),
-        );
-
+        //
+        // R-2 (laudo varredura 01/09): DENTRO da mesma guarda do
+        // `setQuestions`. Sem a guarda, uma carga velha (A, abortada por
+        // outra mais recente B) que terminasse DEPOIS da B sobrescrevia o
+        // conjunto com os ids DELA enquanto a tela mostrava as perguntas
+        // de B — resposta a pergunta de B parava de acordar a página e
+        // resposta a pergunta de A acordava a tela errada. Estado
+        // consistente: o conjunto é sempre o da carga que governa a tela.
         if (latestProductIdRef.current === productId) {
+          questionIdsDoProdutoRef.current = new Set(
+            formattedQuestions.map((q) => q.id),
+          );
           setQuestions(formattedQuestions);
           setError(null);
         }
@@ -279,7 +286,15 @@ export function useQuestions() {
         }
         console.error("Error fetching questions:", error);
         toast.error("Erro ao carregar perguntas.");
+        // R-2 (laudo varredura 01/09): a carga que falhou, se ainda é a
+        // governante, deixa o conjunto NULO — o filtro passa tudo
+        // (comportamento conservador de "ainda não carregou": um refetch a
+        // mais é melhor que uma resposta invisível). Sob a MESMA guarda do
+        // setError: a falha de uma carga VELHA (a tela já recarregou com
+        // outra carga) não pode destruir o conjunto que a carga nova
+        // acabou de gravar.
         if (latestProductIdRef.current === productId) {
+          questionIdsDoProdutoRef.current = null;
           setError("Não conseguimos carregar as perguntas deste produto.");
         }
       } finally {

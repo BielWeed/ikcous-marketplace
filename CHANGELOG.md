@@ -7,6 +7,69 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.16.0] - 2026-09-01
+
+A versão da varredura profunda: três ângulos novos de auditoria (regressão do
+código novo, o painel do lojista de ponta a ponta e desempenho/escala)
+produziram um laudo de 22 achados — as ondas 1 a 3 consertam os 10
+importantes e a maior parte dos menores.
+
+### Para quem COMPRA
+
+- **"Meus Pedidos" não trava mais com o tempo.** A lista deixou de ser
+  re-serializada inteira e regravada no armazenamento do aparelho a cada
+  evento de status (uma rajada de PIX virava rajada de megabytes); cache
+  cheio agora avisa em vez de fingir erro de rede.
+- **A sessão que chega tarde no boot é conferida no servidor.** Quem entrou
+  com internet lenta não fica mais preso a uma sessão revogada — o app
+  valida em segundo plano e desloga sozinho quando o token já não vale
+  (e continua não deslogando por queda de rede).
+- **A busca do catálogo continua igual — só mais rápida.** O motor de
+  sincronização deixou de comparar catálogo inteiro par a par a cada volta
+  de foco da tela (o casamento agora é por índice), e uma eco de config
+  idêntico não redesenha mais a casa inteira.
+
+### Para quem VENDE
+
+- **Responder uma pergunta que falha avisa.** Se a rede cair ou a sessão
+  expirar, o botão "Enviar Resposta" diz o que aconteceu em vez de ficar
+  mudo.
+- **O carrinho do cliente volta a ser administrável pela ficha.** Os
+  botões "remover item" e "limpar carrinho" funcionam de verdade — a
+  permissão do banco agora tem o ramo do lojista.
+- **O recibo impresso sai com o nome da SUA loja**, o que está configurado
+  no painel — não mais com o nome de fábrica do molde.
+- **A fila de moderação conta a fila inteira**, não só a página visível —
+  o cartão deixa de dizer "Nenhuma avaliação na fila" com pendentes
+  esperando em outra página.
+- **O painel acabou com os botões que mentem:** WhatsApp sem número do
+  cliente não aparece mais (na ficha e nos cards); copiar endereço,
+  rastreio e código de cupom avisa quando o navegador recusa; excluir
+  cupom vibra sucesso só no sucesso; e o texto da busca de pedidos e a
+  ajuda do selo "Compra Verificada" descrevem o que o sistema faz de
+  verdade.
+- **O painel de pedidos busca mais rápido.** A busca por cliente, cupom,
+  rastreio, telefone e produto ganhou índice de trigrama no banco — e o
+  sino de avisos, o contador de moderação e o carrinho ganharam índices
+  próprios, de modo que nada disso varre a tabela inteira a cada uso.
+
+### Para quem opera o molde
+
+- **Timeout no cliente do Mercado Pago.** As quatro chamadas ao gateway
+  (criar/consultar order, criar/consultar pagamento) têm teto de 15
+  segundos — um gateway pendurado não segura mais o checkout do cliente
+  até o limite da plataforma.
+- **Sino de avisos com índice e sem varredura**: as duas consultas do
+  cliente e o canal em tempo real passam a usar índice próprio — a tabela
+  que cresce a cada pedido parou de custar uma varredura completa por
+  login e por evento.
+- **Config em tempo real sem re-render de graça**: o eco de realtime com
+  configuração idêntica preserva a referência (inclusive com vitrines
+  salvas, comparadas por valor).
+- **Migrations 20261066–68** (índices do sino/carrinho/moderação, ramo de
+  admin na policy de carrinho, pg_trgm + wrappers immutable) — com
+  rollback manual e provas db-prove no padrão da casa.
+
 ## [1.15.0] - 2026-09-01
 
 A versão da prova de rua: o dono navegou a loja, apontou quatro defeitos e

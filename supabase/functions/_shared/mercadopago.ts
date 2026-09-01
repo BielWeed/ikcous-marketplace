@@ -16,6 +16,50 @@
 const BASE_URL_PADRAO = "https://api.mercadopago.com";
 
 /**
+ * Teto de espera para todo fetch deste arquivo, em milissegundos.
+ *
+ * LAUDO VARREDURA 01/09 (P-4): até este conserto as quatro chamadas à API do
+ * MP (`criarOrder`, `consultarOrder`, `criarPagamento`, `consultarPagamento`)
+ * penduravam sem limite nenhum — gateway lento/pendurado segurava a
+ * requisição até o wall-clock da plataforma, com o cliente olhando
+ * "Finalizar" girando e a conexão do webhook/reconciliação presa. O valor é
+ * o MESMO do padrão da casa (`buscarComTempo` do calculate-shipping, laudo
+ * 31/08 D2): o MP responde em segundos quando está de pé; 15s já é folga
+ * generosa para um gateway de pagamento.
+ */
+export const TEMPO_LIMITE_MS = 15000;
+
+/**
+ * Fetch com TEMPO DE ESPERA — o padrão da casa (`buscarComTempo` do
+ * calculate-shipping, laudo 31/08 D2), trazido para cá pelo P-4 do laudo de
+ * varredura de 01/09. O AbortController corta no tempo; quem chama vê o
+ * aborto como qualquer falha de rede e cai no tratamento que já existe
+ * (aqui: `catch` → `{ ok: false, status: 0 }`).
+ *
+ * O `buscar` entra como parâmetro (o fetch de fora, injetável — mesma regra
+ * das funções deste arquivo) para o teste não tocar rede nem esperar os 15s
+ * do default: passa um teto curto e um fetch que só desiste quando o sinal
+ * dispara. Em produção nada muda: chama-se com o `fetch` de sempre.
+ */
+export async function fetchComTempo(
+  buscar: typeof fetch,
+  url: string,
+  init: RequestInit = {},
+  tempoMs: number = TEMPO_LIMITE_MS,
+): Promise<Response> {
+  const controle = new AbortController();
+  const despertar = setTimeout(() => controle.abort(), tempoMs);
+  try {
+    return await buscar(url, { ...init, signal: controle.signal });
+  } finally {
+    // Sem o clear, cada chamada deixaria um timer pendurado no event loop
+    // até estourar — em webhook/reconciliação de lote, dezenas de timers
+    // vivos à toa.
+    clearTimeout(despertar);
+  }
+}
+
+/**
  * Decide se um `gateway_payment_id` tem a FORMA de um id CLÁSSICO de
  * pagamento (só dígitos, ex.: "123456789012") — em oposição à forma de uma
  * order da Orders API (ULID maiúsculo, prefixo "ORD" em produção, "ORDTST"
@@ -416,22 +460,31 @@ export async function criarOrder(args: {
   chaveIdempotencia: string;
   fetchImpl?: typeof fetch;
   baseUrl?: string;
+  // P-4 (laudo 01/09): teto de espera da chamada, em ms. Em produção não se
+  // passa — cai no TEMPO_LIMITE_MS. O parâmetro existe para o teste provar o
+  // aborto sem esperar os 15s.
+  tempoLimiteMs?: number;
 }): Promise<ResultadoOrder> {
   const f = args.fetchImpl ?? fetch;
   const base = args.baseUrl ?? BASE_URL_PADRAO;
 
   let resposta: Response;
   try {
-    resposta = await f(`${base}/v1/orders`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${args.token}`,
-        "Content-Type": "application/json",
-        // Sem isso, um retry do nosso lado cobra o cliente duas vezes.
-        "X-Idempotency-Key": args.chaveIdempotencia,
+    resposta = await fetchComTempo(
+      f,
+      `${base}/v1/orders`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${args.token}`,
+          "Content-Type": "application/json",
+          // Sem isso, um retry do nosso lado cobra o cliente duas vezes.
+          "X-Idempotency-Key": args.chaveIdempotencia,
+        },
+        body: JSON.stringify(args.corpo),
       },
-      body: JSON.stringify(args.corpo),
-    });
+      args.tempoLimiteMs,
+    );
   } catch (_err) {
     // status 0 = nem chegou a haver resposta HTTP.
     return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
@@ -492,16 +545,23 @@ export async function consultarOrder(args: {
   orderId: string;
   fetchImpl?: typeof fetch;
   baseUrl?: string;
+  // P-4 (laudo 01/09): ver criarOrder.
+  tempoLimiteMs?: number;
 }): Promise<ResultadoOrder> {
   const f = args.fetchImpl ?? fetch;
   const base = args.baseUrl ?? BASE_URL_PADRAO;
 
   let resposta: Response;
   try {
-    resposta = await f(`${base}/v1/orders/${args.orderId}`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${args.token}` },
-    });
+    resposta = await fetchComTempo(
+      f,
+      `${base}/v1/orders/${args.orderId}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${args.token}` },
+      },
+      args.tempoLimiteMs,
+    );
   } catch (_err) {
     return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
   }
@@ -722,22 +782,29 @@ export async function criarPagamento(args: {
   chaveIdempotencia: string;
   fetchImpl?: typeof fetch;
   baseUrl?: string;
+  // P-4 (laudo 01/09): ver criarOrder.
+  tempoLimiteMs?: number;
 }): Promise<ResultadoPagamento> {
   const f = args.fetchImpl ?? fetch;
   const base = args.baseUrl ?? BASE_URL_PADRAO;
 
   let resposta: Response;
   try {
-    resposta = await f(`${base}/v1/payments`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${args.token}`,
-        "Content-Type": "application/json",
-        // Sem isso, um retry do nosso lado cobra o cliente duas vezes.
-        "X-Idempotency-Key": args.chaveIdempotencia,
+    resposta = await fetchComTempo(
+      f,
+      `${base}/v1/payments`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${args.token}`,
+          "Content-Type": "application/json",
+          // Sem isso, um retry do nosso lado cobra o cliente duas vezes.
+          "X-Idempotency-Key": args.chaveIdempotencia,
+        },
+        body: JSON.stringify(args.corpo),
       },
-      body: JSON.stringify(args.corpo),
-    });
+      args.tempoLimiteMs,
+    );
   } catch (_err) {
     // status 0 = nem chegou a haver resposta HTTP.
     return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
@@ -766,16 +833,23 @@ export async function consultarPagamento(args: {
   paymentId: string;
   fetchImpl?: typeof fetch;
   baseUrl?: string;
+  // P-4 (laudo 01/09): ver criarOrder.
+  tempoLimiteMs?: number;
 }): Promise<ResultadoPagamento> {
   const f = args.fetchImpl ?? fetch;
   const base = args.baseUrl ?? BASE_URL_PADRAO;
 
   let resposta: Response;
   try {
-    resposta = await f(`${base}/v1/payments/${args.paymentId}`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${args.token}` },
-    });
+    resposta = await fetchComTempo(
+      f,
+      `${base}/v1/payments/${args.paymentId}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${args.token}` },
+      },
+      args.tempoLimiteMs,
+    );
   } catch (_err) {
     return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
   }

@@ -37,6 +37,18 @@ vi.mock("@/lib/supabase", () => ({
   },
 }));
 
+// A-3 (laudo varredura 01/09): AdminOrdersView passou a ler o nome da loja
+// (config.storeName) para o recibo impresso — mock mínimo do contexto, mesmo
+// padrão de admin-coupons-view-expirado.test.tsx. Sem ele o useStore lança
+// 'must be used within a StoreProvider' em toda montagem da view.
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: {},
+    isLoaded: true,
+    updateConfig: vi.fn(),
+  }),
+}));
+
 // Task 4c (caça-defeitos, achado 1) — usados só pelo describe de baixo, que
 // monta <AdminOrdersView> inteira (não <OrderDetail> direto) porque o
 // defeito mora no `handleStatusChange` DELA, não da ficha. `useOrders` vira
