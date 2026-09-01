@@ -1494,8 +1494,13 @@ export const AdminPushView = memo(function AdminPushView({
                   Quem Vai Receber
                 </div>
                 <p className="text-xs text-zinc-400">
+                  {/* A11: a redação descreve as regras reais dos segmentos
+                  (os mesmos critérios dos botões acima) — a antiga dizia
+                  "sem comprar há 30 dias", mas para o servidor pedido
+                  cancelado também conta como último pedido. */}
                   Escolha enviar para todos os clientes ou para grupos (ex:
-                  clientes novos ou sem comprar há 30 dias).
+                  gastaram R$ 150+ em compras pagas, sem pedidos há 30 dias ou
+                  cadastrados na última semana).
                 </p>
               </div>
 

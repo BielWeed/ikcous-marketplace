@@ -43,8 +43,9 @@ BEGIN
         RAISE EXCEPTION 'Unauthorized: Only admins can answer questions.';
     END IF;
 
-    -- 1. Upsert Answer (idx_answers_question_id_unique, criado por esta
-    -- migration, e' quem permite o ON CONFLICT inferir o alvo)
+    -- 1. Upsert Answer (idx_answers_question_id_unique, criado pela
+    -- migration 20260812030000, e' quem permite o ON CONFLICT inferir o
+    -- alvo)
     INSERT INTO answers (question_id, user_id, answer)
     VALUES (p_question_id, v_admin_id, p_answer)
     ON CONFLICT (question_id) DO UPDATE

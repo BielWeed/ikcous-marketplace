@@ -611,9 +611,10 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                         ) : (
                           <p className="mt-1 text-xs font-semibold text-red-400">
                             A flag está LIGADA, mas a chave pública do Mercado
-                            Pago não está no deploy (VITE_MP_PUBLIC_KEY): o
-                            cliente vê "Pagamento indisponível" e não consegue
-                            pagar. Grave as chaves MP antes de divulgar a loja.
+                            Pago não está no deploy (VITE_MP_PUBLIC_KEY): a
+                            tela de pagamento nem carrega para o cliente
+                            ("Não foi possível carregar o pagamento."). Grave
+                            as chaves MP antes de divulgar a loja.
                           </p>
                         )
                       ) : (
