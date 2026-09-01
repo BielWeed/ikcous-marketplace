@@ -424,6 +424,100 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               setUser(sessaoTardia.user);
               void fetchProfile(sessaoTardia.user).catch(() => {});
               void checkAdmin(sessaoTardia.user).catch(() => {});
+
+              // R-1 (laudo varredura 01/09): até aqui a sessão tardia era
+              // aplicada SEM validação no servidor — o token revogado durante
+              // um boot lento ficava "logado" para sempre (o estado do
+              // cliente mentia; o servidor seguia protegido por RLS). A
+              // MESMA verificação do caminho normal (ramo de `initSes`
+              // abaixo) roda aqui em background, sem bloquear o boot: os
+              // MESMOS critérios de invalidez definitiva, o MESMO respeito
+              // à CONTA-02 (falha de rede não desloga) e à CONTA-02b (429
+              // idem). Diferença necessária: a validação pode resolver
+              // DEPOIS de um login novo (o listener aplicou outro usuário
+              // enquanto ela ia no caminho) — o guarda de
+              // `activeUserIdRef` abaixo garante que só a sessão validada é
+              // que pode ser deslogada, nunca o usuário ativo.
+              void (async () => {
+                try {
+                  const {
+                    data: { user: verifiedUser },
+                    error: verifyError,
+                  } = await supabase.auth.getUser();
+
+                  const sessaoSegueAtiva =
+                    activeUserIdRef.current === sessaoTardia.user.id;
+
+                  if (verifyError) {
+                    console.error(
+                      "[Auth] Late session verification failed:",
+                      verifyError.message,
+                    );
+
+                    const isDefinitivelyInvalid =
+                      verifyError.status === 403 ||
+                      verifyError.message.includes("not found") ||
+                      verifyError.message.includes("Invalid token");
+
+                    if (isDefinitivelyInvalid && sessaoSegueAtiva) {
+                      console.warn(
+                        "[Auth] Stale/Invalid late session detected. Forcing signOut.",
+                      );
+                      await supabase.auth.signOut();
+                      setSession(null);
+                      setUser(null);
+                      activeUserIdRef.current = null;
+                      setAdminStatus("not-admin");
+                      return;
+                    }
+
+                    // CONTA-02/CONTA-02b: falha de rede ou rate limit não
+                    // provam invalidez — mantém a sessão em tela, como o
+                    // caminho normal faz (mesma classificação estrutural da
+                    // SDK; ver o comentário longo do caminho normal abaixo).
+                    const isRateLimited =
+                      isAuthApiError(verifyError) && verifyError.status === 429;
+
+                    if (
+                      isAuthRetryableFetchError(verifyError) ||
+                      isRateLimited
+                    ) {
+                      console.warn(
+                        "[Auth] Late session verification inconclusive (network/server error or rate limited). Keeping cached session.",
+                      );
+                      return;
+                    }
+
+                    // Erro de outra natureza, sem 403/"not found"/"Invalid
+                    // token": não há prova de invalidez — não desloga.
+                    // DIVERGÊNCIA DELIBERADA do caminho normal (ressalva da
+                    // revisão da onda 2): lá, erro desconhecido cai no else
+                    // e desloga; aqui fica a sessão em tela. O caminho tardio
+                    // é o MAIS conservador dos dois — errar para o lado de
+                    // manter (RLS do servidor protege o que importa), nunca
+                    // derrubar o usuário por uma resposta que não provou
+                    // nada.
+                    return;
+                  }
+
+                  if (verifiedUser) {
+                    // Sessão confirmada: atualiza o user (metadados frescos),
+                    // como o caminho normal faz.
+                    if (sessaoSegueAtiva) {
+                      setUser(verifiedUser);
+                    }
+                  } else if (sessaoSegueAtiva) {
+                    // O servidor respondeu que não há user para esta sessão.
+                    await supabase.auth.signOut();
+                    setSession(null);
+                    setUser(null);
+                    activeUserIdRef.current = null;
+                    setAdminStatus("not-admin");
+                  }
+                } catch (err) {
+                  console.error("[Auth] Late session verify exception:", err);
+                }
+              })();
             })
             .catch(() => {});
           setLoading(false);

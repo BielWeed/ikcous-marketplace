@@ -118,6 +118,13 @@ interface OrderDetailProps {
     orderId: string,
     recebido: boolean,
   ) => Promise<unknown>;
+  /**
+   * A-3 (laudo varredura 01/09): nome da LOJA para o recibo impresso, vindo
+   * de cima (`AdminOrdersView`, que lê `config.storeName` do useStore).
+   * Opcional: os testes que montam `<OrderDetail>` direto sem a prop fazem o
+   * recibo cair no fallback do branding (ver OrderReceiptProps).
+   */
+  storeName?: string;
 }
 
 const globalSkuCache: Record<string, string> = {};
@@ -948,6 +955,7 @@ export const OrderDetail = memo(function OrderDetail({
   onStatusChange,
   isOffline = false,
   onRegistrarPagamento,
+  storeName,
 }: Readonly<OrderDetailProps>) {
   const [localTrackingCode, setLocalTrackingCode] = useState(
     order.trackingCode || "",
@@ -1382,7 +1390,7 @@ export const OrderDetail = memo(function OrderDetail({
         </div>
       </div>
 
-      <OrderReceipt order={order} />
+      <OrderReceipt order={order} storeName={storeName} />
 
       <AlertDialog
         open={pendingAdvance !== null}

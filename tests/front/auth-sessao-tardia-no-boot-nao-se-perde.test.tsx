@@ -33,7 +33,15 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     auth: {
       getSession: vi.fn(),
-      getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+      // R-1 (laudo varredura 01/09): a sessão tardia passou a VALIDAR no
+      // servidor em background — o dublê responde confirmando a sessão
+      // (`user` presente, sem erro), que é o cenário deste arquivo ("a rede
+      // demorou, mas a sessão é boa"). Antes do R-1 o getUser nem era
+      // chamado neste caminho; devolver `user: null` aqui faria a validação
+      // honesta deslogar a sessão que este teste quer ver aplicada.
+      getUser: vi
+        .fn()
+        .mockResolvedValue({ data: { user: { id: "user-tardio" } }, error: null }),
       onAuthStateChange: vi.fn(),
       signOut: vi.fn().mockResolvedValue({ error: null }),
     },

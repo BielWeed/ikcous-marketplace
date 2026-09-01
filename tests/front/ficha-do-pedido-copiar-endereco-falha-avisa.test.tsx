@@ -42,6 +42,16 @@ vi.mock("@/hooks/useAnalytics", () => ({
   useAnalytics: () => ({ stats: null, fetchExecutiveSummary: vi.fn() }),
 }));
 
+// Laudo 0109 (onda 2, A-3): a AdminOrdersView passou a consumir useStore
+// (nome da loja no recibo) — o teste monta a view e precisa do provedor.
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: {},
+    isLoaded: true,
+    updateConfig: vi.fn(),
+  }),
+}));
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: vi.fn(),
