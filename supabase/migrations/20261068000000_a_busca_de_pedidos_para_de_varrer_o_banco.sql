@@ -46,6 +46,29 @@
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;
 
+-- ============================================================
+-- GARANTIA do dicionário unaccent no schema `extensions` (pega o caso
+-- medido na Savy em 01/09: a 20261032 instalou a extensão SEM schema e o
+-- db-apply dela a plantou em `public` — o wrapper abaixo qualifica
+-- `extensions.unaccent` e a aplicação morria com "text search dictionary
+-- extensions.unaccent does not exist"). Idempotente: se a extensão já
+-- está em `extensions` (o caso do dev do molde), o DO é no-op. O
+-- search_path das funções existentes ('public','extensions') continua
+-- resolvendo `unaccent(...)` cru depois da mudança de casa.
+-- ============================================================
+CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA extensions;
+DO $mover_unaccent$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_extension e
+    JOIN pg_namespace n ON n.oid = e.extnamespace
+    WHERE e.extname = 'unaccent' AND n.nspname <> 'extensions'
+  ) THEN
+    ALTER EXTENSION unaccent SET SCHEMA extensions;
+  END IF;
+END
+$mover_unaccent$;
+
 -- unaccent é STABLE (dicionário) — índice de expressão pede IMMUTABLE.
 -- Qualificação total: o search_path da função não se aplica a índice.
 CREATE OR REPLACE FUNCTION public.f_unaccent(text)
