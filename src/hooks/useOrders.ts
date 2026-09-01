@@ -976,7 +976,19 @@ export function useOrders(
           return [];
         }
         console.error("Error fetching user orders:", err);
-        if (!silent) toast.error("Erro ao carregar seus pedidos");
+        // Laudo #2 (P-9): sem internet, a lista do cache JÁ está na tela —
+        // chamar aquilo de "Erro" ensina o cliente a desconfiar quando está
+        // tudo bem. Diz o fato: offline, mostrando o que está salvo.
+        if (!silent) {
+          if (typeof navigator !== "undefined" && navigator.onLine === false) {
+            toast.info("Você está sem internet", {
+              description:
+                "Mostrando os pedidos salvos neste aparelho. Eles serão atualizados quando a conexão voltar.",
+            });
+          } else {
+            toast.error("Erro ao carregar seus pedidos");
+          }
+        }
         return [];
       } finally {
         setLoading(false);

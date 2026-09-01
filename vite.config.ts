@@ -308,8 +308,9 @@ export default defineConfig(({ mode, command }) => {
         includeAssets: [
           "favicon.ico",
           "apple-touch-icon.png",
-          "mask-icon.svg",
-          "offline.html",
+          // Laudo #2 (P-10): mask-icon.svg não existe em public/ (era
+          // silenciosamente ignorado) e offline.html é precacheado sem
+          // NINGUÉM servir (o fallback do SW usa /index.html) — saíram.
         ],
         manifest: {
           name: appName,
@@ -346,14 +347,8 @@ export default defineConfig(({ mode, command }) => {
             },
           ],
           categories: ["shopping", "lifestyle"],
-          screenshots: [
-            {
-              src: "/screenshots/home.png",
-              sizes: "750x1334",
-              type: "image/png",
-              form_factor: "narrow",
-            },
-          ],
+          // Laudo #2 (P-10): o manifest prometia screenshot /screenshots/home.png
+          // e a pasta nunca existiu — promessa de instalável que não se cumpre.
           shortcuts: [
             {
               name: "Carrinho",
@@ -380,16 +375,10 @@ export default defineConfig(({ mode, command }) => {
               ],
             },
           ],
-          share_target: {
-            action: "/",
-            method: "GET",
-            enctype: "application/x-www-form-urlencoded",
-            params: {
-              title: "title",
-              text: "text",
-              url: "url",
-            },
-          },
+          // Laudo #2 (P-8): o share_target prometia "compartilhar para o app"
+          // (title/text/url) e NINGUÉM no código lê esses parâmetros — o
+          // conteúdo compartilhado era jogado fora. Sai do manifest até
+          // existir a feature de verdade.
         },
         injectManifest: {
           globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2}"],

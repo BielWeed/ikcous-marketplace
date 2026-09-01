@@ -1,5 +1,6 @@
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { useStore } from "@/contexts/StoreContext";
+import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
 import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -190,10 +191,7 @@ export function useUpdateCheck() {
       }
 
       // 4. Set reload reason for next boot
-      localStorage.setItem(
-        "pwa_reload_reason",
-        "Sistema atualizado e otimizado.",
-      );
+      gravaMotivoDeRecarga("atualizacao-aplicada");
 
       // 5. Hard reload
       window.location.href = `${window.location.origin}/?forceUpdate=${Date.now()}`;
@@ -211,10 +209,7 @@ export function useUpdateCheck() {
   const handleUpdate = useCallback(
     async (_immediate?: boolean) => {
       console.log("[Update] Triggering SW update and reload...");
-      localStorage.setItem(
-        "pwa_reload_reason",
-        "Sistema atualizado e otimizado.",
-      );
+      gravaMotivoDeRecarga("atualizacao-aplicada");
 
       let reloaded = false;
       const onControllerChange = () => {
@@ -377,10 +372,9 @@ export function useUpdateCheck() {
         }
 
         sessionStorage.setItem("pwa_chunk_error_reload", now.toString());
-        localStorage.setItem(
-          "pwa_reload_reason",
-          "Auto-recuperação (Erro de Módulo)",
-        );
+        // Laudo #2 (P-1): recuperação de erro de módulo NÃO é atualização —
+        // o motivo nominal impede o boot de anunciar "Sistema Atualizado".
+        gravaMotivoDeRecarga("recuperacao-erro-modulo");
 
         toast.loading("Sincronizando nova versão...", {
           description: "Corrigindo erro de carregamento automaticamente.",

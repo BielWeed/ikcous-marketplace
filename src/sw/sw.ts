@@ -354,10 +354,12 @@ sw.addEventListener("push", (event: any) => {
   try {
     const payload = event.data.json();
     const title = payload.title || "Novidade!";
+    // Laudo #2 (P-5): o ícone vive em /icons/ (a raiz de public/ nunca teve
+    // icon-192x192.png) — toda push nascia com ícone ausente na lockscreen.
     const options = {
       body: payload.body || "",
-      icon: "/icon-192x192.png",
-      badge: "/icon-192x192.png",
+      icon: "/icons/icon-192x192.png",
+      badge: "/icons/icon-192x192.png",
       data: {
         url: payload.url || "/",
         ...payload.data,
@@ -382,14 +384,23 @@ sw.addEventListener("notificationclick", (event: any) => {
     sw.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clientList: any) => {
-        const absoluteUrl = new URL(targetUrl, sw.location.origin).href;
+        const absoluteUrl = new URL(targetUrl, sw.location.origin);
+        // Laudo #2 (P-7): as janelas vivem em /?source=pwa (start_url do
+        // manifest) e o alvo padrão é "/" — a comparação de URL inteira
+        // nunca batia e TODO toque abria uma segunda janela da loja.
+        // Comparar o CAMINHO (mesma origem) foca a janela que já existe.
         for (const client of clientList) {
-          if (client.url === absoluteUrl && "focus" in client) {
+          const clientUrl = new URL(client.url);
+          if (
+            clientUrl.origin === absoluteUrl.origin &&
+            clientUrl.pathname === absoluteUrl.pathname &&
+            "focus" in client
+          ) {
             return client.focus();
           }
         }
         if (sw.clients.openWindow) {
-          return sw.clients.openWindow(absoluteUrl);
+          return sw.clients.openWindow(absoluteUrl.href);
         }
       }),
   );
