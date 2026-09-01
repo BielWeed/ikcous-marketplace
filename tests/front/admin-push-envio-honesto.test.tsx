@@ -518,7 +518,9 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
 
       const botaoInativo = Array.from(
         hospedeiro.querySelectorAll("button"),
-      ).find((b) => (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"));
+      ).find((b) =>
+        (b.textContent ?? "").includes("Sem pedidos há 30d (qualquer status)"),
+      );
       expect(botaoInativo).toBeTruthy();
       await act(async () => {
         botaoInativo!.click();
