@@ -661,7 +661,11 @@ export function CheckoutView({
     return () => {
       vivo = false;
     };
-  }, [codigoDoCupom, subtotal, validateCoupon]);
+  }, [codigoDoCupom, subtotal, validateCoupon, isOffline]);
+  // `isOffline` nos deps é a pílula da re-revisão do PR #374 (ressalva 2):
+  // em falha de REDE a revalidação mantém o cupom com desconto 0 e não
+  // havia retry — com a conexão de volta o efeito roda de novo e o desconto
+  // real chega (ou o motivo da recusa aparece na tela).
 
   // GRAVAÇÃO DO RASCUNHO (laudo ofensiva 3108, N7): cada mudança de campo,
   // de notas ou de cupom repõe o rascunho da sessão. Os espelhos em ref
