@@ -4,6 +4,7 @@ import { useSyncListener } from "@/hooks/useDataVault";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { DataVault } from "@/lib/dataVault";
 import { mapProductFromDB } from "@/lib/mappers";
+import { mesclarProdutoNaLista } from "@/lib/mescla-de-produtos";
 import { precoVendido } from "@/lib/preco-vendido";
 import { RealtimeSyncEngine } from "@/lib/realtimeSyncEngine";
 import { supabase } from "@/lib/supabase";
@@ -853,24 +854,53 @@ export function StoreProvider({
 
   useSyncListener(
     ["products"],
-    useCallback(async () => {
+    useCallback(async (event) => {
       // Re-read products from DataVault when Realtime updates them.
       // Pelo singleton (revisão 20260825-1050): se outra aba subiu a versão
       // do banco, a conexão antiga está fechada — init() reabre e a releitura
       // deste listener volta a funcionar sem recarregar a página.
       //
-      // SEM guarda de "lista vazia": ela engolia o caso em que a lista
-      // ficou vazia, e a vitrine seguia mostrando o produto excluído --
-      // com preço e estoque -- até alguém recarregar a página.
-      //
-      // Mas lista vazia tem DOIS significados: pode ser a lojista
-      // excluindo o ÚLTIMO produto em outro dispositivo (esvaziar é o
-      // certo) OU uma leitura que falhou (conexão fechada por outra aba
-      // durante um purge, store ausente...) -- o `catch` de `getAll`
-      // resolve `[]` nos dois casos. Por isso `getAllOrThrow`, que
-      // REJEITA em vez de mascarar a falha como "vazio de verdade".
+      // C4 (laudo novos-ângulos 01/09): evento de UMA linha não precisa
+      // reler o cofre inteiro — o motor já aplicou a mudança no cofre antes
+      // de avisar, então o merge fino troca só o slot do registro afetado e
+      // preserva a identidade (e o memo) dos outros cards. A leitura total
+      // fica para os eventos que não trazem registro decidível: catchUp,
+      // broadcast em massa, ou registro que sumiu do cofre entre o motor e
+      // esta leitura.
       try {
         const vault = await DataVault.init();
+        const eventoId =
+          (event.newRecord as any)?.id ?? (event.oldRecord as any)?.id;
+
+        if (event.eventType === "DELETE" && eventoId) {
+          setProducts(
+            (prev) =>
+              mesclarProdutoNaLista(prev, {
+                eventType: "DELETE",
+                id: eventoId,
+              }) ?? prev,
+          );
+          return;
+        }
+
+        if (
+          (event.eventType === "INSERT" || event.eventType === "UPDATE") &&
+          eventoId
+        ) {
+          const atualizado = await vault.getById<Product>("products", eventoId);
+          if (atualizado) {
+            setProducts(
+              (prev) =>
+                mesclarProdutoNaLista(prev, {
+                  eventType: event.eventType,
+                  id: eventoId,
+                  registro: atualizado,
+                }) ?? prev,
+            );
+            return;
+          }
+        }
+
         const freshProducts = await vault.getAllOrThrow<Product>("products");
         setProducts(freshProducts);
       } catch (err) {

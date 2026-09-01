@@ -2459,71 +2459,6 @@ export function useOrders(
     [],
   );
 
-  const subscribeToOrders = useCallback(
-    (onChange?: (payload: any) => void) => {
-      if (!user) return () => {};
-
-      const channelId = isAdmin
-        ? "admin_order_updates_realtime"
-        : `order_updates_realtime_${user.id}`;
-      console.log(
-        `[Realtime] Subscribing to orders (${isAdmin ? "Admin" : "User"}): ${channelId}`,
-      );
-
-      const channel = supabase.channel(channelId);
-
-      channel.on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "marketplace_orders",
-          ...(isAdmin ? {} : { filter: `user_id=eq.${user.id}` }),
-        },
-        async (payload) => {
-          console.log("[Realtime] Order change event:", payload.eventType);
-          if (onChange) {
-            onChange(payload);
-          }
-        },
-      );
-
-      channel.subscribe((status, err) => {
-        if (status === "SUBSCRIBED") {
-          console.log(`[Realtime] Active orders channel: ${channelId}`);
-        } else if (status === "CHANNEL_ERROR") {
-          const errMessage =
-            (err as any)?.message ||
-            (typeof (err as any) === "string" ? (err as any) : "");
-          const isNormalClose =
-            errMessage.includes("1000") || errMessage.includes("normal");
-          const isAbnormalClose =
-            errMessage.includes("1006") || errMessage.includes("abnormal");
-          if (isNormalClose) {
-            console.log(
-              `[Realtime] Orders channel closed normally: ${channelId}`,
-            );
-          } else if (isAbnormalClose) {
-            console.warn(
-              `[Realtime] Orders channel closed abnormally (socket closed: 1006): ${channelId}. SDK will auto-reconnect.`,
-            );
-          } else {
-            console.error(
-              "[Realtime] Orders channel error:",
-              err?.message || err,
-            );
-          }
-        }
-      });
-
-      return () => {
-        console.log(`[Realtime] Cleaning up orders channel: ${channelId}`);
-        supabase.removeChannel(channel).catch(() => {});
-      };
-    },
-    [user, isAdmin],
-  );
-
   // Synchronize queued offline order status updates when coming back online
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2596,6 +2531,5 @@ export function useOrders(
     reenviarComprovante,
     fetchDashboardSummary,
     fetchOrderHistory,
-    subscribeToOrders,
   };
 }
