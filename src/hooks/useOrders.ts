@@ -1258,16 +1258,13 @@ export function useOrders(
     [isAdmin, fetchPedidosCancelados],
   );
 
-  const handleRealtimeDelete = useCallback(
-    (oldId: string | undefined) => {
-      if (oldId) {
-        // P-2 (laudo varredura 01/09): SEM gravação de cache aqui — mesmo
-        // motivo do insert/update acima. O cache se renova no fetch.
-        setOrders((prev) => prev.filter((o) => o.id !== oldId));
-      }
-    },
-    [],
-  );
+  const handleRealtimeDelete = useCallback((oldId: string | undefined) => {
+    if (oldId) {
+      // P-2 (laudo varredura 01/09): SEM gravação de cache aqui — mesmo
+      // motivo do insert/update acima. O cache se renova no fetch.
+      setOrders((prev) => prev.filter((o) => o.id !== oldId));
+    }
+  }, []);
 
   const ultimaConsultaAdminRef = useRef<ConsultaAdmin | null>(null);
   const fetchUserOrdersRef = useRef(fetchUserOrders);
