@@ -1529,6 +1529,39 @@ const VERIFICACOES = {
       ],
     },
   ],
+  "20261064000000_o_log_de_push_nasce_honesto.sql": [
+    {
+      // Laudo novos ângulos 01/09 (A10): as duas RPCs gravavam
+      // recipient_count = 1 sem enviar push nenhum — o painel lia
+      // "Entregue · 1 aparelho" que nunca saiu. Contrato PUSH-010:
+      // nasce com 0 e só sobe quando o send-push CONFIRMAR. O
+      // comentário "A10: log honesto" existe nos DOIS corpos de
+      // propósito — é o marcador desta verificação.
+      funcao: "answer_question_atomic",
+      esperado: [{ texto: "A10: log honesto", vezes: 1 }],
+    },
+    {
+      funcao: "reply_review_atomic",
+      esperado: [{ texto: "A10: log honesto", vezes: 1 }],
+    },
+  ],
+  "20261065000000_a_sobrecarga_que_o_app_usa_tambem_nasce_honesta.sql": [
+    {
+      // Complemento da 64: o FRONT chama as duas RPCs com 2 args
+      // (useQuestions.ts:311, useReviews.ts:601) — as sobrecargas que a
+      // 64 não alcançou eram justamente o caminho vivo do app. O
+      // marcador abaixo está no corpo das sobrecargas de 2 args;
+      // buscarDef resolve pelo nome e pode ler qualquer uma das duas
+      // assinaturas, por isso o db-prove-push-log-honesto.cjs confere
+      // AS QUATRO assinaturas com prova funcional.
+      funcao: "answer_question_atomic",
+      esperado: [{ texto: "A10: log honesto", vezes: 1 }],
+    },
+    {
+      funcao: "reply_review_atomic",
+      esperado: [{ texto: "A10: log honesto", vezes: 1 }],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

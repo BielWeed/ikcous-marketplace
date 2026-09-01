@@ -125,8 +125,15 @@ export const AdminCustomersView = memo(function AdminCustomersView({
 
   // Scroll position is handled by useScrollRestoration hook
 
+  // Laudo 0109 (A13): guarda de corrida por número de rodada — trocar de
+  // página/busca rápido pode fazer a resposta ANTIGA chegar DEPOIS da nova
+  // e gravar por cima (tela e cache de módulo). O padrão da casa é o
+  // rodadaRef do useAvisosDoLojista.ts.
+  const rodadaRef = useRef(0);
+
   const fetchCustomers = useCallback(
     async (pageToFetch: number) => {
+      const rodada = ++rodadaRef.current;
       try {
         setLoading(true);
 
@@ -142,6 +149,11 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         );
 
         if (error) throw error;
+
+        // Resposta de rodada velha (o lojista já pediu outra página/busca):
+        // descarta sem gravar nada — nem na tela, nem no cache, nem no
+        // loading (a rodada nova é quem manda no loading).
+        if (rodada !== rodadaRef.current) return;
 
         if (data) {
           const customersList = data.data || [];
@@ -160,9 +172,13 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         }
       } catch (error) {
         console.error("Error fetching customers:", error);
-        toast.error("Erro ao carregar clientes");
+        if (rodada === rodadaRef.current) {
+          toast.error("Erro ao carregar clientes");
+        }
       } finally {
-        setLoading(false);
+        if (rodada === rodadaRef.current) {
+          setLoading(false);
+        }
       }
     },
     [searchTerm, sortField, sortDirection, PAGE_SIZE],
@@ -808,8 +824,11 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                   Novos Clientes (30d)
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Quantidade de perfis criados ou que realizaram o primeiro
-                  acesso nos últimos 30 dias.
+                  {/* Laudo 0109 (A11): o número é perfis CRIADOS nos
+                  últimos 30 dias (profiles.created_at) — o texto antigo
+                  prometia "ou que realizaram o primeiro acesso", regra que
+                  a contagem nunca usou. */}
+                  Quantidade de perfis criados nos últimos 30 dias.
                 </p>
               </div>
             </div>

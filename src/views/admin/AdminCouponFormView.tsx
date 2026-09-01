@@ -194,7 +194,10 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
       onNavigate("admin-coupons");
     } catch (error) {
       console.error("Erro ao salvar cupom:", error);
-      toast.error("Erro ao salvar o cupom. Revise as regras de preenchimento.");
+      // Laudo 0109 (A12): o toast ficou no hook (useCoupons avisa com
+      // mensagemDeErroDoCupom, que diz o motivo real — "código já existe",
+      // por exemplo). O aviso genérico daqui empilhava por cima e escondia
+      // o motivo.
     } finally {
       setIsSubmitting(false);
     }
