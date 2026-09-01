@@ -89,6 +89,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     toggleProductStatus,
     addProduct,
     loadProducts,
+    copiarImagemParaDuplicacao,
   } = useProducts({ autoFetch: false });
   const { stats, fetchExecutiveSummary } = useAnalytics();
   const { categories: dbCategories } = useCategories();
@@ -527,6 +528,30 @@ export const AdminProductsView = memo(function AdminProductsView({
       return;
     }
     try {
+      // Laudo 0109 (A2): a cópia nasce com arquivos PRÓPRIOS no storage —
+      // do produto e de cada variação. Reusar as URLs do original fazia a
+      // exclusão futura de uma das partes levar o arquivo da outra para
+      // backup/ e as fotos do sobrevivente sumirem. Falha de cópia lança e
+      // cai no catch de baixo: melhor não duplicar do que duplicar
+      // compartilhando arquivo de novo.
+      const imagens = await Promise.all(
+        (productToDuplicate.images || []).map((img: string) =>
+          copiarImagemParaDuplicacao(img),
+        ),
+      );
+      const variantes = await Promise.all(
+        (productToDuplicate.variants || []).map(async (v: any) => ({
+          name: v.name,
+          value: v.value,
+          sku: v.sku ? `${v.sku}-COPY` : undefined,
+          stockIncrement: v.stockIncrement,
+          priceOverride: v.priceOverride,
+          active: v.active,
+          imageUrl: v.imageUrl
+            ? await copiarImagemParaDuplicacao(v.imageUrl)
+            : v.imageUrl,
+        })),
+      );
       const duplicateData = {
         name: `${productToDuplicate.name} (Cópia)`,
         description: productToDuplicate.description,
@@ -537,7 +562,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         originalPrice: productToDuplicate.originalPrice,
         stock: productToDuplicate.stock,
         category: productToDuplicate.category,
-        images: productToDuplicate.images,
+        images: imagens,
         isActive: false,
         sold: 0,
         isBestseller: productToDuplicate.isBestseller,
@@ -552,15 +577,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         widthCm: productToDuplicate.widthCm,
         heightCm: productToDuplicate.heightCm,
         lengthCm: productToDuplicate.lengthCm,
-        variants: productToDuplicate.variants?.map((v: any) => ({
-          name: v.name,
-          value: v.value,
-          sku: v.sku ? `${v.sku}-COPY` : undefined,
-          stockIncrement: v.stockIncrement,
-          priceOverride: v.priceOverride,
-          active: v.active,
-          imageUrl: v.imageUrl,
-        })),
+        variants: variantes,
       };
 
       await addProduct(duplicateData);
@@ -580,7 +597,13 @@ export const AdminProductsView = memo(function AdminProductsView({
     } finally {
       setProductToDuplicate(null);
     }
-  }, [addProduct, productToDuplicate, isOffline, refreshFinancialStats]);
+  }, [
+    addProduct,
+    copiarImagemParaDuplicacao,
+    productToDuplicate,
+    isOffline,
+    refreshFinancialStats,
+  ]);
 
   // Removed early return loading block to prevent visual layout shifts
 

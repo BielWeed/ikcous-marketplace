@@ -1420,8 +1420,7 @@ const VERIFICACOES = {
       funcao: "marca_avaliacao_nasce_verificada",
       esperado: [
         {
-          texto:
-            "'pago', 'pago_apos_expirar', 'recebido_na_entrega'",
+          texto: "'pago', 'pago_apos_expirar', 'recebido_na_entrega'",
           vezes: 1,
         },
       ],
@@ -1430,8 +1429,7 @@ const VERIFICACOES = {
       funcao: "marca_avaliacoes_do_pedido_verificadas",
       esperado: [
         {
-          texto:
-            "'pago', 'pago_apos_expirar', 'recebido_na_entrega'",
+          texto: "'pago', 'pago_apos_expirar', 'recebido_na_entrega'",
           vezes: 1,
         },
       ],
@@ -1447,9 +1445,87 @@ const VERIFICACOES = {
       // anônimo entra. Vezes exata: cada guarda aparece UMA vez por corpo.
       funcao: "increment_helpful",
       esperado: [
-        { texto: "ON CONFLICT ON CONSTRAINT review_votes_um_voto_por_usuario DO NOTHING", vezes: 1 },
+        {
+          texto:
+            "ON CONFLICT ON CONSTRAINT review_votes_um_voto_por_usuario DO NOTHING",
+          vezes: 1,
+        },
         { texto: "IF NOT FOUND THEN", vezes: 1 },
         { texto: "Acesso negado: usuário não autenticado.", vezes: 1 },
+      ],
+    },
+  ],
+  "20261060000000_o_estoque_volta_uma_vez_so.sql": [
+    {
+      // Laudo novos ângulos 01/09 (A8): o estoque volta UMA vez por pedido,
+      // guardado pela coluna-fato stock_returned_at (mesma família do
+      // coupon_usage_returned da Rodada 4). Sem o WHERE do carimbo,
+      // devolver_estoque volta a creditar a cada chamada (o buraco da
+      // oscilação cancelled→processing→cancelled, provado vivo: 5→6); sem a
+      // guarda do cancelled_after_shipping, o re-cancelamento de pedido
+      // cancelado-após-envio credita phantom (a peça está com o cliente).
+      // Vezes exata: cada guarda aparece UMA vez por corpo.
+      funcao: "devolver_estoque",
+      esperado: [{ texto: "AND stock_returned_at IS NULL", vezes: 1 }],
+    },
+    {
+      funcao: "update_order_status_atomic",
+      esperado: [
+        { texto: "AND NOT v_cancelled_after_shipping THEN", vezes: 1 },
+      ],
+    },
+  ],
+  "20261062000000_o_hoje_do_painel_e_o_dia_do_lojista.sql": [
+    {
+      // Laudo novos ângulos 01/09 (A7): o "Hoje" do painel vira o dia
+      // civil do lojista — o banco roda em UTC e a venda das 21h–23h59 de
+      // Brasília entrava no dia errado do KPI e do gráfico. As duas
+      // fronteiras (Hoje e Ontem) e os baldes do histórico fixam
+      // America/Sao_Paulo. Vezes exatas: cada fronteira UMA vez; o balde
+      // do gráfico em QUATRO pontos (2 SELECT + 2 GROUP BY); a série do
+      // histórico com as duas pontas locais.
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto:
+            "date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'",
+          vezes: 1,
+        },
+        {
+          texto:
+            "date_trunc('day', (now() - interval '1 day') AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'",
+          vezes: 1,
+        },
+        {
+          texto: "(o.created_at AT TIME ZONE 'America/Sao_Paulo')::date",
+          vezes: 4,
+        },
+        { texto: "- (p_limit_days || ' days')::interval)::date", vezes: 1 },
+        { texto: "(now() AT TIME ZONE 'America/Sao_Paulo')::date,", vezes: 1 },
+      ],
+    },
+  ],
+  "20261063000000_o_donut_soma_o_dinheiro_do_kpi.sql": [
+    {
+      // Laudo novos ângulos 01/09 (A6): o donut de categorias rateia o
+      // TOTAL do pedido (líquido de cupom, COM frete — o mesmo dinheiro do
+      // KPI Volume Total) pela fração da categoria nos itens; a soma das
+      // fatias iguala o dinheiro reconhecido do período. NULLIF protege a
+      // divisão nos pedidos de itens-zero; os três portões de dinheiro
+      // reconhecido permanecem, caractere a caractere.
+      funcao: "get_category_analytics",
+      esperado: [
+        { texto: "/ NULLIF(f.subtotal_pedido, 0)", vezes: 2 },
+        {
+          texto: "SUM(SUM(i.valor_item)) OVER (PARTITION BY i.order_id)",
+          vezes: 1,
+        },
+        {
+          texto:
+            "AND (o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega'))",
+          vezes: 1,
+        },
+        { texto: "GROUP BY f.nome_categoria", vezes: 1 },
       ],
     },
   ],

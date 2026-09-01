@@ -9,6 +9,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useFavorites } from "@/hooks/useFavorites";
+import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useReviews } from "@/hooks/useReviews";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
@@ -267,6 +268,10 @@ export const ProductView = React.memo(function ProductView({
     autoFetch: false,
   });
   const { isFavorite: checkFavorite, toggleFavorite } = useFavorites();
+  // Laudo 0109 (C1): o preload das recomendações passa pelo prefetchImage,
+  // que tem a guarda de rede lenta — 4 imagens pesadas sem o cliente pedir
+  // em 3G é o defeito; em rede boa, aquecer o scroll-down é o benefício.
+  const { prefetchImage } = usePrefetchOnHover();
 
   const handleToggleFavorite = useCallback(
     (p: Product) => {
@@ -506,10 +511,13 @@ export const ProductView = React.memo(function ProductView({
         updateRecsCache(product.id, recs);
         setLoadingRecs(false);
         // Preload primary images of the first 4 recommendations to make scroll-down instant
+        // Laudo 0109 (C1): era `img.src = r.images[0]` cru — 4 ORIGINAIS
+        // (vários MB cada) baixadas só de a seção existir. Agora: a mesma
+        // largura que o card pede (640, o `src` padrão do LazyImage) e a
+        // guarda de rede lenta de prefetchImage.
         recs.slice(0, 4).forEach((r) => {
           if (r.images?.[0] && typeof window !== "undefined") {
-            const img = new Image();
-            img.src = r.images[0];
+            prefetchImage(imagemRedimensionada(r.images[0], { width: 640 }));
           }
         });
       }
@@ -519,7 +527,7 @@ export const ProductView = React.memo(function ProductView({
     return () => {
       isMounted = false;
     };
-  }, [product.id, fetchRecommendations, recsVisible]);
+  }, [product.id, fetchRecommendations, recsVisible, prefetchImage]);
 
   // Calculate average rating and count on the fly based on fetched reviews, with fallbacks from mapped product view
   const reviewCount =
@@ -1417,7 +1425,30 @@ export const ProductView = React.memo(function ProductView({
                 {/* Product Image and Details */}
                 <div className="flex min-w-0 items-center gap-2.5">
                   <img
-                    src={variantImage || product.images?.[0] || ""}
+                    // Laudo 0109 (C1): src cru baixava a imagem ORIGINAL
+                    // (vários MB) para uma miniatura de 40px. 200 é o menor
+                    // degrau do pipeline e cobre a miniatura até em tela de
+                    // alta densidade; se a transformação falhar, recai para
+                    // a original uma única vez (mesma rede do LazyImage).
+                    src={imagemRedimensionada(
+                      variantImage || product.images?.[0] || "",
+                      { width: 200 },
+                    )}
+                    onError={(e) => {
+                      const alvo = e.currentTarget;
+                      const original =
+                        variantImage || product.images?.[0] || "";
+                      // Guarda por URL falha (não por nó): trocar de variante
+                      // precisa poder cair para a original de novo.
+                      if (
+                        original &&
+                        alvo.src !== original &&
+                        alvo.dataset.srcComFalha !== alvo.src
+                      ) {
+                        alvo.dataset.srcComFalha = alvo.src;
+                        alvo.src = original;
+                      }
+                    }}
                     alt={product.name}
                     className="border-zinc-150/50 size-10 flex-shrink-0 rounded-xl border bg-zinc-50 object-cover"
                   />

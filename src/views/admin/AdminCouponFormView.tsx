@@ -13,7 +13,7 @@ import {
   validadeParaDataDoInput,
 } from "@/utils/validade-do-cupom";
 import { AlertTriangle, Calendar, Ticket } from "lucide-react";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface AdminCouponFormViewProps {
@@ -27,7 +27,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
   onNavigate,
   onSetDirty,
 }: AdminCouponFormViewProps) {
-  const { coupons, addCoupon, updateCoupon } = useCoupons(true);
+  const { coupons, loading, addCoupon, updateCoupon } = useCoupons(true);
   const isOffline = useOnlineStatus();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -49,29 +49,63 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
     minPurchase: 0,
   });
 
+  // Laudo 0109 (A4): a decisão editar×criar MORAVA na lista carregada
+  // (`coupons.find`) — o fetch falhou, o salvamento virava INSERT, a
+  // constraint de código único recusava, e trocando o código para
+  // "destravar" nascia um SEGUNDO cupom com o antigo vivo. O couponId
+  // existe na rota e é ELE quem decide.
+  const isEditing = Boolean(couponId);
   const editingCoupon = couponId
     ? coupons.find((c) => c.id === couponId)
     : null;
 
-  // Initialize form data when editing a coupon
+  // Laudo 0109 (A5): o efeito antigo dependia de `[couponId, coupons]` e
+  // fazia `setFormData(data)` sem guarda — abrir o form, digitar rápido e a
+  // resposta do fetch chegar (nova array em `coupons`) apagava o que o
+  // lojista tinha digitado, em rede de celular. Duas travas: (1) inicializa
+  // UMA vez por cupom (ref abaixo); (2) o que o lojista JÁ digitou —
+  // diferente do estado vazio de partida — vence, e o resto vem do banco.
+  const cupomInicializadoRef = useRef<string | null>(null);
   useEffect(() => {
-    if (couponId && coupons.length > 0) {
-      const editing = coupons.find((c) => c.id === couponId);
-      if (editing) {
-        const data = {
-          code: editing.code,
-          type: editing.type,
-          value: editing.value,
-          minPurchase: editing.minPurchase || 0,
-          usageLimit: editing.usageLimit || 0,
-          validUntil: editing.validUntil,
-          active: editing.active,
-        };
-        setFormData(data);
-        setInitialData(data);
-      }
-    }
-  }, [couponId, coupons]);
+    if (!couponId || coupons.length === 0) return;
+    if (cupomInicializadoRef.current === couponId) return;
+    const editing = coupons.find((c) => c.id === couponId);
+    if (!editing) return;
+    const carregado = {
+      code: editing.code,
+      type: editing.type,
+      value: editing.value,
+      minPurchase: editing.minPurchase || 0,
+      usageLimit: editing.usageLimit || 0,
+      validUntil: editing.validUntil,
+      active: editing.active,
+    };
+    const mesclado = {
+      code: formData.code !== "" ? formData.code : carregado.code,
+      type: formData.type !== "percentage" ? formData.type : carregado.type,
+      value: Number(formData.value) !== 0 ? formData.value : carregado.value,
+      minPurchase:
+        Number(formData.minPurchase) !== 0
+          ? formData.minPurchase
+          : carregado.minPurchase,
+      usageLimit:
+        Number(formData.usageLimit) !== 0
+          ? formData.usageLimit
+          : carregado.usageLimit,
+      validUntil:
+        formData.validUntil !== undefined
+          ? formData.validUntil
+          : carregado.validUntil,
+      active: formData.active !== true ? formData.active : carregado.active,
+    };
+    setFormData(mesclado);
+    // `initialData` recebe o MESCLADO: "sujo" tem que significar mudança do
+    // lojista DEPOIS da carga, nunca a mesclagem em si.
+    setInitialData(mesclado);
+    cupomInicializadoRef.current = couponId;
+    // `formData` entra de propósito: a mesclagem precisa do que o lojista
+    // já digitou nesta tela antes da carga chegar.
+  }, [couponId, coupons, formData]);
 
   // Track form dirty state to prevent accidental discards
   useEffect(() => {
@@ -137,7 +171,19 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
 
     setIsSubmitting(true);
     try {
-      if (editingCoupon) {
+      if (couponId) {
+        // Laudo 0109 (A4): cupom da rota que o fetch não trouxe (falha de
+        // rede ou id inexistente) NÃO salva — nem como INSERT (o defeito
+        // antigo), nem como UPDATE cego com os zeros de partida por cima
+        // das regras reais do cupom. A tela conta o que acontece.
+        if (!editingCoupon) {
+          toast.error(
+            loading
+              ? "Aguarde: os dados do cupom ainda estão carregando."
+              : "Não foi possível carregar os dados deste cupom. Recarregue a página antes de salvar.",
+          );
+          return;
+        }
         await updateCoupon(editingCoupon.id, dataToSubmit);
       } else {
         await addCoupon(
@@ -167,7 +213,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
           <div className="flex items-center gap-3">
             <div>
               <h1 className="text-sm font-black uppercase tracking-tight text-white">
-                {editingCoupon ? "Editar Cupom" : "Novo Cupom"}
+                {isEditing ? "Editar Cupom" : "Novo Cupom"}
               </h1>
               <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
                 Configure os detalhes do seu cupom de desconto

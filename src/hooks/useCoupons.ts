@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
+import { mensagemDeErroDoCupom } from "@/lib/erro-do-cupom";
 import { supabase } from "@/lib/supabase";
 import type { Coupon } from "@/types";
 import type { Database } from "@/types/supabase";
@@ -145,7 +146,9 @@ export function useCoupons(autoFetch = false) {
       return data;
     } catch (error) {
       console.error("Error adding coupon:", error);
-      toast.error("Erro ao criar cupom");
+      // Laudo 0109 (A4): a recusa mais comum — código repetido — chegava
+      // como aviso genérico; o lojista não tinha como saber o motivo real.
+      toast.error(mensagemDeErroDoCupom(error, "Erro ao criar cupom"));
       throw error;
     }
   };
@@ -207,7 +210,9 @@ export function useCoupons(autoFetch = false) {
       if (autoFetch) fetchCoupons();
     } catch (error) {
       console.error("Error updating coupon:", error);
-      toast.error("Erro ao atualizar cupom");
+      // Mesma régua do addCoupon (laudo 0109, A4): trocar o código por um
+      // que já existe é recusa de constraint, não "revise as regras".
+      toast.error(mensagemDeErroDoCupom(error, "Erro ao atualizar cupom"));
       setCoupons(oldCoupons);
       throw error;
     }

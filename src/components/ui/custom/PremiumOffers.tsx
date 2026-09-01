@@ -355,6 +355,10 @@ function HeroOfferCard({
           <LazyImage
             src={product.images[0]}
             alt={product.name}
+            // Laudo 0109 (C1): sem `sizes` o LazyImage servia a imagem
+            // ORIGINAL (medido no repo: banner chegava a 1340 kB) para um
+            // card de ~40% da tela. O `sizes` é o que liga o srcSet.
+            sizes="(min-width: 768px) 40vw, 92vw"
             className="size-full object-cover transition-transform ease-out group-hover:scale-[1.03]"
             style={{ transitionDuration: "1.2s" }}
           />
