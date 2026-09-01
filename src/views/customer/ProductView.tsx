@@ -11,6 +11,7 @@ import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
+import { useRecomendacoesDeProduto } from "@/hooks/useRecomendacoesDeProduto";
 import { useReviews } from "@/hooks/useReviews";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { conjuntoDeImagens, imagemRedimensionada } from "@/lib/imageUrl";
@@ -35,44 +36,6 @@ import {
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-
-const RECS_CACHE_KEY_PREFIX = "ikcous_recs_cache_";
-const memoryRecsCache = new Map<string, Product[]>();
-
-const getRecsCache = (productId: string): Product[] | null => {
-  if (memoryRecsCache.has(productId)) {
-    return memoryRecsCache.get(productId)!;
-  }
-  if (typeof window !== "undefined") {
-    try {
-      const stored = localStorage.getItem(
-        `${RECS_CACHE_KEY_PREFIX}${productId}`,
-      );
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        memoryRecsCache.set(productId, parsed);
-        return parsed;
-      }
-    } catch (e) {
-      console.error("Failed to parse recommendations cache", e);
-    }
-  }
-  return null;
-};
-
-const updateRecsCache = (productId: string, newRecs: Product[]) => {
-  memoryRecsCache.set(productId, newRecs);
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.setItem(
-        `${RECS_CACHE_KEY_PREFIX}${productId}`,
-        JSON.stringify(newRecs),
-      );
-    } catch (e) {
-      console.error("Failed to update recommendations cache", e);
-    }
-  }
-};
 
 interface CompactVariantDropdownProps {
   name: string;
@@ -314,13 +277,6 @@ export const ProductView = React.memo(function ProductView({
     [onProductClick, trackRecommendationClick],
   );
 
-  const [recommendations, setRecommendations] = useState<Product[]>(() => {
-    return getRecsCache(product.id) || [];
-  });
-  const [loadingRecs, setLoadingRecs] = useState(() => {
-    return !getRecsCache(product.id);
-  });
-
   const detailsSectionRef = useRef<HTMLDivElement>(null);
   const reviewsSectionRef = useRef<HTMLDivElement>(null);
   const chatSectionRef = useRef<HTMLDivElement>(null);
@@ -440,6 +396,16 @@ export const ProductView = React.memo(function ProductView({
   const recsRef = useRef<HTMLDivElement>(null);
   const [recsVisible, setRecsVisible] = useState(false);
 
+  // Defeito da prova de rua (01/09): o buscador troca de identidade a cada
+  // troca de `products` no contexto; com ele como dependência do efeito, a
+  // busca reiniciava antes de concluir e a seção ficava em skeleton eterno.
+  // O hook mantém o buscador por ref e diferencia "buscando" de "vazio".
+  const {
+    recomendacoes: recommendations,
+    carregando: loadingRecs,
+    consultado: recsConsultado,
+  } = useRecomendacoesDeProduto(product.id, recsVisible, fetchRecommendations);
+
   useEffect(() => {
     setRecsVisible(false);
   }, [product.id]);
@@ -489,45 +455,20 @@ export const ProductView = React.memo(function ProductView({
     subscribeToReviews,
   ]);
 
+  // Preload das imagens da primeira fileira de recomendações, para o
+  // scroll-down ser instantâneo.
+  // Laudo 0109 (C1): era `img.src = r.images[0]` cru — 4 ORIGINAIS
+  // (vários MB cada) baixadas só de a seção existir. Agora: a mesma
+  // largura que o card pede (640, o `src` padrão do LazyImage) e a
+  // guarda de rede lenta de prefetchImage.
   useEffect(() => {
-    if (!recsVisible) return;
-
-    // 1. Initial SWR cache sync
-    const cached = getRecsCache(product.id);
-    if (cached) {
-      setRecommendations(cached);
-      setLoadingRecs(false);
-    } else {
-      setRecommendations([]);
-      setLoadingRecs(true);
-    }
-
-    // 2. Fetch fresh data in background
-    let isMounted = true;
-    const loadRecs = async () => {
-      const recs = await fetchRecommendations(product.id);
-      if (isMounted) {
-        setRecommendations(recs);
-        updateRecsCache(product.id, recs);
-        setLoadingRecs(false);
-        // Preload primary images of the first 4 recommendations to make scroll-down instant
-        // Laudo 0109 (C1): era `img.src = r.images[0]` cru — 4 ORIGINAIS
-        // (vários MB cada) baixadas só de a seção existir. Agora: a mesma
-        // largura que o card pede (640, o `src` padrão do LazyImage) e a
-        // guarda de rede lenta de prefetchImage.
-        recs.slice(0, 4).forEach((r) => {
-          if (r.images?.[0] && typeof window !== "undefined") {
-            prefetchImage(imagemRedimensionada(r.images[0], { width: 640 }));
-          }
-        });
+    if (!recsVisible || recommendations.length === 0) return;
+    recommendations.slice(0, 4).forEach((r) => {
+      if (r.images?.[0] && typeof window !== "undefined") {
+        prefetchImage(imagemRedimensionada(r.images[0], { width: 640 }));
       }
-    };
-    loadRecs();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [product.id, fetchRecommendations, recsVisible, prefetchImage]);
+    });
+  }, [recsVisible, recommendations, prefetchImage]);
 
   // Calculate average rating and count on the fly based on fetched reviews, with fallbacks from mapped product view
   const reviewCount =
@@ -1379,32 +1320,36 @@ export const ProductView = React.memo(function ProductView({
           </div>
         </div>
 
-        {/* Recommendations - Magazine Style */}
-        <div ref={recsRef} className="mt-20 border-t border-zinc-100 pt-10">
-          <div className="mb-10 flex flex-col items-center text-center">
-            <h3 className="text-3xl font-black leading-none tracking-tighter text-zinc-900">
-              Você também pode gostar
-            </h3>
+        {/* Recommendations - Magazine Style. Defeito da prova de rua (01/09):
+            busca concluída e vazia esconde a seção INTEIRA — título com
+            grid vazio convidava a nada. */}
+        {(!recsConsultado || recommendations.length > 0) && (
+          <div ref={recsRef} className="mt-20 border-t border-zinc-100 pt-10">
+            <div className="mb-10 flex flex-col items-center text-center">
+              <h3 className="text-3xl font-black leading-none tracking-tighter text-zinc-900">
+                Você também pode gostar
+              </h3>
+            </div>
+            <div className="-mx-4 grid grid-cols-2 gap-2 px-2 lg:grid-cols-4">
+              {!isReady || loadingRecs
+                ? Array(4)
+                    .fill(0)
+                    .map((_, i) => <ProductCardSkeleton key={i} />)
+                : recommendations.map((p) => (
+                    <ProductCard
+                      key={p.id}
+                      product={p}
+                      isFavorite={checkFavorite(p.id)}
+                      onToggleFavorite={handleToggleFavorite}
+                      onAddToCart={handleAddToCartFromCard}
+                      onQuickBuy={handleQuickBuyFromCard}
+                      onClick={handleProductClick}
+                      showRating={config.enableReviews}
+                    />
+                  ))}
+            </div>
           </div>
-          <div className="-mx-4 grid grid-cols-2 gap-2 px-2 lg:grid-cols-4">
-            {!isReady || loadingRecs
-              ? Array(4)
-                  .fill(0)
-                  .map((_, i) => <ProductCardSkeleton key={i} />)
-              : recommendations.map((p) => (
-                  <ProductCard
-                    key={p.id}
-                    product={p}
-                    isFavorite={checkFavorite(p.id)}
-                    onToggleFavorite={handleToggleFavorite}
-                    onAddToCart={handleAddToCartFromCard}
-                    onQuickBuy={handleQuickBuyFromCard}
-                    onClick={handleProductClick}
-                    showRating={config.enableReviews}
-                  />
-                ))}
-          </div>
-        </div>
+        )}
 
         {/* Reserva o fim da página para as barras fixas (compra dockada +
             navegação inferior) não cobrirem a última fileira de cards. */}
