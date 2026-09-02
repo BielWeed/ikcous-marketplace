@@ -49,6 +49,11 @@ const UserProfileView = lazyWithPreload(() =>
 import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
 import { applyThemeColor, branding } from "@/config/branding";
 import { destinoPosLogin } from "@/lib/destinoPosLogin";
+import {
+  CHAVE_MOTIVO_DE_RECARGA,
+  descreveMotivoDeRecarga,
+  limpaMotivoDeRecarga,
+} from "@/lib/motivo-de-recarga";
 import { supabase } from "@/lib/supabase";
 // --- LAZY LOADED ADMIN VIEWS ---
 import { cn } from "@/lib/utils";
@@ -1213,23 +1218,23 @@ const AppContent = () => {
   }, [handleNavigate]);
 
   // ==============================
-  // PWA Reload Reason Consumption
+  // PWA Reload Reason Consumption — laudo #2 (P-1): o motivo descreve o que
+  // REALMENTE aconteceu (update, recuperação de erro, crash, sentinela);
+  // "Sistema Atualizado" só aparece quando houve atualização de verdade.
   // ==============================
   useEffect(() => {
-    const reason = localStorage.getItem("pwa_reload_reason");
-    if (reason) {
-      console.log(`[PWA] Consuming reload reason: ${reason}`);
+    const motivo = descreveMotivoDeRecarga(
+      localStorage.getItem(CHAVE_MOTIVO_DE_RECARGA),
+    );
+    if (motivo) {
+      console.log(`[PWA] Consuming reload reason: ${motivo.titulo}`);
       import("sonner").then(({ toast }) => {
-        toast.success("Sistema Atualizado", {
-          description: reason.includes(
-            "Failed to fetch dynamically imported module",
-          )
-            ? "O aplicativo foi atualizado para a versão mais recente."
-            : reason,
+        toast[motivo.tom](motivo.titulo, {
+          description: motivo.descricao,
           duration: 5000,
         });
       });
-      localStorage.removeItem("pwa_reload_reason");
+      limpaMotivoDeRecarga();
     }
   }, []);
 
