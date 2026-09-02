@@ -152,6 +152,36 @@ describe("AdminKpiCarousel — carrossel compacto de métricas", () => {
     expect(card!.className).toContain("overflow-hidden");
   });
 
+  it("valor e subtítulo ocupam LINHAS PRÓPRIAS — o dado completo cabe sem brigar por espaço", async () => {
+    const { AdminKpiCarousel } = await import(
+      "@/components/admin/AdminKpiCarousel"
+    );
+    await montar(
+      <AdminKpiCarousel
+        cards={[
+          {
+            id: "capital",
+            label: "Capital Alocado",
+            value: "R$ 1.312.456,78",
+            subValue: "Capital Líquido",
+            icon: Wallet,
+          },
+        ]}
+        title="Métricas de Produtos"
+      />,
+    );
+
+    // O valor completo está no DOM (nada é cortado por JS)…
+    const valor = hospedeiro.querySelector("h3");
+    expect(valor?.textContent).toBe("R$ 1.312.456,78");
+
+    // …e o subtítulo é LINHA PRÓPRIA (irmão imediato do valor), não um
+    // apêndice que espreme o número — era o "R$ 1.31... / CAPITAL LIQ...".
+    const sub = valor!.nextElementSibling;
+    expect(sub?.tagName).toBe("P");
+    expect(sub?.textContent).toBe("Capital Líquido");
+  });
+
   it("carregando: skeletons na faixa, sem card nenhum", async () => {
     const { AdminKpiCarousel } = await import(
       "@/components/admin/AdminKpiCarousel"

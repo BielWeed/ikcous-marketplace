@@ -74,26 +74,28 @@ const KpiCard = memo(function KpiCard({
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[9px] font-black uppercase leading-tight tracking-[0.18em] text-zinc-500 transition-colors duration-300 group-hover:text-zinc-400">
+        <p className="truncate text-[8.5px] font-black uppercase leading-none tracking-[0.18em] text-zinc-500 transition-colors duration-300 group-hover:text-zinc-400">
           {stat.label}
         </p>
-        <div className="flex items-baseline gap-1.5">
-          <h3
-            className={cn(
-              "truncate font-black leading-none tracking-tighter text-white transition-colors duration-300 group-hover:text-admin-gold",
-              stat.subValue ? "text-base sm:text-lg" : "text-lg sm:text-xl",
-            )}
-          >
-            {stat.value}
-          </h3>
-          {stat.subValue && (
-            <p className="truncate text-[9px] font-bold uppercase tracking-tight text-zinc-600 opacity-80 transition-colors duration-300 group-hover:text-zinc-500">
-              {stat.subValue}
-            </p>
+        {/* Valor na linha INTEIRA (pedido do Gabriel, 02/09: o dado completo
+            não cabia — "R$ 1.31... / CAPITAL LIQ..." era valor e subtítulo
+            brigando pela mesma linha). Empilhado em 3 linhas dentro da
+            mesma altura: rótulo / valor / subtítulo. */}
+        <h3
+          className={cn(
+            "truncate font-black leading-tight tracking-tighter text-white transition-colors duration-300 group-hover:text-admin-gold sm:text-lg",
+            stat.subValue || stat.footer ? "text-base" : "text-lg",
           )}
-        </div>
+        >
+          {stat.value}
+        </h3>
+        {stat.subValue && (
+          <p className="truncate text-[9px] font-bold uppercase leading-none tracking-tight text-zinc-600 opacity-80 transition-colors duration-300 group-hover:text-zinc-500">
+            {stat.subValue}
+          </p>
+        )}
         {stat.footer && (
-          <p className="truncate text-[8.5px] font-bold uppercase tracking-wider text-zinc-600 transition-colors duration-300 group-hover:text-zinc-500">
+          <p className="truncate text-[8.5px] font-bold uppercase leading-none tracking-wider text-zinc-600 transition-colors duration-300 group-hover:text-zinc-500">
             {stat.footer}
           </p>
         )}
