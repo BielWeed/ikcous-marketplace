@@ -317,12 +317,13 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     expect(botaoAlerta()!.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("lista incompleta: o botão nasce MESMO sem pendência e o aviso mora no dropdown (sucessor do R3 da revisão)", async () => {
+  it("lista incompleta: o botão nasce MESMO sem pendência, com '!' pulsante e o aviso no dropdown (sucessor do R3 da revisão)", async () => {
     // O R3 original exigia o aviso SEMPRE visível no fluxo porque, com as
     // listas podendo estar vazias por erro, escondê-lo era silenciar o único
     // cenário em que importa. O dono mudou o desenho (nada de faixa aberta):
-    // o sinal permanente agora é o PRÓPRIO BOTÃO — âmbar no header, visível
-    // sem clique nenhum; o texto completo fica a um clique, nunca some.
+    // o sinal permanente agora é o PRÓPRIO BOTÃO — âmbar no header, com "!"
+    // pulsante e aria-label que conta a história, visível sem clique nenhum;
+    // o texto completo fica a um clique, nunca some.
     mockAnalyticsStats = statsFake(0);
     mockPedidosCanceladosIncompleto = true;
 
@@ -331,13 +332,18 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
     });
 
-    // Sem pendência não há badge — mas o botão do alerta existe.
+    // Sem pendência não há contagem — mas o "!" do aviso existe e o nome
+    // acessível comunica a truncagem sem precisar abrir nada.
     expect(botaoAlerta()).toBeTruthy();
     expect(
-      hospedeiro.querySelector('[data-testid="alertas-cancelados-badge"]'),
-    ).toBeNull();
-    expect(hospedeiro.textContent).not.toContain(
+      hospedeiro.querySelector('[data-testid="alertas-cancelados-badge"]')
+        ?.textContent,
+    ).toBe("!");
+    expect(botaoAlerta()!.getAttribute("aria-label")).toContain(
       "Não foi possível confirmar a lista completa de pedidos cancelados",
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "Os painéis de mercadoria e estorno abaixo podem estar incompletos",
     );
 
     await expandir();

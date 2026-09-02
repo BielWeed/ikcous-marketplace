@@ -68,6 +68,7 @@ export function AlertasCancelados({
 }: AlertasCanceladosProps) {
   const [aberto, setAberto] = useState(false);
   const raizRef = useRef<HTMLDivElement>(null);
+  const alavancaRef = useRef<HTMLButtonElement>(null);
 
   const temDinheiroPreso = pagoCanceladoCount > 0;
   const temPendencia =
@@ -90,7 +91,12 @@ export function AlertasCancelados({
       }
     };
     const apertouTecla = (evento: KeyboardEvent) => {
-      if (evento.key === "Escape") setAberto(false);
+      if (evento.key === "Escape") {
+        setAberto(false);
+        // Padrão de disclosure: quem fechou pelo teclado volta o foco para
+        // o botão que abriu (não fica órfão no body).
+        alavancaRef.current?.focus();
+      }
     };
     document.addEventListener("pointerdown", clicouFora);
     document.addEventListener("keydown", apertouTecla);
@@ -114,7 +120,15 @@ export function AlertasCancelados({
   ]
     .filter(Boolean)
     .join(" · ");
-  const descricaoBotao = resumoBadges ? `${titulo}. ${resumoBadges}` : titulo;
+  // No caso SÓ lista incompleta (sem pendência), o nome acessível tem que
+  // contar a história sozinha — "Pedidos cancelados pendentes" diria menos
+  // do que o lojista precisa ouvir antes de decidir abrir.
+  const descricaoBotao =
+    !temPendencia && incompleto
+      ? "Não foi possível confirmar a lista completa de pedidos cancelados. Toque para ver os detalhes."
+      : resumoBadges
+        ? `${titulo}. ${resumoBadges}`
+        : titulo;
 
   // Badge = pedidos DISTINTOS com mercadoria/estorno pendentes. Quando a
   // única pendência é o dinheiro preso (lista não derivada aqui, só a
@@ -152,6 +166,7 @@ export function AlertasCancelados({
     <div ref={raizRef} className="relative shrink-0">
       <button
         type="button"
+        ref={alavancaRef}
         data-testid="alertas-cancelados-alavanca"
         aria-expanded={aberto}
         {...(aberto ? { "aria-controls": "alertas-cancelados-conteudo" } : {})}
@@ -161,13 +176,25 @@ export function AlertasCancelados({
         className="relative flex size-9 shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-500 transition-all duration-300 hover:border-amber-500/50 hover:bg-amber-500/20 active:scale-95"
       >
         <AlertTriangle className="size-4" />
-        {badge > 0 && (
+        {badge > 0 ? (
           <span
             data-testid="alertas-cancelados-badge"
             className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[9px] font-black leading-none text-black"
           >
             {badge}
           </span>
+        ) : (
+          // Sem pendência mas com lista incompleta: o sinal permanente é o
+          // "!" pulsante — o botão não pode se parecer com um estado normal
+          // justamente no único cenário em que as listas vazias são mentira.
+          incompleto && (
+            <span
+              data-testid="alertas-cancelados-badge"
+              className="absolute -right-1 -top-1 flex h-4 min-w-4 animate-pulse items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[9px] font-black leading-none text-black"
+            >
+              !
+            </span>
+          )
         )}
       </button>
 

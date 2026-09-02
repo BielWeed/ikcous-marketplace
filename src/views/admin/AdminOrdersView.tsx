@@ -759,7 +759,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   };
 
   /**
-   * O botão "Ver pedidos" da pílula de alertas. O botão leva aos
+   * O botão "Ver pedidos" do dropdown de alertas (na pílula antiga era
+   * igual — só o contêiner mudou). O botão leva aos
    * CANCELADOS, não a um payment_status específico: a contagem larga cobre
    * as TRÊS portas do contrato ampliado ('pago', 'pago_apos_expirar' e,
    * desde a `20261021000000`, 'recebido_na_entrega' — com status=
