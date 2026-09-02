@@ -1231,266 +1231,262 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         {/* Unified Control Bar Compacta — âncora do scroll do botão "Ver
             pedidos" do dropdown de alertas (id lido por
             `irParaPedidosCancelados`). */}
-        <div
-          id="admin-pedidos-lista"
-          className="relative z-30 mb-5 mt-3 flex flex-col border-t border-white/5 pt-4"
-        >
-          {/* Sticky de filha DIRETA deste bloco alto (que contém a lista):
-              sticky só anda dentro do próprio containing block — embrulhada
-              num wrapper da própria altura ela nunca gruda (achado 1 da
-              revisão, provado em navegador). */}
-          <div className="sticky top-0 z-20 -mx-4 w-full border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-            <div className="flex w-full items-center gap-3">
-              <div className="group relative w-full flex-1">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                  {!isLoaded || isTyping ? (
-                    <Loader2 className="size-4 animate-spin text-admin-gold" />
-                  ) : (
-                    <Search className="size-4 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
-                  )}
-                </div>
-                <label htmlFor="orders-search" className="sr-only">
-                  Buscar pedidos
-                </label>
-                <DebouncedSearchInput
-                  id="orders-search"
-                  name="search"
-                  placeholder="Buscar pedidos..."
-                  className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
-                  value={searchQuery}
-                  onChange={(val) => {
-                    setSearchQuery(val);
-                    setCurrentPage(0);
-                  }}
-                  onTyping={setIsTyping}
-                  delay={300}
-                />
+        {/* Barra de busca + chips de filtro ancorados (pedido do Gabriel,
+            02/09: os chips fazem parte da mesma âncora). Filha DIRETA do
+            container que rola — sticky só anda dentro do próprio containing
+            block. O id="admin-pedidos-lista" (âncora do scroll do botão
+            "Ver pedidos") fica no bloco da lista, mais abaixo. */}
+        <div className="sticky top-0 z-30 -mx-4 w-full border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="flex w-full items-center gap-3">
+            <div className="group relative w-full flex-1">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                {!isLoaded || isTyping ? (
+                  <Loader2 className="size-4 animate-spin text-admin-gold" />
+                ) : (
+                  <Search className="size-4 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
+                )}
               </div>
+              <label htmlFor="orders-search" className="sr-only">
+                Buscar pedidos
+              </label>
+              <DebouncedSearchInput
+                id="orders-search"
+                name="search"
+                placeholder="Buscar pedidos..."
+                className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
+                value={searchQuery}
+                onChange={(val) => {
+                  setSearchQuery(val);
+                  setCurrentPage(0);
+                }}
+                onTyping={setIsTyping}
+                delay={300}
+              />
+            </div>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="group relative size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
-                  >
-                    <Filter className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                    {paymentFilter !== "all" && (
-                      // O filtro persiste em localStorage: sem isto, o admin
-                      // reabre a tela já filtrada sem nenhuma pista visível
-                      // (achado da revisão da Task 9).
-                      <span
-                        aria-hidden="true"
-                        className="absolute right-2.5 top-2.5 size-2 rounded-full bg-admin-gold shadow-[0_0_6px_rgba(212,175,55,0.6)]"
-                      />
-                    )}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  className="mt-2 w-80 rounded-3xl border-zinc-800/50 bg-zinc-950 p-4 shadow-2xl backdrop-blur-3xl"
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="group relative size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
                 >
-                  <div className="space-y-4">
-                    <h4 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                      Filtro Temporal
-                    </h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="group relative">
-                        <Input
-                          id="filter-date-start"
-                          name="start-date"
-                          type="date"
-                          autoComplete="off"
-                          className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 px-4 pb-1 pt-5 text-xs font-bold text-white transition-all [color-scheme:dark] focus:border-admin-gold/50 focus:ring-admin-gold/20"
-                          value={dateRange.start}
-                          onChange={(e) => {
-                            setDateRange((prev) => ({
-                              ...prev,
-                              start: e.target.value,
-                            }));
-                            setCurrentPage(0);
-                          }}
-                        />
-                        <label
-                          htmlFor="filter-date-start"
-                          className="pointer-events-none absolute left-4 top-2 text-[7px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
-                        >
-                          Início
-                        </label>
-                      </div>
-                      <div className="group relative">
-                        <Input
-                          id="filter-date-end"
-                          name="end-date"
-                          type="date"
-                          autoComplete="off"
-                          className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 px-4 pb-1 pt-5 text-xs font-bold text-white transition-all [color-scheme:dark] focus:border-admin-gold/50 focus:ring-admin-gold/20"
-                          value={dateRange.end}
-                          onChange={(e) => {
-                            setDateRange((prev) => ({
-                              ...prev,
-                              end: e.target.value,
-                            }));
-                            setCurrentPage(0);
-                          }}
-                        />
-                        <label
-                          htmlFor="filter-date-end"
-                          className="pointer-events-none absolute left-4 top-2 text-[7px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
-                        >
-                          Fim
-                        </label>
-                      </div>
-                    </div>
-                    {(dateRange.start || dateRange.end) && (
-                      <Button
-                        variant="ghost"
-                        className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
-                        onClick={() => {
-                          setDateRange({ start: "", end: "" });
+                  <Filter className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                  {paymentFilter !== "all" && (
+                    // O filtro persiste em localStorage: sem isto, o admin
+                    // reabre a tela já filtrada sem nenhuma pista visível
+                    // (achado da revisão da Task 9).
+                    <span
+                      aria-hidden="true"
+                      className="absolute right-2.5 top-2.5 size-2 rounded-full bg-admin-gold shadow-[0_0_6px_rgba(212,175,55,0.6)]"
+                    />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="mt-2 w-80 rounded-3xl border-zinc-800/50 bg-zinc-950 p-4 shadow-2xl backdrop-blur-3xl"
+              >
+                <div className="space-y-4">
+                  <h4 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                    Filtro Temporal
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="group relative">
+                      <Input
+                        id="filter-date-start"
+                        name="start-date"
+                        type="date"
+                        autoComplete="off"
+                        className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 px-4 pb-1 pt-5 text-xs font-bold text-white transition-all [color-scheme:dark] focus:border-admin-gold/50 focus:ring-admin-gold/20"
+                        value={dateRange.start}
+                        onChange={(e) => {
+                          setDateRange((prev) => ({
+                            ...prev,
+                            start: e.target.value,
+                          }));
                           setCurrentPage(0);
                         }}
+                      />
+                      <label
+                        htmlFor="filter-date-start"
+                        className="pointer-events-none absolute left-4 top-2 text-[7px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
                       >
-                        Limpar Datas
-                      </Button>
-                    )}
+                        Início
+                      </label>
+                    </div>
+                    <div className="group relative">
+                      <Input
+                        id="filter-date-end"
+                        name="end-date"
+                        type="date"
+                        autoComplete="off"
+                        className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 px-4 pb-1 pt-5 text-xs font-bold text-white transition-all [color-scheme:dark] focus:border-admin-gold/50 focus:ring-admin-gold/20"
+                        value={dateRange.end}
+                        onChange={(e) => {
+                          setDateRange((prev) => ({
+                            ...prev,
+                            end: e.target.value,
+                          }));
+                          setCurrentPage(0);
+                        }}
+                      />
+                      <label
+                        htmlFor="filter-date-end"
+                        className="pointer-events-none absolute left-4 top-2 text-[7px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
+                      >
+                        Fim
+                      </label>
+                    </div>
+                  </div>
+                  {(dateRange.start || dateRange.end) && (
+                    <Button
+                      variant="ghost"
+                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                      onClick={() => {
+                        setDateRange({ start: "", end: "" });
+                        setCurrentPage(0);
+                      }}
+                    >
+                      Limpar Datas
+                    </Button>
+                  )}
 
-                    <h4 className="mt-6 px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                      Status de Pagamento
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
+                  <h4 className="mt-6 px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                    Status de Pagamento
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentFilter("all");
+                        setCurrentPage(0);
+                      }}
+                      className={cn(
+                        "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                        paymentFilter === "all"
+                          ? "bg-admin-gold border-admin-gold text-black"
+                          : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                      )}
+                    >
+                      Todos
+                    </button>
+                    {PAYMENT_STATUS_FILTER_VALUES.map((value) => (
                       <button
+                        key={value}
                         type="button"
                         onClick={() => {
-                          setPaymentFilter("all");
+                          setPaymentFilter(value);
                           setCurrentPage(0);
                         }}
                         className={cn(
                           "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
-                          paymentFilter === "all"
+                          paymentFilter === value
                             ? "bg-admin-gold border-admin-gold text-black"
                             : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
                         )}
                       >
-                        Todos
+                        {getPaymentStatusConfig(value).label}
                       </button>
-                      {PAYMENT_STATUS_FILTER_VALUES.map((value) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => {
-                            setPaymentFilter(value);
-                            setCurrentPage(0);
-                          }}
-                          className={cn(
-                            "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
-                            paymentFilter === value
-                              ? "bg-admin-gold border-admin-gold text-black"
-                              : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
-                          )}
-                        >
-                          {getPaymentStatusConfig(value).label}
-                        </button>
-                      ))}
-                    </div>
-                    {paymentFilter !== "all" && (
-                      <Button
-                        variant="ghost"
-                        className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
-                        onClick={() => {
-                          setPaymentFilter("all");
-                          setCurrentPage(0);
-                        }}
-                      >
-                        Limpar Status de Pagamento
-                      </Button>
-                    )}
+                    ))}
                   </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  {paymentFilter !== "all" && (
+                    <Button
+                      variant="ghost"
+                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                      onClick={() => {
+                        setPaymentFilter("all");
+                        setCurrentPage(0);
+                      }}
+                    >
+                      Limpar Status de Pagamento
+                    </Button>
+                  )}
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() =>
-                  setViewMode((prev) =>
-                    prev === "detailed" ? "compact" : "detailed",
-                  )
-                }
-                className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
-                title={
-                  viewMode === "detailed"
-                    ? "Visualização Compacta"
-                    : "Visualização Detalhada"
-                }
-              >
-                {viewMode === "detailed" ? (
-                  <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                ) : (
-                  <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                )}
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() =>
+                setViewMode((prev) =>
+                  prev === "detailed" ? "compact" : "detailed",
+                )
+              }
+              className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
+              title={
+                viewMode === "detailed"
+                  ? "Visualização Compacta"
+                  : "Visualização Detalhada"
+              }
+            >
+              {viewMode === "detailed" ? (
+                <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+              ) : (
+                <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+              )}
+            </Button>
+          </div>
 
-            {/* Fileira de filtros de status — parte da MESMA âncora da busca
+          {/* Fileira de filtros de status — parte da MESMA âncora da busca
                 (pedido do Gabriel, 02/09): gruda junto com ela. */}
-            <div className="flex w-full snap-x gap-3 overflow-x-auto pt-3">
-              {" "}
+          <div className="flex w-full snap-x gap-3 overflow-x-auto pt-3">
+            {" "}
+            <button
+              onClick={() => {
+                setFilter("open");
+                setCurrentPage(0);
+              }}
+              className={cn(
+                "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 snap-center",
+                filter === "open"
+                  ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+                  : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+              )}
+            >
+              Em Aberto
+            </button>
+            {Object.entries(statusConfig).map(([status, cfg]) => (
               <button
+                key={status}
                 onClick={() => {
-                  setFilter("open");
+                  setFilter(status as OrderStatus);
                   setCurrentPage(0);
                 }}
                 className={cn(
-                  "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 snap-center",
-                  filter === "open"
+                  "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-3 shrink-0 snap-center",
+                  filter === status
                     ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
                     : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
                 )}
               >
-                Em Aberto
-              </button>
-              {Object.entries(statusConfig).map(([status, cfg]) => (
-                <button
-                  key={status}
-                  onClick={() => {
-                    setFilter(status as OrderStatus);
-                    setCurrentPage(0);
-                  }}
+                <div
                   className={cn(
-                    "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-3 shrink-0 snap-center",
-                    filter === status
-                      ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                      : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                    "w-1.5 h-1.5 rounded-full",
+                    STATUS_ORDER_COLORS[status] || "bg-gray-500",
                   )}
-                >
-                  <div
-                    className={cn(
-                      "w-1.5 h-1.5 rounded-full",
-                      STATUS_ORDER_COLORS[status] || "bg-gray-500",
-                    )}
-                  />
-                  {cfg.label}
-                </button>
-              ))}
-              {/* Saída honesta para ver tudo — inclusive cancelado e
+                />
+                {cfg.label}
+              </button>
+            ))}
+            {/* Saída honesta para ver tudo — inclusive cancelado e
                 entregue, que "Em Aberto" tira. Fica no FIM da fileira, não
                 perto do topo, porque não é o caminho recomendado. */}
-              <button
-                onClick={() => {
-                  setFilter("all");
-                  setCurrentPage(0);
-                }}
-                className={cn(
-                  "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 snap-center",
-                  filter === "all"
-                    ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                    : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
-                )}
-              >
-                Todos
-              </button>
-            </div>
+            <button
+              onClick={() => {
+                setFilter("all");
+                setCurrentPage(0);
+              }}
+              className={cn(
+                "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 snap-center",
+                filter === "all"
+                  ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+                  : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+              )}
+            >
+              Todos
+            </button>
           </div>
         </div>
 
@@ -1696,8 +1692,6 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           className="pt-12"
         />
       </div>
-
-      {/* Modal de Ajuda */}
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
