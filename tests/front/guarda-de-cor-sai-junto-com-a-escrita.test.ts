@@ -10,6 +10,17 @@
 //      a guarda tem de SAIR JUNTO com ela — preto volta a ser escolha de
 //      lojista, e o teste (e) de cor-da-loja-vem-do-banco INVERTE.
 //
+// DECISÃO REGISTRADA (02/09/2026, tela "Cor da loja" nos Ajustes): a
+// escrita do item 2 SURGIU — updateConfig na AdminSettingsView, entrada
+// nova na whitelist abaixo — e a guarda NÃO saiu, porque a tela RECUSA
+// #000000 na escrita (validaCorDaLoja em src/config/cor-da-loja.ts, dono
+// único da regra de cor). Ninguém grava preto pelo app → a invariante que
+// sustentava a guarda continua de pé: preto no banco segue sendo resíduo
+// de fábrica ou escrita manual, nunca escolha de lojista. A condição de
+// saída REAL passou a ser: validaCorDaLoja parar de recusar preto — aí a
+// guarda sai, o teste (e) de cor-da-loja-vem-do-banco inverte e esta
+// entrada da whitelist é rebatizada de escrita sem guarda.
+//
 // Comentário não obriga ninguém (a lição da 1255): este teste é quem obriga.
 // Ele falha nos DOIS descumprimentos — escrita sem tirar a guarda, guarda
 // tirada sem escrita existir — com a mensagem dizendo o que fazer.
@@ -82,6 +93,11 @@ const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
     n: 1,
     porque:
       "lê config.primaryColor como sugestão de paleta (tem seletor: ligá-lo ao primaryColor conta como NOVA e cai aqui)",
+  },
+  "src/views/admin/AdminSettingsView.tsx": {
+    n: 1,
+    porque:
+      "única ESCRITA do app (tela Cor da loja, pedido 004, 02/09) — recusa #000000 via validaCorDaLoja, então a guarda de leitura permanece; ver DECISÃO REGISTRADA no topo",
   },
   "src/config/branding.ts": {
     n: 1,
