@@ -4,6 +4,7 @@ import {
   AdminKpiCarousel,
   type KpiCardConfig,
 } from "@/components/admin/AdminKpiCarousel";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
@@ -1168,10 +1169,28 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     >
       {/* Header Elite */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-        <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-          <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-            <span className="italic text-white">Pedidos</span>
-          </span>
+        <AdminPageHeader
+          titulo="Pedidos"
+          acoes={
+            // Botão de alerta + dropdown (pedido do Gabriel, 02/09 à tarde:
+            // a pílula amarela virou botão com ícone de alerta no canto
+            // direito da linha do título; os detalhes descem dele). Sem
+            // pendência e lista completa, ele nem nasce. (1.19.0 — só trocou
+            // de container: a marcação interna é a mesma de antes.)
+            <AlertasCancelados
+              pagoCanceladoCount={paidOnCancelledCount}
+              avisoPagoAposCancelado={avisoPagoAposCancelado}
+              pedidosEsperandoRetorno={pedidosEsperandoRetorno}
+              pedidosParaDevolverAgora={pedidosParaDevolverAgora}
+              incompleto={pedidosCanceladosIncompleto}
+              confirmandoRetornoId={confirmandoRetornoId}
+              onConfirmarRetorno={handleConfirmarRetorno}
+              estornandoId={estornandoId}
+              onRegistrarEstorno={registrarEstornoFeito}
+              onVerPedidos={irParaPedidosCancelados}
+            />
+          }
+        >
           <button
             type="button"
             onClick={() => setShowHelpModal(true)}
@@ -1188,25 +1207,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               lado direito do título, para liberar o canto para o botão de
               alertas (igual nas telas de Produtos e Clientes). */}
           <PontoDeOperacao sincronizando={!isLoaded} />
-        </h1>
-        <div className="flex shrink-0 items-center gap-3">
-          {/* Botão de alerta + dropdown (pedido do Gabriel, 02/09 à tarde:
-              a pílula amarela virou botão com ícone de alerta no canto
-              direito da linha do título; os detalhes descem dele). Sem
-              pendência e lista completa, ele nem nasce. */}
-          <AlertasCancelados
-            pagoCanceladoCount={paidOnCancelledCount}
-            avisoPagoAposCancelado={avisoPagoAposCancelado}
-            pedidosEsperandoRetorno={pedidosEsperandoRetorno}
-            pedidosParaDevolverAgora={pedidosParaDevolverAgora}
-            incompleto={pedidosCanceladosIncompleto}
-            confirmandoRetornoId={confirmandoRetornoId}
-            onConfirmarRetorno={handleConfirmarRetorno}
-            estornandoId={estornandoId}
-            onRegistrarEstorno={registrarEstornoFeito}
-            onVerPedidos={irParaPedidosCancelados}
-          />
-        </div>
+        </AdminPageHeader>
       </div>
 
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">
@@ -1430,8 +1431,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </div>
 
           {/* Fileira de filtros de status — parte da MESMA âncora da busca
-                (pedido do Gabriel, 02/09): gruda junto com ela. */}
-          <div className="flex w-full snap-x gap-3 overflow-x-auto pt-3">
+                (pedido do Gabriel, 02/09): gruda junto com ela. Chips
+                COMPACTOS (pedido do Gabriel, 02/09 — fileira grande demais):
+                o botão mantém h-11 (alvo de toque de 44px, WCAG 2.5.8) e o
+                VISUAL desenha 32px via pseudo-elemento; o pseudo vive dentro
+                do botão, então o overflow-x-auto da fileira não o corta. */}
+          <div className="custom-scrollbar-hidden flex w-full snap-x gap-1.5 overflow-x-auto pt-2">
             {" "}
             <button
               onClick={() => {
@@ -1439,10 +1444,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 setCurrentPage(0);
               }}
               className={cn(
-                "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 snap-center",
+                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                 filter === "open"
-                  ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                  : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                  ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+                  : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
               )}
             >
               Em Aberto
@@ -1455,10 +1460,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   setCurrentPage(0);
                 }}
                 className={cn(
-                  "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-3 shrink-0 snap-center",
+                  "relative isolate flex h-11 shrink-0 snap-center items-center gap-1.5 rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                   filter === status
-                    ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                    : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                    ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+                    : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
                 )}
               >
                 <div
@@ -1479,10 +1484,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 setCurrentPage(0);
               }}
               className={cn(
-                "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 snap-center",
+                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                 filter === "all"
-                  ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                  : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                  ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+                  : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
               )}
             >
               Todos

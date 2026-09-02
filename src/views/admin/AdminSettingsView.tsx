@@ -15,7 +15,10 @@ import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
+import { branding } from "@/config/branding";
+import { corPrimariaEfetiva, validaCorDaLoja } from "@/config/cor-da-loja";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
@@ -205,6 +208,195 @@ const StoreLocationSection = memo(function StoreLocationSection() {
                 <Save className="size-3 text-admin-gold" />
               )}
               <span>{isSaving ? "Salvando..." : "Salvar"}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ==========================================
+// Store Color Section — a cor da marca da loja (pedido 004)
+// ==========================================
+//
+// Até 02/09/2026 o lojista só tinha cor escrevendo no banco à mão. Aqui a
+// escolha vira tela. O caminho é o que JÁ existe — nada de mecanismo de
+// tema novo: `updateConfig` grava a cor no banco, o StoreContext re-aplica
+// a regra de corPrimariaEfetiva na variável --primary e o App reflete no
+// meta theme-color — a vitrine inteira acompanha sozinha.
+//
+// A guarda do PRETO mora em src/config/cor-da-loja.ts (dono único da regra
+// de cor) e vale AQUI também: escolher preto é recusado com mensagem
+// honesta, porque a leitura trata preto gravado como resíduo de
+// configuração antiga — se a tela gravasse preto, a vitrine continuaria na
+// cor padrão com o lojista achando que mudou algo.
+
+// Contraste do texto da pré-visualização: conta YIQ clássica (pesos de
+// percepção) — texto escuro sobre fundo claro, branco sobre o resto.
+function textoLegivelSobre(fundo: string): string {
+  const n = fundo.replace("#", "");
+  const r = Number.parseInt(n.slice(0, 2), 16);
+  const g = Number.parseInt(n.slice(2, 4), 16);
+  const b = Number.parseInt(n.slice(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 >= 140 ? "#111111" : "#ffffff";
+}
+
+const CorDaLojaSection = memo(function CorDaLojaSection() {
+  const { config, updateConfig } = useStore();
+  // A cor EXIBIDA é a EFETIVA (mesma regra da vitrine): sem cor no banco —
+  // ou com o preto-resíduo que a regra ignora — o lojista vê exatamente a
+  // cor com que o app abre (a semente do build).
+  const corAtual = corPrimariaEfetiva(config) ?? branding.theme.primary;
+  const [hex, setHex] = useState(corAtual);
+  const [isSaving, setIsSaving] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  // A tela pode montar antes do StoreContext terminar de carregar a config
+  // do banco — sem isto, o campo ficaria preso na semente mesmo depois do
+  // fetch resolver (mesmo motivo do StoreLocationSection).
+  useEffect(() => {
+    setHex(corPrimariaEfetiva(config) ?? branding.theme.primary);
+  }, [config]);
+
+  // O picker de cor do navegador só aceita valor #rrggbb: enquanto o texto
+  // digitado não é válido, ele continua mostrando a última cor válida —
+  // a pré-visualização também não pisca com digitação pela metade.
+  const hexValido = /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : corAtual;
+
+  const handleSave = async () => {
+    if (isSaving) return;
+    // Validação e guarda do preto vêm do dono da regra (cor-da-loja.ts) —
+    // a tela não duplica a decisão, consome.
+    const resultado = validaCorDaLoja(hex);
+    if (!resultado.ok) {
+      const mensagem =
+        resultado.motivo === "preto"
+          ? "Preto não pode ser a cor da loja: o app trata preto gravado como resíduo de configuração antiga e a vitrine continuaria na cor padrão. Escolha outro tom."
+          : "Use o formato #RRGGBB — cerquilha e seis dígitos, ex.: #059669.";
+      setErro(mensagem);
+      toast.error(mensagem);
+      return;
+    }
+    setErro(null);
+    setIsSaving(true);
+    try {
+      const salvou = await updateConfig({ primaryColor: resultado.cor });
+      // O toast de erro já sai de dentro do StoreContext (ADMIN-010, #94) --
+      // aqui só não seguimos em frente quando o retorno não for `true`.
+      if (!salvou) return;
+      toast.success("Cor da loja salva");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* O título "Cor da loja" mora no CABEÇALHO da seção colapsável —
+          aqui é só o formulário. */}
+      <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
+        <div className="flex flex-col gap-3">
+          <p className="text-left text-[9.5px] leading-snug text-zinc-400">
+            Esta é a cor da sua marca na vitrine: botões, destaques e a barra do
+            celular. Quem compra vê a nova cor assim que você salvar.
+          </p>
+
+          {/* Pré-visualização — o lojista vê o resultado ANTES de salvar. */}
+          <div className="overflow-hidden rounded-2xl border border-white/10">
+            <div
+              className="flex h-14 items-center justify-between gap-2 px-3"
+              style={{ backgroundColor: hexValido }}
+            >
+              <span
+                className="truncate text-[10px] font-black uppercase tracking-widest"
+                style={{ color: textoLegivelSobre(hexValido) }}
+              >
+                {config.storeName?.trim() || branding.appName}
+              </span>
+              <span
+                className="shrink-0 text-[9px] font-bold"
+                style={{ color: textoLegivelSobre(hexValido) }}
+              >
+                {hexValido.toUpperCase()}
+              </span>
+            </div>
+            <div className="flex items-center justify-center bg-zinc-950 p-3.5">
+              <span
+                className="rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-widest"
+                style={{
+                  backgroundColor: hexValido,
+                  color: textoLegivelSobre(hexValido),
+                }}
+              >
+                Comprar agora
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-[64px_1fr] items-end gap-3">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="store-color-picker"
+                className="text-xs font-semibold text-zinc-300"
+              >
+                Escolher
+              </label>
+              <input
+                id="store-color-picker"
+                type="color"
+                value={hexValido}
+                onChange={(e) => {
+                  setHex(e.target.value);
+                  setErro(null);
+                }}
+                className="h-10 w-full cursor-pointer rounded-xl border border-white/10 bg-black/50 p-1"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="store-color-hex"
+                className="text-xs font-semibold text-zinc-300"
+              >
+                Cor em código (hex)
+              </label>
+              <input
+                id="store-color-hex"
+                type="text"
+                maxLength={7}
+                value={hex}
+                onChange={(e) => {
+                  setHex(e.target.value);
+                  setErro(null);
+                }}
+                placeholder="#059669"
+                className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 font-mono text-xs font-semibold uppercase text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {erro && (
+            <p
+              role="alert"
+              className="text-left text-[10px] font-semibold leading-snug text-red-400"
+            >
+              {erro}
+            </p>
+          )}
+
+          <div className="mt-1 flex justify-end">
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={handleSave}
+              className="flex select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            >
+              {isSaving ? (
+                <RefreshCw className="size-3 animate-spin text-admin-gold" />
+              ) : (
+                <Save className="size-3 text-admin-gold" />
+              )}
+              <span>{isSaving ? "Salvando..." : "Salvar cor"}</span>
             </button>
           </div>
         </div>
@@ -528,10 +720,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
       {/* Elite Header */}
       <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
-          <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-            <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-              <span className="italic text-white">Ajustes</span>
-            </span>
+          <AdminPageHeader titulo="Ajustes">
             <button
               type="button"
               onClick={() => setShowHelpModal(true)}
@@ -540,7 +729,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             >
               <HelpCircle className="size-4" />
             </button>
-          </h1>
+          </AdminPageHeader>
         </div>
       </div>
 
@@ -689,6 +878,14 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               icone={MapPin}
             >
               <StoreLocationSection />
+            </SecaoColapsavel>
+
+            {/* Cor da loja — a vitrine inteira acompanha pelo mecanismo que
+                já existe (corPrimariaEfetiva → --primary e meta theme-color,
+                dono único em src/config/cor-da-loja.ts). COLAPSADA pelo mesmo
+                pedido do Gabriel de 02/09. */}
+            <SecaoColapsavel titulo="Cor da loja" icone={Palette}>
+              <CorDaLojaSection />
             </SecaoColapsavel>
           </>
         )}

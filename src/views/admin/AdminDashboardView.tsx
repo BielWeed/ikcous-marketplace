@@ -1,4 +1,5 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { KpiSummaryCards } from "@/components/admin/dashboard/KpiSummaryCards";
 import { OperationalPerformanceChart } from "@/components/admin/dashboard/OperationalPerformanceChart";
 import { StrategicIntelligenceBlocks } from "@/components/admin/dashboard/StrategicIntelligenceBlocks";
@@ -248,10 +249,26 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     >
       {/* Dashboard Headers Section */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-        <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-          <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-            <span className="italic text-white">Dashboard</span>
-          </span>
+        <AdminPageHeader
+          titulo="Dashboard"
+          acoes={
+            <button
+              disabled={isLoading || isOffline}
+              onClick={() => !isOffline && loadDashboardData(true)}
+              className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 transition-all hover:bg-white/10 disabled:opacity-50 sm:px-6 sm:py-3"
+            >
+              <RefreshCw
+                className={cn(
+                  "w-4 h-4 text-zinc-400 group-hover:rotate-180 transition-transform duration-700",
+                  isLoading && "animate-spin",
+                )}
+              />
+              <span className="hidden text-[10px] font-black uppercase tracking-widest text-zinc-400 sm:inline">
+                Sincronizar
+              </span>
+            </button>
+          }
+        >
           <button
             type="button"
             onClick={() => setShowHelpModal(true)}
@@ -260,25 +277,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
           >
             <HelpCircle className="size-4.5" />
           </button>
-        </h1>
-
-        <div className="flex items-center gap-4">
-          <button
-            disabled={isLoading || isOffline}
-            onClick={() => !isOffline && loadDashboardData(true)}
-            className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 transition-all hover:bg-white/10 disabled:opacity-50 sm:px-6 sm:py-3"
-          >
-            <RefreshCw
-              className={cn(
-                "w-4 h-4 text-zinc-400 group-hover:rotate-180 transition-transform duration-700",
-                isLoading && "animate-spin",
-              )}
-            />
-            <span className="hidden text-[10px] font-black uppercase tracking-widest text-zinc-400 sm:inline">
-              Sincronizar
-            </span>
-          </button>
-        </div>
+        </AdminPageHeader>
       </div>
 
       {analyticsError && !isLoading && (

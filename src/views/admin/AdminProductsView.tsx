@@ -5,6 +5,7 @@ import {
   AdminKpiCarousel,
   type KpiCardConfig,
 } from "@/components/admin/AdminKpiCarousel";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
@@ -634,10 +635,29 @@ export const AdminProductsView = memo(function AdminProductsView({
 
       {/* Header & Main Actions */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-        <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-          <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-            <span className="italic text-white">Produtos</span>
-          </span>
+        <AdminPageHeader
+          titulo="Produtos"
+          acoes={
+            <>
+              <Button
+                disabled={isOffline}
+                className="hidden h-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold px-5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:scale-105 hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:flex"
+                onClick={() => handleLocalNavigate("admin-product-form")}
+              >
+                <Plus className="mr-2 size-4 shrink-0 stroke-[3]" />
+                Novo Produto
+              </Button>
+              <Button
+                disabled={isOffline}
+                size="icon"
+                className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:hidden"
+                onClick={() => handleLocalNavigate("admin-product-form")}
+              >
+                <Plus className="size-5 stroke-[3]" />
+              </Button>
+            </>
+          }
+        >
           <button
             type="button"
             onClick={() => toggleHelp("global-guide")}
@@ -656,26 +676,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               02/09 à tarde ele vive AQUI, ao lado direito do título (igual
               em Pedidos e Clientes), fora do canto da tela. */}
           <PontoDeOperacao sincronizando={loading} />
-        </h1>
-
-        <div className="flex items-center gap-3">
-          <Button
-            disabled={isOffline}
-            className="hidden h-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold px-5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:scale-105 hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:flex"
-            onClick={() => handleLocalNavigate("admin-product-form")}
-          >
-            <Plus className="mr-2 size-4 shrink-0 stroke-[3]" />
-            Novo Produto
-          </Button>
-          <Button
-            disabled={isOffline}
-            size="icon"
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:hidden"
-            onClick={() => handleLocalNavigate("admin-product-form")}
-          >
-            <Plus className="size-5 stroke-[3]" />
-          </Button>
-        </div>
+        </AdminPageHeader>
       </div>
 
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">
@@ -748,8 +749,12 @@ export const AdminProductsView = memo(function AdminProductsView({
           {/* Chips de categoria (pedido do Gabriel, 02/09: a mesma fileira de
               filtros da tela de Pedidos — substitui o funil dropdown, que era
               o único jeito de filtrar por categoria). Parte da MESMA âncora
-              da busca: gruda junto com ela. */}
-          <div className="custom-scrollbar-hidden relative flex w-full snap-x gap-3 overflow-x-auto pt-3">
+              da busca: gruda junto com ela. Chips COMPACTOS: o botão mantém
+              h-11 (alvo de toque de 44px, WCAG 2.5.8) e o VISUAL desenha
+              32px via pseudo-elemento; o pseudo vive dentro do botão, então
+              o overflow-x-auto da fileira não o corta. Mesmo molde das
+              telas de Pedidos e Clientes. */}
+          <div className="custom-scrollbar-hidden relative flex w-full snap-x gap-1.5 overflow-x-auto pt-2">
             {categories.map((cat) => (
               <button
                 key={cat}
@@ -759,10 +764,10 @@ export const AdminProductsView = memo(function AdminProductsView({
                   shouldScrollToTop.current = true;
                 }}
                 className={cn(
-                  "h-11 shrink-0 snap-center rounded-xl border px-5 text-[10px] font-black uppercase tracking-widest transition-all",
+                  "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                   filterCategory === cat
-                    ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                    : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                    ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+                    : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
                 )}
               >
                 {cat === "all" ? "Todas as Categorias" : cat}

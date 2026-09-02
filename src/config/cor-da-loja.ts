@@ -80,3 +80,42 @@ export function corPrimariaEfetiva(config: StoreConfig | null): string | null {
   // resíduo de fábrica ou escrita manual: mostra a semente do build.
   return config.primaryColor;
 }
+
+// ── A TELA DE ESCREVER COR EXISTE (02/09/2026, pedido 004) ──
+// AdminSettingsView passa a ter seção "Cor da loja" que grava pelo
+// updateConfig — e a escrita passa por AQUI, ao lado da regra de leitura,
+// para que as duas mãos fiquem no mesmo arquivo (fonte única da regra de
+// cor; lição #53).
+//
+// POR QUE A GUARDA DA LEITURA NÃO SAIU com a chegada da tela: a tela
+// RECUSA #000000 (motivo "preto", abaixo). Se ninguém consegue gravar
+// preto pelo app, a invariante que sustentava a guarda continua de pé —
+// preto no banco segue sendo resíduo de fábrica ou escrita manual no
+// editor SQL, nunca escolha de lojista — e a guarda continua fechando a
+// janela "código novo deployado, migration 20260980000000 ainda não
+// rodou no banco". A condição de saída REAL passou a ser: o dia em que
+// esta validação parar de recusar preto, a comparação da leitura sai e
+// o teste (e) de cor-da-loja-vem-do-banco.test.tsx inverte de propósito.
+//
+// Normalização para MINÚSCULAS é parte do contrato: a comparação da
+// guarda da leitura é exata (===), então "#000000" com caixa variada
+// precisaria passar pela validação para nunca alcançar o banco. O
+// input type="color" do navegador já devolve minúsculas — esta função
+// é quem garante o mesmo canônico para o que vier do campo de texto.
+export type ResultadoValidacaoCor =
+  | { ok: true; cor: string }
+  | { ok: false; motivo: "formato" | "preto" };
+
+export function validaCorDaLoja(valor: string): ResultadoValidacaoCor {
+  const cor = valor.trim().toLowerCase();
+  // Formato: # seguido de EXATAMENTE seis dígitos hexadecimais (#RRGGBB).
+  // Curto (#abc) e longo (#RRGGBBAA) ficam de fora de propósito — o valor
+  // gravado tem de ser o mesmo canônico que a leitura e o meta esperam.
+  if (!/^#[0-9a-f]{6}$/.test(cor)) {
+    return { ok: false, motivo: "formato" };
+  }
+  if (cor === "#000000") {
+    return { ok: false, motivo: "preto" };
+  }
+  return { ok: true, cor };
+}
