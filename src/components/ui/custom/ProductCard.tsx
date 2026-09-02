@@ -98,21 +98,27 @@ export const ProductCard = memo(function ProductCard({
   // Mesmas regras da página de produto (ProductView): só variantes ATIVAS
   // agrupadas por `name`; preço = último `priceOverride` da escolha (`??`
   // para override ZERO ser um preço de verdade); estoque = menor
-  // `stockIncrement` das escolhidas.
+  // `stockIncrement` das escolhidas. Map em vez de Record: objeto indexado
+  // por variável é o warning `security/detect-object-injection` que o teto
+  // do lint reprova — e Map é a estrutura certa para a escolha.
   const [painelOpcoesAberto, setPainelOpcoesAberto] = useState(false);
-  const [selecionadas, setSelecionadas] = useState<Record<string, string>>({});
+  const [selecionadas, setSelecionadas] = useState<Map<string, string>>(
+    () => new Map(),
+  );
 
   const variantGroups = useMemo(() => {
-    const grupos: Record<string, ProductVariant[]> = {};
+    const grupos = new Map<string, ProductVariant[]>();
     product.variants?.forEach((v) => {
       if (!v.active) return;
-      (grupos[v.name] ??= []).push(v);
+      const lista = grupos.get(v.name);
+      if (lista) lista.push(v);
+      else grupos.set(v.name, [v]);
     });
     return grupos;
   }, [product.variants]);
-  const temGruposDeOpcao = Object.keys(variantGroups).length > 0;
+  const temGruposDeOpcao = variantGroups.size > 0;
 
-  const selecionadasObjs = Object.entries(selecionadas)
+  const selecionadasObjs = Array.from(selecionadas)
     .map(([nome, valor]) =>
       product.variants?.find((v) => v.name === nome && v.value === valor),
     )
@@ -130,9 +136,9 @@ export const ProductCard = memo(function ProductCard({
   const imagemDaVariante = selecionadasObjs.find((v) => v?.imageUrl)?.imageUrl;
   const srcImagem = imagemDaVariante || product.images[0];
 
-  const escolhaCompleta = Object.keys(variantGroups).every(
-    (nome) => selecionadas[nome],
-  );
+  const escolhaCompleta =
+    selecionadas.size >= variantGroups.size &&
+    Array.from(variantGroups.keys()).every((nome) => selecionadas.has(nome));
 
   // Safely determine if this specific card should have the view transition name applied.
   // We apply it strictly to the clicked instance (via activeTransitionCardId) to avoid duplicate transition names.
@@ -199,7 +205,7 @@ export const ProductCard = memo(function ProductCard({
     // precisam de uma escolha antes do carrinho — e a mensagem diz qual
     // falta, pelo mesmo motivo de lá.
     const faltando = Object.keys(variantGroups).filter(
-      (grupo) => !selecionadas[grupo],
+      (grupo) => !selecionadas.get(grupo),
     );
     if (faltando.length > 0) {
       const artigoEOpcao =
@@ -211,7 +217,7 @@ export const ProductCard = memo(function ProductCard({
     }
 
     const variantId = selecionadasObjs[0]?.id;
-    const variantNames = Object.entries(selecionadas)
+    const variantNames = Array.from(selecionadas)
       .map(([nome, valor]) => `${nome}: ${valor}`)
       .join(", ");
     const imgSrc = imagemDaVariante || product.images?.[0] || "";
@@ -225,7 +231,7 @@ export const ProductCard = memo(function ProductCard({
       setTimeout(() => {
         setCartStatus("idle");
         setPainelOpcoesAberto(false);
-        setSelecionadas({});
+        setSelecionadas(new Map());
       }, 1500);
     }, 600);
   };
@@ -233,11 +239,13 @@ export const ProductCard = memo(function ProductCard({
   const alternarOpcao = (e: React.MouseEvent, nome: string, valor: string) => {
     e.stopPropagation();
     setSelecionadas((antes) => {
-      if (antes[nome] === valor) {
-        const { [nome]: _removido, ...resto } = antes;
-        return resto;
+      const depois = new Map(antes);
+      if (depois.get(nome) === valor) {
+        depois.delete(nome);
+      } else {
+        depois.set(nome, valor);
       }
-      return { ...antes, [nome]: valor };
+      return depois;
     });
   };
 
@@ -501,7 +509,7 @@ export const ProductCard = memo(function ProductCard({
                   </div>
 
                   <div className="mt-2 space-y-2.5">
-                    {Object.entries(variantGroups).map(([nome, valores]) => (
+                    {Array.from(variantGroups).map(([nome, valores]) => (
                       <div key={nome}>
                         <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500">
                           {nome}
@@ -509,7 +517,7 @@ export const ProductCard = memo(function ProductCard({
                         <div className="mt-1 flex flex-wrap gap-1.5">
                           {valores.map((v) => {
                             const semEstoque = (v.stockIncrement ?? 0) <= 0;
-                            const ativa = selecionadas[nome] === v.value;
+                            const ativa = selecionadas.get(nome) === v.value;
                             return (
                               <button
                                 key={v.id}
