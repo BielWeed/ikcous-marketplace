@@ -126,10 +126,11 @@ export const PhoneSimulator = memo(function PhoneSimulator({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="bg-zinc-950/98 fixed inset-0 z-[100] flex flex-col text-zinc-100 lg:bg-zinc-950/90 lg:backdrop-blur-xl"
+      className="fixed inset-0 z-[100] flex flex-col bg-zinc-950/70 text-zinc-100 backdrop-blur-xl"
     >
-      {/* Modal Header */}
-      <div className="flex items-center justify-between border-b border-white/5 bg-zinc-900/40 px-6 py-4 backdrop-blur-md">
+      {/* Modal Header — fundo mais sólido que o véu do overlay para o texto
+          ficar nítido sobre o formulário embaçado atrás. */}
+      <div className="flex items-center justify-between border-b border-white/5 bg-zinc-950/85 px-6 py-4 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div className="flex size-8 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
             <Smartphone className="size-4" />

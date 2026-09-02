@@ -7,6 +7,42 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.19.0] - 2026-09-02
+
+A versão do painel que respeita o olhar do lojista na operação de todos os
+dias: alertas que não empurram a lista da tela, métricas que cabem no
+olho, barra de busca que acompanha a rolagem e imagem de variante que
+aponta em vez de duplicar arquivo. Front puro — zero migrations, zero edge
+functions (PR #403, 13 commits).
+
+### Para quem VENDE (painel admin)
+
+- **Alertas de pedidos cancelados viraram um botão.** A faixa amarela que
+  empurrava a lista saiu: um botão com sino de alerta e a contagem no
+  canto do título abre os detalhes (dinheiro preso, mercadoria a voltar,
+  estorno devido). Fecha com um toque fora, Esc ou ao ir para os pedidos.
+- **Métricas compactas e completas.** Os cards de métrica encolheram para
+  metade da altura, o carrossel mostra mais cards por tela (2 no celular,
+  5 no desktop) e o valor aparece INTEIRO — sem "R$ 1.31..." cortado.
+- **Barra de busca que acompanha a rolagem.** Em Pedidos, Produtos e
+  Clientes, a busca, o filtro e o modo de visualização ancoram no topo
+  quando você rola — e os chips de filtro (status, categoria, ordenação)
+  fazem parte dela. Os funis de Produtos e Clientes viraram chips.
+- **Imagem da variante aponta em vez de duplicar.** Na criação/edição de
+  variante, escolhe-se uma das fotos JÁ enviadas do produto — sem upload
+  novo.
+- **Simulador com fundo fosco.** O "Visualizar App" esfumaça o formulário
+  atrás, deixando nítidos só a barra do simulador e a prévia.
+- **Paginação padronizada.** "Exibindo X - Y de Z" com o mesmo desenho
+  limpo em Pedidos, Produtos e Clientes — sem o cartão cinza.
+- **Ponto de conexão ao lado do título** nas três telas, e o botão de
+  recarregar (redundante) saiu da tela de Clientes.
+
+### Técnico
+
+- Front puro: zero migrations, zero edge functions.
+- CI: 8/8 no PR #403; bateria local 1695/1695.
+
 ## [1.18.0] - 2026-09-02
 
 A versão da prova de rua do dono na loja e do upgrade visual do painel: o

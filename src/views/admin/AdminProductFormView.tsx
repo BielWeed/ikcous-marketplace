@@ -1767,80 +1767,97 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                       </div>
                     </div>
 
-                    {/* Imagem da Variante */}
+                    {/* Imagem da Variante — APONTA uma das imagens do produto
+                        (pedido do Gabriel, 02/09: o upload era ineficiente;
+                        a imagem já foi enviada quando o produto a recebeu, a
+                        variante só referencia a URL). */}
                     <div className="space-y-2">
-                      <label
-                        htmlFor="variant-image-input"
-                        className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-                      >
+                      <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-zinc-500">
                         Imagem da Variante (Opcional)
-                      </label>
-                      <div className="flex items-center gap-4">
-                        {variantFormData.imageUrl ? (
-                          <div className="group/vimg relative size-16 shrink-0 overflow-hidden rounded-full border border-white/10">
-                            <img
-                              src={variantFormData.imageUrl}
-                              alt=""
-                              className="size-full object-cover"
-                            />
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setVariantFormData((p) => ({
-                                  ...p,
-                                  imageUrl: "",
-                                }))
-                              }
-                              className="absolute inset-0 flex items-center justify-center bg-red-500/80 opacity-100 transition-opacity hover-hover:opacity-0 hover-hover:group-hover/vimg:opacity-100"
-                            >
-                              <Trash2 className="size-4 text-white" />
-                            </button>
-                          </div>
-                        ) : (
-                          <label
-                            htmlFor="variant-image-input"
-                            className="flex size-16 shrink-0 cursor-pointer flex-col items-center justify-center rounded-full border-2 border-dashed border-white/10 transition-all hover:bg-white/5"
-                          >
-                            <Plus className="size-5 text-zinc-500" />
-                            <span className="sr-only">
-                              Adicionar imagem da variante
-                            </span>
-                          </label>
-                        )}
-                        <input
-                          id="variant-image-input"
-                          name="variantImageInput"
-                          type="file"
-                          accept="image/*"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            const loadingToast =
-                              toast.loading("Enviando imagem...");
-                            try {
-                              const [url] = await uploadProductImages([file]);
-                              if (url) {
-                                setVariantFormData((p) => ({
-                                  ...p,
-                                  imageUrl: url,
-                                }));
-                                toast.success("Imagem anexada!", {
-                                  id: loadingToast,
-                                });
-                              }
-                            } catch {
-                              toast.error("Erro no upload", {
-                                id: loadingToast,
-                              });
-                            }
-                          }}
-                          className="hidden"
-                        />
-                        <span className="flex-1 text-[10px] leading-tight text-zinc-500">
-                          Facilita a visualização do produto na tela de checkout
-                          e na seleção de atributos.
-                        </span>
-                      </div>
+                      </span>
+                      {formData.images.length === 0 &&
+                      !variantFormData.imageUrl ? (
+                        <p className="rounded-2xl border border-white/5 bg-zinc-950/60 px-4 py-3 text-[10px] font-bold leading-relaxed text-zinc-500">
+                          Adicione imagens ao produto primeiro — a variante
+                          aponta para uma delas em vez de enviar arquivo novo.
+                        </p>
+                      ) : (
+                        <div className="custom-scrollbar-hidden flex w-full snap-x gap-3 overflow-x-auto py-1">
+                          {/* Imagem gravada na variante que não pertence mais
+                              ao produto (foi removida depois): segue visível
+                              para poder ser mantida ou trocada. */}
+                          {variantFormData.imageUrl &&
+                            !formData.images.includes(
+                              variantFormData.imageUrl,
+                            ) && (
+                              <button
+                                type="button"
+                                aria-pressed="true"
+                                title="Imagem atual da variante — toque para remover"
+                                onClick={() =>
+                                  setVariantFormData((p) => ({
+                                    ...p,
+                                    imageUrl: "",
+                                  }))
+                                }
+                                className="relative size-16 shrink-0 snap-start overflow-hidden rounded-2xl border-2 border-emerald-500 ring-2 ring-emerald-500/40 transition-all"
+                              >
+                                <img
+                                  src={variantFormData.imageUrl}
+                                  alt=""
+                                  className="size-full object-cover"
+                                />
+                                <span className="absolute inset-x-0 bottom-0 bg-emerald-500/90 py-0.5 text-center text-[8px] font-black uppercase tracking-widest text-black">
+                                  Atual
+                                </span>
+                              </button>
+                            )}
+                          {formData.images.map((url) => {
+                            const selecionada =
+                              variantFormData.imageUrl === url;
+                            return (
+                              <button
+                                key={url}
+                                type="button"
+                                aria-pressed={selecionada}
+                                title={
+                                  selecionada
+                                    ? "Selecionada — toque para remover"
+                                    : "Usar esta imagem na variante"
+                                }
+                                onClick={() =>
+                                  setVariantFormData((p) => ({
+                                    ...p,
+                                    imageUrl: selecionada ? "" : url,
+                                  }))
+                                }
+                                className={cn(
+                                  "relative size-16 shrink-0 snap-start overflow-hidden rounded-2xl border transition-all",
+                                  selecionada
+                                    ? "border-2 border-emerald-500 ring-2 ring-emerald-500/40"
+                                    : "border-white/10 hover:border-emerald-500/50",
+                                )}
+                              >
+                                <img
+                                  src={url}
+                                  alt=""
+                                  className="size-full object-cover"
+                                />
+                                {selecionada && (
+                                  <span className="absolute inset-x-0 bottom-0 bg-emerald-500/90 py-0.5 text-center text-[8px] font-black uppercase tracking-widest text-black">
+                                    Selecionada
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <span className="ml-1 block text-[10px] leading-tight text-zinc-500">
+                        Aponta para uma das imagens do produto — nada é enviado
+                        de novo. Facilita a visualização do produto na tela de
+                        checkout e na seleção de atributos.
+                      </span>
                     </div>
                   </div>
 

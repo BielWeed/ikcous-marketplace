@@ -92,4 +92,40 @@ describe("PhoneSimulator — a previa nao promete o que o app nao cumpre", () =>
       "Produto em estoque - Envio rápido",
     );
   });
+
+  it("o fundo do formulario fica FOSCO (veu translucido com blur) e a barra do simulador nítida", async () => {
+    const { PhoneSimulator } = await import(
+      "@/components/admin/PhoneSimulator"
+    );
+
+    await act(async () => {
+      raiz.render(
+        <PhoneSimulator
+          onClose={() => {}}
+          formData={formDataBase}
+          previewMode="card"
+          setPreviewMode={() => {}}
+          previewImgIndex={0}
+          setPreviewImgIndex={() => {}}
+          previewSelectedVariants={{}}
+          setPreviewSelectedVariants={() => {}}
+          activeDetailTab="description"
+          setActiveDetailTab={() => {}}
+        />,
+      );
+    });
+
+    // O véu que cobre o formulário é translúcido COM blur: o fundo fica
+    // fosco (pedido do Gabriel, 02/09) — e não opaco como era antes.
+    const veu = document.body.querySelector('div[class*="backdrop-blur-xl"]');
+    expect(veu).toBeTruthy();
+    expect(veu!.className).toContain("bg-zinc-950/70");
+    expect(veu!.className).not.toContain("bg-zinc-950/98");
+
+    // A barra superior do simulador é nítida sobre o véu (fundo quase
+    // sólido), porque é o único comando que continua clicável.
+    const barra = document.body.querySelector('div[class*="bg-zinc-950/85"]');
+    expect(barra).toBeTruthy();
+    expect(barra!.textContent).toContain("Simulador do Aplicativo");
+  });
 });

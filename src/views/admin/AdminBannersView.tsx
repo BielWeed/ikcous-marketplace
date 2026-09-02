@@ -1754,8 +1754,8 @@ export const AdminBannersView = memo(function AdminBannersView({
             {isLoaded && banners.length > 0 && (
               <div className="space-y-4">
                 <AdminKpiCarousel
-                  cards={kpiCards}
                   active={active}
+                  cards={kpiCards}
                   title="Métricas Visuais"
                 />
               </div>
