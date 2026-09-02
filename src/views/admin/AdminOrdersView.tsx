@@ -871,6 +871,48 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     }
   }, [isLoaded, currentPage, totalPages, setCurrentPage]);
 
+  // ── A loja tem pedido NENHUM, ou o filtro é que está vazio? ─────────────
+  // `totalOrders` do hook é o total da consulta FILTRADA — numa loja vazia
+  // com o filtro padrão "Em Aberto" ele é 0, mas o MESMO 0 acontece numa
+  // loja cheia de pedidos antigos cujo "Em Aberto" está vazio. Sem essa
+  // distinção, o lojista da loja nova recebia "pode ser o filtro..." para
+  // uma loja que sequer tem venda (relato do Gabriel, 02/09). Quando a
+  // lista aparece vazia, medimos o ABSOLUTO: um COUNT sem filtro nenhum
+  // (head count: não baixa linha nenhuma), uma vez por vida do card.
+  const [totalAbsolutoNaLoja, setTotalAbsolutoNaLoja] = useState<number | null>(
+    null,
+  );
+  const listaVazia = active && isLoaded && paginatedOrders.length === 0;
+  useEffect(() => {
+    if (!listaVazia || totalAbsolutoNaLoja !== null) return;
+    // Best-effort de verdade: se a consulta não puder existir/rodar (dublês
+    // de teste com builder parcial, ambiente sem a tabela), a tela continua
+    // com as mensagens de sempre — a medição só ADICIONA o caso "loja vazia
+    // de verdade", nunca remove nada.
+    try {
+      let cancelado = false;
+      const consulta = supabase
+        .from("marketplace_orders")
+        .select("*", { count: "exact", head: true });
+      void (
+        consulta as unknown as {
+          then?: (
+            ok: (r: { count: number | null; error: unknown }) => void,
+          ) => void;
+        }
+      ).then?.(({ count, error }) => {
+        if (!cancelado && !error && count !== null) {
+          setTotalAbsolutoNaLoja(count);
+        }
+      });
+      return () => {
+        cancelado = true;
+      };
+    } catch {
+      // Sem medição, as mensagens existentes seguem valendo.
+    }
+  }, [listaVazia, totalAbsolutoNaLoja]);
+
   // `silent` é código morto HOJE: o único chamador real é `OrderDetail`
   // (`onStatusChange={handleStatusChange}` logo abaixo), e `OrderDetailProps.
   // onStatusChange` (OrderDetail.tsx) tem assinatura de 2 argumentos, sem
@@ -1536,7 +1578,22 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
                   <Package className="size-6 text-zinc-600" />
                 </div>
-                {paymentFilter !== "all" ? (
+                {totalAbsolutoNaLoja === 0 ? (
+                  // O COUNT sem filtro nenhum voltou ZERO: a loja não tem
+                  // venda nenhuma. Falar de filtro/busca para quem ainda
+                  // não tem o primeiro pedido é receita de confusão (relato
+                  // do Gabriel, 02/09 — a foto mostrava a loja vazia com a
+                  // orientação de "limpar o filtro").
+                  <>
+                    <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
+                      Ainda não tem nenhum pedido
+                    </h3>
+                    <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      Quando a primeira venda acontecer, o pedido aparece aqui —
+                      com status, valor e o atalho de WhatsApp para o cliente.
+                    </p>
+                  </>
+                ) : paymentFilter !== "all" ? (
                   // O filtro de payment_status roda NO BANCO (lista E
                   // contagem). Lista vazia aqui é "não existe nenhum pedido
                   // com este status" — a saída honesta é limpar o filtro.
