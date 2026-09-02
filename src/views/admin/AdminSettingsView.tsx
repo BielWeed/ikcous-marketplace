@@ -1,4 +1,6 @@
+import { AnimatePresence, motion } from "framer-motion";
 import {
+  Activity,
   AlertTriangle,
   ArrowUpRight,
   ChevronDown,
@@ -8,7 +10,6 @@ import {
   Palette,
   RefreshCw,
   Save,
-  Wallet,
 } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -19,6 +20,9 @@ import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { PAGAMENTO_ONLINE_LIGADO } from "@/lib/flags";
 import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
+
+import { StatusPagamentoPix } from "@/views/admin/StatusPagamentoPix";
 
 import type { View } from "@/types";
 
@@ -108,15 +112,8 @@ const StoreLocationSection = memo(function StoreLocationSection() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-4 p-2">
-        <div className="flex size-10 items-center justify-center rounded-xl border border-admin-gold/20 bg-admin-gold/10 shadow-[0_0_15px_rgba(212,175,55,0.1)]">
-          <MapPin className="size-5 text-admin-gold" strokeWidth={2.5} />
-        </div>
-        <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">
-          Identidade e Localização da Loja
-        </h2>
-      </div>
-
+      {/* O título "Identidade e localização" mora no CABEÇALHO da seção
+          colapsável (02/09) — aqui é só o formulário. */}
       <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
         <div className="flex flex-col gap-3">
           <p className="text-left text-[9.5px] leading-snug text-zinc-400">
@@ -450,6 +447,67 @@ const ConnectionDiagnosticsSection = memo(
   },
 );
 
+/**
+ * Seção colapsável da tela de Ajustes (pedido do Gabriel, 02/09: separar
+ * a tela por partes e deixar as seções técnicas OCULTAS por padrão — o
+ * lojista abre a tela para editar o que usa todo dia; status e diagnósticos
+ * são consulta rara e ficam atrás de um clique).
+ *
+ * Nasce FECHADA sempre: sem "lembra a última vez" de propósito — a tela
+ * volta enxuta a cada visita, e expandir é um clique.
+ */
+function SecaoColapsavel({
+  titulo,
+  icone: Icone,
+  children,
+}: {
+  readonly titulo: string;
+  readonly icone: React.ElementType;
+  readonly children: React.ReactNode;
+}) {
+  const [aberta, setAberta] = useState(false);
+
+  return (
+    <div className="rounded-3xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl">
+      <button
+        type="button"
+        onClick={() => setAberta((antes) => !antes)}
+        aria-expanded={aberta}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-admin-gold/20 bg-admin-gold/10 text-admin-gold">
+            <Icone className="size-4" strokeWidth={2.5} />
+          </span>
+          <span className="truncate text-xs font-black uppercase tracking-[0.2em] text-white">
+            {titulo}
+          </span>
+        </span>
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-zinc-400 transition-transform duration-200",
+            aberta && "rotate-180",
+          )}
+        />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {aberta && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className="pt-4">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export const AdminSettingsView = memo(function AdminSettingsView({
   onNavigate,
   active,
@@ -596,69 +654,6 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                     </div>
                   </div>
                 </div>
-
-                {/* Card 3: Pagamento online — estado honesto (laudo 0109, D1).
-                    Não é porta: é o aviso que faltava para o lojista não
-                    descobrir pela queixa do cliente que as chaves não estão
-                    no lugar. */}
-                <div className="relative overflow-hidden rounded-3xl border border-white/5 bg-zinc-950/40 p-5 shadow-xl">
-                  <div className="relative flex h-full flex-col justify-between gap-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div
-                        className={`flex size-11 shrink-0 items-center justify-center rounded-2xl border ${
-                          PAGAMENTO_ONLINE_LIGADO && CHAVE_PUBLICA_MP_OK
-                            ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                            : "border-amber-500/20 bg-amber-500/10 text-amber-500"
-                        }`}
-                      >
-                        <Wallet className="size-5" />
-                      </div>
-                      <span
-                        className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ${
-                          PAGAMENTO_ONLINE_LIGADO
-                            ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                            : "border-white/5 bg-white/5 text-zinc-400"
-                        }`}
-                      >
-                        {PAGAMENTO_ONLINE_LIGADO ? "Ligado" : "Desligado"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="mb-1 block text-[9px] font-black uppercase tracking-widest text-admin-gold">
-                        Dinheiro do Pedido
-                      </span>
-                      <h3 className="text-base font-black leading-tight tracking-tight text-white">
-                        Pagamento online (PIX)
-                      </h3>
-                      {PAGAMENTO_ONLINE_LIGADO ? (
-                        CHAVE_PUBLICA_MP_OK ? (
-                          <p className="mt-1 text-xs text-zinc-500">
-                            Ligado e com chave pública no deploy. Antes de
-                            divulgar a loja, confira se os segredos
-                            MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET estão gravados
-                            no Supabase.
-                          </p>
-                        ) : (
-                          <p className="mt-1 text-xs font-semibold text-red-400">
-                            A flag está LIGADA, mas a chave pública do Mercado
-                            Pago não está no deploy (VITE_MP_PUBLIC_KEY): a tela
-                            de pagamento nem carrega para o cliente ("Não foi
-                            possível carregar o pagamento."). Grave as chaves MP
-                            antes de divulgar a loja.
-                          </p>
-                        )
-                      ) : (
-                        <p className="mt-1 text-xs text-zinc-500">
-                          O cliente finaliza por pagamento na entrega. Para
-                          aceitar PIX/cartão: cadastre as chaves do Mercado Pago
-                          (VITE_MP_PUBLIC_KEY no deploy; MP_ACCESS_TOKEN e
-                          MP_WEBHOOK_SECRET nos segredos do Supabase) e ligue
-                          VITE_PAGAMENTO_ONLINE no deploy.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -672,9 +667,29 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               continua sensível à origem (pai-da-tela-do-admin).
             */}
 
-            <StoreLocationSection />
+            {/* Status de funcionamento — COLAPSADA por padrão (pedido do
+                Gabriel, 02/09: status é consulta rara, não porta de trabalho;
+                a tela abre mostrando o que o lojista edita). */}
+            <SecaoColapsavel
+              titulo="Status de funcionamento do sistema"
+              icone={Activity}
+            >
+              <div className="space-y-3">
+                <StatusPagamentoPix
+                  ligado={PAGAMENTO_ONLINE_LIGADO}
+                  chaveOk={CHAVE_PUBLICA_MP_OK}
+                />
+                <ConnectionDiagnosticsSection />
+              </div>
+            </SecaoColapsavel>
 
-            <ConnectionDiagnosticsSection />
+            {/* Dados da loja — COLAPSADA por padrão, pelo mesmo motivo. */}
+            <SecaoColapsavel
+              titulo="Identidade e localização da loja"
+              icone={MapPin}
+            >
+              <StoreLocationSection />
+            </SecaoColapsavel>
           </>
         )}
       </div>

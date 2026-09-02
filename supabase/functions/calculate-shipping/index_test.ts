@@ -7,6 +7,7 @@ import {
   getCartHash,
   handler,
   isLocalCep,
+  nomeAmigavelDoServico,
   precoDeContingenciaDoTopo,
   montarLogDaCotacaoFlatFee,
   precoResolvidoSemCache,
@@ -241,6 +242,136 @@ Deno.test("flatFeeConfigurada - taxa positiva e utilizavel", () => {
 // nada neste arquivo tocava o handler: só as funções puras do topo.
 
 const CARRINHO_DE_TESTE = [{ product: { id: "p1", price: 100 }, quantity: 1 }];
+
+// ── Nomes de serviço em linguagem de gente (pedido do Gabriel, 02/09) ──────
+//
+// A tela mostrava ".Package (Melhor Envio)" e o dono perguntou: "o usuário
+// vai achar que isso é o quê?". A tradução vive na edge (um lugar só: o nome
+// vai traduzido para o carrinho, o checkout e o cache).
+
+Deno.test("nomeAmigavelDoServico - .Package vira Entrega econômica", () => {
+  assertEquals(nomeAmigavelDoServico({ name: ".Package" }), "Entrega econômica");
+});
+
+Deno.test("nomeAmigavelDoServico - .Package Centralizado distingue a modalidade", () => {
+  // A checagem de "centralizado" tem que vir ANTES da de "package" (o nome
+  // contém os dois) — senão as duas modalidades colidem no mesmo nome.
+  assertEquals(
+    nomeAmigavelDoServico({ name: ".Package Centralizado" }),
+    "Entrega econômica (centro de distribuição)",
+  );
+});
+
+Deno.test("nomeAmigavelDoServico - SEDEX vira Entrega expressa", () => {
+  assertEquals(nomeAmigavelDoServico({ name: "SEDEX" }), "Entrega expressa");
+  assertEquals(nomeAmigavelDoServico({ name: "SEDEX 10" }), "Entrega expressa");
+});
+
+Deno.test("nomeAmigavelDoServico - PAC dos Correios vira econômica sem engolir .package", () => {
+  // `\bpac\b` casa "PAC" isolado e NÃO casa o "pac" embutido em ".package" —
+  // a fronteira de palavra depois do "c" falha quando vem "k".
+  assertEquals(nomeAmigavelDoServico({ name: "PAC" }), "Entrega econômica");
+  assertEquals(
+    nomeAmigavelDoServico({ name: ".package falso" }),
+    "Entrega econômica",
+  );
+});
+
+Deno.test("nomeAmigavelDoServico - Loggi .Com vira expressa", () => {
+  assertEquals(nomeAmigavelDoServico({ name: ".Com" }), "Entrega expressa");
+});
+
+Deno.test("nomeAmigavelDoServico - nome desconhecido volta LIMPO, sem o sufixo do integrador", () => {
+  // O sufixo "(Melhor Envio)" dizia com quem a LOJA integrou — assunto do
+  // lojista. Serviço desconhecido: o nome vem como a transportadora manda,
+  // sem o sufixo.
+  assertEquals(nomeAmigavelDoServico({ name: "Transporta Já Turbo" }), "Transporta Já Turbo");
+  assertEquals(nomeAmigavelDoServico({}), "");
+});
+
+Deno.test("filtro de métodos habilitados com CEP FORA: PAC devolvido x só sedex habilitado -> só a expressa sai (R2 da revisão)", async () => {
+  // R2 da revisão do commit 3f90033: os testes de filtro antigos caíam no
+  // retorno cedo do cliente local (que passa antes do filtro) e o filtro
+  // ficou sem cobertura nenhuma. Este teste exercita o filtro com CEP FORA,
+  // pelo caminho completo: a transportadora devolve PAC e SEDEX, a loja só
+  // habilita "sedex", e a resposta traz SOMENTE a SEDEX — já traduzida.
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify([
+          { id: 1, name: "PAC", price: "26.41", delivery_time: 8 },
+          { id: 2, name: "SEDEX", price: "54.88", delivery_time: 4 },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )) as any;
+  try {
+    const registro = {
+      inserts: [] as Array<{ tabela: string; linha: any }>,
+      execucoes: [] as Array<{ tabela: string; linha: any }>,
+      cacheConcluido: false,
+      logConcluido: false,
+    };
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["sedex"] },
+      }),
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.options.length, 1);
+    assertEquals(corpo.options[0].id, "melhor-envio-2");
+    assertEquals(corpo.options[0].name, "Entrega expressa");
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
+
+Deno.test("CEP de fora recebe o nome JÁ traduzido na resposta da cotação (fim a fim)", async () => {
+  // O fetch falso devolve os nomes reais da foto do Gabriel. A resposta do
+  // handler tem que trazer a tradução — é o que o cliente vê no carrinho.
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify([
+          { id: 1, name: "SEDEX", price: "12.68", delivery_time: 2 },
+          { id: 2, name: ".Package", price: "16.84", delivery_time: 7 },
+          { id: 3, name: ".Package Centralizado", price: "23.99", delivery_time: 9 },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )) as any;
+  try {
+    const registro = {
+      inserts: [] as Array<{ tabela: string; linha: any }>,
+      execucoes: [] as Array<{ tabela: string; linha: any }>,
+      cacheConcluido: false,
+      logConcluido: false,
+    };
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({ registro, cacheInsert: () => Promise.resolve({ error: null }) }),
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.options.map((o: any) => o.name), [
+      "Entrega expressa",
+      "Entrega econômica",
+      "Entrega econômica (centro de distribuição)",
+    ]);
+    // Os ids ficam intactos: é por eles que a RPC do pedido valida o preço.
+    assertEquals(corpo.options.map((o: any) => o.id), [
+      "melhor-envio-1",
+      "melhor-envio-2",
+      "melhor-envio-3",
+    ]);
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
 
 const CONFIG_DA_LOJA = {
   origin_cep: "38500-000",
@@ -579,9 +710,15 @@ Deno.test("precoResolvidoSemCache espelha, um a um, os ramos da RPC", () => {
   assertEquals(precoResolvidoSemCache(undefined), false);
 });
 
-Deno.test("gravação falha mas existe entrega local -> 200 só com a opção que dispensa o cache", async () => {
-  const { resposta, texto, corpo } = await cotar(
-    () => Promise.resolve({ error: { message: "permission denied", code: "42501" } }),
+Deno.test("cliente local com loja national -> 200 só com a Entrega Local, SEM consultar transportadora nem gravar cache", async () => {
+  // Pedido do Gabriel (02/09): na foto do carrinho, um CEP da própria cidade
+  // listava SEDEX e .Package ao lado da Entrega Local. A regra nova: quem é
+  // da cidade não vê transportadora nacional — o retorno cedo de `isLocal`
+  // acontece ANTES da leitura de credenciais, do cache e da API, e por isso
+  // a resposta sai com `cotacaoIncompleta: false` (a lista tem UM item e é
+  // a lista INTEIRA).
+  const { resposta, texto, corpo, registro } = await cotar(
+    () => Promise.resolve({ error: null }),
     CONFIG_COM_ENTREGA_LOCAL,
   );
 
@@ -589,21 +726,34 @@ Deno.test("gravação falha mas existe entrega local -> 200 só com a opção qu
   assertEquals(corpo.options.length, 1);
   assertEquals(corpo.options[0].id, "local-delivery");
   assertEquals(corpo.options[0].price, 10);
-  // A opção da transportadora dependia da linha que não foi gravada: se ela
-  // saísse daqui, o checkout recusaria o pedido no último clique.
+  // A transportadora nem entrou na conta: nenhuma cotação gravada, nenhum
+  // resíduo de "melhor-envio" na resposta.
+  assertEquals(
+    registro.inserts.filter((i) => i.tabela === "shipping_quotes_cache").length,
+    0,
+  );
   assertEquals(texto.includes("melhor-envio"), false);
   assertEquals(texto.includes("25.5"), false);
-  // E a resposta AVISA que a lista está incompleta. Sem este campo, a lista
-  // curta se apresenta como se fosse a lista inteira, e a cliente decide a
-  // compra achando que a loja não entrega por transportadora.
-  assertEquals(corpo.cotacaoIncompleta, true);
+  assertEquals(corpo.cotacaoIncompleta, false);
+  // R3 da revisão: a cotação local continua indo para o "Histórico de
+  // Cotações" do painel — era a única janela que a lojista tinha das
+  // cotações locais no caminho antigo (national+isLocal até o fim).
+  const logLocal = registro.inserts.find(
+    (i) => i.tabela === "shipping_calculation_logs",
+  );
+  assertEquals(logLocal !== undefined, true);
+  assertEquals((logLocal as any).linha.provider, "local");
+  assertEquals((logLocal as any).linha.status, "success");
+  assertEquals((logLocal as any).linha.destination_cep, "01001000");
 });
 
 Deno.test("gravação falha mas NADA dependia do cache -> lista inteira e cotacaoIncompleta false", async () => {
-  // A transportadora só devolve "PAC", e a loja só habilitou "sedex": sobra
-  // apenas a entrega local, que não precisa do cache. Nada foi removido —
-  // então a lista está completa, mesmo tendo havido erro de gravação.
-  // É este caso que separa `cotacaoIncompleta` de um simples "houve erro".
+  // Variação do retorno cedo do cliente local, agora com a gravação do cache
+  // SABOTADA e métodos habilitados: nada muda para quem é da cidade — a
+  // transportadora nem é consultada, então a falha de gravação não tem com
+  // o que ver. (Antes do retorno cedo de 02/09 este teste exercitava o
+  // filtro de métodos: transportadora devolvia "PAC", loja habilitava só
+  // "sedex", sobrava a entrega local. Hoje o cliente local nem chega lá.)
   const { resposta, corpo } = await cotar(
     () => Promise.resolve({ error: { message: "permission denied", code: "42501" } }),
     { ...CONFIG_COM_ENTREGA_LOCAL, enabled_shipping_methods: ["sedex"] },
@@ -729,20 +879,25 @@ Deno.test("resposta 503: o log de erro é gravado UMA vez, mesmo com dois consum
   assertEquals(execucoesDoLog(registro), 1);
 });
 
-Deno.test("gravação OK com entrega local -> as DUAS opções saem (controle do filtro)", async () => {
-  // Controle positivo do filtro: sem ele, um filtro que rodasse SEMPRE daria
-  // a mesma saída verde no teste acima.
-  const { resposta, corpo } = await cotar(
+Deno.test("cliente local com gravação OK: ainda SÓ a Entrega Local (decisão de 02/09, foi DUAS até ontem)", async () => {
+  // Controle da decisão do Gabriel de 02/09: até então, o cliente local
+  // recebia a Entrega Local JUNTO das cotações da transportadora
+  // (["local-delivery", "melhor-envio-1"]) — o prepend no fim do handler.
+  // Agora o retorno cedo vence antes: uma opção só, com a gravação saudável
+  // ou não (a gravação nem é alcançada — ver o teste irmão acima).
+  const { resposta, corpo, registro } = await cotar(
     () => Promise.resolve({ error: null }),
     CONFIG_COM_ENTREGA_LOCAL,
   );
 
   assertEquals(resposta.status, 200);
-  assertEquals(corpo.options.length, 2);
-  assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery", "melhor-envio-1"]);
-  // O outro lado do campo: cravado como constante, ele acertaria metade das
-  // vezes. Só assertando os DOIS valores é que ele prova depender do estado.
+  assertEquals(corpo.options.length, 1);
+  assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"]);
   assertEquals(corpo.cotacaoIncompleta, false);
+  assertEquals(
+    registro.inserts.filter((i) => i.tabela === "shipping_quotes_cache").length,
+    0,
+  );
 });
 
 // --- O campo viaja nas rotas que respondem ANTES da cotação ----------------
@@ -954,22 +1109,21 @@ Deno.test("catch de topo: erro inesperado após ler a config, loja SEM taxa fixa
 // alguém mandar `shipping_fee: null` explicitamente — estreito, mas o mesmo
 // estreito que o ramo inteiro atende.
 //
-// ⚠️ Achado ao escrever este teste: no código ANTES desta correção, o bloco
-// que prepara `local-delivery` (perto de `index.ts:957-966`) já roda ANTES da
-// guarda, e é incondicional — sempre que `isLocal` é `true`, ele prepend a
-// opção local em `shippingOptions`, então `shippingOptions.length` nunca
-// chega a 0 nesse cenário e a guarda de `flatFeeConfigurada` nunca é
-// alcançada. Confirmei isso rodando o cenário abaixo contra o `index.ts`
-// original (antes da troca de guarda): a resposta já saía 200 com
-// `local-delivery`, nunca 503. Ou seja, este teste não distingue a guarda
-// antiga da nova — as duas produzem a mesma saída em TODO cenário hoje
-// alcançável, porque quando `isLocal` é `true` a guarda nunca chega a rodar,
-// e quando é `false` as duas leem o mesmo campo. A troca por
-// `getFlatFeeResponse().length > 0` continua valendo como correção
-// defensiva — ela autentica o que a função REALMENTE vai devolver, e deixa de
-// ser um contrato implícito que se quebraria em silêncio se o bloco do
-// prepend acima fosse um dia reordenado — mas não é a correção de um 503 que
-// eu tenha conseguido reproduzir na árvore atual.
+// ⚠️ Achado ao escrever este teste (histórico): no código ANTES desta
+// correção, o bloco que preparava `local-delivery` (o prepend no fim do
+// handler, hoje substituído pelo retorno cedo de `isLocal`) já rodava ANTES
+// da guarda, e era incondicional — sempre que `isLocal` era `true`, ele
+// colocava a opção local em `shippingOptions`, então `shippingOptions.length`
+// nunca chegava a 0 nesse cenário e a guarda de `flatFeeConfigurada` nunca
+// era alcançada. E desde o retorno cedo de 02/09 (decisão do Gabriel: o
+// cliente da cidade não vê transportadora), quando `isLocal` é `true` o
+// handler responde ANTES da transportadora e esta contingência nem é
+// alcançada; quando é `false`, a guarda e a função leem o mesmo campo. A
+// troca por `getFlatFeeResponse().length > 0` segue valendo como correção
+// defensiva — ela autentica o que a função REALMENTE vai devolver, e deixa
+// de ser um contrato implícito que se quebraria em silêncio numa
+// reordenação futura — mas não é a correção de um 503 que eu tenha
+// conseguido reproduzir na árvore de então nem na atual.
 
 Deno.test("loja SEM taxa fixa mas com entrega local disponível, transportadora sem opção habilitada -> 200 com local-delivery, nunca 503", async () => {
   const configLocalSemTaxa = {

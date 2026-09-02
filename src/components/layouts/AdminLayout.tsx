@@ -1,3 +1,4 @@
+import { EstadoDeOperacaoProvider } from "@/components/admin/PontoDeOperacao";
 import { Button } from "@/components/ui/button";
 import { branding } from "@/config/branding";
 import { useAnalytics } from "@/hooks/useAnalytics";
@@ -696,6 +697,14 @@ export function AdminLayout({
     properties: { "og:title": `${branding.appName} Admin` },
   });
 
+  // Missão 06 (C3): a medição de conexão fica AQUI (uma instância só) e é
+  // compartilhada com as telas via provider — o PontoDeOperacao delas consome
+  // este estado em vez de abrir fetch de latência próprio.
+  const estadoDeOperacao = React.useMemo(
+    () => ({ isOffline, quality, latency, showSyncFlash }),
+    [isOffline, quality, latency, showSyncFlash],
+  );
+
   return (
     <div
       className="flex size-full flex-col overflow-hidden bg-[#09090b] font-sans text-zinc-50 lg:flex-row"
@@ -845,12 +854,12 @@ export function AdminLayout({
                       {pendingOrdersCount}
                     </span>
                   )}
-                  {item.view === "admin-settings" &&
-                    pendingQuestionsCount > 0 && (
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-admin-gold px-1.5 text-[9px] font-black text-black shadow-[0_0_12px_rgba(212,175,55,0.4)] duration-200 animate-in zoom-in-95">
-                        {pendingQuestionsCount}
-                      </span>
-                    )}
+                  {/* O badge de perguntas pendentes NÃO mora na engrenagem
+                      de Ajustes: clicar nela abre as configurações da loja,
+                      onde pendência de pergunta nenhuma aparece — o lojista
+                      via o número e não achava nada (relato do Gabriel,
+                      02/09). Quem acende e leva à lista de perguntas é o
+                      SINO (temAvisoNoSino → tela de Notificações). */}
                 </button>
               );
             })}
@@ -1115,33 +1124,39 @@ export function AdminLayout({
             } as React.CSSProperties
           }
         >
-          <div className="relative mx-auto flex size-full max-w-7xl flex-col overflow-x-hidden py-0">
-            {(() => {
-              // Using isTransitionSupported from parent scope
+          <EstadoDeOperacaoProvider value={estadoDeOperacao}>
+            <div className="relative mx-auto flex size-full max-w-7xl flex-col overflow-x-hidden py-0">
+              {(() => {
+                // Using isTransitionSupported from parent scope
 
-              if (isTransitionSupported) {
+                if (isTransitionSupported) {
+                  return (
+                    <div key="admin-content-wrapper" className="size-full">
+                      {children}
+                    </div>
+                  );
+                }
                 return (
-                  <div key="admin-content-wrapper" className="size-full">
-                    {children}
-                  </div>
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key="admin-content-wrapper-motion"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 380,
+                        damping: 30,
+                      }}
+                      className="size-full"
+                    >
+                      {children}
+                    </motion.div>
+                  </AnimatePresence>
                 );
-              }
-              return (
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key="admin-content-wrapper-motion"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                    className="size-full"
-                  >
-                    {children}
-                  </motion.div>
-                </AnimatePresence>
-              );
-            })()}
-          </div>
+              })()}
+            </div>
+          </EstadoDeOperacaoProvider>
         </main>
 
         {/* Floating Bottom Navigation - Mobile Only */}
@@ -1152,7 +1167,7 @@ export function AdminLayout({
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 120, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className="admin-glass fixed left-4 right-4 z-[60] mx-auto flex max-w-lg items-center justify-between rounded-[2rem] border border-white/10 bg-zinc-900/80 p-2 shadow-[0_20px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl lg:hidden"
+              className="admin-glass fixed left-4 right-4 z-[60] mx-auto flex max-w-lg items-center justify-between rounded-[2rem] border border-white/15 bg-zinc-950/95 p-2 shadow-[0_20px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl lg:hidden"
               style={
                 {
                   bottom: `calc(0.75rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)) * 0.5)`,
@@ -1183,9 +1198,14 @@ export function AdminLayout({
                     onTouchStart={() => handleMouseEnter(item.view, true)}
                     className={cn(
                       "flex flex-col items-center gap-0.5 sm:gap-1 flex-1 py-2.5 rounded-2xl relative transition-[color,transform] duration-200 active:scale-95 group z-10 transform-gpu",
+                      // Contraste sobre QUALQUER fundo: com o vidro quase
+                      // opaco (zinc-950/95), ícone inativo é zinc-300 (AA
+                      // sobre escuro) — na barra translúcida antiga os
+                      // ícones sumiam ao rolar sobre conteúdo claro
+                      // (relato do Gabriel, 02/09).
                       isActive
                         ? "text-admin-gold"
-                        : "text-zinc-500 hover:text-zinc-300",
+                        : "text-zinc-300 hover:text-white",
                     )}
                   >
                     {isActive && (
@@ -1218,16 +1238,13 @@ export function AdminLayout({
                         {pendingOrdersCount}
                       </span>
                     )}
-                    {item.view === "admin-settings" &&
-                      pendingQuestionsCount > 0 && (
-                        <span className="absolute right-2 top-1 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-admin-gold px-1 text-[8px] font-black text-black shadow-[0_0_8px_rgba(212,175,55,0.5)]">
-                          {pendingQuestionsCount}
-                        </span>
-                      )}
+                    {/* Badge de perguntas removido da engrenagem: o destino
+                        dela (Ajustes) não lista pendência nenhuma — quem
+                        acende e leva à lista é o sino (temAvisoNoSino). */}
                     <span
                       className={cn(
                         "text-[9px] font-black uppercase tracking-tighter transition-all hidden sm:inline-block",
-                        isActive ? "opacity-100" : "opacity-60",
+                        isActive ? "opacity-100" : "opacity-80",
                       )}
                     >
                       {item.label}

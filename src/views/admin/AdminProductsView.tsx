@@ -6,6 +6,8 @@ import {
   type KpiCardConfig,
 } from "@/components/admin/AdminKpiCarousel";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
+import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { ProductBanners } from "@/components/admin/dashboard/ProductBanners";
 import {
   AlertDialog,
@@ -44,8 +46,6 @@ import {
   ArrowUpRight,
   BookOpen,
   Calculator,
-  ChevronLeft,
-  ChevronRight,
   Coins,
   Copy,
   DollarSign,
@@ -655,26 +655,9 @@ export const AdminProductsView = memo(function AdminProductsView({
         </h1>
 
         <div className="flex items-center gap-3">
-          <div
-            className={cn(
-              "inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full transition-all duration-300",
-              loading
-                ? "bg-amber-500/10 border-amber-500/20 text-amber-500"
-                : "bg-emerald-500/10 border-emerald-500/20 text-emerald-500",
-            )}
-          >
-            <div
-              className={cn(
-                "w-1.5 h-1.5 rounded-full",
-                loading
-                  ? "bg-amber-500 animate-pulse"
-                  : "bg-emerald-500 animate-pulse",
-              )}
-            />
-            <span className="text-[9px] font-black uppercase tracking-widest sm:text-[10px]">
-              {loading ? "Sincronizando..." : "Operações ao Vivo"}
-            </span>
-          </div>
+          {/* Missão 06 (C3): ponto com estado real de conexão no lugar da
+              tag que ficava verde após a carga. */}
+          <PontoDeOperacao sincronizando={loading} className="mr-2" />
 
           <Button
             disabled={isOffline}
@@ -885,42 +868,17 @@ export const AdminProductsView = memo(function AdminProductsView({
           )}
         </LocalErrorBoundary>
 
-        {/* Pagination Controls */}
-        {totalPages > 1 && (
-          <div className="mt-4 flex select-none items-center justify-between px-4 pb-0 sm:px-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-              Exibindo {currentPage * pageSize + 1} -{" "}
-              {Math.min((currentPage + 1) * pageSize, totalProducts)} de{" "}
-              {totalProducts}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setCurrentPage((prev) => Math.max(0, prev - 1));
-                  shouldScrollToTop.current = true;
-                }}
-                disabled={currentPage === 0}
-                className="h-10 rounded-xl border-white/5 bg-zinc-950/60 px-4 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white"
-              >
-                <ChevronLeft className="mr-1.5 size-4" /> Anterior
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1));
-                  shouldScrollToTop.current = true;
-                }}
-                disabled={currentPage === totalPages - 1}
-                className="h-10 rounded-xl border-white/5 bg-zinc-950/60 px-4 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white"
-              >
-                Próximo <ChevronRight className="ml-1.5 size-4" />
-              </Button>
-            </div>
-          </div>
-        )}
+        {/* Missão 06 (C2): paginação única do painel */}
+        <PaginacaoAdmin
+          pagina={currentPage}
+          totalPaginas={totalPages}
+          totalItens={totalProducts}
+          itensPorPagina={pageSize}
+          aoMudar={(nova) => {
+            setCurrentPage(nova);
+            shouldScrollToTop.current = true;
+          }}
+        />
 
         {/* Empty State — só depois que o servidor REALMENTE respondeu "nenhum" */}
         {!effectiveLoading && !loadError && products?.length === 0 && (

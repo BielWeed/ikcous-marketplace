@@ -102,6 +102,12 @@ export function paymentStatusKey(
 
 interface PaymentStatusEntry {
   label: string;
+  /**
+   * Rótulo CURTO para espaços apertados (grade de cards do painel). O label
+   * longo fica para a ficha do pedido e para quem passa o mouse (title).
+   * Ausente → o próprio label serve (rótulos que já são curtos).
+   */
+  shortLabel?: string;
   color: string;
   bgColor: string;
   borderColor: string;
@@ -119,6 +125,7 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
   {
     aguardando: {
       label: "Aguardando pagamento",
+      shortLabel: "Aguardando pgto.",
       color: "text-amber-400",
       bgColor: "bg-amber-500/10",
       borderColor: "border-amber-500/20",
@@ -143,6 +150,7 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
     },
     estornado: {
       label: "Estornado — precisa de atenção",
+      shortLabel: "Estornado",
       color: "text-red-400",
       bgColor: "bg-red-500/10",
       borderColor: "border-red-500/40",
@@ -157,6 +165,7 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
       // precisa de gente" — só o rótulo não podia continuar prometendo uma
       // causa que às vezes é outra.
       label: "Pago fora do fluxo — precisa de atenção",
+      shortLabel: "Pago fora do fluxo",
       color: "text-red-400",
       bgColor: "bg-red-500/10",
       borderColor: "border-red-500/40",
@@ -215,6 +224,14 @@ interface PaymentStatusBadgeProps {
   // idêntico ao de antes desta correção.
   orderStatus?: OrderStatus | null;
   className?: string;
+  /**
+   * Rótulo CURTO (`shortLabel`) para grades de cards: "Pago fora do fluxo —
+   * precisa de atenção" não cabe numa coluna estreita e o corte CSS virava
+   * "PAGÃO FORA DO FLUXO — PRECIS..." (relato do Gabriel, 02/09). Com
+   * `compact`, o texto completo vai no `title` — quem passa o mouse lê a
+   * frase inteira; o card fica limpo.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -233,6 +250,7 @@ interface PaymentStatusBadgeProps {
  */
 const PAGO_E_CANCELADO: PaymentStatusEntry = {
   label: "Pago e cancelado — precisa de atenção",
+  shortLabel: "Pago e cancelado",
   color: paymentStatusConfig.pago_apos_expirar.color,
   bgColor: paymentStatusConfig.pago_apos_expirar.bgColor,
   borderColor: paymentStatusConfig.pago_apos_expirar.borderColor,
@@ -253,6 +271,7 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   paymentStatus,
   orderStatus,
   className,
+  compact = false,
 }: Readonly<PaymentStatusBadgeProps>) {
   const key = paymentStatusKey(paymentStatus);
   // `recebido_na_entrega` (Task 3b de
@@ -267,14 +286,15 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
 
   return (
     <div
-      className={`flex items-center rounded-full border px-2 py-0.5 ${cfg.bgColor} ${cfg.borderColor} ${
+      title={compact ? cfg.label : undefined}
+      className={`flex max-w-full items-center rounded-full border px-2 py-0.5 ${cfg.bgColor} ${cfg.borderColor} ${
         cfg.needsAttention ? "animate-pulse ring-1 ring-red-500/60" : ""
       } ${className || ""}`}
     >
       <span
-        className={`text-[9px] font-black uppercase tracking-widest ${cfg.color}`}
+        className={`truncate text-[9px] font-black uppercase tracking-widest ${cfg.color}`}
       >
-        {cfg.label}
+        {compact ? (cfg.shortLabel ?? cfg.label) : cfg.label}
       </span>
     </div>
   );

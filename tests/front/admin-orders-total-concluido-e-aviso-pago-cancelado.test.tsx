@@ -179,6 +179,13 @@ describe("AdminOrdersView — Total Concluído e aviso de pago após cancelado",
       removeListener: () => {},
       dispatchEvent: () => false,
     }));
+    // O botão "Ver pedidos" da pílula de alertas (02/09) rola até a lista
+    // depois do clique — API que o jsdom deste projeto não implementa.
+    // Sem o stub, o `setTimeout` do clique explode como unhandled error
+    // FORA do teste (o assert passa; o erro vem depois). Mesmo padrão dos
+    // stubs de ResizeObserver/matchMedia acima.
+    Element.prototype.scrollIntoView =
+      vi.fn() as unknown as typeof Element.prototype.scrollIntoView;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -284,9 +291,19 @@ describe("AdminOrdersView — Total Concluído e aviso de pago após cancelado",
     // O título conta o fato que vale nas duas portas do contrato ampliado
     // da migration (pago+cancelled OU pago_apos_expirar+cancelled) — não
     // só "pago depois de cancelado", que é falso para a primeira porta.
+    // (Desde a pílula colapsável do pedido do Gabriel de 02/09, o título
+    // vive na ALAVANA fechada; o corpo longo e o botão só existem com ela
+    // expandida — ver admin-orders-alertas-compactos.test.tsx.)
     expect(hospedeiro.textContent).toContain(
       "1 pedido recebeu pagamento e está cancelado",
     );
+    const alavanca = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[data-testid="alertas-cancelados-alavanca"]',
+    );
+    expect(alavanca).toBeTruthy();
+    await act(async () => {
+      alavanca!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
     expect(hospedeiro.textContent).toContain(
       "O dinheiro entrou e o pedido está cancelado",
     );
@@ -362,6 +379,16 @@ describe("AdminOrdersView — Total Concluído e aviso de pago após cancelado",
 
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+
+    // Pílula colapsável (02/09): o botão "Ver pedidos" mora dentro dela —
+    // expandir antes de clicar.
+    const alavanca = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[data-testid="alertas-cancelados-alavanca"]',
+    );
+    expect(alavanca).toBeTruthy();
+    await act(async () => {
+      alavanca!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find(

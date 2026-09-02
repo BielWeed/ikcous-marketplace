@@ -5,6 +5,8 @@ import {
   type KpiCardConfig,
 } from "@/components/admin/AdminKpiCarousel";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
+import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { SupportBanners } from "@/components/admin/dashboard/SupportBanners";
 import { OrderDetail } from "@/components/admin/orders/OrderDetail";
 import {
@@ -37,18 +39,18 @@ import {
 } from "@/hooks/useOrders";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
+import { horarioRelativo } from "@/lib/horario-relativo";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order, OrderStatus, PaymentStatus, View } from "@/types";
 import { haptic } from "@/utils/haptic";
+import { AlertasCancelados } from "@/views/admin/AlertasCancelados";
 import { motion } from "framer-motion";
 import {
-  AlertTriangle,
   Calendar,
   CheckCircle2,
-  ChevronLeft,
   ChevronRight,
   Clock,
   DollarSign,
@@ -756,6 +758,33 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     }
   };
 
+  /**
+   * O botão "Ver pedidos" da pílula de alertas. O botão leva aos
+   * CANCELADOS, não a um payment_status específico: a contagem larga cobre
+   * as TRÊS portas do contrato ampliado ('pago', 'pago_apos_expirar' e,
+   * desde a `20261021000000`, 'recebido_na_entrega' — com status=
+   * 'cancelled'), e filtrar por um valor só deixava parte dos pedidos
+   * "presos" fora da lista — a etiqueta de cada cartão já marca qual porta é
+   * cada um (achado 1 da revisão). Busca e período também são zerados: sem
+   * isso um filtro de uma sessão anterior sobrevivia e a lista vinha vazia
+   * sem o lojista perceber por quê (achado 2 da revisão).
+   *
+   * E rola até a lista: sem o scroll, o clique mudava filtros invisíveis e
+   * o lojista lia "botão que não funciona" (relato do Gabriel, 02/09).
+   */
+  const irParaPedidosCancelados = () => {
+    setFilter("cancelled");
+    setPaymentFilter("all");
+    setSearchQuery("");
+    setDateRange({ start: "", end: "" });
+    setCurrentPage(0);
+    setTimeout(() => {
+      document
+        .getElementById("admin-pedidos-lista")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
   // Reset dialog/modals when view becomes inactive
   useEffect(() => {
     if (!active) {
@@ -843,6 +872,48 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       setCurrentPage(0);
     }
   }, [isLoaded, currentPage, totalPages, setCurrentPage]);
+
+  // ── A loja tem pedido NENHUM, ou o filtro é que está vazio? ─────────────
+  // `totalOrders` do hook é o total da consulta FILTRADA — numa loja vazia
+  // com o filtro padrão "Em Aberto" ele é 0, mas o MESMO 0 acontece numa
+  // loja cheia de pedidos antigos cujo "Em Aberto" está vazio. Sem essa
+  // distinção, o lojista da loja nova recebia "pode ser o filtro..." para
+  // uma loja que sequer tem venda (relato do Gabriel, 02/09). Quando a
+  // lista aparece vazia, medimos o ABSOLUTO: um COUNT sem filtro nenhum
+  // (head count: não baixa linha nenhuma), uma vez por vida do card.
+  const [totalAbsolutoNaLoja, setTotalAbsolutoNaLoja] = useState<number | null>(
+    null,
+  );
+  const listaVazia = active && isLoaded && paginatedOrders.length === 0;
+  useEffect(() => {
+    if (!listaVazia || totalAbsolutoNaLoja !== null) return;
+    // Best-effort de verdade: se a consulta não puder existir/rodar (dublês
+    // de teste com builder parcial, ambiente sem a tabela), a tela continua
+    // com as mensagens de sempre — a medição só ADICIONA o caso "loja vazia
+    // de verdade", nunca remove nada.
+    try {
+      let cancelado = false;
+      const consulta = supabase
+        .from("marketplace_orders")
+        .select("*", { count: "exact", head: true });
+      void (
+        consulta as unknown as {
+          then?: (
+            ok: (r: { count: number | null; error: unknown }) => void,
+          ) => void;
+        }
+      ).then?.(({ count, error }) => {
+        if (!cancelado && !error && count !== null) {
+          setTotalAbsolutoNaLoja(count);
+        }
+      });
+      return () => {
+        cancelado = true;
+      };
+    } catch {
+      // Sem medição, as mensagens existentes seguem valendo.
+    }
+  }, [listaVazia, totalAbsolutoNaLoja]);
 
   // `silent` é código morto HOJE: o único chamador real é `OrderDetail`
   // (`onStatusChange={handleStatusChange}` logo abaixo), e `OrderDetailProps.
@@ -1110,26 +1181,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </button>
         </h1>
         <div className="flex items-center gap-3">
-          <div
-            className={cn(
-              "inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full transition-all duration-300",
-              !isLoaded
-                ? "bg-amber-500/10 border-amber-500/20 text-amber-500"
-                : "bg-emerald-500/10 border-emerald-500/20 text-emerald-500",
-            )}
-          >
-            <div
-              className={cn(
-                "w-1.5 h-1.5 rounded-full",
-                !isLoaded
-                  ? "bg-amber-500 animate-pulse"
-                  : "bg-emerald-500 animate-pulse",
-              )}
-            />
-            <span className="text-[9px] font-black uppercase tracking-widest sm:text-[10px]">
-              {!isLoaded ? "Sincronizando..." : "Operações ao Vivo"}
-            </span>
-          </div>
+          {/* Missão 06 (C3): a tag "Operações ao Vivo" mentia — ficava verde
+              depois da carga mesmo com o tempo real morto. O ponto mostra o
+              estado REAL de conexão (medido no AdminLayout e compartilhado);
+              o âmbar da carga inicial é o único "sincronizando" honesto. */}
+          <PontoDeOperacao sincronizando={!isLoaded} className="mr-2" />
         </div>
       </div>
 
@@ -1152,220 +1208,30 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </div>
         )}
 
-        {/* Aviso fixo: dinheiro recebido em pedido cancelado. Não some
-            sozinho (sem botão de dispensar) — foi exatamente isso que fez
-            o defeito passar despercebido antes, escondido só numa
-            etiqueta do cartão que rola para fora de vista. */}
-        {paidOnCancelledCount > 0 && (
-          <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/30 bg-amber-500/5 p-6">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent" />
-            <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-500">
-                  <AlertTriangle className="size-5" />
-                </div>
-                <div>
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-amber-500">
-                    {avisoPagoAposCancelado}
-                  </h3>
-                  <p className="mt-1.5 text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-400">
-                    {/* Item 1 da revisão de 27/08/2026: a frase anterior
-                        ("Entregue o pedido, ou estorne pelo painel do Mercado
-                        Pago") mandava estornar TODO pedido desta contagem —
-                        inclusive o que ainda espera a mercadoria voltar
-                        (cancelado depois de enviado, `returnedToSellerAt`
-                        nulo). Isso contradiz a regra do Gabriel de
-                        24/08/2026: só se estorna DEPOIS do produto voltar. O
-                        número continua verdadeiro (o dinheiro entrou, o
-                        pedido está cancelado); o que envelheceu era a
-                        instrução, que agora aponta para os dois cards
-                        abaixo — cada um responde a pergunta certa. */}
-                    O dinheiro entrou e o pedido está cancelado. Veja abaixo, em
-                    Estorno devido, quais já podem ser devolvidos no painel do
-                    Mercado Pago — os que ainda esperam a mercadoria voltar
-                    aparecem em Produtos que ainda não voltaram.
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  // O botão leva aos CANCELADOS, não a um payment_status
-                  // específico: a contagem larga cobre as TRÊS portas do
-                  // contrato ampliado ('pago', 'pago_apos_expirar' e, desde
-                  // a `20261021000000`, 'recebido_na_entrega' — com
-                  // status='cancelled'), e filtrar por um valor só deixava
-                  // parte dos pedidos "presos" fora da lista — a etiqueta
-                  // de cada cartão já marca qual porta é cada um (achado 1
-                  // da revisão). Busca e período também são zerados: sem
-                  // isso um filtro de uma sessão anterior sobrevivia e a
-                  // lista vinha vazia sem o lojista perceber por quê
-                  // (achado 2 da revisão).
-                  setFilter("cancelled");
-                  setPaymentFilter("all");
-                  setSearchQuery("");
-                  setDateRange({ start: "", end: "" });
-                  setCurrentPage(0);
-                }}
-                className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[10px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
-              >
-                Ver pedidos
-              </Button>
-            </div>
-          </div>
-        )}
+        {/* Alertas de pedidos cancelados colapsados numa pílula (pedido do
+            Gabriel, 02/09: os três blocos gigantes ficavam abertos o tempo
+            todo e empurravam a lista real de pedidos para fora da tela).
+            Conteúdo, textos e handlers intactos — o espaço é que mudou. */}
+        <AlertasCancelados
+          pagoCanceladoCount={paidOnCancelledCount}
+          avisoPagoAposCancelado={avisoPagoAposCancelado}
+          pedidosEsperandoRetorno={pedidosEsperandoRetorno}
+          pedidosParaDevolverAgora={pedidosParaDevolverAgora}
+          incompleto={pedidosCanceladosIncompleto}
+          confirmandoRetornoId={confirmandoRetornoId}
+          onConfirmarRetorno={handleConfirmarRetorno}
+          estornandoId={estornandoId}
+          onRegistrarEstorno={registrarEstornoFeito}
+          onVerPedidos={irParaPedidosCancelados}
+        />
 
-        {/* Achados B e D da revisão de 26/08/2026 (rodada 4): erro engolido
-            pela RPC e truncagem pelo teto de páginas (as duas em
-            `useOrders.fetchPedidosCancelados`) têm o MESMO efeito aqui —
-            `pedidosCancelados` fica menor que a realidade — e os dois
-            containers abaixo só existiam com `{lista.length > 0 && (...)}`.
-            Sem este aviso, a AUSÊNCIA dos dois cards tinha a MESMA cara de
-            "não há nada pendente". Aparece mesmo quando um dos dois baldes
-            já tem item: o que falta pode estar exatamente no outro. */}
-        {pedidosCanceladosIncompleto && (
-          <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/20 p-5">
-            <div className="flex items-start gap-3">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-500">
-                <AlertTriangle className="size-4" />
-              </div>
-              <p className="text-[10px] font-bold uppercase leading-relaxed tracking-widest text-amber-500">
-                Não foi possível confirmar a lista completa de pedidos
-                cancelados agora. Os painéis de mercadoria e estorno abaixo
-                podem estar incompletos.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Produtos que ainda não voltaram (Task 5 + BLOQUEIA 2 da revisão
-            de 26/08/2026) — a lista é DERIVADA de `pedidosCancelados`,
-            nunca gravada, e trata só de MERCADORIA: nenhuma palavra sobre
-            dinheiro devido. Título e texto próprios porque este balde
-            aparece inclusive para pedido que nunca recebeu pagamento
-            nenhum, ou que já teve o pagamento estornado — dizer "Estorno
-            devido" ali afirmaria uma dívida que pode não existir (achado da
-            revisão: a lojista lia "Estorno devido" seguido de um pedido sem
-            nenhuma cobrança e concluía que devia R$ 100 a quem nunca pagou
-            nada). Some sozinha assim que `confirmarRetornoDoProduto`
-            resolve o pedido (ver o comentário de `precisaConfirmarRetornoDoProduto`,
-            acima). */}
-        {pedidosEsperandoRetorno.length > 0 && (
-          <div className="admin-glass relative overflow-hidden rounded-[2rem] border-white/5 p-6">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-              Produtos que ainda não voltaram
-            </h3>
-            <p className="mt-1.5 max-w-2xl text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
-              O pedido já saiu para entrega e foi cancelado. Confirme aqui só
-              quando a mercadoria voltar de verdade à sua mão — é isso que
-              devolve o item ao estoque. Isto não fala de dinheiro: aparece
-              mesmo em pedido que nunca foi cobrado ou que já teve o pagamento
-              estornado.
-            </p>
-
-            <div className="mt-5">
-              <h4 className="text-[9px] font-black uppercase tracking-widest text-amber-500">
-                Esperando o produto voltar ({pedidosEsperandoRetorno.length})
-              </h4>
-              <ul className="mt-3 space-y-2">
-                {pedidosEsperandoRetorno.map((pedido) => (
-                  <li
-                    key={pedido.id}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <span className="block truncate text-[10px] font-black uppercase tracking-widest text-white">
-                        #{pedido.id.slice(-6).toUpperCase()}
-                      </span>
-                      <span className="block truncate text-[9px] font-bold uppercase text-zinc-500">
-                        {pedido.customer?.name || "Cliente"} · R${" "}
-                        {(pedido.total || 0).toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}
-                      </span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => handleConfirmarRetorno(pedido.id)}
-                      disabled={confirmandoRetornoId === pedido.id}
-                      className="h-9 shrink-0 rounded-xl border-emerald-500/30 bg-emerald-500/10 px-4 text-[9px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
-                    >
-                      {confirmandoRetornoId === pedido.id
-                        ? "Confirmando..."
-                        : "O produto voltou"}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-
-        {/* Estorno devido (Task 5) — a lista é DERIVADA de `pedidosCancelados`,
-            nunca gravada, e trata só de DINHEIRO: só existe pedido aqui
-            quando `baldeDeEstorno` confirma que o pagamento ENTROU. Some
-            sozinha assim que `payment_status` vira 'estornado' (webhook do
-            Mercado Pago). O mesmo pedido pode aparecer nos dois containers
-            ao mesmo tempo, cada um respondendo uma pergunta diferente
-            (BLOQUEIA 2 da revisão de 26/08/2026). */}
-        {pedidosParaDevolverAgora.length > 0 && (
-          <div className="admin-glass relative overflow-hidden rounded-[2rem] border-white/5 p-6">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-              Estorno devido
-            </h3>
-            {/* A frase que não pode virar promessa falsa: o app não
-                estorna sozinho. Quem devolve o dinheiro é a lojista, no
-                painel do Mercado Pago — esta lista só lembra o que ela
-                ainda deve. */}
-            <p className="mt-1.5 max-w-2xl text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
-              Estornar é uma ação sua, feita direto no painel do Mercado Pago —
-              esta tela não devolve dinheiro nenhum, só lembra o que ainda falta
-              resolver. O item some sozinho assim que você registra o estorno
-              lá.
-            </p>
-
-            <div className="mt-5">
-              <h4 className="text-[9px] font-black uppercase tracking-widest text-rose-500">
-                Devolver agora ({pedidosParaDevolverAgora.length})
-              </h4>
-              <ul className="mt-3 space-y-2">
-                {pedidosParaDevolverAgora.map((pedido) => (
-                  <li
-                    key={pedido.id}
-                    className="rounded-xl border border-white/5 bg-black/20 px-4 py-3"
-                  >
-                    <span className="block truncate text-[10px] font-black uppercase tracking-widest text-white">
-                      #{pedido.id.slice(-6).toUpperCase()}
-                    </span>
-                    <span className="block truncate text-[9px] font-bold uppercase text-zinc-500">
-                      {pedido.customer?.name || "Cliente"} · R${" "}
-                      {(pedido.total || 0).toLocaleString("pt-BR", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                    {/* Laudo #2 (L-2): a saída manual que faltava — quando a
-                        notificação do MP nunca chega, era estagnado para
-                        sempre. A confirmação evita registrar por engano. */}
-                    <button
-                      type="button"
-                      disabled={estornandoId === pedido.id}
-                      onClick={() => void registrarEstornoFeito(pedido)}
-                      className="mt-2 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[8.5px] font-black uppercase tracking-widest text-emerald-400 transition-all hover:bg-emerald-500/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-                    >
-                      {estornandoId === pedido.id
-                        ? "Registrando..."
-                        : "Já estornei no Mercado Pago"}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-
-        {/* Unified Control Bar Compacta */}
-        <div className="relative mb-8 mt-4 flex flex-col border-t border-white/5 pt-8">
+        {/* Unified Control Bar Compacta — âncora do scroll do botão "Ver
+            pedidos" da pílula de alertas (id lido por
+            `irParaPedidosCancelados`). */}
+        <div
+          id="admin-pedidos-lista"
+          className="relative mb-8 mt-4 flex flex-col border-t border-white/5 pt-8"
+        >
           <div className="relative z-20 flex flex-col gap-6 md:flex-row md:items-center">
             <div className="flex w-full flex-1 items-center gap-4">
               <div className="group relative w-full">
@@ -1662,7 +1528,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   ))}
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-4 min-[480px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {Array.from({ length: 10 }).map((_, i) => (
                     <div
                       key={i}
@@ -1699,7 +1565,22 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
                   <Package className="size-6 text-zinc-600" />
                 </div>
-                {paymentFilter !== "all" ? (
+                {totalAbsolutoNaLoja === 0 ? (
+                  // O COUNT sem filtro nenhum voltou ZERO: a loja não tem
+                  // venda nenhuma. Falar de filtro/busca para quem ainda
+                  // não tem o primeiro pedido é receita de confusão (relato
+                  // do Gabriel, 02/09 — a foto mostrava a loja vazia com a
+                  // orientação de "limpar o filtro").
+                  <>
+                    <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
+                      Ainda não tem nenhum pedido
+                    </h3>
+                    <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      Quando a primeira venda acontecer, o pedido aparece aqui —
+                      com status, valor e o atalho de WhatsApp para o cliente.
+                    </p>
+                  </>
+                ) : paymentFilter !== "all" ? (
                   // O filtro de payment_status roda NO BANCO (lista E
                   // contagem). Lista vazia aqui é "não existe nenhum pedido
                   // com este status" — a saída honesta é limpar o filtro.
@@ -1760,7 +1641,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-4 min-[480px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {paginatedOrders.map((order) => (
                   <AdminOrderCard
                     key={order.id}
@@ -1778,50 +1659,24 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </div>
         </LocalErrorBoundary>
 
-        {/* Elite Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-10 pt-12">
-            <Button
-              variant="ghost"
-              onClick={(e) => {
-                setCurrentPage((p) => Math.max(0, p - 1));
-                const mainEl =
-                  e.currentTarget.closest(".admin-scroll-container") ||
-                  document.querySelector(".active-scroll-container") ||
-                  document.querySelector("main");
-                if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              disabled={currentPage === 0}
-              className="group size-16 rounded-3xl border border-white/5 bg-zinc-950/50 text-zinc-500 transition-all hover:bg-admin-gold hover:text-black disabled:opacity-20"
-            >
-              <ChevronLeft className="size-6 transition-transform group-hover:-translate-x-1" />
-            </Button>
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white">
-                Perfil do Setor
-              </span>
-              <span className="text-[11px] font-bold uppercase tabular-nums tracking-widest text-admin-gold">
-                {currentPage + 1} <span className="text-zinc-700">/</span>{" "}
-                {totalPages}
-              </span>
-            </div>
-            <Button
-              variant="ghost"
-              onClick={(e) => {
-                setCurrentPage((p) => Math.min(totalPages - 1, p + 1));
-                const mainEl =
-                  e.currentTarget.closest(".admin-scroll-container") ||
-                  document.querySelector(".active-scroll-container") ||
-                  document.querySelector("main");
-                if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              disabled={currentPage === totalPages - 1}
-              className="group size-16 rounded-3xl border border-white/5 bg-zinc-950/50 text-zinc-500 transition-all hover:bg-admin-gold hover:text-black disabled:opacity-20"
-            >
-              <ChevronRight className="size-6 transition-transform group-hover:translate-x-1" />
-            </Button>
-          </div>
-        )}
+        {/* Missão 06 (C2): paginação única do painel. "Perfil do Setor" morre;
+            o contador "Exibindo X - Y de Z" é o retorno de total que faltava
+            (com 8 pedidos a tela nunca dizia quantos existem). */}
+        <PaginacaoAdmin
+          pagina={currentPage}
+          totalPaginas={totalPages}
+          totalItens={totalOrders}
+          itensPorPagina={itemsPerPage}
+          aoMudar={(nova) => {
+            setCurrentPage(nova);
+            const mainEl =
+              document.querySelector(".admin-scroll-container") ||
+              document.querySelector(".active-scroll-container") ||
+              document.querySelector("main");
+            if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className="pt-12"
+        />
       </div>
 
       {/* Modal de Ajuda */}
@@ -2044,8 +1899,10 @@ const AdminOrderCard = memo(function AdminOrderCard({
 
           <div className="flex items-end justify-between border-t border-white/5 pt-6">
             <div className="space-y-1">
+              {/* "Valor": o termo antigo "Valor Capital" não dizia nada para
+                  o lojista leigo (relato do Gabriel, 02/09). */}
               <span className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-600 ">
-                Valor Capital
+                Valor
               </span>
               <p className="text-2xl font-black tabular-nums tracking-widest text-white">
                 <span className="mr-1 text-[10px] font-black uppercase text-zinc-500">
@@ -2125,7 +1982,13 @@ const AdminOrderCard = memo(function AdminOrderCard({
     );
   }
 
-  // compact mode
+  // compact mode — REDESENHO (relato do Gabriel, 02/09: card com visual
+  // mal acabado — id e data truncados, badge de pagamento estourando a
+  // coluna ("PAGÃO FORA DO FLUXO — PRECIS..."), hierarquia invertida).
+  // Hierarquia nova, por pergunta do lojista: QUEM comprou (destaque) e O
+  // QUÊ (apoio) no topo, com id/data como metadado; badges com rótulo CURTO
+  // e truncamento limpo (a frase inteira vai no title); dinheiro e ações no
+  // rodapé, sem elemento dominando o card.
   return (
     <motion.div
       layout
@@ -2139,111 +2002,119 @@ const AdminOrderCard = memo(function AdminOrderCard({
         }
       }}
       className={cn(
-        "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[2rem] p-4 sm:p-5 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto animate-in fade-in slide-in-from-bottom-2 duration-300 min-h-[164px] flex flex-col justify-between transform-gpu",
+        "group relative flex flex-col rounded-[1.5rem] border bg-zinc-950/40 p-4 backdrop-blur-md transition-all duration-300 hover:border-admin-gold/30 hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 animate-in fade-in slide-in-from-bottom-2 duration-300 transform-gpu",
         changeType === "INSERT" &&
           "border-admin-gold shadow-[0_0_20px_rgba(212,175,55,0.3)] animate-pulse",
         changeType === "UPDATE" &&
           "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] animate-pulse",
-        !changeType && "border-white/5",
+        !changeType && "border-white/10",
       )}
     >
-      {/* Glow Background */}
-      <div className="pointer-events-none absolute inset-0 z-0 rounded-[2rem] bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 transition-all duration-700 group-hover:from-admin-gold/5 group-hover:to-transparent" />
-
-      {/* Header Row: Image/ID and Status */}
-      <div className="relative z-10 mb-4 flex flex-col justify-between gap-2 min-[400px]:flex-row min-[400px]:items-center">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="relative shrink-0">
-            {order.items?.[0]?.image ? (
-              <LazyImage
-                src={order.items[0].image}
-                alt="Produto"
-                className="size-8 shrink-0 rounded-lg border border-white/10 object-cover"
-              />
-            ) : (
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-zinc-900">
-                <Package className="size-4 text-zinc-600" />
-              </div>
-            )}
-            {order.items?.length > 1 && (
-              <div className="absolute -right-1.5 -top-1.5 flex size-4.5 items-center justify-center rounded-full border border-zinc-900 bg-admin-gold text-[8px] font-black text-black shadow-lg">
-                +{order.items.length - 1}
-              </div>
-            )}
-          </div>
-          <div className="min-w-0">
-            <span className="block truncate text-[9px] font-black uppercase tracking-widest text-zinc-500 transition-colors group-hover:text-admin-gold">
-              #{order.id.slice(-6).toUpperCase()}
-            </span>
-            <span className="block truncate text-[8px] font-bold uppercase tracking-tight text-zinc-600">
-              {new Date(order.createdAt).toLocaleDateString("pt-BR", {
-                day: "2-digit",
-                month: "short",
-              })}
-            </span>
-          </div>
+      {/* Topo — hierarquia da direção A (Missão 06): VALOR dominante no canto
+          superior direito; nome e produto na coluna do meio, protegida com
+          min-w-0. Sem badges aqui: em card de ~250px a coluna direita com
+          badge largo esmagava o nome até sumir (achado do Gabriel no ao-vivo,
+          02/09) — os badges ganham faixa própria logo abaixo. */}
+      <div className="flex items-start gap-3">
+        <div className="relative shrink-0">
+          {order.items?.[0]?.image ? (
+            <LazyImage
+              src={order.items[0].image}
+              alt="Produto"
+              className="size-11 shrink-0 rounded-xl border border-white/10 object-cover"
+            />
+          ) : (
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-900">
+              <Package className="size-5 text-zinc-600" />
+            </div>
+          )}
+          {order.items?.length > 1 && (
+            <div className="absolute -right-1.5 -top-1.5 flex size-4.5 items-center justify-center rounded-full border border-zinc-900 bg-admin-gold text-[8px] font-black text-black shadow-lg">
+              +{order.items.length - 1}
+            </div>
+          )}
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
+
+        <div className="min-w-0 flex-1">
+          <h4
+            title={order.customer?.name || "Cliente"}
+            className="line-clamp-2 text-[13px] font-bold leading-tight text-white transition-colors group-hover:text-admin-gold"
+          >
+            {order.customer?.name || "Cliente"}
+          </h4>
+          <p
+            title={(() => {
+              if (!order.items || order.items.length === 0)
+                return "Pedido vazio";
+              if (order.items.length === 1) return order.items[0].name;
+              return `${order.items[0].name} e mais ${order.items.length - 1}`;
+            })()}
+            className="mt-0.5 truncate text-[11px] font-medium text-zinc-400"
+          >
+            {(() => {
+              if (!order.items || order.items.length === 0)
+                return "Pedido vazio";
+              if (order.items.length === 1) return order.items[0].name;
+              return `${order.items[0].name} e mais ${order.items.length - 1}`;
+            })()}
+          </p>
+        </div>
+
+        <p className="shrink-0 text-xl font-black tabular-nums leading-none text-white">
+          <span className="mr-1 text-[10px] font-bold uppercase text-zinc-500">
+            R$
+          </span>
+          {(order.total || 0).toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+          })}
+        </p>
+      </div>
+
+      {/* Faixa de identificação: id · horário relativo (quem opera pensa em
+          "há 5 min", não em "23/08") e os badges com largura de card inteira
+          — wrap honesto: nunca estouram a borda nem esmagam vizinho. */}
+      <div className="relative z-10 mt-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+        <span className="text-[10px] font-semibold tabular-nums text-zinc-500">
+          #{order.id.slice(-6).toUpperCase()} ·{" "}
+          {horarioRelativo(order.createdAt)}
+        </span>
+        <div className="flex flex-wrap items-center gap-1">
           <OrderStatusBadge status={order.status} />
           <PaymentStatusBadge
             paymentStatus={order.paymentStatus}
             orderStatus={order.status}
+            compact
           />
         </div>
       </div>
 
-      {/* Customer & Product description */}
-      <div className="relative z-10 mb-4 space-y-1">
-        <h4 className="truncate text-sm font-black text-white transition-colors group-hover:text-admin-gold">
-          {order.customer?.name || "Cliente"}
-        </h4>
-        <p className="truncate text-[9px] font-bold uppercase text-zinc-500">
-          {(() => {
-            if (!order.items || order.items.length === 0) return "Pedido Vazio";
-            if (order.items.length === 1) return order.items[0].name;
-            return `${order.items[0].name} e mais ${order.items.length - 1}`;
-          })()}
-        </p>
-      </div>
-
-      {/* Footer Row: Price and Quick WhatsApp button */}
-      <div className="relative z-10 flex items-center justify-between border-t border-white/5 pt-3">
-        <div className="space-y-0.5">
-          <span className="block text-[8px] font-black uppercase tracking-wider text-zinc-600">
-            Valor
+      {/* Rodapé — Missão 06 (direção A): o dinheiro subiu para o topo do card;
+          sobram as ações, com o WhatsApp discreto (fim da fileira de botões
+          verdes grandes) e o chevron de abertura. */}
+      <div className="relative z-10 mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
+        {linkWhatsappDoCliente(order.customer?.whatsapp) ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onWhatsApp(order);
+            }}
+            className="relative z-10 flex size-8 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black active:scale-90"
+            title="WhatsApp"
+          >
+            <MessageCircle className="size-4" />
+          </button>
+        ) : (
+          <span className="text-[9px] font-black uppercase tracking-widest text-zinc-600">
+            Ver detalhes
           </span>
-          <p className="text-base font-black tabular-nums tracking-tight text-white">
-            <span className="mr-0.5 text-[9px] font-black uppercase text-zinc-500">
-              R$
-            </span>
-            {(order.total || 0).toLocaleString("pt-BR", {
-              minimumFractionDigits: 2,
-            })}
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {/* Laudo 0109 (A-7, ressalva da revisão): mesmo padrão do modo
-              detailed — sem número válido o botão some. */}
-          {linkWhatsappDoCliente(order.customer?.whatsapp) && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onWhatsApp(order);
-              }}
-              className="relative z-10 flex size-11 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 shadow-lg transition-all hover:bg-emerald-500 hover:text-black active:scale-90"
-              title="WhatsApp"
-            >
-              <MessageCircle className="size-5" />
-            </button>
-          )}
-          <ChevronRight className="size-4.5 transform text-zinc-500 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-admin-gold" />
-        </div>
+        )}
+        <ChevronRight className="size-4.5 shrink-0 text-zinc-500 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-admin-gold" />
       </div>
 
       {/* Task 4 do plano recebimento-na-entrega — mesmo bloco do modo
           "detailed", ver o comentário lá. */}
       {podeRegistrarPagamento(order) && (
-        <div className="relative z-10 mt-3 flex items-center justify-between gap-1.5 border-t border-white/5 pt-3">
+        <div className="relative z-10 mt-3 flex items-center justify-between gap-1.5 border-t border-white/10 pt-3">
           {order.pagamentoRecebidoEm ? (
             <>
               <span className="truncate text-[8px] font-black uppercase tracking-widest text-emerald-400">

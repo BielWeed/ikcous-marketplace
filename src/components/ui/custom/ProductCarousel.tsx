@@ -14,6 +14,12 @@ interface ProductCarouselProps {
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
   onAddToCart?: (product: Product) => void;
+  /** Card inteligente (02/09): presente, o card escolhe opções nele mesmo. */
+  onAddToCartWithVariants?: (
+    product: Product,
+    variantId: string | undefined,
+    variantNames: string,
+  ) => void;
   onQuickBuy?: (product: Product) => void;
   icon?: React.ReactNode;
   accentColor?: string;
@@ -29,6 +35,7 @@ export const ProductCarousel = React.memo(function ProductCarousel({
   onToggleFavorite,
   onProductClick,
   onAddToCart,
+  onAddToCartWithVariants,
   onQuickBuy,
   icon,
   accentColor = "amber",
@@ -84,6 +91,13 @@ export const ProductCarousel = React.memo(function ProductCarousel({
       onAddToCart?.(product);
     },
     [onAddToCart],
+  );
+
+  const handleAddToCartWithVariants = useCallback(
+    (product: Product, variantId: string | undefined, variantNames: string) => {
+      onAddToCartWithVariants?.(product, variantId, variantNames);
+    },
+    [onAddToCartWithVariants],
   );
 
   const handleQuickBuy = useCallback(
@@ -158,6 +172,11 @@ export const ProductCarousel = React.memo(function ProductCarousel({
                 onToggleFavorite={handleToggleFavorite}
                 onClick={handleProductClick}
                 onAddToCart={handleAddToCart}
+                onAddToCartWithVariants={
+                  onAddToCartWithVariants
+                    ? handleAddToCartWithVariants
+                    : undefined
+                }
                 onQuickBuy={handleQuickBuy}
                 onMouseEnter={handlePrefetchProductDetail}
                 onTouchStart={handlePrefetchProductDetail}
