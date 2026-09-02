@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
 import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
+import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
 import { AlertTriangle, RefreshCcw, WifiOff } from "lucide-react";
 import { Component } from "react";
 import type { ErrorInfo, ReactNode } from "react";

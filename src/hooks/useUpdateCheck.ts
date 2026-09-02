@@ -1,7 +1,7 @@
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { useStore } from "@/contexts/StoreContext";
-import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
 import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
+import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
