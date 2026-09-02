@@ -204,7 +204,7 @@ export const ProductCard = memo(function ProductCard({
     // Mesma exigência da página de produto: TODOS os grupos de opção
     // precisam de uma escolha antes do carrinho — e a mensagem diz qual
     // falta, pelo mesmo motivo de lá.
-    const faltando = Object.keys(variantGroups).filter(
+    const faltando = Array.from(variantGroups.keys()).filter(
       (grupo) => !selecionadas.get(grupo),
     );
     if (faltando.length > 0) {
