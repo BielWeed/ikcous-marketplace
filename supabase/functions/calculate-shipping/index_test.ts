@@ -289,6 +289,47 @@ Deno.test("nomeAmigavelDoServico - nome desconhecido volta LIMPO, sem o sufixo d
   assertEquals(nomeAmigavelDoServico({}), "");
 });
 
+Deno.test("filtro de métodos habilitados com CEP FORA: PAC devolvido x só sedex habilitado -> só a expressa sai (R2 da revisão)", async () => {
+  // R2 da revisão do commit 3f90033: os testes de filtro antigos caíam no
+  // retorno cedo do cliente local (que passa antes do filtro) e o filtro
+  // ficou sem cobertura nenhuma. Este teste exercita o filtro com CEP FORA,
+  // pelo caminho completo: a transportadora devolve PAC e SEDEX, a loja só
+  // habilita "sedex", e a resposta traz SOMENTE a SEDEX — já traduzida.
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify([
+          { id: 1, name: "PAC", price: "26.41", delivery_time: 8 },
+          { id: 2, name: "SEDEX", price: "54.88", delivery_time: 4 },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )) as any;
+  try {
+    const registro = {
+      inserts: [] as Array<{ tabela: string; linha: any }>,
+      execucoes: [] as Array<{ tabela: string; linha: any }>,
+      cacheConcluido: false,
+      logConcluido: false,
+    };
+    const resposta = await handler(requisicaoDeCotacao(), {
+      supabase: clienteFalso({
+        registro,
+        cacheInsert: () => Promise.resolve({ error: null }),
+        config: { ...CONFIG_DA_LOJA, enabled_shipping_methods: ["sedex"] },
+      }),
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.options.length, 1);
+    assertEquals(corpo.options[0].id, "melhor-envio-2");
+    assertEquals(corpo.options[0].name, "Entrega expressa");
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
+
 Deno.test("CEP de fora recebe o nome JÁ traduzido na resposta da cotação (fim a fim)", async () => {
   // O fetch falso devolve os nomes reais da foto do Gabriel. A resposta do
   // handler tem que trazer a tradução — é o que o cliente vê no carrinho.
@@ -669,7 +710,7 @@ Deno.test("precoResolvidoSemCache espelha, um a um, os ramos da RPC", () => {
   assertEquals(precoResolvidoSemCache(undefined), false);
 });
 
-Deno.test("cliente local com loja national -> 200 só com a Entrega Local, SEM consultar transportadora nem gravar cotação", async () => {
+Deno.test("cliente local com loja national -> 200 só com a Entrega Local, SEM consultar transportadora nem gravar cache", async () => {
   // Pedido do Gabriel (02/09): na foto do carrinho, um CEP da própria cidade
   // listava SEDEX e .Package ao lado da Entrega Local. A regra nova: quem é
   // da cidade não vê transportadora nacional — o retorno cedo de `isLocal`
@@ -694,6 +735,16 @@ Deno.test("cliente local com loja national -> 200 só com a Entrega Local, SEM c
   assertEquals(texto.includes("melhor-envio"), false);
   assertEquals(texto.includes("25.5"), false);
   assertEquals(corpo.cotacaoIncompleta, false);
+  // R3 da revisão: a cotação local continua indo para o "Histórico de
+  // Cotações" do painel — era a única janela que a lojista tinha das
+  // cotações locais no caminho antigo (national+isLocal até o fim).
+  const logLocal = registro.inserts.find(
+    (i) => i.tabela === "shipping_calculation_logs",
+  );
+  assertEquals(logLocal !== undefined, true);
+  assertEquals((logLocal as any).linha.provider, "local");
+  assertEquals((logLocal as any).linha.status, "success");
+  assertEquals((logLocal as any).linha.destination_cep, "01001000");
 });
 
 Deno.test("gravação falha mas NADA dependia do cache -> lista inteira e cotacaoIncompleta false", async () => {

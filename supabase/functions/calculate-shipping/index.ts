@@ -723,7 +723,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
             return !!(dbProd?.frete_gratis ?? item.product?.freeShipping)
         })
 
-        // If local-only coverage, enforce and return early
+        // Se a cobertura da loja é só local, o CEP de fora não é atendido.
         if (shippingCoverage === 'local') {
             if (!isLocal) {
                 return new Response(
@@ -756,7 +756,25 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         // Este retorno cedo tem que vir ANTES da cotação de transportadora
         // e do cache — a partir daqui, `isLocal` é invariantemente falso em
         // todo o resto do handler.
+        //
+        // R3 da revisão: o caminho que existia antes (national+isLocal até
+        // o fim do handler) GRAVAVA linha no `shipping_calculation_logs` —
+        // era a cotação local que aparecia no "Histórico de Cotações" do
+        // painel. O retorno cedo mantém esse registro (mesmo formato dos
+        // outros, provider 'local'), senão a lojista perde a janela de
+        // todas as cotações locais do dia.
         if (isLocal) {
+            fireAndForget(
+                supabaseClient.from('shipping_calculation_logs').insert({
+                    origin_cep: originCep,
+                    destination_cep: cleanCep,
+                    provider: 'local',
+                    cart_items: cart,
+                    response_time_ms: 0,
+                    status: 'success'
+                }),
+                'Failed to log local quote:',
+            )
             return new Response(
                 JSON.stringify({
                     options: [
@@ -1107,15 +1125,14 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         // loja definiu no painel (ver `ShippingCalculator.tsx`).
         if (shippingOptions.length === 0) {
             // A guarda é o que `getFlatFeeResponse()` REALMENTE devolve, não
-            // `flatFeeConfigurada` sozinha: `getFlatFeeResponse()` também
-            // entrega `local-delivery` quando `isLocal`, campo que
-            // `flatFeeConfigurada(storeConfig.shipping_fee)` nem olha. Hoje o
-            // bloco que faz o prepend de `local-delivery` (acima) já garante
-            // `shippingOptions.length >= 1` sempre que `isLocal` é `true`,
-            // então este ramo só é alcançado com `isLocal` falso — mas
-            // autenticar o resultado de verdade, em vez de um campo que só
-            // por coincidência concorda com ele hoje, é o que impede a guarda
-            // de voltar a divergir se aquele bloco for reordenado.
+            // `flatFeeConfigurada` sozinha: autenticar o resultado de
+            // verdade, em vez de um campo que só por coincidência concorda
+            // com ele hoje, é o que impede a guarda de voltar a divergir se
+            // os ramos de cima forem reordenados. (Nota: desde o retorno
+            // cedo de `isLocal`, este ramo só é alcançado com CEP de fora —
+            // a versão anterior deste comentário dizia que quem garantia
+            // isso era o prepend de `local-delivery`, removido no mesmo
+            // commit que criou o retorno cedo.)
             const opcoesDeContingencia = getFlatFeeResponse()
             if (opcoesDeContingencia.length > 0) {
                 shippingOptions = opcoesDeContingencia
