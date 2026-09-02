@@ -31,25 +31,36 @@ interface StatusPagamentoPixProps {
   readonly chaveOk: boolean;
 }
 
-const DIAGNOSTICO: Record<NivelDoPagamento, string> = {
-  ok: "Ligado e com chave pública no deploy. Antes de divulgar a loja, confira se os segredos MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET estão gravados no Supabase.",
-  alerta:
+// Map (não Record indexado por variável): o eslint-security acusa
+// `detect-object-injection` em dicionário[variável] — e o teto do lint
+// reprova warning novo.
+const DIAGNOSTICO = new Map<NivelDoPagamento, string>([
+  [
+    "ok",
+    "Ligado e com chave pública no deploy. Antes de divulgar a loja, confira se os segredos MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET estão gravados no Supabase.",
+  ],
+  [
+    "alerta",
     'A flag está LIGADA, mas a chave pública do Mercado Pago não está no deploy (VITE_MP_PUBLIC_KEY): a tela de pagamento nem carrega para o cliente ("Não foi possível carregar o pagamento."). Grave as chaves MP antes de divulgar a loja.',
-  off: "O cliente finaliza por pagamento na entrega. Para aceitar PIX/cartão: cadastre as chaves do Mercado Pago (VITE_MP_PUBLIC_KEY no deploy; MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET nos segredos do Supabase) e ligue VITE_PAGAMENTO_ONLINE no deploy.",
-};
+  ],
+  [
+    "off",
+    "O cliente finaliza por pagamento na entrega. Para aceitar PIX/cartão: cadastre as chaves do Mercado Pago (VITE_MP_PUBLIC_KEY no deploy; MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET nos segredos do Supabase) e ligue VITE_PAGAMENTO_ONLINE no deploy.",
+  ],
+]);
 
-const ROTULO: Record<NivelDoPagamento, string> = {
-  ok: "Funcionando",
-  alerta: "Chave ausente",
-  off: "Desligado",
-};
+const ROTULO = new Map<NivelDoPagamento, string>([
+  ["ok", "Funcionando"],
+  ["alerta", "Chave ausente"],
+  ["off", "Desligado"],
+]);
 
 /** Barra acesa mais alta por nível (o "nível do termômetro"). */
-const NIVEL_ACESO: Record<NivelDoPagamento, number> = {
-  ok: 3,
-  alerta: 1,
-  off: 0,
-};
+const NIVEL_ACESO = new Map<NivelDoPagamento, number>([
+  ["ok", 3],
+  ["alerta", 1],
+  ["off", 0],
+]);
 
 export function StatusPagamentoPix({
   ligado,
@@ -101,7 +112,7 @@ export function StatusPagamentoPix({
               corDoRotulo,
             )}
           >
-            {ROTULO[nivel]}
+            {ROTULO.get(nivel) ?? ""}
           </span>
           {/* Termômetro: 3 barras; acesas até o nível do estado. */}
           <span className="flex items-end gap-[3px]" aria-hidden="true">
@@ -111,7 +122,9 @@ export function StatusPagamentoPix({
                 className={cn(
                   "w-[3px] rounded-full transition-colors",
                   altura,
-                  indice < NIVEL_ACESO[nivel] ? corAcesa : "bg-zinc-700/80",
+                  indice < (NIVEL_ACESO.get(nivel) ?? 0)
+                    ? corAcesa
+                    : "bg-zinc-700/80",
                   nivel === "alerta" &&
                     indice === 0 &&
                     "animate-pulse shadow-[0_0_6px_rgba(248,113,113,0.6)]",
@@ -132,7 +145,7 @@ export function StatusPagamentoPix({
             className="overflow-hidden"
           >
             <p className="border-t border-white/5 px-4 pb-3 pt-2.5 text-[10px] leading-relaxed text-zinc-400">
-              {DIAGNOSTICO[nivel]}
+              {DIAGNOSTICO.get(nivel) ?? ""}
             </p>
           </motion.div>
         )}
