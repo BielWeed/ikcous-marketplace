@@ -1562,6 +1562,42 @@ const VERIFICACOES = {
       esperado: [{ texto: "A10: log honesto", vezes: 1 }],
     },
   ],
+  "20261072000000_o_lojista_registra_o_estorno_feito_fora.sql": [
+    {
+      // Laudo varredura #2 (L-2): porta MANUAL do balde "Devolver agora" —
+      // o webhook do MP que esvaziava a lista nunca foi observado chegar
+      // (issue #212). Guarda is_admin no corpo antes de qualquer leitura.
+      // Vezes exatas: guarda UMA vez; UPDATE de estorno UMA vez.
+      funcao: "registrar_estorno_manual",
+      esperado: [
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "SET payment_status = 'estornado'", vezes: 1 },
+      ],
+    },
+  ],
+  "20261073000000_o_selo_nao_conta_pedido_morto.sql": [
+    {
+      // Laudo varredura #2 (L-10): o selo "Compra Verificada" agora exige o
+      // pedido VIVO — o portão de status entra UMA vez por função (a de
+      // review pelo SQL interno `o.status`, a de pedido por `NEW.status`).
+      funcao: "marca_avaliacao_nasce_verificada",
+      esperado: [
+        {
+          texto: "AND o.status NOT IN ('cancelled', 'returned')",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "marca_avaliacoes_do_pedido_verificadas",
+      esperado: [
+        {
+          texto: "AND NEW.status NOT IN ('cancelled', 'returned')",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

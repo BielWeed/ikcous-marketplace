@@ -352,36 +352,82 @@ describe("OrderDetail — mostra o pagamento e avisa antes de avançar pedido n�
     expect(onStatusChange).not.toHaveBeenCalled();
   });
 
-  it("botão 'Abortar Operação' cancela direto, sem passar pelo diálogo de pagamento pendente", async () => {
+  it("botão 'Abortar Operação' continua sendo uma porta separada do diálogo de pagamento — agora COM confirmação própria (laudo #2, L-1)", async () => {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
     );
     // paymentStatus 'aguardando' é justamente o caso que dispara o aviso
     // para o botão "Avançar" — o teste prova que o botão de abortar é uma
-    // porta estrutural separada, não uma comparação de valor que só por
-    // coincidência hoje exclui "cancelled".
+    // porta estrutural separada. Desde o laudo #2 (L-1), cancelar pede
+    // CONFIRMAÇÃO (a ação mais destrutiva do painel não é mais um clique
+    // sem guarda): o texto avisa o caso do pedido e o clique só vale com
+    // o confirm aceito.
     const order = pedidoFake("aguardando");
     const onStatusChange = vi.fn();
+    const confirmEspiao = vi.fn((_texto?: string) => true);
+    const confirmOriginal = globalThis.confirm;
+    globalThis.confirm = confirmEspiao as unknown as typeof confirm;
 
-    await act(async () => {
-      raiz.render(
-        <OrderDetail order={order} onStatusChange={onStatusChange} />,
+    try {
+      await act(async () => {
+        raiz.render(
+          <OrderDetail order={order} onStatusChange={onStatusChange} />,
+        );
+      });
+
+      const botaoAbortar = hospedeiro.querySelector(
+        'button[title="Abortar Operação"]',
+      ) as HTMLButtonElement;
+      expect(botaoAbortar).toBeDefined();
+
+      await act(async () => {
+        botaoAbortar.click();
+        await esperarMicrotarefas();
+      });
+
+      expect(hospedeiro.textContent).not.toContain(
+        "Este pedido não está com o pagamento confirmado",
       );
-    });
+      expect(confirmEspiao).toHaveBeenCalledTimes(1);
+      const texto = String(confirmEspiao.mock.calls[0][0]);
+      // texto honesto por caso: sem pagamento, a pergunta fala do estoque e
+      // do aviso ao cliente — e termina em pergunta
+      expect(texto).toContain("O estoque volta");
+      expect(texto.endsWith("?")).toBe(true);
+      expect(onStatusChange).toHaveBeenCalledWith("ped-teste", "cancelled");
+    } finally {
+      globalThis.confirm = confirmOriginal;
+    }
+  });
 
-    const botaoAbortar = hospedeiro.querySelector(
-      'button[title="Abortar Operação"]',
-    ) as HTMLButtonElement;
-    expect(botaoAbortar).toBeDefined();
-
-    await act(async () => {
-      botaoAbortar.click();
-      await esperarMicrotarefas();
-    });
-
-    expect(hospedeiro.textContent).not.toContain(
-      "Este pedido não está com o pagamento confirmado",
+  it("cancelamento sem confirmar NÃO cancela o pedido (laudo #2, L-1)", async () => {
+    const { OrderDetail } = await import(
+      "@/components/admin/orders/OrderDetail"
     );
-    expect(onStatusChange).toHaveBeenCalledWith("ped-teste", "cancelled");
+    const order = pedidoFake("aguardando");
+    const onStatusChange = vi.fn();
+    const confirmOriginal = globalThis.confirm;
+    globalThis.confirm = vi.fn(() => false) as unknown as typeof confirm;
+
+    try {
+      await act(async () => {
+        raiz.render(
+          <OrderDetail order={order} onStatusChange={onStatusChange} />,
+        );
+      });
+
+      const botaoAbortar = hospedeiro.querySelector(
+        'button[title="Abortar Operação"]',
+      ) as HTMLButtonElement;
+
+      await act(async () => {
+        botaoAbortar.click();
+        await esperarMicrotarefas();
+      });
+
+      expect(onStatusChange).not.toHaveBeenCalled();
+    } finally {
+      globalThis.confirm = confirmOriginal;
+    }
   });
 });

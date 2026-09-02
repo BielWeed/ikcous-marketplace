@@ -27,11 +27,23 @@ interface KpiSummaryCardsProps {
 export function buildKpiCards(
   stats: DashboardStats | null,
 ): readonly KpiCardConfig[] {
+  // Laudo #2 (L-6): consulta que FALHA não é "R$ 0,00" — zero medido e zero
+  // de falha são coisas diferentes (regra "Zero é uma afirmação"). Quando o
+  // bloco `executive` não veio, os cards mostram "—" (o banner vermelho de
+  // erro do Dashboard segue aparecendo junto, como já acontecia).
+  const executivo = stats?.executive;
+  const dinheiro = (v: number | null | undefined) =>
+    v == null
+      ? "—"
+      : `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+  const inteiro = (v: number | null | undefined) =>
+    v == null ? "—" : String(v);
+
   return [
     {
       id: "volume",
       label: "Volume Total",
-      value: `R$ ${(stats?.executive?.totalRevenue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+      value: dinheiro(executivo?.totalRevenue),
       subValue: "Total líquido de descontos",
       icon: ShoppingBag,
       accent: "text-admin-gold",
@@ -39,7 +51,7 @@ export function buildKpiCards(
     {
       id: "pedidos",
       label: "Total de Pedidos",
-      value: (stats?.executive?.totalOrders || 0).toString(),
+      value: inteiro(executivo?.totalOrders),
       subValue: "Transações realizadas",
       icon: TrendingUp,
       accent: "text-emerald-500",
@@ -47,7 +59,7 @@ export function buildKpiCards(
     {
       id: "ticket",
       label: "Ticket Médio",
-      value: `R$ ${(stats?.executive?.avgTicket || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+      value: dinheiro(executivo?.avgTicket),
       subValue: "Média por transação",
       icon: Star,
       accent: "text-blue-500",
@@ -55,7 +67,7 @@ export function buildKpiCards(
     {
       id: "clientes",
       label: "Clientes Únicos",
-      value: (stats?.executive?.activeCustomers || 0).toString(),
+      value: inteiro(executivo?.activeCustomers),
       subValue: "Compradores ativos",
       icon: Users,
       accent: "text-purple-500",

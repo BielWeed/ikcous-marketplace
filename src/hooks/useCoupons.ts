@@ -232,7 +232,24 @@ export function useCoupons(autoFetch = false) {
       if (autoFetch) fetchCoupons();
     } catch (error) {
       console.error("Error deleting coupon:", error);
-      toast.error("Erro ao remover cupom");
+      // Laudo #2 (L-7): cupom com pedido no histórico é recusado pela FK
+      // (23503) — apagar é impossível de verdade, e o erro genérico escondia
+      // a saída que existe: DESATIVAR o cupom.
+      const codigo = (error as { code?: string })?.code ?? "";
+      const mensagem = String((error as { message?: string })?.message ?? "");
+      if (
+        codigo === "23503" ||
+        mensagem.includes("foreign key") ||
+        mensagem.includes("23503")
+      ) {
+        toast.error("Este cupom não pode ser apagado", {
+          description:
+            "Ele já está ligado a pedidos do histórico. Para que ninguém mais o use, DESATIVE-o na lista de cupons.",
+          duration: 8000,
+        });
+      } else {
+        toast.error("Erro ao remover cupom");
+      }
       throw error;
     }
   };
