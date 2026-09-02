@@ -135,8 +135,12 @@
     /* Hide scrollbars globally */
     -ms-overflow-style: none; /* IE and Edge */
     scrollbar-width: none; /* Firefox */
-    outline: none !important;
     -webkit-tap-highlight-color: rgb(0 0 0 / 0%) !important;
+
+    /* INFRA-130: havia aqui `outline: none !important` UNIVERSAL, que apagava
+       o indicador de foco de teclado no app inteiro (falha WCAG 2.4.7). O anel
+       de foco vive agora na regra `:focus-visible` no fim do arquivo (fora de
+       @layer, por tokens de tema). NÃO recolocar supressão global de outline. */
   }
 
   /* Hide scrollbar for Chrome, Safari and Opera */
@@ -218,11 +222,15 @@
     text-decoration: none;
   }
 
-  /* Recharts strict focus killers */
-  .recharts-wrapper *:focus,
-  .recharts-surface:focus,
-  .recharts-surface :focus,
-  path.recharts-sector:focus {
+  /* Recharts: contorno nativo em setor/ponto de gráfico SVG fica quebrado
+     (retângulo duro em volta de fatia) quando o elemento é CLICADO com
+     mouse/toque — supressão mantida só nesse caso via :not(:focus-visible).
+     Por teclado o anel global de :focus-visible (fim do arquivo) vale, então
+     WCAG 2.4.7 continua atendido. */
+  .recharts-wrapper *:focus:not(:focus-visible),
+  .recharts-surface:focus:not(:focus-visible),
+  .recharts-surface :focus:not(:focus-visible),
+  path.recharts-sector:focus:not(:focus-visible) {
     outline: none !important;
   }
 }
@@ -418,10 +426,37 @@
   }
 }
 
-/* Focus visible styles */
+/* Indicador de foco de teclado (INFRA-130, WCAG 2.4.7).
+   REDE GLOBAL para elementos sem supressão utilitária. Mecanismo, sem eufemismo:
+   tailwindcss 3.4 NÃO emite cascade layers de verdade — a cascata aqui é
+   especificidade + ordem. Esta regra pesa (0,1,0):
+   - VENCE `outline-none` SIMPLES (0,1,0) por ORDEM de compilação: ela fica
+     depois de `@tailwind utilities` no fonte, então sai depois no CSS final;
+   - NÃO vence `focus:outline-none` nem `focus-visible:outline-none`
+     (0,2,0 > 0,1,0 — pseudo-classe soma como classe). Quem usa essas e não
+     traz anel próprio fica sem indicador: conserto é PONTUAL no componente,
+     não aqui.
+   :focus-visible = só quem navega por TECLADO (ou outro dispositivo
+   não-ponteiro) vê o anel; clique de mouse e toque não ganham contorno extra.
+   Anel 2px sólido com offset 2px, cor por token JÁ existente:
+   - Vitrine claro/escuro: --ring (shadcn; token de foco da casa, mapeado no
+     tailwind.config como `ring`) — quase preto no claro, quase branco no
+     escuro; contraste ≥3:1 com o fundo adjacente nos dois.
+   - Vitrine por tema ([data-theme]): --ring = --primary/branding de cada tema
+     (midnight-gold=dourado, deep-emerald=esmeralda, royal-velvet=cinza-claro,
+     rose-gold=rosé), todos claros sobre o fundo escuro imersivo.
+   - Glass ([data-theme-mode="glass"]): não sobrescreve --ring, então herda a
+     cor de branding do tema ativo — o indicador previsto desse modo.
+   - Admin (html.admin-mode): --admin-accent (verde) sobre o chrome escuro
+     bg-admin-bg (--admin-bg), contraste ≥3:1 — regra logo abaixo. */
 :focus-visible {
-  outline: 2px solid black;
+  outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
+}
+
+html.admin-mode :focus-visible,
+body.admin-mode :focus-visible {
+  outline-color: hsl(var(--admin-accent));
 }
 
 /* Reduced motion */

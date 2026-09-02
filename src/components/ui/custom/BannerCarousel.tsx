@@ -250,20 +250,29 @@ export const BannerCarousel = memo(function BannerCarousel({
       </div>
 
       {/* Indicators - Refined */}
+      {/* Alvo de toque 44x44 (pacote visual 02/09): o desenho do dot NAO
+          mudou - ele virou um <span> dentro de um botao de 44px. A fileira
+          usa items-end para o dot continuar EXATAMENTE onde estava (centro a
+          19px da base do banner); o alvo de toque cresce para DENTRO do
+          banner, sem clipar no overflow-hidden e sem invadir o que vem abaixo. */}
       {validBanners.length > 1 && (
-        <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center justify-center gap-2">
+        <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-end justify-center gap-2">
           {validBanners.map((_, index) => (
             <button
               key={index}
               onClick={() => emblaApi?.scrollTo(index)}
-              className={`h-1.5 rounded-full transition-all duration-500 ${
-                index === currentIndex
-                  ? "w-10 bg-white"
-                  : "w-2 bg-white/30 hover:bg-white/50"
-              }`}
+              className="group flex size-11 items-end justify-center"
               aria-label={`Ir para slide ${index + 1}`}
               aria-current={index === currentIndex}
-            />
+            >
+              <span
+                className={`h-1.5 rounded-full transition-all duration-500 ${
+                  index === currentIndex
+                    ? "w-10 bg-white"
+                    : "w-2 bg-white/30 group-hover:bg-white/50"
+                }`}
+              />
+            </button>
           ))}
         </div>
       )}

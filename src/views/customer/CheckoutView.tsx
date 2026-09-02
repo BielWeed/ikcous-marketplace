@@ -1063,7 +1063,10 @@ export function CheckoutView({
 
   if (authLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white">
+      // `min-h-dvh` (era min-h-screen): mesma altura de tela cheia, mas
+      // estável no celular — o 100vh sobe/desce quando a barra do navegador
+      // aparece e some, e o spinner pulava de lugar durante o carregamento.
+      <div className="flex min-h-dvh items-center justify-center bg-white">
         <div className="size-12 animate-spin rounded-full border-4 border-zinc-100 border-t-zinc-900" />
       </div>
     );
@@ -1717,11 +1720,11 @@ export function CheckoutView({
             <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
               <User className="size-4" />
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
               Dados de Identificação
             </span>
           </div>
-          <div className="space-y-4 p-4 sm:p-5">
+          <div className="space-y-4 p-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label
@@ -1789,7 +1792,7 @@ export function CheckoutView({
               <div className="space-y-4 border-t border-zinc-100/50 pt-4">
                 <div className="mb-1 flex items-center gap-2">
                   <MapPin className="size-4 text-zinc-400" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                     Endereço de Entrega
                   </span>
                 </div>
@@ -1804,14 +1807,18 @@ export function CheckoutView({
                     órfão, depois o `Bairro` espremido em 151px, depois a
                     `Cidade` cortando em 151px.
                     Com 6 colunas cada campo recebe a largura do que entra nele,
-                    e as linhas continuam fechando (3+3 · 6 · 6 · 4+2 · 6):
+                    e as linhas continuam fechando (3+3 · 6 · 6 · 3+3 · 6):
                     `CEP | Número` (os dois de tamanho curto e fixo, e os dois
                     únicos que o cliente digita à mão) · Rua · Bairro ·
                     `Cidade | Estado` (o par clássico; no atendimento local os
                     dois vêm preenchidos e travados) · Complemento.
-                    Medido depois da mudança, em 375px: CEP 151px · Número 151px
-                    · Rua 313px · Bairro 313px · Cidade 205px · Estado 96px ·
-                    Complemento 313px.
+                    Medido depois da mudança de 02/09/2026, em 375px (coluna de
+                    42,5px + gap de 12px): CEP 151,5px · Número 151,5px ·
+                    Rua 315px · Bairro 315px · Cidade 151,5px · Estado 151,5px
+                    · Complemento 315px. (Até 02/09 o par Cidade|Estado era
+                    4+2 e o Estado ficava com ~96px — largura de sobra para
+                    "UF", mas apertada para o toque e para o placeholder; com
+                    3+3 os dois campos ficam iguais e a soma segue fechando 6.)
                     Ao mexer aqui: some os spans de cada linha (tem de dar 6) E
                     confira no navegador se o texto mais longo de cada campo
                     cabe — `input.scrollWidth <= input.clientWidth`.
@@ -1932,7 +1939,7 @@ export function CheckoutView({
                       </p>
                     )}
                   </div>
-                  <div className="col-span-4">
+                  <div className="col-span-3">
                     <label
                       htmlFor="guest-city"
                       className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
@@ -1946,7 +1953,7 @@ export function CheckoutView({
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div className="col-span-3">
                     <label
                       htmlFor="guest-state"
                       className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
@@ -1991,7 +1998,7 @@ export function CheckoutView({
                 <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
                   <MapPin className="size-4" />
                 </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                   Seus Endereços
                 </span>
               </div>
@@ -2002,16 +2009,16 @@ export function CheckoutView({
                   setEditingAddressId(null);
                   setIsAddressModalOpen(true);
                 }}
-                className="flex h-8 items-center gap-1 rounded-xl bg-primary px-3 text-[9px] font-bold uppercase tracking-wider text-white transition-all hover:opacity-90"
+                className="flex h-11 items-center gap-1 rounded-xl bg-primary px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:opacity-90"
               >
                 <Plus className="size-3" /> Novo
               </Button>
             </div>
-            <div className="p-4 sm:p-5">
+            <div className="p-4">
               {addressesLoading ? (
-                <div className="flex flex-col items-center justify-center py-8">
+                <div className="flex min-h-[112px] flex-col items-center justify-center py-8">
                   <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-primary" />
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                     Sincronizando endereços...
                   </p>
                 </div>
@@ -2035,7 +2042,7 @@ export function CheckoutView({
               <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
                 <Tag className="size-4" />
               </div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                 Vantagem Exclusiva
               </span>
             </div>
@@ -2056,7 +2063,7 @@ export function CheckoutView({
             <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
               <CreditCard className="size-4" />
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
               Meio de Pagamento
             </span>
           </div>
@@ -2146,7 +2153,7 @@ export function CheckoutView({
                   >
                     <Icon className="size-5" />
                   </div>
-                  <div className="flex min-w-0 flex-col items-start gap-1 text-left">
+                  <div className="flex min-w-0 flex-col items-start gap-1.5 text-left">
                     {/* `zinc-400` sobre branco dá 2,56:1 — os três meios de
                         pagamento não escolhidos ficavam ilegíveis, com cara de
                         desabilitados. `zinc-600` (7:1) mantém a hierarquia
@@ -2164,7 +2171,11 @@ export function CheckoutView({
                       {option.label}
                     </span>
                     {bloqueadaPorFaltaDeConta && (
-                      <span className="text-[11px] font-medium normal-case leading-snug tracking-normal text-zinc-500">
+                      // Mesma frase, leitura melhor (02/09/2026): leading
+                      // normal e mais respiro da linha de cima — as três
+                      // linhas da explicação param de parecer um bloco
+                      // compacto demais em 375px.
+                      <span className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-500">
                         Pagar pelo site exige conta, para você acompanhar o
                         pedido e receber a confirmação. Toque para entrar ou
                         criar a sua.
@@ -2194,7 +2205,7 @@ export function CheckoutView({
             </div>
             <label
               htmlFor="order-notes"
-              className="text-[10px] font-bold uppercase tracking-wider text-zinc-500"
+              className="text-[11px] font-bold uppercase tracking-wider text-zinc-500"
             >
               Notas Adicionais (Opcional)
             </label>
@@ -2217,7 +2228,7 @@ export function CheckoutView({
             cidade. A cobertura de entrega decide para onde ela entrega, mas
             este aviso é sobre a loja, não sobre o cliente. */}
         {config.storeCity && (
-          <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-slate-800 shadow-md">
+          <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-slate-800 shadow-md">
             <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
               <MapPin className="size-16 text-zinc-500" />
             </div>
@@ -2245,41 +2256,42 @@ export function CheckoutView({
       </div>
 
       {/* Spacer to prevent overlap by the sticky footer and bottom nav.
-          A barra cresceu (item comprado + entrega, além do total que já
-          existia) — os dois valores abaixo foram REMEDIDOS no navegador em
-          17/08/2026, depois da mudança, não herdados do valor antigo:
+          REMEDIDO em 02/09/2026, depois do redesenho da barra (mesmo método
+          do navegador de 17/08/2026: fim do último card menos `top` da barra
+          fixa, no scroll máximo — nunca somar número por adivinhação).
+          Medição REAL desta vez: Chrome via puppeteer, viewport 375×667,
+          dev server local, carrinho injetado no localStorage.
 
-          Desktop (1280px): `outer.top` da barra fixa (md:bottom-[104px])
-          menos o fim do card "Aviso de Região", no scroll máximo, com o
-          espaçador antigo de 140px, deu GAP = -55,875px (card já escondido
-          atrás da barra, mesmo SEM cupom — a barra de 3 linhas por si só já
-          quebrava o espaçador de 1 linha). Cupom aplicado não piora aqui: a
-          coluna do total mede ~150,6px no desktop (NÃO os 448px do `max-w-md`,
-          que são a linha inteira — este número estava errado na primeira versão
-          deste comentário), e isso basta para o selo "(-R$ X OFF)" ficar na
-          mesma linha do valor: medido, a barra vai de 92 para 92,5px e o GAP só
-          cai 0,5px. Novo valor:
-          140 + 55,875 (fecha o buraco) + 24 (folga) ≈ 220px.
+          O que mudou na barra: a coluna do total tinha 4 linhas e, com
+          cupom, o selo "(-R$ X OFF)" quebrava para uma 5ª (~87px sem cupom,
+          ~100px com). Agora são 3 linhas com o selo INLINE truncado — a
+          barra tem altura fixa de 73px (24px de padding + 48px do botão
+          "Finalizar Pedido" + 1px de borda; medido com e sem itens: igual,
+          a coluna nova mede 45,5px e a linha "itens · entrega" fica em UMA
+          linha truncada de 12,5px). O maior consumidor de altura da barra
+          passou a ser o aviso de frete: 1–2 linhas (33px medido em 2 linhas
+          no ambiente de medida) → barra 112px no pior caso medido.
 
-          Mobile (375px): mesmo cálculo, mas aqui o cupom PIORA — a coluna do
-          total tem só ~134px (o botão "Finalizar Pedido" toma o resto), e
-          "R$ 19,00" + "(-R$ 2,00 OFF)" juntos exigem ~146,6px, então o selo
-          quebra para uma 2ª linha (`flex-wrap` já existia nessa linha, não é
-          mudança desta tarefa). Com o espaçador antigo de 160px, o pior caso
-          (cupom aplicado) deu GAP = -15,5px. Novo valor: 160 + 15,5 (fecha o
-          buraco) + 24 (folga) ≈ 200px — cobre também o caso sem cupom, que já
-          folgava (+44px com o valor novo).
+          Mobile (375px), medido no scroll máximo: com espaçador de 168px o
+          GAP foi +31,5px no caso comum (barra 73px) e −7,5px no pior caso
+          (aviso de frete em 2 linhas, barra 112px). Necessário = 168 + 7,5
+          ≈ 175,5px → 196px adotado (fecha o pior caso e mantém ~20px de
+          folga; o buraco no caso comum, ~123px, é da mesma ordem do valor
+          antigo, que com barra mínima de 87px sobrava ~113px).
 
-          Se a barra crescer de novo (nova linha, mais um selo), remedir do
-          mesmo jeito antes de só somar um número por adivinhação. */}
+          Desktop (1280px): mesma barra de 3 linhas cai de ~92px para 73px;
+          necessário antigo era 215,9px → 215,9 − 19 ≈ 197 → 200px mantidos.
+
+          Se a barra crescer de novo (nova linha, mais um selo, aviso novo),
+          remedir do mesmo jeito antes de só somar um número por adivinhação. */}
       <div
         className="hidden md:block"
-        style={{ height: "220px" }}
+        style={{ height: "200px" }}
         aria-hidden="true"
       />
       <div
         className="block md:hidden"
-        style={{ height: "calc(200px + var(--safe-area-bottom, 0px))" }}
+        style={{ height: "calc(196px + var(--safe-area-bottom, 0px))" }}
         aria-hidden="true"
       />
 
@@ -2395,10 +2407,16 @@ export function CheckoutView({
                         role="dialog"
                         aria-label="Resumo do pedido"
                         tabIndex={-1}
-                        className="mx-auto mb-2 max-h-[45vh] w-full max-w-md overflow-y-auto rounded-2xl border border-zinc-100 bg-white p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] outline-none"
+                        // 50vh (era 45vh): o bloco de totais passou a ser
+                        // sticky no fundo do painel (SEMPRE visível — com
+                        // carrinho grande ele não rola mais para fora), então
+                        // ele consome ~96px fixos do painel; os 5vh extras
+                        // devolvem à lista de itens o espaço que o bloco
+                        // ocupa, mantendo a lista rolável útil.
+                        className="mx-auto mb-2 max-h-[50vh] w-full max-w-md overflow-y-auto rounded-2xl border border-zinc-100 bg-white px-4 pt-3 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] outline-none"
                       >
                         <div className="mb-3 flex items-center justify-between">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                             Resumo do Pedido
                           </span>
                           <button
@@ -2408,7 +2426,10 @@ export function CheckoutView({
                             // direto pelo estado.
                             onClick={() => globalThis.history.back()}
                             aria-label="Fechar resumo do pedido"
-                            className="flex size-7 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-50 hover:text-zinc-600"
+                            // `after:-inset-2` amplia a área de toque para
+                            // 44px (28px do ícone + 16px) sem mudar o visual
+                            // discreto do chevron.
+                            className="relative flex size-7 items-center justify-center rounded-full text-zinc-400 transition-colors after:absolute after:-inset-2 after:content-[''] hover:bg-zinc-50 hover:text-zinc-600"
                           >
                             <ChevronDown className="size-4" />
                           </button>
@@ -2462,7 +2483,13 @@ export function CheckoutView({
                           })}
                         </ul>
 
-                        <div className="mt-4 space-y-1.5 border-t border-zinc-100 pt-3 text-xs">
+                        {/* Sticky no fundo do painel (ponto de revisão de
+                            02/09/2026): com carrinho grande a lista rola
+                            DEBAIXO deste bloco e o Total nunca mais sai da
+                            tela. O `-mx-4 px-4` estende o fundo branco por
+                            toda a largura do painel (que agora só tem `px-4
+                            pt-3`), para nada aparecer na fresta do padding. */}
+                        <div className="sticky bottom-0 -mx-4 mt-3 space-y-1.5 border-t border-zinc-100 bg-white px-4 py-3 text-xs">
                           <div className="flex items-center justify-between text-zinc-500">
                             <span>Subtotal</span>
                             <span>
@@ -2505,7 +2532,7 @@ export function CheckoutView({
                   >
                     {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
                         ficarem na mesma coluna dos cards do formulário. */}
-                    <div className="mx-auto flex max-w-md items-center justify-between gap-4">
+                    <div className="mx-auto flex max-w-md items-center justify-between gap-3">
                       <button
                         type="button"
                         ref={summaryPanelTriggerRef}
@@ -2524,31 +2551,46 @@ export function CheckoutView({
                         // explica assim.
                         disabled={cart.length === 0}
                         aria-expanded={isSummaryPanelOpen}
-                        className="flex min-w-0 flex-col text-left"
+                        className="flex min-w-0 flex-1 flex-col text-left"
                       >
-                        {itemsLabel && (
-                          <span className="mb-0.5 block truncate text-[10px] font-medium text-zinc-400">
-                            {itemsLabel}
+                        {/* REDESENHO EM 375px (02/09/2026): eram 4 linhas
+                            empilhadas e, com cupom aplicado, o selo
+                            "(-R$ X OFF)" quebrava para uma 5ª (a coluna tem
+                            ~141px e valor+selo exigem ~180px) — a barra
+                            engordava de ~87 para ~100px. Agora: "itens ·
+                            entrega" numa ÚNICA linha truncada, o valor
+                            dominante em linha própria e o selo INLINE com
+                            truncate (shrink-0 no valor) — nunca empurra a
+                            barra a crescer. O valor completo do desconto
+                            segue no painel de resumo, na linha "Desconto". */}
+                        {(itemsLabel || entregaLabel) && (
+                          <span className="mb-0.5 flex min-w-0 items-center gap-1 text-[10px] font-medium leading-tight text-zinc-400">
+                            {itemsLabel && (
+                              <span className="truncate">{itemsLabel}</span>
+                            )}
+                            {itemsLabel && entregaLabel && (
+                              <span aria-hidden="true" className="shrink-0">
+                                ·
+                              </span>
+                            )}
+                            {entregaLabel && (
+                              <span className="truncate">{entregaLabel}</span>
+                            )}
                           </span>
                         )}
-                        <span className="mb-1 text-[9px] font-bold uppercase leading-none tracking-wider text-zinc-400">
+                        <span className="mb-0.5 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-400">
                           Total a Pagar
                         </span>
-                        <div className="flex flex-wrap items-baseline gap-1.5">
-                          <span className="text-lg font-black leading-none tracking-tight text-zinc-900">
+                        <div className="flex min-w-0 items-baseline gap-1.5">
+                          <span className="shrink-0 text-lg font-black leading-none tracking-tight text-zinc-900">
                             R$ {finalTotal.toFixed(2).replace(".", ",")}
                           </span>
                           {discount > 0 && (
-                            <span className="text-[9px] font-bold uppercase text-red-500">
+                            <span className="min-w-0 truncate text-[11px] font-bold uppercase text-red-500">
                               (-R$ {discount.toFixed(2).replace(".", ",")} OFF)
                             </span>
                           )}
                         </div>
-                        {entregaLabel && (
-                          <span className="mt-1 block truncate text-[10px] font-medium text-zinc-400">
-                            {entregaLabel}
-                          </span>
-                        )}
                         {cart.length > 0 && (
                           <span className="sr-only">
                             , toque para ver os itens
@@ -2587,8 +2629,8 @@ export function CheckoutView({
                       // frete recusa, e sem este aviso o cliente só via um
                       // botão cinza sem saber que precisa voltar ao
                       // carrinho e calcular o frete.
-                      <p className="mx-auto mt-2 flex max-w-md items-center gap-1.5 text-[10px] font-bold uppercase text-red-500">
-                        <AlertCircle className="size-3.5 shrink-0" />
+                      <p className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500">
+                        <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                         {semFreteSelecionado &&
                         ctxFreteIndefinido &&
                         config.shippingProvider === "flat_fee" &&
@@ -2603,14 +2645,19 @@ export function CheckoutView({
                       // só com conta — sem cadastro não há como acompanhar
                       // o pedido. Botão apagado SEM este aviso virava
                       // desistência silenciosa.
-                      <div className="mx-auto mt-2 flex max-w-md flex-col items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-center">
-                        <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-amber-600">
+                      //
+                      // Compactado (02/09/2026): bloco mais enxuto (p-2.5,
+                      // gaps menores) com a AÇÃO como botão de 44px — em
+                      // telas estreitas como 375px o flex-wrap empilha o
+                      // botão na linha de baixo (~265px de título + ~200px
+                      // de botão não cabem nos ~343px úteis); em telas
+                      // largas título e botão dividem a primeira linha.
+                      // O bloco encolhe de ~137px para ~120px de altura e
+                      // cresce menos para cima sobre o formulário.
+                      <div className="mx-auto mt-1.5 flex max-w-md flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5">
+                        <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase text-amber-600">
                           <AlertCircle className="size-3.5 shrink-0" />
                           Entrega fora da cidade é só com conta
-                        </p>
-                        <p className="text-[10px] leading-snug text-zinc-500">
-                          Crie sua conta para receber em outro CEP — assim você
-                          também acompanha seu pedido por aqui.
                         </p>
                         <button
                           type="button"
@@ -2618,10 +2665,14 @@ export function CheckoutView({
                             haptic.light();
                             onNavigate("auth");
                           }}
-                          className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                          className="flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
                         >
                           Entrar ou criar conta
                         </button>
+                        <p className="w-full text-center text-[11px] leading-snug text-zinc-500">
+                          Crie sua conta para receber em outro CEP — assim você
+                          também acompanha seu pedido por aqui.
+                        </p>
                       </div>
                     )}
                     {aguardandoConferenciaDaRecusa && (
@@ -2651,9 +2702,9 @@ export function CheckoutView({
                       // certeza.
                       <p
                         data-testid="aviso-como-destravar-finalizar"
-                        className="mx-auto mt-2 flex max-w-md items-center gap-1.5 text-[10px] font-bold uppercase text-red-500"
+                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
                       >
-                        <AlertCircle className="size-3.5 shrink-0" />
+                        <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                         Só feche o aviso abaixo se tiver certeza de que o pedido
                         não foi criado
                       </p>
@@ -2957,7 +3008,7 @@ function AddressSelectionView({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
           <AddressForm
             initialData={
               editingAddressId
