@@ -117,18 +117,14 @@ describe("PhoneSimulator — a previa nao promete o que o app nao cumpre", () =>
 
     // O véu que cobre o formulário é translúcido COM blur: o fundo fica
     // fosco (pedido do Gabriel, 02/09) — e não opaco como era antes.
-    const veu = document.body.querySelector(
-      'div[class*="backdrop-blur-xl"]',
-    );
+    const veu = document.body.querySelector('div[class*="backdrop-blur-xl"]');
     expect(veu).toBeTruthy();
     expect(veu!.className).toContain("bg-zinc-950/70");
     expect(veu!.className).not.toContain("bg-zinc-950/98");
 
     // A barra superior do simulador é nítida sobre o véu (fundo quase
     // sólido), porque é o único comando que continua clicável.
-    const barra = document.body.querySelector(
-      'div[class*="bg-zinc-950/85"]',
-    );
+    const barra = document.body.querySelector('div[class*="bg-zinc-950/85"]');
     expect(barra).toBeTruthy();
     expect(barra!.textContent).toContain("Simulador do Aplicativo");
   });
