@@ -7,6 +7,51 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.18.0] - 2026-09-02
+
+A versão da prova de rua do dono na loja e do upgrade visual do painel: o
+carrinho que diz a verdade sobre frete e pagamento, o card de produto que
+deixa escolher sem abrir a página, e um painel que respeita o olhar do
+lojista — pedido com o dinheiro primeiro, paginação única e status de
+conexão real.
+
+### Para quem COMPRA
+
+- **Carrinho honesto sobre frete e pagamento.** Quem é da cidade da loja vê
+  só a Entrega Local (a cotação de transportadora nem é chamada); quem é de
+  fora recebe a cotação real. Os status de pagamento trocaram o jargão por
+  frases simples — "Pago fora do fluxo" em vez de sigla sem sentido.
+- **Escolha de opções direto no card do produto.** Tamanho e cor escolhidos
+  na vitrine atualizam na hora o preço, o estoque e a imagem do próprio card
+  (na Home, nos carrosséis e nos relacionados) — sem precisar abrir a página
+  do produto para descobrir o preço da combinação.
+- **Fim do pisca da barra inferior** ao navegar entre telas — a animação de
+  transição agora afeta só as imagens, nunca a estrutura da loja.
+
+### Para quem VENDE
+
+- **Card de pedido com o dinheiro primeiro.** O valor domina o topo do
+  cartão, o nome do cliente cabe inteiro em duas linhas, o horário aparece
+  relativo ("há 5 min" / "hoje 14:32") e os badges de pagamento ganham faixa
+  própria sem truncar. A grade do painel se adapta a 1/2/3/4 colunas — fim
+  do esmagamento de 5 colunas.
+- **Paginação única em todo o painel.** Um só componente, com contador
+  "Exibindo X - Y de Z", em pedidos, produtos e clientes — morreram as três
+  paginações diferentes ("Perfil do Setor", "Exibindo", "Segmento"), cada
+  uma com um tamanho de página.
+- **"Operações ao Vivo" mede de verdade.** O ponto de status reflete a
+  conexão real agora (offline / lenta / boa, com sincronização), em vez de
+  congelar o resultado da carga inicial.
+- **Alertas de dinheiro e mercadoria viraram pílula colapsável** na tela de
+  Pedidos — os avisos de "dinheiro preso", "mercadoria a voltar" e "estorno
+  devido" não empurram mais a lista para baixo; o "Ver pedidos" rola direto
+  até a lista.
+- **Ajustes em seções colapsáveis.** "Status de funcionamento" (com
+  termômetro de 3 níveis do PIX e diagnóstico) e "Identidade e localização"
+  ficam fechados por padrão — a tela de configuração parou de ser um muro.
+- **Barra inferior do painel com contraste de verdade** e o badge falso "2"
+  da engrenagem removido (as perguntas de clientes sempre foram no sino).
+
 ## [1.17.0] - 2026-09-01
 
 A versão da segunda varredura profunda: três ângulos nunca auditados como
