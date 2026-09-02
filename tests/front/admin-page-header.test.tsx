@@ -56,7 +56,9 @@ describe("AdminPageHeader", () => {
     );
     const h1 = tela.querySelector("h1")!;
     expect(h1.textContent).toContain("Clientes");
-    expect(h1.querySelector("[data-testid='vizinho-do-titulo']")).not.toBeNull();
+    expect(
+      h1.querySelector("[data-testid='vizinho-do-titulo']"),
+    ).not.toBeNull();
     expect(tela.querySelector("h1 + div")).toBeNull();
   });
 });

@@ -631,7 +631,8 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                   <>
                     <Save className="size-4" />
                     <span>
-                      Salvar<span className="hidden sm:inline"> Alterações</span>
+                      Salvar
+                      <span className="hidden sm:inline"> Alterações</span>
                     </span>
                   </>
                 )}

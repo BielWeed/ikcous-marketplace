@@ -106,9 +106,8 @@ describe("AdminSettingsView — Cor da loja", () => {
     await act(async () => {
       await esperarMicrotarefas();
     });
-    const campo = hospedeiro.querySelector<HTMLInputElement>(
-      "#store-color-hex",
-    );
+    const campo =
+      hospedeiro.querySelector<HTMLInputElement>("#store-color-hex");
     expect(campo).toBeDefined();
     return campo!;
   }
@@ -156,7 +155,9 @@ describe("AdminSettingsView — Cor da loja", () => {
     );
     // A mensagem também fica no lugar (não é só toast que some): erro
     // junto ao campo, com role=alert.
-    expect(hospedeiro.textContent).toContain("Preto não pode ser a cor da loja");
+    expect(hospedeiro.textContent).toContain(
+      "Preto não pode ser a cor da loja",
+    );
   });
 
   // Letras A-F maiúsculas são o ÚNICO jeito de exercitar a normalização de

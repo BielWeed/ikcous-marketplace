@@ -1,8 +1,8 @@
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
-import type { HeaderToastData } from "@/utils/headerToast";
 import { haptic } from "@/utils/haptic";
+import type { HeaderToastData } from "@/utils/headerToast";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,

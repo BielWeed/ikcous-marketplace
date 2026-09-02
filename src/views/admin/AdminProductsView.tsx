@@ -1,11 +1,11 @@
 import { LazyImage } from "@/components/LazyImage";
 import { AdminErrorState } from "@/components/admin/AdminErrorState";
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   AdminKpiCarousel,
   type KpiCardConfig,
 } from "@/components/admin/AdminKpiCarousel";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";

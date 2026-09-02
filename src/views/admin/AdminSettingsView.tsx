@@ -298,8 +298,8 @@ const CorDaLojaSection = memo(function CorDaLojaSection() {
       <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
         <div className="flex flex-col gap-3">
           <p className="text-left text-[9.5px] leading-snug text-zinc-400">
-            Esta é a cor da sua marca na vitrine: botões, destaques e a barra
-            do celular. Quem compra vê a nova cor assim que você salvar.
+            Esta é a cor da sua marca na vitrine: botões, destaques e a barra do
+            celular. Quem compra vê a nova cor assim que você salvar.
           </p>
 
           {/* Pré-visualização — o lojista vê o resultado ANTES de salvar. */}
