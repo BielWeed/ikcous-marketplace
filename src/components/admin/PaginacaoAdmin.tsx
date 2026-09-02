@@ -38,7 +38,7 @@ export function PaginacaoAdmin({
     <div
       data-testid="paginacao-admin"
       className={cn(
-        "mt-4 flex select-none items-center justify-between px-4 pb-0 sm:px-0",
+        "mt-6 flex select-none items-center justify-between",
         className,
       )}
     >

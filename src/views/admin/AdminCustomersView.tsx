@@ -694,7 +694,8 @@ export const AdminCustomersView = memo(function AdminCustomersView({
             </div>
           </LocalErrorBoundary>
           {/* Missão 06 (C2): paginação única — "Segmento" morre e o tamanho de
-              página alinha com pedidos/produtos (12). */}
+              página alinha com pedidos/produtos (12). Sem cartão próprio:
+              mesmo padrão limpo das outras telas (pedido do Gabriel, 02/09). */}
           <PaginacaoAdmin
             pagina={page}
             totalPaginas={totalPages}
@@ -704,7 +705,6 @@ export const AdminCustomersView = memo(function AdminCustomersView({
               setPage(nova);
               shouldScrollToTop.current = true;
             }}
-            className="mt-0 border-t border-zinc-800/50 bg-zinc-900/60 px-8 py-5"
           />
         </div>
       </div>

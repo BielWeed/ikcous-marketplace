@@ -1689,7 +1689,6 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               document.querySelector("main");
             if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
           }}
-          className="pt-12"
         />
       </div>
       <AdminHelpModal
