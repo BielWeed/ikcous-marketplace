@@ -139,6 +139,19 @@ describe("AdminKpiCarousel — carrossel compacto de métricas", () => {
     ).toBeTruthy();
   });
 
+  it("card de altura FIXA — a faixa fica idêntica nas telas (padronização)", async () => {
+    const { AdminKpiCarousel } = await import(
+      "@/components/admin/AdminKpiCarousel"
+    );
+    await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
+
+    // Card simples (sem content/footer) tem altura TRAVADA (h-16) e
+    // overflow escondido: nenhuma tela fica mais alta que a outra.
+    const card = hospedeiro.querySelector('[class*="h-16"]');
+    expect(card).toBeTruthy();
+    expect(card!.className).toContain("overflow-hidden");
+  });
+
   it("carregando: skeletons na faixa, sem card nenhum", async () => {
     const { AdminKpiCarousel } = await import(
       "@/components/admin/AdminKpiCarousel"
