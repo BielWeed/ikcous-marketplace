@@ -14,7 +14,7 @@ import {
   SlidersHorizontal,
   TrendingUp,
 } from "lucide-react";
-import React, { useState, useMemo } from "react";
+import React, { useCallback, useState, useMemo } from "react";
 
 import { FreeShippingBlock } from "@/components/ui/custom/FreeShippingBlock";
 import { InfoBlockCarousel } from "@/components/ui/custom/InfoBlockCarousel";
@@ -37,6 +37,7 @@ interface HomeViewProps {
     product: Product,
     quantity?: number,
     variantId?: string,
+    variantNames?: string,
   ) => void;
   onQuickBuy?: (product: Product, variantId?: string) => void;
   isLoading?: boolean;
@@ -120,6 +121,15 @@ export const HomeView = React.memo(function HomeView({
   // para clicar -- e a MESMA tela já se contradiz, porque a busca
   // (SearchBar.tsx:119 e :173) sempre filtrou. Um ponto só: as listas abaixo
   // derivam desta, então nenhuma pode esquecer o filtro.
+  // Card inteligente (02/09): leva a escolha de opções feita NO CARD até o
+  // addToCart real, que já aceita variante desde o App.
+  const handleAddToCartWithVariants = useCallback(
+    (product: Product, variantId: string | undefined, variantNames: string) => {
+      onAddToCart?.(product, 1, variantId, variantNames);
+    },
+    [onAddToCart],
+  );
+
   const produtosAVenda = useMemo(
     () => products.filter((p) => p.isActive),
     [products],
@@ -371,6 +381,7 @@ export const HomeView = React.memo(function HomeView({
               onToggleFavorite={onToggleFavorite}
               onProductClick={onProductClick}
               onAddToCart={onAddToCart}
+              onAddToCartWithVariants={handleAddToCartWithVariants}
               onQuickBuy={onQuickBuy}
               className={
                 section.id === "bestsellers" ? "bg-zinc-50/50" : undefined
@@ -526,6 +537,7 @@ export const HomeView = React.memo(function HomeView({
             onToggleFavorite={onToggleFavorite}
             onProductClick={onProductClick}
             onAddToCart={onAddToCart}
+            onAddToCartWithVariants={handleAddToCartWithVariants}
             onQuickBuy={onQuickBuy}
             selectedProductId={selectedProductId}
           />

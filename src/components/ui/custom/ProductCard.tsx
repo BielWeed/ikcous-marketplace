@@ -3,17 +3,21 @@ import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { imagemRedimensionada } from "@/lib/imageUrl";
 import { cn, formatCurrency } from "@/lib/utils";
-import type { Product } from "@/types";
+import type { Product, ProductVariant } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
+  ChevronDown,
   Flame,
   Heart,
   Loader2,
   ShoppingCart,
   Truck,
+  X,
 } from "lucide-react";
-import { memo, useId, useState } from "react";
+import { memo, useId, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { StarRating } from "./StarRating";
 
 interface ProductCardProps {
@@ -22,6 +26,18 @@ interface ProductCardProps {
   onToggleFavorite: (product: Product, e: React.MouseEvent) => void;
   onAddToCart?: (product: Product, e: React.MouseEvent) => void;
   onQuickBuy?: (product: Product, e: React.MouseEvent) => void;
+  /**
+   * Card inteligente (pedido do Gabriel, 02/09): presente, o botão "Escolher
+   * opções" EXPANDE as variações no próprio card — preço e imagem reagem à
+   * escolha — e "Adicionar" entrega a variação escolhida. Ausente, o botão
+   * leva para a tela do produto (comportamento de sempre, retrocompatível).
+   * Assinatura igual ao `handleAddToCart` do App com quantity fixo em 1.
+   */
+  onAddToCartWithVariants?: (
+    product: Product,
+    variantId: string | undefined,
+    variantNames: string,
+  ) => void;
   onClick: (productId: string) => void;
   onMouseEnter?: (productId: string) => void;
   onTouchStart?: (productId: string) => void;
@@ -56,6 +72,7 @@ export const ProductCard = memo(function ProductCard({
   isFavorite,
   onToggleFavorite,
   onAddToCart,
+  onAddToCartWithVariants,
   onClick,
   onMouseEnter,
   onTouchStart,
@@ -77,6 +94,46 @@ export const ProductCard = memo(function ProductCard({
     "idle",
   );
 
+  // ── Escolha de opções no próprio card ──────────────────────────────────
+  // Mesmas regras da página de produto (ProductView): só variantes ATIVAS
+  // agrupadas por `name`; preço = último `priceOverride` da escolha (`??`
+  // para override ZERO ser um preço de verdade); estoque = menor
+  // `stockIncrement` das escolhidas.
+  const [painelOpcoesAberto, setPainelOpcoesAberto] = useState(false);
+  const [selecionadas, setSelecionadas] = useState<Record<string, string>>({});
+
+  const variantGroups = useMemo(() => {
+    const grupos: Record<string, ProductVariant[]> = {};
+    product.variants?.forEach((v) => {
+      if (!v.active) return;
+      (grupos[v.name] ??= []).push(v);
+    });
+    return grupos;
+  }, [product.variants]);
+  const temGruposDeOpcao = Object.keys(variantGroups).length > 0;
+
+  const selecionadasObjs = Object.entries(selecionadas)
+    .map(([nome, valor]) =>
+      product.variants?.find((v) => v.name === nome && v.value === valor),
+    )
+    .filter(Boolean) as ProductVariant[];
+
+  const precoAtual = selecionadasObjs.reduce(
+    (acc, v) => v?.priceOverride ?? acc,
+    product.price,
+  );
+  const estoqueAtual = temGruposDeOpcao
+    ? selecionadasObjs.length > 0
+      ? Math.min(...selecionadasObjs.map((v) => v?.stockIncrement || 0))
+      : product.stock
+    : product.stock;
+  const imagemDaVariante = selecionadasObjs.find((v) => v?.imageUrl)?.imageUrl;
+  const srcImagem = imagemDaVariante || product.images[0];
+
+  const escolhaCompleta = Object.keys(variantGroups).every(
+    (nome) => selecionadas[nome],
+  );
+
   // Safely determine if this specific card should have the view transition name applied.
   // We apply it strictly to the clicked instance (via activeTransitionCardId) to avoid duplicate transition names.
   let shouldApplyTransitionName = false;
@@ -87,8 +144,9 @@ export const ProductCard = memo(function ProductCard({
   }
 
   // O card não pode deixar comprar sem escolher a variação.
-  // Com variação ATIVA (Tamanho, Cor...), o botão não adiciona -- ele leva
-  // para a tela do produto, que é onde a escolha é obrigatória
+  // Com a prop `onAddToCartWithVariants`, o botão EXPANDE as opções no
+  // próprio card — a escolha acontece aqui, sem sair da vitrine. Sem a
+  // prop, leva para a tela do produto, que é onde a escolha é obrigatória
   // (ProductView.tsx). Sem isso o pedido nascia com `variant_id = NULL` no
   // banco, cobrando o preço do produto (ignorando `price_override`) e
   // decrementando só `produtos.estoque`, nunca a variação escolhida.
@@ -96,6 +154,19 @@ export const ProductCard = memo(function ProductCard({
 
   const handleAddToCartClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    // Card inteligente: o mesmo botão abre o painel de opções e, com a
+    // escolha completa, vira "Adicionar" — o clique final é o
+    // `handleAdicionarComOpcoes`, abaixo.
+    if (hasActiveVariant && onAddToCartWithVariants) {
+      if (estoqueAtual <= 0 || cartStatus !== "idle") return;
+      if (!painelOpcoesAberto) {
+        setPainelOpcoesAberto(true);
+        return;
+      }
+      handleAdicionarComOpcoes(e);
+      return;
+    }
 
     if (hasActiveVariant) {
       onClick(product.id);
@@ -119,6 +190,55 @@ export const ProductCard = memo(function ProductCard({
         setCartStatus("idle");
       }, 1500);
     }, 600);
+  };
+
+  const handleAdicionarComOpcoes = (e: React.MouseEvent) => {
+    if (cartStatus !== "idle") return;
+
+    // Mesma exigência da página de produto: TODOS os grupos de opção
+    // precisam de uma escolha antes do carrinho — e a mensagem diz qual
+    // falta, pelo mesmo motivo de lá.
+    const faltando = Object.keys(variantGroups).filter(
+      (grupo) => !selecionadas[grupo],
+    );
+    if (faltando.length > 0) {
+      const artigoEOpcao =
+        faltando.length === 1 ? "a opção de" : "as opções de";
+      toast.warning("Falta escolher", {
+        description: `Escolha ${artigoEOpcao} ${faltando.join(", ")} antes de adicionar ao carrinho.`,
+      });
+      return;
+    }
+
+    const variantId = selecionadasObjs[0]?.id;
+    const variantNames = Object.entries(selecionadas)
+      .map(([nome, valor]) => `${nome}: ${valor}`)
+      .join(", ");
+    const imgSrc = imagemDaVariante || product.images?.[0] || "";
+
+    setCartStatus("loading");
+    triggerFlyingCartAnimation(e.currentTarget as HTMLElement, imgSrc);
+    onAddToCartWithVariants?.(product, variantId, variantNames);
+
+    setTimeout(() => {
+      setCartStatus("success");
+      setTimeout(() => {
+        setCartStatus("idle");
+        setPainelOpcoesAberto(false);
+        setSelecionadas({});
+      }, 1500);
+    }, 600);
+  };
+
+  const alternarOpcao = (e: React.MouseEvent, nome: string, valor: string) => {
+    e.stopPropagation();
+    setSelecionadas((antes) => {
+      if (antes[nome] === valor) {
+        const { [nome]: _removido, ...resto } = antes;
+        return resto;
+      }
+      return { ...antes, [nome]: valor };
+    });
   };
 
   const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -162,7 +282,7 @@ export const ProductCard = memo(function ProductCard({
       tabIndex={0}
       onClick={handleCardClick}
       onMouseEnter={() => {
-        prefetchImage(imagemRedimensionada(product.images[0], { width: 640 }));
+        prefetchImage(imagemRedimensionada(srcImagem, { width: 640 }));
         if (onMouseEnter) onMouseEnter(product.id);
       }}
       onTouchStart={() => {
@@ -170,7 +290,7 @@ export const ProductCard = memo(function ProductCard({
         // variante redimensionada que o LazyImage já baixava — download
         // duplo no toque. 640 é o `src` padrão que o LazyImage deste card
         // pede; a guarda de rede lenta segue dentro do prefetchImage.
-        prefetchImage(imagemRedimensionada(product.images[0], { width: 640 }));
+        prefetchImage(imagemRedimensionada(srcImagem, { width: 640 }));
         if (onTouchStart) onTouchStart(product.id);
       }}
       onKeyDown={handleCardKeyDown}
@@ -182,7 +302,7 @@ export const ProductCard = memo(function ProductCard({
       {/* Image Container */}
       <div className="relative aspect-[4/5] overflow-hidden bg-slate-50">
         <LazyImage
-          src={product.images[0]}
+          src={srcImagem}
           alt={product.name}
           className="size-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
           priority={priority}
@@ -275,27 +395,27 @@ export const ProductCard = memo(function ProductCard({
                 className={cn(
                   "rounded-full animate-pulse",
                   showRating ? "w-1 h-1" : "w-1.5 h-1.5",
-                  product.stock <= 0
+                  estoqueAtual <= 0
                     ? "bg-zinc-400"
-                    : product.stock <= 5
+                    : estoqueAtual <= 5
                       ? "bg-rose-500"
                       : "bg-emerald-500",
                 )}
               />
               <span
                 className={
-                  product.stock <= 0
+                  estoqueAtual <= 0
                     ? "text-zinc-500"
-                    : product.stock <= 5
+                    : estoqueAtual <= 5
                       ? "text-rose-600"
                       : "text-emerald-700"
                 }
               >
-                {product.stock <= 0
+                {estoqueAtual <= 0
                   ? "Esgotado"
-                  : product.stock <= 5
-                    ? `Apenas ${product.stock} restam!`
-                    : `Estoque: ${product.stock}`}
+                  : estoqueAtual <= 5
+                    ? `Apenas ${estoqueAtual} restam!`
+                    : `Estoque: ${estoqueAtual}`}
               </span>
             </div>
           </div>
@@ -304,7 +424,10 @@ export const ProductCard = memo(function ProductCard({
         {/* Price */}
         <div className="mt-auto flex w-full items-end justify-between gap-2 pt-1">
           <div className="flex flex-col justify-end">
-            {product.originalPrice && product.originalPrice > product.price ? (
+            {/* Preço DINÂMICO: com variação escolhida no card, mostra o
+                priceOverride da escolha (mesma semântica da página do
+                produto: `??` preserva override zero). */}
+            {product.originalPrice && product.originalPrice > precoAtual ? (
               <div className="flex flex-col">
                 <span className="text-[9px] font-bold uppercase leading-none tracking-wider text-slate-400">
                   De:{" "}
@@ -313,13 +436,13 @@ export const ProductCard = memo(function ProductCard({
                   </span>
                 </span>
                 <span className="mt-1 text-[15px] font-black leading-none tracking-tight text-rose-600">
-                  Por: {formatCurrency(product.price)}
+                  Por: {formatCurrency(precoAtual)}
                 </span>
               </div>
             ) : (
               <div className="flex flex-col">
                 <span className="text-[15px] font-black leading-none tracking-tight text-slate-900">
-                  {formatCurrency(product.price)}
+                  {formatCurrency(precoAtual)}
                 </span>
               </div>
             )}
@@ -341,14 +464,94 @@ export const ProductCard = memo(function ProductCard({
           </div>
         </div>
 
+        {/* Painel de opções NO CARD (card inteligente, pedido do Gabriel
+            02/09): abre embaixo do preço, com a mesma regra da página do
+            produto — grupos de variantes ativas, preço reagindo à escolha.
+            O stopPropagation impede o clique (e o Enter) de abrir a página
+            do produto enquanto o cliente escolhe. */}
+        <AnimatePresence initial={false}>
+          {painelOpcoesAberto &&
+            hasActiveVariant &&
+            onAddToCartWithVariants && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <div className="mt-2 rounded-2xl border border-zinc-200/70 bg-white p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400">
+                      Escolha as opções
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPainelOpcoesAberto(false);
+                      }}
+                      aria-label="Fechar opções"
+                      className="rounded-lg p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+
+                  <div className="mt-2 space-y-2.5">
+                    {Object.entries(variantGroups).map(([nome, valores]) => (
+                      <div key={nome}>
+                        <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500">
+                          {nome}
+                        </span>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {valores.map((v) => {
+                            const semEstoque = (v.stockIncrement ?? 0) <= 0;
+                            const ativa = selecionadas[nome] === v.value;
+                            return (
+                              <button
+                                key={v.id}
+                                type="button"
+                                disabled={semEstoque}
+                                onClick={(e) => alternarOpcao(e, nome, v.value)}
+                                title={
+                                  semEstoque
+                                    ? `${v.value} — sem estoque`
+                                    : undefined
+                                }
+                                className={cn(
+                                  "rounded-xl border px-2.5 py-1 text-[9px] font-black uppercase tracking-wide transition-all active:scale-95",
+                                  ativa
+                                    ? "border-zinc-900 bg-zinc-900 text-white shadow-sm"
+                                    : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400 hover:text-zinc-900",
+                                  semEstoque &&
+                                    "cursor-not-allowed line-through opacity-40 hover:border-zinc-200 hover:text-zinc-600",
+                                )}
+                              >
+                                {v.value}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+        </AnimatePresence>
+
         {/* Action Button */}
         <div className="mt-1.5">
           <button
+            data-testid="product-card-action"
             onClick={handleAddToCartClick}
-            disabled={product.stock <= 0 || cartStatus !== "idle"}
+            disabled={estoqueAtual <= 0 || cartStatus !== "idle"}
             className={cn(
               "w-full py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 shadow-[0_4px_10px_rgba(24,24,27,0.1)] flex items-center justify-center gap-1.5",
-              product.stock <= 0
+              estoqueAtual <= 0
                 ? "bg-zinc-100 text-zinc-400 cursor-not-allowed shadow-none"
                 : cartStatus === "success"
                   ? "bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -359,20 +562,40 @@ export const ProductCard = memo(function ProductCard({
               <Loader2 className="size-3 shrink-0 animate-spin" />
             )}
             {cartStatus === "success" && <Check className="size-3 shrink-0" />}
-            {cartStatus === "idle" && product.stock > 0 && (
-              <ShoppingCart className="size-3 shrink-0" />
-            )}
+            {cartStatus === "idle" &&
+              estoqueAtual > 0 &&
+              !(painelOpcoesAberto && onAddToCartWithVariants) && (
+                <ShoppingCart className="size-3 shrink-0" />
+              )}
             <span className="truncate">
-              {product.stock <= 0
+              {estoqueAtual <= 0
                 ? "Esgotado"
-                : hasActiveVariant
-                  ? "Escolher opções"
-                  : cartStatus === "idle"
-                    ? "Carrinho"
-                    : cartStatus === "loading"
-                      ? "Salvando..."
-                      : "Salvo!"}
+                : painelOpcoesAberto && onAddToCartWithVariants
+                  ? cartStatus === "loading"
+                    ? "Salvando..."
+                    : cartStatus === "success"
+                      ? "Salvo!"
+                      : escolhaCompleta
+                        ? "Adicionar"
+                        : "Escolha acima"
+                  : hasActiveVariant
+                    ? "Escolher opções"
+                    : cartStatus === "idle"
+                      ? "Carrinho"
+                      : cartStatus === "loading"
+                        ? "Salvando..."
+                        : "Salvo!"}
             </span>
+            {hasActiveVariant &&
+              onAddToCartWithVariants &&
+              estoqueAtual > 0 && (
+                <ChevronDown
+                  className={cn(
+                    "size-3 shrink-0 transition-transform duration-200",
+                    painelOpcoesAberto && "rotate-180",
+                  )}
+                />
+              )}
           </button>
         </div>
       </div>
