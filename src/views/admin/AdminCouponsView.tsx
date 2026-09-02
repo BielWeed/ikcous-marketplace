@@ -320,9 +320,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         {(coupons.length > 0 || loading) && (
           <div className="mb-8 space-y-4">
             <AdminKpiCarousel
+              active={active}
               cards={kpiCards}
               loading={loading}
-              active={active}
               title="Métricas de Campanhas"
             />
           </div>

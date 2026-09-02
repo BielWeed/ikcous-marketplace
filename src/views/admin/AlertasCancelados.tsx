@@ -1,27 +1,31 @@
 import { Button } from "@/components/ui/button";
 import type { Order } from "@/types";
-import { AlertTriangle, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 /**
- * Pílula colapsável dos avisos de pedido cancelado (pedido do Gabriel de
- * 02/09: os três blocos — aviso de dinheiro preso, mercadoria a voltar e
- * estorno devido — eram GIGANTES e ficavam permanentemente abertos,
- * empurrando a lista real de pedidos para fora da tela).
+ * Botão de alerta do header + dropdown de detalhes (pedido do Gabriel de
+ * 02/09 à tarde): a pílula colapsável da manhã ainda ocupava uma faixa
+ * inteira da tela — agora é um BOTÃO redondo com o ícone de alerta no canto
+ * direito da linha do título "Pedidos" (o ponto de conexão mudou para junto
+ * do título, para liberar o canto), e o clique desce um DROPDOWN com os
+ * detalhes. O ponto de conexão saiu, o botão entrou, os blocos de dentro
+ * não mudaram UMA palavra (a história completa deles está nos comentários
+ * de cada bloco, abaixo).
  *
- * FECHADA (o padrão): uma linha com ícone de alerta, a contagem no título e
- * badges por tipo ("produto a voltar (N)", "estorno devido (M)") — o
- * lembrete continua SEMPRE visível, só deixa de ocupar a tela.
+ * FECHADO (o padrão): botão redondo âmbar com badge de contagem e a
+ * frase-resumo no aria-label/title — o lembrete continua SEMPRE visível e
+ * o botão é o único sinal permanente (antes era a faixa aberta).
  *
- * ABERTA (clique): os mesmos três blocos de antes, palavra por palavra — os
- * textos honestos que as revisões lapidaram não mudaram, só o espaço que
- * ocupavam. O balde de MERCADORIA aparece inclusive para pedido nunca
- * cobrado e o de DINHEIRO só com pagamento entrado; as duas listas são
- * derivadas na view (`pedidosCancelados`), nunca gravadas — este componente
- * é APRESENTAÇÃO: nenhuma consulta, nenhum estado de pedido.
+ * ABERTO (clique): os mesmos três blocos da pílula, palavra por palavra —
+ * os textos honestos que as revisões lapidaram não mudaram, só o espaço.
+ * O balde de MERCADORIA aparece inclusive para pedido nunca cobrado e o de
+ * DINHEIRO só com pagamento entrado; as duas listas são derivadas na view
+ * (`pedidosCancelados`), nunca gravadas — este componente é APRESENTAÇÃO:
+ * nenhuma consulta, nenhum estado de pedido.
  *
- * Colapsa de volta no segundo clique. Sem pendência nenhuma, não renderiza
- * nada (mesma regra dos blocos antigos).
+ * Fecha no 2º clique, num clique FORA e no Escape. Sem pendência nenhuma E
+ * lista completa, nem o botão nasce (mesma regra dos blocos antigos).
  */
 
 interface PedidoDaLista {
@@ -39,7 +43,7 @@ interface AlertasCanceladosProps {
   readonly pedidosEsperandoRetorno: readonly Order[];
   readonly pedidosParaDevolverAgora: readonly Order[];
   /** A consulta de cancelados pode ter vindo truncada (erro/truncagem na
-   * RPC) — o aviso fica dentro do expandido, junto de quem ele descreve. */
+   * RPC) — o aviso fica dentro do dropdown, junto de quem ele descreve. */
   readonly incompleto: boolean;
   readonly confirmandoRetornoId: string | null;
   readonly onConfirmarRetorno: (orderId: string) => void;
@@ -63,6 +67,8 @@ export function AlertasCancelados({
   onVerPedidos,
 }: AlertasCanceladosProps) {
   const [aberto, setAberto] = useState(false);
+  const raizRef = useRef<HTMLDivElement>(null);
+  const alavancaRef = useRef<HTMLButtonElement>(null);
 
   const temDinheiroPreso = pagoCanceladoCount > 0;
   const temPendencia =
@@ -70,13 +76,77 @@ export function AlertasCancelados({
     pedidosEsperandoRetorno.length > 0 ||
     pedidosParaDevolverAgora.length > 0;
 
-  // O aviso de lista incompleta NÃO mora dentro da pílula nem depende de
-  // pendência: ele existe justamente para o caso em que as duas listas
-  // vazias podem ser MENTIRA (erro/truncagem na RPC de cancelados —
-  // "ausência do card não pode significar 'falhou'", teste
-  // painel-lista-estorno-devido). Se ficasse atrás da pílula — que nem
-  // nasce sem pendência — o aviso ficaria invisível no único cenário em
-  // que ele importa.
+  // Fecha num clique fora e no Escape — comportamento de dropdown de
+  // verdade. `pointerdown` (e não `click`) para fechar ANTES de qualquer
+  // outro clique da página surtir efeito.
+  useEffect(() => {
+    if (!aberto) return;
+    const clicouFora = (evento: PointerEvent | MouseEvent) => {
+      if (
+        raizRef.current &&
+        evento.target instanceof Node &&
+        !raizRef.current.contains(evento.target)
+      ) {
+        setAberto(false);
+      }
+    };
+    const apertouTecla = (evento: KeyboardEvent) => {
+      if (evento.key === "Escape") {
+        setAberto(false);
+        // Padrão de disclosure: quem fechou pelo teclado volta o foco para
+        // o botão que abriu (não fica órfão no body).
+        alavancaRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", clicouFora);
+    document.addEventListener("keydown", apertouTecla);
+    return () => {
+      document.removeEventListener("pointerdown", clicouFora);
+      document.removeEventListener("keydown", apertouTecla);
+    };
+  }, [aberto]);
+
+  if (!temPendencia && !incompleto) return null;
+
+  const titulo = temDinheiroPreso
+    ? avisoPagoAposCancelado
+    : "Pedidos cancelados pendentes";
+
+  const resumoBadges = [
+    pedidosEsperandoRetorno.length > 0 &&
+      `produto a voltar (${pedidosEsperandoRetorno.length})`,
+    pedidosParaDevolverAgora.length > 0 &&
+      `estorno devido (${pedidosParaDevolverAgora.length})`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  // No caso SÓ lista incompleta (sem pendência), o nome acessível tem que
+  // contar a história sozinha — "Pedidos cancelados pendentes" diria menos
+  // do que o lojista precisa ouvir antes de decidir abrir.
+  const descricaoBotao =
+    !temPendencia && incompleto
+      ? "Não foi possível confirmar a lista completa de pedidos cancelados. Toque para ver os detalhes."
+      : resumoBadges
+        ? `${titulo}. ${resumoBadges}`
+        : titulo;
+
+  // Badge = pedidos DISTINTOS com mercadoria/estorno pendentes. Quando a
+  // única pendência é o dinheiro preso (lista não derivada aqui, só a
+  // contagem do servidor), o badge mostra essa contagem — max dos dois
+  // nunca mostra 0 com pendência viva nem inventa pedido que não está
+  // em lista nenhuma. O número exato por balde segue no dropdown.
+  const pedidosNasListas = new Set(
+    [...pedidosEsperandoRetorno, ...pedidosParaDevolverAgora].map(
+      (pedido) => pedido.id,
+    ),
+  ).size;
+  const badge = Math.max(pedidosNasListas, pagoCanceladoCount);
+
+  // O aviso de lista incompleta mora dentro do dropdown DESDE o desenho de
+  // botão: quando as duas listas vazias podem ser MENTIRA (erro/truncagem na
+  // RPC de cancelados — "ausência do card não pode significar 'falhou'",
+  // teste painel-lista-estorno-devido), o sinal permanente é o próprio
+  // botão, que nasce mesmo sem pendência; o texto completo fica a um clique.
   const avisoIncompleto = incompleto ? (
     <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/20 p-5">
       <div className="flex items-start gap-3">
@@ -92,52 +162,49 @@ export function AlertasCancelados({
     </div>
   ) : null;
 
-  if (!temPendencia) return avisoIncompleto;
-
-  const titulo = temDinheiroPreso
-    ? avisoPagoAposCancelado
-    : "Pedidos cancelados pendentes";
-
   return (
-    <div className="space-y-3">
-      {avisoIncompleto}
+    <div ref={raizRef} className="relative shrink-0">
       <button
         type="button"
+        ref={alavancaRef}
         data-testid="alertas-cancelados-alavanca"
         aria-expanded={aberto}
         {...(aberto ? { "aria-controls": "alertas-cancelados-conteudo" } : {})}
+        aria-label={descricaoBotao}
+        title={descricaoBotao}
         onClick={() => setAberto((antes) => !antes)}
-        className="flex w-full items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-left transition-all hover:bg-amber-500/10"
+        className="relative flex size-9 shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-500 transition-all duration-300 hover:border-amber-500/50 hover:bg-amber-500/20 active:scale-95"
       >
-        <span className="flex min-w-0 items-center gap-3">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-500">
-            <AlertTriangle className="size-4" />
+        <AlertTriangle className="size-4" />
+        {badge > 0 ? (
+          <span
+            data-testid="alertas-cancelados-badge"
+            className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[9px] font-black leading-none text-black"
+          >
+            {badge}
           </span>
-          <span className="min-w-0">
-            <span className="block truncate text-[10px] font-black uppercase tracking-widest text-amber-500">
-              {titulo}
+        ) : (
+          // Sem pendência mas com lista incompleta: o sinal permanente é o
+          // "!" pulsante — o botão não pode se parecer com um estado normal
+          // justamente no único cenário em que as listas vazias são mentira.
+          incompleto && (
+            <span
+              data-testid="alertas-cancelados-badge"
+              className="absolute -right-1 -top-1 flex h-4 min-w-4 animate-pulse items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[9px] font-black leading-none text-black"
+            >
+              !
             </span>
-            {(pedidosEsperandoRetorno.length > 0 ||
-              pedidosParaDevolverAgora.length > 0) && (
-              <span className="mt-0.5 block truncate text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                {pedidosEsperandoRetorno.length > 0 &&
-                  `produto a voltar (${pedidosEsperandoRetorno.length})`}
-                {pedidosEsperandoRetorno.length > 0 &&
-                  pedidosParaDevolverAgora.length > 0 &&
-                  " · "}
-                {pedidosParaDevolverAgora.length > 0 &&
-                  `estorno devido (${pedidosParaDevolverAgora.length})`}
-              </span>
-            )}
-          </span>
-        </span>
-        <ChevronDown
-          className={`size-4 shrink-0 text-amber-500 transition-transform ${aberto ? "rotate-180" : ""}`}
-        />
+          )
+        )}
       </button>
 
       {aberto && (
-        <div id="alertas-cancelados-conteudo" className="space-y-4">
+        <div
+          id="alertas-cancelados-conteudo"
+          className="absolute right-0 top-full z-50 mt-3 max-h-[min(70vh,640px)] w-[min(calc(100vw-3rem),640px)] space-y-4 overflow-y-auto rounded-[2rem] border border-white/10 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-2xl"
+        >
+          {avisoIncompleto}
+
           {/* Aviso fixo: dinheiro recebido em pedido cancelado. Não some
               sozinho (sem botão de dispensar) — foi exatamente isso que fez
               o defeito passar despercebido antes, escondido só numa
@@ -164,7 +231,12 @@ export function AlertasCancelados({
                 </div>
                 <Button
                   variant="outline"
-                  onClick={onVerPedidos}
+                  onClick={() => {
+                    onVerPedidos();
+                    // Fechar antes de rolar: o dropdown não pode ficar
+                    // cobrindo exatamente a lista para onde a página vai.
+                    setAberto(false);
+                  }}
                   className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[10px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
                 >
                   Ver pedidos

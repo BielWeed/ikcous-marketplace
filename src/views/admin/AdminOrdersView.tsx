@@ -759,7 +759,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   };
 
   /**
-   * O botão "Ver pedidos" da pílula de alertas. O botão leva aos
+   * O botão "Ver pedidos" do dropdown de alertas (na pílula antiga era
+   * igual — só o contêiner mudou). O botão leva aos
    * CANCELADOS, não a um payment_status específico: a contagem larga cobre
    * as TRÊS portas do contrato ampliado ('pago', 'pago_apos_expirar' e,
    * desde a `20261021000000`, 'recebido_na_entrega' — com status=
@@ -1179,13 +1180,32 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           >
             <HelpCircle className="size-4.5" />
           </button>
-        </h1>
-        <div className="flex items-center gap-3">
           {/* Missão 06 (C3): a tag "Operações ao Vivo" mentia — ficava verde
               depois da carga mesmo com o tempo real morto. O ponto mostra o
               estado REAL de conexão (medido no AdminLayout e compartilhado);
-              o âmbar da carga inicial é o único "sincronizando" honesto. */}
-          <PontoDeOperacao sincronizando={!isLoaded} className="mr-2" />
+              o âmbar da carga inicial é o único "sincronizando" honesto.
+              Desde o pedido do Gabriel de 02/09 à tarde ele vive AQUI, ao
+              lado direito do título, para liberar o canto para o botão de
+              alertas (igual nas telas de Produtos e Clientes). */}
+          <PontoDeOperacao sincronizando={!isLoaded} />
+        </h1>
+        <div className="flex shrink-0 items-center gap-3">
+          {/* Botão de alerta + dropdown (pedido do Gabriel, 02/09 à tarde:
+              a pílula amarela virou botão com ícone de alerta no canto
+              direito da linha do título; os detalhes descem dele). Sem
+              pendência e lista completa, ele nem nasce. */}
+          <AlertasCancelados
+            pagoCanceladoCount={paidOnCancelledCount}
+            avisoPagoAposCancelado={avisoPagoAposCancelado}
+            pedidosEsperandoRetorno={pedidosEsperandoRetorno}
+            pedidosParaDevolverAgora={pedidosParaDevolverAgora}
+            incompleto={pedidosCanceladosIncompleto}
+            confirmandoRetornoId={confirmandoRetornoId}
+            onConfirmarRetorno={handleConfirmarRetorno}
+            estornandoId={estornandoId}
+            onRegistrarEstorno={registrarEstornoFeito}
+            onVerPedidos={irParaPedidosCancelados}
+          />
         </div>
       </div>
 
@@ -1199,234 +1219,220 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           <div className="space-y-4">
             <LocalErrorBoundary>
               <AdminKpiCarousel
+                active={active}
                 cards={kpiCards}
                 loading={(!isLoaded || loading) && !analyticsStats}
-                active={active}
                 title="Métricas de Pedidos"
               />
             </LocalErrorBoundary>
           </div>
         )}
 
-        {/* Alertas de pedidos cancelados colapsados numa pílula (pedido do
-            Gabriel, 02/09: os três blocos gigantes ficavam abertos o tempo
-            todo e empurravam a lista real de pedidos para fora da tela).
-            Conteúdo, textos e handlers intactos — o espaço é que mudou. */}
-        <AlertasCancelados
-          pagoCanceladoCount={paidOnCancelledCount}
-          avisoPagoAposCancelado={avisoPagoAposCancelado}
-          pedidosEsperandoRetorno={pedidosEsperandoRetorno}
-          pedidosParaDevolverAgora={pedidosParaDevolverAgora}
-          incompleto={pedidosCanceladosIncompleto}
-          confirmandoRetornoId={confirmandoRetornoId}
-          onConfirmarRetorno={handleConfirmarRetorno}
-          estornandoId={estornandoId}
-          onRegistrarEstorno={registrarEstornoFeito}
-          onVerPedidos={irParaPedidosCancelados}
-        />
-
         {/* Unified Control Bar Compacta — âncora do scroll do botão "Ver
-            pedidos" da pílula de alertas (id lido por
+            pedidos" do dropdown de alertas (id lido por
             `irParaPedidosCancelados`). */}
-        <div
-          id="admin-pedidos-lista"
-          className="relative mb-8 mt-4 flex flex-col border-t border-white/5 pt-8"
-        >
-          <div className="relative z-20 flex flex-col gap-6 md:flex-row md:items-center">
-            <div className="flex w-full flex-1 items-center gap-4">
-              <div className="group relative w-full">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-5">
-                  {!isLoaded || isTyping ? (
-                    <Loader2 className="size-5 animate-spin text-admin-gold" />
-                  ) : (
-                    <Search className="size-5 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
-                  )}
-                </div>
-                <label htmlFor="orders-search" className="sr-only">
-                  Buscar pedidos
-                </label>
-                <DebouncedSearchInput
-                  id="orders-search"
-                  name="search"
-                  placeholder="Buscar pedidos..."
-                  className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 pl-14 text-sm font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
-                  value={searchQuery}
-                  onChange={(val) => {
-                    setSearchQuery(val);
-                    setCurrentPage(0);
-                  }}
-                  onTyping={setIsTyping}
-                  delay={300}
-                />
+        {/* Barra de busca + chips de filtro ancorados (pedido do Gabriel,
+            02/09: os chips fazem parte da mesma âncora). Filha DIRETA do
+            container que rola — sticky só anda dentro do próprio containing
+            block. O id="admin-pedidos-lista" (âncora do scroll do botão
+            "Ver pedidos") fica no bloco da lista, mais abaixo. */}
+        <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="flex w-full items-center gap-3">
+            <div className="group relative w-full flex-1">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                {!isLoaded || isTyping ? (
+                  <Loader2 className="size-4 animate-spin text-admin-gold" />
+                ) : (
+                  <Search className="size-4 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
+                )}
               </div>
+              <label htmlFor="orders-search" className="sr-only">
+                Buscar pedidos
+              </label>
+              <DebouncedSearchInput
+                id="orders-search"
+                name="search"
+                placeholder="Buscar pedidos..."
+                className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
+                value={searchQuery}
+                onChange={(val) => {
+                  setSearchQuery(val);
+                  setCurrentPage(0);
+                }}
+                onTyping={setIsTyping}
+                delay={300}
+              />
+            </div>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="group relative size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
-                  >
-                    <Filter className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                    {paymentFilter !== "all" && (
-                      // O filtro persiste em localStorage: sem isto, o admin
-                      // reabre a tela já filtrada sem nenhuma pista visível
-                      // (achado da revisão da Task 9).
-                      <span
-                        aria-hidden="true"
-                        className="absolute right-2.5 top-2.5 size-2 rounded-full bg-admin-gold shadow-[0_0_6px_rgba(212,175,55,0.6)]"
-                      />
-                    )}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  className="mt-2 w-80 rounded-3xl border-zinc-800/50 bg-zinc-950 p-4 shadow-2xl backdrop-blur-3xl"
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="group relative size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
                 >
-                  <div className="space-y-4">
-                    <h4 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                      Filtro Temporal
-                    </h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="group relative">
-                        <Input
-                          id="filter-date-start"
-                          name="start-date"
-                          type="date"
-                          autoComplete="off"
-                          className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 px-4 pb-1 pt-5 text-xs font-bold text-white transition-all [color-scheme:dark] focus:border-admin-gold/50 focus:ring-admin-gold/20"
-                          value={dateRange.start}
-                          onChange={(e) => {
-                            setDateRange((prev) => ({
-                              ...prev,
-                              start: e.target.value,
-                            }));
-                            setCurrentPage(0);
-                          }}
-                        />
-                        <label
-                          htmlFor="filter-date-start"
-                          className="pointer-events-none absolute left-4 top-2 text-[7px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
-                        >
-                          Início
-                        </label>
-                      </div>
-                      <div className="group relative">
-                        <Input
-                          id="filter-date-end"
-                          name="end-date"
-                          type="date"
-                          autoComplete="off"
-                          className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 px-4 pb-1 pt-5 text-xs font-bold text-white transition-all [color-scheme:dark] focus:border-admin-gold/50 focus:ring-admin-gold/20"
-                          value={dateRange.end}
-                          onChange={(e) => {
-                            setDateRange((prev) => ({
-                              ...prev,
-                              end: e.target.value,
-                            }));
-                            setCurrentPage(0);
-                          }}
-                        />
-                        <label
-                          htmlFor="filter-date-end"
-                          className="pointer-events-none absolute left-4 top-2 text-[7px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
-                        >
-                          Fim
-                        </label>
-                      </div>
-                    </div>
-                    {(dateRange.start || dateRange.end) && (
-                      <Button
-                        variant="ghost"
-                        className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
-                        onClick={() => {
-                          setDateRange({ start: "", end: "" });
+                  <Filter className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                  {paymentFilter !== "all" && (
+                    // O filtro persiste em localStorage: sem isto, o admin
+                    // reabre a tela já filtrada sem nenhuma pista visível
+                    // (achado da revisão da Task 9).
+                    <span
+                      aria-hidden="true"
+                      className="absolute right-2.5 top-2.5 size-2 rounded-full bg-admin-gold shadow-[0_0_6px_rgba(212,175,55,0.6)]"
+                    />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="mt-2 w-80 rounded-3xl border-zinc-800/50 bg-zinc-950 p-4 shadow-2xl backdrop-blur-3xl"
+              >
+                <div className="space-y-4">
+                  <h4 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                    Filtro Temporal
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="group relative">
+                      <Input
+                        id="filter-date-start"
+                        name="start-date"
+                        type="date"
+                        autoComplete="off"
+                        className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 px-4 pb-1 pt-5 text-xs font-bold text-white transition-all [color-scheme:dark] focus:border-admin-gold/50 focus:ring-admin-gold/20"
+                        value={dateRange.start}
+                        onChange={(e) => {
+                          setDateRange((prev) => ({
+                            ...prev,
+                            start: e.target.value,
+                          }));
                           setCurrentPage(0);
                         }}
+                      />
+                      <label
+                        htmlFor="filter-date-start"
+                        className="pointer-events-none absolute left-4 top-2 text-[7px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
                       >
-                        Limpar Datas
-                      </Button>
-                    )}
+                        Início
+                      </label>
+                    </div>
+                    <div className="group relative">
+                      <Input
+                        id="filter-date-end"
+                        name="end-date"
+                        type="date"
+                        autoComplete="off"
+                        className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 px-4 pb-1 pt-5 text-xs font-bold text-white transition-all [color-scheme:dark] focus:border-admin-gold/50 focus:ring-admin-gold/20"
+                        value={dateRange.end}
+                        onChange={(e) => {
+                          setDateRange((prev) => ({
+                            ...prev,
+                            end: e.target.value,
+                          }));
+                          setCurrentPage(0);
+                        }}
+                      />
+                      <label
+                        htmlFor="filter-date-end"
+                        className="pointer-events-none absolute left-4 top-2 text-[7px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
+                      >
+                        Fim
+                      </label>
+                    </div>
+                  </div>
+                  {(dateRange.start || dateRange.end) && (
+                    <Button
+                      variant="ghost"
+                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                      onClick={() => {
+                        setDateRange({ start: "", end: "" });
+                        setCurrentPage(0);
+                      }}
+                    >
+                      Limpar Datas
+                    </Button>
+                  )}
 
-                    <h4 className="mt-6 px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                      Status de Pagamento
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
+                  <h4 className="mt-6 px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                    Status de Pagamento
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentFilter("all");
+                        setCurrentPage(0);
+                      }}
+                      className={cn(
+                        "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                        paymentFilter === "all"
+                          ? "bg-admin-gold border-admin-gold text-black"
+                          : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                      )}
+                    >
+                      Todos
+                    </button>
+                    {PAYMENT_STATUS_FILTER_VALUES.map((value) => (
                       <button
+                        key={value}
                         type="button"
                         onClick={() => {
-                          setPaymentFilter("all");
+                          setPaymentFilter(value);
                           setCurrentPage(0);
                         }}
                         className={cn(
                           "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
-                          paymentFilter === "all"
+                          paymentFilter === value
                             ? "bg-admin-gold border-admin-gold text-black"
                             : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
                         )}
                       >
-                        Todos
+                        {getPaymentStatusConfig(value).label}
                       </button>
-                      {PAYMENT_STATUS_FILTER_VALUES.map((value) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => {
-                            setPaymentFilter(value);
-                            setCurrentPage(0);
-                          }}
-                          className={cn(
-                            "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
-                            paymentFilter === value
-                              ? "bg-admin-gold border-admin-gold text-black"
-                              : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
-                          )}
-                        >
-                          {getPaymentStatusConfig(value).label}
-                        </button>
-                      ))}
-                    </div>
-                    {paymentFilter !== "all" && (
-                      <Button
-                        variant="ghost"
-                        className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
-                        onClick={() => {
-                          setPaymentFilter("all");
-                          setCurrentPage(0);
-                        }}
-                      >
-                        Limpar Status de Pagamento
-                      </Button>
-                    )}
+                    ))}
                   </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  {paymentFilter !== "all" && (
+                    <Button
+                      variant="ghost"
+                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                      onClick={() => {
+                        setPaymentFilter("all");
+                        setCurrentPage(0);
+                      }}
+                    >
+                      Limpar Status de Pagamento
+                    </Button>
+                  )}
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() =>
-                  setViewMode((prev) =>
-                    prev === "detailed" ? "compact" : "detailed",
-                  )
-                }
-                className="group size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
-                title={
-                  viewMode === "detailed"
-                    ? "Visualização Compacta"
-                    : "Visualização Detalhada"
-                }
-              >
-                {viewMode === "detailed" ? (
-                  <LayoutGrid className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                ) : (
-                  <List className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                )}
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() =>
+                setViewMode((prev) =>
+                  prev === "detailed" ? "compact" : "detailed",
+                )
+              }
+              className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
+              title={
+                viewMode === "detailed"
+                  ? "Visualização Compacta"
+                  : "Visualização Detalhada"
+              }
+            >
+              {viewMode === "detailed" ? (
+                <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+              ) : (
+                <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+              )}
+            </Button>
           </div>
 
-          <div className="custom-scrollbar-hidden relative z-10 flex w-full snap-x gap-3 overflow-x-auto pt-6">
+          {/* Fileira de filtros de status — parte da MESMA âncora da busca
+                (pedido do Gabriel, 02/09): gruda junto com ela. */}
+          <div className="flex w-full snap-x gap-3 overflow-x-auto pt-3">
+            {" "}
             <button
               onClick={() => {
                 setFilter("open");
@@ -1485,179 +1491,187 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         </div>
 
         {/* Orders List */}
-        <LocalErrorBoundary>
-          <div
-            className={cn(
-              "space-y-8 relative transition-opacity duration-300 min-h-[400px]",
-              !isLoaded && "opacity-50 pointer-events-none",
-            )}
-          >
-            {isLoaded && showVisualLoading && (
-              <div className="admin-sync-progress-bar" />
-            )}
-            {!isLoaded && paginatedOrders.length === 0 ? (
-              viewMode === "detailed" ? (
-                <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="flex h-[278px] animate-pulse flex-col justify-between space-y-6 rounded-[3rem] border border-white/5 bg-zinc-950/40 p-8 shadow-[0_20px_60px_rgba(0,0,0,0.3)] backdrop-blur-md"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Skeleton className="size-10 rounded-xl bg-white/5" />
-                          <div className="space-y-2">
-                            <Skeleton className="h-3 w-16 bg-white/5" />
-                            <Skeleton className="h-2.5 w-12 bg-white/5" />
+        <div
+          id="admin-pedidos-lista"
+          className="relative border-t border-white/5 pt-6"
+        >
+          <LocalErrorBoundary>
+            <div
+              className={cn(
+                "space-y-8 relative transition-opacity duration-300 min-h-[400px]",
+                !isLoaded && "opacity-50 pointer-events-none",
+              )}
+            >
+              {isLoaded && showVisualLoading && (
+                <div className="admin-sync-progress-bar" />
+              )}
+              {!isLoaded && paginatedOrders.length === 0 ? (
+                viewMode === "detailed" ? (
+                  <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="flex h-[278px] animate-pulse flex-col justify-between space-y-6 rounded-[3rem] border border-white/5 bg-zinc-950/40 p-8 shadow-[0_20px_60px_rgba(0,0,0,0.3)] backdrop-blur-md"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <Skeleton className="size-10 rounded-xl bg-white/5" />
+                            <div className="space-y-2">
+                              <Skeleton className="h-3 w-16 bg-white/5" />
+                              <Skeleton className="h-2.5 w-12 bg-white/5" />
+                            </div>
                           </div>
+                          <Skeleton className="h-5 w-16 rounded-full bg-white/5" />
                         </div>
-                        <Skeleton className="h-5 w-16 rounded-full bg-white/5" />
+                        <div className="space-y-2">
+                          <Skeleton className="h-6 w-3/4 bg-white/5" />
+                          <Skeleton className="h-3 w-1/2 bg-white/5" />
+                        </div>
+                        <div className="flex items-end justify-between border-t border-white/5 pt-4">
+                          <div className="space-y-1">
+                            <Skeleton className="h-2.5 w-12 bg-white/5" />
+                            <Skeleton className="h-6 w-24 bg-white/5" />
+                          </div>
+                          <Skeleton className="size-12 rounded-2xl bg-white/5" />
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        <Skeleton className="h-6 w-3/4 bg-white/5" />
-                        <Skeleton className="h-3 w-1/2 bg-white/5" />
-                      </div>
-                      <div className="flex items-end justify-between border-t border-white/5 pt-4">
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {Array.from({ length: 10 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="flex h-[164px] animate-pulse flex-col justify-between rounded-[2rem] border border-white/5 bg-zinc-950/40 p-4 shadow-lg backdrop-blur-md sm:p-5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Skeleton className="size-8 rounded-lg bg-white/5" />
+                            <div className="space-y-1">
+                              <Skeleton className="h-2.5 w-12 bg-white/5" />
+                              <Skeleton className="h-2 w-8 bg-white/5" />
+                            </div>
+                          </div>
+                          <Skeleton className="h-4.5 w-12 rounded-full bg-white/5" />
+                        </div>
                         <div className="space-y-1">
-                          <Skeleton className="h-2.5 w-12 bg-white/5" />
-                          <Skeleton className="h-6 w-24 bg-white/5" />
+                          <Skeleton className="h-4 w-3/4 bg-white/5" />
+                          <Skeleton className="h-2.5 w-1/2 bg-white/5" />
                         </div>
-                        <Skeleton className="size-12 rounded-2xl bg-white/5" />
+                        <div className="flex items-center justify-between border-t border-white/5 pt-3">
+                          <div className="space-y-1">
+                            <Skeleton className="h-2 w-8 bg-white/5" />
+                            <Skeleton className="h-4 w-16 bg-white/5" />
+                          </div>
+                          <Skeleton className="size-9 rounded-xl bg-white/5" />
+                        </div>
                       </div>
-                    </div>
+                    ))}
+                  </div>
+                )
+              ) : paginatedOrders.length === 0 ? (
+                <div className="admin-glass relative flex flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-white/5 px-6 py-12 text-center">
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-admin-gold/[0.02] to-transparent" />
+                  <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
+                    <Package className="size-6 text-zinc-600" />
+                  </div>
+                  {totalAbsolutoNaLoja === 0 ? (
+                    // O COUNT sem filtro nenhum voltou ZERO: a loja não tem
+                    // venda nenhuma. Falar de filtro/busca para quem ainda
+                    // não tem o primeiro pedido é receita de confusão (relato
+                    // do Gabriel, 02/09 — a foto mostrava a loja vazia com a
+                    // orientação de "limpar o filtro").
+                    <>
+                      <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
+                        Ainda não tem nenhum pedido
+                      </h3>
+                      <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                        Quando a primeira venda acontecer, o pedido aparece aqui
+                        — com status, valor e o atalho de WhatsApp para o
+                        cliente.
+                      </p>
+                    </>
+                  ) : paymentFilter !== "all" ? (
+                    // O filtro de payment_status roda NO BANCO (lista E
+                    // contagem). Lista vazia aqui é "não existe nenhum pedido
+                    // com este status" — a saída honesta é limpar o filtro.
+                    // Laudo 0109 (A-5): o texto antigo mandava paginar por um
+                    // filtro client-side que morreu.
+                    <>
+                      <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
+                        Nenhum pedido com esse filtro de pagamento
+                      </h3>
+                      <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                        Nenhum pedido com esse status de pagamento. Limpe o
+                        filtro para ver todos os pedidos.
+                      </p>
+                    </>
+                  ) : filter !== "all" ||
+                    searchQuery.trim() !== "" ||
+                    dateRange.start ||
+                    dateRange.end ? (
+                    // O padrão da tela virou "Em Aberto" — um resultado já
+                    // FILTRADO no servidor — e a busca/período são ANDados com
+                    // esse filtro. Lista vazia aqui não prova "loja sem
+                    // pedido nenhum", só que nada bate com o que está sendo
+                    // pedido agora. Achado da revisão desta tarefa: 75 dos 83
+                    // pedidos do banco caem aqui se buscados pelo número na
+                    // tela padrão — dizer o absoluto manda a lojista desistir
+                    // de um pedido que existe.
+                    <>
+                      <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
+                        Nenhum pedido corresponde ao que está sendo mostrado
+                        agora
+                      </h3>
+                      <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                        Pode ser o filtro de status, a busca ou o período
+                        aplicado. Toque em "Todos", no fim da fileira de
+                        filtros, ou limpe a busca e o período para ver todos os
+                        pedidos.
+                      </p>
+                    </>
+                  ) : (
+                    // Sem filtro de status, sem busca e sem período: aqui a
+                    // lista vazia é mesmo "loja sem pedido nenhum".
+                    <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
+                      Ainda não tem nenhum pedido
+                    </h3>
+                  )}
+                </div>
+              ) : viewMode === "detailed" ? (
+                <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+                  {paginatedOrders.map((order) => (
+                    <AdminOrderCard
+                      key={order.id}
+                      order={order}
+                      viewMode="detailed"
+                      onSelect={handleSelectOrder}
+                      onWhatsApp={handleWhatsApp}
+                      changeType={recentOrderChanges[order.id]}
+                      onRegistrarPagamento={handleRegistrarPagamento}
+                      registrandoPagamento={registrandoPagamentoId === order.id}
+                    />
                   ))}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {Array.from({ length: 10 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="flex h-[164px] animate-pulse flex-col justify-between rounded-[2rem] border border-white/5 bg-zinc-950/40 p-4 shadow-lg backdrop-blur-md sm:p-5"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Skeleton className="size-8 rounded-lg bg-white/5" />
-                          <div className="space-y-1">
-                            <Skeleton className="h-2.5 w-12 bg-white/5" />
-                            <Skeleton className="h-2 w-8 bg-white/5" />
-                          </div>
-                        </div>
-                        <Skeleton className="h-4.5 w-12 rounded-full bg-white/5" />
-                      </div>
-                      <div className="space-y-1">
-                        <Skeleton className="h-4 w-3/4 bg-white/5" />
-                        <Skeleton className="h-2.5 w-1/2 bg-white/5" />
-                      </div>
-                      <div className="flex items-center justify-between border-t border-white/5 pt-3">
-                        <div className="space-y-1">
-                          <Skeleton className="h-2 w-8 bg-white/5" />
-                          <Skeleton className="h-4 w-16 bg-white/5" />
-                        </div>
-                        <Skeleton className="size-9 rounded-xl bg-white/5" />
-                      </div>
-                    </div>
+                  {paginatedOrders.map((order) => (
+                    <AdminOrderCard
+                      key={order.id}
+                      order={order}
+                      viewMode="compact"
+                      onSelect={handleSelectOrder}
+                      onWhatsApp={handleWhatsApp}
+                      changeType={recentOrderChanges[order.id]}
+                      onRegistrarPagamento={handleRegistrarPagamento}
+                      registrandoPagamento={registrandoPagamentoId === order.id}
+                    />
                   ))}
                 </div>
-              )
-            ) : paginatedOrders.length === 0 ? (
-              <div className="admin-glass relative flex flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-white/5 px-6 py-12 text-center">
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-admin-gold/[0.02] to-transparent" />
-                <div className="relative z-10 mb-3 rounded-full border border-white/5 bg-zinc-900/60 p-4 shadow-xl">
-                  <Package className="size-6 text-zinc-600" />
-                </div>
-                {totalAbsolutoNaLoja === 0 ? (
-                  // O COUNT sem filtro nenhum voltou ZERO: a loja não tem
-                  // venda nenhuma. Falar de filtro/busca para quem ainda
-                  // não tem o primeiro pedido é receita de confusão (relato
-                  // do Gabriel, 02/09 — a foto mostrava a loja vazia com a
-                  // orientação de "limpar o filtro").
-                  <>
-                    <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-                      Ainda não tem nenhum pedido
-                    </h3>
-                    <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
-                      Quando a primeira venda acontecer, o pedido aparece aqui —
-                      com status, valor e o atalho de WhatsApp para o cliente.
-                    </p>
-                  </>
-                ) : paymentFilter !== "all" ? (
-                  // O filtro de payment_status roda NO BANCO (lista E
-                  // contagem). Lista vazia aqui é "não existe nenhum pedido
-                  // com este status" — a saída honesta é limpar o filtro.
-                  // Laudo 0109 (A-5): o texto antigo mandava paginar por um
-                  // filtro client-side que morreu.
-                  <>
-                    <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-                      Nenhum pedido com esse filtro de pagamento
-                    </h3>
-                    <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
-                      Nenhum pedido com esse status de pagamento. Limpe o filtro
-                      para ver todos os pedidos.
-                    </p>
-                  </>
-                ) : filter !== "all" ||
-                  searchQuery.trim() !== "" ||
-                  dateRange.start ||
-                  dateRange.end ? (
-                  // O padrão da tela virou "Em Aberto" — um resultado já
-                  // FILTRADO no servidor — e a busca/período são ANDados com
-                  // esse filtro. Lista vazia aqui não prova "loja sem
-                  // pedido nenhum", só que nada bate com o que está sendo
-                  // pedido agora. Achado da revisão desta tarefa: 75 dos 83
-                  // pedidos do banco caem aqui se buscados pelo número na
-                  // tela padrão — dizer o absoluto manda a lojista desistir
-                  // de um pedido que existe.
-                  <>
-                    <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-                      Nenhum pedido corresponde ao que está sendo mostrado agora
-                    </h3>
-                    <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
-                      Pode ser o filtro de status, a busca ou o período
-                      aplicado. Toque em "Todos", no fim da fileira de filtros,
-                      ou limpe a busca e o período para ver todos os pedidos.
-                    </p>
-                  </>
-                ) : (
-                  // Sem filtro de status, sem busca e sem período: aqui a
-                  // lista vazia é mesmo "loja sem pedido nenhum".
-                  <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
-                    Ainda não tem nenhum pedido
-                  </h3>
-                )}
-              </div>
-            ) : viewMode === "detailed" ? (
-              <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-                {paginatedOrders.map((order) => (
-                  <AdminOrderCard
-                    key={order.id}
-                    order={order}
-                    viewMode="detailed"
-                    onSelect={handleSelectOrder}
-                    onWhatsApp={handleWhatsApp}
-                    changeType={recentOrderChanges[order.id]}
-                    onRegistrarPagamento={handleRegistrarPagamento}
-                    registrandoPagamento={registrandoPagamentoId === order.id}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {paginatedOrders.map((order) => (
-                  <AdminOrderCard
-                    key={order.id}
-                    order={order}
-                    viewMode="compact"
-                    onSelect={handleSelectOrder}
-                    onWhatsApp={handleWhatsApp}
-                    changeType={recentOrderChanges[order.id]}
-                    onRegistrarPagamento={handleRegistrarPagamento}
-                    registrandoPagamento={registrandoPagamentoId === order.id}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </LocalErrorBoundary>
+              )}
+            </div>
+          </LocalErrorBoundary>
+        </div>
 
         {/* Missão 06 (C2): paginação única do painel. "Perfil do Setor" morre;
             o contador "Exibindo X - Y de Z" é o retorno de total que faltava
@@ -1675,11 +1689,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               document.querySelector("main");
             if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
           }}
-          className="pt-12"
         />
       </div>
-
-      {/* Modal de Ajuda */}
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}

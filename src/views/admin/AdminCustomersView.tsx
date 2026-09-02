@@ -29,7 +29,6 @@ import type { View } from "@/types";
 import {
   ArrowUpDown,
   Calendar,
-  Filter,
   HelpCircle,
   LayoutGrid,
   List,
@@ -37,7 +36,6 @@ import {
   Mail,
   MoreHorizontal,
   Phone,
-  RefreshCw,
   Search,
   Shield,
   ShoppingBag,
@@ -54,6 +52,14 @@ import {
   cachedCustomersData,
   setCachedCustomersData,
 } from "@/utils/admin_cache";
+
+/** Ordenações da fileira de chips abaixo da busca (o funil dropdown virou
+ * chips — pedido do Gabriel de 02/09; mesmos pares campo/direção de antes). */
+const ORDENACOES_CLIENTES = [
+  { campo: "total_spent", direcao: "desc", rotulo: "Maior LTV" },
+  { campo: "orders_count", direcao: "desc", rotulo: "Mais Pedidos" },
+  { campo: "full_name", direcao: "asc", rotulo: "Alfabética" },
+] as const;
 
 interface AdminCustomersViewProps {
   onNavigate: (view: View, id?: string) => void;
@@ -445,12 +451,12 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           >
             <HelpCircle className="size-4.5" />
           </button>
-        </h1>
-        <div className="flex items-center gap-3">
           {/* Missão 06 (C3): ponto com estado real de conexão no lugar da
-              tag que ficava verde após a carga. */}
-          <PontoDeOperacao sincronizando={loading} className="mr-2" />
-        </div>
+              tag que ficava verde após a carga. Desde o pedido do Gabriel de
+              02/09 à tarde ele vive AQUI, ao lado direito do título (igual
+              em Pedidos e Produtos), fora do canto da tela. */}
+          <PontoDeOperacao sincronizando={loading} />
+        </h1>
       </div>
 
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">
@@ -462,23 +468,26 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         <div className="space-y-4">
           <LocalErrorBoundary>
             <AdminKpiCarousel
+              active={active}
               cards={kpiCards}
               loading={loading && !globalStats}
-              active={active}
               title="Métricas de Clientes"
             />
           </LocalErrorBoundary>
         </div>
         {/* Unified Control Bar Compacta */}
-        <div className="relative mb-8 mt-4 flex flex-col border-t border-white/5 pt-8">
-          <div className="relative z-20 flex flex-col gap-6 md:flex-row md:items-center">
-            <div className="flex w-full flex-1 items-center gap-4">
-              <div className="group relative w-full">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-5">
+        <div className="relative z-30 mb-5 mt-3 flex flex-col border-t border-white/5 pt-4">
+          {/* Sticky de filha DIRETA deste bloco (que contém a lista): sticky
+              só anda dentro do próprio containing block — embrulhada num
+              wrapper da própria altura ela nunca gruda (achado 1 da revisão). */}
+          <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+            <div className="flex w-full items-center gap-3">
+              <div className="group relative w-full flex-1">
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
                   {loading || isTyping ? (
-                    <Loader2 className="size-5 animate-spin text-admin-gold" />
+                    <Loader2 className="size-4 animate-spin text-admin-gold" />
                   ) : (
-                    <Search className="size-5 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
+                    <Search className="size-4 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
                   )}
                 </div>
                 <label htmlFor="customers-search" className="sr-only">
@@ -488,7 +497,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                   id="customers-search"
                   name="search"
                   placeholder="Buscar clientes..."
-                  className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 pl-14 text-sm font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
+                  className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
                   value={searchTerm}
                   onChange={(val) => {
                     setSearchTerm(val);
@@ -500,52 +509,6 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                 />
               </div>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="group size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
-                  >
-                    <Filter className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="mt-2 w-56 rounded-2xl border-zinc-800/50 bg-zinc-950 p-2 shadow-2xl backdrop-blur-3xl">
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setSortField("total_spent");
-                      setSortDirection("desc");
-                      setPage(0);
-                      shouldScrollToTop.current = true;
-                    }}
-                    className="mb-1 cursor-pointer rounded-xl px-4 py-3 text-xs font-bold text-zinc-400 transition-all focus:bg-white/5 focus:text-white"
-                  >
-                    Maior LTV (Gasto Total)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setSortField("orders_count");
-                      setSortDirection("desc");
-                      setPage(0);
-                      shouldScrollToTop.current = true;
-                    }}
-                    className="mb-1 cursor-pointer rounded-xl px-4 py-3 text-xs font-bold text-zinc-400 transition-all focus:bg-white/5 focus:text-white"
-                  >
-                    Mais Pedidos Efetuados
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setSortField("full_name");
-                      setSortDirection("asc");
-                      setPage(0);
-                      shouldScrollToTop.current = true;
-                    }}
-                    className="mb-1 cursor-pointer rounded-xl px-4 py-3 text-xs font-bold text-zinc-400 transition-all last:mb-0 focus:bg-white/5 focus:text-white"
-                  >
-                    Ordem Alfabética (Nome)
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
               <Button
                 variant="outline"
                 size="icon"
@@ -554,7 +517,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                     prev === "detailed" ? "compact" : "detailed",
                   )
                 }
-                className="group size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
+                className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
                 title={
                   viewMode === "detailed"
                     ? "Visualização Compacta"
@@ -562,25 +525,36 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                 }
               >
                 {viewMode === "detailed" ? (
-                  <LayoutGrid className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                  <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
                 ) : (
-                  <List className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                  <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
                 )}
               </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => !isOffline && fetchCustomers(page)}
-                disabled={loading || isOffline}
-                className="group size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/50 transition-all hover:border-admin-gold hover:bg-admin-gold disabled:opacity-40"
-              >
-                <RefreshCw
+            </div>
+
+            {/* Chips de ordenação (pedido do Gabriel, 02/09: a mesma fileira
+                de filtros da tela de Pedidos — substitui o funil dropdown).
+                Parte da MESMA âncora da busca: gruda junto com ela. */}
+            <div className="custom-scrollbar-hidden relative flex w-full snap-x gap-3 overflow-x-auto pt-3">
+              {ORDENACOES_CLIENTES.map((o) => (
+                <button
+                  key={o.campo}
+                  onClick={() => {
+                    setSortField(o.campo);
+                    setSortDirection(o.direcao);
+                    setPage(0);
+                    shouldScrollToTop.current = true;
+                  }}
                   className={cn(
-                    "w-5 h-5 text-zinc-500 group-hover:text-black transition-colors",
-                    loading && "animate-spin text-admin-gold",
+                    "h-11 shrink-0 snap-center rounded-xl border px-5 text-[10px] font-black uppercase tracking-widest transition-all",
+                    sortField === o.campo && sortDirection === o.direcao
+                      ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+                      : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
                   )}
-                />
-              </Button>
+                >
+                  {o.rotulo}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -617,7 +591,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                 ) : viewMode === "detailed" ? (
                   <>
                     {/* Desktop Headers */}
-                    <div className="sticky top-0 z-20 hidden grid-cols-12 gap-4 border-b border-zinc-800/50 bg-zinc-900/60 px-8 py-5 shadow-sm md:grid">
+                    <div className="sticky top-[120px] z-20 hidden grid-cols-12 gap-4 border-b border-zinc-800/50 bg-zinc-900/60 px-8 py-5 shadow-sm md:grid">
                       <div
                         className="group/th col-span-4 flex cursor-pointer items-center gap-2"
                         onClick={() => handleSort("full_name")}
@@ -720,7 +694,8 @@ export const AdminCustomersView = memo(function AdminCustomersView({
             </div>
           </LocalErrorBoundary>
           {/* Missão 06 (C2): paginação única — "Segmento" morre e o tamanho de
-              página alinha com pedidos/produtos (12). */}
+              página alinha com pedidos/produtos (12). Sem cartão próprio:
+              mesmo padrão limpo das outras telas (pedido do Gabriel, 02/09). */}
           <PaginacaoAdmin
             pagina={page}
             totalPaginas={totalPages}
@@ -730,7 +705,6 @@ export const AdminCustomersView = memo(function AdminCustomersView({
               setPage(nova);
               shouldScrollToTop.current = true;
             }}
-            className="mt-0 border-t border-zinc-800/50 bg-zinc-900/60 px-8 py-5"
           />
         </div>
       </div>

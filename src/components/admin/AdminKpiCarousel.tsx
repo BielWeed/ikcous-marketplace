@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 import useEmblaCarousel from "embla-carousel-react";
-import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type React from "react";
@@ -28,147 +27,91 @@ interface AdminKpiCarouselProps {
   readonly active?: boolean;
 }
 
+/**
+ * Card COMPACTO (pedido do Gabriel de 02/09 à tarde: a faixa de métricas
+ * ocupava um espaço enorme — card vertical de 128px de altura mínima para
+ * mostrar UM número, com o carrossel mostrando só 4 por vez no desktop).
+ * O dono virou a versão em grade e decidiu: carrossel fica, card encolhe.
+ * Layout horizontal (ícone + rótulo em cima, valor grande na linha de
+ * baixo, ~64px de altura) e slides mais densos — mais métricas visíveis
+ * na mesma largura, metade da altura.
+ */
 const KpiCard = memo(function KpiCard({
   stat,
-  isCompact = false,
 }: {
   readonly stat: KpiCardConfig;
-  readonly index: number;
-  readonly isCompact?: boolean;
 }) {
   const Icon = stat.icon;
+  const temAlturaFixa = !stat.content && !stat.footer;
 
   return (
-    <motion.div
-      initial={false}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-      whileHover={{ y: -3, scale: 1.015 }}
+    <div
       className={cn(
-        "bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 border border-white/[0.04] shadow-2xl relative group transition-colors duration-300 w-full select-none cursor-default flex",
-        isCompact
-          ? "flex-row items-center justify-between p-3 rounded-xl min-h-[64px] sm:flex-col sm:items-stretch sm:justify-start sm:p-5 sm:rounded-[1.5rem] sm:min-h-[128px]"
-          : "flex-col p-5 rounded-[1.5rem] min-h-[128px]",
+        // Altura FIXA nas métricas simples (Pedidos/Produtos/Clientes/
+        // Cupons/Dashboard): a faixa fica idêntica em qualquer tela — era
+        // isto que o dono pediu ("padronizada, uma não maior que a outra").
+        // Card com conteúdo extra (barra de progresso das Perguntas,
+        // rodapé dos Cupons) cresce o mínimo necessário com overflow
+        // escondido para nunca romper o desenho.
+        "group relative flex select-none items-center gap-2.5 overflow-hidden rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-3 shadow-lg transition-colors duration-300 sm:gap-3",
+        temAlturaFixa ? "h-16 sm:h-[68px]" : "min-h-16 sm:min-h-[68px]",
         stat.hoverBorder ||
           "hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.06)]",
       )}
-      style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
     >
       <div
         className={cn(
-          "flex items-center gap-2.5 sm:gap-3",
-          isCompact ? "mb-0 sm:mb-4" : "mb-4",
+          "flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-950 shadow-inner transition-colors duration-300 group-hover:border-admin-gold/20",
+          stat.accent,
         )}
       >
-        <div
+        <Icon
           className={cn(
-            "flex items-center justify-center border border-white/5 shadow-inner bg-zinc-950 transition-colors duration-300 group-hover:border-admin-gold/20",
-            isCompact
-              ? "w-8 h-8 rounded-lg sm:w-10 sm:h-10 sm:rounded-xl"
-              : "w-10 h-10 rounded-xl",
-            stat.iconBg || "bg-zinc-950 border-white/5",
-            stat.accent,
+            "size-4 shrink-0 transition-transform duration-500 group-hover:scale-110",
+            stat.iconClass,
           )}
-        >
-          <Icon
-            className={cn(
-              "flex-shrink-0 transition-transform duration-500 group-hover:scale-110",
-              isCompact ? "w-3.5 h-3.5 sm:w-4 sm:h-4" : "w-4 h-4",
-              stat.iconClass,
-            )}
-          />
-        </div>
-        <p className="text-[9px] font-black uppercase leading-tight tracking-[0.2em] text-zinc-500 transition-colors duration-300 group-hover:text-zinc-400 sm:text-[11px]">
-          {stat.label}
-        </p>
+        />
       </div>
 
-      <div
-        className={cn(
-          "relative z-10 flex flex-col xl:flex-row xl:items-baseline xl:gap-2",
-          isCompact ? "items-end sm:items-start gap-0.5 sm:gap-1" : "gap-1",
-        )}
-      >
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[8.5px] font-black uppercase leading-none tracking-[0.18em] text-zinc-500 transition-colors duration-300 group-hover:text-zinc-400">
+          {stat.label}
+        </p>
+        {/* Valor na linha INTEIRA (pedido do Gabriel, 02/09: o dado completo
+            não cabia — "R$ 1.31... / CAPITAL LIQ..." era valor e subtítulo
+            brigando pela mesma linha). Empilhado em 3 linhas dentro da
+            mesma altura: rótulo / valor / subtítulo. */}
         <h3
           className={cn(
-            "whitespace-nowrap font-black leading-none tracking-tighter text-white transition-colors duration-300 group-hover:text-admin-gold sm:text-2xl",
-            isCompact ? "text-base sm:text-xl" : "text-xl sm:text-2xl",
+            "truncate font-black leading-tight tracking-tighter text-white transition-colors duration-300 group-hover:text-admin-gold sm:text-lg",
+            stat.subValue || stat.footer ? "text-base" : "text-lg",
           )}
         >
           {stat.value}
         </h3>
         {stat.subValue && (
-          <p
-            className={cn(
-              "truncate font-bold uppercase tracking-tight text-zinc-600 opacity-80 transition-colors duration-300 group-hover:text-zinc-500 xl:whitespace-nowrap",
-              isCompact ? "text-[8px] sm:text-[9px]" : "text-[9px]",
-            )}
-          >
+          <p className="truncate text-[9px] font-bold uppercase leading-none tracking-tight text-zinc-600 opacity-80 transition-colors duration-300 group-hover:text-zinc-500">
             {stat.subValue}
           </p>
         )}
+        {stat.footer && (
+          <p className="truncate text-[8.5px] font-bold uppercase leading-none tracking-wider text-zinc-600 transition-colors duration-300 group-hover:text-zinc-500">
+            {stat.footer}
+          </p>
+        )}
+        {stat.content}
       </div>
-
-      {stat.content && (
-        <div className={cn(isCompact && "hidden sm:block")}>{stat.content}</div>
-      )}
-
-      {stat.footer && (
-        <div
-          className={cn(
-            "mt-4 border-t border-white/5 pt-3 text-[9px] font-bold uppercase tracking-wider text-zinc-600 transition-colors duration-300 group-hover:text-zinc-500",
-            isCompact && "hidden sm:block",
-          )}
-        >
-          {stat.footer}
-        </div>
-      )}
-    </motion.div>
+    </div>
   );
 });
 
-const KpiSkeleton = memo(function KpiSkeleton({
-  index,
-  isCompact = false,
-}: {
-  readonly index: number;
-  readonly isCompact?: boolean;
-}) {
+const KpiSkeleton = memo(function KpiSkeleton() {
   return (
-    <div
-      key={`skeleton-${index}`}
-      className={cn(
-        "flex w-full cursor-default select-none border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 shadow-2xl transition-all duration-300",
-        isCompact
-          ? "flex-row items-center justify-between p-3 rounded-xl min-h-[64px] sm:flex-col sm:items-stretch sm:justify-start sm:p-5 sm:rounded-3xl sm:min-h-[128px]"
-          : "flex-col p-5 rounded-3xl min-h-[128px]",
-      )}
-      style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
-    >
-      <div
-        className={cn(
-          "flex items-center gap-2.5 sm:gap-3",
-          isCompact ? "mb-0 sm:mb-4" : "mb-4",
-        )}
-      >
-        <div
-          className={cn(
-            "animate-pulse border border-white/5 bg-white/5",
-            isCompact
-              ? "size-8 rounded-lg sm:size-10 sm:rounded-xl"
-              : "size-10 rounded-xl",
-          )}
-        />
-        <div className="h-3 w-16 animate-pulse rounded bg-white/5 sm:w-20" />
-      </div>
-      <div
-        className={cn(
-          "flex flex-col gap-1 sm:gap-1.5 xl:flex-row xl:items-baseline xl:gap-2",
-          isCompact ? "items-end sm:items-start" : "items-start",
-        )}
-      >
-        <div className="h-4 w-16 animate-pulse rounded bg-white/5 sm:h-6 sm:w-24" />
-        <div className="h-2.5 w-12 animate-pulse rounded bg-white/5 opacity-60 sm:h-3 sm:w-16" />
+    <div className="flex h-16 select-none items-center gap-3 rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-3 shadow-lg sm:h-[68px]">
+      <div className="size-9 animate-pulse rounded-xl bg-white/5" />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="h-2.5 w-20 animate-pulse rounded bg-white/5" />
+        <div className="h-4 w-14 animate-pulse rounded bg-white/5" />
       </div>
     </div>
   );
@@ -299,7 +242,7 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
   }, [cards]);
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full space-y-2.5">
       {/* Control Bar */}
       <div className="flex select-none items-center justify-between px-0">
         <div className="flex items-center gap-2">
@@ -351,22 +294,13 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
 
       {/* Main Cards View */}
       {isExpanded ? (
-        <div className="grid grid-cols-2 gap-3 sm:gap-6 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-4">
           {loading
             ? Array.from({ length: 4 }).map((_, i) => (
-                <KpiSkeleton
-                  key={`skeleton-expanded-${i}`}
-                  index={i}
-                  isCompact={false}
-                />
+                <KpiSkeleton key={`skeleton-expanded-${i}`} />
               ))
             : displayCards.map((stat, index) => (
-                <KpiCard
-                  key={stat.id || stat.label || index}
-                  stat={stat}
-                  index={index}
-                  isCompact={false}
-                />
+                <KpiCard key={stat.id || stat.label || index} stat={stat} />
               ))}
         </div>
       ) : (
@@ -377,26 +311,30 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
         >
           <div className="overflow-hidden" ref={emblaRef}>
             <div
-              className="-ml-3 flex sm:-ml-6"
+              className="-ml-2.5 flex sm:-ml-3"
               style={{ touchAction: "pan-y" }}
             >
+              {/* Slides densos (pedido do Gabriel: "cabe 2 barrinha de
+                  métrica por exibição" — eram 100%/50%/33%/25%, com o
+                  celular mostrando UM card por vez): agora são 2 por vez no
+                  celular, 3 no tablet, 4 no desktop e 5 no telão. */}
               {loading
                 ? Array.from({ length: displayCards.length || 4 }).map(
                     (_, i) => (
                       <div
                         key={`loading-skeleton-${i}`}
-                        className="min-w-0 flex-[0_0_100%] pl-3 sm:flex-[0_0_50%] sm:pl-6 md:flex-[0_0_33.333%] lg:flex-[0_0_25%]"
+                        className="min-w-0 flex-[0_0_50%] pl-2.5 sm:flex-[0_0_33.333%] sm:pl-3 lg:flex-[0_0_25%] xl:flex-[0_0_20%]"
                       >
-                        <KpiSkeleton index={i} isCompact={true} />
+                        <KpiSkeleton />
                       </div>
                     ),
                   )
                 : displayCards.map((stat, index) => (
                     <div
                       key={stat.id || stat.label || index}
-                      className="min-w-0 flex-[0_0_100%] pl-3 sm:flex-[0_0_50%] sm:pl-6 md:flex-[0_0_33.333%] lg:flex-[0_0_25%]"
+                      className="min-w-0 flex-[0_0_50%] pl-2.5 sm:flex-[0_0_33.333%] sm:pl-3 lg:flex-[0_0_25%] xl:flex-[0_0_20%]"
                     >
-                      <KpiCard stat={stat} index={index} isCompact={true} />
+                      <KpiCard stat={stat} />
                     </div>
                   ))}
             </div>

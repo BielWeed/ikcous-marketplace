@@ -292,15 +292,16 @@ describe("AdminOrdersView — Total Concluído e aviso de pago após cancelado",
     // da migration (pago+cancelled OU pago_apos_expirar+cancelled) — não
     // só "pago depois de cancelado", que é falso para a primeira porta.
     // (Desde a pílula colapsável do pedido do Gabriel de 02/09, o título
-    // vive na ALAVANA fechada; o corpo longo e o botão só existem com ela
-    // expandida — ver admin-orders-alertas-compactos.test.tsx.)
-    expect(hospedeiro.textContent).toContain(
-      "1 pedido recebeu pagamento e está cancelado",
-    );
+    // vive na ALAVANA fechada; desde o BOTÃO compacto do mesmo dia à tarde,
+    // fechado ele mora no aria-label — a frase visível desce no dropdown,
+    // ver admin-orders-alertas-compactos.test.tsx.)
     const alavanca = hospedeiro.querySelector<HTMLButtonElement>(
       'button[data-testid="alertas-cancelados-alavanca"]',
     );
     expect(alavanca).toBeTruthy();
+    expect(alavanca!.getAttribute("aria-label")).toContain(
+      "1 pedido recebeu pagamento e está cancelado",
+    );
     await act(async () => {
       alavanca!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -357,9 +358,15 @@ describe("AdminOrdersView — Total Concluído e aviso de pago após cancelado",
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
     });
 
-    expect(hospedeiro.textContent).toContain(
-      "2 pedidos receberam pagamento e estão cancelados",
-    );
+    // Plural mora no aria-label do botão fechado (desenho do botão compacto
+    // de 02/09 à tarde — a frase visível só existe com o dropdown aberto).
+    expect(
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          'button[data-testid="alertas-cancelados-alavanca"]',
+        )
+        ?.getAttribute("aria-label"),
+    ).toContain("2 pedidos receberam pagamento e estão cancelados");
   });
 
   it("clique em 'Ver pedidos' não deixa a lupa da busca girando para sempre (achado 2, regressão)", async () => {
