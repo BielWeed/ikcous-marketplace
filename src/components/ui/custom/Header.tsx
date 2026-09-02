@@ -169,7 +169,7 @@ export const Header = memo(function Header({
                 if (onBack) onBack();
                 else onNavigate("home");
               }}
-              className="flex size-9 items-center justify-center rounded-full border border-zinc-100 bg-white/50 shadow-sm transition-all hover:bg-white active:scale-90 xs:size-10"
+              className="relative flex size-9 items-center justify-center rounded-full border border-zinc-100 bg-white/50 shadow-sm transition-all after:absolute after:-inset-1 after:content-[''] hover:bg-white active:scale-90 xs:size-10"
               aria-label="Voltar"
             >
               <ArrowLeft className="size-4.5 text-zinc-900 xs:size-5" />
@@ -177,7 +177,7 @@ export const Header = memo(function Header({
           )}
 
           <button
-            className="flex shrink-0 cursor-pointer appearance-none items-center gap-2 border-none bg-transparent p-0 text-left outline-none transition-all duration-150 hover:opacity-80 active:scale-95"
+            className="relative flex shrink-0 cursor-pointer appearance-none items-center gap-2 border-none bg-transparent p-0 text-left outline-none transition-all duration-150 after:absolute after:-inset-x-1 after:-inset-y-2 after:content-[''] hover:opacity-80 active:scale-95"
             onClick={() => {
               haptic.light();
               onNavigate("home");
@@ -287,7 +287,7 @@ export const Header = memo(function Header({
                   haptic.light();
                   setActiveToast(null);
                 }}
-                className="flex cursor-pointer shrink-0 items-center gap-2 rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95 overflow-hidden whitespace-nowrap"
+                className="flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"
               >
                 <motion.div
                   initial={{ scale: 0.4, opacity: 0 }}
@@ -301,7 +301,7 @@ export const Header = memo(function Header({
                   initial={{ opacity: 0, x: 8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.2, ease: "easeOut" }}
-                  className="max-w-[115px] xs:max-w-[155px] sm:max-w-[220px] truncate text-[11px] xs:text-xs font-bold tracking-tight text-white/95"
+                  className="max-w-[115px] truncate text-[11px] font-bold tracking-tight text-white/95 xs:max-w-[155px] xs:text-xs sm:max-w-[220px]"
                 >
                   {activeToast.message}
                 </motion.span>
@@ -315,7 +315,7 @@ export const Header = memo(function Header({
                     stiffness: 400,
                     damping: 20,
                   }}
-                  className="text-[10px] text-secondary/90 shrink-0 select-none"
+                  className="shrink-0 select-none text-[10px] text-secondary/90"
                 >
                   ✨
                 </motion.span>
@@ -350,7 +350,7 @@ export const Header = memo(function Header({
                     onOpenNotifications?.();
                   }}
                   aria-label="Notificações"
-                  className="relative flex size-9 items-center justify-center rounded-full bg-zinc-50 transition-colors hover:bg-zinc-100 active:scale-90 xs:size-10"
+                  className="relative flex size-9 items-center justify-center rounded-full bg-zinc-50 transition-colors after:absolute after:-inset-1 after:content-[''] hover:bg-zinc-100 active:scale-90 xs:size-10"
                 >
                   <Bell className="size-4.5 text-zinc-700 xs:size-5" />
                   {unreadCount > 0 && (

@@ -63,19 +63,29 @@ export function InfoBlockCarousel({
       </div>
 
       {/* Indicators */}
+      {/* Alvo de toque 44x44 (pacote visual 02/09): o desenho do dot NAO
+          mudou - ele virou um <span> dentro de um botao de 44px. A margem
+          negativa (-mt-7) e items-end mantem o dot EXATAMENTE onde estava
+          (12-16px abaixo do bloco) e devolvem os mesmos 16px de fluxo, entao
+          nada abaixo e empurrado; o alvo cresce para DENTRO do proprio
+          carrossel, onde so existe o padding do bloco (p-3.5). */}
       {childrenArray.length > 1 && (
-        <div className="mt-3 flex justify-center gap-1.5">
+        <div className="-mt-7 flex justify-center gap-1.5">
           {childrenArray.map((_, index) => (
             <button
               key={index}
               onClick={() => emblaApi?.scrollTo(index)}
-              className={`h-1 rounded-full transition-all duration-500 ${
-                index === currentIndex
-                  ? "w-6 bg-emerald-500"
-                  : "w-1.5 bg-zinc-800 hover:bg-zinc-700"
-              }`}
+              className="group flex size-11 items-end justify-center"
               aria-label={`Go to slide ${index + 1}`}
-            />
+            >
+              <span
+                className={`h-1 rounded-full transition-all duration-500 ${
+                  index === currentIndex
+                    ? "w-6 bg-emerald-500"
+                    : "w-1.5 bg-zinc-800 group-hover:bg-zinc-700"
+                }`}
+              />
+            </button>
           ))}
         </div>
       )}
