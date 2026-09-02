@@ -1881,8 +1881,10 @@ const AdminOrderCard = memo(function AdminOrderCard({
 
           <div className="flex items-end justify-between border-t border-white/5 pt-6">
             <div className="space-y-1">
+              {/* "Valor": o termo antigo "Valor Capital" não dizia nada para
+                  o lojista leigo (relato do Gabriel, 02/09). */}
               <span className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-600 ">
-                Valor Capital
+                Valor
               </span>
               <p className="text-2xl font-black tabular-nums tracking-widest text-white">
                 <span className="mr-1 text-[10px] font-black uppercase text-zinc-500">
@@ -1962,7 +1964,13 @@ const AdminOrderCard = memo(function AdminOrderCard({
     );
   }
 
-  // compact mode
+  // compact mode — REDESENHO (relato do Gabriel, 02/09: card com visual
+  // mal acabado — id e data truncados, badge de pagamento estourando a
+  // coluna ("PAGÃO FORA DO FLUXO — PRECIS..."), hierarquia invertida).
+  // Hierarquia nova, por pergunta do lojista: QUEM comprou (destaque) e O
+  // QUÊ (apoio) no topo, com id/data como metadado; badges com rótulo CURTO
+  // e truncamento limpo (a frase inteira vai no title); dinheiro e ações no
+  // rodapé, sem elemento dominando o card.
   return (
     <motion.div
       layout
@@ -1976,88 +1984,88 @@ const AdminOrderCard = memo(function AdminOrderCard({
         }
       }}
       className={cn(
-        "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[2rem] p-4 sm:p-5 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto animate-in fade-in slide-in-from-bottom-2 duration-300 min-h-[164px] flex flex-col justify-between transform-gpu",
+        "group relative flex flex-col rounded-[1.5rem] border bg-zinc-950/40 p-4 backdrop-blur-md transition-all duration-300 hover:border-admin-gold/30 hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 animate-in fade-in slide-in-from-bottom-2 duration-300 transform-gpu",
         changeType === "INSERT" &&
           "border-admin-gold shadow-[0_0_20px_rgba(212,175,55,0.3)] animate-pulse",
         changeType === "UPDATE" &&
           "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] animate-pulse",
-        !changeType && "border-white/5",
+        !changeType && "border-white/10",
       )}
     >
-      {/* Glow Background */}
-      <div className="pointer-events-none absolute inset-0 z-0 rounded-[2rem] bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 transition-all duration-700 group-hover:from-admin-gold/5 group-hover:to-transparent" />
-
-      {/* Header Row: Image/ID and Status */}
-      <div className="relative z-10 mb-4 flex flex-col justify-between gap-2 min-[400px]:flex-row min-[400px]:items-center">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="relative shrink-0">
-            {order.items?.[0]?.image ? (
-              <LazyImage
-                src={order.items[0].image}
-                alt="Produto"
-                className="size-8 shrink-0 rounded-lg border border-white/10 object-cover"
-              />
-            ) : (
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-zinc-900">
-                <Package className="size-4 text-zinc-600" />
-              </div>
-            )}
-            {order.items?.length > 1 && (
-              <div className="absolute -right-1.5 -top-1.5 flex size-4.5 items-center justify-center rounded-full border border-zinc-900 bg-admin-gold text-[8px] font-black text-black shadow-lg">
-                +{order.items.length - 1}
-              </div>
-            )}
-          </div>
-          <div className="min-w-0">
-            <span className="block truncate text-[9px] font-black uppercase tracking-widest text-zinc-500 transition-colors group-hover:text-admin-gold">
-              #{order.id.slice(-6).toUpperCase()}
-            </span>
-            <span className="block truncate text-[8px] font-bold uppercase tracking-tight text-zinc-600">
-              {new Date(order.createdAt).toLocaleDateString("pt-BR", {
-                day: "2-digit",
-                month: "short",
-              })}
-            </span>
-          </div>
+      {/* Topo: cliente + produto + metadados | status */}
+      <div className="flex items-start gap-3">
+        <div className="relative shrink-0">
+          {order.items?.[0]?.image ? (
+            <LazyImage
+              src={order.items[0].image}
+              alt="Produto"
+              className="size-11 shrink-0 rounded-xl border border-white/10 object-cover"
+            />
+          ) : (
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-900">
+              <Package className="size-5 text-zinc-600" />
+            </div>
+          )}
+          {order.items?.length > 1 && (
+            <div className="absolute -right-1.5 -top-1.5 flex size-4.5 items-center justify-center rounded-full border border-zinc-900 bg-admin-gold text-[8px] font-black text-black shadow-lg">
+              +{order.items.length - 1}
+            </div>
+          )}
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <OrderStatusBadge status={order.status} />
+
+        <div className="min-w-0 flex-1">
+          <h4
+            title={order.customer?.name || "Cliente"}
+            className="truncate text-[13px] font-bold leading-tight text-white transition-colors group-hover:text-admin-gold"
+          >
+            {order.customer?.name || "Cliente"}
+          </h4>
+          <p
+            title={(() => {
+              if (!order.items || order.items.length === 0)
+                return "Pedido vazio";
+              if (order.items.length === 1) return order.items[0].name;
+              return `${order.items[0].name} e mais ${order.items.length - 1}`;
+            })()}
+            className="mt-0.5 truncate text-[11px] font-medium text-zinc-400"
+          >
+            {(() => {
+              if (!order.items || order.items.length === 0)
+                return "Pedido vazio";
+              if (order.items.length === 1) return order.items[0].name;
+              return `${order.items[0].name} e mais ${order.items.length - 1}`;
+            })()}
+          </p>
+          <span className="mt-1 block text-[10px] font-semibold tabular-nums text-zinc-500">
+            #{order.id.slice(-6).toUpperCase()} ·{" "}
+            {new Date(order.createdAt).toLocaleDateString("pt-BR", {
+              day: "2-digit",
+              month: "2-digit",
+            })}
+          </span>
+        </div>
+
+        <div className="flex max-w-[7.5rem] shrink-0 flex-col items-end gap-1">
+          <OrderStatusBadge status={order.status} className="max-w-full" />
           <PaymentStatusBadge
             paymentStatus={order.paymentStatus}
             orderStatus={order.status}
+            compact
+            className="max-w-full"
           />
         </div>
       </div>
 
-      {/* Customer & Product description */}
-      <div className="relative z-10 mb-4 space-y-1">
-        <h4 className="truncate text-sm font-black text-white transition-colors group-hover:text-admin-gold">
-          {order.customer?.name || "Cliente"}
-        </h4>
-        <p className="truncate text-[9px] font-bold uppercase text-zinc-500">
-          {(() => {
-            if (!order.items || order.items.length === 0) return "Pedido Vazio";
-            if (order.items.length === 1) return order.items[0].name;
-            return `${order.items[0].name} e mais ${order.items.length - 1}`;
-          })()}
-        </p>
-      </div>
-
-      {/* Footer Row: Price and Quick WhatsApp button */}
-      <div className="relative z-10 flex items-center justify-between border-t border-white/5 pt-3">
-        <div className="space-y-0.5">
-          <span className="block text-[8px] font-black uppercase tracking-wider text-zinc-600">
-            Valor
+      {/* Rodapé: dinheiro à esquerda, ações à direita */}
+      <div className="relative z-10 mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
+        <p className="text-lg font-black tabular-nums leading-none text-white">
+          <span className="mr-1 text-[10px] font-bold uppercase text-zinc-500">
+            R$
           </span>
-          <p className="text-base font-black tabular-nums tracking-tight text-white">
-            <span className="mr-0.5 text-[9px] font-black uppercase text-zinc-500">
-              R$
-            </span>
-            {(order.total || 0).toLocaleString("pt-BR", {
-              minimumFractionDigits: 2,
-            })}
-          </p>
-        </div>
+          {(order.total || 0).toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+          })}
+        </p>
         <div className="flex items-center gap-1.5">
           {/* Laudo 0109 (A-7, ressalva da revisão): mesmo padrão do modo
               detailed — sem número válido o botão some. */}
@@ -2067,20 +2075,20 @@ const AdminOrderCard = memo(function AdminOrderCard({
                 e.stopPropagation();
                 onWhatsApp(order);
               }}
-              className="relative z-10 flex size-11 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 shadow-lg transition-all hover:bg-emerald-500 hover:text-black active:scale-90"
+              className="relative z-10 flex size-9 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 shadow-lg transition-all hover:bg-emerald-500 hover:text-black active:scale-90"
               title="WhatsApp"
             >
-              <MessageCircle className="size-5" />
+              <MessageCircle className="size-4" />
             </button>
           )}
-          <ChevronRight className="size-4.5 transform text-zinc-500 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-admin-gold" />
+          <ChevronRight className="size-4.5 shrink-0 text-zinc-500 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-admin-gold" />
         </div>
       </div>
 
       {/* Task 4 do plano recebimento-na-entrega — mesmo bloco do modo
           "detailed", ver o comentário lá. */}
       {podeRegistrarPagamento(order) && (
-        <div className="relative z-10 mt-3 flex items-center justify-between gap-1.5 border-t border-white/5 pt-3">
+        <div className="relative z-10 mt-3 flex items-center justify-between gap-1.5 border-t border-white/10 pt-3">
           {order.pagamentoRecebidoEm ? (
             <>
               <span className="truncate text-[8px] font-black uppercase tracking-widest text-emerald-400">

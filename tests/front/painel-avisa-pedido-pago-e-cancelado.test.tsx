@@ -339,9 +339,20 @@ describe.each(["compact", "detailed"] as const)(
         raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
       });
 
-      expect(hospedeiro.textContent).toContain(
-        "Pago e cancelado — precisa de atenção",
-      );
+      // Redesenho do card compacto (02/09): na LISTA, o badge usa o
+      // rótulo CURTO ("Pago e cancelado") porque o longo estourava a
+      // coluna e o corte CSS virava "PAGÃO ... PRECIS..." — a frase
+      // completa mora no `title` do badge. No modo detailed (folgado), o
+      // rótulo longo de sempre continua; e na FICHA do pedido os testes
+      // do bloco de baixo continuam provando o rótulo longo.
+      expect(hospedeiro.textContent).toContain("Pago e cancelado");
+      if (viewMode === "compact") {
+        expect(hospedeiro.textContent).not.toContain("— precisa de atenção");
+      } else {
+        expect(hospedeiro.textContent).toContain(
+          "Pago e cancelado — precisa de atenção",
+        );
+      }
     });
   },
 );
