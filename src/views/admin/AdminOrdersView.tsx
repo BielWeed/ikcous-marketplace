@@ -1219,9 +1219,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           <div className="space-y-4">
             <LocalErrorBoundary>
               <AdminKpiCarousel
+                active={active}
                 cards={kpiCards}
                 loading={(!isLoaded || loading) && !analyticsStats}
-                active={active}
                 title="Métricas de Pedidos"
               />
             </LocalErrorBoundary>

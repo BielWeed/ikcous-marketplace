@@ -15,7 +15,7 @@ interface KpiSummaryCardsProps {
 /**
  * Monta a config dos quatro cards a partir de `stats`. Extraída como função
  * pura (#104) para dar para testar o RÓTULO do card "Volume Total" sem
- * montar `AdminKpiCarousel` inteiro (embla-carousel-react + framer-motion).
+ * montar `AdminKpiCarousel` inteiro.
  *
  * O texto do "Volume Total" mudou de "Volume bruto de vendas" para "Total
  * líquido de descontos": o valor vem de

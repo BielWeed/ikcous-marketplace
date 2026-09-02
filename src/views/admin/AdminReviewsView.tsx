@@ -678,9 +678,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       {/* KPI Dashboard Section */}
       <div className="mx-auto mt-6 max-w-7xl space-y-4 px-4">
         <AdminKpiCarousel
+          active={active}
           cards={kpiCards}
           loading={loading || firstLoadRef.current}
-          active={active}
           title="Métricas de Avaliações"
         />
       </div>

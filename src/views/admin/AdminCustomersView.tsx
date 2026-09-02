@@ -461,9 +461,9 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         <div className="space-y-4">
           <LocalErrorBoundary>
             <AdminKpiCarousel
+              active={active}
               cards={kpiCards}
               loading={loading && !globalStats}
-              active={active}
               title="Métricas de Clientes"
             />
           </LocalErrorBoundary>

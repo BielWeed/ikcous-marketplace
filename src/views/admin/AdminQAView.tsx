@@ -1164,9 +1164,9 @@ export const AdminQAView = memo(function AdminQAView({
       {/* KPI Dashboard Section */}
       <div className="mx-auto mt-6 max-w-7xl space-y-4 px-4">
         <AdminKpiCarousel
+          active={active}
           cards={kpiCards}
           loading={loading && !cachedQAStats}
-          active={active}
           title="Métricas de Suporte (SAC)"
         />
       </div>
