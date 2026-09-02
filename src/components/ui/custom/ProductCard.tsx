@@ -124,11 +124,13 @@ export const ProductCard = memo(function ProductCard({
   const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
     activeTransitionCardId = instanceId;
     if (isViewTransitionSupported) {
-      document
-        .querySelectorAll<HTMLElement>('img, [style*="view-transition-name"]')
-        .forEach((el) => {
-          el.style.removeProperty("view-transition-name");
-        });
+      // Só IMAGENS: é o único nome que troca de dono entre telas
+      // ("product-image"). O seletor largo `img, [style*=...]` que existia
+      // aqui roubava o nome da BottomNav e do Header no clique — a metade
+      // restante do pisca consertado no useViewTransition (02/09).
+      document.querySelectorAll<HTMLElement>("img").forEach((el) => {
+        el.style.removeProperty("view-transition-name");
+      });
       const img = e.currentTarget.querySelector("img");
       if (img) {
         img.style.setProperty("view-transition-name", "product-image");
@@ -142,11 +144,9 @@ export const ProductCard = memo(function ProductCard({
       e.preventDefault();
       activeTransitionCardId = instanceId;
       if (isViewTransitionSupported) {
-        document
-          .querySelectorAll<HTMLElement>('img, [style*="view-transition-name"]')
-          .forEach((el) => {
-            el.style.removeProperty("view-transition-name");
-          });
+        document.querySelectorAll<HTMLElement>("img").forEach((el) => {
+          el.style.removeProperty("view-transition-name");
+        });
         const img = e.currentTarget.querySelector("img");
         if (img) {
           img.style.setProperty("view-transition-name", "product-image");

@@ -25,6 +25,11 @@ import { limparNomesDeTransicao } from "@/hooks/useViewTransition";
 // A lógica é exercida espiando `removeProperty` em cada elemento (o parser
 // de CSS do jsdom não conhece `view-transition-name` — afirmar por ele seria
 // testar o jsdom, não o nosso código).
+//
+// O QUE DISCRIMINA A REGRESSÃO: os testes 1-3 travam as REGRAS de decisão
+// (quem perde o nome em cada direção); o teste 4 trava o SELETOR em "img" —
+// com o seletor largo antigo, é o teste 4 que falha. O conjunto fecha o
+// contrato; nenhum teste isolado fecha tudo.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 type Espia = { el: HTMLElement; chamadas: string[] };
