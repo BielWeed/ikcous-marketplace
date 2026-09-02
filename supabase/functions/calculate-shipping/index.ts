@@ -327,6 +327,32 @@ export function montarLogDaCotacaoFlatFee(
     }
 }
 
+/**
+ * Nome de serviço de transportadora em linguagem de gente (pedido do
+ * Gabriel, 02/09: ".Package" não explica nada para o cliente).
+ *
+ * A API do Melhor Envio manda o nome COMERCIAL do serviço ("SEDEX",
+ * ".Package", ".Package Centralizado") e a tela mostrava esse nome cru
+ * com o sufixo "(Melhor Envio)" — jargão de integrador. A tradução cobre
+ * os nomes conhecidos; o que não é conhecido volta LIMPO (sem o sufixo),
+ * porque o sufixo dizia com quem a LOJA integrou, assunto do lojista, e
+ * o cliente só decide por preço e prazo (que já aparecem no card).
+ *
+ * A ordem importa: ".Package Centralizado" contém "package" — a checagem
+ * de "centralizado" vem antes para distinguir a modalidade; e o PAC dos
+ * Correios casa por fronteira de palavra (`\bpac\b`), que NÃO casa no
+ * "pac" embutido em ".package".
+ */
+export function nomeAmigavelDoServico(service: { name?: string }): string {
+    const nome = String(service?.name || '').trim()
+    const low = nome.toLowerCase()
+    if (low.includes('sedex')) return 'Entrega expressa'
+    if (low.includes('centralizado')) return 'Entrega econômica (centro de distribuição)'
+    if (low.includes('package') || /\bpac\b/.test(low)) return 'Entrega econômica'
+    if (low.includes('.com') || low.includes('express')) return 'Entrega expressa'
+    return nome
+}
+
 // Helper to check if destination is a local CEP
 export function isLocalCep(originCep: string, destCep: string, localCepRange?: string): boolean {
     const cleanOrigin = originCep.replace(/\D/g, '')
@@ -722,6 +748,32 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
             )
         }
 
+        // Cliente LOCAL recebe SÓ a Entrega Local — mesmo com a loja
+        // atendendo o Brasil inteiro (pedido do Gabriel, 02/09: na foto do
+        // carrinho, um CEP da própria cidade listava SEDEX e .Package ao
+        // lado da Entrega Local; o cliente da cidade não escolhe
+        // transportadora nacional, e a cotação dela não custa de graça).
+        // Este retorno cedo tem que vir ANTES da cotação de transportadora
+        // e do cache — a partir daqui, `isLocal` é invariantemente falso em
+        // todo o resto do handler.
+        if (isLocal) {
+            return new Response(
+                JSON.stringify({
+                    options: [
+                        {
+                            id: 'local-delivery',
+                            name: 'Entrega Local',
+                            price: allFree ? 0 : localDeliveryFee,
+                            deliveryDays: 1,
+                            provider: 'local'
+                        }
+                    ],
+                    cotacaoIncompleta: false
+                }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
         // Helper: Generate fallback flat fee response
         //
         // FALHA FECHADO NA TAXA FIXA, TAMBÉM: quando o provedor não é
@@ -730,18 +782,11 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         // `validarOrigemEFrete` e pode ser `null` — e `Number(null)` é `0`.
         // Sem a checagem de `flatFeeConfigurada`, essa contingência cotava
         // frete GRÁTIS para o Brasil inteiro em vez de recusar a opção.
-        // Ver `flatFeeConfigurada` acima.
+        // Ver `flatFeeConfigurada` acima. O ramo de `isLocal` que existia
+        // aqui foi absorvido pelo retorno cedo de cima.
         const getFlatFeeResponse = () => {
             const list = []
-            if (isLocal) {
-                list.push({
-                    id: 'local-delivery',
-                    name: 'Entrega Local',
-                    price: allFree ? 0 : localDeliveryFee,
-                    deliveryDays: 1,
-                    provider: 'local'
-                })
-            } else if (flatFeeConfigurada(storeConfig.shipping_fee)) {
+            if (flatFeeConfigurada(storeConfig.shipping_fee)) {
                 list.push({
                     id: 'flat-fee-standard',
                     name: 'Entrega Padrão',
@@ -937,7 +982,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
                             return {
                                 id: `melhor-envio-${service.id}`,
-                                name: `${service.name} (Melhor Envio)`,
+                                name: nomeAmigavelDoServico(service),
                                 price: Number(service.price),
                                 deliveryDays: Number(service.delivery_time),
                                 provider: 'melhor_envio'
@@ -1006,7 +1051,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
                         return {
                             id: `frenet-${s.ServiceCode || s.ServiceDescription}`,
-                            name: `${s.ServiceDescription} (Frenet)`,
+                            name: nomeAmigavelDoServico({ name: s.ServiceDescription }),
                             price: Number(s.ShippingPrice),
                             deliveryDays: Number(s.DeliveryTime),
                             provider: 'frenet'
@@ -1022,17 +1067,9 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         const apiEndTime = performance.now()
         const latency = Math.round(apiEndTime - apiStartTime)
 
-        // Prepend local option if customer is local
-        if (isLocal) {
-            const localOption = {
-                id: 'local-delivery',
-                name: 'Entrega Local',
-                price: allFree ? 0 : localDeliveryFee,
-                deliveryDays: 1,
-                provider: 'local'
-            }
-            shippingOptions = [localOption, ...shippingOptions.filter(opt => opt.id !== 'local-delivery')]
-        }
+        // (O prepend de `local-delivery` que vivia aqui foi absorvido pelo
+        // retorno cedo de `isLocal`, logo acima do ramo de taxa fixa: o
+        // cliente local não chega mais até a cotação de transportadora.)
 
         // A lista devolvida é a lista INTEIRA? Só deixa de ser quando a
         // gravação da cotação falha e opções que dependiam dela são removidas
