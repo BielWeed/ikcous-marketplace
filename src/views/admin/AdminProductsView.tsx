@@ -51,7 +51,6 @@ import {
   DollarSign,
   Edit2,
   Eye,
-  Filter,
   HelpCircle,
   Layers,
   LayoutGrid,
@@ -699,77 +698,77 @@ export const AdminProductsView = memo(function AdminProductsView({
         {/* Unified Control Bar Compacta — sticky: filha DIRETA do container
             que contém a lista (sticky só anda dentro do próprio containing
             block; embrulhada num wrapper da própria altura nunca gruda). */}
-        <div className="sticky top-0 z-30 -mx-4 flex w-full items-center gap-3 border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-          <div className="group relative w-full flex-1">
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-              {loading || isTyping ? (
-                <Loader2 className="size-4 animate-spin text-admin-gold" />
-              ) : (
-                <Search className="size-4 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
-              )}
+        <div className="sticky top-0 z-30 -mx-4 w-full border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="flex w-full items-center gap-3">
+            <div className="group relative w-full flex-1">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                {loading || isTyping ? (
+                  <Loader2 className="size-4 animate-spin text-admin-gold" />
+                ) : (
+                  <Search className="size-4 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
+                )}
+              </div>
+              <label htmlFor="search-assets" className="sr-only">
+                Buscar produtos
+              </label>
+              <DebouncedSearchInput
+                id="search-assets"
+                name="search-assets"
+                placeholder="Buscar produtos..."
+                className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
+                value={searchTerm}
+                onChange={(val) => {
+                  setSearchTerm(val);
+                  setCurrentPage(0);
+                  shouldScrollToTop.current = true;
+                }}
+                onTyping={setIsTyping}
+                delay={300}
+              />
             </div>
-            <label htmlFor="search-assets" className="sr-only">
-              Buscar produtos
-            </label>
-            <DebouncedSearchInput
-              id="search-assets"
-              name="search-assets"
-              placeholder="Buscar produtos..."
-              className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
-              value={searchTerm}
-              onChange={(val) => {
-                setSearchTerm(val);
-                setCurrentPage(0);
-                shouldScrollToTop.current = true;
-              }}
-              onTyping={setIsTyping}
-              delay={300}
-            />
+
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() =>
+                setViewMode((prev) =>
+                  prev === "detailed" ? "compact" : "detailed",
+                )
+              }
+              className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800"
+            >
+              {viewMode === "detailed" ? (
+                <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+              ) : (
+                <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+              )}
+            </Button>
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800"
+          {/* Chips de categoria (pedido do Gabriel, 02/09: a mesma fileira de
+              filtros da tela de Pedidos — substitui o funil dropdown, que era
+              o único jeito de filtrar por categoria). Parte da MESMA âncora
+              da busca: gruda junto com ela. */}
+          <div className="custom-scrollbar-hidden relative flex w-full snap-x gap-3 overflow-x-auto pt-3">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => {
+                  setFilterCategory(cat);
+                  setCurrentPage(0);
+                  shouldScrollToTop.current = true;
+                }}
+                className={cn(
+                  "h-11 shrink-0 snap-center rounded-xl border px-5 text-[10px] font-black uppercase tracking-widest transition-all",
+                  filterCategory === cat
+                    ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+                    : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                )}
               >
-                <Filter className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="mt-2 w-56 rounded-2xl border-zinc-800/50 bg-zinc-950 p-2 shadow-2xl backdrop-blur-3xl">
-              {categories.map((cat) => (
-                <DropdownMenuItem
-                  key={cat}
-                  onClick={() => {
-                    setFilterCategory(cat);
-                    setCurrentPage(0);
-                    shouldScrollToTop.current = true;
-                  }}
-                  className="mb-1 cursor-pointer rounded-xl px-4 py-3 text-xs font-bold capitalize text-zinc-400 transition-all last:mb-0 focus:bg-white/5 focus:text-white"
-                >
-                  {cat === "all" ? "Todas as Categorias" : cat}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() =>
-              setViewMode((prev) =>
-                prev === "detailed" ? "compact" : "detailed",
-              )
-            }
-            className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800"
-          >
-            {viewMode === "detailed" ? (
-              <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-            ) : (
-              <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-            )}
-          </Button>
+                {cat === "all" ? "Todas as Categorias" : cat}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Grid view of Products as Assets */}

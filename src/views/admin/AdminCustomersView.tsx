@@ -29,7 +29,6 @@ import type { View } from "@/types";
 import {
   ArrowUpDown,
   Calendar,
-  Filter,
   HelpCircle,
   LayoutGrid,
   List,
@@ -53,6 +52,14 @@ import {
   cachedCustomersData,
   setCachedCustomersData,
 } from "@/utils/admin_cache";
+
+/** Ordenações da fileira de chips abaixo da busca (o funil dropdown virou
+ * chips — pedido do Gabriel de 02/09; mesmos pares campo/direção de antes). */
+const ORDENACOES_CLIENTES = [
+  { campo: "total_spent", direcao: "desc", rotulo: "Maior LTV" },
+  { campo: "orders_count", direcao: "desc", rotulo: "Mais Pedidos" },
+  { campo: "full_name", direcao: "asc", rotulo: "Alfabética" },
+] as const;
 
 interface AdminCustomersViewProps {
   onNavigate: (view: View, id?: string) => void;
@@ -473,101 +480,82 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           {/* Sticky de filha DIRETA deste bloco (que contém a lista): sticky
               só anda dentro do próprio containing block — embrulhada num
               wrapper da própria altura ela nunca gruda (achado 1 da revisão). */}
-          <div className="sticky top-0 -mx-4 flex w-full items-center gap-3 border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-            <div className="group relative w-full flex-1">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
-                {loading || isTyping ? (
-                  <Loader2 className="size-4 animate-spin text-admin-gold" />
-                ) : (
-                  <Search className="size-4 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
-                )}
+          <div className="sticky top-0 z-30 -mx-4 w-full border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+            <div className="flex w-full items-center gap-3">
+              <div className="group relative w-full flex-1">
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+                  {loading || isTyping ? (
+                    <Loader2 className="size-4 animate-spin text-admin-gold" />
+                  ) : (
+                    <Search className="size-4 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
+                  )}
+                </div>
+                <label htmlFor="customers-search" className="sr-only">
+                  Buscar clientes
+                </label>
+                <DebouncedSearchInput
+                  id="customers-search"
+                  name="search"
+                  placeholder="Buscar clientes..."
+                  className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
+                  value={searchTerm}
+                  onChange={(val) => {
+                    setSearchTerm(val);
+                    setPage(0);
+                    shouldScrollToTop.current = true;
+                  }}
+                  onTyping={setIsTyping}
+                  delay={300}
+                />
               </div>
-              <label htmlFor="customers-search" className="sr-only">
-                Buscar clientes
-              </label>
-              <DebouncedSearchInput
-                id="customers-search"
-                name="search"
-                placeholder="Buscar clientes..."
-                className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
-                value={searchTerm}
-                onChange={(val) => {
-                  setSearchTerm(val);
-                  setPage(0);
-                  shouldScrollToTop.current = true;
-                }}
-                onTyping={setIsTyping}
-                delay={300}
-              />
+
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() =>
+                  setViewMode((prev) =>
+                    prev === "detailed" ? "compact" : "detailed",
+                  )
+                }
+                className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
+                title={
+                  viewMode === "detailed"
+                    ? "Visualização Compacta"
+                    : "Visualização Detalhada"
+                }
+              >
+                {viewMode === "detailed" ? (
+                  <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                ) : (
+                  <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                )}
+              </Button>
             </div>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
-                >
-                  <Filter className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="mt-2 w-56 rounded-2xl border-zinc-800/50 bg-zinc-950 p-2 shadow-2xl backdrop-blur-3xl">
-                <DropdownMenuItem
+            {/* Chips de ordenação (pedido do Gabriel, 02/09: a mesma fileira
+                de filtros da tela de Pedidos — substitui o funil dropdown).
+                Parte da MESMA âncora da busca: gruda junto com ela. */}
+            <div className="custom-scrollbar-hidden relative flex w-full snap-x gap-3 overflow-x-auto pt-3">
+              {ORDENACOES_CLIENTES.map((o) => (
+                <button
+                  key={o.campo}
                   onClick={() => {
-                    setSortField("total_spent");
-                    setSortDirection("desc");
+                    setSortField(o.campo);
+                    setSortDirection(o.direcao);
                     setPage(0);
                     shouldScrollToTop.current = true;
                   }}
-                  className="mb-1 cursor-pointer rounded-xl px-4 py-3 text-xs font-bold text-zinc-400 transition-all focus:bg-white/5 focus:text-white"
+                  className={cn(
+                    "h-11 shrink-0 snap-center rounded-xl border px-5 text-[10px] font-black uppercase tracking-widest transition-all",
+                    sortField === o.campo && sortDirection === o.direcao
+                      ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+                      : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                  )}
                 >
-                  Maior LTV (Gasto Total)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSortField("orders_count");
-                    setSortDirection("desc");
-                    setPage(0);
-                    shouldScrollToTop.current = true;
-                  }}
-                  className="mb-1 cursor-pointer rounded-xl px-4 py-3 text-xs font-bold text-zinc-400 transition-all focus:bg-white/5 focus:text-white"
-                >
-                  Mais Pedidos Efetuados
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSortField("full_name");
-                    setSortDirection("asc");
-                    setPage(0);
-                    shouldScrollToTop.current = true;
-                  }}
-                  className="mb-1 cursor-pointer rounded-xl px-4 py-3 text-xs font-bold text-zinc-400 transition-all last:mb-0 focus:bg-white/5 focus:text-white"
-                >
-                  Ordem Alfabética (Nome)
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() =>
-                setViewMode((prev) =>
-                  prev === "detailed" ? "compact" : "detailed",
-                )
-              }
-              className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
-              title={
-                viewMode === "detailed"
-                  ? "Visualização Compacta"
-                  : "Visualização Detalhada"
-              }
-            >
-              {viewMode === "detailed" ? (
-                <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-              ) : (
-                <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
-              )}
-            </Button>
+                  {o.rotulo}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Data List (Responsive Grid/Cards) */}
@@ -603,7 +591,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                 ) : viewMode === "detailed" ? (
                   <>
                     {/* Desktop Headers */}
-                    <div className="sticky top-0 z-20 hidden grid-cols-12 gap-4 border-b border-zinc-800/50 bg-zinc-900/60 px-8 py-5 shadow-sm md:grid">
+                    <div className="sticky top-[120px] z-20 hidden grid-cols-12 gap-4 border-b border-zinc-800/50 bg-zinc-900/60 px-8 py-5 shadow-sm md:grid">
                       <div
                         className="group/th col-span-4 flex cursor-pointer items-center gap-2"
                         onClick={() => handleSort("full_name")}
