@@ -1,3 +1,4 @@
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/contexts/StoreContext";
@@ -613,30 +614,30 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
       {/* Elite Header */}
       <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
-          <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-            <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-              <span className="italic text-white">Atendimento</span>
-            </span>
-          </h1>
-          <button
-            onClick={handleSubmit}
-            disabled={!isLoaded || isOffline || isSaving}
-            className="h-9.5 flex shrink-0 items-center gap-2 rounded-lg bg-admin-gold px-3.5 text-[9.5px] font-black uppercase tracking-widest text-white shadow-[0_0_30px_rgba(212,175,55,0.2)] transition-all hover:bg-admin-gold/90 hover:shadow-[0_0_40px_rgba(212,175,55,0.3)] active:scale-95 disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:gap-3 sm:px-5"
-          >
-            {isSaving ? (
-              <>
-                <RefreshCw className="size-4 animate-spin" />
-                <span>Salvando...</span>
-              </>
-            ) : (
-              <>
-                <Save className="size-4" />
-                <span>
-                  Salvar<span className="hidden sm:inline"> Alterações</span>
-                </span>
-              </>
-            )}
-          </button>
+          <AdminPageHeader
+            titulo="Atendimento"
+            acoes={
+              <button
+                onClick={handleSubmit}
+                disabled={!isLoaded || isOffline || isSaving}
+                className="h-9.5 flex shrink-0 items-center gap-2 rounded-lg bg-admin-gold px-3.5 text-[9.5px] font-black uppercase tracking-widest text-white shadow-[0_0_30px_rgba(212,175,55,0.2)] transition-all hover:bg-admin-gold/90 hover:shadow-[0_0_40px_rgba(212,175,55,0.3)] active:scale-95 disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:gap-3 sm:px-5"
+              >
+                {isSaving ? (
+                  <>
+                    <RefreshCw className="size-4 animate-spin" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="size-4" />
+                    <span>
+                      Salvar<span className="hidden sm:inline"> Alterações</span>
+                    </span>
+                  </>
+                )}
+              </button>
+            }
+          />
         </div>
       </div>
 

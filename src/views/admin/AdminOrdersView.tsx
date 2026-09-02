@@ -1,5 +1,6 @@
 import { LazyImage } from "@/components/LazyImage";
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   AdminKpiCarousel,
   type KpiCardConfig,
@@ -1168,10 +1169,28 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     >
       {/* Header Elite */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-        <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-          <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-            <span className="italic text-white">Pedidos</span>
-          </span>
+        <AdminPageHeader
+          titulo="Pedidos"
+          acoes={
+            // Botão de alerta + dropdown (pedido do Gabriel, 02/09 à tarde:
+            // a pílula amarela virou botão com ícone de alerta no canto
+            // direito da linha do título; os detalhes descem dele). Sem
+            // pendência e lista completa, ele nem nasce. (1.19.0 — só trocou
+            // de container: a marcação interna é a mesma de antes.)
+            <AlertasCancelados
+              pagoCanceladoCount={paidOnCancelledCount}
+              avisoPagoAposCancelado={avisoPagoAposCancelado}
+              pedidosEsperandoRetorno={pedidosEsperandoRetorno}
+              pedidosParaDevolverAgora={pedidosParaDevolverAgora}
+              incompleto={pedidosCanceladosIncompleto}
+              confirmandoRetornoId={confirmandoRetornoId}
+              onConfirmarRetorno={handleConfirmarRetorno}
+              estornandoId={estornandoId}
+              onRegistrarEstorno={registrarEstornoFeito}
+              onVerPedidos={irParaPedidosCancelados}
+            />
+          }
+        >
           <button
             type="button"
             onClick={() => setShowHelpModal(true)}
@@ -1188,25 +1207,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               lado direito do título, para liberar o canto para o botão de
               alertas (igual nas telas de Produtos e Clientes). */}
           <PontoDeOperacao sincronizando={!isLoaded} />
-        </h1>
-        <div className="flex shrink-0 items-center gap-3">
-          {/* Botão de alerta + dropdown (pedido do Gabriel, 02/09 à tarde:
-              a pílula amarela virou botão com ícone de alerta no canto
-              direito da linha do título; os detalhes descem dele). Sem
-              pendência e lista completa, ele nem nasce. */}
-          <AlertasCancelados
-            pagoCanceladoCount={paidOnCancelledCount}
-            avisoPagoAposCancelado={avisoPagoAposCancelado}
-            pedidosEsperandoRetorno={pedidosEsperandoRetorno}
-            pedidosParaDevolverAgora={pedidosParaDevolverAgora}
-            incompleto={pedidosCanceladosIncompleto}
-            confirmandoRetornoId={confirmandoRetornoId}
-            onConfirmarRetorno={handleConfirmarRetorno}
-            estornandoId={estornandoId}
-            onRegistrarEstorno={registrarEstornoFeito}
-            onVerPedidos={irParaPedidosCancelados}
-          />
-        </div>
+        </AdminPageHeader>
       </div>
 
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">

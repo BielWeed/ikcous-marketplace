@@ -15,6 +15,7 @@ import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { branding } from "@/config/branding";
 import { corPrimariaEfetiva, validaCorDaLoja } from "@/config/cor-da-loja";
@@ -719,10 +720,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
       {/* Elite Header */}
       <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
-          <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-            <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-              <span className="italic text-white">Ajustes</span>
-            </span>
+          <AdminPageHeader titulo="Ajustes">
             <button
               type="button"
               onClick={() => setShowHelpModal(true)}
@@ -731,7 +729,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             >
               <HelpCircle className="size-4" />
             </button>
-          </h1>
+          </AdminPageHeader>
         </div>
       </div>
 

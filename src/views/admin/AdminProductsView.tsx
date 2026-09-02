@@ -1,6 +1,7 @@
 import { LazyImage } from "@/components/LazyImage";
 import { AdminErrorState } from "@/components/admin/AdminErrorState";
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   AdminKpiCarousel,
   type KpiCardConfig,
@@ -634,10 +635,29 @@ export const AdminProductsView = memo(function AdminProductsView({
 
       {/* Header & Main Actions */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-        <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-          <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-            <span className="italic text-white">Produtos</span>
-          </span>
+        <AdminPageHeader
+          titulo="Produtos"
+          acoes={
+            <>
+              <Button
+                disabled={isOffline}
+                className="hidden h-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold px-5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:scale-105 hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:flex"
+                onClick={() => handleLocalNavigate("admin-product-form")}
+              >
+                <Plus className="mr-2 size-4 shrink-0 stroke-[3]" />
+                Novo Produto
+              </Button>
+              <Button
+                disabled={isOffline}
+                size="icon"
+                className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:hidden"
+                onClick={() => handleLocalNavigate("admin-product-form")}
+              >
+                <Plus className="size-5 stroke-[3]" />
+              </Button>
+            </>
+          }
+        >
           <button
             type="button"
             onClick={() => toggleHelp("global-guide")}
@@ -656,26 +676,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               02/09 à tarde ele vive AQUI, ao lado direito do título (igual
               em Pedidos e Clientes), fora do canto da tela. */}
           <PontoDeOperacao sincronizando={loading} />
-        </h1>
-
-        <div className="flex items-center gap-3">
-          <Button
-            disabled={isOffline}
-            className="hidden h-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold px-5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:scale-105 hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:flex"
-            onClick={() => handleLocalNavigate("admin-product-form")}
-          >
-            <Plus className="mr-2 size-4 shrink-0 stroke-[3]" />
-            Novo Produto
-          </Button>
-          <Button
-            disabled={isOffline}
-            size="icon"
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:hidden"
-            onClick={() => handleLocalNavigate("admin-product-form")}
-          >
-            <Plus className="size-5 stroke-[3]" />
-          </Button>
-        </div>
+        </AdminPageHeader>
       </div>
 
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">

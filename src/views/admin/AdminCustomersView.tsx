@@ -1,4 +1,5 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   AdminKpiCarousel,
   type KpiCardConfig,
@@ -439,10 +440,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     >
       {/* Header Elite */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-        <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-          <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-            <span className="italic text-white">Clientes</span>
-          </span>
+        <AdminPageHeader titulo="Clientes">
           <button
             type="button"
             onClick={() => setShowHelpModal(true)}
@@ -456,7 +454,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
               02/09 à tarde ele vive AQUI, ao lado direito do título (igual
               em Pedidos e Produtos), fora do canto da tela. */}
           <PontoDeOperacao sincronizando={loading} />
-        </h1>
+        </AdminPageHeader>
       </div>
 
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">
