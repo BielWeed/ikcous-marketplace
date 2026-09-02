@@ -116,6 +116,22 @@ nativos do ZCode (general-purpose, Explore, judge, feature-dev):
 - **Sócio/decisão:** tudo que é produto, dinheiro, público ou irreversível sobe ao
   Gabriel com recomendação — nunca menu sem conta feita (melhora, piora, conserto, bem maior).
 
+#### Orquestração por camadas de modelo
+
+A sessão orquestra e despacha subagentes; a camada de modelo segue o risco (padrão
+oficializado pelo dono em 02/09/2026 — Missão 05.2):
+
+| Trabalho | Camada |
+|---|---|
+| Explorar, executar, implementar mecânico | subagente **Flash** (leitura paraleliza) |
+| Rotina (fora do mapa de risco) | **Flash** escreve + **5.3** revisa |
+| Mapa de risco: RLS/migrations, edge functions, auth/OTP, checkout, service worker | **5.3** implementa + **5.3** revisa |
+| Debug | **Flash** tenta; **2 falhas** escalam para o **5.3** |
+
+O brief de subagente é SEMPRE autocontido — objetivo, arquivos, travas relevantes e o
+que trazer de volta: subagente não vê a sessão. Valem em toda camada as regras de cima:
+escrita serial; quem escreveu não revisa; decisão de produto sobe ao Gabriel com a conta feita.
+
 ## Banco de dados — regras que não se negociam
 
 - **RLS.** Toda tabela de dado de usuário nasce com Row Level Security ativado.
