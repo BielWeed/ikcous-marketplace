@@ -90,6 +90,18 @@ describe("AdminSettingsView — Identidade da Loja", () => {
     await act(async () => {
       await esperarMicrotarefas();
     });
+    // Seções colapsáveis (pedido do Gabriel, 02/09): os campos da loja
+    // nascem OCULTOS — o teste expande a seção antes de exercitá-los.
+    const cabecalhoLoja = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Identidade e localização da loja"),
+    ) as HTMLButtonElement;
+    expect(cabecalhoLoja).toBeDefined();
+    await act(async () => {
+      cabecalhoLoja.click();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
   }
 
   function pegarCampo(id: string): HTMLInputElement {

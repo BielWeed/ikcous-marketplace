@@ -255,6 +255,15 @@ export const ProductView = React.memo(function ProductView({
     [onAddToCart, onAddToCartProduct],
   );
 
+  // Card inteligente (02/09): os relacionados também escolhem opções no
+  // próprio card — a escolha vai para o addToCart global via prop do App.
+  const handleAddToCartWithVariantsFromCard = useCallback(
+    (p: Product, variantId: string | undefined, variantNames: string) => {
+      onAddToCartProduct?.(p, 1, variantId, variantNames);
+    },
+    [onAddToCartProduct],
+  );
+
   const handleQuickBuyFromCard = useCallback(
     (p: Product, e?: React.MouseEvent) => {
       e?.stopPropagation();
@@ -1342,6 +1351,9 @@ export const ProductView = React.memo(function ProductView({
                       isFavorite={checkFavorite(p.id)}
                       onToggleFavorite={handleToggleFavorite}
                       onAddToCart={handleAddToCartFromCard}
+                      onAddToCartWithVariants={
+                        handleAddToCartWithVariantsFromCard
+                      }
                       onQuickBuy={handleQuickBuyFromCard}
                       onClick={handleProductClick}
                       showRating={config.enableReviews}

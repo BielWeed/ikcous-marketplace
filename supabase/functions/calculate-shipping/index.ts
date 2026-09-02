@@ -327,6 +327,32 @@ export function montarLogDaCotacaoFlatFee(
     }
 }
 
+/**
+ * Nome de serviço de transportadora em linguagem de gente (pedido do
+ * Gabriel, 02/09: ".Package" não explica nada para o cliente).
+ *
+ * A API do Melhor Envio manda o nome COMERCIAL do serviço ("SEDEX",
+ * ".Package", ".Package Centralizado") e a tela mostrava esse nome cru
+ * com o sufixo "(Melhor Envio)" — jargão de integrador. A tradução cobre
+ * os nomes conhecidos; o que não é conhecido volta LIMPO (sem o sufixo),
+ * porque o sufixo dizia com quem a LOJA integrou, assunto do lojista, e
+ * o cliente só decide por preço e prazo (que já aparecem no card).
+ *
+ * A ordem importa: ".Package Centralizado" contém "package" — a checagem
+ * de "centralizado" vem antes para distinguir a modalidade; e o PAC dos
+ * Correios casa por fronteira de palavra (`\bpac\b`), que NÃO casa no
+ * "pac" embutido em ".package".
+ */
+export function nomeAmigavelDoServico(service: { name?: string }): string {
+    const nome = String(service?.name || '').trim()
+    const low = nome.toLowerCase()
+    if (low.includes('sedex')) return 'Entrega expressa'
+    if (low.includes('centralizado')) return 'Entrega econômica (centro de distribuição)'
+    if (low.includes('package') || /\bpac\b/.test(low)) return 'Entrega econômica'
+    if (low.includes('.com') || low.includes('express')) return 'Entrega expressa'
+    return nome
+}
+
 // Helper to check if destination is a local CEP
 export function isLocalCep(originCep: string, destCep: string, localCepRange?: string): boolean {
     const cleanOrigin = originCep.replace(/\D/g, '')
@@ -697,7 +723,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
             return !!(dbProd?.frete_gratis ?? item.product?.freeShipping)
         })
 
-        // If local-only coverage, enforce and return early
+        // Se a cobertura da loja é só local, o CEP de fora não é atendido.
         if (shippingCoverage === 'local') {
             if (!isLocal) {
                 return new Response(
@@ -705,6 +731,50 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
                     { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 )
             }
+            return new Response(
+                JSON.stringify({
+                    options: [
+                        {
+                            id: 'local-delivery',
+                            name: 'Entrega Local',
+                            price: allFree ? 0 : localDeliveryFee,
+                            deliveryDays: 1,
+                            provider: 'local'
+                        }
+                    ],
+                    cotacaoIncompleta: false
+                }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        // Cliente LOCAL recebe SÓ a Entrega Local — mesmo com a loja
+        // atendendo o Brasil inteiro (pedido do Gabriel, 02/09: na foto do
+        // carrinho, um CEP da própria cidade listava SEDEX e .Package ao
+        // lado da Entrega Local; o cliente da cidade não escolhe
+        // transportadora nacional, e a cotação dela não custa de graça).
+        // Este retorno cedo tem que vir ANTES da cotação de transportadora
+        // e do cache — a partir daqui, `isLocal` é invariantemente falso em
+        // todo o resto do handler.
+        //
+        // R3 da revisão: o caminho que existia antes (national+isLocal até
+        // o fim do handler) GRAVAVA linha no `shipping_calculation_logs` —
+        // era a cotação local que aparecia no "Histórico de Cotações" do
+        // painel. O retorno cedo mantém esse registro (mesmo formato dos
+        // outros, provider 'local'), senão a lojista perde a janela de
+        // todas as cotações locais do dia.
+        if (isLocal) {
+            fireAndForget(
+                supabaseClient.from('shipping_calculation_logs').insert({
+                    origin_cep: originCep,
+                    destination_cep: cleanCep,
+                    provider: 'local',
+                    cart_items: cart,
+                    response_time_ms: 0,
+                    status: 'success'
+                }),
+                'Failed to log local quote:',
+            )
             return new Response(
                 JSON.stringify({
                     options: [
@@ -730,18 +800,11 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         // `validarOrigemEFrete` e pode ser `null` — e `Number(null)` é `0`.
         // Sem a checagem de `flatFeeConfigurada`, essa contingência cotava
         // frete GRÁTIS para o Brasil inteiro em vez de recusar a opção.
-        // Ver `flatFeeConfigurada` acima.
+        // Ver `flatFeeConfigurada` acima. O ramo de `isLocal` que existia
+        // aqui foi absorvido pelo retorno cedo de cima.
         const getFlatFeeResponse = () => {
             const list = []
-            if (isLocal) {
-                list.push({
-                    id: 'local-delivery',
-                    name: 'Entrega Local',
-                    price: allFree ? 0 : localDeliveryFee,
-                    deliveryDays: 1,
-                    provider: 'local'
-                })
-            } else if (flatFeeConfigurada(storeConfig.shipping_fee)) {
+            if (flatFeeConfigurada(storeConfig.shipping_fee)) {
                 list.push({
                     id: 'flat-fee-standard',
                     name: 'Entrega Padrão',
@@ -937,7 +1000,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
                             return {
                                 id: `melhor-envio-${service.id}`,
-                                name: `${service.name} (Melhor Envio)`,
+                                name: nomeAmigavelDoServico(service),
                                 price: Number(service.price),
                                 deliveryDays: Number(service.delivery_time),
                                 provider: 'melhor_envio'
@@ -1006,7 +1069,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
                         return {
                             id: `frenet-${s.ServiceCode || s.ServiceDescription}`,
-                            name: `${s.ServiceDescription} (Frenet)`,
+                            name: nomeAmigavelDoServico({ name: s.ServiceDescription }),
                             price: Number(s.ShippingPrice),
                             deliveryDays: Number(s.DeliveryTime),
                             provider: 'frenet'
@@ -1022,17 +1085,9 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         const apiEndTime = performance.now()
         const latency = Math.round(apiEndTime - apiStartTime)
 
-        // Prepend local option if customer is local
-        if (isLocal) {
-            const localOption = {
-                id: 'local-delivery',
-                name: 'Entrega Local',
-                price: allFree ? 0 : localDeliveryFee,
-                deliveryDays: 1,
-                provider: 'local'
-            }
-            shippingOptions = [localOption, ...shippingOptions.filter(opt => opt.id !== 'local-delivery')]
-        }
+        // (O prepend de `local-delivery` que vivia aqui foi absorvido pelo
+        // retorno cedo de `isLocal`, logo acima do ramo de taxa fixa: o
+        // cliente local não chega mais até a cotação de transportadora.)
 
         // A lista devolvida é a lista INTEIRA? Só deixa de ser quando a
         // gravação da cotação falha e opções que dependiam dela são removidas
@@ -1070,15 +1125,14 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         // loja definiu no painel (ver `ShippingCalculator.tsx`).
         if (shippingOptions.length === 0) {
             // A guarda é o que `getFlatFeeResponse()` REALMENTE devolve, não
-            // `flatFeeConfigurada` sozinha: `getFlatFeeResponse()` também
-            // entrega `local-delivery` quando `isLocal`, campo que
-            // `flatFeeConfigurada(storeConfig.shipping_fee)` nem olha. Hoje o
-            // bloco que faz o prepend de `local-delivery` (acima) já garante
-            // `shippingOptions.length >= 1` sempre que `isLocal` é `true`,
-            // então este ramo só é alcançado com `isLocal` falso — mas
-            // autenticar o resultado de verdade, em vez de um campo que só
-            // por coincidência concorda com ele hoje, é o que impede a guarda
-            // de voltar a divergir se aquele bloco for reordenado.
+            // `flatFeeConfigurada` sozinha: autenticar o resultado de
+            // verdade, em vez de um campo que só por coincidência concorda
+            // com ele hoje, é o que impede a guarda de voltar a divergir se
+            // os ramos de cima forem reordenados. (Nota: desde o retorno
+            // cedo de `isLocal`, este ramo só é alcançado com CEP de fora —
+            // a versão anterior deste comentário dizia que quem garantia
+            // isso era o prepend de `local-delivery`, removido no mesmo
+            // commit que criou o retorno cedo.)
             const opcoesDeContingencia = getFlatFeeResponse()
             if (opcoesDeContingencia.length > 0) {
                 shippingOptions = opcoesDeContingencia

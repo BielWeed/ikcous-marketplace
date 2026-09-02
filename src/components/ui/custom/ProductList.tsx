@@ -14,6 +14,12 @@ interface ProductListProps {
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
   onAddToCart?: (product: Product) => void;
+  /** Card inteligente (02/09): presente, o card escolhe opções nele mesmo. */
+  onAddToCartWithVariants?: (
+    product: Product,
+    variantId: string | undefined,
+    variantNames: string,
+  ) => void;
   onQuickBuy?: (product: Product) => void;
   selectedProductId?: string;
 }
@@ -25,6 +31,7 @@ export const ProductList = React.memo(function ProductList({
   onToggleFavorite,
   onProductClick,
   onAddToCart,
+  onAddToCartWithVariants,
   onQuickBuy,
   selectedProductId,
 }: ProductListProps) {
@@ -97,6 +104,14 @@ export const ProductList = React.memo(function ProductList({
     [onAddToCart],
   );
 
+  const handleAddToCartWithVariants = useCallback(
+    (product: Product, variantId: string | undefined, variantNames: string) => {
+      haptic.success();
+      onAddToCartWithVariants?.(product, variantId, variantNames);
+    },
+    [onAddToCartWithVariants],
+  );
+
   const handleQuickBuy = useCallback(
     (product: Product) => {
       haptic.success();
@@ -140,6 +155,11 @@ export const ProductList = React.memo(function ProductList({
               onToggleFavorite={handleToggleFavorite}
               onClick={handleProductClick}
               onAddToCart={handleAddToCart}
+              onAddToCartWithVariants={
+                onAddToCartWithVariants
+                  ? handleAddToCartWithVariants
+                  : undefined
+              }
               onQuickBuy={handleQuickBuy}
               onMouseEnter={handlePrefetchProductDetail}
               onTouchStart={handlePrefetchProductDetail}
