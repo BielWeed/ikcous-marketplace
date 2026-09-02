@@ -1430,8 +1430,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </div>
 
           {/* Fileira de filtros de status — parte da MESMA âncora da busca
-                (pedido do Gabriel, 02/09): gruda junto com ela. */}
-          <div className="flex w-full snap-x gap-3 overflow-x-auto pt-3">
+                (pedido do Gabriel, 02/09): gruda junto com ela. Chips
+                COMPACTOS (pedido do Gabriel, 02/09 — fileira grande demais):
+                o botão mantém h-11 (alvo de toque de 44px, WCAG 2.5.8) e o
+                VISUAL desenha 32px via pseudo-elemento; o pseudo vive dentro
+                do botão, então o overflow-x-auto da fileira não o corta. */}
+          <div className="custom-scrollbar-hidden flex w-full snap-x gap-1.5 overflow-x-auto pt-2">
             {" "}
             <button
               onClick={() => {
@@ -1439,10 +1443,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 setCurrentPage(0);
               }}
               className={cn(
-                "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 snap-center",
+                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                 filter === "open"
-                  ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                  : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                  ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+                  : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
               )}
             >
               Em Aberto
@@ -1455,10 +1459,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   setCurrentPage(0);
                 }}
                 className={cn(
-                  "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-3 shrink-0 snap-center",
+                  "relative isolate flex h-11 shrink-0 snap-center items-center gap-1.5 rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                   filter === status
-                    ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                    : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                    ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+                    : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
                 )}
               >
                 <div
@@ -1479,10 +1483,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 setCurrentPage(0);
               }}
               className={cn(
-                "px-5 h-11 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border shrink-0 snap-center",
+                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                 filter === "all"
-                  ? "bg-admin-gold border-admin-gold text-black shadow-[0_0_20px_rgba(212,175,55,0.2)]"
-                  : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
+                  ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
+                  : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
               )}
             >
               Todos
