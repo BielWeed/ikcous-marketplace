@@ -7,6 +7,49 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.20.0] - 2026-09-02
+
+A versão que devolve o contorno do teclado, dá área de dedo de verdade aos
+botões pequenos, enxuga os filtros do painel, deixa o lojista escolher a cor
+da própria loja e endireita o checkout de quem compra pelo celular. Front
+puro — zero migrations, zero edge functions (PR #406, 8 commits).
+
+### Para quem COMPRA (vitrine)
+
+- **Contorno de teclado de volta** (INFRA-130): quem navega por Tab vê um
+  anel claro onde está — cor da marca na vitrine, verde no painel; o clique
+  de mouse continua sem contorno.
+- **Botões pequenos com área de toque de 44px**: voltar, sino, logo e as
+  bolinhas dos carrosséis ficam fáceis de acertar sem mudar o desenho
+  (no InfoBlock o alvo só aparece quando há 2+ blocos).
+- **Checkout no celular mais limpo**: barra fixa mais fina (73px) com o
+  valor dominante, total sempre visível no resumo da compra, avisos
+  compactados, rótulos maiores (11px) e alvos de toque de 44px. Zero linha
+  de lógica de preço, frete ou cupom tocada.
+
+### Para quem VENDE (painel admin)
+
+- **Chips de filtro compactos** em Pedidos, Produtos e Clientes: a fileira
+  de filtros abaixo da busca encolheu sem perder o alvo de toque.
+- **Cor da loja editável nos Ajustes**: o lojista escolhe a cor da marca,
+  vê a pré-visualização e a loja inteira acompanha pelo mecanismo de cor que
+  já existia. Preto continua recusado (a trava da cor preta foi mantida por
+  decisão do dono).
+- **Títulos padronizados**: Pedidos, Produtos, Clientes e Dashboard usam um
+  único componente de título (AdminPageHeader), com o ponto de conexão, o
+  botão de alerta e a barra de busca fixada da 1.19.0 intactos.
+
+### Técnico
+
+- Front puro: zero migrations, zero edge functions.
+- CI: 8/8 no PR #406 (2ª rodada; a 1ª pegou 8 diagnósticos de Biome
+  invisíveis no Windows por CRLF — emenda mecânica `1c1c54b`). Bateria
+  local na árvore quieta: edge 382, unit 226, front 339 arquivos / 1703
+  testes, build, links, ratchet e size verdes.
+- Revisão adversária independente por item, em 3 frentes paralelas (time de
+  sessões visual-0209): o revisor do checkout derrubou uma sobreposição de
+  zona de toque que podia disparar exclusão de endereço ao tocar "Editar".
+
 ## [1.19.0] - 2026-09-02
 
 A versão do painel que respeita o olhar do lojista na operação de todos os
