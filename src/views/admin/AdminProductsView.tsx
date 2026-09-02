@@ -697,15 +697,15 @@ export const AdminProductsView = memo(function AdminProductsView({
         </div>
 
         {/* Unified Control Bar Compacta */}
-        <div className="relative mb-8 mt-4 flex flex-col border-t border-white/5 pt-8">
-          <div className="relative z-20 flex flex-col gap-6 md:flex-row md:items-center">
-            <div className="flex w-full flex-1 items-center gap-4">
+        <div className="relative mb-5 mt-3 flex flex-col border-t border-white/5 pt-4">
+          <div className="relative z-20 flex flex-col gap-4 md:flex-row md:items-center">
+            <div className="sticky top-0 z-30 -mx-4 flex w-full flex-1 items-center gap-3 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
               <div className="group relative w-full">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-5">
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
                   {loading || isTyping ? (
-                    <Loader2 className="size-5 animate-spin text-admin-gold" />
+                    <Loader2 className="size-4 animate-spin text-admin-gold" />
                   ) : (
-                    <Search className="size-5 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
+                    <Search className="size-4 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
                   )}
                 </div>
                 <label htmlFor="search-assets" className="sr-only">
@@ -715,7 +715,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                   id="search-assets"
                   name="search-assets"
                   placeholder="Buscar produtos..."
-                  className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 pl-14 text-sm font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
+                  className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
                   value={searchTerm}
                   onChange={(val) => {
                     setSearchTerm(val);
@@ -732,9 +732,9 @@ export const AdminProductsView = memo(function AdminProductsView({
                   <Button
                     variant="outline"
                     size="icon"
-                    className="group size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800"
+                    className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800"
                   >
-                    <Filter className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                    <Filter className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="mt-2 w-56 rounded-2xl border-zinc-800/50 bg-zinc-950 p-2 shadow-2xl backdrop-blur-3xl">
@@ -762,12 +762,12 @@ export const AdminProductsView = memo(function AdminProductsView({
                     prev === "detailed" ? "compact" : "detailed",
                   )
                 }
-                className="group size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800"
+                className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800"
               >
                 {viewMode === "detailed" ? (
-                  <LayoutGrid className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                  <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
                 ) : (
-                  <List className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                  <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
                 )}
               </Button>
             </div>

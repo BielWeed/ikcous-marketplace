@@ -1233,16 +1233,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             `irParaPedidosCancelados`). */}
         <div
           id="admin-pedidos-lista"
-          className="relative mb-8 mt-4 flex flex-col border-t border-white/5 pt-8"
+          className="relative mb-5 mt-3 flex flex-col border-t border-white/5 pt-4"
         >
-          <div className="relative z-20 flex flex-col gap-6 md:flex-row md:items-center">
-            <div className="flex w-full flex-1 items-center gap-4">
+          <div className="relative z-20 flex flex-col gap-4 md:flex-row md:items-center">
+            <div className="sticky top-0 z-30 -mx-4 flex w-full flex-1 items-center gap-3 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
               <div className="group relative w-full">
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-5">
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
                   {!isLoaded || isTyping ? (
-                    <Loader2 className="size-5 animate-spin text-admin-gold" />
+                    <Loader2 className="size-4 animate-spin text-admin-gold" />
                   ) : (
-                    <Search className="size-5 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
+                    <Search className="size-4 text-zinc-600 transition-colors group-focus-within:text-admin-gold" />
                   )}
                 </div>
                 <label htmlFor="orders-search" className="sr-only">
@@ -1252,7 +1252,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   id="orders-search"
                   name="search"
                   placeholder="Buscar pedidos..."
-                  className="h-14 w-full rounded-2xl border-zinc-800 bg-black/40 pl-14 text-sm font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
+                  className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
                   value={searchQuery}
                   onChange={(val) => {
                     setSearchQuery(val);
@@ -1268,9 +1268,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   <Button
                     variant="outline"
                     size="icon"
-                    className="group relative size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    className="group relative size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
                   >
-                    <Filter className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                    <Filter className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
                     {paymentFilter !== "all" && (
                       // O filtro persiste em localStorage: sem isto, o admin
                       // reabre a tela já filtrada sem nenhuma pista visível
@@ -1413,7 +1413,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     prev === "detailed" ? "compact" : "detailed",
                   )
                 }
-                className="group size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
+                className="group size-11 shrink-0 rounded-xl border-zinc-800 bg-zinc-900/60 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 focus-visible:ring-0 focus-visible:ring-offset-0"
                 title={
                   viewMode === "detailed"
                     ? "Visualização Compacta"
@@ -1421,9 +1421,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 }
               >
                 {viewMode === "detailed" ? (
-                  <LayoutGrid className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                  <LayoutGrid className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
                 ) : (
-                  <List className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
+                  <List className="size-4 text-zinc-500 transition-colors group-hover:text-admin-gold" />
                 )}
               </Button>
             </div>
