@@ -445,12 +445,12 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           >
             <HelpCircle className="size-4.5" />
           </button>
-        </h1>
-        <div className="flex items-center gap-3">
           {/* Missão 06 (C3): ponto com estado real de conexão no lugar da
-              tag que ficava verde após a carga. */}
-          <PontoDeOperacao sincronizando={loading} className="mr-2" />
-        </div>
+              tag que ficava verde após a carga. Desde o pedido do Gabriel de
+              02/09 à tarde ele vive AQUI, ao lado direito do título (igual
+              em Pedidos e Produtos), fora do canto da tela. */}
+          <PontoDeOperacao sincronizando={loading} />
+        </h1>
       </div>
 
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">

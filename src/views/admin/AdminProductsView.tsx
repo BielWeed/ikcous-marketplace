@@ -652,13 +652,14 @@ export const AdminProductsView = memo(function AdminProductsView({
           >
             <HelpCircle className="size-4.5" />
           </button>
+          {/* Missão 06 (C3): ponto com estado real de conexão no lugar da
+              tag que ficava verde após a carga. Desde o pedido do Gabriel de
+              02/09 à tarde ele vive AQUI, ao lado direito do título (igual
+              em Pedidos e Clientes), fora do canto da tela. */}
+          <PontoDeOperacao sincronizando={loading} />
         </h1>
 
         <div className="flex items-center gap-3">
-          {/* Missão 06 (C3): ponto com estado real de conexão no lugar da
-              tag que ficava verde após a carga. */}
-          <PontoDeOperacao sincronizando={loading} className="mr-2" />
-
           <Button
             disabled={isOffline}
             className="hidden h-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold px-5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:scale-105 hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:flex"

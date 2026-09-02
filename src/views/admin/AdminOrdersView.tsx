@@ -1179,13 +1179,32 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           >
             <HelpCircle className="size-4.5" />
           </button>
-        </h1>
-        <div className="flex items-center gap-3">
           {/* Missão 06 (C3): a tag "Operações ao Vivo" mentia — ficava verde
               depois da carga mesmo com o tempo real morto. O ponto mostra o
               estado REAL de conexão (medido no AdminLayout e compartilhado);
-              o âmbar da carga inicial é o único "sincronizando" honesto. */}
-          <PontoDeOperacao sincronizando={!isLoaded} className="mr-2" />
+              o âmbar da carga inicial é o único "sincronizando" honesto.
+              Desde o pedido do Gabriel de 02/09 à tarde ele vive AQUI, ao
+              lado direito do título, para liberar o canto para o botão de
+              alertas (igual nas telas de Produtos e Clientes). */}
+          <PontoDeOperacao sincronizando={!isLoaded} />
+        </h1>
+        <div className="flex shrink-0 items-center gap-3">
+          {/* Botão de alerta + dropdown (pedido do Gabriel, 02/09 à tarde:
+              a pílula amarela virou botão com ícone de alerta no canto
+              direito da linha do título; os detalhes descem dele). Sem
+              pendência e lista completa, ele nem nasce. */}
+          <AlertasCancelados
+            pagoCanceladoCount={paidOnCancelledCount}
+            avisoPagoAposCancelado={avisoPagoAposCancelado}
+            pedidosEsperandoRetorno={pedidosEsperandoRetorno}
+            pedidosParaDevolverAgora={pedidosParaDevolverAgora}
+            incompleto={pedidosCanceladosIncompleto}
+            confirmandoRetornoId={confirmandoRetornoId}
+            onConfirmarRetorno={handleConfirmarRetorno}
+            estornandoId={estornandoId}
+            onRegistrarEstorno={registrarEstornoFeito}
+            onVerPedidos={irParaPedidosCancelados}
+          />
         </div>
       </div>
 
@@ -1208,25 +1227,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </div>
         )}
 
-        {/* Alertas de pedidos cancelados colapsados numa pílula (pedido do
-            Gabriel, 02/09: os três blocos gigantes ficavam abertos o tempo
-            todo e empurravam a lista real de pedidos para fora da tela).
-            Conteúdo, textos e handlers intactos — o espaço é que mudou. */}
-        <AlertasCancelados
-          pagoCanceladoCount={paidOnCancelledCount}
-          avisoPagoAposCancelado={avisoPagoAposCancelado}
-          pedidosEsperandoRetorno={pedidosEsperandoRetorno}
-          pedidosParaDevolverAgora={pedidosParaDevolverAgora}
-          incompleto={pedidosCanceladosIncompleto}
-          confirmandoRetornoId={confirmandoRetornoId}
-          onConfirmarRetorno={handleConfirmarRetorno}
-          estornandoId={estornandoId}
-          onRegistrarEstorno={registrarEstornoFeito}
-          onVerPedidos={irParaPedidosCancelados}
-        />
-
         {/* Unified Control Bar Compacta — âncora do scroll do botão "Ver
-            pedidos" da pílula de alertas (id lido por
+            pedidos" do dropdown de alertas (id lido por
             `irParaPedidosCancelados`). */}
         <div
           id="admin-pedidos-lista"

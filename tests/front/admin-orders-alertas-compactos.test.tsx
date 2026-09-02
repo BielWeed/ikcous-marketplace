@@ -1,22 +1,25 @@
 // @vitest-environment jsdom
 //
-// Pedido do Gabriel (02/09, prova de rua no localhost): os avisos da tela de
-// Pedidos — o bloco âmbar "N pedido(s) recebeu pagamento e está cancelado"
-// e os dois baldes (mercadoria a voltar, estorno devido) — são GIGANTES e
-// ficam permanentemente abertos, empurrando a lista real de pedidos para
-// fora da tela. E o botão "Ver pedidos" mudava o filtro sem NENHUM feedback
-// visível (sem rolar até a lista), o que o lojista lê como "botão morto".
+// Histórico do desenho desta área (tudo por pedido do Gabriel):
+//   02/09 de manhã: os três blocos gigantes (dinheiro preso, mercadoria a
+//     voltar, estorno devido) viraram uma PÍLULA colapsável full-width.
+//   02/09 à tarde: a pílula ainda ocupava uma faixa inteira da tela — o
+//     Gabriel pediu o passo seguinte: um BOTÃO redondo com o ícone de alerta,
+//     no canto direito da linha do título "Pedidos" (onde nada mais vive —
+//     o ponto de conexão mudou para junto do título), e os detalhes num
+//     DROPDOWN que desce do botão. Conteúdo, textos e handlers dos blocos:
+//     palavra por palavra os mesmos; o que mudou é ONDE moram.
 //
-// A CURA (comportamento novo, provado aqui):
-//   1. A área toda nasce COLAPSADA numa pílula compacta (ícone de alerta +
-//      título com a contagem + badges por tipo). O conteúdo detalhado só
-//      aparece quando o lojista clica nela — e volta a colapsar no 2º clique.
-//   2. O botão "Ver pedidos" continua gravando os filtros (comportamento já
-//      provado em admin-orders-total-concluido-e-aviso-pago-cancelado.test.tsx)
-//      e AGORA rola a página até a lista de pedidos — o clique tem resposta
-//      visível.
-//   3. Sem pendência nenhuma, nenhuma pílula existe (como os blocos antigos,
-//      que só existiam com item).
+// Contrato provado aqui:
+//   1. Com pendência (ou lista incompleta), o botão nasce no header com o
+//      badge de contagem e a frase-resumo no aria-label/title. Sem pendência
+//      nenhuma E lista completa, o botão nem nasce (regra antiga mantida).
+//   2. O clique expande o dropdown com os blocos detalhados; o 2º clique, um
+//      clique fora e a tecla Escape colapsam de volta.
+//   3. "Ver pedidos" grava os filtros, rola até a lista (provado no teste
+//      irmão admin-orders-total-concluido-e-aviso-pago-cancelado) e AGORA
+//      fecha o dropdown — sem isso ele ficaria aberto cobrindo a lista para
+//      onde a página acabou de rolar.
 //
 // Segue o mesmo padrão de mocks de
 // admin-orders-total-concluido-e-aviso-pago-cancelado.test.tsx (supabase,
@@ -67,8 +70,8 @@ vi.mock("@/hooks/useOrders", () => ({
 }));
 
 let mockAnalyticsStats: any = null;
-// R3 da revisão do PR #400: o aviso de lista incompleta com pendência > 0
-// e pílula FECHADA é caminho próprio — ganha variável de controle aqui.
+// R3 da revisão do PR #400: o aviso de lista incompleta é caminho próprio —
+// ganha variável de controle aqui.
 let mockPedidosCanceladosIncompleto = false;
 
 vi.mock("@/hooks/useAnalytics", () => ({
@@ -159,24 +162,24 @@ async function esperarAte(
   });
 }
 
-/** Encontra a pílula colapsável pelos `data-testid` — o conteúdo dela é o
- * que muda de tela para tela; o contrato é o botão com estado `aria-expanded`. */
-const pílula = () =>
+/** O botão compacto de alerta — o contrato é o `data-testid` (o conteúdo do
+ * dropdown é o que muda de tela para tela; o estado vive no `aria-expanded`). */
+const botaoAlerta = () =>
   hospedeiro.querySelector<HTMLButtonElement>(
     'button[data-testid="alertas-cancelados-alavanca"]',
   );
 
 async function expandir() {
-  expect(pílula()).toBeTruthy();
+  expect(botaoAlerta()).toBeTruthy();
   await act(async () => {
-    pílula()!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    botaoAlerta()!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
 }
 
 let hospedeiro: HTMLDivElement;
 let raiz: Root;
 
-describe("AdminOrdersView — alertas de cancelados colapsados numa pílula", () => {
+describe("AdminOrdersView — botão de alerta no header com dropdown de detalhes", () => {
   beforeEach(() => {
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -223,29 +226,7 @@ describe("AdminOrdersView — alertas de cancelados colapsados numa pílula", ()
     mockAnalyticsStats = null;
   });
 
-  it("lista incompleta com pendência: o aviso aparece MESMO com a pílula fechada (R3 da revisão)", async () => {
-    mockAnalyticsStats = statsFake(1);
-    mockPedidosCanceladosIncompleto = true;
-
-    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
-    await act(async () => {
-      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
-    });
-
-    // Pílula continua fechada…
-    expect(pílula()!.getAttribute("aria-expanded")).toBe("false");
-    expect(hospedeiro.textContent).not.toContain(
-      "O dinheiro entrou e o pedido está cancelado",
-    );
-    // …mas o aviso de incompletude NÃO mora dentro dela: com as listas
-    // podendo estar vazias por erro, escondê-lo atrás do clique seria
-    // silenciar exatamente o cenário em que ele importa.
-    expect(hospedeiro.textContent).toContain(
-      "Não foi possível confirmar a lista completa de pedidos cancelados",
-    );
-  });
-
-  it("com dinheiro preso, a área nasce COLAPSADA: pílula com a contagem, sem os blocos gigantes", async () => {
+  it("com dinheiro preso: botão com badge de contagem e a frase no aria-label, sem bloco nenhum na tela", async () => {
     mockAnalyticsStats = statsFake(2);
 
     const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
@@ -253,24 +234,29 @@ describe("AdminOrdersView — alertas de cancelados colapsados numa pílula", ()
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
     });
 
-    // A pílula existe e o TÍTULO carrega a contagem (mesma frase já provada
-    // no teste irmão — singular/plural vêm de lá).
-    expect(pílula()).toBeTruthy();
-    expect(pílula()!.textContent).toContain(
+    // O botão existe, nasce FECHADO e descreve o alerta sem abrir nada:
+    // a contagem fica no badge e a frase (singular/plural já provados no
+    // teste irmão) no aria-label — o leitor de tela lê o botão inteiro.
+    expect(botaoAlerta()).toBeTruthy();
+    expect(botaoAlerta()!.getAttribute("aria-expanded")).toBe("false");
+    expect(botaoAlerta()!.getAttribute("aria-label")).toContain(
       "2 pedidos receberam pagamento e estão cancelados",
     );
+    expect(
+      hospedeiro.querySelector('[data-testid="alertas-cancelados-badge"]')
+        ?.textContent,
+    ).toBe("2");
     // E o conteúdo detalhado NÃO está na tela: os textos longos dos blocos
-    // antigos só existem com a pílula expandida.
+    // só existem com o dropdown expandido.
     expect(hospedeiro.textContent).not.toContain(
       "O dinheiro entrou e o pedido está cancelado",
     );
     expect(hospedeiro.textContent).not.toContain(
       "esta tela não devolve dinheiro nenhum",
     );
-    expect(pílula()!.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("clique na pílula expande os detalhes; segundo clique colapsa de novo", async () => {
+  it("clique no botão expande o dropdown; segundo clique colapsa de volta", async () => {
     mockAnalyticsStats = statsFake(1);
 
     const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
@@ -280,25 +266,87 @@ describe("AdminOrdersView — alertas de cancelados colapsados numa pílula", ()
 
     await expandir();
 
-    // Expandida: os textos longos e o botão de destino voltam a existir —
+    // Expandido: os textos longos e o botão de destino voltam a existir —
     // o conteúdo é o mesmo dos blocos antigos (nenhuma palavra honesta se
-    // perdeu, só o espaço que ela ocupava).
+    // perdeu, só o lugar: agora desce do botão do header).
     expect(hospedeiro.textContent).toContain(
       "O dinheiro entrou e o pedido está cancelado",
     );
-    expect(pílula()!.getAttribute("aria-expanded")).toBe("true");
+    expect(botaoAlerta()!.getAttribute("aria-expanded")).toBe("true");
 
     await act(async () => {
-      pílula()!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      botaoAlerta()!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
     expect(hospedeiro.textContent).not.toContain(
       "O dinheiro entrou e o pedido está cancelado",
     );
-    expect(pílula()!.getAttribute("aria-expanded")).toBe("false");
+    expect(botaoAlerta()!.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("sem pendência nenhuma, nenhuma pílula existe", async () => {
+  it("clique FORA do botão e tecla Escape também fecham o dropdown", async () => {
+    mockAnalyticsStats = statsFake(1);
+
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+
+    await expandir();
+    expect(hospedeiro.textContent).toContain(
+      "O dinheiro entrou e o pedido está cancelado",
+    );
+
+    // Clique fora (o listener é `pointerdown` no document, como num dropdown
+    // de verdade): o alvo é um nó FORA da raiz do alerta.
+    await act(async () => {
+      document.body.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true }),
+      );
+    });
+    expect(botaoAlerta()!.getAttribute("aria-expanded")).toBe("false");
+    expect(hospedeiro.textContent).not.toContain(
+      "O dinheiro entrou e o pedido está cancelado",
+    );
+
+    // Reabrir e apertar Escape fecha do mesmo jeito.
+    await expandir();
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(botaoAlerta()!.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("lista incompleta: o botão nasce MESMO sem pendência e o aviso mora no dropdown (sucessor do R3 da revisão)", async () => {
+    // O R3 original exigia o aviso SEMPRE visível no fluxo porque, com as
+    // listas podendo estar vazias por erro, escondê-lo era silenciar o único
+    // cenário em que importa. O dono mudou o desenho (nada de faixa aberta):
+    // o sinal permanente agora é o PRÓPRIO BOTÃO — âmbar no header, visível
+    // sem clique nenhum; o texto completo fica a um clique, nunca some.
+    mockAnalyticsStats = statsFake(0);
+    mockPedidosCanceladosIncompleto = true;
+
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+
+    // Sem pendência não há badge — mas o botão do alerta existe.
+    expect(botaoAlerta()).toBeTruthy();
+    expect(
+      hospedeiro.querySelector('[data-testid="alertas-cancelados-badge"]'),
+    ).toBeNull();
+    expect(hospedeiro.textContent).not.toContain(
+      "Não foi possível confirmar a lista completa de pedidos cancelados",
+    );
+
+    await expandir();
+    expect(hospedeiro.textContent).toContain(
+      "Não foi possível confirmar a lista completa de pedidos cancelados",
+    );
+  });
+
+  it("sem pendência nenhuma e lista completa: nenhum botão nasce", async () => {
     mockAnalyticsStats = statsFake(0);
     mockPedidosCancelados = [];
 
@@ -307,12 +355,12 @@ describe("AdminOrdersView — alertas de cancelados colapsados numa pílula", ()
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
     });
 
-    expect(pílula()).toBeNull();
+    expect(botaoAlerta()).toBeNull();
     expect(hospedeiro.textContent).not.toContain("produto a voltar");
     expect(hospedeiro.textContent).not.toContain("estorno devido");
   });
 
-  it("cancelado que nunca foi pago, com mercadoria fora: pílula fala de PRODUTO a voltar e não inventa estorno", async () => {
+  it("cancelado que nunca foi pago, com mercadoria fora: badge conta o pedido e o resumo fala de PRODUTO, não de estorno", async () => {
     // Mesmo cenário do achado da revisão de 26/08: pedido fechado "na
     // entrega" (paymentStatus NULL) cancelado depois do envio — o balde de
     // mercadoria aparece, o de dinheiro NÃO.
@@ -326,12 +374,20 @@ describe("AdminOrdersView — alertas de cancelados colapsados numa pílula", ()
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
     });
 
-    expect(pílula()).toBeTruthy();
-    expect(pílula()!.textContent).toContain("produto a voltar (1)");
-    expect(pílula()!.textContent).not.toContain("estorno devido");
+    expect(botaoAlerta()).toBeTruthy();
+    expect(botaoAlerta()!.getAttribute("aria-label")).toContain(
+      "produto a voltar (1)",
+    );
+    expect(botaoAlerta()!.getAttribute("aria-label")).not.toContain(
+      "estorno devido",
+    );
+    expect(
+      hospedeiro.querySelector('[data-testid="alertas-cancelados-badge"]')
+        ?.textContent,
+    ).toBe("1");
   });
 
-  it("cancelado pago sem envio: pílula mostra o badge de ESTORNO devido", async () => {
+  it("cancelado pago sem envio: resumo e badge apontam ESTORNO devido", async () => {
     mockAnalyticsStats = statsFake(0);
     mockPedidosCancelados = [
       canceladoFake({ id: "def456", paymentStatus: "pago" }),
@@ -342,13 +398,15 @@ describe("AdminOrdersView — alertas de cancelados colapsados numa pílula", ()
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
     });
 
-    expect(pílula()).toBeTruthy();
-    expect(pílula()!.textContent).toContain("estorno devido (1)");
+    expect(botaoAlerta()).toBeTruthy();
+    expect(botaoAlerta()!.getAttribute("aria-label")).toContain(
+      "estorno devido (1)",
+    );
   });
 
-  it("'Ver pedidos' (dentro da pílula expandida) grava os filtros E rola até a lista", async () => {
+  it("'Ver pedidos' grava os filtros, rola até a lista e FECHA o dropdown", async () => {
     // O jsdom não implementa scrollIntoView; o stub é o próprio contrato do
-    // teste: a pílula expandida chama o scroll na âncora da lista.
+    // teste: o dropdown expandido chama o scroll na âncora da lista.
     const scrollSpy = vi.fn();
     Element.prototype.scrollIntoView =
       scrollSpy as unknown as typeof Element.prototype.scrollIntoView;
@@ -376,14 +434,16 @@ describe("AdminOrdersView — alertas de cancelados colapsados numa pílula", ()
     });
 
     // Comportamento de filtro já provado no teste irmão — reafirmado aqui
-    // porque o clique agora mora dentro da pílula.
+    // porque o clique agora mora dentro do dropdown.
     expect(window.localStorage.getItem("admin_orders_filter_v2")).toBe(
       '"cancelled"',
     );
     expect(window.localStorage.getItem("admin_orders_search_query")).toBe('""');
-    // E o novo contrato: a página rola até a lista — o clique tem resposta
-    // visível (era o "botão que não funciona" do relato do Gabriel).
+    // A página rola até a lista (resposta visível do clique)…
     await esperarAte(() => scrollSpy.mock.calls.length > 0);
     expect(scrollSpy).toHaveBeenCalled();
+    // …e o dropdown fecha: senão ele continuaria aberto cobrindo exatamente
+    // a lista para onde a página acabou de rolar.
+    expect(botaoAlerta()!.getAttribute("aria-expanded")).toBe("false");
   });
 });
