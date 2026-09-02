@@ -37,7 +37,6 @@ import {
   Mail,
   MoreHorizontal,
   Phone,
-  RefreshCw,
   Search,
   Shield,
   ShoppingBag,
@@ -566,20 +565,6 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                 ) : (
                   <List className="size-5 text-zinc-500 transition-colors group-hover:text-admin-gold" />
                 )}
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => !isOffline && fetchCustomers(page)}
-                disabled={loading || isOffline}
-                className="group size-14 shrink-0 rounded-2xl border-zinc-800 bg-zinc-900/50 transition-all hover:border-admin-gold hover:bg-admin-gold disabled:opacity-40"
-              >
-                <RefreshCw
-                  className={cn(
-                    "w-5 h-5 text-zinc-500 group-hover:text-black transition-colors",
-                    loading && "animate-spin text-admin-gold",
-                  )}
-                />
               </Button>
             </div>
           </div>
