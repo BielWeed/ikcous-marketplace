@@ -5,6 +5,8 @@ import {
   type KpiCardConfig,
 } from "@/components/admin/AdminKpiCarousel";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
+import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { SupportBanners } from "@/components/admin/dashboard/SupportBanners";
 import { OrderDetail } from "@/components/admin/orders/OrderDetail";
 import {
@@ -37,6 +39,7 @@ import {
 } from "@/hooks/useOrders";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
+import { horarioRelativo } from "@/lib/horario-relativo";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -48,7 +51,6 @@ import { motion } from "framer-motion";
 import {
   Calendar,
   CheckCircle2,
-  ChevronLeft,
   ChevronRight,
   Clock,
   DollarSign,
@@ -1179,26 +1181,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </button>
         </h1>
         <div className="flex items-center gap-3">
-          <div
-            className={cn(
-              "inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full transition-all duration-300",
-              !isLoaded
-                ? "bg-amber-500/10 border-amber-500/20 text-amber-500"
-                : "bg-emerald-500/10 border-emerald-500/20 text-emerald-500",
-            )}
-          >
-            <div
-              className={cn(
-                "w-1.5 h-1.5 rounded-full",
-                !isLoaded
-                  ? "bg-amber-500 animate-pulse"
-                  : "bg-emerald-500 animate-pulse",
-              )}
-            />
-            <span className="text-[9px] font-black uppercase tracking-widest sm:text-[10px]">
-              {!isLoaded ? "Sincronizando..." : "Operações ao Vivo"}
-            </span>
-          </div>
+          {/* Missão 06 (C3): a tag "Operações ao Vivo" mentia — ficava verde
+              depois da carga mesmo com o tempo real morto. O ponto mostra o
+              estado REAL de conexão (medido no AdminLayout e compartilhado);
+              o âmbar da carga inicial é o único "sincronizando" honesto. */}
+          <PontoDeOperacao sincronizando={!isLoaded} className="mr-2" />
         </div>
       </div>
 
@@ -1541,7 +1528,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   ))}
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-4 min-[480px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {Array.from({ length: 10 }).map((_, i) => (
                     <div
                       key={i}
@@ -1654,7 +1641,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-4 min-[480px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {paginatedOrders.map((order) => (
                   <AdminOrderCard
                     key={order.id}
@@ -1672,50 +1659,24 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </div>
         </LocalErrorBoundary>
 
-        {/* Elite Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-10 pt-12">
-            <Button
-              variant="ghost"
-              onClick={(e) => {
-                setCurrentPage((p) => Math.max(0, p - 1));
-                const mainEl =
-                  e.currentTarget.closest(".admin-scroll-container") ||
-                  document.querySelector(".active-scroll-container") ||
-                  document.querySelector("main");
-                if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              disabled={currentPage === 0}
-              className="group size-16 rounded-3xl border border-white/5 bg-zinc-950/50 text-zinc-500 transition-all hover:bg-admin-gold hover:text-black disabled:opacity-20"
-            >
-              <ChevronLeft className="size-6 transition-transform group-hover:-translate-x-1" />
-            </Button>
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white">
-                Perfil do Setor
-              </span>
-              <span className="text-[11px] font-bold uppercase tabular-nums tracking-widest text-admin-gold">
-                {currentPage + 1} <span className="text-zinc-700">/</span>{" "}
-                {totalPages}
-              </span>
-            </div>
-            <Button
-              variant="ghost"
-              onClick={(e) => {
-                setCurrentPage((p) => Math.min(totalPages - 1, p + 1));
-                const mainEl =
-                  e.currentTarget.closest(".admin-scroll-container") ||
-                  document.querySelector(".active-scroll-container") ||
-                  document.querySelector("main");
-                if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-              disabled={currentPage === totalPages - 1}
-              className="group size-16 rounded-3xl border border-white/5 bg-zinc-950/50 text-zinc-500 transition-all hover:bg-admin-gold hover:text-black disabled:opacity-20"
-            >
-              <ChevronRight className="size-6 transition-transform group-hover:translate-x-1" />
-            </Button>
-          </div>
-        )}
+        {/* Missão 06 (C2): paginação única do painel. "Perfil do Setor" morre;
+            o contador "Exibindo X - Y de Z" é o retorno de total que faltava
+            (com 8 pedidos a tela nunca dizia quantos existem). */}
+        <PaginacaoAdmin
+          pagina={currentPage}
+          totalPaginas={totalPages}
+          totalItens={totalOrders}
+          itensPorPagina={itemsPerPage}
+          aoMudar={(nova) => {
+            setCurrentPage(nova);
+            const mainEl =
+              document.querySelector(".admin-scroll-container") ||
+              document.querySelector(".active-scroll-container") ||
+              document.querySelector("main");
+            if (mainEl) mainEl.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className="pt-12"
+        />
       </div>
 
       {/* Modal de Ajuda */}
@@ -2049,7 +2010,11 @@ const AdminOrderCard = memo(function AdminOrderCard({
         !changeType && "border-white/10",
       )}
     >
-      {/* Topo: cliente + produto + metadados | status */}
+      {/* Topo — hierarquia da direção A (Missão 06): VALOR dominante no canto
+          superior direito; nome e produto na coluna do meio, protegida com
+          min-w-0. Sem badges aqui: em card de ~250px a coluna direita com
+          badge largo esmagava o nome até sumir (achado do Gabriel no ao-vivo,
+          02/09) — os badges ganham faixa própria logo abaixo. */}
       <div className="flex items-start gap-3">
         <div className="relative shrink-0">
           {order.items?.[0]?.image ? (
@@ -2073,7 +2038,7 @@ const AdminOrderCard = memo(function AdminOrderCard({
         <div className="min-w-0 flex-1">
           <h4
             title={order.customer?.name || "Cliente"}
-            className="truncate text-[13px] font-bold leading-tight text-white transition-colors group-hover:text-admin-gold"
+            className="line-clamp-2 text-[13px] font-bold leading-tight text-white transition-colors group-hover:text-admin-gold"
           >
             {order.customer?.name || "Cliente"}
           </h4>
@@ -2093,29 +2058,9 @@ const AdminOrderCard = memo(function AdminOrderCard({
               return `${order.items[0].name} e mais ${order.items.length - 1}`;
             })()}
           </p>
-          <span className="mt-1 block text-[10px] font-semibold tabular-nums text-zinc-500">
-            #{order.id.slice(-6).toUpperCase()} ·{" "}
-            {new Date(order.createdAt).toLocaleDateString("pt-BR", {
-              day: "2-digit",
-              month: "2-digit",
-            })}
-          </span>
         </div>
 
-        <div className="flex max-w-[7.5rem] shrink-0 flex-col items-end gap-1">
-          <OrderStatusBadge status={order.status} className="max-w-full" />
-          <PaymentStatusBadge
-            paymentStatus={order.paymentStatus}
-            orderStatus={order.status}
-            compact
-            className="max-w-full"
-          />
-        </div>
-      </div>
-
-      {/* Rodapé: dinheiro à esquerda, ações à direita */}
-      <div className="relative z-10 mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
-        <p className="text-lg font-black tabular-nums leading-none text-white">
+        <p className="shrink-0 text-xl font-black tabular-nums leading-none text-white">
           <span className="mr-1 text-[10px] font-bold uppercase text-zinc-500">
             R$
           </span>
@@ -2123,23 +2068,47 @@ const AdminOrderCard = memo(function AdminOrderCard({
             minimumFractionDigits: 2,
           })}
         </p>
-        <div className="flex items-center gap-1.5">
-          {/* Laudo 0109 (A-7, ressalva da revisão): mesmo padrão do modo
-              detailed — sem número válido o botão some. */}
-          {linkWhatsappDoCliente(order.customer?.whatsapp) && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onWhatsApp(order);
-              }}
-              className="relative z-10 flex size-9 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 shadow-lg transition-all hover:bg-emerald-500 hover:text-black active:scale-90"
-              title="WhatsApp"
-            >
-              <MessageCircle className="size-4" />
-            </button>
-          )}
-          <ChevronRight className="size-4.5 shrink-0 text-zinc-500 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-admin-gold" />
+      </div>
+
+      {/* Faixa de identificação: id · horário relativo (quem opera pensa em
+          "há 5 min", não em "23/08") e os badges com largura de card inteira
+          — wrap honesto: nunca estouram a borda nem esmagam vizinho. */}
+      <div className="relative z-10 mt-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+        <span className="text-[10px] font-semibold tabular-nums text-zinc-500">
+          #{order.id.slice(-6).toUpperCase()} ·{" "}
+          {horarioRelativo(order.createdAt)}
+        </span>
+        <div className="flex flex-wrap items-center gap-1">
+          <OrderStatusBadge status={order.status} />
+          <PaymentStatusBadge
+            paymentStatus={order.paymentStatus}
+            orderStatus={order.status}
+            compact
+          />
         </div>
+      </div>
+
+      {/* Rodapé — Missão 06 (direção A): o dinheiro subiu para o topo do card;
+          sobram as ações, com o WhatsApp discreto (fim da fileira de botões
+          verdes grandes) e o chevron de abertura. */}
+      <div className="relative z-10 mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
+        {linkWhatsappDoCliente(order.customer?.whatsapp) ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onWhatsApp(order);
+            }}
+            className="relative z-10 flex size-8 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black active:scale-90"
+            title="WhatsApp"
+          >
+            <MessageCircle className="size-4" />
+          </button>
+        ) : (
+          <span className="text-[9px] font-black uppercase tracking-widest text-zinc-600">
+            Ver detalhes
+          </span>
+        )}
+        <ChevronRight className="size-4.5 shrink-0 text-zinc-500 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-admin-gold" />
       </div>
 
       {/* Task 4 do plano recebimento-na-entrega — mesmo bloco do modo

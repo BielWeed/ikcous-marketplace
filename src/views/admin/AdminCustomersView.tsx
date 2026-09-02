@@ -4,6 +4,8 @@ import {
   type KpiCardConfig,
 } from "@/components/admin/AdminKpiCarousel";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
+import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { CustomerBanners } from "@/components/admin/dashboard/CustomerBanners";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +27,6 @@ import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import {
-  ArrowLeft,
   ArrowUpDown,
   Calendar,
   Filter,
@@ -112,7 +113,9 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     new_customers_30d: number;
   } | null>(() => cachedCustomersData?.stats || null);
   const [page, setPage] = useState(0);
-  const PAGE_SIZE = 10;
+  // Missão 06 (C2): alinhado com pedidos/produtos (era 10 — terceiro tamanho
+  // de página que não existia por desenho nenhum).
+  const PAGE_SIZE = 12;
 
   const [viewMode, setViewMode] = useState<"detailed" | "compact">(() => {
     const saved = localStorage.getItem("admin_customers_view_mode");
@@ -444,26 +447,9 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           </button>
         </h1>
         <div className="flex items-center gap-3">
-          <div
-            className={cn(
-              "inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full transition-all duration-300",
-              loading
-                ? "bg-amber-500/10 border-amber-500/20 text-amber-500"
-                : "bg-emerald-500/10 border-emerald-500/20 text-emerald-500",
-            )}
-          >
-            <div
-              className={cn(
-                "w-1.5 h-1.5 rounded-full",
-                loading
-                  ? "bg-amber-500 animate-pulse"
-                  : "bg-emerald-500 animate-pulse",
-              )}
-            />
-            <span className="text-[9px] font-black uppercase tracking-widest sm:text-[10px]">
-              {loading ? "Sincronizando..." : "Operações ao Vivo"}
-            </span>
-          </div>
+          {/* Missão 06 (C3): ponto com estado real de conexão no lugar da
+              tag que ficava verde após a carga. */}
+          <PontoDeOperacao sincronizando={loading} className="mr-2" />
         </div>
       </div>
 
@@ -733,38 +719,19 @@ export const AdminCustomersView = memo(function AdminCustomersView({
               </div>
             </div>
           </LocalErrorBoundary>
-          {totalPages > 1 && (
-            <div className="relative z-10 flex items-center justify-between border-t border-zinc-800/50 bg-zinc-900/60 px-8 py-5">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  setPage((prev) => Math.max(0, prev - 1));
-                  shouldScrollToTop.current = true;
-                }}
-                disabled={page === 0}
-                className="size-10 rounded-xl border-zinc-800 bg-zinc-900/50 hover:border-admin-gold/50 hover:bg-zinc-800 disabled:opacity-30"
-              >
-                <ArrowLeft className="size-4" />
-              </Button>
-              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-                Segmento <span className="text-admin-gold">{page + 1}</span> de{" "}
-                <span className="text-white">{totalPages}</span>
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  setPage((prev) => Math.min(totalPages - 1, prev + 1));
-                  shouldScrollToTop.current = true;
-                }}
-                disabled={page === totalPages - 1}
-                className="size-10 rounded-xl border-zinc-800 bg-zinc-900/50 hover:border-admin-gold/50 hover:bg-zinc-800 disabled:opacity-30"
-              >
-                <ArrowLeft className="size-4 rotate-180" />
-              </Button>
-            </div>
-          )}
+          {/* Missão 06 (C2): paginação única — "Segmento" morre e o tamanho de
+              página alinha com pedidos/produtos (12). */}
+          <PaginacaoAdmin
+            pagina={page}
+            totalPaginas={totalPages}
+            totalItens={totalCustomers}
+            itensPorPagina={PAGE_SIZE}
+            aoMudar={(nova) => {
+              setPage(nova);
+              shouldScrollToTop.current = true;
+            }}
+            className="mt-0 border-t border-zinc-800/50 bg-zinc-900/60 px-8 py-5"
+          />
         </div>
       </div>
       {/* Modal de Ajuda */}

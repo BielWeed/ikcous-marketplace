@@ -1,3 +1,4 @@
+import { EstadoDeOperacaoProvider } from "@/components/admin/PontoDeOperacao";
 import { Button } from "@/components/ui/button";
 import { branding } from "@/config/branding";
 import { useAnalytics } from "@/hooks/useAnalytics";
@@ -696,6 +697,14 @@ export function AdminLayout({
     properties: { "og:title": `${branding.appName} Admin` },
   });
 
+  // Missão 06 (C3): a medição de conexão fica AQUI (uma instância só) e é
+  // compartilhada com as telas via provider — o PontoDeOperacao delas consome
+  // este estado em vez de abrir fetch de latência próprio.
+  const estadoDeOperacao = React.useMemo(
+    () => ({ isOffline, quality, latency, showSyncFlash }),
+    [isOffline, quality, latency, showSyncFlash],
+  );
+
   return (
     <div
       className="flex size-full flex-col overflow-hidden bg-[#09090b] font-sans text-zinc-50 lg:flex-row"
@@ -1115,33 +1124,39 @@ export function AdminLayout({
             } as React.CSSProperties
           }
         >
-          <div className="relative mx-auto flex size-full max-w-7xl flex-col overflow-x-hidden py-0">
-            {(() => {
-              // Using isTransitionSupported from parent scope
+          <EstadoDeOperacaoProvider value={estadoDeOperacao}>
+            <div className="relative mx-auto flex size-full max-w-7xl flex-col overflow-x-hidden py-0">
+              {(() => {
+                // Using isTransitionSupported from parent scope
 
-              if (isTransitionSupported) {
+                if (isTransitionSupported) {
+                  return (
+                    <div key="admin-content-wrapper" className="size-full">
+                      {children}
+                    </div>
+                  );
+                }
                 return (
-                  <div key="admin-content-wrapper" className="size-full">
-                    {children}
-                  </div>
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key="admin-content-wrapper-motion"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 380,
+                        damping: 30,
+                      }}
+                      className="size-full"
+                    >
+                      {children}
+                    </motion.div>
+                  </AnimatePresence>
                 );
-              }
-              return (
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key="admin-content-wrapper-motion"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                    className="size-full"
-                  >
-                    {children}
-                  </motion.div>
-                </AnimatePresence>
-              );
-            })()}
-          </div>
+              })()}
+            </div>
+          </EstadoDeOperacaoProvider>
         </main>
 
         {/* Floating Bottom Navigation - Mobile Only */}
