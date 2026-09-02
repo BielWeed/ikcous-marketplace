@@ -212,8 +212,10 @@ describe("AdminOrdersView — alertas de cancelados colapsados numa pílula", ()
     vi.unstubAllGlobals();
     // R2 da revisão do PR #400: o stub de scrollIntoView (teste do "Ver
     // pedidos") é feito no protótipo e vaza para os testes seguintes do
-    // arquivo — restaurar a ausência original aqui.
-    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    // arquivo — restaurar a ausência original aqui (atribuição de
+    // `undefined`, não `delete`: regra noDelete do Biome que o CI cobra).
+    (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView =
+      undefined;
     mockOrders = [];
     mockTotalOrders = 0;
     mockPedidosCancelados = [];
