@@ -71,7 +71,12 @@ const StoreLocationSection = memo(function StoreLocationSection() {
     setStoreCity(config.storeCity ?? "");
     setStoreState(config.storeState ?? "");
     setBusinessHours(config.businessHours ?? "");
-  }, [config.storeName, config.storeCity, config.storeState, config.businessHours]);
+  }, [
+    config.storeName,
+    config.storeCity,
+    config.storeState,
+    config.businessHours,
+  ]);
 
   const handleSave = async () => {
     if (isSaving) return;

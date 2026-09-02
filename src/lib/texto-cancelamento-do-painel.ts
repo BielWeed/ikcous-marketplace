@@ -14,7 +14,11 @@ export interface PedidoParaConfirmarCancelamento {
 }
 
 const PAGOS = new Set(["pago", "pago_apos_expirar", "recebido_na_entrega"]);
-const EM_ROTA = new Set(["shipped", "delivering", "a_caminho", "enviado"]);
+// Status reais do app (src/types/index.ts OrderStatus + CHECK do banco):
+// quem saiu para entrega está em "shipping". (A 1ª versão usava
+// "shipped"/"delivering"/"a_caminho"/"enviado" — ramos mortos, pegos na
+// revisão adversária do PR #397.)
+const EM_ROTA = new Set(["shipping"]);
 
 export function textoCancelamentoDoPainel(
   pedido: PedidoParaConfirmarCancelamento,

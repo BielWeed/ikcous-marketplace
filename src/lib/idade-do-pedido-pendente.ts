@@ -11,7 +11,9 @@
  * caso (status avançado, sem data de criação). O texto da ficha é quem decide
  * quando o aviso aparece.
  */
-const ESTADOS_QUE_ESPERAM_O_LOJISTA = new Set(["pending", "novo"]);
+// Status reais que esperam o lojista: "pending" (o comum) e "new" (o CHECK
+// do banco permite; zero vivos hoje — anotação da revisão do #397).
+const ESTADOS_QUE_ESPERAM_O_LOJISTA = new Set(["pending", "new"]);
 
 export function idadeDoPedidoPendente(
   created_at: string | null | undefined,

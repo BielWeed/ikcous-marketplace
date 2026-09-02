@@ -114,14 +114,20 @@ async function main() {
               'marca_avaliacoes_do_pedido_verificadas')`,
       )
     ).rows;
-    asserir(selos.length === 2, `as duas funções do selo existem (${selos.length})`);
+    asserir(
+      selos.length === 2,
+      `as duas funções do selo existem (${selos.length})`,
+    );
     for (const s of selos) {
       const comPortaoNovo = s.def.includes(
         s.proname === "marca_avaliacao_nasce_verificada"
           ? "AND o.status NOT IN ('cancelled', 'returned')"
           : "AND NEW.status NOT IN ('cancelled', 'returned')",
       );
-      asserir(comPortaoNovo, `${s.proname}: portão de status presente no corpo vivo`);
+      asserir(
+        comPortaoNovo,
+        `${s.proname}: portão de status presente no corpo vivo`,
+      );
     }
   } finally {
     await client.query("ROLLBACK");

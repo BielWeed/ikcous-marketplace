@@ -17,7 +17,7 @@ describe("textoCancelamentoDoPainel — a pergunta muda com o dinheiro e a rota 
 
   it("pedido em rota: avisa que a mercadoria não volta sozinha", () => {
     const texto = textoCancelamentoDoPainel({
-      status: "shipped",
+      status: "shipping",
       payment_status: "aguardando",
     });
     expect(texto).toContain("saiu para entrega");
@@ -37,7 +37,7 @@ describe("textoCancelamentoDoPainel — a pergunta muda com o dinheiro e a rota 
     for (const pedido of [
       { status: "pending", payment_status: "aguardando" },
       { status: "processing", payment_status: "pago" },
-      { status: "shipped", payment_status: "aguardando" },
+      { status: "shipping", payment_status: "aguardando" },
       {},
     ]) {
       expect(textoCancelamentoDoPainel(pedido).endsWith("?")).toBe(true);

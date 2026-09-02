@@ -12,10 +12,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import {
+  fraseDeEsperaDoPedido,
+  idadeDoPedidoPendente,
+} from "@/lib/idade-do-pedido-pendente";
 import { supabase } from "@/lib/supabase";
-import { cn } from "@/lib/utils";
-import { idadeDoPedidoPendente, fraseDeEsperaDoPedido } from "@/lib/idade-do-pedido-pendente";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
+import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order, OrderStatus, PaymentMethod, PaymentStatus } from "@/types";
 import {
