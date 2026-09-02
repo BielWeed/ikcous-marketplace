@@ -97,7 +97,7 @@ export const AddressList = memo(function AddressList({
                         e.stopPropagation();
                         onEdit?.(address);
                       }}
-                      className="animate-all flex size-6 items-center justify-center rounded-md border border-zinc-100 bg-white text-zinc-400 shadow-sm transition-all duration-200 hover:bg-zinc-900 hover:text-white"
+                      className="animate-all relative flex size-6 items-center justify-center rounded-md border border-zinc-100 bg-white text-zinc-400 shadow-sm transition-all duration-200 after:absolute after:-left-2.5 after:-top-2.5 after:-bottom-2.5 after:right-0 after:content-[''] hover:bg-zinc-900 hover:text-white"
                       aria-label="Editar"
                     >
                       <Edit className="size-2.5" />
@@ -109,7 +109,7 @@ export const AddressList = memo(function AddressList({
                         e.stopPropagation();
                         onDelete?.(address.id);
                       }}
-                      className="animate-all flex size-6 items-center justify-center rounded-md border border-zinc-100 bg-white text-red-400 shadow-sm transition-all duration-200 hover:bg-red-50 hover:text-red-500"
+                      className="animate-all relative flex size-6 items-center justify-center rounded-md border border-zinc-100 bg-white text-red-400 shadow-sm transition-all duration-200 after:absolute after:-right-2.5 after:-top-2.5 after:-bottom-2.5 after:left-0 after:content-[''] hover:bg-red-50 hover:text-red-500"
                       aria-label="Excluir"
                     >
                       <Trash2 className="size-2.5" />
@@ -173,7 +173,7 @@ export const AddressList = memo(function AddressList({
                     e.stopPropagation();
                     onEdit?.(address);
                   }}
-                  className="flex size-8 items-center justify-center rounded-lg bg-white text-zinc-400 shadow-sm transition-all hover:bg-zinc-900 hover:text-white"
+                  className="relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white"
                   aria-label="Editar"
                 >
                   <Edit className="size-3.5" />
@@ -184,7 +184,7 @@ export const AddressList = memo(function AddressList({
                       e.stopPropagation();
                       onDelete?.(address.id);
                     }}
-                    className="flex size-8 items-center justify-center rounded-lg bg-white text-red-400 shadow-sm transition-all hover:bg-red-50 hover:text-red-500"
+                    className="relative flex size-8 items-center justify-center rounded-lg bg-white text-red-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-red-50 hover:text-red-500"
                     aria-label="Excluir"
                   >
                     <Trash2 className="size-3.5" />

@@ -40,9 +40,11 @@ export const CouponInput = memo(function CouponInput({
             </p>
           </div>
         </div>
+        {/* `after:-inset-1.5`: área de toque de 44px (32px do botão + 12px)
+            sem mudar o visual discreto do X. */}
         <button
           onClick={onRemove}
-          className="rounded-lg p-2 text-green-600 transition-colors hover:bg-green-100"
+          className="relative rounded-lg p-2 text-green-600 transition-colors after:absolute after:-inset-1.5 after:content-[''] hover:bg-green-100"
         >
           <X className="size-4" />
         </button>
@@ -74,7 +76,7 @@ export const CouponInput = memo(function CouponInput({
         <button
           type="submit"
           disabled={!code.trim()}
-          className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-300"
+          className="flex min-h-[44px] items-center rounded-lg bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-900 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
           Aplicar
         </button>
