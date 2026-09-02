@@ -2489,7 +2489,7 @@ export function CheckoutView({
                             tela. O `-mx-4 px-4` estende o fundo branco por
                             toda a largura do painel (que agora só tem `px-4
                             pt-3`), para nada aparecer na fresta do padding. */}
-                        <div className="sticky bottom-0 -mx-4 mt-3 space-y-1.5 border-t border-zinc-100 bg-white px-4 pb-3 pt-3 text-xs">
+                        <div className="sticky bottom-0 -mx-4 mt-3 space-y-1.5 border-t border-zinc-100 bg-white px-4 py-3 text-xs">
                           <div className="flex items-center justify-between text-zinc-500">
                             <span>Subtotal</span>
                             <span>
