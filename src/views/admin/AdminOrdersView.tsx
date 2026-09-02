@@ -43,9 +43,9 @@ import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order, OrderStatus, PaymentStatus, View } from "@/types";
 import { haptic } from "@/utils/haptic";
+import { AlertasCancelados } from "@/views/admin/AlertasCancelados";
 import { motion } from "framer-motion";
 import {
-  AlertTriangle,
   Calendar,
   CheckCircle2,
   ChevronLeft,
@@ -756,6 +756,33 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     }
   };
 
+  /**
+   * O botão "Ver pedidos" da pílula de alertas. O botão leva aos
+   * CANCELADOS, não a um payment_status específico: a contagem larga cobre
+   * as TRÊS portas do contrato ampliado ('pago', 'pago_apos_expirar' e,
+   * desde a `20261021000000`, 'recebido_na_entrega' — com status=
+   * 'cancelled'), e filtrar por um valor só deixava parte dos pedidos
+   * "presos" fora da lista — a etiqueta de cada cartão já marca qual porta é
+   * cada um (achado 1 da revisão). Busca e período também são zerados: sem
+   * isso um filtro de uma sessão anterior sobrevivia e a lista vinha vazia
+   * sem o lojista perceber por quê (achado 2 da revisão).
+   *
+   * E rola até a lista: sem o scroll, o clique mudava filtros invisíveis e
+   * o lojista lia "botão que não funciona" (relato do Gabriel, 02/09).
+   */
+  const irParaPedidosCancelados = () => {
+    setFilter("cancelled");
+    setPaymentFilter("all");
+    setSearchQuery("");
+    setDateRange({ start: "", end: "" });
+    setCurrentPage(0);
+    setTimeout(() => {
+      document
+        .getElementById("admin-pedidos-lista")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
   // Reset dialog/modals when view becomes inactive
   useEffect(() => {
     if (!active) {
@@ -1152,220 +1179,30 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </div>
         )}
 
-        {/* Aviso fixo: dinheiro recebido em pedido cancelado. Não some
-            sozinho (sem botão de dispensar) — foi exatamente isso que fez
-            o defeito passar despercebido antes, escondido só numa
-            etiqueta do cartão que rola para fora de vista. */}
-        {paidOnCancelledCount > 0 && (
-          <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/30 bg-amber-500/5 p-6">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent" />
-            <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-500">
-                  <AlertTriangle className="size-5" />
-                </div>
-                <div>
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-amber-500">
-                    {avisoPagoAposCancelado}
-                  </h3>
-                  <p className="mt-1.5 text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-400">
-                    {/* Item 1 da revisão de 27/08/2026: a frase anterior
-                        ("Entregue o pedido, ou estorne pelo painel do Mercado
-                        Pago") mandava estornar TODO pedido desta contagem —
-                        inclusive o que ainda espera a mercadoria voltar
-                        (cancelado depois de enviado, `returnedToSellerAt`
-                        nulo). Isso contradiz a regra do Gabriel de
-                        24/08/2026: só se estorna DEPOIS do produto voltar. O
-                        número continua verdadeiro (o dinheiro entrou, o
-                        pedido está cancelado); o que envelheceu era a
-                        instrução, que agora aponta para os dois cards
-                        abaixo — cada um responde a pergunta certa. */}
-                    O dinheiro entrou e o pedido está cancelado. Veja abaixo, em
-                    Estorno devido, quais já podem ser devolvidos no painel do
-                    Mercado Pago — os que ainda esperam a mercadoria voltar
-                    aparecem em Produtos que ainda não voltaram.
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  // O botão leva aos CANCELADOS, não a um payment_status
-                  // específico: a contagem larga cobre as TRÊS portas do
-                  // contrato ampliado ('pago', 'pago_apos_expirar' e, desde
-                  // a `20261021000000`, 'recebido_na_entrega' — com
-                  // status='cancelled'), e filtrar por um valor só deixava
-                  // parte dos pedidos "presos" fora da lista — a etiqueta
-                  // de cada cartão já marca qual porta é cada um (achado 1
-                  // da revisão). Busca e período também são zerados: sem
-                  // isso um filtro de uma sessão anterior sobrevivia e a
-                  // lista vinha vazia sem o lojista perceber por quê
-                  // (achado 2 da revisão).
-                  setFilter("cancelled");
-                  setPaymentFilter("all");
-                  setSearchQuery("");
-                  setDateRange({ start: "", end: "" });
-                  setCurrentPage(0);
-                }}
-                className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[10px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
-              >
-                Ver pedidos
-              </Button>
-            </div>
-          </div>
-        )}
+        {/* Alertas de pedidos cancelados colapsados numa pílula (pedido do
+            Gabriel, 02/09: os três blocos gigantes ficavam abertos o tempo
+            todo e empurravam a lista real de pedidos para fora da tela).
+            Conteúdo, textos e handlers intactos — o espaço é que mudou. */}
+        <AlertasCancelados
+          pagoCanceladoCount={paidOnCancelledCount}
+          avisoPagoAposCancelado={avisoPagoAposCancelado}
+          pedidosEsperandoRetorno={pedidosEsperandoRetorno}
+          pedidosParaDevolverAgora={pedidosParaDevolverAgora}
+          incompleto={pedidosCanceladosIncompleto}
+          confirmandoRetornoId={confirmandoRetornoId}
+          onConfirmarRetorno={handleConfirmarRetorno}
+          estornandoId={estornandoId}
+          onRegistrarEstorno={registrarEstornoFeito}
+          onVerPedidos={irParaPedidosCancelados}
+        />
 
-        {/* Achados B e D da revisão de 26/08/2026 (rodada 4): erro engolido
-            pela RPC e truncagem pelo teto de páginas (as duas em
-            `useOrders.fetchPedidosCancelados`) têm o MESMO efeito aqui —
-            `pedidosCancelados` fica menor que a realidade — e os dois
-            containers abaixo só existiam com `{lista.length > 0 && (...)}`.
-            Sem este aviso, a AUSÊNCIA dos dois cards tinha a MESMA cara de
-            "não há nada pendente". Aparece mesmo quando um dos dois baldes
-            já tem item: o que falta pode estar exatamente no outro. */}
-        {pedidosCanceladosIncompleto && (
-          <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/20 p-5">
-            <div className="flex items-start gap-3">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-500">
-                <AlertTriangle className="size-4" />
-              </div>
-              <p className="text-[10px] font-bold uppercase leading-relaxed tracking-widest text-amber-500">
-                Não foi possível confirmar a lista completa de pedidos
-                cancelados agora. Os painéis de mercadoria e estorno abaixo
-                podem estar incompletos.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Produtos que ainda não voltaram (Task 5 + BLOQUEIA 2 da revisão
-            de 26/08/2026) — a lista é DERIVADA de `pedidosCancelados`,
-            nunca gravada, e trata só de MERCADORIA: nenhuma palavra sobre
-            dinheiro devido. Título e texto próprios porque este balde
-            aparece inclusive para pedido que nunca recebeu pagamento
-            nenhum, ou que já teve o pagamento estornado — dizer "Estorno
-            devido" ali afirmaria uma dívida que pode não existir (achado da
-            revisão: a lojista lia "Estorno devido" seguido de um pedido sem
-            nenhuma cobrança e concluía que devia R$ 100 a quem nunca pagou
-            nada). Some sozinha assim que `confirmarRetornoDoProduto`
-            resolve o pedido (ver o comentário de `precisaConfirmarRetornoDoProduto`,
-            acima). */}
-        {pedidosEsperandoRetorno.length > 0 && (
-          <div className="admin-glass relative overflow-hidden rounded-[2rem] border-white/5 p-6">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-              Produtos que ainda não voltaram
-            </h3>
-            <p className="mt-1.5 max-w-2xl text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
-              O pedido já saiu para entrega e foi cancelado. Confirme aqui só
-              quando a mercadoria voltar de verdade à sua mão — é isso que
-              devolve o item ao estoque. Isto não fala de dinheiro: aparece
-              mesmo em pedido que nunca foi cobrado ou que já teve o pagamento
-              estornado.
-            </p>
-
-            <div className="mt-5">
-              <h4 className="text-[9px] font-black uppercase tracking-widest text-amber-500">
-                Esperando o produto voltar ({pedidosEsperandoRetorno.length})
-              </h4>
-              <ul className="mt-3 space-y-2">
-                {pedidosEsperandoRetorno.map((pedido) => (
-                  <li
-                    key={pedido.id}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <span className="block truncate text-[10px] font-black uppercase tracking-widest text-white">
-                        #{pedido.id.slice(-6).toUpperCase()}
-                      </span>
-                      <span className="block truncate text-[9px] font-bold uppercase text-zinc-500">
-                        {pedido.customer?.name || "Cliente"} · R${" "}
-                        {(pedido.total || 0).toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}
-                      </span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => handleConfirmarRetorno(pedido.id)}
-                      disabled={confirmandoRetornoId === pedido.id}
-                      className="h-9 shrink-0 rounded-xl border-emerald-500/30 bg-emerald-500/10 px-4 text-[9px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
-                    >
-                      {confirmandoRetornoId === pedido.id
-                        ? "Confirmando..."
-                        : "O produto voltou"}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-
-        {/* Estorno devido (Task 5) — a lista é DERIVADA de `pedidosCancelados`,
-            nunca gravada, e trata só de DINHEIRO: só existe pedido aqui
-            quando `baldeDeEstorno` confirma que o pagamento ENTROU. Some
-            sozinha assim que `payment_status` vira 'estornado' (webhook do
-            Mercado Pago). O mesmo pedido pode aparecer nos dois containers
-            ao mesmo tempo, cada um respondendo uma pergunta diferente
-            (BLOQUEIA 2 da revisão de 26/08/2026). */}
-        {pedidosParaDevolverAgora.length > 0 && (
-          <div className="admin-glass relative overflow-hidden rounded-[2rem] border-white/5 p-6">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-              Estorno devido
-            </h3>
-            {/* A frase que não pode virar promessa falsa: o app não
-                estorna sozinho. Quem devolve o dinheiro é a lojista, no
-                painel do Mercado Pago — esta lista só lembra o que ela
-                ainda deve. */}
-            <p className="mt-1.5 max-w-2xl text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
-              Estornar é uma ação sua, feita direto no painel do Mercado Pago —
-              esta tela não devolve dinheiro nenhum, só lembra o que ainda falta
-              resolver. O item some sozinho assim que você registra o estorno
-              lá.
-            </p>
-
-            <div className="mt-5">
-              <h4 className="text-[9px] font-black uppercase tracking-widest text-rose-500">
-                Devolver agora ({pedidosParaDevolverAgora.length})
-              </h4>
-              <ul className="mt-3 space-y-2">
-                {pedidosParaDevolverAgora.map((pedido) => (
-                  <li
-                    key={pedido.id}
-                    className="rounded-xl border border-white/5 bg-black/20 px-4 py-3"
-                  >
-                    <span className="block truncate text-[10px] font-black uppercase tracking-widest text-white">
-                      #{pedido.id.slice(-6).toUpperCase()}
-                    </span>
-                    <span className="block truncate text-[9px] font-bold uppercase text-zinc-500">
-                      {pedido.customer?.name || "Cliente"} · R${" "}
-                      {(pedido.total || 0).toLocaleString("pt-BR", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                    {/* Laudo #2 (L-2): a saída manual que faltava — quando a
-                        notificação do MP nunca chega, era estagnado para
-                        sempre. A confirmação evita registrar por engano. */}
-                    <button
-                      type="button"
-                      disabled={estornandoId === pedido.id}
-                      onClick={() => void registrarEstornoFeito(pedido)}
-                      className="mt-2 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[8.5px] font-black uppercase tracking-widest text-emerald-400 transition-all hover:bg-emerald-500/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-                    >
-                      {estornandoId === pedido.id
-                        ? "Registrando..."
-                        : "Já estornei no Mercado Pago"}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-
-        {/* Unified Control Bar Compacta */}
-        <div className="relative mb-8 mt-4 flex flex-col border-t border-white/5 pt-8">
+        {/* Unified Control Bar Compacta — âncora do scroll do botão "Ver
+            pedidos" da pílula de alertas (id lido por
+            `irParaPedidosCancelados`). */}
+        <div
+          id="admin-pedidos-lista"
+          className="relative mb-8 mt-4 flex flex-col border-t border-white/5 pt-8"
+        >
           <div className="relative z-20 flex flex-col gap-6 md:flex-row md:items-center">
             <div className="flex w-full flex-1 items-center gap-4">
               <div className="group relative w-full">

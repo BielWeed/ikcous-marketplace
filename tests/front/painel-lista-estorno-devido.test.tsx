@@ -148,6 +148,20 @@ class IntersectionObserverStub {
   disconnect() {}
 }
 
+/** Pílula colapsável dos alertas (pedido do Gabriel, 02/09): o conteúdo dos
+ * baldes só existe com a alavanca expandida. No-op quando não há pendência
+ * nenhuma (a alavanca nem nasce). Recebe o hospedeiro do describe que
+ * chama — cada describe tem o seu. */
+async function expandirAlertas(alvo: HTMLElement) {
+  const alavanca = alvo.querySelector<HTMLButtonElement>(
+    'button[data-testid="alertas-cancelados-alavanca"]',
+  );
+  if (!alavanca) return;
+  await act(async () => {
+    alavanca.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
 /** Espera até `condicao()` ficar verdadeira, testando a cada `passoMs` — sem
  * `@testing-library/react` (não instalado neste projeto). Mesmo helper de
  * admin-orders-filtro-que-filtra.test.tsx. */
@@ -375,6 +389,7 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
+    await expandirAlertas(hospedeiro);
 
     expect(hospedeiro.textContent).toContain("Esperando o produto voltar");
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
@@ -422,6 +437,7 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
+    await expandirAlertas(hospedeiro);
 
     expect(hospedeiro.textContent).toContain("Produtos que ainda não voltaram");
     expect(hospedeiro.textContent).toContain("Esperando o produto voltar");
@@ -446,6 +462,7 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
+    await expandirAlertas(hospedeiro);
 
     expect(hospedeiro.textContent).toContain("Devolver agora");
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
@@ -470,6 +487,7 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
+    await expandirAlertas(hospedeiro);
 
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
       (b) => b.textContent?.trim() === "O produto voltou",
@@ -500,6 +518,7 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
+    await expandirAlertas(hospedeiro);
 
     const texto = hospedeiro.textContent || "";
     expect(texto).toContain("Mercado Pago");
@@ -521,6 +540,7 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
+    await expandirAlertas(hospedeiro);
 
     expect(hospedeiro.textContent).not.toContain("Esperando o produto voltar");
     expect(hospedeiro.textContent).not.toContain("Devolver agora");
@@ -548,6 +568,7 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
+    await expandirAlertas(hospedeiro);
 
     expect(hospedeiro.textContent).toContain("Esperando o produto voltar");
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
@@ -593,6 +614,7 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
+    await expandirAlertas(hospedeiro);
 
     const texto = hospedeiro.textContent || "";
     expect(texto).toContain("Produtos que ainda não voltaram");
@@ -624,6 +646,7 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
+    await expandirAlertas(hospedeiro);
 
     // Não enviado e nunca pago: nenhum dos dois baldes deve mostrar este
     // pedido (nem "esperando" — não há mercadoria fora — nem "devolver
@@ -683,6 +706,7 @@ describe("pedidosCanceladosIncompleto — ausência do card não pode significar
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
+    await expandirAlertas(hospedeiro);
 
     const texto = hospedeiro.textContent || "";
     expect(texto).toMatch(/incompleto|não foi possível/i);
@@ -701,6 +725,7 @@ describe("pedidosCanceladosIncompleto — ausência do card não pode significar
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
+    await expandirAlertas(hospedeiro);
 
     const texto = hospedeiro.textContent || "";
     expect(texto).not.toMatch(/incompleto|não foi possível/i);
@@ -722,6 +747,7 @@ describe("pedidosCanceladosIncompleto — ausência do card não pode significar
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
+    await expandirAlertas(hospedeiro);
 
     const texto = hospedeiro.textContent || "";
     expect(texto).toContain("Esperando o produto voltar");
@@ -884,6 +910,7 @@ describe("Item 1 (27/08/2026): o banner de dinheiro em pedido cancelado não pod
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
     });
+    await expandirAlertas(hospedeiro);
 
     const texto = hospedeiro.textContent || "";
     // O NÚMERO do banner continua verdadeiro: o dinheiro entrou e o pedido
