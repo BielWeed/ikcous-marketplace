@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { idadeDoPedidoPendente, fraseDeEsperaDoPedido } from "@/lib/idade-do-pedido-pendente";
+import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order, OrderStatus, PaymentMethod, PaymentStatus } from "@/types";
 import {
@@ -174,11 +176,10 @@ interface OrderHeaderProps {
   isOffline: boolean;
   isUpdatingStatus: boolean;
   // Dois callbacks, não um: "Avançar" e "Abortar Operação" são ações
-  // distintas por natureza (uma pede confirmação de pagamento pendente, a
-  // outra nunca pede), e a distinção precisa ser estrutural — cada botão
-  // chama o seu — em vez de depender de uma comparação de valor
-  // (`nextStatus !== "cancelled"`) em algum lugar rio abaixo. Ver PR de
-  // fechamento de pontas da revisão do aviso de pagamento pendente.
+  // distintas por natureza (uma confirma pagamento pendente, a outra
+  // confirma o CANCELAMENTO — laudo #2, L-1: cancelar parou de ser um
+  // clique sem guarda) — a distinção continua estrutural, cada botão chama
+  // o seu; quem pergunta é o handler de cada um.
   onAdvance: (id: string, nextStatus: OrderStatus) => void;
   onCancel: (id: string) => void;
 }
@@ -1299,6 +1300,25 @@ export const OrderDetail = memo(function OrderDetail({
   // (ver OrderCustomerCard abaixo).
   const whatsappUrl = linkWhatsappDoCliente(order.customer?.whatsapp);
 
+  // Laudo #2 (L-1): cancelar pedido deixa de ser UM clique sem guarda — a
+  // ação mais destrutiva do painel pede confirmação com texto por caso
+  // (pago? em rota?), na mesma régua do cancelamento pelo cliente.
+  const handleCancelarComConfirmacao = (id: string) => {
+    const texto = textoCancelamentoDoPainel({
+      status: order.status,
+      payment_status: order.paymentStatus,
+    });
+    if (!globalThis.confirm(texto)) return;
+    void handleStatusChange(id, "cancelled");
+  };
+
+  // Laudo #2 (L-8): pedido pendente não expira nunca (decisão deliberada —
+  // venda fechada por fora) — o que faltava era o SINAL de idade. Sem ele, o
+  // fantasma afunda na lista e prende o estoque sobre a memória do lojista.
+  const avisoDeEspera = fraseDeEsperaDoPedido(
+    idadeDoPedidoPendente(order.createdAt, order.status),
+  );
+
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
     const message = `Olá ${order.customer?.name || "Cliente"}! Entramos em contato sobre o seu pedido #${order.id.slice(-6)}.`;
@@ -1318,7 +1338,7 @@ export const OrderDetail = memo(function OrderDetail({
         isOffline={isOffline}
         isUpdatingStatus={isUpdatingStatus}
         onAdvance={requestStatusChange}
-        onCancel={(id) => handleStatusChange(id, "cancelled")}
+        onCancel={handleCancelarComConfirmacao}
       />
 
       <div className="mx-auto max-w-4xl space-y-6 p-4 md:p-6">
@@ -1333,6 +1353,13 @@ export const OrderDetail = memo(function OrderDetail({
                 Este pedido foi cancelado e não pode prosseguir.
               </p>
             </div>
+          </div>
+        )}
+
+        {avisoDeEspera && (
+          <div className="flex items-center gap-3 rounded-2xl border border-amber-500/20 bg-amber-950/20 p-4 text-amber-400 duration-300 animate-in slide-in-from-top">
+            <Clock className="size-5 shrink-0" />
+            <p className="text-[11px] font-semibold">{avisoDeEspera}</p>
           </div>
         )}
 

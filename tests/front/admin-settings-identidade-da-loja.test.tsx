@@ -3,20 +3,21 @@
 // Tarefa 3 do plano "o app para de inventar endereço": a tela de Ajustes
 // tinha exatamente dois blocos -- um medidor de latência de rede e um guia
 // de ajuda -- e nenhuma configuração de loja. Este teste prova o cartão
-// "Localização da Loja" que passa a existir ali: mostra o que já está
-// salvo, grava o que a pessoa digitar, e não finge sucesso quando a
+// "Identidade e Localização da Loja" que passa a existir ali: mostra o que
+// já está salvo, grava o que a pessoa digitar, e não finge sucesso quando a
 // gravação falha.
 //
-// O campo "Nome da loja" NÃO entra: `storeName` não tem nenhum consumidor
-// do lado do cliente (git grep confirma) -- nenhuma tela exibe o nome da
-// loja para quem compra, que continua vindo de `branding.appName`. Um
-// campo que grava e nunca aparece é a mesma classe de defeito que o commit
-// 06176a1 deste branch já matou: a tela promete o que o app não faz.
+// ATUALIZADO pelo laudo varredura profunda #2 (L-3, 01/09/2026): a versão
+// anterior deste arquivo EXCLUÍA o campo "Nome da loja" porque `storeName`
+// não tinha consumidor do lado do cliente. Isso deixou de ser verdade: hoje
+// Header, Home, Auth, Busca, o recibo e as push preferem `config.storeName`
+// — e, sem tela de gravação, vitrine/recibo/push mostravam o nome do MOLDE
+// para sempre. O campo mora aqui agora; vazio = não definiu (grava `null`,
+// o app volta para `branding.appName`).
 //
-// O terceiro caso é o mais importante: o defeito de "dizer salvo sem salvar"
-// foi corrigido no PR #225 (ADMIN-010, #94) em outros formulários -- o botão
-// de salvar tem de olhar o retorno de `updateConfig` (`Promise<boolean>`) e
-// só comemorar quando ele for `true`.
+// O caso de "dizer salvo sem salvar" continua valendo: o botão de salvar
+// tem de olhar o retorno de `updateConfig` (`Promise<boolean>`) e só
+// comemorar quando ele for `true` (ADMIN-010, #94).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -112,17 +113,18 @@ describe("AdminSettingsView — Identidade da Loja", () => {
     expect(pegarCampo("store-state").value).toBe("MG");
   });
 
-  it("não mostra campo de nome da loja, nem afirma que o nome aparece para quem compra", async () => {
+  it("mostra o campo de nome da loja (com o salvo) e diz que o nome aparece para quem compra", async () => {
     await abrirTela();
 
-    expect(hospedeiro.querySelector("#store-name")).toBeNull();
-    // "Nome" só aparecia neste cartão pelo rótulo do campo e pela frase de
-    // ajuda -- os dois saíram junto com o campo. Uma correção parcial que
-    // tirasse só o `<input>` e deixasse a frase mentindo não passa aqui.
-    expect(hospedeiro.textContent).not.toMatch(/nome/i);
+    const campo = hospedeiro.querySelector("#store-name") as HTMLInputElement;
+    expect(campo).toBeDefined();
+    expect(campo.value).toBe(""); // mockConfig não define storeName
+    // A frase de ajuda do cartão não pode prometer menos do que o app faz:
+    // o nome gravado aqui aparece na vitrine para quem compra.
+    expect(hospedeiro.textContent).toMatch(/Nome da loja/);
   });
 
-  it("grava os dois campos quando a pessoa salva", async () => {
+  it("grava os três campos quando a pessoa salva — nome vazio vira null", async () => {
     updateConfig.mockResolvedValue(true);
     await abrirTela();
 
@@ -157,9 +159,8 @@ describe("AdminSettingsView — Identidade da Loja", () => {
     expect(payload.storeCity).toBe("Patos de Minas");
     // Estado sempre em maiúscula, independente do que foi digitado.
     expect(payload.storeState).toBe("MG");
-    // Sem campo de nome na tela, a gravação não pode mais carregar
-    // `storeName` -- nem vazio, nem `null`.
-    expect(payload.storeName).toBeUndefined();
+    // Nome vazio grava `null` (não definido ≠ string vazia impressa).
+    expect(payload.storeName).toBeNull();
   });
 
   it("não diz que salvou quando a gravação falha", async () => {
