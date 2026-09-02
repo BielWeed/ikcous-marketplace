@@ -105,7 +105,7 @@ export function AlertasCancelados({
         type="button"
         data-testid="alertas-cancelados-alavanca"
         aria-expanded={aberto}
-        aria-controls="alertas-cancelados-conteudo"
+        {...(aberto ? { "aria-controls": "alertas-cancelados-conteudo" } : {})}
         onClick={() => setAberto((antes) => !antes)}
         className="flex w-full items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-left transition-all hover:bg-amber-500/10"
       >
@@ -173,7 +173,7 @@ export function AlertasCancelados({
             </div>
           )}
 
-          {/* Produtos que ainda não voltam — lista DERIVADA de
+          {/* Produtos que ainda não voltaram — lista DERIVADA de
               `pedidosCancelados`, nunca gravada, e trata só de MERCADORIA:
               nenhuma palavra sobre dinheiro devido (a lojista que lia
               "Estorno devido" sobre pedido nunca cobrado concluía que devia

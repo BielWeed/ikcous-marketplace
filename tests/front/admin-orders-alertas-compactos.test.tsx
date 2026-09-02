@@ -62,11 +62,14 @@ vi.mock("@/hooks/useOrders", () => ({
     loading: false,
     pedidosCancelados: mockPedidosCancelados,
     fetchPedidosCancelados: vi.fn(async () => mockPedidosCancelados),
-    pedidosCanceladosIncompleto: false,
+    pedidosCanceladosIncompleto: mockPedidosCanceladosIncompleto,
   }),
 }));
 
 let mockAnalyticsStats: any = null;
+// R3 da revisão do PR #400: o aviso de lista incompleta com pendência > 0
+// e pílula FECHADA é caminho próprio — ganha variável de controle aqui.
+let mockPedidosCanceladosIncompleto = false;
 
 vi.mock("@/hooks/useAnalytics", () => ({
   useAnalytics: () => ({
@@ -207,10 +210,37 @@ describe("AdminOrdersView — alertas de cancelados colapsados numa pílula", ()
     });
     hospedeiro.remove();
     vi.unstubAllGlobals();
+    // R2 da revisão do PR #400: o stub de scrollIntoView (teste do "Ver
+    // pedidos") é feito no protótipo e vaza para os testes seguintes do
+    // arquivo — restaurar a ausência original aqui.
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     mockOrders = [];
     mockTotalOrders = 0;
     mockPedidosCancelados = [];
+    mockPedidosCanceladosIncompleto = false;
     mockAnalyticsStats = null;
+  });
+
+  it("lista incompleta com pendência: o aviso aparece MESMO com a pílula fechada (R3 da revisão)", async () => {
+    mockAnalyticsStats = statsFake(1);
+    mockPedidosCanceladosIncompleto = true;
+
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+
+    // Pílula continua fechada…
+    expect(pílula()!.getAttribute("aria-expanded")).toBe("false");
+    expect(hospedeiro.textContent).not.toContain(
+      "O dinheiro entrou e o pedido está cancelado",
+    );
+    // …mas o aviso de incompletude NÃO mora dentro dela: com as listas
+    // podendo estar vazias por erro, escondê-lo atrás do clique seria
+    // silenciar exatamente o cenário em que ele importa.
+    expect(hospedeiro.textContent).toContain(
+      "Não foi possível confirmar a lista completa de pedidos cancelados",
+    );
   });
 
   it("com dinheiro preso, a área nasce COLAPSADA: pílula com a contagem, sem os blocos gigantes", async () => {
