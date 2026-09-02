@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
-import { AlertTriangle, RefreshCcw } from "lucide-react";
+import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
+import { AlertTriangle, RefreshCcw, WifiOff } from "lucide-react";
 import { Component } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 
@@ -11,6 +12,10 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  /** Laudo #2 (P-3): chunk error com a máquina SEM internet — rede caída,
+   * não versão nova. Mostra tela honesta de offline em vez de recarregar em
+   * loop sob a mentira "Instalando uma nova versão". */
+  chunkSemInternet: boolean;
 }
 
 function isChunkLoadError(error: Error | null | undefined): boolean {
@@ -31,9 +36,10 @@ export class GlobalErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
+    chunkSemInternet: false,
   };
 
-  public static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
   }
 
@@ -44,6 +50,19 @@ export class GlobalErrorBoundary extends Component<Props, State> {
     const isChunkError = isChunkLoadError(error);
 
     if (isChunkError) {
+      // Laudo #2 (P-3): sem internet, o chunk falhou porque a rede caiu — o
+      // service worker está servindo do cache e NENHUM reload conserta isso.
+      // Recarregar aqui só engata o loop de recargas e, na segunda falha,
+      // exibiria a tela "Atualizando o Aplicativo" eterna (e mentirosa).
+      // Pílula irmã do useUpdateCheck (:352-363), que já checava onLine.
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        console.warn(
+          "[GlobalErrorBoundary] Chunk error SEM internet: tela honesta de offline, cache preservado.",
+        );
+        this.setState({ chunkSemInternet: true });
+        return;
+      }
+
       console.warn(
         "[GlobalErrorBoundary] Dynamic chunk import error caught. Attempting silent reload for update recovery...",
       );
@@ -54,10 +73,9 @@ export class GlobalErrorBoundary extends Component<Props, State> {
         const now = Date.now();
         if (now - lastReload > 10000) {
           sessionStorage.setItem("pwa_chunk_reload_time", String(now));
-          localStorage.setItem(
-            "pwa_reload_reason",
-            "Failed to fetch dynamically imported module",
-          );
+          // Laudo #2 (P-1): motivo NOMINAL — recuperação de erro de módulo
+          // não é atualização; o boot não anuncia "Sistema Atualizado".
+          gravaMotivoDeRecarga("recuperacao-erro-modulo");
           window.location.reload();
           return;
         }
@@ -82,10 +100,9 @@ export class GlobalErrorBoundary extends Component<Props, State> {
         "pwa_forensics",
         JSON.stringify([newLog, ...logs].slice(0, 10)),
       );
-      localStorage.setItem(
-        "pwa_reload_reason",
-        `Fatal Crash: ${error.message.substring(0, 50)}...`,
-      );
+      // Laudo #2 (P-1): motivo nominal de crash (o texto cru do erro não vai
+      // mais para a tela do cliente como descrição de "Sistema Atualizado").
+      gravaMotivoDeRecarga("recuperacao-crash");
     } catch (e) {
       console.error("Failed to write forensic log", e);
     }
@@ -113,9 +130,40 @@ export class GlobalErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
+  private readonly handleTentarNovamente = () => {
+    // Saída da tela de offline: o lojista decide quando tentar de novo.
+    window.location.reload();
+  };
+
   public render() {
     if (this.state.hasError) {
       const isChunkError = isChunkLoadError(this.state.error);
+
+      if (isChunkError && this.state.chunkSemInternet) {
+        // Laudo #2 (P-3): honesto — sem sinal não há "nova versão" nenhuma
+        // sendo instalada; o que há é a internet caída.
+        return (
+          <div className="flex size-full flex-col items-center justify-center bg-[#09090b] p-6 text-center antialiased">
+            <div className="inset-0 mb-6 flex size-16 items-center justify-center rounded-full bg-amber-500/10">
+              <WifiOff className="size-8 text-amber-400" />
+            </div>
+            <h1 className="mb-2 text-xl font-black tracking-tight text-white">
+              Você está sem internet
+            </h1>
+            <p className="mb-8 max-w-xs text-xs leading-relaxed text-zinc-400">
+              A loja não conseguiu carregar uma parte dela porque a conexão
+              caiu. Quando a internet voltar, toque em "Tentar novamente".
+            </p>
+            <Button
+              onClick={this.handleTentarNovamente}
+              className="h-12 rounded-full bg-white px-8 font-bold tracking-wide text-black hover:bg-zinc-200"
+            >
+              <RefreshCcw className="mr-2 size-4" />
+              Tentar novamente
+            </Button>
+          </div>
+        );
+      }
 
       if (isChunkError) {
         return (

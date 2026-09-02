@@ -7,6 +7,78 @@ Este arquivo começa na `1.0.1`, a **primeira release sob o GitFlow** implantado
 (PR #11). A `1.0.0` que consta no `package.json` desde o início do projeto nunca foi tagueada e
 não tem escopo registrado — não há como reconstruí-lo com honestidade, então ele não está aqui.
 
+## [1.17.0] - 2026-09-01
+
+A versão da segunda varredura profunda: três ângulos nunca auditados como
+principais (isolamento e privacidade, PWA/offline como produto, o lojista
+leigo e a vida do pedido depois da compra) produziram um laudo de 26 achados
+novos — as ondas A a D consertam os que mais doem, com o nascimento das lojas
+na frente.
+
+### Para quem COMPRA
+
+- **A marca da loja volta às notificações.** Todo aviso de pedido nascia com
+  ícone ausente na tela de bloqueio (o caminho do arquivo não existia) — e o
+  ícone de instalação no iPhone era um formato que o iOS não aceita. Os dois
+  apontam para os arquivos certos agora.
+- **Sem internet, o app diz "Você está sem internet"** — não mais "Erro ao
+  carregar seus pedidos" com a lista certa na tela, nem a tela eterna
+  "Atualizando o Aplicativo / Instalando uma nova versão" que mentia enquanto
+  a rede estava caída (agora é uma tela honesta de offline com botão "Tentar
+  novamente").
+- **"Sistema Atualizado" só quando houve atualização de verdade.** O aviso
+  que aparecia "do nada" era a máscara de qualquer recuperação: erro de
+  rede num arquivo, crash do app e reinício automático do vigia interno
+  todos anunciavam "atualização". Cada motivo agora tem a frase honesta —
+  e nenhum deles finge ser update.
+- **Tocar na notificação volta para a loja que já está aberta**, em vez de
+  abrir uma segunda cópia dela.
+
+### Para quem VENDE
+
+- **Cancelar pedido no painel pede confirmação** — e a pergunta muda com o
+  caso: pedido pago avisa que o dinheiro não volta automático e que o pedido
+  entra na lista "Devolver agora"; pedido em rota avisa que a mercadoria não
+  volta sozinha. Fim do X vermelho de um clique sem guarda e sem desfazer.
+- **O balde "Devolver agora" tem saída à mão**: o botão "Já estornei no
+  Mercado Pago" marca o pedido como estornado (com confirmação) — antes ele
+  dependia de uma notificação do Mercado Pago que o próprio código admite
+  nunca ter sido observada chegar, e o card ficava na tela para sempre.
+- **O nome da SUA loja agora tem onde configurar.** O campo "Nome da loja"
+  entrou no cartão de Identidade e Localização dos Ajustes — até aqui,
+  vitrine, recibo e notificações mostravam o nome do molde para sempre,
+  porque nenhuma tela gravava esse valor. Vazio = o app usa o nome do
+  branding.
+- **Pedido esquecido fica visível.** Pedido pendente há 3 dias ou mais
+  mostra "Este pedido espera você há N dias" na ficha — o pedido "na entrega"
+  continua sem expirar (decisão de desenho), mas deixa de afundar na lista
+  sem ninguém saber há quanto tempo prende o estoque.
+- **Os KPIs não dizem "R$ 0,00" quando a consulta falha** — mostram "—"
+  (zero medido e zero de falha são coisas diferentes). E apagar um cupom que
+  já tem pedidos no histórico agora explica o motivo e aponta a saída real:
+  desativá-lo.
+- **O painel sincroniza produtos de verdade**: o catch-up de detalhes pedia
+  uma coluna que o lojista não pode ler e engolia o erro em silêncio há uma
+  semana — agora pede só as colunas permitidas e loga qualquer falha.
+
+### Para quem opera o molde
+
+- **O nascimento das lojas vem nas migrations.** As proteções que viviam só
+  no banco de desenvolvimento — esconder o preço de compra (`custo`) do
+  catálogo e o storage com travas de administrador — agora nascem do
+  repositório: uma loja clonada deixa de nascer com a margem legível para
+  qualquer visitante e sem poder subir uma foto sequer. As policies largas
+  de banner (qualquer usuário logado escrevia) foram derrubadas.
+- **Selo "Compra Verificada" não conta pedido morto**: pedido pago que depois
+  foi cancelado ou devolvido deixa de conferir o selo em avaliação nova.
+- **Migrations 20261070–73** (grants de coluna de produtos; buckets + policies
+  de storage; RPC registrar_estorno_manual com guarda de admin; portão de
+  status nas triggers do selo) — com rollback manual, VERIFICACOES no
+  db-apply e provas db-prove no padrão da casa (12/12 e 7/7).
+- **Faxina do instalável**: promessas que o app não cumpria saíram do
+  manifest (compartilhar-para-o-app, screenshot inexistente, ícone
+  inexistente) e o arquivo `sros_manifest.json` público foi apagado.
+
 ## [1.16.0] - 2026-09-01
 
 A versão da varredura profunda: três ângulos novos de auditoria (regressão do

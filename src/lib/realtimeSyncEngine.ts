@@ -937,12 +937,31 @@ export const RealtimeSyncEngine = {
           // própria e não expõe a coluna, então o filtro só entra no ramo admin.
           let detailQuery = supabase
             .from(isAdmin ? "produtos" : ("vw_produtos_public" as any))
-            .select("*, product_variants(*)")
+            .select(
+              // Laudo #2 (achado da revisão do PR #395): no ramo admin, o
+              // `*` pedia `custo` — coluna com SELECT NEGADO ao authenticated
+              // desde o BANCO-010 — e o `const { data }` sem checar `error`
+              // ENGOLIA o permission denied: o catch-up de detalhes do painel
+              // falhava em silêncio. Colunas explícitas (as 29 públicas) fazem
+              // a mesma leitura funcionar; o custo do admin segue vindo por
+              // vw_produtos_admin/RPCs, que são as portas de propósito.
+              isAdmin
+                ? "id, nome, descricao, categoria, codigo, preco_venda, preco_original, imagem_url, imagem_urls, estoque, estoque_minimo, ativo, deleted_at, data_cadastro, ultima_atualizacao, peso_kg, altura_cm, largura_cm, comprimento_cm, frete_gratis, tags, meta_title, meta_description, rating, review_count, sold, calculated_points, fornecedor_id, is_bestseller, product_variants(*)"
+                : "*, product_variants(*)",
+            )
             .in("id", outOfDateIds);
           if (isAdmin) {
             detailQuery = detailQuery.is("deleted_at", null);
           }
-          const { data: rawProducts } = await detailQuery;
+          const { data: rawProducts, error: erroDetalhes } = await detailQuery;
+          // Laudo #2: o catchup de detalhes não pode engolir falha em
+          // silêncio — loga e segue (o próximo catchup tenta de novo).
+          if (erroDetalhes) {
+            console.error(
+              "[RealtimeSync] Falha no catchup de detalhes de produtos:",
+              erroDetalhes.message,
+            );
+          }
 
           if (rawProducts) {
             const variantRecord = TABLE_CONFIGS.find(

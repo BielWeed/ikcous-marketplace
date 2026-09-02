@@ -39,20 +39,23 @@ interface AdminSettingsViewProps {
 }
 
 // ==========================================
-// Store Location Section — cidade e estado da loja
+// Store Location Section — nome, cidade, estado e horário da loja
 // ==========================================
 //
 // Até aqui esta tela tinha exatamente dois blocos: diagnóstico de conexão e
 // um guia de ajuda. Não havia uma única configuração de loja nela. Este
 // cartão é o que faz "Ajustes" ajustar alguma coisa.
 //
-// O campo de nome NÃO mora aqui: `storeName` grava no banco (StoreContext)
-// e as telas do cliente já leem de volta — Header, Home e Busca preferem
-// `config.storeName` e só caem no `branding.appName` quando o banco está
-// vazio (ver tests/front/nome-da-loja-vem-do-banco.test.tsx). Esta tela
-// segue dona só do que ela edita: a localização, no cartão abaixo.
+// `storeName` grava no banco (StoreContext) e as telas do cliente leem de
+// volta — Header, Home e Busca preferem `config.storeName` e só caem no
+// `branding.appName` quando o banco está vazio (ver
+// tests/front/nome-da-loja-vem-do-banco.test.tsx). Até 01/09/2026 NENHUMA
+// tela gravava esse valor (laudo varredura #2, L-3): a vitrine, o recibo e
+// as push mostravam o nome do molde para sempre. O campo mora aqui agora —
+// vazio = a loja não definiu nome, e o app usa o fallback do branding.
 const StoreLocationSection = memo(function StoreLocationSection() {
   const { config, updateConfig } = useStore();
+  const [storeName, setStoreName] = useState(config.storeName ?? "");
   const [storeCity, setStoreCity] = useState(config.storeCity ?? "");
   const [storeState, setStoreState] = useState(config.storeState ?? "");
   const [businessHours, setBusinessHours] = useState(
@@ -64,10 +67,16 @@ const StoreLocationSection = memo(function StoreLocationSection() {
   // do banco -- sem isto, os campos ficariam presos no valor vazio do
   // primeiro render mesmo depois do fetch resolver.
   useEffect(() => {
+    setStoreName(config.storeName ?? "");
     setStoreCity(config.storeCity ?? "");
     setStoreState(config.storeState ?? "");
     setBusinessHours(config.businessHours ?? "");
-  }, [config.storeCity, config.storeState, config.businessHours]);
+  }, [
+    config.storeName,
+    config.storeCity,
+    config.storeState,
+    config.businessHours,
+  ]);
 
   const handleSave = async () => {
     if (isSaving) return;
@@ -77,6 +86,9 @@ const StoreLocationSection = memo(function StoreLocationSection() {
       // loja não configurou" que o resto do app trata como ausência, em vez
       // de imprimir vazio no meio de uma frase.
       const salvou = await updateConfig({
+        // Laudo #2 (L-3): o nome é a primeira configuração de qualquer dono
+        // de loja. Vazio = não definiu (o app volta para o nome do branding).
+        storeName: storeName.trim() || null,
         storeCity: storeCity.trim() || null,
         storeState: storeState.trim().toUpperCase() || null,
         // Horário de atendimento no mesmo molde (laudo caça-bugs 30/08:
@@ -101,16 +113,34 @@ const StoreLocationSection = memo(function StoreLocationSection() {
           <MapPin className="size-5 text-admin-gold" strokeWidth={2.5} />
         </div>
         <h2 className="text-xs font-black uppercase tracking-[0.2em] text-white">
-          Localização e Horário da Loja
+          Identidade e Localização da Loja
         </h2>
       </div>
 
       <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
         <div className="flex flex-col gap-3">
           <p className="text-left text-[9.5px] leading-snug text-zinc-400">
-            Cidade, estado e horário aparecem para quem compra. Deixe em branco
-            o que a loja ainda não quer mostrar -- o app omite, nunca inventa.
+            O nome, a cidade, o estado e o horário aparecem para quem compra.
+            Deixe em branco o que a loja ainda não quer mostrar -- o app omite,
+            nunca inventa.
           </p>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="store-name"
+              className="text-xs font-semibold text-zinc-300"
+            >
+              Nome da loja
+            </label>
+            <input
+              id="store-name"
+              type="text"
+              value={storeName}
+              onChange={(e) => setStoreName(e.target.value)}
+              placeholder="Como a loja aparece na vitrine, no recibo e nas notificações"
+              className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-xs font-semibold text-white placeholder-zinc-600 transition-all focus:border-admin-gold focus:outline-none"
+            />
+          </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_100px]">
             <div className="space-y-1.5">

@@ -1638,6 +1638,12 @@ export type Database = {
       };
     };
     Functions: {
+      // Laudo varredura #2 (L-2): porta manual do balde "Devolver agora" —
+      // o lojista registra o estorno que fez no painel do Mercado Pago.
+      registrar_estorno_manual: {
+        Args: { p_order_id: string };
+        Returns: { ok: boolean; payment_status: string };
+      };
       answer_question_atomic:
         | {
             Args: { p_answer: string; p_question_id: string };

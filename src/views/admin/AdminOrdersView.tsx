@@ -717,6 +717,45 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     fetchPedidosCancelados().catch(() => {});
   }, [active, fetchPedidosCancelados]);
 
+  // Laudo #2 (L-2): a saída MANUAL do balde de estorno. O item some sozinho
+  // só quando o webhook do Mercado Pago atualiza `payment_status` — e o
+  // próprio webhook documenta que ninguém jamais observou essa notificação
+  // chegar (issue #212). Sem uma porta manual, o card ficava na tela para
+  // sempre. A RPC no servidor é guarda de admin; o confirm aqui evita
+  // registrar por engano um estorno que ainda não aconteceu.
+  const [estornandoId, setEstornandoId] = useState<string | null>(null);
+  const registrarEstornoFeito = async (pedido: {
+    id: string;
+    total?: number | null;
+    customer?: { name?: string | null } | null;
+  }) => {
+    const valor = (pedido.total || 0).toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+    });
+    const cliente = pedido.customer?.name || "o cliente";
+    if (
+      !globalThis.confirm(
+        `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no painel do Mercado Pago?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`,
+      )
+    ) {
+      return;
+    }
+    setEstornandoId(pedido.id);
+    try {
+      const { error } = await supabase.rpc("registrar_estorno_manual", {
+        p_order_id: pedido.id,
+      });
+      if (error) throw error;
+      toast.success("Estorno registrado — o pedido saiu da lista.");
+      await fetchPedidosCancelados().catch(() => {});
+    } catch (e) {
+      console.error("Erro ao registrar estorno manual:", e);
+      toast.error("Não consegui registrar o estorno. Tente de novo.");
+    } finally {
+      setEstornandoId(null);
+    }
+  };
+
   // Reset dialog/modals when view becomes inactive
   useEffect(() => {
     if (!active) {
@@ -1305,6 +1344,19 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         minimumFractionDigits: 2,
                       })}
                     </span>
+                    {/* Laudo #2 (L-2): a saída manual que faltava — quando a
+                        notificação do MP nunca chega, era estagnado para
+                        sempre. A confirmação evita registrar por engano. */}
+                    <button
+                      type="button"
+                      disabled={estornandoId === pedido.id}
+                      onClick={() => void registrarEstornoFeito(pedido)}
+                      className="mt-2 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[8.5px] font-black uppercase tracking-widest text-emerald-400 transition-all hover:bg-emerald-500/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      {estornandoId === pedido.id
+                        ? "Registrando..."
+                        : "Já estornei no Mercado Pago"}
+                    </button>
                   </li>
                 ))}
               </ul>

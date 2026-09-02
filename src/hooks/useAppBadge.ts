@@ -4,7 +4,8 @@ import { useCallback, useRef } from "react";
  * useAppBadge v17.0
  * App Badge API — exibe contagem no ícone do app instalado.
  * Funciona em Chrome/Edge/Samsung browser com PWA instalada.
- * Mostra: cart count + unread notifications + pending updates.
+ * Hoje o sincronizador do App.tsx alimenta APENAS com a contagem do
+ * carrinho (notificações não lidas e updates não entram no badge).
  */
 export function useAppBadge() {
   const currentBadgeRef = useRef<number>(0);

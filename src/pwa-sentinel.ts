@@ -4,6 +4,8 @@
  * Este script roda fora do ciclo de vida principal do React para monitorar a saúde do SW.
  * Se o SW travar ou falhar em responder corações (heartbeats), o Sentinel intervém.
  */
+import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
+
 export const initSentinel = () => {
   if (!navigator.serviceWorker) return;
 
@@ -74,10 +76,9 @@ export const initSentinel = () => {
         console.warn(
           "[PWA Sentinel] 🔌 Service Worker Unregistered. Forcing reload.",
         );
-        localStorage.setItem(
-          "pwa_reload_reason",
-          `Sentinel Recovery: Pulse loss (${timeSinceLastPulse}ms)`,
-        );
+        // Laudo #2 (P-1): motivo nominal — o boot não anuncia "Sistema
+        // Atualizado" para uma recuperação de pulso.
+        gravaMotivoDeRecarga("recuperacao-sentinela");
         window.location.reload();
       });
     } else {

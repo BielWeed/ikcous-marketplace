@@ -38,7 +38,10 @@
 
   <!-- Icons -->
   <link rel="icon" type="image/svg+xml" href="/logo.svg" />
-  <link rel="apple-touch-icon" href="/logo.svg" />
+  <!-- Laudo #2 (P-6): iOS NÃO aceita SVG para apple-touch-icon — o ícone de
+       instalação no iPhone saía print genérico. O PNG quadrado é o formato
+       suportado (e o transform de branding do build troca o SVG do favicon). -->
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
   <!-- Preconnect & DNS-Prefetch for critical resources -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -52,7 +55,8 @@
   <title>IKCOUS Marketplace</title>
 
   <link rel="stylesheet" href="/loading.css" />
-  <!-- Script Silent Guardian: GHOST PURGE V11.5 -->
+  <!-- Silent Guardian: splash de arranque + fallback de 20s se o app não
+       subir (o GHOST PURGE foi aposentado — ver o cabeçalho do arquivo). -->
   <script src="/silent-guardian.js" defer></script>
   <!-- Speculation Rules API: browser-native prefetch (zero JS overhead, Chrome 109+) -->
   <script type="speculationrules">
