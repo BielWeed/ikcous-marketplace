@@ -351,4 +351,51 @@ describe("EtiquetasEnvioCard — etiqueta só sai com confirmação explícita",
     expect(gerar?.disabled).toBe(true);
     expect(invokeMock).not.toHaveBeenCalled();
   });
+
+  it("resgate (resgate: true no 409): a confirmação some, a mensagem com o id da etiqueta FICA na tela (item I) e o toast a carrega", async () => {
+    // Corpo REAL do ramo 409 da function (corrida de geração, contrato E′):
+    // `resgate: true` manda a tela de volta para a lista — e, item I do
+    // re-review, a mensagem (com o id que amarra o pedido à compra no Melhor
+    // Envio) não pode viver só no toast de ~4 s: fica no bloco vermelho acima
+    // de "Gerar etiqueta" até o lojista trocar de pedido.
+    const mensagemResgate =
+      "Já existe uma geração de etiqueta em andamento para este pedido. Aguarde ou recarregue para ver a etiqueta existente.";
+    invokeMock.mockResolvedValue({
+      data: null,
+      error: {
+        name: "FunctionsHttpError",
+        context: new Response(
+          JSON.stringify({
+            error: mensagemResgate,
+            label_id: "x",
+            resgate: true,
+          }),
+          { status: 409 },
+        ),
+      },
+    });
+    await abrirCard();
+    await selecionarPedido();
+
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    await act(async () => {
+      botao("Confirmar e gerar")?.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    // De volta à lista: o botão de gasto NÃO está na tela e o seletor voltou.
+    expect(botao("Confirmar e gerar")).toBeUndefined();
+    expect(hospedeiro.querySelector("#pedido-etiqueta-select")).toBeTruthy();
+    // A mensagem do corpo ESTÁ na tela — bloco vermelho persistente.
+    expect(
+      hospedeiro.querySelector('[data-testid="erro-etiqueta"]')?.textContent,
+    ).toBe(mensagemResgate);
+    // E o toast também a carregou.
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(mensagemResgate);
+  });
 });

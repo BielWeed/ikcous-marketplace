@@ -567,7 +567,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         //    pagamento para o portão e a URL da etiqueta para o `already`).
         const { data: pedido, error: pedidoError } = await supabaseClient
             .from('marketplace_orders')
-            .select('id, status, payment_status, tracking_code, shipping_label_id, shipping_label_url, total, customer_name, customer_data')
+            .select('id, status, payment_status, tracking_code, shipping_label_id, shipping_label_url, customer_name, customer_data')
             .eq('id', orderId)
             .maybeSingle()
 

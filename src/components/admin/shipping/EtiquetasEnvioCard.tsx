@@ -198,8 +198,9 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
       // existe/está paga) o botão de gasto não pode ficar ativo (revisor,
       // E e E′, PR #423): recarrega a lista e volta para ela em vez de
       // reapresentar "Confirmar e gerar" — o re-clique nesses casos só
-      // devolve `already` sem link. Para o detalhe de negócio não se perder
-      // com a saída da confirmação, o toast carrega a mensagem da function.
+      // devolve `already` sem link. O detalhe de negócio NÃO morre no toast:
+      // com a fase em "ocioso" o bloco vermelho acima de "Gerar etiqueta"
+      // mantém a mensagem na tela (revisor, item I, PR #423).
       fetchPedidos();
       setFase(resgate ? "ocioso" : "confirmar");
       haptic.error();
@@ -399,22 +400,37 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
             )}
 
             {!confirmacaoAberta ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (!pedidoSelecionado) {
-                    toast.error("Selecione um pedido para gerar a etiqueta.");
-                    return;
-                  }
-                  setErroMsg(null);
-                  setFase("confirmar");
-                }}
-                disabled={!pedidoSelecionado || isOffline || loadingPedidos}
-                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold px-4 py-2.5 text-xs font-bold text-black shadow-lg shadow-amber-500/20 transition-all hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 sm:w-auto"
-              >
-                <PackageCheck className="size-3.5" />
-                <span>Gerar etiqueta</span>
-              </button>
+              <>
+                {/* Erro de RESGATE fica NA TELA (revisor, item I, PR #423): o
+                    id da etiqueta que amarra o pedido à compra no Melhor Envio
+                    não pode viver só ~4 s no toast — fica aqui, acima do botão
+                    de gasto, até o lojista trocar de pedido (o onChange do
+                    select limpa) ou reabrir a confirmação. */}
+                {erroMsg && (
+                  <p
+                    data-testid="erro-etiqueta"
+                    className="rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-2 text-[10.5px] font-semibold leading-snug text-red-300 duration-200 animate-in fade-in"
+                  >
+                    {erroMsg}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!pedidoSelecionado) {
+                      toast.error("Selecione um pedido para gerar a etiqueta.");
+                      return;
+                    }
+                    setErroMsg(null);
+                    setFase("confirmar");
+                  }}
+                  disabled={!pedidoSelecionado || isOffline || loadingPedidos}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold px-4 py-2.5 text-xs font-bold text-black shadow-lg shadow-amber-500/20 transition-all hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 sm:w-auto"
+                >
+                  <PackageCheck className="size-3.5" />
+                  <span>Gerar etiqueta</span>
+                </button>
+              </>
             ) : (
               /* ── Confirmação explícita: o saldo é de verdade ─────────── */
               <div className="space-y-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 duration-200 animate-in fade-in">
