@@ -31,15 +31,18 @@
 //   * pedido que JÁ TEM `shipping_label_id` não gera etiqueta de novo — a
 //     segunda chamada devolve a etiqueta existente (`already: true`), então
 //     falha suave de generate/print/tracking não vira segunda compra;
-//   * falha no CHECKOUT remove o item do carrinho do ME (nada fica lá para o
+//   * falha no CHECKOUT com resposta DEFINIDA do ME (HTTP 4xx, ou 200 com
+//     status != paid) remove o item do carrinho do ME (nada fica lá para o
 //     lojista comprar sem querer) e LIBERA a reivindicação — o ME RESPONDEU
 //     que a compra não fechou, não há ambiguidade de dinheiro; o pedido volta
 //     a poder etiquetar quando o lojista tentar de novo (revisor, bloqueante
 //     A da 2ª rodada, PR #423);
-//   * exceção/timeout DEPOIS da reivindicação (o checkout é a chamada lenta)
-//     grava evento `checkout_indeterminado`, MANTÉM a reivindicação e manda o
-//     lojista conferir a conta do ME — aqui a ambiguidade é real (a compra
-//     pode ter fechado com a resposta perdida) (revisor, B da 2ª rodada);
+//   * 5xx do checkout (um gateway pode ter DEBITADO com a resposta perdida —
+//     o ME não disse "não pagou") e exceção/timeout DEPOIS da reivindicação
+//     são INDETERMINADOS (`finalizarIndeterminado`): evento
+//     `checkout_indeterminado`, reivindicação MANTIDA, carrinho intacto e
+//     502 mandando conferir a conta do ME antes de qualquer retry — liberar
+//     aqui reabriria o caminho de compra dupla (revisor, B e A′ da 2ª rodada);
 //   * modo Sandbox da credencial manda tudo para o sandbox do ME (sem custo).
 //
 // ENDPOINTS v2 do Melhor Envio (doc oficial docs.melhorenvio.com.br):
@@ -186,7 +189,7 @@ export function extrairEnderecoDoPedido(
  * no CHECK do status vivo, mas entra na mesma lista por segurança — é estado
  * de pedido morto para envio.
  */
-export function erroDePedidoParaEtiqueta(pedido: { status?: string | null; tracking?: string | null }): string | null {
+export function erroDePedidoParaEtiqueta(pedido: { status?: string | null }): string | null {
     const status = String(pedido?.status || '').toLowerCase()
     if (['cancelled', 'delivered', 'returned'].includes(status)) {
         return `Pedido com status "${status}" não gera etiqueta de envio.`
@@ -564,7 +567,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         //    pagamento para o portão e a URL da etiqueta para o `already`).
         const { data: pedido, error: pedidoError } = await supabaseClient
             .from('marketplace_orders')
-            .select('id, status, payment_status, subtotal, tracking_code, shipping_label_id, shipping_label_url, total, customer_name, customer_data')
+            .select('id, status, payment_status, tracking_code, shipping_label_id, shipping_label_url, total, customer_name, customer_data')
             .eq('id', orderId)
             .maybeSingle()
 
@@ -774,22 +777,28 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 payload: { etapa: 'reivindicacao', label_id: labelId, sandbox: isSandbox },
             })
             return new Response(
-                JSON.stringify({ error: 'Já existe uma geração de etiqueta em andamento para este pedido. Aguarde ou recarregue para ver a etiqueta existente.' }),
+                JSON.stringify({
+                    error: 'Já existe uma geração de etiqueta em andamento para este pedido. Aguarde ou recarregue para ver a etiqueta existente.',
+                    label_id: labelId,
+                    resgate: true,
+                }),
                 { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
             )
         }
 
         const finalizarComErro = async (mensagem: string, etapa: string): Promise<Response> => {
             if (etapa === 'checkout') {
-                // O ME RESPONDEU que a compra não fechou (erro HTTP ou status
-                // != paid): aqui NÃO há ambiguidade de dinheiro. Remover o
-                // item do carrinho (revisor, item 4 — nada fica lá para o
-                // lojista "comprar o carrinho" sem querer) e LIBERAR a
-                // reivindicação (revisor, bloqueante A da 2ª rodada, PR #423):
-                // mantê-la deixava o pedido preso para sempre — o portão
-                // `already: true` devolvia uma etiqueta que não existe mais,
-                // e só UPDATE na mão do dono destravava. Update CONDICIONAL:
-                // só solta se o vínculo ainda é o desta corrida.
+                // O ME RESPONDEU que a compra não fechou (HTTP 4xx, ou 200 com
+                // status != paid — 5xx NUNCA chega aqui: vai para
+                // finalizarIndeterminado, revisor A′ da 2ª rodada): aqui NÃO há
+                // ambiguidade de dinheiro. Remover o item do carrinho (revisor,
+                // item 4 — nada fica lá para o lojista "comprar o carrinho" sem
+                // querer) e LIBERAR a reivindicação (revisor, bloqueante A da
+                // 2ª rodada, PR #423): mantê-la deixava o pedido preso para
+                // sempre — o portão `already: true` devolvia uma etiqueta que
+                // não existe mais, e só UPDATE na mão do dono destravava.
+                // Update CONDICIONAL: só solta se o vínculo ainda é o desta
+                // corrida.
                 await removerDoCarrinho(buscar, baseUrl, headersME, labelId)
                 const { error: erroLiberacao } = await supabaseClient
                     .from('marketplace_orders')
@@ -817,6 +826,8 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             // está mais no carrinho: NADA a remover. E a resposta NÃO diz
             // "tente novamente" — o retry cairia no `already` sem link de
             // impressão: nomeia o id e manda gerar/imprimir no site do ME.
+            // `resgate: true` é CONTRATO para o card (não regex sobre a prosa):
+            // volta para a lista, não reapresenta o botão de gasto (E′).
             await gravarEvento(supabaseClient, {
                 order_id: orderId,
                 event_type: 'erro',
@@ -827,7 +838,40 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             return new Response(
                 JSON.stringify({
                     error: `A etiqueta foi PAGA no Melhor Envio (id ${labelId}), mas a geração do arquivo falhou. Ela já está na sua conta do Melhor Envio — gere e imprima a etiqueta de id ${labelId} direto por lá; não tente de novo aqui.`,
+                    label_id: labelId,
+                    resgate: true,
                 }),
+                { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            )
+        }
+
+        /**
+         * Estado INDETERMINADO de dinheiro (revisor, B e A′ da 2ª rodada, PR
+         * #423): 5xx do checkout OU exceção pós-reivindicação — o ME pode ter
+         * processado a compra com a resposta perdida. AQUI não se libera a
+         * reivindicação e não se mexe no carrinho: o vínculo
+         * `shipping_label_id` fica (é o que impede a compra dupla — o próximo
+         * clique cai no `already: true`), o evento registra o estado e a
+         * resposta 502 nomeia o id e manda conferir a conta do ME antes de
+         * qualquer retry. `resgate: true` é contrato para o card (E′).
+         * `pagoConfirmado` deixa a mensagem honesta quando a compra FECHOU
+         * (exceção em generate/print/json depois de um checkout `paid`).
+         */
+        const finalizarIndeterminado = async (detalheEvento: string, pagoConfirmado: boolean): Promise<Response> => {
+            await gravarEvento(supabaseClient, {
+                order_id: orderId,
+                event_type: 'erro',
+                error_message: pagoConfirmado
+                    ? `Compra CONFIRMADA no Melhor Envio, falha na finalização: ${detalheEvento}`
+                    : `Falha indeterminada no checkout/geração da etiqueta: ${detalheEvento}`,
+                protocol: cartData?.protocol || null,
+                payload: { etapa: 'checkout_indeterminado', label_id: labelId, service, sandbox: isSandbox },
+            })
+            const mensagem = pagoConfirmado
+                ? `A compra da etiqueta (id ${labelId}) FOI CONFIRMADA no Melhor Envio, mas a geração do arquivo falhou. Gere e imprima a etiqueta de id ${labelId} direto na sua conta do Melhor Envio; o pedido segue vinculado a esta etiqueta.`
+                : `A compra da etiqueta (id ${labelId}) ficou em estado INDETERMINADO no Melhor Envio — pode ter sido paga ou não. Confira a compra na sua conta do Melhor Envio antes de tentar de novo; o pedido segue vinculado a esta etiqueta.`
+            return new Response(
+                JSON.stringify({ error: mensagem, label_id: labelId, resgate: true }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
             )
         }
@@ -839,8 +883,16 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         // reivindicação mantidos em silêncio. AQUI a ambiguidade de dinheiro
         // é REAL — o ME pode ter processado a compra com a resposta perdida.
         // Por isso o catch NÃO libera a reivindicação e NÃO mexe no carrinho:
-        // registra o estado indeterminado e manda o lojista conferir a conta
-        // do ME antes de qualquer retry.
+        // registra o estado indeterminado (finalizarIndeterminado) e manda o
+        // lojista conferir a conta do ME antes de qualquer retry. O 5xx do
+        // checkout entra no MESMO caminho (A′ da 2ª rodada): gateway que
+        // responde 500/502/504 pode ter DEBITADO com a resposta perdida —
+        // tratá-lo como "não pagou" reabre a compra dupla. A flag
+        // `pagoConfirmado` nasce FORA do try porque o catch precisa ler: só
+        // vira true depois de um checkout com `purchase.status === 'paid'`,
+        // para a mensagem do indeterminado ser honesta quando a compra FECHOU
+        // (nit H2 da 3ª rodada).
+        let pagoConfirmado = false
         try {
             // 7. Checkout — AQUI consome o saldo. A confirmação explícita é na
             //    tela; a function não re-confirma (a UI é a única porta).
@@ -852,13 +904,25 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             if (!checkoutResponse.ok) {
                 const detalhe = await checkoutResponse.text()
                 console.error('[melhor-envio-etiqueta] checkout HTTP', checkoutResponse.status, detalhe)
-                return finalizarComErro(mensagemDoErroHttp(checkoutResponse.status, 'pagamento da etiqueta'), 'checkout')
+                if (checkoutResponse.status >= 500) {
+                    // 5xx de gateway: a compra PODE ter fechado com a resposta
+                    // perdida — indeterminado, NÃO "não pagou" (A′).
+                    return await finalizarIndeterminado(
+                        `checkout respondeu HTTP ${checkoutResponse.status} — compra em estado indeterminado`,
+                        false,
+                    )
+                }
+                return await finalizarComErro(mensagemDoErroHttp(checkoutResponse.status, 'pagamento da etiqueta'), 'checkout')
             }
             const checkoutData = await checkoutResponse.json()
             const checkout = normalizarCheckout(checkoutData)
             if (!checkout.pago) {
-                return finalizarComErro(checkout.erro || 'Compra da etiqueta não confirmada.', 'checkout')
+                return await finalizarComErro(checkout.erro || 'Compra da etiqueta não confirmada.', 'checkout')
             }
+            // A compra FECHOU de verdade (`purchase.status === 'paid'`) — daqui
+            // em diante exceção não é mais "pode ter sido paga ou não" (flag
+            // para a mensagem honesta do indeterminado, nit H2 da 3ª rodada).
+            pagoConfirmado = true
 
             // 8. Gera a etiqueta (obrigatório antes de imprimir).
             const generateResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/generate`, {
@@ -869,7 +933,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             if (!generateResponse.ok) {
                 const detalhe = await generateResponse.text()
                 console.error('[melhor-envio-etiqueta] generate HTTP', generateResponse.status, detalhe)
-                return finalizarComErro(mensagemDoErroHttp(generateResponse.status, 'geração da etiqueta'), 'generate')
+                return await finalizarComErro(mensagemDoErroHttp(generateResponse.status, 'geração da etiqueta'), 'generate')
             }
 
             // 9. Link de impressão (fallo suave: sem link, a etiqueta existe e o
@@ -936,6 +1000,8 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 return new Response(
                     JSON.stringify({
                         error: `A etiqueta foi paga no Melhor Envio (id ${labelId}) e está vinculada ao pedido, mas o link de impressão não foi salvo. Reimprima pela sua conta do Melhor Envio; o rastreio pode ser atualizado aqui depois.`,
+                        label_id: labelId,
+                        resgate: true,
                     }),
                     { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
                 )
@@ -970,19 +1036,11 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             )
         } catch (errFinalizacao) {
             console.error('[melhor-envio-etiqueta] Falha indeterminada após a reivindicação:', errFinalizacao)
-            await gravarEvento(supabaseClient, {
-                order_id: orderId,
-                event_type: 'erro',
-                error_message: `Falha indeterminada no checkout/geração da etiqueta: ${String(errFinalizacao)}`,
-                protocol: cartData?.protocol || null,
-                payload: { etapa: 'checkout_indeterminado', label_id: labelId, service, sandbox: isSandbox },
-            })
-            return new Response(
-                JSON.stringify({
-                    error: `A compra da etiqueta (id ${labelId}) ficou em estado INDETERMINADO no Melhor Envio — pode ter sido paga ou não. Confira a compra na sua conta do Melhor Envio antes de tentar de novo; o pedido segue vinculado a esta etiqueta.`,
-                }),
-                { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-            )
+            // Mesmo caminho do 5xx do checkout (finalizarIndeterminado): NÃO
+            // libera, NÃO mexe no carrinho, registra e manda conferir a conta
+            // do ME. Se a compra já tinha FECHADO (`paid`), a mensagem é
+            // honesta sobre isso (pagoConfirmado).
+            return await finalizarIndeterminado(String(errFinalizacao), pagoConfirmado)
         }
     } catch (err) {
         console.error('[melhor-envio-etiqueta] Erro de topo:', err)

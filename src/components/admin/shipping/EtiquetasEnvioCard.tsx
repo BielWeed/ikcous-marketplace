@@ -50,15 +50,19 @@ interface EtiquetaResultado {
 /**
  * Contrato do supabase-js v2 (mesmo padrão de src/hooks/useOrders.ts): quando
  * a edge function responde FORA de 2xx, `data` chega NULL e o corpo da
- * resposta fica em `error.context` (um Response). Ler o corpo e mostrar a
- * mensagem de negócio que a function escreveu (sem token, saldo, endereço,
- * pagamento não confirmado, geração em andamento...) — só sem corpo legível
- * cai na frase genérica de comunicação.
+ * resposta fica em `error.context` (um Response). Lê o corpo do erro da
+ * invocação e devolve a mensagem de negócio + o sinal de RESGATE: a function
+ * marca `resgate: true` nos ramos em que a etiqueta já existe/está paga (409
+ * corrida, 500 gravação, 502 generate pago, 502 indeterminado — revisor E′,
+ * PR #423): nesses a tela volta para a lista, porque "Confirmar e gerar"
+ * ativo embaixo de uma mensagem que pede para não clicar é convite ao
+ * re-clique. CONTRATO EXPLÍCITO no lugar de regex sobre a prosa em
+ * português. Sem corpo legível: mensagem genérica, sem resgate.
  */
 async function mensagemDeErroInvocacao(
   err: unknown,
   opcoes: { mensagemGenerica: string },
-): Promise<string> {
+): Promise<{ mensagem: string; resgate: boolean }> {
   try {
     const corpo = await (
       err as { context?: { json?: () => unknown } }
@@ -69,12 +73,18 @@ async function mensagemDeErroInvocacao(
       "error" in corpo &&
       (corpo as { error: unknown }).error
     ) {
-      return String((corpo as { error: unknown }).error);
+      return {
+        mensagem: String((corpo as { error: unknown }).error),
+        resgate: (corpo as { resgate?: unknown }).resgate === true,
+      };
     }
   } catch {
     // Corpo ilegível: segue para a mensagem genérica.
   }
-  return mensagemAmigavelErroEdgeFunction(err as Error, opcoes);
+  return {
+    mensagem: mensagemAmigavelErroEdgeFunction(err as Error, opcoes),
+    resgate: false,
+  };
 }
 
 export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
@@ -154,9 +164,10 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
       );
       // Contrato do supabase-js v2: resposta fora de 2xx vem em `error` com
       // `data` null — a mensagem de negócio da function está no corpo de
-      // `error.context`. Ramo `data?.error` não existe para esta function.
-      if (error || data?.error) {
-        throw error ?? new Error(String(data?.error));
+      // `error.context`. (Esta function nunca responde 2xx com `error` no
+      // corpo, então só `error` precisa ser checado.)
+      if (error) {
+        throw error;
       }
 
       setResultado({
@@ -175,24 +186,21 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
       fetchPedidos();
     } catch (err) {
       console.error("[EtiquetasEnvio] Erro na geração:", err);
-      const detalhe = await mensagemDeErroInvocacao(err, {
-        mensagemGenerica:
-          "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
-      });
+      const { mensagem: detalhe, resgate } = await mensagemDeErroInvocacao(
+        err,
+        {
+          mensagemGenerica:
+            "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+        },
+      );
       setErroMsg(detalhe);
-      // Em erro de RESGATE o botão de gasto não pode ficar ativo (revisor,
-      // PR #423): recarrega a lista e, se a function respondeu 409 (corrida
-      // perdida) ou 500 com etiqueta PAGA e VINCULADA, volta para a lista
-      // (ocioso) em vez de reapresentar "Confirmar e gerar" — o re-clique
-      // nesses casos só devolve `already` sem link. Para o detalhe de
-      // negócio não se perder com a saída da confirmação, o toast carrega a
-      // mensagem da function nesses casos.
+      // Em erro de RESGATE (a function marcou `resgate: true` — etiqueta já
+      // existe/está paga) o botão de gasto não pode ficar ativo (revisor,
+      // E e E′, PR #423): recarrega a lista e volta para ela em vez de
+      // reapresentar "Confirmar e gerar" — o re-clique nesses casos só
+      // devolve `already` sem link. Para o detalhe de negócio não se perder
+      // com a saída da confirmação, o toast carrega a mensagem da function.
       fetchPedidos();
-      const statusHttp = (err as { context?: { status?: number } })?.context
-        ?.status;
-      const resgate =
-        statusHttp === 409 ||
-        (statusHttp === 500 && /vinculada|paga/i.test(detalhe));
       setFase(resgate ? "ocioso" : "confirmar");
       haptic.error();
       toast.error(resgate ? detalhe : "Erro ao gerar etiqueta");
@@ -210,8 +218,8 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
         },
       );
       // Mesmo contrato do gerar: erro de negócio vem em `error.context`.
-      if (error || data?.error) {
-        throw error ?? new Error(String(data?.error));
+      if (error) {
+        throw error;
       }
       if (data?.tracking_code) {
         setResultado((prev) =>
@@ -226,12 +234,11 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
       fetchPedidos();
     } catch (err) {
       console.error("[EtiquetasEnvio] Erro ao consultar rastreio:", err);
-      toast.error(
-        await mensagemDeErroInvocacao(err, {
-          mensagemGenerica:
-            "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
-        }),
-      );
+      const { mensagem } = await mensagemDeErroInvocacao(err, {
+        mensagemGenerica:
+          "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+      });
+      toast.error(mensagem);
     } finally {
       setConsultandoRastreio(false);
     }

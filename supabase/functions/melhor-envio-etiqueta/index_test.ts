@@ -67,14 +67,22 @@ async function comAdminFalso(executar: () => Promise<any>): Promise<any> {
     }
 }
 
-/** Env de que a porta de admin precisa ANTES de criar qualquer client. */
-function prepararEnvAdmin(): void {
-    Deno.env.set('SUPABASE_URL', URL_SUPA_TESTE)
-    Deno.env.set('SUPABASE_PUBLISHABLE_KEYS', JSON.stringify({ default: ANON_DE_TESTE }))
+/** Env de que a porta de admin precisa ANTES de criar qualquer client.
+ *  DEVOLVE a função de restauração: quem chama roda dentro de `comEnvAdmin`
+ *  e o env volta ao valor anterior no fim — sem vazar para os testes
+ *  seguintes do mesmo processo (nit H3 da 3ª rodada, PR #423). */
+const ENV_ADMIN: Array<[string, string]> = [
+    ['SUPABASE_URL', URL_SUPA_TESTE],
+    ['SUPABASE_PUBLISHABLE_KEYS', JSON.stringify({ default: ANON_DE_TESTE })],
     // verifyIsAdmin também monta o client de SISTEMA com a service role —
     // sem ela o createClient lança "supabaseKey is required" e a porta
     // falha fechado (a costura deps.supabase não cobre estes clients).
-    Deno.env.set('SUPABASE_SECRET_KEYS', JSON.stringify({ default: 'service-role-de-teste' }))
+    ['SUPABASE_SECRET_KEYS', JSON.stringify({ default: 'service-role-de-teste' })],
+]
+
+function prepararEnvAdmin(): () => void {
+    const anteriores = ENV_ADMIN.map(([chave]) => [chave, Deno.env.get(chave)] as [string, string | undefined])
+    for (const [chave, valor] of ENV_ADMIN) Deno.env.set(chave, valor)
     // Sem sessão guardada, o getUser do supabase-js pode falhar ANTES da
     // rede ("session missing") em versões que exigem sessão; semear o
     // storage deixa o caminho determinístico. Se o runner não tem
@@ -94,6 +102,23 @@ function prepararEnvAdmin(): void {
         )
     } catch {
         // storage indisponível neste runner — segue com o header global
+    }
+    return () => {
+        for (const [chave, valor] of anteriores) {
+            if (valor === undefined) Deno.env.delete(chave)
+            else Deno.env.set(chave, valor)
+        }
+    }
+}
+
+/** Instala o env da porta de admin SÓ durante o bloco (restaura no fim,
+ *  mesmo se uma asserção falhar). */
+async function comEnvAdmin(executar: () => Promise<void>): Promise<void> {
+    const restaurar = prepararEnvAdmin()
+    try {
+        await executar()
+    } finally {
+        restaurar()
     }
 }
 
@@ -295,18 +320,21 @@ Deno.test("handler - sem Authorization NÃO passa da porta de admin", async () =
   assertEquals(String(corpo.error).includes("administradores"), true)
 })
 
-Deno.test("handler - action desconhecida nomeia as duas válidas (protegida por admin)", async () => {
-  const res = await handler(
-    new Request("https://x/", {
-      method: "POST",
-      headers: { Authorization: "Bearer jwt-falso" },
-      body: JSON.stringify({ action: "apagar_tudo", orderId: "00000000-0000-0000-0000-000000000000" }),
-    }),
-  )
-  // O check de admin roda ANTES (verifyIsAdmin não consegue validar um JWT
-  // falso sem rede, e falha fechado) — o que importa aqui é que a action
-  // estranha nunca alcança leitura de pedido.
-  assertEquals(res.status === 403 || res.status === 400, true)
+Deno.test("handler - action desconhecida nomeia as duas válidas e NÃO alcança leitura de pedido", async () => {
+  // Com a porta de admin PASSANDO (env + fetch admin falsos), a action
+  // estranha morre no portão da action: 400 nomeando as duas válidas —
+  // nenhuma leitura de pedido acontece. O `403 || 400` antigo não provava
+  // nada: o 403 era só o JWT falso caindo na porta de admin antes.
+  await comEnvAdmin(async () => {
+    const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+    const res = await comAdminFalso(() =>
+      handler(requisicaoGerar("apagar_tudo"), { supabase: supa.cliente, buscar: buscarMeFalso().buscar }))
+    assertEquals(res.status, 400)
+    const corpo = await respostaJson(res)
+    assertEquals(String(corpo.error).includes("apagar_tudo"), true)
+    assertEquals(String(corpo.error).includes("gerar_etiqueta"), true)
+    assertEquals(String(corpo.error).includes("consultar_rastreio"), true)
+  })
 })
 
 // ── handler: os ramos de DINHEIRO (revisor, item C da 2ª rodada, PR #423) ──
@@ -453,10 +481,12 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[] 
  * Fetch falso do Melhor Envio: roteia pela URL e CONTA as chamadas — é o
  * assento de dinheiro dos testes (carrinho criado? item removido? checkout
  * chamado?). `checkout` é configurável: 'pago' (default), 'pendente' (o ME
- * responde 200 com status pending — compra NÃO fechou) ou 'excecao' (a
- * chamada estoura no meio — timeout/queda de rede pós-reivindicação).
+ * responde 200 com status pending — compra NÃO fechou), 'erro-5xx' (o
+ * gateway responde 502 — a compra PODE ter fechado com a resposta perdida,
+ * revisor A′ da 3ª rodada) ou 'excecao' (a chamada estoura no meio —
+ * timeout/queda de rede pós-reivindicação).
  */
-function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' } = {}) {
+function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'erro-5xx' } = {}) {
     const registro = { carrinho: 0, remocoes: 0, checkouts: 0, geracoes: 0 }
     const buscar = (async (input: any, init?: any) => {
         const url = String(input instanceof Request ? input.url : input)
@@ -476,6 +506,12 @@ function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' } = 
             registro.checkouts++
             if (opcoes.checkout === 'excecao') {
                 throw new Error('AbortError: tempo esgotado simulado')
+            }
+            if (opcoes.checkout === 'erro-5xx') {
+                return new Response(JSON.stringify({ error: 'Bad gateway' }), {
+                    status: 502,
+                    headers: { 'Content-Type': 'application/json' },
+                })
             }
             const status = opcoes.checkout === 'pendente' ? 'pending' : 'paid'
             return new Response(JSON.stringify({ purchase: { id: 'pur-1', status } }), {
@@ -513,82 +549,124 @@ function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' } = 
     return { buscar, registro }
 }
 
-function requisicaoGerar(): Request {
-    return new Request('http://localhost/melhor-envio-etiqueta', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer jwt-admin-de-teste' },
-        body: JSON.stringify({ action: 'gerar_etiqueta', orderId: 'pedido-1' }),
-    })
+function requisicaoGerar(action = "gerar_etiqueta"): Request {
+  return new Request("http://localhost/melhor-envio-etiqueta", {
+    method: "POST",
+    headers: { Authorization: "Bearer jwt-admin-de-teste" },
+    body: JSON.stringify({ action, orderId: "pedido-1" }),
+  })
 }
 
 Deno.test("handler - checkout recusado (200 com status pending): item sai do carrinho E reivindicação LIBERADA (o pedido volta a poder etiquetar)", async () => {
     // O ME RESPONDEU que não pagou — não há ambiguidade: é exatamente o caso
     // que deixava o pedido preso para sempre (bloqueante A da 2ª rodada).
-    prepararEnvAdmin()
-    const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
-    const me = buscarMeFalso({ checkout: 'pendente' })
-    const res = await comAdminFalso(() =>
-        handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
-    assertEquals(res.status, 502)
-    const corpo = await res.json()
-    assertEquals(String(corpo.error).includes('saldo'), true)
-    // item removido do carrinho do ME (nada para "comprar o carrinho" sem querer)
-    assertEquals(me.registro.remocoes, 1)
-    // liberação com update CONDICIONAL: os dois filtros (id do pedido E o
-    // vínculo desta corrida) e o valor voltando a null
-    assertEquals(supa.registro.liberacoes.length, 1)
-    assertEquals(supa.registro.liberacoes[0].valores, { shipping_label_id: null })
-    const colunasLiberacao = supa.registro.liberacoes[0].filtros
-        .filter((f) => f.metodo === 'eq')
-        .map((f) => f.coluna)
-    assertEquals(colunasLiberacao.includes('id'), true)
-    assertEquals(colunasLiberacao.includes('shipping_label_id'), true)
-    // o evento de erro sai com a etapa certa
-    assertEquals(supa.registro.eventos.length, 1)
-    assertEquals(supa.registro.eventos[0].event_type, 'erro')
-    assertEquals(supa.registro.eventos[0].payload.etapa, 'checkout')
-    assertEquals(supa.registro.eventos[0].payload.label_id, LABEL_ID)
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const me = buscarMeFalso({ checkout: 'pendente' })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 502)
+        const corpo = await res.json()
+        assertEquals(String(corpo.error).includes('saldo'), true)
+        // item removido do carrinho do ME (nada para "comprar o carrinho" sem querer)
+        assertEquals(me.registro.remocoes, 1)
+        // liberação com update CONDICIONAL: os dois filtros (id do pedido E o
+        // vínculo desta corrida) e o valor voltando a null
+        assertEquals(supa.registro.liberacoes.length, 1)
+        assertEquals(supa.registro.liberacoes[0].valores, { shipping_label_id: null })
+        const colunasLiberacao = supa.registro.liberacoes[0].filtros
+            .filter((f) => f.metodo === 'eq')
+            .map((f) => f.coluna)
+        assertEquals(colunasLiberacao.includes('id'), true)
+        assertEquals(colunasLiberacao.includes('shipping_label_id'), true)
+        // o evento de erro sai com a etapa certa
+        assertEquals(supa.registro.eventos.length, 1)
+        assertEquals(supa.registro.eventos[0].event_type, 'erro')
+        assertEquals(supa.registro.eventos[0].payload.etapa, 'checkout')
+        assertEquals(supa.registro.eventos[0].payload.label_id, LABEL_ID)
+        // ramo que LIBERA não é resgate: o card pode reapresentar o botão
+        assertEquals(corpo.resgate, undefined)
+    })
 })
 
 Deno.test("handler - corrida perdida (reivindicação devolve 0 linhas): 409, item removido do carrinho e checkout NUNCA é chamado", async () => {
     // O perdedor da corrida remove o PRÓPRIO item e não chega perto do saldo.
-    prepararEnvAdmin()
-    const supa = clienteFalso({ pedido: PEDIDO_FELIZ, linhasReivindicadas: [] })
-    const me = buscarMeFalso()
-    const res = await comAdminFalso(() =>
-        handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
-    assertEquals(res.status, 409)
-    assertEquals(me.registro.carrinho, 1) // a etiqueta foi criada no carrinho…
-    assertEquals(me.registro.remocoes, 1) // …e o perdedor remove o próprio item
-    assertEquals(me.registro.checkouts, 0) // e NUNCA chama o checkout (dinheiro)
-    assertEquals(supa.registro.reivindicacoes.length, 1)
-    assertEquals(supa.registro.liberacoes.length, 0)
-    assertEquals(supa.registro.eventos.length, 1)
-    assertEquals(supa.registro.eventos[0].event_type, 'erro')
-    assertEquals(supa.registro.eventos[0].payload.etapa, 'reivindicacao')
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ, linhasReivindicadas: [] })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 409)
+        // E′: 409 é ramo de RESGATE por contrato (o card sai do modo gasto)
+        const corpo = await res.json()
+        assertEquals(corpo.resgate, true)
+        assertEquals(corpo.label_id, LABEL_ID)
+        assertEquals(me.registro.carrinho, 1) // a etiqueta foi criada no carrinho…
+        assertEquals(me.registro.remocoes, 1) // …e o perdedor remove o próprio item
+        assertEquals(me.registro.checkouts, 0) // e NUNCA chama o checkout (dinheiro)
+        assertEquals(supa.registro.reivindicacoes.length, 1)
+        assertEquals(supa.registro.liberacoes.length, 0)
+        assertEquals(supa.registro.eventos.length, 1)
+        assertEquals(supa.registro.eventos[0].event_type, 'erro')
+        assertEquals(supa.registro.eventos[0].payload.etapa, 'reivindicacao')
+    })
 })
 
 Deno.test("handler - checkout estoura pós-reivindicação (exceção): evento checkout_indeterminado gravado e reivindicação MANTIDA", async () => {
     // Aqui a ambiguidade de dinheiro é REAL (o ME pode ter processado com a
     // resposta perdida): não libera, não mexe no carrinho — registra e manda
     // conferir a conta do ME (caminho B mínimo da 2ª rodada).
-    prepararEnvAdmin()
-    const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
-    const me = buscarMeFalso({ checkout: 'excecao' })
-    const res = await comAdminFalso(() =>
-        handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
-    assertEquals(res.status, 502)
-    const corpo = await res.json()
-    // a resposta NOMEIA o id da etiqueta e manda conferir a conta do ME
-    assertEquals(String(corpo.error).includes(LABEL_ID), true)
-    assertEquals(String(corpo.error).includes('INDETERMINADO'), true)
-    assertEquals(me.registro.checkouts, 1)
-    // indeterminado = NÃO liberar a reivindicação e NÃO mexer no carrinho
-    assertEquals(supa.registro.liberacoes.length, 0)
-    assertEquals(me.registro.remocoes, 0)
-    // e o estado fica REGISTRADO para o dono ver no histórico do pedido
-    const evento = supa.registro.eventos.find((e) => e.payload?.etapa === 'checkout_indeterminado')
-    assertEquals(evento !== undefined, true)
-    assertEquals(evento.event_type, 'erro')
-    assertEquals(evento.payload.label_id, LABEL_ID)
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const me = buscarMeFalso({ checkout: 'excecao' })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 502)
+        const corpo = await res.json()
+        // a resposta NOMEIA o id da etiqueta e manda conferir a conta do ME
+        assertEquals(String(corpo.error).includes(LABEL_ID), true)
+        assertEquals(String(corpo.error).includes('INDETERMINADO'), true)
+        // E′: indeterminado também é resgate por contrato
+        assertEquals(corpo.resgate, true)
+        assertEquals(corpo.label_id, LABEL_ID)
+        assertEquals(me.registro.checkouts, 1)
+        // indeterminado = NÃO liberar a reivindicação e NÃO mexer no carrinho
+        assertEquals(supa.registro.liberacoes.length, 0)
+        assertEquals(me.registro.remocoes, 0)
+        // e o estado fica REGISTRADO para o dono ver no histórico do pedido
+        const evento = supa.registro.eventos.find((e) => e.payload?.etapa === 'checkout_indeterminado')
+        assertEquals(evento !== undefined, true)
+        assertEquals(evento.event_type, 'erro')
+        assertEquals(evento.payload.label_id, LABEL_ID)
+    })
+})
+
+Deno.test("handler - checkout responde 5xx de gateway: INDETERMINADO — reivindicação MANTIDA, carrinho intacto, sem liberação (A′)", async () => {
+    // 5xx (500/502/504) NÃO é "o ME respondeu que não pagou": o gateway pode
+    // ter DEBITADO com a resposta perdida. Liberar a reivindicação aqui
+    // deixaria o próximo "Confirmar e gerar" pagar DE NOVO — a porta de
+    // compra dupla que o A′ fecha (revisor, 3ª rodada, PR #423). Mesmo
+    // tratamento do catch indeterminado, via finalizarIndeterminado.
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const me = buscarMeFalso({ checkout: 'erro-5xx' })
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 502)
+        const corpo = await res.json()
+        assertEquals(String(corpo.error).includes(LABEL_ID), true)
+        assertEquals(String(corpo.error).includes('INDETERMINADO'), true)
+        // E′: contrato de resgate (o card lê o campo, sem regex na prosa)
+        assertEquals(corpo.resgate, true)
+        assertEquals(corpo.label_id, LABEL_ID)
+        assertEquals(me.registro.checkouts, 1)
+        // A PROVA DO A′: nada liberado, nada removido — a ambiguidade fica
+        // registrada e o vínculo impede a segunda compra
+        assertEquals(supa.registro.liberacoes.length, 0)
+        assertEquals(me.registro.remocoes, 0)
+        const evento = supa.registro.eventos.find((e) => e.payload?.etapa === 'checkout_indeterminado')
+        assertEquals(evento !== undefined, true)
+        assertEquals(evento.event_type, 'erro')
+        assertEquals(evento.payload.label_id, LABEL_ID)
+    })
 })
