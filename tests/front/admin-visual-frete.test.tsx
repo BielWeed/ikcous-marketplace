@@ -135,9 +135,7 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
       "@/views/admin/AdminShippingView"
     );
     await act(async () => {
-      raiz.render(
-        <AdminShippingView active={true} onSetDirty={vi.fn()} />,
-      );
+      raiz.render(<AdminShippingView active={true} onSetDirty={vi.fn()} />);
     });
     await act(async () => {
       await esperarMicrotarefas();
@@ -215,8 +213,8 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     });
 
     // Torna a seção suja: habilita um serviço novo (jadlog).
-    const chipJadlog = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.trim() === "jadlog",
+    const chipJadlog = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "jadlog",
     ) as HTMLButtonElement;
     expect(chipJadlog).toBeDefined();
     await act(async () => {
@@ -268,8 +266,8 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
       await esperarMicrotarefas();
     });
 
-    const chipJadlog = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.trim() === "jadlog",
+    const chipJadlog = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "jadlog",
     ) as HTMLButtonElement;
     await act(async () => {
       chipJadlog.click();

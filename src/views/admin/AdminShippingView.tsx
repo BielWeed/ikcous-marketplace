@@ -320,9 +320,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                       <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/60 p-1.5">
                         <button
                           type="button"
-                          disabled={
-                            formData.freeShippingMin <= 0 || isOffline
-                          }
+                          disabled={formData.freeShippingMin <= 0 || isOffline}
                           onClick={() => {
                             setFormData((prev) => ({
                               ...prev,
@@ -441,8 +439,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                           Taxa de entrega fixa
                         </Label>
                         <span className="block text-[10px] font-medium text-zinc-400">
-                          O valor que custa a entrega quando não há frete
-                          grátis
+                          O valor que custa a entrega quando não há frete grátis
                         </span>
                       </div>
                     </div>
@@ -686,9 +683,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                       <div className="flex h-9 flex-1 items-center justify-between rounded-lg border border-white/10 bg-black/60 px-2.5">
                         <button
                           type="button"
-                          disabled={
-                            formData.localDeliveryFee <= 0 || isOffline
-                          }
+                          disabled={formData.localDeliveryFee <= 0 || isOffline}
                           onClick={() =>
                             setFormData((prev) => ({
                               ...prev,
@@ -719,8 +714,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                               const val = e.target.value;
                               setFormData((prev) => ({
                                 ...prev,
-                                localDeliveryFee:
-                                  val === "" ? 0 : Number(val),
+                                localDeliveryFee: val === "" ? 0 : Number(val),
                               }));
                             }}
                             className="w-12 border-0 bg-transparent text-center text-xs font-bold text-white focus:outline-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -862,8 +856,7 @@ export const AdminShippingView = memo(function AdminShippingView({
               <span className="font-bold text-zinc-200">
                 Ajustes &gt; Transportadoras
               </span>
-              . O botão "Abrir Ajustes", no fim desta tela, leva direto para
-              lá.
+              . O botão "Abrir Ajustes", no fim desta tela, leva direto para lá.
             </p>
           </div>
           <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">

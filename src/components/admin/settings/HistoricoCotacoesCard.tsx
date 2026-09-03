@@ -87,8 +87,8 @@ export const HistoricoCotacoesSection = memo(
             ) : logs.length === 0 && provedorSalvo === "flat_fee" ? (
               <p className="py-4 text-center text-xs text-zinc-400">
                 Nenhuma cotação para mostrar: com a Taxa Única Fixa o app já
-                responde o frete direto, sem consultar transportadora, então
-                não existe cotação para registrar aqui. Este histórico passa a
+                responde o frete direto, sem consultar transportadora, então não
+                existe cotação para registrar aqui. Este histórico passa a
                 receber linhas se a loja trocar para Melhor Envio ou Frenet.
               </p>
             ) : logs.length === 0 ? (
@@ -164,8 +164,8 @@ export const HistoricoCotacoesSection = memo(
               {logs.length > 0 && (
                 <span>
                   Exibindo {logs.length === 1 ? "a" : "as"} {logs.length}{" "}
-                  {logs.length === 1 ? "consulta" : "consultas"} mais
-                  recente{logs.length === 1 ? "" : "s"}
+                  {logs.length === 1 ? "consulta" : "consultas"} mais recente
+                  {logs.length === 1 ? "" : "s"}
                 </span>
               )}
               <button
