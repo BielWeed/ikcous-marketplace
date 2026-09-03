@@ -732,6 +732,7 @@ function SecaoColapsavel({
 export const AdminSettingsView = memo(function AdminSettingsView({
   onNavigate,
   active,
+  onSetDirty,
 }: Readonly<AdminSettingsViewProps>) {
   const { isLoaded } = useStore();
   const isOffline = useOnlineStatus();
@@ -741,6 +742,13 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // descartaria o token digitado — trava explicada no SecaoColapsavel).
   const [transportadorasPendentes, setTransportadorasPendentes] =
     useState(false);
+
+  // Espelha a pendência do token para o App (onSetDirty = setIsAdminDirty):
+  // é o que liga as guardas de beforeunload, diálogo de navegação e popstate
+  // — mesmo contrato da tela de Frete (AdminShippingView).
+  useEffect(() => {
+    onSetDirty?.(transportadorasPendentes);
+  }, [transportadorasPendentes, onSetDirty]);
 
   // Reset helper modals when tab becomes inactive
   useEffect(() => {

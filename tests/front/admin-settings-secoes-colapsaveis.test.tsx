@@ -121,12 +121,18 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     ) as HTMLButtonElement | undefined;
   }
 
-  async function renderizar() {
+  async function renderizar(onSetDirty?: (dirty: boolean) => void) {
     const { AdminSettingsView } = await import(
       "@/views/admin/AdminSettingsView"
     );
     await act(async () => {
-      raiz.render(<AdminSettingsView onNavigate={vi.fn()} active={true} />);
+      raiz.render(
+        <AdminSettingsView
+          onNavigate={vi.fn()}
+          active={true}
+          onSetDirty={onSetDirty}
+        />,
+      );
     });
   }
 
@@ -294,5 +300,62 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     });
     expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
     expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("a pendência do token é reportada ao App: onSetDirty true ao mexer, false ao salvar", async () => {
+    // Achado 1 da revisão do #414: a tela de Frete antiga ligava as guardas
+    // do App (beforeunload, diálogo de navegação, popstate) via onSetDirty;
+    // com a mudança de casa para o Ajustes, a pendência do token precisa ser
+    // espelhada nele também — recarregar/sair do painel não pode descartar
+    // o token digitado em silêncio.
+    const onSetDirty = vi.fn();
+    updateConfig.mockResolvedValue(true);
+    mockConfig.shippingProvider = "melhor_envio";
+    mockConfig.enabledShippingMethods = ["sedex", "pac"];
+
+    await renderizar(onSetDirty);
+
+    // Montagem limpa: nenhuma pendência reportada.
+    expect(onSetDirty).toHaveBeenLastCalledWith(false);
+
+    const cabecalho = cabecalhoDaSecao("Transportadoras e cotação de frete")!;
+    await act(async () => {
+      cabecalho.click();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    const campoToken = hospedeiro.querySelector(
+      'input[type="password"]',
+    ) as HTMLInputElement;
+    expect(campoToken).not.toBeNull();
+
+    // Mexe no token: a guarda liga.
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(campoToken, "tok-novo");
+      campoToken.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(onSetDirty).toHaveBeenLastCalledWith(true);
+
+    // Salva: a guarda desliga.
+    const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Salvar"),
+    ) as HTMLButtonElement;
+    await act(async () => {
+      botaoSalvar.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(onSetDirty).toHaveBeenLastCalledWith(false);
   });
 });
