@@ -4,6 +4,7 @@ import {
   AdminKpiCarousel,
   type KpiCardConfig,
 } from "@/components/admin/AdminKpiCarousel";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import {
   AlertDialog,
@@ -1708,9 +1709,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                 </div>
                 <div className="flex flex-col min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <h1 className="select-none text-xs font-black uppercase tracking-wider text-white truncate sm:text-sm">
-                      Gerenciador de Banners
-                    </h1>
+                    {/* Onda 3 da reforma visual (03/09): o título minúsculo
+                        (text-xs) virou o AdminPageHeader, igual ao das listas
+                        aprovadas; o botão de ajuda continua ao lado. */}
+                    <AdminPageHeader titulo="Gerenciador de Banners" />
                     <button
                       type="button"
                       onClick={() => setShowHelpModal(true)}
