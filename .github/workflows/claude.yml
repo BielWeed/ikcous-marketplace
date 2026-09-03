@@ -1,7 +1,16 @@
 # Revisor "@claude" (Claude Code GitHub Actions) — parte do super modo agente v1.
 # Desenho completo: mesa GLM (C:/Users/Gabriel/equipe/arquitetura/super-modo-agente/).
-# Disparo: comentário com a palavra exata `@claude` em PR (comentário ou review)
-# ou em issue nova. O comentarista precisa de permissão de escrita no repo.
+#
+# REGRA DO DONO (emenda 1, 02/09 ~22:00): o lado Claude NÃO escreve código —
+# só planejamento, arquitetura e revisão. Quem implementa é o GLM (subagente
+# GLM 5.3 flash). A regra está aplicada AQUI como permissão: este workflow
+# tem `contents: read` (lê o código) e NÃO tem `contents: write` — o robô
+# comenta no PR, mas não consegue empurrar commit/branch.
+# Time multi-sessão é EXCLUSIVO do lado ZCode (GLM); este workflow é 1 robô,
+# 1 tarefa por disparo.
+#
+# Disparo: comentário com a palavra exata `@claude` em PR (comentário ou
+# review) ou em issue nova. O comentarista precisa de permissão de escrita.
 # Requisito: secret CLAUDE_CODE_OAUTH_TOKEN (assinatura do dono — sem API paga).
 name: Claude Code
 
@@ -20,11 +29,11 @@ jobs:
       contains(github.event.issue.body, '@claude')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      # contents: read — checkout do código para revisão. SEM write:
+      # o revisor não codifica (regra do dono, emenda 1).
+      contents: read
       pull-requests: write
       issues: write
-      id-token: write
-      actions: read
     steps:
       - uses: actions/checkout@v6
         with:
