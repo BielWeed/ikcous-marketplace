@@ -42,8 +42,7 @@ const COUPON_INPUT = "/src/components/ui/custom/CouponInput.tsx";
 const PRODUCT_CARD = "/src/components/ui/custom/ProductCard.tsx";
 const BOTTOM_NAV = "/src/components/ui/custom/BottomNav.tsx";
 const HEADER = "/src/components/ui/custom/Header.tsx";
-const QUANTITY_SELECTOR =
-  "/src/components/ui/custom/QuantitySelector.tsx";
+const QUANTITY_SELECTOR = "/src/components/ui/custom/QuantitySelector.tsx";
 
 describe("o glob casou os 7 arquivos da onda 1 (nada de prova vazia)", () => {
   const esperados = [
@@ -76,10 +75,9 @@ describe("achado 1 — checkout: erro de preenchimento marcado e anunciado", () 
       "neighborhood",
     ];
     for (const campo of campos) {
-      expect(
-        src,
-        `campo ${campo} sem aria-invalid`,
-      ).toContain(`form.formState.errors.${campo} ? true : undefined`);
+      expect(src, `campo ${campo} sem aria-invalid`).toContain(
+        `form.formState.errors.${campo} ? true : undefined`,
+      );
       expect(
         src,
         `campo ${campo} sem aria-describedby apontando a mensagem`,
@@ -114,7 +112,7 @@ describe("achado 2 — página de produto e cupom: botões de ícone com nome", 
     expect(src).toContain('aria-label="Foto anterior"');
     expect(src).toContain('aria-label="Próxima foto"');
     expect(src).toContain("aria-label={`Foto ${index + 1} de");
-    expect(src).toContain('aria-current={index === currentImageIndex');
+    expect(src).toContain("aria-current={index === currentImageIndex");
   });
 
   it("coração de favoritar nomeado nos dois estados", () => {
@@ -145,7 +143,9 @@ describe("achado 3 — escolha marcada: variantes e meio de pagamento", () => {
     expect(src).toContain('role="radiogroup"');
     expect(src).toContain('aria-label="Meio de pagamento"');
     expect(src).toContain('role="radio"');
-    expect(src).toContain("aria-checked={isSelected && !bloqueadaPorFaltaDeConta}");
+    expect(src).toContain(
+      "aria-checked={isSelected && !bloqueadaPorFaltaDeConta}",
+    );
   });
 });
 

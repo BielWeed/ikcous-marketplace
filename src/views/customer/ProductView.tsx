@@ -828,9 +828,7 @@ export const ProductView = React.memo(function ProductView({
             // era impossível por leitor de tela (o "Compartilhar" ao lado já
             // tinha `aria-label` — este é o padrão da casa).
             aria-label={
-              isFavorite
-                ? "Remover dos favoritos"
-                : "Adicionar aos favoritos"
+              isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"
             }
             className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
           >
