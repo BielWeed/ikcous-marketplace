@@ -74,6 +74,18 @@ describe("achado 1 — checkout: erro de preenchimento marcado e anunciado", () 
       "street",
       "neighborhood",
     ];
+    // O id que liga campo e mensagem (ex. "erro-checkout-name") precisa
+    // aparecer DENTRO do aria-describedby do campo. Substring solta de
+    // `form.formState.errors.<campo>` também casa com o aria-invalid e
+    // passaria mesmo sem o atributo.
+    const idDaMensagem: Record<string, string> = {
+      name: "erro-checkout-name",
+      whatsapp: "erro-checkout-tel",
+      cep: "erro-guest-cep",
+      number: "erro-guest-number",
+      street: "erro-guest-street",
+      neighborhood: "erro-guest-neighborhood",
+    };
     for (const campo of campos) {
       expect(src, `campo ${campo} sem aria-invalid`).toContain(
         `form.formState.errors.${campo} ? true : undefined`,
@@ -81,7 +93,11 @@ describe("achado 1 — checkout: erro de preenchimento marcado e anunciado", () 
       expect(
         src,
         `campo ${campo} sem aria-describedby apontando a mensagem`,
-      ).toContain(`form.formState.errors.${campo}`);
+      ).toMatch(
+        new RegExp(
+          `aria-describedby=\\{\\s*form\\.formState\\.errors\\.${campo}\\s*\\?\\s*"${idDaMensagem[campo]}"`,
+        ),
+      );
     }
     for (const id of [
       "erro-checkout-name",

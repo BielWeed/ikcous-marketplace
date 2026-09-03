@@ -1315,7 +1315,7 @@ export function CheckoutView({
       // o leitor de tela anunciar o campo já marcado com `aria-invalid` e a
       // mensagem específica dele, ligada por `aria-describedby`.
       const primeiroErro = ORDEM_CAMPOS_FOCO.find(
-        (campo) => form.formState.errors[campo],
+        (campo) => form.getFieldState(campo).invalid,
       );
       if (primeiroErro) {
         form.setFocus(primeiroErro);
@@ -1811,6 +1811,7 @@ export function CheckoutView({
                         onChange={(e) =>
                           field.onChange(formatWhatsApp(e.target.value))
                         }
+                        ref={field.ref}
                         placeholder="(00) 00000-0000"
                         maxLength={15}
                         aria-invalid={
