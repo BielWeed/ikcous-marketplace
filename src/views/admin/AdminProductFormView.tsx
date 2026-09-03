@@ -1,5 +1,6 @@
 import { LazyImage } from "@/components/LazyImage";
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   LocalBufferedInput,
   LocalBufferedTextarea,
@@ -1897,18 +1898,22 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           <div className="flex items-center gap-3 md:gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="flex items-center gap-2 whitespace-nowrap text-sm font-black uppercase italic tracking-tight text-white md:text-base">
-                  <span>{productId ? "Editar " : "Novo "}</span>
-                  <span className="text-emerald-500">Produto</span>
-                </h1>
-                <button
-                  type="button"
-                  onClick={() => setShowHelpModal(true)}
-                  className="flex size-7 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
-                  title="Guia de Cadastro e Ajuda"
+                {/* Onda 4 da reforma visual (03/09): o título tinha fórmula
+                    própria (text-sm/base, com destaque verde) — agora é o
+                    AdminPageHeader, igual ao formulário de cupom; o botão de
+                    ajuda segue dentro da linha do título. */}
+                <AdminPageHeader
+                  titulo={productId ? "Editar Produto" : "Novo Produto"}
                 >
-                  <HelpCircle className="size-3.5" />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowHelpModal(true)}
+                    className="flex size-7 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+                    title="Guia de Cadastro e Ajuda"
+                  >
+                    <HelpCircle className="size-3.5" />
+                  </button>
+                </AdminPageHeader>
               </div>
               <p className="mt-0.5 hidden items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500 sm:flex md:text-[10px]">
                 <ShieldCheck className="size-3 shrink-0 text-emerald-500" />
