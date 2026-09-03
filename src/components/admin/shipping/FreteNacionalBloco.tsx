@@ -1,4 +1,10 @@
-import { AlertCircle, CheckCircle2, ExternalLink, HelpCircle, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ExternalLink,
+  HelpCircle,
+  RefreshCw,
+} from "lucide-react";
 import { memo } from "react";
 
 /**
@@ -142,8 +148,8 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
             <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-400" />
             <div>
               <p className="text-[12px] font-black leading-snug text-amber-200">
-                Nenhuma transportadora conectada — sua loja só entrega na
-                sua cidade.
+                Nenhuma transportadora conectada — sua loja só entrega na sua
+                cidade.
               </p>
               <p className="mt-1 text-[11px] font-medium leading-snug text-amber-200/80">
                 {/* REVISÃO A5 (frete v2, 03/09): o artigo acompanha o nome
@@ -200,9 +206,9 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
               <p className="flex items-start gap-1.5 text-[10.5px] font-bold text-amber-300">
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                 SEM ISSO A LOJA NÃO VENDE: sem o CEP da loja nenhum frete é
-                calculado e o botão "Finalizar Pedido" fica bloqueado para
-                todo cliente. Preencha, confira o campo acima e SALVE para
-                abrir as vendas.
+                calculado e o botão "Finalizar Pedido" fica bloqueado para todo
+                cliente. Preencha, confira o campo acima e SALVE para abrir as
+                vendas.
               </p>
             </div>
           )}
@@ -243,8 +249,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
           </div>
           <p className="text-[10.5px] leading-snug text-zinc-500">
             "Só minha cidade" fecha a loja para o resto do país. A lista de
-            serviços (Sedex, PAC, Jadlog) fica em Ajustes &gt;
-            Transportadoras.
+            serviços (Sedex, PAC, Jadlog) fica em Ajustes &gt; Transportadoras.
           </p>
         </div>
       </div>

@@ -1,9 +1,9 @@
 import { useCartContext } from "@/contexts/CartContext";
 import { useStore } from "@/contexts/StoreContext";
-import { formatCurrency } from "@/lib/utils";
 // FRETE V2 (frente B, 03/09): o que a Home anuncia passa a ser derivado do
 // PRESET escolhido pelo lojista — fonte única em presets-de-frete-gratis.ts.
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
+import { formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
 import { CheckCircle2, Sparkles, Truck } from "lucide-react";
 

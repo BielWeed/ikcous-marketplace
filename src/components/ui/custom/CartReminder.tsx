@@ -1,7 +1,7 @@
 import { useStore } from "@/contexts/StoreContext";
 import { useCart } from "@/hooks/useCart";
-import { formatCurrency } from "@/lib/utils";
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
+import { formatCurrency } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronRight, ShoppingCart, Truck } from "lucide-react";
 import { useEffect, useState } from "react";

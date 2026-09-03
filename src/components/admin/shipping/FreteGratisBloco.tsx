@@ -1,3 +1,4 @@
+import type { PresetFreteGratis } from "@/lib/presets-de-frete-gratis";
 import {
   Check,
   Gift,
@@ -7,7 +8,6 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { memo } from "react";
-import type { PresetFreteGratis } from "@/lib/presets-de-frete-gratis";
 
 /**
  * Bloco "Frete grátis" da tela de Frete v2 — seletor de PRESETS (ordem do
@@ -45,8 +45,7 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
     "border-emerald-500/50 bg-emerald-500/[0.08] shadow-[0_4px_24px_rgba(16,185,129,0.12)]";
   const cartaoInativo =
     "border-white/10 bg-black/40 hover:border-white/20 hover:bg-black/60";
-  const iconeAtivo =
-    "border-emerald-500/30 bg-emerald-500/15 text-emerald-300";
+  const iconeAtivo = "border-emerald-500/30 bg-emerald-500/15 text-emerald-300";
   const iconeInativo = "border-white/10 bg-zinc-800/80 text-zinc-400";
 
   return (
@@ -193,8 +192,7 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
             </p>
             <p className="mt-0.5 text-[11px] leading-snug text-zinc-400">
               Só os produtos que você marcar como "frete grátis" no cadastro
-              saem sem custo de entrega. Marque em Produtos &gt; editar
-              produto.
+              saem sem custo de entrega. Marque em Produtos &gt; editar produto.
             </p>
           </div>
         </button>
@@ -253,8 +251,8 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
             </div>
           </div>
           <p className="mt-2 text-[10.5px] leading-snug text-zinc-500">
-            Atenção: valor vazio desliga o frete grátis ao salvar (o mínimo é
-            R$ 0,01). Para desligar de propósito, escolha "Desligado" acima.
+            Atenção: valor vazio desliga o frete grátis ao salvar (o mínimo é R$
+            0,01). Para desligar de propósito, escolha "Desligado" acima.
           </p>
         </div>
       )}

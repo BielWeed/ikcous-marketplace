@@ -61,8 +61,8 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
           <div>
             <h2 className="text-sm font-extrabold text-white">Frete local</h2>
             <p className="mt-0.5 max-w-[26ch] text-[11px] leading-snug text-zinc-400 sm:max-w-none">
-              Entrega em {onde}, feita por você — motoboy ou combinação
-              direta com o cliente.
+              Entrega em {onde}, feita por você — motoboy ou combinação direta
+              com o cliente.
             </p>
           </div>
         </div>
@@ -158,8 +158,8 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
             disabled={desabilitado}
           />
           <p className="text-[10.5px] leading-snug text-zinc-500">
-            Vazio = a cidade inteira, pelo CEP da loja como origem. CEP fora
-            da faixa não recebe a entrega local — ele vê o frete nacional.
+            Vazio = a cidade inteira, pelo CEP da loja como origem. CEP fora da
+            faixa não recebe a entrega local — ele vê o frete nacional.
           </p>
         </div>
       </div>

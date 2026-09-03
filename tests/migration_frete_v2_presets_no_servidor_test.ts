@@ -69,13 +69,21 @@ const vezesNoCorpo = (agulha: string) =>
 Deno.test("por_produto no servidor: so item marcado do BANCO zera o frete", () => {
   const bloco =
     "IF (v_free_shipping_min < 0 AND v_has_free_shipping_item = true) OR v_free_shipping_min = 0.01";
-  assertEquals(vezesNoCorpo(bloco), 2, "bloco amarrado deve existir nas v23 e v24");
+  assertEquals(
+    vezesNoCorpo(bloco),
+    2,
+    "bloco amarrado deve existir nas v23 e v24",
+  );
 });
 
 Deno.test("sempre no servidor: sentinela 0.01 zera o frete", () => {
   const bloco =
     "OR v_free_shipping_min = 0.01 OR (v_free_shipping_min > 0 AND v_calculated_subtotal >= v_free_shipping_min)";
-  assertEquals(vezesNoCorpo(bloco), 2, "bloco amarrado deve existir nas v23 e v24");
+  assertEquals(
+    vezesNoCorpo(bloco),
+    2,
+    "bloco amarrado deve existir nas v23 e v24",
+  );
 });
 
 Deno.test("a trava de login do limite de valor MORREU — e o NULL é desligado, não grátis", () => {
@@ -153,9 +161,7 @@ Deno.test("entrega local e cotação de transportadora continuam resolvendo pre�
   // foram tocados é a comparação byte-a-byte do teste 5 (o que não entrou nas
   // trocas é o corpo da viva); aqui fica explícito o que "intacto" cobre.
   assertEquals(
-    vezesNoCorpo(
-      "ELSIF p_shipping_option_id = 'local-delivery' THEN",
-    ),
+    vezesNoCorpo("ELSIF p_shipping_option_id = 'local-delivery' THEN"),
     2,
   );
   assertEquals(
@@ -191,7 +197,9 @@ Deno.test("o rollback é byte a byte a 20261040000000 (espelha a emenda)", () =>
   const corpoDe = (texto: string) => {
     const linhas = texto.split("\n");
     const inicio = linhas.findIndex((l) =>
-      l.startsWith("DROP FUNCTION IF EXISTS public.create_marketplace_order_v23"),
+      l.startsWith(
+        "DROP FUNCTION IF EXISTS public.create_marketplace_order_v23",
+      ),
     );
     assert(inicio >= 0, "corpo executável não achado");
     return linhas.slice(inicio).join("\n");
@@ -256,8 +264,8 @@ Deno.test("o corpo da migration é o da 20261040000000 com SÓ os dois blocos tr
   ].join("\n");
 
   const freteNovo = [
-    "    -- FRETE V2 EMENDA (03/09, ordem do dono \"entrega fixa não faz sentido",
-    "    -- existir\"): pedido SEM opção de entrega escolhida NÃO NASCE — o",
+    '    -- FRETE V2 EMENDA (03/09, ordem do dono "entrega fixa não faz sentido',
+    '    -- existir"): pedido SEM opção de entrega escolhida NÃO NASCE — o',
     "    -- COALESCE(shipping_fee, 0) daqui cobrava preço inventado ou zero.",
     "    ELSIF p_shipping_option_id IS NULL OR p_shipping_option_id = '' THEN",
     "        RAISE EXCEPTION 'Escolha uma opção de entrega antes de finalizar o pedido.'",
@@ -291,13 +299,24 @@ Deno.test("o corpo da migration é o da 20261040000000 com SÓ os dois blocos tr
 
   // Cada bloco trocado aparece EXATAMENTE nas duas funções.
   assertEquals(executavel.split(limiarAntigo).length - 1, 2, "bloco do limiar");
-  assertEquals(executavel.split(freteAntigo).length - 1, 2, "bloco do frete (ELSIFs)");
-  assertEquals(executavel.split(elseAntigo).length - 1, 2, "bloco do frete (ELSE final)");
+  assertEquals(
+    executavel.split(freteAntigo).length - 1,
+    2,
+    "bloco do frete (ELSIFs)",
+  );
+  assertEquals(
+    executavel.split(elseAntigo).length - 1,
+    2,
+    "bloco do frete (ELSE final)",
+  );
 
   const esperado = executavel
-    .split(limiarAntigo).join(limiarNovo)
-    .split(freteAntigo).join(freteNovo)
-    .split(elseAntigo).join(elseNovo);
+    .split(limiarAntigo)
+    .join(limiarNovo)
+    .split(freteAntigo)
+    .join(freteNovo)
+    .split(elseAntigo)
+    .join(elseNovo);
 
   // O arquivo novo é o cabeçalho de comentários (linhas que começam com
   // "--", vazias) seguido do corpo esperado, sem NADA mais.

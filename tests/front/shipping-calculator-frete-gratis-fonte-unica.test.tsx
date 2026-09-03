@@ -63,18 +63,17 @@ vi.mock("@/utils/haptic", () => ({
 // banco VAZIA — o carrinho local do localStorage é o que vale) e para a
 // calculadora cotar (`functions.invoke` devolve `estado.opcoes`).
 vi.mock("@/lib/supabase", () => {
+  // A consulta termina em `eq`/`in` devolvendo uma PROMISE NATIVA: o
+  // then/catch vêm de graça do Promise, sem declarar `then` na mão —
+  // objeto com `then` literal acende a noThenProperty do biome (parece
+  // thenable para um await distraído).
   const consulta = () => {
+    const resposta = () =>
+      Promise.resolve({ data: [] as unknown[], error: null });
     const alvo: Record<string, unknown> = {
       select: () => alvo,
-      eq: () => alvo,
-      in: () => alvo,
-      then: (
-        res: (v: { data: unknown[]; error: null }) => unknown,
-        rej: (e: unknown) => unknown,
-      ) =>
-        Promise.resolve({ data: [] as unknown[], error: null }).then(res, rej),
-      catch: (rej: (e: unknown) => unknown) =>
-        Promise.resolve({ data: [] as unknown[], error: null }).catch(rej),
+      eq: resposta,
+      in: resposta,
     };
     return alvo;
   };
@@ -132,15 +131,13 @@ vi.mock("framer-motion", async () => {
   const motion = new Proxy(
     {},
     {
-      get:
-        (_alvo, tag: string) =>
-        (props: Record<string, unknown>) => {
-          const limpos: Record<string, unknown> = {};
-          for (const [chave, valor] of Object.entries(props)) {
-            if (!propsDeAnimacao.includes(chave)) limpos[chave] = valor;
-          }
-          return React.createElement(tag, limpos);
-        },
+      get: (_alvo, tag: string) => (props: Record<string, unknown>) => {
+        const limpos: Record<string, unknown> = {};
+        for (const [chave, valor] of Object.entries(props)) {
+          if (!propsDeAnimacao.includes(chave)) limpos[chave] = valor;
+        }
+        return React.createElement(tag, limpos);
+      },
     },
   );
   return {
@@ -154,7 +151,9 @@ vi.mock("framer-motion", async () => {
 // tests/front/frete-v2-presets-contrato.test.tsx.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function produto(sobre: Partial<CartItem["product"]> = {}): CartItem["product"] {
+function produto(
+  sobre: Partial<CartItem["product"]> = {},
+): CartItem["product"] {
   return {
     id: "prod-1",
     name: "Produto Teste",
@@ -172,10 +171,7 @@ function produto(sobre: Partial<CartItem["product"]> = {}): CartItem["product"] 
   };
 }
 
-function item(
-  produtoDoItem: CartItem["product"],
-  quantity = 1,
-): CartItem {
+function item(produtoDoItem: CartItem["product"], quantity = 1): CartItem {
   return {
     product: produtoDoItem,
     quantity,
@@ -297,9 +293,7 @@ describe("ShippingCalculator — o grátis da calculadora é o mesmo veredito do
   it("por_produto: item MARCADO vê GRÁTIS (a marcação só vale dentro do preset)", async () => {
     // Sentinela -1 = preset "por_produto" (FRETE_GRATIS_POR_PRODUTO).
     estado.config = { ...estado.config, freeShippingMin: -1 };
-    const texto = await montarECotar([
-      item(produto({ freeShipping: true })),
-    ]);
+    const texto = await montarECotar([item(produto({ freeShipping: true }))]);
 
     expect(texto).toContain("GRÁTIS");
     expect(texto).not.toContain("41,90");
@@ -307,9 +301,7 @@ describe("ShippingCalculator — o grátis da calculadora é o mesmo veredito do
 
   it("desligado: item marcado NUNCA é grátis — a leitura incondicional morreu", async () => {
     estado.config = { ...estado.config, freeShippingMin: 0 };
-    const texto = await montarECotar([
-      item(produto({ freeShipping: true })),
-    ]);
+    const texto = await montarECotar([item(produto({ freeShipping: true }))]);
 
     // Preço real na tela, selo GRÁTIS em lugar nenhum.
     expect(texto).toContain("41,90");

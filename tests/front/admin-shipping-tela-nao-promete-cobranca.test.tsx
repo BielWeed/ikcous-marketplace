@@ -148,8 +148,7 @@ describe("AdminShippingView — a tela não promete cobrança que o app não faz
     });
 
     expect(
-      hospedeiro
-        .querySelector('[role="radio"][aria-checked="true"]')
+      hospedeiro.querySelector('[role="radio"][aria-checked="true"]')
         ?.textContent,
     ).toMatch(/Sempre grátis/);
     expect(texto()).toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
@@ -162,9 +161,8 @@ describe("AdminShippingView — a tela não promete cobrança que o app não faz
     await abrirTela();
 
     const hero = () =>
-      hospedeiro.querySelector(
-        '[aria-label="Como a entrega funciona hoje"]',
-      )?.textContent ?? "";
+      hospedeiro.querySelector('[aria-label="Como a entrega funciona hoje"]')
+        ?.textContent ?? "";
     expect(hero()).toContain("Acima de R$ 100");
 
     const sempre = [...hospedeiro.querySelectorAll('[role="radio"]')].find(

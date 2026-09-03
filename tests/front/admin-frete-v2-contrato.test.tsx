@@ -1,3 +1,4 @@
+import type { View } from "@/types";
 // @vitest-environment jsdom
 //
 // CONTRATO da tela de Frete v2 (frente frete-v2-0309, 03/09/2026 — o dono
@@ -23,7 +24,6 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { View } from "@/types";
 
 const { estadoDaLoja, estadoDoBanco, updateConfig } = vi.hoisted(() => ({
   estadoDaLoja: {
@@ -175,9 +175,8 @@ describe("Contrato da tela de Frete v2", () => {
   const texto = () => hospedeiro.textContent ?? "";
 
   const textoDoHero = () =>
-    hospedeiro.querySelector(
-      '[aria-label="Como a entrega funciona hoje"]',
-    )?.textContent ?? "";
+    hospedeiro.querySelector('[aria-label="Como a entrega funciona hoje"]')
+      ?.textContent ?? "";
 
   async function escolherPreset(nome: RegExp) {
     const cartao = [...hospedeiro.querySelectorAll('[role="radio"]')].find(
@@ -227,13 +226,17 @@ describe("Contrato da tela de Frete v2", () => {
 
     await escolherPreset(/Sempre grátis/);
     expect(
-      hospedeiro.querySelector('[role="radio"][aria-checked="true"]')?.textContent,
+      hospedeiro.querySelector('[role="radio"][aria-checked="true"]')
+        ?.textContent,
     ).toMatch(/Sempre grátis/);
 
     await salvar();
 
     expect(updateConfig).toHaveBeenCalledTimes(1);
-    expect(updateConfig.mock.calls[0][0]).toHaveProperty("freeShippingMin", 0.01);
+    expect(updateConfig.mock.calls[0][0]).toHaveProperty(
+      "freeShippingMin",
+      0.01,
+    );
   });
 
   it("preset 'acima de um valor': o valor editado é o que vai para o config", async () => {
@@ -254,7 +257,10 @@ describe("Contrato da tela de Frete v2", () => {
     await digitarNoCampo(campoValor, "250");
     await salvar();
 
-    expect(updateConfig.mock.calls[0][0]).toHaveProperty("freeShippingMin", 250);
+    expect(updateConfig.mock.calls[0][0]).toHaveProperty(
+      "freeShippingMin",
+      250,
+    );
   });
 
   it("REVISÃO A7: o campo do 'acima de' trava 0/negativo e avisa que valor vazio desliga o grátis", async () => {
@@ -362,7 +368,10 @@ describe("Contrato da tela de Frete v2", () => {
     // Loja antiga com `flat_fee` remanescente (ou provedor ausente): o nome
     // é indefinido, então a frase do aviso troca o artigo em vez de costurar
     // "o" + "uma transportadora".
-    estadoDaLoja.atual = { ...estadoDaLoja.atual, shippingProvider: "flat_fee" };
+    estadoDaLoja.atual = {
+      ...estadoDaLoja.atual,
+      shippingProvider: "flat_fee",
+    };
     await abrirTela();
 
     expect(texto()).toMatch(/conecte uma transportadora em Ajustes/);

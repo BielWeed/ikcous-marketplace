@@ -798,8 +798,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (cart.length === 0) return false;
     const preset = presetDoConfig(config.freeShippingMin);
     if (preset === "sempre") return true;
-    if (preset === "acima_de_valor")
-      return cartTotal >= config.freeShippingMin;
+    if (preset === "acima_de_valor") return cartTotal >= config.freeShippingMin;
     if (preset === "por_produto")
       return cart.some((item) => item.product.freeShipping);
     // "desligado": nada é grátis pela loja.

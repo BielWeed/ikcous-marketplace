@@ -3,8 +3,8 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { FreteGratisBloco } from "@/components/admin/shipping/FreteGratisBloco";
 import { FreteLocalBloco } from "@/components/admin/shipping/FreteLocalBloco";
 import {
-  FreteNacionalBloco,
   type EstadoConexaoNacional,
+  FreteNacionalBloco,
 } from "@/components/admin/shipping/FreteNacionalBloco";
 import {
   FreteResumoHero,
@@ -14,9 +14,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
+  type PresetFreteGratis,
   presetDoConfig,
   valorDoPreset,
-  type PresetFreteGratis,
 } from "@/lib/presets-de-frete-gratis";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
@@ -305,10 +305,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     if (!config) return false;
     const minAtual = Number(config.freeShippingMin ?? 0);
     if (formData.preset !== presetDoConfig(minAtual)) return true;
-    if (
-      formData.preset === "acima_de_valor" &&
-      formData.acimaDe !== minAtual
-    )
+    if (formData.preset === "acima_de_valor" && formData.acimaDe !== minAtual)
       return true;
     if (formData.originCep !== (config.originCep ?? "")) return true;
     if (formData.shippingCoverage !== (config.shippingCoverage || "national"))
@@ -490,8 +487,8 @@ export const AdminShippingView = memo(function AdminShippingView({
 
             <p className="flex items-start gap-2 px-1 text-[10.5px] leading-snug text-zinc-600">
               <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-              Nada aqui vale antes de Salvar. Mexeu? Confira o resumo lá em
-              cima e salve.
+              Nada aqui vale antes de Salvar. Mexeu? Confira o resumo lá em cima
+              e salve.
             </p>
           </div>
         )}
@@ -506,25 +503,25 @@ export const AdminShippingView = memo(function AdminShippingView({
       >
         <div className="space-y-4">
           <p className="text-xs leading-relaxed text-zinc-400">
-            A entrega da sua loja tem três partes, cada uma com o bloco dela
-            na tela: o <span className="font-bold text-zinc-200">frete
-            local</span> (você mesmo entrega na cidade), o{" "}
+            A entrega da sua loja tem três partes, cada uma com o bloco dela na
+            tela: o <span className="font-bold text-zinc-200">frete local</span>{" "}
+            (você mesmo entrega na cidade), o{" "}
             <span className="font-bold text-zinc-200">frete nacional</span>{" "}
             (transportadora cotada na hora) e o{" "}
-            <span className="font-bold text-zinc-200">frete grátis</span>{" "}
-            (você escolhe UMA estratégia pronta e edita do seu jeito).
+            <span className="font-bold text-zinc-200">frete grátis</span> (você
+            escolhe UMA estratégia pronta e edita do seu jeito).
           </p>
           <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-              <AlertCircle className="size-4 text-amber-500" />
-              A taxa fixa foi aposentada
+              <AlertCircle className="size-4 text-amber-500" />A taxa fixa foi
+              aposentada
             </div>
             <p className="text-xs leading-relaxed text-zinc-400">
               Antes existia um valor fixo para entregas fora da cidade. Ele
-              enganava: parecia frete de verdade sem cotação nenhuma por
-              trás. Agora, fora da sua cidade, o cliente vê SÓ o preço real
-              cotado pela transportadora. Sem transportadora conectada, sua
-              loja entrega apenas na cidade.
+              enganava: parecia frete de verdade sem cotação nenhuma por trás.
+              Agora, fora da sua cidade, o cliente vê SÓ o preço real cotado
+              pela transportadora. Sem transportadora conectada, sua loja
+              entrega apenas na cidade.
             </p>
           </div>
           <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">

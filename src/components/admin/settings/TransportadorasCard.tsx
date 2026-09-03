@@ -336,10 +336,10 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
         <div className="flex flex-col gap-3">
           <p className="text-left text-[9.5px] leading-snug text-zinc-400">
-            Escolha como o frete é calculado fora da sua cidade: cotado na
-            hora por uma transportadora, ou sem cotação automática (a loja
-            entrega apenas na sua cidade). Quem compra vê o resultado no
-            fechamento do pedido.
+            Escolha como o frete é calculado fora da sua cidade: cotado na hora
+            por uma transportadora, ou sem cotação automática (a loja entrega
+            apenas na sua cidade). Quem compra vê o resultado no fechamento do
+            pedido.
           </p>
 
           {/* Escolha da transportadora — cartões selecionáveis, um por

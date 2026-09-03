@@ -56,18 +56,17 @@ vi.mock("@/hooks/useLeaderElection", () => ({
 // de carrinho do banco devolve VAZIO (o carrinho local do localStorage é o
 // que vale), sessão existe (o sync de volta segue), realtime não faz nada.
 vi.mock("@/lib/supabase", () => {
+  // A consulta termina em `eq`/`in` devolvendo uma PROMISE NATIVA: o
+  // then/catch vêm de graça do Promise, sem declarar `then` na mão —
+  // objeto com `then` literal acende a noThenProperty do biome (parece
+  // thenable para um await distraído).
   const consulta = () => {
+    const resposta = () =>
+      Promise.resolve({ data: [] as unknown[], error: null });
     const alvo: Record<string, unknown> = {
       select: () => alvo,
-      eq: () => alvo,
-      in: () => alvo,
-      then: (
-        res: (v: { data: unknown[]; error: null }) => unknown,
-        rej: (e: unknown) => unknown,
-      ) =>
-        Promise.resolve({ data: [] as unknown[], error: null }).then(res, rej),
-      catch: (rej: (e: unknown) => unknown) =>
-        Promise.resolve({ data: [] as unknown[], error: null }).catch(rej),
+      eq: resposta,
+      in: resposta,
     };
     return alvo;
   };
@@ -119,15 +118,13 @@ vi.mock("framer-motion", async () => {
   const motion = new Proxy(
     {},
     {
-      get:
-        (_alvo, tag: string) =>
-        (props: Record<string, unknown>) => {
-          const limpos: Record<string, unknown> = {};
-          for (const [chave, valor] of Object.entries(props)) {
-            if (!propsDeAnimacao.includes(chave)) limpos[chave] = valor;
-          }
-          return React.createElement(tag, limpos);
-        },
+      get: (_alvo, tag: string) => (props: Record<string, unknown>) => {
+        const limpos: Record<string, unknown> = {};
+        for (const [chave, valor] of Object.entries(props)) {
+          if (!propsDeAnimacao.includes(chave)) limpos[chave] = valor;
+        }
+        return React.createElement(tag, limpos);
+      },
     },
   );
   return {
