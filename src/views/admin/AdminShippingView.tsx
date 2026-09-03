@@ -1,5 +1,6 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { EtiquetasEnvioCard } from "@/components/admin/shipping/EtiquetasEnvioCard";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -827,6 +828,13 @@ export const AdminShippingView = memo(function AdminShippingView({
                 )}
               </div>
             )}
+            {/* ── Seção 4: etiquetas de envio (Onda 3, rastreio automático)
+                A etiqueta nasce da API do Melhor Envio — a confirmação de
+                saldo e a gravação do rastreio no pedido moram no card (e na
+                edge function melhor-envio-etiqueta). Sempre visível: é
+                operação de envio, não regra de cobrança — não depende do
+                interruptor de cobertura acima. */}
+            <EtiquetasEnvioCard />
           </div>
         )}
       </div>
