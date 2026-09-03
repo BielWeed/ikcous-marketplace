@@ -31,6 +31,13 @@ vi.mock("@/lib/supabase", () => ({
 }));
 
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: null }) }));
+// FRETE V2 (onda D-1, 03/09): a regra de grátis do componente tem FONTE ÚNICA
+// no CartContext — o componente consome o veredito `freteGratis` do contexto
+// (a cópia antiga da regra, com item incondicional + trava Boolean(user),
+// morreu). Mock seco: nenhum cenário destes arquivos é grátis.
+vi.mock("@/contexts/CartContext", () => ({
+  useCartState: () => ({ freteGratis: false }),
+}));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/utils/haptic", () => ({
   haptic: { light: vi.fn(), medium: vi.fn(), success: vi.fn() },
@@ -120,8 +127,6 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
       raiz.render(
         <ShippingCalculator
           cart={cart}
-          subtotal={100}
-          freeShippingMin={0}
           selectedOption={null}
           onSelectOption={() => {}}
         />,

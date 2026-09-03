@@ -44,6 +44,13 @@ export interface CartState {
    *  calcular" em vez de pregarrar `config.shippingFee` no total (laudo
    *  caça-bugs 30/08, achado 7). */
   freteIndefinido: boolean;
+  /** FRETE V2 (onda D-1, 03/09): o VEREDITO ÚNICO de "este carrinho sai
+   *  grátis?" — o mesmo memo que zera `shippingFee`, agora exposto para a UI
+   *  consumir SEM recopiar a regra (lição #53: regra de negócio escrita em
+   *  dois lugares diverge; a cópia antiga no ShippingCalculator mostrava
+   *  preço cheio ao convidado no limite enquanto o total saia grátis).
+   *  Mudança ADITIVA: nenhum consumidor atual quebra. */
+  freteGratis: boolean;
   selectedShippingOption: ShippingOption | null;
   /** CEP para o qual a cotação de frete escolhida foi calculada. O banco precisa
    *  dele para localizar a cotação gravada e confirmar o valor do frete. */
@@ -847,6 +854,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       cartTotal,
       cartCount,
       shippingFee,
+      freteGratis,
       freteIndefinido,
       selectedShippingOption,
       shippingCep,
@@ -857,6 +865,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       cartTotal,
       cartCount,
       shippingFee,
+      freteGratis,
       freteIndefinido,
       selectedShippingOption,
       shippingCep,

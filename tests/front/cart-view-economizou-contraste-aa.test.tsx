@@ -5,9 +5,13 @@
 // (4,5:1) de texto normal. `text-emerald-700` mede 5,21:1 e passa.
 //
 // POR QUE RENDER DE VERDADE: a classe de cor vive no elemento renderizado.
-// `hasFreeShippingItem=true` (produto com `freeShipping: true` no carrinho)
-// é o caminho mais curto para `shipping === 0` sem precisar de sessão nem de
-// `config.freeShippingMin` -- CartView.tsx, useMemo de `shipping`/`savings`.
+//
+// FRETE V2 (onda D-1, 03/09): o caminho para `shipping === 0` mudou — a
+// cópia antiga da regra (`hasFreeShippingItem`, item marcado incondicional)
+// morreu e o grátis do carrinho agora é o veredito ÚNICO do CartContext
+// (`freteGratis`, presets de presets-de-frete-gratis.ts). O dublê do
+// `useCart` entrega o veredito GRÁTIS diretamente, que é o cenário honesto
+// mais curto para o selo aparecer sem sessão nem limiar de valor.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,6 +34,10 @@ vi.mock("@/hooks/useCart", () => ({
   useCart: () => ({
     cart: [],
     shippingFee: 0,
+    // FRETE V2 (onda D-1): o selo aparece quando o VEREDITO do CartContext
+    // é grátis (`freteGratis`) — a leitura antiga de `product.freeShipping`
+    // na CartView morreu com o modelo de presets.
+    freteGratis: true,
     updateQuantity: vi.fn(),
     removeFromCart: vi.fn(),
     clearCart: vi.fn(),
