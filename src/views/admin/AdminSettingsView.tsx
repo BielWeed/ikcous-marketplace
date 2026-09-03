@@ -5,17 +5,21 @@ import {
   ArrowUpRight,
   ChevronDown,
   HelpCircle,
+  History,
   Layers,
   MapPin,
   Palette,
   RefreshCw,
   Save,
+  Truck,
 } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
+import { TransportadorasSection } from "@/components/admin/settings/TransportadorasCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { branding } from "@/config/branding";
 import { corPrimariaEfetiva, validaCorDaLoja } from "@/config/cor-da-loja";
@@ -647,14 +651,24 @@ const ConnectionDiagnosticsSection = memo(
  *
  * Nasce FECHADA sempre: sem "lembra a última vez" de propósito — a tela
  * volta enxuta a cada visita, e expandir é um clique.
+ *
+ * `comPendencia`: quando o conteúdo da seção tem alteração não salva, fechar
+ * desmonta o conteúdo e jogaria fora o que foi digitado. Enquanto houver
+ * pendência o fechamento fica BLOQUEADO, com aviso no cabeçalho — o mesmo
+ * gênero de trava que o painel usa para não perder trabalho digitado ao
+ * trocar de tela (achado A1 da revisão adversária da frente
+ * glm-visual-admin-0209: as seções que contêm formulário precisam dela;
+ * seções de consulta podem omitir).
  */
 function SecaoColapsavel({
   titulo,
   icone: Icone,
+  comPendencia = false,
   children,
 }: {
   readonly titulo: string;
   readonly icone: React.ElementType;
+  readonly comPendencia?: boolean;
   readonly children: React.ReactNode;
 }) {
   const [aberta, setAberta] = useState(false);
@@ -663,7 +677,15 @@ function SecaoColapsavel({
     <div className="rounded-3xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl">
       <button
         type="button"
-        onClick={() => setAberta((antes) => !antes)}
+        onClick={() => {
+          if (aberta && comPendencia) {
+            // Há trabalho não salvo dentro: fechar descartaria. A saída é o
+            // botão Salvar do próprio conteúdo — a seção não some por um
+            // clique que o lojista nem percebeu que foi no cabeçalho.
+            return;
+          }
+          setAberta((antes) => !antes);
+        }}
         aria-expanded={aberta}
         className="flex w-full items-center justify-between gap-3 text-left"
       >
@@ -675,12 +697,19 @@ function SecaoColapsavel({
             {titulo}
           </span>
         </span>
-        <ChevronDown
-          className={cn(
-            "size-4 shrink-0 text-zinc-400 transition-transform duration-200",
-            aberta && "rotate-180",
+        <span className="flex shrink-0 items-center gap-2">
+          {aberta && comPendencia && (
+            <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">
+              Salve antes de fechar
+            </span>
           )}
-        />
+          <ChevronDown
+            className={cn(
+              "size-4 shrink-0 text-zinc-400 transition-transform duration-200",
+              aberta && "rotate-180",
+            )}
+          />
+        </span>
       </button>
 
       <AnimatePresence initial={false}>
@@ -707,6 +736,11 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   const { isLoaded } = useStore();
   const isOffline = useOnlineStatus();
   const [showHelpModal, setShowHelpModal] = useState(false);
+  // A seção de Transportadoras reporta se tem alteração não salva; enquanto
+  // houver, ela não pode ser recolhida (fechar desmonta o conteúdo e
+  // descartaria o token digitado — trava explicada no SecaoColapsavel).
+  const [transportadorasPendentes, setTransportadorasPendentes] =
+    useState(false);
 
   // Reset helper modals when tab becomes inactive
   useEffect(() => {
@@ -886,6 +920,34 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 pedido do Gabriel de 02/09. */}
             <SecaoColapsavel titulo="Cor da loja" icone={Palette}>
               <CorDaLojaSection />
+            </SecaoColapsavel>
+
+            {/* Transportadoras e cotação de frete — MUDOU DE TELA (frente
+                glm-visual-admin-0209, pedido do Gabriel 02/09: não fazia
+                sentido o token da transportadora morar no meio das regras
+                de frete). Dona de `shippingProvider`,
+                `enabledShippingMethods` e das credenciais — salvar a tela
+                de Frete não toca nelas. COLAPSADA e nascida FECHADA: ajuste
+                raro, feito uma vez. */}
+            <SecaoColapsavel
+              titulo="Transportadoras e cotação de frete"
+              icone={Truck}
+              comPendencia={transportadorasPendentes}
+            >
+              <TransportadorasSection
+                onDirtyMudou={setTransportadorasPendentes}
+              />
+            </SecaoColapsavel>
+
+            {/* Histórico de cotações de frete — veio junto da mesma
+                mudança: registro técnico de diagnóstico, consulta rara.
+                Busca fresca a cada abertura (a seção só monta quando
+                expandida). COLAPSADA e nascida FECHADA, pelo mesmo pedido. */}
+            <SecaoColapsavel
+              titulo="Histórico de cotações de frete"
+              icone={History}
+            >
+              <HistoricoCotacoesSection />
             </SecaoColapsavel>
           </>
         )}

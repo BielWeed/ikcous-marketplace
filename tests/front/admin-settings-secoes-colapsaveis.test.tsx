@@ -24,6 +24,8 @@ const { mockConfig } = vi.hoisted(() => ({
     storeName: "Loja Teste",
     storeCity: "Uberlândia",
     storeState: "MG",
+    shippingProvider: "flat_fee" as "flat_fee" | "melhor_envio" | "frenet",
+    enabledShippingMethods: ["sedex", "pac"] as string[],
   },
 }));
 
@@ -37,7 +39,30 @@ vi.mock("@/contexts/StoreContext", () => ({
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
-vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    from: (tabela: string) => {
+      if (tabela === "store_shipping_credentials") {
+        return {
+          select: () =>
+            Promise.resolve({
+              data: [
+                {
+                  provider: "melhor_envio",
+                  credentials: { token: "tok-da-loja", sandbox: false },
+                },
+              ],
+              error: null,
+            }),
+          upsert: () => Promise.resolve({ error: null }),
+        };
+      }
+      return {
+        select: () => Promise.resolve({ data: [], error: null }),
+      };
+    },
+  },
+}));
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -173,5 +198,101 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
 
     expect(hospedeiro.textContent).toContain("Pagamento online (PIX)");
     expect(hospedeiro.querySelector("#store-name")).toBeNull();
+  });
+
+  // ── Seções novas da frente glm-visual-admin-0209 (transportadoras e
+  // histórico mudaram da tela de Frete para cá) ──────────────────────────
+  it("as seções de Transportadoras e Histórico também nascem FECHADAS", async () => {
+    await renderizar();
+
+    const transportadoras = cabecalhoDaSecao(
+      "Transportadoras e cotação de frete",
+    )!;
+    const historico = cabecalhoDaSecao("Histórico de cotações de frete")!;
+    expect(transportadoras).toBeTruthy();
+    expect(historico).toBeTruthy();
+    expect(transportadoras.getAttribute("aria-expanded")).toBe("false");
+    expect(historico.getAttribute("aria-expanded")).toBe("false");
+
+    // Fechadas = nada de campo de token nem consulta ao histórico no DOM.
+    expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
+    expect(hospedeiro.querySelector("table")).toBeNull();
+  });
+
+  it("a seção de Transportadoras NÃO fecha com alteração não salva — e fecha depois de salvar", async () => {
+    // Achado A1 da revisão adversária: fechar a seção desmonta o card e
+    // jogaria fora o token digitado, sem aviso nenhum. Com pendência, o
+    // clique no cabeçalho é recusado (com aviso); depois de salvar, fecha.
+    updateConfig.mockResolvedValue(true);
+    mockConfig.shippingProvider = "melhor_envio";
+    mockConfig.enabledShippingMethods = ["sedex", "pac"];
+
+    await renderizar();
+
+    const cabecalho = cabecalhoDaSecao("Transportadoras e cotação de frete")!;
+    await act(async () => {
+      cabecalho.click();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    const campoToken = hospedeiro.querySelector(
+      'input[type="password"]',
+    ) as HTMLInputElement;
+    expect(campoToken).not.toBeNull();
+    expect(campoToken.value).toBe("tok-da-loja");
+
+    // Mexe no token: pendência criada.
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(campoToken, "tok-novo");
+      campoToken.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // O aviso de pendência aparece no cabeçalho…
+    expect(hospedeiro.textContent).toMatch(/salve antes de fechar/i);
+
+    // …e o clique de fechar é RECUSADO: o token continua na tela.
+    await act(async () => {
+      cabecalho.click();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(
+      hospedeiro.querySelector('input[type="password"]'),
+    ).not.toBeNull();
+    expect(cabecalho.getAttribute("aria-expanded")).toBe("true");
+
+    // Salva dentro da própria seção…
+    const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Salvar"),
+    ) as HTMLButtonElement;
+    expect(botaoSalvar.disabled).toBe(false);
+    await act(async () => {
+      botaoSalvar.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // …a pendência acaba, o aviso some, e fechar volta a funcionar.
+    expect(hospedeiro.textContent).not.toMatch(/salve antes de fechar/i);
+    await act(async () => {
+      cabecalho.click();
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
+    expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
   });
 });

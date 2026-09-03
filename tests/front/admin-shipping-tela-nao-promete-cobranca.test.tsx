@@ -147,6 +147,28 @@ describe("AdminShippingView — a tela não promete cobrança que o app não faz
     expect(texto()).not.toMatch(/Todos os pedidos ter[aã]o cobran[çc]a/i);
   });
 
+  it("taxa em zero com transportadora salva (melhor_envio): o aviso NÃO aparece, e o resumo cita a transportadora SALVA", async () => {
+    // Achado D1 da revisão adversária (frente glm-visual-admin-0209): com a
+    // mudança de casa das transportadoras, o provedor que alimenta o aviso
+    // passou a ser o SALVO (`config.shippingProvider`) — era o do formulário.
+    // Todos os cenários anteriores usam flat_fee, então uma regressão que
+    // cravasse "flat_fee" no código passaria batida por esta suíte inteira.
+    // Este cenário prende a LIGAÇÃO: com melhor_envio salvo, a taxa fixa não
+    // governa o preço nacional (a cotação governa) e o aviso de entrega
+    // gratuita seria a tela afirmando um efeito que não acontece.
+    mockConfig.freeShippingMin = 0;
+    mockConfig.shippingFee = 0;
+    mockConfig.shippingCoverage = "national";
+    mockConfig.shippingProvider = "melhor_envio";
+    await abrirTela();
+
+    expect(texto()).not.toMatch(/qualquer CEP/i);
+    expect(texto()).not.toMatch(/Quem paga a entrega é a loja/i);
+    // O resumo do frete nacional nomeia a transportadora salva — se esta
+    // linha quebra, o provedor deixou de ser lido do config.
+    expect(texto()).toMatch(/Melhor Envio/i);
+  });
+
   it("o texto acompanha o interruptor antes de salvar, não o que está no banco", async () => {
     // Quem desliga a taxa precisa ver a consequência ANTES de tocar em Salvar.
     // Se as frases lessem o config salvo em vez do formulário, a tela só
