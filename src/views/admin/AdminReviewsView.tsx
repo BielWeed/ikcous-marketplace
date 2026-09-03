@@ -543,15 +543,16 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   {/* Onda 3 da reforma visual (03/09): o título vivia com
                       fórmula própria (text-lg, duas cores) — agora é o
                       AdminPageHeader, igual ao de Pedidos/Produtos/Clientes. */}
-                  <AdminPageHeader titulo="Avaliações" />
-                  <button
-                    type="button"
-                    onClick={() => setShowHelpModal(true)}
-                    className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
-                    title="Guia de Avaliações e Ajuda"
-                  >
-                    <HelpCircle className="size-4.5" />
-                  </button>
+                  <AdminPageHeader titulo="Avaliações">
+                    <button
+                      type="button"
+                      onClick={() => setShowHelpModal(true)}
+                      className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+                      title="Guia de Avaliações e Ajuda"
+                    >
+                      <HelpCircle className="size-4.5" />
+                    </button>
+                  </AdminPageHeader>
                 </div>
               </div>
 
