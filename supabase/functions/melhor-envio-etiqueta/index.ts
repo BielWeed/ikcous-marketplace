@@ -19,9 +19,10 @@
 //
 // DINHEIRO: o checkout da etiqueta usa o SALDO da conta do Melhor Envio do
 // lojista. Proteções embutidas:
-//   * pedido só etiqueta com pagamento CONFIRMADO (`payment_status` `pago` /
-//     `pago_apos_expirar`) — falha fechado (recomendação do revisor, aplicada
-//     pelo supervisor 03/09/2026; reversível pelo dono);
+//   * pedido só etiqueta com pagamento CONFIRMADO (`payment_status` `pago`,
+//     `pago_apos_expirar` ou `recebido_na_entrega` — os três valores de
+//     "dinheiro que entrou" do CHECK) — falha fechado (recomendação do
+//     revisor, aplicada pelo supervisor 03/09/2026; reversível pelo dono);
 //   * o pedido é REIVINDICADO com update condicional ENTRE o carrinho e o
 //     checkout (`shipping_label_id` NULL -> labelId, uma linha só vence) —
 //     re-clique/aba paralela não compra duas etiquetas; quem perde a corrida
@@ -31,7 +32,14 @@
 //     segunda chamada devolve a etiqueta existente (`already: true`), então
 //     falha suave de generate/print/tracking não vira segunda compra;
 //   * falha no CHECKOUT remove o item do carrinho do ME (nada fica lá para o
-//     lojista comprar sem querer);
+//     lojista comprar sem querer) e LIBERA a reivindicação — o ME RESPONDEU
+//     que a compra não fechou, não há ambiguidade de dinheiro; o pedido volta
+//     a poder etiquetar quando o lojista tentar de novo (revisor, bloqueante
+//     A da 2ª rodada, PR #423);
+//   * exceção/timeout DEPOIS da reivindicação (o checkout é a chamada lenta)
+//     grava evento `checkout_indeterminado`, MANTÉM a reivindicação e manda o
+//     lojista conferir a conta do ME — aqui a ambiguidade é real (a compra
+//     pode ter fechado com a resposta perdida) (revisor, B da 2ª rodada);
 //   * modo Sandbox da credencial manda tudo para o sandbox do ME (sem custo).
 //
 // ENDPOINTS v2 do Melhor Envio (doc oficial docs.melhorenvio.com.br):
@@ -189,15 +197,23 @@ export function erroDePedidoParaEtiqueta(pedido: { status?: string | null; track
 /**
  * Portão de PAGAMENTO (falha FECHADO): a etiqueta usa o saldo REAL da conta
  * do Melhor Envio do lojista — só pedido com pagamento CONFIRMADO etiqueta.
- * `pago` e `pago_apos_expirar` passam; NULL (pedido antigo, anterior à
+ * Passam os TRÊS valores de "dinheiro que entrou" do CHECK
+ * `marketplace_orders_payment_status_check`: `pago`, `pago_apos_expirar` e
+ * `recebido_na_entrega` (lojista registrou o pagamento na mão — RPC
+ * `registrar_pagamento_recebido`; migrations 20261021000000:122,
+ * 20261062000000:116 e 20261073000000:41). NULL (pedido antigo, anterior à
  * coluna), 'aguardando', 'recusado', 'expirado' e 'estornado' todos recusados
  * (mesmo critério de filtragem da lista do card — uma regra, dois lugares
- * lendo da MESMA lista de valores do CHECK `marketplace_orders_payment_status_check`).
+ * lendo da MESMA lista de valores do CHECK).
  *
  * Recomendação do revisor (@claude, PR #423) aplicada pelo supervisor em
  * 03/09/2026 — reversível pelo dono.
  */
-export const PAGAMENTOS_QUE_ETIQUETAM = ['pago', 'pago_apos_expirar'] as const
+export const PAGAMENTOS_QUE_ETIQUETAM = [
+    'pago',
+    'pago_apos_expirar',
+    'recebido_na_entrega',
+] as const
 
 export function erroDePagamentoParaEtiqueta(paymentStatus: unknown): string | null {
     const status = String(paymentStatus || '').toLowerCase()
@@ -764,13 +780,43 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         }
 
         const finalizarComErro = async (mensagem: string, etapa: string): Promise<Response> => {
-            // Etiqueta criada no carrinho e o checkout NÃO fechou: registrar o
-            // erro para o lojista e REMOVER o item do carrinho do ME (revisor,
-            // item 4) — nada fica lá para o lojista "comprar o carrinho" sem
-            // querer. O vínculo shipping_label_id no pedido fica: se o ME
-            // chegou a processar a compra com resposta perdida, `already: true`
-            // devolve esta etiqueta em vez de comprar outra.
-            await removerDoCarrinho(buscar, baseUrl, headersME, labelId)
+            if (etapa === 'checkout') {
+                // O ME RESPONDEU que a compra não fechou (erro HTTP ou status
+                // != paid): aqui NÃO há ambiguidade de dinheiro. Remover o
+                // item do carrinho (revisor, item 4 — nada fica lá para o
+                // lojista "comprar o carrinho" sem querer) e LIBERAR a
+                // reivindicação (revisor, bloqueante A da 2ª rodada, PR #423):
+                // mantê-la deixava o pedido preso para sempre — o portão
+                // `already: true` devolvia uma etiqueta que não existe mais,
+                // e só UPDATE na mão do dono destravava. Update CONDICIONAL:
+                // só solta se o vínculo ainda é o desta corrida.
+                await removerDoCarrinho(buscar, baseUrl, headersME, labelId)
+                const { error: erroLiberacao } = await supabaseClient
+                    .from('marketplace_orders')
+                    .update({ shipping_label_id: null })
+                    .eq('id', orderId)
+                    .eq('shipping_label_id', labelId)
+                if (erroLiberacao) {
+                    console.error('[melhor-envio-etiqueta] Falha ao liberar a reivindicação do pedido:', erroLiberacao)
+                }
+                await gravarEvento(supabaseClient, {
+                    order_id: orderId,
+                    event_type: 'erro',
+                    error_message: mensagem,
+                    protocol: cartData?.protocol || null,
+                    payload: { etapa, label_id: labelId, service, sandbox: isSandbox },
+                })
+                return new Response(JSON.stringify({ error: mensagem }), {
+                    status: 502,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                })
+            }
+            // Etapa PÓS-checkout (generate): a etiqueta JÁ FOI PAGA — o vínculo
+            // no pedido FICA (é ela que o `already: true` devolve e o que
+            // amarra o pedido à etiqueta paga na conta do ME). Item pago não
+            // está mais no carrinho: NADA a remover. E a resposta NÃO diz
+            // "tente novamente" — o retry cairia no `already` sem link de
+            // impressão: nomeia o id e manda gerar/imprimir no site do ME.
             await gravarEvento(supabaseClient, {
                 order_id: orderId,
                 event_type: 'erro',
@@ -778,138 +824,166 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 protocol: cartData?.protocol || null,
                 payload: { etapa, label_id: labelId, service, sandbox: isSandbox },
             })
-            return new Response(JSON.stringify({ error: mensagem }), {
-                status: 502,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            })
+            return new Response(
+                JSON.stringify({
+                    error: `A etiqueta foi PAGA no Melhor Envio (id ${labelId}), mas a geração do arquivo falhou. Ela já está na sua conta do Melhor Envio — gere e imprima a etiqueta de id ${labelId} direto por lá; não tente de novo aqui.`,
+                }),
+                { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            )
         }
 
-        // 7. Checkout — AQUI consome o saldo. A confirmação explícita é na
-        //    tela; a function não re-confirma (a UI é a única porta).
-        const checkoutResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/checkout`, {
-            method: 'POST',
-            headers: headersME,
-            body: JSON.stringify({ orders: [labelId] }),
-        })
-        if (!checkoutResponse.ok) {
-            const detalhe = await checkoutResponse.text()
-            console.error('[melhor-envio-etiqueta] checkout HTTP', checkoutResponse.status, detalhe)
-            return finalizarComErro(mensagemDoErroHttp(checkoutResponse.status, 'pagamento da etiqueta'), 'checkout')
-        }
-        const checkoutData = await checkoutResponse.json()
-        const checkout = normalizarCheckout(checkoutData)
-        if (!checkout.pago) {
-            return finalizarComErro(checkout.erro || 'Compra da etiqueta não confirmada.', 'checkout')
-        }
-
-        // 8. Gera a etiqueta (obrigatório antes de imprimir).
-        const generateResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/generate`, {
-            method: 'POST',
-            headers: headersME,
-            body: JSON.stringify({ orders: [labelId] }),
-        })
-        if (!generateResponse.ok) {
-            const detalhe = await generateResponse.text()
-            console.error('[melhor-envio-etiqueta] generate HTTP', generateResponse.status, detalhe)
-            return finalizarComErro(mensagemDoErroHttp(generateResponse.status, 'geração da etiqueta'), 'generate')
-        }
-
-        // 9. Link de impressão (fallo suave: sem link, a etiqueta existe e o
-        //    lojista reimprime pelo ME — não é motivo para falhar tudo).
-        let labelUrl: string | null = null
+        // ── Passos 7–11 sob guarda PRÓPRIA (revisor, B da 2ª rodada, PR #423) ──
+        // O checkout é a chamada mais lenta do ME (`buscarComTempo` corta em
+        // 20 s) e uma exceção aqui saltava direto para o catch de TOPO:
+        // resposta genérica, nenhum evento gravado, item no carrinho e
+        // reivindicação mantidos em silêncio. AQUI a ambiguidade de dinheiro
+        // é REAL — o ME pode ter processado a compra com a resposta perdida.
+        // Por isso o catch NÃO libera a reivindicação e NÃO mexe no carrinho:
+        // registra o estado indeterminado e manda o lojista conferir a conta
+        // do ME antes de qualquer retry.
         try {
-            const printResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/print`, {
-                method: 'POST',
-                headers: headersME,
-                body: JSON.stringify({ orders: [labelId], mode: 'private' }),
-            })
-            if (printResponse.ok) {
-                const printData = await printResponse.json()
-                labelUrl = printData?.url || null
-            } else {
-                console.error('[melhor-envio-etiqueta] print HTTP', printResponse.status, await printResponse.text())
-            }
-        } catch (printErr) {
-            console.error('[melhor-envio-etiqueta] print falhou (suave):', printErr)
-        }
-
-        // 10. Rastreio inicial (fallo suave igual: pode não ter nascido ainda).
-        let trackingCode: string | null = null
-        try {
-            const trackingResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/tracking`, {
+            // 7. Checkout — AQUI consome o saldo. A confirmação explícita é na
+            //    tela; a function não re-confirma (a UI é a única porta).
+            const checkoutResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/checkout`, {
                 method: 'POST',
                 headers: headersME,
                 body: JSON.stringify({ orders: [labelId] }),
             })
-            if (trackingResponse.ok) {
-                const trackingData = await trackingResponse.json()
-                trackingCode = normalizarTracking(trackingData, labelId).tracking
+            if (!checkoutResponse.ok) {
+                const detalhe = await checkoutResponse.text()
+                console.error('[melhor-envio-etiqueta] checkout HTTP', checkoutResponse.status, detalhe)
+                return finalizarComErro(mensagemDoErroHttp(checkoutResponse.status, 'pagamento da etiqueta'), 'checkout')
             }
-        } catch (trackingErr) {
-            console.error('[melhor-envio-etiqueta] tracking falhou (suave):', trackingErr)
-        }
+            const checkoutData = await checkoutResponse.json()
+            const checkout = normalizarCheckout(checkoutData)
+            if (!checkout.pago) {
+                return finalizarComErro(checkout.erro || 'Compra da etiqueta não confirmada.', 'checkout')
+            }
 
-        // 11. Completa o resultado no pedido e grava o histórico. O
-        //     `shipping_label_id` JÁ foi gravado na reivindicação (6.5) — este
-        //     update acrescenta url de impressão e rastreio.
-        const { error: updateError } = await supabaseClient
-            .from('marketplace_orders')
-            .update({
-                shipping_label_id: labelId,
-                shipping_label_url: labelUrl,
-                tracking_code: trackingCode ?? pedido.tracking_code ?? null,
+            // 8. Gera a etiqueta (obrigatório antes de imprimir).
+            const generateResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/generate`, {
+                method: 'POST',
+                headers: headersME,
+                body: JSON.stringify({ orders: [labelId] }),
             })
-            .eq('id', orderId)
+            if (!generateResponse.ok) {
+                const detalhe = await generateResponse.text()
+                console.error('[melhor-envio-etiqueta] generate HTTP', generateResponse.status, detalhe)
+                return finalizarComErro(mensagemDoErroHttp(generateResponse.status, 'geração da etiqueta'), 'generate')
+            }
 
-        if (updateError) {
-            // Etiqueta PAGA e VINCULADA (6.5), mas url/rastreio não subiram:
-            // erro honesto com o id — o lojista não perde a etiqueta (ela está
-            // na conta dele e no pedido); reimpressão pelo site do ME.
-            console.error('[melhor-envio-etiqueta] Falha ao completar o pedido:', updateError)
+            // 9. Link de impressão (fallo suave: sem link, a etiqueta existe e o
+            //    lojista reimprime pelo ME — não é motivo para falhar tudo).
+            let labelUrl: string | null = null
+            try {
+                const printResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/print`, {
+                    method: 'POST',
+                    headers: headersME,
+                    body: JSON.stringify({ orders: [labelId], mode: 'private' }),
+                })
+                if (printResponse.ok) {
+                    const printData = await printResponse.json()
+                    labelUrl = printData?.url || null
+                } else {
+                    console.error('[melhor-envio-etiqueta] print HTTP', printResponse.status, await printResponse.text())
+                }
+            } catch (printErr) {
+                console.error('[melhor-envio-etiqueta] print falhou (suave):', printErr)
+            }
+
+            // 10. Rastreio inicial (fallo suave igual: pode não ter nascido ainda).
+            let trackingCode: string | null = null
+            try {
+                const trackingResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/tracking`, {
+                    method: 'POST',
+                    headers: headersME,
+                    body: JSON.stringify({ orders: [labelId] }),
+                })
+                if (trackingResponse.ok) {
+                    const trackingData = await trackingResponse.json()
+                    trackingCode = normalizarTracking(trackingData, labelId).tracking
+                }
+            } catch (trackingErr) {
+                console.error('[melhor-envio-etiqueta] tracking falhou (suave):', trackingErr)
+            }
+
+            // 11. Completa o resultado no pedido e grava o histórico. O
+            //     `shipping_label_id` JÁ foi gravado na reivindicação (6.5) — este
+            //     update acrescenta url de impressão e rastreio.
+            const { error: updateError } = await supabaseClient
+                .from('marketplace_orders')
+                .update({
+                    shipping_label_id: labelId,
+                    shipping_label_url: labelUrl,
+                    tracking_code: trackingCode ?? pedido.tracking_code ?? null,
+                })
+                .eq('id', orderId)
+
+            if (updateError) {
+                // Etiqueta PAGA e VINCULADA (6.5), mas url/rastreio não subiram:
+                // erro honesto com o id — o lojista não perde a etiqueta (ela está
+                // na conta dele e no pedido); reimpressão pelo site do ME.
+                console.error('[melhor-envio-etiqueta] Falha ao completar o pedido:', updateError)
+                await gravarEvento(supabaseClient, {
+                    order_id: orderId,
+                    event_type: 'erro',
+                    error_message: 'Etiqueta paga e vinculada, mas falhou ao gravar url de impressão/rastreio.',
+                    tracking_code: trackingCode,
+                    label_url: labelUrl,
+                    protocol: cartData?.protocol || null,
+                    payload: { label_id: labelId, etapa: 'gravacao' },
+                })
+                return new Response(
+                    JSON.stringify({
+                        error: `A etiqueta foi paga no Melhor Envio (id ${labelId}) e está vinculada ao pedido, mas o link de impressão não foi salvo. Reimprima pela sua conta do Melhor Envio; o rastreio pode ser atualizado aqui depois.`,
+                    }),
+                    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                )
+            }
+
+            await gravarEvento(supabaseClient, {
+                order_id: orderId,
+                event_type: 'etiqueta_gerada',
+                tracking_code: trackingCode,
+                label_url: labelUrl,
+                protocol: cartData?.protocol || null,
+                payload: {
+                    label_id: labelId,
+                    purchase_id: checkout.purchaseId || null,
+                    service,
+                    sandbox: isSandbox,
+                    valor_declarado: subtotalItens,
+                },
+            })
+
+            return new Response(
+                JSON.stringify({
+                    success: true,
+                    already: false,
+                    tracking_code: trackingCode,
+                    label_url: labelUrl,
+                    label_id: labelId,
+                    protocol: cartData?.protocol || null,
+                    sandbox: isSandbox,
+                }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            )
+        } catch (errFinalizacao) {
+            console.error('[melhor-envio-etiqueta] Falha indeterminada após a reivindicação:', errFinalizacao)
             await gravarEvento(supabaseClient, {
                 order_id: orderId,
                 event_type: 'erro',
-                error_message: 'Etiqueta paga e vinculada, mas falhou ao gravar url de impressão/rastreio.',
-                tracking_code: trackingCode,
-                label_url: labelUrl,
+                error_message: `Falha indeterminada no checkout/geração da etiqueta: ${String(errFinalizacao)}`,
                 protocol: cartData?.protocol || null,
-                payload: { label_id: labelId, etapa: 'gravacao' },
+                payload: { etapa: 'checkout_indeterminado', label_id: labelId, service, sandbox: isSandbox },
             })
             return new Response(
                 JSON.stringify({
-                    error: `A etiqueta foi paga no Melhor Envio (id ${labelId}) e está vinculada ao pedido, mas o link de impressão não foi salvo. Reimprima pela sua conta do Melhor Envio; o rastreio pode ser atualizado aqui depois.`,
+                    error: `A compra da etiqueta (id ${labelId}) ficou em estado INDETERMINADO no Melhor Envio — pode ter sido paga ou não. Confira a compra na sua conta do Melhor Envio antes de tentar de novo; o pedido segue vinculado a esta etiqueta.`,
                 }),
-                { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+                { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
             )
         }
-
-        await gravarEvento(supabaseClient, {
-            order_id: orderId,
-            event_type: 'etiqueta_gerada',
-            tracking_code: trackingCode,
-            label_url: labelUrl,
-            protocol: cartData?.protocol || null,
-            payload: {
-                label_id: labelId,
-                purchase_id: checkout.purchaseId || null,
-                service,
-                sandbox: isSandbox,
-                valor_declarado: subtotalItens,
-            },
-        })
-
-        return new Response(
-            JSON.stringify({
-                success: true,
-                already: false,
-                tracking_code: trackingCode,
-                label_url: labelUrl,
-                label_id: labelId,
-                protocol: cartData?.protocol || null,
-                sandbox: isSandbox,
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        )
     } catch (err) {
         console.error('[melhor-envio-etiqueta] Erro de topo:', err)
         return new Response(

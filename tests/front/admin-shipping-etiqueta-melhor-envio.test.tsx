@@ -17,8 +17,9 @@
 //   5. Sem pedido selecionado o botão fica desabilitado — nada de invocar
 //      com orderId vazio.
 //   6. A lista já nasce com o portão de pagamento: o segundo `.in` filtra
-//      `payment_status` para `pago`/`pago_apos_expirar` (mesmo critério da
-//      function — falha fechado).
+//      `payment_status` para os TRÊS valores de dinheiro que entrou do CHECK
+//      (`pago`, `pago_apos_expirar`, `recebido_na_entrega` — mesmo critério
+//      da function, falha fechado).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { toast } from "sonner";
@@ -161,14 +162,16 @@ describe("EtiquetasEnvioCard — etiqueta só sai com confirmação explícita",
     // A7 do revisor: o lojista confirma vendo o frete que o cliente pagou.
     expect(hospedeiro.textContent).toMatch(/frete pago pelo cliente/i);
     expect(hospedeiro.textContent).toMatch(/R\$ 24,90/);
-    // A6 do revisor: a lista só nasce com pagamento confirmado — mesmo
-    // critério de falha fechado da function.
+    // A6 do revisor: a lista só nasce com pagamento confirmado — os TRÊS
+    // valores de dinheiro que entrou do CHECK, mesmo critério de falha
+    // fechado da function (recebido_na_entrega entra na 2ª rodada do
+    // re-review, item D).
     const filtroPagamento = filtrosIn.find(
       ([coluna]) => coluna === "payment_status",
     );
     expect(filtroPagamento).toEqual([
       "payment_status",
-      ["pago", "pago_apos_expirar"],
+      ["pago", "pago_apos_expirar", "recebido_na_entrega"],
     ]);
     expect(botao("Confirmar e gerar")).toBeTruthy();
   });

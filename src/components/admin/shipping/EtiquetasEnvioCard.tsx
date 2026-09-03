@@ -99,17 +99,23 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
     setPedidosError(false);
     try {
       // Pedidos vivos para envio: cancelado e entregue não etiquetam, e só
-      // pagamento CONFIRMADO etiqueta (`pago`/`pago_apos_expirar` — o MESMO
-      // critério de falha fechado que a function aplica; a lista já nasce
-      // honesta e ninguém gasta saldo com pedido não pago). `shipping` é o
-      // valor do frete que o cliente pagou — entra na confirmação.
+      // pagamento CONFIRMADO etiqueta (`pago`, `pago_apos_expirar` e
+      // `recebido_na_entrega` — os TRÊS valores de "dinheiro que entrou" do
+      // CHECK, o MESMO critério de falha fechado que a function aplica; a
+      // lista já nasce honesta e ninguém gasta saldo com pedido não pago).
+      // `shipping` é o valor do frete que o cliente pagou — entra na
+      // confirmação.
       const { data, error } = await supabase
         .from("marketplace_orders")
         .select(
           "id, customer_name, status, payment_status, shipping, tracking_code, created_at",
         )
         .in("status", ["new", "pending", "processing", "shipping"])
-        .in("payment_status", ["pago", "pago_apos_expirar"])
+        .in("payment_status", [
+          "pago",
+          "pago_apos_expirar",
+          "recebido_na_entrega",
+        ])
         .order("created_at", { ascending: false })
         .limit(20);
       if (error) throw error;
@@ -169,15 +175,27 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
       fetchPedidos();
     } catch (err) {
       console.error("[EtiquetasEnvio] Erro na geração:", err);
-      setErroMsg(
-        await mensagemDeErroInvocacao(err, {
-          mensagemGenerica:
-            "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
-        }),
-      );
-      setFase("confirmar");
+      const detalhe = await mensagemDeErroInvocacao(err, {
+        mensagemGenerica:
+          "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+      });
+      setErroMsg(detalhe);
+      // Em erro de RESGATE o botão de gasto não pode ficar ativo (revisor,
+      // PR #423): recarrega a lista e, se a function respondeu 409 (corrida
+      // perdida) ou 500 com etiqueta PAGA e VINCULADA, volta para a lista
+      // (ocioso) em vez de reapresentar "Confirmar e gerar" — o re-clique
+      // nesses casos só devolve `already` sem link. Para o detalhe de
+      // negócio não se perder com a saída da confirmação, o toast carrega a
+      // mensagem da function nesses casos.
+      fetchPedidos();
+      const statusHttp = (err as { context?: { status?: number } })?.context
+        ?.status;
+      const resgate =
+        statusHttp === 409 ||
+        (statusHttp === 500 && /vinculada|paga/i.test(detalhe));
+      setFase(resgate ? "ocioso" : "confirmar");
       haptic.error();
-      toast.error("Erro ao gerar etiqueta");
+      toast.error(resgate ? detalhe : "Erro ao gerar etiqueta");
     }
   }, [isOffline, pedidoSelecionado, fetchPedidos]);
 

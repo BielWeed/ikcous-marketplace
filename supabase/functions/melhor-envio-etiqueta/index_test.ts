@@ -2,17 +2,100 @@
 // Testes da function melhor-envio-etiqueta (padrão calculate-shipping:
 // funções puras exportadas + handler com costura de deps — sem rede).
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts"
-import {
-  extrairEnderecoDoPedido,
-  extrairServiceIdDaOpcao,
-  handler,
-  montarProdutosEVolumes,
-  montarRemetente,
-  normalizarCheckout,
-  normalizarTracking,
-  erroDePagamentoParaEtiqueta,
-  erroDePedidoParaEtiqueta,
-} from "./index.ts"
+
+// ── Costura de REDE para os testes do handler ──────────────────────────────
+// A porta de admin do handler (verifyIsAdmin) monta os PRÓPRIOS clients do
+// supabase-js — a costura `deps` só cobre o client principal. Estratégia da
+// casa (calculate-shipping): patch de globalThis.fetch. Aqui o patch precisa
+// estar NO LUGAR ANTES do import: o supabase-js captura a referência de fetch
+// no carregamento (cross-fetch). Então o index.ts é importado dinamicamente
+// com o patch ativo e o fetch original volta em seguida (não vaza para os
+// outros arquivos de teste do mesmo processo); cada teste de handler volta a
+// instalar o patch durante a chamada (cobre resolução lazy de fetch também).
+const fetchNativo = globalThis.fetch
+
+const URL_SUPA_TESTE = 'https://supa-fake.local'
+const ID_ADMIN = 'admin-1111-2222'
+const ANON_DE_TESTE = 'anon-chave-de-teste'
+
+function respostaAdminFalsa(url: string): Response {
+    if (url.includes('/auth/v1/user')) {
+        return new Response(
+            JSON.stringify({ id: ID_ADMIN, email: 'admin@teste.local', aud: 'authenticated', role: 'authenticated' }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+    }
+    if (url.includes('/rest/v1/profiles')) {
+        // `.single()` pede o accept vnd.pgrst.object — o SERVIDOR é quem
+        // devolve objeto (não array); o fake imita o servidor.
+        return new Response(
+            JSON.stringify({ id: ID_ADMIN, role: 'admin' }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+    }
+    return new Response(
+        JSON.stringify({ message: 'fora do roteiro do teste' }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } },
+    )
+}
+
+const fetchAdminFalso = ((input: any) =>
+    respostaAdminFalsa(String(input instanceof Request ? input.url : input))) as any
+
+globalThis.fetch = fetchAdminFalso
+const {
+    extrairEnderecoDoPedido,
+    extrairServiceIdDaOpcao,
+    handler,
+    montarProdutosEVolumes,
+    montarRemetente,
+    normalizarCheckout,
+    normalizarTracking,
+    erroDePagamentoParaEtiqueta,
+    erroDePedidoParaEtiqueta,
+} = await import('./index.ts')
+globalThis.fetch = fetchNativo
+
+/** Instala o fetch admin falso SÓ durante a chamada ao handler. */
+async function comAdminFalso(executar: () => Promise<any>): Promise<any> {
+    const anterior = globalThis.fetch
+    globalThis.fetch = fetchAdminFalso
+    try {
+        return await executar()
+    } finally {
+        globalThis.fetch = anterior
+    }
+}
+
+/** Env de que a porta de admin precisa ANTES de criar qualquer client. */
+function prepararEnvAdmin(): void {
+    Deno.env.set('SUPABASE_URL', URL_SUPA_TESTE)
+    Deno.env.set('SUPABASE_PUBLISHABLE_KEYS', JSON.stringify({ default: ANON_DE_TESTE }))
+    // verifyIsAdmin também monta o client de SISTEMA com a service role —
+    // sem ela o createClient lança "supabaseKey is required" e a porta
+    // falha fechado (a costura deps.supabase não cobre estes clients).
+    Deno.env.set('SUPABASE_SECRET_KEYS', JSON.stringify({ default: 'service-role-de-teste' }))
+    // Sem sessão guardada, o getUser do supabase-js pode falhar ANTES da
+    // rede ("session missing") em versões que exigem sessão; semear o
+    // storage deixa o caminho determinístico. Se o runner não tem
+    // localStorage, o header Authorization global cobre.
+    try {
+        const host = new URL(URL_SUPA_TESTE).hostname.split('.')[0]
+        localStorage.setItem(
+            `sb-${host}-auth-token`,
+            JSON.stringify({
+                access_token: 'jwt-admin-de-teste',
+                refresh_token: 'refresh-de-teste',
+                token_type: 'bearer',
+                expires_in: 3600,
+                expires_at: Math.floor(Date.now() / 1000) + 3600,
+                user: { id: ID_ADMIN, email: 'admin@teste.local', aud: 'authenticated', role: 'authenticated' },
+            }),
+        )
+    } catch {
+        // storage indisponível neste runner — segue com o header global
+    }
+}
 
 // ── extrairServiceIdDaOpcao ────────────────────────────────────────────────
 
@@ -87,9 +170,10 @@ Deno.test("portão de status - processando e novo passam", () => {
 
 // ── erroDePagamentoParaEtiqueta (falha fechado — só pago etiqueta) ─────────
 
-Deno.test("portão de pagamento - pago e pago_apos_expirar passam", () => {
+Deno.test("portão de pagamento - os TRÊS valores de dinheiro que entrou passam (revisor, item D da 2ª rodada)", () => {
   assertEquals(erroDePagamentoParaEtiqueta("pago"), null)
   assertEquals(erroDePagamentoParaEtiqueta("pago_apos_expirar"), null)
+  assertEquals(erroDePagamentoParaEtiqueta("recebido_na_entrega"), null) // pago na mão pelo lojista
   assertEquals(erroDePagamentoParaEtiqueta("PAGO"), null) // case-insensitive
 })
 
@@ -223,4 +307,288 @@ Deno.test("handler - action desconhecida nomeia as duas válidas (protegida por 
   // falso sem rede, e falha fechado) — o que importa aqui é que a action
   // estranha nunca alcança leitura de pedido.
   assertEquals(res.status === 403 || res.status === 400, true)
+})
+
+// ── handler: os ramos de DINHEIRO (revisor, item C da 2ª rodada, PR #423) ──
+// O handler é exercido DE PONTA A PONTA com supabase falso (chainable, que
+// registra reivindicação/liberação/eventos) e fetch do ME falso (que conta
+// carrinho/remoção/checkout). É a prova dos três ramos de dinheiro:
+// checkout recusado, corrida perdida e checkout indeterminado.
+
+const LABEL_ID = 'label-abc-123'
+const BASE_ME = 'https://sandbox.melhorenvio.com.br'
+
+const PEDIDO_FELIZ = {
+    id: 'pedido-1',
+    status: 'processing',
+    payment_status: 'pago',
+    subtotal: 10,
+    tracking_code: null,
+    shipping_label_id: null,
+    shipping_label_url: null,
+    total: 24.9,
+    customer_name: 'Maria Souza',
+    customer_data: {
+        cep: '38500-000',
+        street: 'Rua Antiga',
+        number: '42',
+        city: 'Monte Carmelo',
+        state: 'MG',
+        shipping_option_id: 'melhor-envio-1',
+    },
+}
+
+const CONTA_ME_FELIZ = {
+    name: 'Loja do Gabriel',
+    companies: [{ name: 'IKCOUS', company_document: '12345678000199', phone: '34999990000' }],
+    addresses: [
+        {
+            postal_code: '38500-000',
+            address: 'Rua A',
+            number: '10',
+            district: 'Centro',
+            city: { city: 'Monte Carmelo', state_abbr: 'MG' },
+            is_default: true,
+        },
+    ],
+}
+
+/**
+ * Cliente Supabase falso: cadeia encadeada igual à real (from →
+ * select/insert/update → eq/is/in → maybeSingle/single/then) e um `registro`
+ * que guarda o que aconteceu — o registro vira o ASSENTO dos testes
+ * (reivindicação gravada? liberação com os dois filtros? evento de qual
+ * etapa?).
+ */
+function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[] } = {}) {
+    const registro = {
+        reivindicacoes: [] as Array<{ valores: any; filtros: any[] }>,
+        liberacoes: [] as Array<{ valores: any; filtros: any[] }>,
+        completacoes: [] as Array<{ valores: any; filtros: any[] }>,
+        eventos: [] as any[],
+    }
+    const resolver = (no: any): Promise<any> => {
+        if (no.tabela === 'store_shipping_credentials') {
+            return Promise.resolve({
+                data: { credentials: { token: 'token-me-de-teste', sandbox: true } },
+                error: null,
+            })
+        }
+        if (no.tabela === 'order_shipping_events') {
+            registro.eventos.push(no.valores)
+            return Promise.resolve({ data: null, error: null })
+        }
+        if (no.tabela === 'marketplace_order_items') {
+            return Promise.resolve({ data: [{ product_id: 'p1', quantity: 1, price: 10 }], error: null })
+        }
+        if (no.tabela === 'produtos') {
+            return Promise.resolve({ data: [{ id: 'p1', nome: 'Caneca', preco_venda: 10 }], error: null })
+        }
+        // marketplace_orders
+        if (no.acao === 'update') {
+            const soltaVinculo = 'shipping_label_id' in (no.valores || {}) && no.valores.shipping_label_id === null
+            const tomaVinculo = 'shipping_label_id' in (no.valores || {}) && no.valores.shipping_label_id !== null
+            if (soltaVinculo) {
+                registro.liberacoes.push({ valores: no.valores, filtros: [...no.filtros] })
+                return Promise.resolve({ data: null, error: null })
+            }
+            if (tomaVinculo) {
+                registro.reivindicacoes.push({ valores: no.valores, filtros: [...no.filtros] })
+                // Quem vence a corrida recebe 1 linha; o teste que arma
+                // `linhasReivindicadas: []` simula o perdedor.
+                const linhas = configuracao.linhasReivindicadas ?? [{ id: configuracao.pedido?.id ?? 'pedido-1' }]
+                return Promise.resolve({ data: linhas, error: null })
+            }
+            registro.completacoes.push({ valores: no.valores, filtros: [...no.filtros] })
+            return Promise.resolve({ data: null, error: null })
+        }
+        return Promise.resolve({ data: configuracao.pedido ?? null, error: null })
+    }
+    const cliente = {
+        from(tabela: string) {
+            const no: any = { tabela, acao: null, valores: null, filtros: [] }
+            const api: any = {
+                select(_colunas?: string) {
+                    return api
+                },
+                insert(valores: any) {
+                    no.acao = 'insert'
+                    no.valores = valores
+                    return api
+                },
+                update(valores: any) {
+                    no.acao = 'update'
+                    no.valores = valores
+                    return api
+                },
+                eq(coluna: string, valor: any) {
+                    no.filtros.push({ metodo: 'eq', coluna, valor })
+                    return api
+                },
+                is(coluna: string, valor: any) {
+                    no.filtros.push({ metodo: 'is', coluna, valor })
+                    return api
+                },
+                in(coluna: string, valores: any) {
+                    no.filtros.push({ metodo: 'in', coluna, valores })
+                    return api
+                },
+                maybeSingle() {
+                    return api
+                },
+                single() {
+                    return api
+                },
+                then(resolveu: any, rejeitou: any) {
+                    return resolver(no).then(resolveu, rejeitou)
+                },
+            }
+            return api
+        },
+    }
+    return { cliente, registro }
+}
+
+/**
+ * Fetch falso do Melhor Envio: roteia pela URL e CONTA as chamadas — é o
+ * assento de dinheiro dos testes (carrinho criado? item removido? checkout
+ * chamado?). `checkout` é configurável: 'pago' (default), 'pendente' (o ME
+ * responde 200 com status pending — compra NÃO fechou) ou 'excecao' (a
+ * chamada estoura no meio — timeout/queda de rede pós-reivindicação).
+ */
+function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' } = {}) {
+    const registro = { carrinho: 0, remocoes: 0, checkouts: 0, geracoes: 0 }
+    const buscar = (async (input: any, init?: any) => {
+        const url = String(input instanceof Request ? input.url : input)
+        const metodo = String(init?.method || 'GET')
+        if (url.endsWith('/api/v2/me/cart') && metodo === 'POST') {
+            registro.carrinho++
+            return new Response(JSON.stringify({ id: LABEL_ID, protocol: 'proto-1' }), {
+                status: 201,
+                headers: { 'Content-Type': 'application/json' },
+            })
+        }
+        if (url.includes('/api/v2/me/cart/') && metodo === 'DELETE') {
+            registro.remocoes++
+            return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        }
+        if (url.endsWith('/api/v2/me/shipment/checkout')) {
+            registro.checkouts++
+            if (opcoes.checkout === 'excecao') {
+                throw new Error('AbortError: tempo esgotado simulado')
+            }
+            const status = opcoes.checkout === 'pendente' ? 'pending' : 'paid'
+            return new Response(JSON.stringify({ purchase: { id: 'pur-1', status } }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            })
+        }
+        if (url.endsWith('/api/v2/me/shipment/generate')) {
+            registro.geracoes++
+            return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        }
+        if (url.endsWith('/api/v2/me/shipment/print')) {
+            return new Response(JSON.stringify({ url: 'https://imprimir.teste/etiqueta' }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            })
+        }
+        if (url.endsWith('/api/v2/me/shipment/tracking')) {
+            return new Response(JSON.stringify({ [LABEL_ID]: { tracking: 'ME123456789BR', status: 'generated' } }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            })
+        }
+        if (url.endsWith('/api/v2/me')) {
+            return new Response(JSON.stringify(CONTA_ME_FELIZ), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            })
+        }
+        return new Response(JSON.stringify({ message: 'url fora do roteiro' }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' },
+        })
+    }) as any
+    return { buscar, registro }
+}
+
+function requisicaoGerar(): Request {
+    return new Request('http://localhost/melhor-envio-etiqueta', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer jwt-admin-de-teste' },
+        body: JSON.stringify({ action: 'gerar_etiqueta', orderId: 'pedido-1' }),
+    })
+}
+
+Deno.test("handler - checkout recusado (200 com status pending): item sai do carrinho E reivindicação LIBERADA (o pedido volta a poder etiquetar)", async () => {
+    // O ME RESPONDEU que não pagou — não há ambiguidade: é exatamente o caso
+    // que deixava o pedido preso para sempre (bloqueante A da 2ª rodada).
+    prepararEnvAdmin()
+    const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+    const me = buscarMeFalso({ checkout: 'pendente' })
+    const res = await comAdminFalso(() =>
+        handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+    assertEquals(res.status, 502)
+    const corpo = await res.json()
+    assertEquals(String(corpo.error).includes('saldo'), true)
+    // item removido do carrinho do ME (nada para "comprar o carrinho" sem querer)
+    assertEquals(me.registro.remocoes, 1)
+    // liberação com update CONDICIONAL: os dois filtros (id do pedido E o
+    // vínculo desta corrida) e o valor voltando a null
+    assertEquals(supa.registro.liberacoes.length, 1)
+    assertEquals(supa.registro.liberacoes[0].valores, { shipping_label_id: null })
+    const colunasLiberacao = supa.registro.liberacoes[0].filtros
+        .filter((f) => f.metodo === 'eq')
+        .map((f) => f.coluna)
+    assertEquals(colunasLiberacao.includes('id'), true)
+    assertEquals(colunasLiberacao.includes('shipping_label_id'), true)
+    // o evento de erro sai com a etapa certa
+    assertEquals(supa.registro.eventos.length, 1)
+    assertEquals(supa.registro.eventos[0].event_type, 'erro')
+    assertEquals(supa.registro.eventos[0].payload.etapa, 'checkout')
+    assertEquals(supa.registro.eventos[0].payload.label_id, LABEL_ID)
+})
+
+Deno.test("handler - corrida perdida (reivindicação devolve 0 linhas): 409, item removido do carrinho e checkout NUNCA é chamado", async () => {
+    // O perdedor da corrida remove o PRÓPRIO item e não chega perto do saldo.
+    prepararEnvAdmin()
+    const supa = clienteFalso({ pedido: PEDIDO_FELIZ, linhasReivindicadas: [] })
+    const me = buscarMeFalso()
+    const res = await comAdminFalso(() =>
+        handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+    assertEquals(res.status, 409)
+    assertEquals(me.registro.carrinho, 1) // a etiqueta foi criada no carrinho…
+    assertEquals(me.registro.remocoes, 1) // …e o perdedor remove o próprio item
+    assertEquals(me.registro.checkouts, 0) // e NUNCA chama o checkout (dinheiro)
+    assertEquals(supa.registro.reivindicacoes.length, 1)
+    assertEquals(supa.registro.liberacoes.length, 0)
+    assertEquals(supa.registro.eventos.length, 1)
+    assertEquals(supa.registro.eventos[0].event_type, 'erro')
+    assertEquals(supa.registro.eventos[0].payload.etapa, 'reivindicacao')
+})
+
+Deno.test("handler - checkout estoura pós-reivindicação (exceção): evento checkout_indeterminado gravado e reivindicação MANTIDA", async () => {
+    // Aqui a ambiguidade de dinheiro é REAL (o ME pode ter processado com a
+    // resposta perdida): não libera, não mexe no carrinho — registra e manda
+    // conferir a conta do ME (caminho B mínimo da 2ª rodada).
+    prepararEnvAdmin()
+    const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+    const me = buscarMeFalso({ checkout: 'excecao' })
+    const res = await comAdminFalso(() =>
+        handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+    assertEquals(res.status, 502)
+    const corpo = await res.json()
+    // a resposta NOMEIA o id da etiqueta e manda conferir a conta do ME
+    assertEquals(String(corpo.error).includes(LABEL_ID), true)
+    assertEquals(String(corpo.error).includes('INDETERMINADO'), true)
+    assertEquals(me.registro.checkouts, 1)
+    // indeterminado = NÃO liberar a reivindicação e NÃO mexer no carrinho
+    assertEquals(supa.registro.liberacoes.length, 0)
+    assertEquals(me.registro.remocoes, 0)
+    // e o estado fica REGISTRADO para o dono ver no histórico do pedido
+    const evento = supa.registro.eventos.find((e) => e.payload?.etapa === 'checkout_indeterminado')
+    assertEquals(evento !== undefined, true)
+    assertEquals(evento.event_type, 'erro')
+    assertEquals(evento.payload.label_id, LABEL_ID)
 })
