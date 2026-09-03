@@ -60,6 +60,12 @@ interface CartViewProps {
  * de propósito, pelo mesmo motivo do `decidirSaidaDoCheckout` (#328): montar
  * a view inteira no teste arrasta o mundo e, medido neste ambiente, pendura o
  * `act` (aba orders + jsdom + framer-motion).
+ *
+ * DESDE o laudo #3 (onda 2, 03/09) a lista do usuário LOGADO não passa mais
+ * por aqui: ela vive no estado do hook `useOrders` (vivo por realtime) e o
+ * próprio hook não grava o `[]` de uma busca abortada (useOrders.ts:970-977).
+ * A função fica exportada para o caminho do convidado/futuro reuso e para o
+ * teste que documenta a lição da corrida abortada.
  */
 export const mesclarListaAposRecarga = <T,>(
   atual: T[],
@@ -97,7 +103,12 @@ export function CartView({
   const cart = propCart ?? ctxCart;
   const onUpdateQuantity = propOnUpdateQuantity ?? updateQuantity;
   const onRemove = propOnRemove ?? removeFromCart;
-  const { fetchUserOrders } = useOrders(true, false);
+  // Onda 2, laudo 02/09 #3: a aba "Meus Pedidos" deriva da lista VIVA do
+  // hook — o mesmo estado que o realtime alimenta (handleRealtimeUpdate/
+  // Insert/Delete em useOrders.ts:1247-1279). Antes a view copiava a lista
+  // para um estado local na entrada da aba e ficava congelada até sair e
+  // voltar. Prendado por tests/front/cart-aba-pedidos-viva.test.tsx.
+  const { fetchUserOrders, orders: pedidosVivos } = useOrders(true, false);
   const { user } = useAuth();
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(80);
@@ -135,8 +146,11 @@ export function CartView({
     }),
   };
 
-  // Orders State
-  const [orders, setOrders] = useState<Order[]>([]);
+  // Orders State — local só do MODO CONVIDADO (busca de OrderSearch +
+  // rastreio salvo em sessionStorage). Para usuário logado a lista da aba é
+  // a do hook, viva (laudo #3, onda 2).
+  const [pedidosConvidado, setPedidosConvidado] = useState<Order[]>([]);
+  const orders = user ? pedidosVivos : pedidosConvidado;
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [orderViewMode, setOrderViewMode] = useState<"user" | "guest">(
     user ? "user" : "guest",
@@ -179,8 +193,12 @@ export function CartView({
     if (activeTab === "orders") {
       if (user) {
         setIsLoadingOrders(true);
-        fetchUserOrders().then((data) => {
-          setOrders((atual) => mesclarListaAposRecarga(atual, data));
+        // A lista não é mais copiada para cá: `fetchUserOrders` atualiza o
+        // estado do hook (useOrders.ts:952-954) e a aba deriva dele — é isso
+        // que faz o realtime alcançar a aba (laudo #3, onda 2). Na corrida
+        // perdida de recarga, o próprio hook NÃO grava o `[]` do aborto
+        // (useOrders.ts:970-977), então a lista em tela não pisca.
+        fetchUserOrders().then(() => {
           setIsLoadingOrders(false);
           setOrderViewMode("user");
         });
@@ -191,7 +209,7 @@ export function CartView({
           if (cached) {
             const parsed = JSON.parse(cached);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              setOrders(parsed);
+              setPedidosConvidado(parsed);
             }
           }
         } catch (e) {
@@ -716,7 +734,7 @@ export function CartView({
                 <OrderSearch
                   onNavigate={onNavigate}
                   onOrdersFound={(foundOrders) => {
-                    setOrders(foundOrders);
+                    setPedidosConvidado(foundOrders);
                   }}
                 />
               )}
