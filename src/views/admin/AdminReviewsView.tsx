@@ -3,6 +3,7 @@ import {
   AdminKpiCarousel,
   type KpiCardConfig,
 } from "@/components/admin/AdminKpiCarousel";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -536,25 +537,22 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         <div className="admin-glass rounded-2xl border border-white/5 p-3 shadow-2xl sm:rounded-[2rem] sm:p-4">
           <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
             {/* Title & Stats */}
-            <div className="flex w-full items-center justify-between gap-3 lg:w-auto lg:justify-start">
+            <div className="flex w-full flex-wrap items-center justify-between gap-3 lg:w-auto lg:justify-start">
               <div className="flex items-center gap-2.5">
                 <div className="flex items-center gap-2">
-                  <h1 className="flex items-center gap-2 text-lg font-black tracking-tight text-white sm:text-xl md:text-2xl">
-                    <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-                      <span className="italic text-white">Ava</span>
-                      <span className="not-italic text-admin-gold">
-                        liações
-                      </span>
-                    </span>
-                  </h1>
-                  <button
-                    type="button"
-                    onClick={() => setShowHelpModal(true)}
-                    className="flex size-6 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
-                    title="Guia de Avaliações e Ajuda"
-                  >
-                    <HelpCircle className="size-3 text-zinc-500 hover:text-white" />
-                  </button>
+                  {/* Onda 3 da reforma visual (03/09): o título vivia com
+                      fórmula própria (text-lg, duas cores) — agora é o
+                      AdminPageHeader, igual ao de Pedidos/Produtos/Clientes. */}
+                  <AdminPageHeader titulo="Avaliações">
+                    <button
+                      type="button"
+                      onClick={() => setShowHelpModal(true)}
+                      className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+                      title="Guia de Avaliações e Ajuda"
+                    >
+                      <HelpCircle className="size-4.5" />
+                    </button>
+                  </AdminPageHeader>
                 </div>
               </div>
 
