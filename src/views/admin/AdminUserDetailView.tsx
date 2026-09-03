@@ -1,4 +1,11 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import {
+  type AvaliacaoDaFicha,
+  type PerguntaDaFicha,
+  VozClienteTab,
+} from "@/components/admin/users/VozClienteTab";
+import { calcularResumoFicha } from "@/components/admin/users/ficha-resumo";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,6 +53,7 @@ import {
   Package,
   Phone,
   ShoppingCart,
+  Star,
   Trash2,
   User,
 } from "lucide-react";
@@ -90,6 +98,100 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   const [copiedField, setCopiedField] = useState<
     "id" | "email" | "whatsapp" | null
   >(null);
+
+  /*
+    Aba "Voz do Cliente": o que ESTE cliente escreveu — avaliações e
+    perguntas.
+
+    De onde vem o dado: leitura DIRETA nas mesmas tabelas dos hooks
+    `useReviews`/`useQuestions` (`reviews` e `questions`), sob as MESMAS
+    policies de leitura pública (`reviews_select_policy` e
+    `questions_select_policy`, ambas `USING (true)` na baseline
+    20260806000000). Os hooks não servem aqui porque nenhum filtra por
+    autor: `getAllReviews`/`getAllQuestions` são paginados (20/página) para
+    a fila de moderação inteira — filtrar um autor no cliente traria lista
+    TRUNCADA, e a ficha diria "2 avaliações" sobre quem escreveu 9. O
+    `.eq("user_id", ...)` entrega o recorte completo com o mesmo direito de
+    leitura que a tela de produto já usa. Nenhuma RPC nova, nenhuma
+    migration.
+
+    Falha ≠ vazio: `vozErro` existe porque "não consegui consultar" e
+    "ele nunca escreveu" são frases diferentes (mesma lição do `erro` no
+    FavoritesContext e do `QAStatsResult` no useQuestions).
+  */
+  const [avaliacoes, setAvaliacoes] = useState<AvaliacaoDaFicha[]>([]);
+  const [perguntas, setPerguntas] = useState<PerguntaDaFicha[]>([]);
+  const [vozCarregando, setVozCarregando] = useState(true);
+  const [vozErro, setVozErro] = useState<string | null>(null);
+
+  const carregarVoz = useCallback(async () => {
+    if (!isAdmin) return;
+    setVozCarregando(true);
+    setVozErro(null);
+    try {
+      const [resReviews, resQuestions] = await Promise.all([
+        supabase
+          .from("reviews")
+          .select("*, product:produtos(nome)")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("questions")
+          .select("*, product:produtos(nome), answers:answers(*)")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false }),
+      ]);
+      if (resReviews.error) throw resReviews.error;
+      if (resQuestions.error) throw resQuestions.error;
+
+      setAvaliacoes(
+        ((resReviews.data ?? []) as any[]).map((item) => ({
+          id: item.id as string,
+          productId: item.product_id as string,
+          produtoNome: item.product?.nome || "Produto removido",
+          rating: item.rating as number,
+          comment: (item.comment as string) || "",
+          // Item 8 do laudo de 29/08: ausente = publicada (mesma regra do
+          // tipo Review e do hook) — dublês e avaliações antigas não têm a
+          // coluna populada.
+          status: item.status ?? "publicada",
+          helpful: item.helpful ?? 0,
+          merchantReply: item.merchant_reply ?? null,
+          createdAt: item.created_at as string,
+        })),
+      );
+
+      setPerguntas(
+        ((resQuestions.data ?? []) as any[]).map((item) => ({
+          id: item.id as string,
+          productId: item.product_id as string,
+          produtoNome: item.product?.nome || "Produto removido",
+          question: item.question as string,
+          createdAt: item.created_at as string,
+          respostas: ((item.answers ?? []) as any[])
+            .map((ans) => ({
+              id: ans.id as string,
+              answer: ans.answer as string,
+              createdAt: ans.created_at as string,
+            }))
+            .sort(
+              (a, b) =>
+                new Date(a.createdAt).getTime() -
+                new Date(b.createdAt).getTime(),
+            ),
+        })),
+      );
+    } catch (err) {
+      console.error("[AdminUserDetail] Erro ao carregar voz do cliente:", err);
+      setVozErro("Não foi possível carregar o que este cliente escreveu.");
+    } finally {
+      setVozCarregando(false);
+    }
+  }, [userId, isAdmin]);
+
+  useEffect(() => {
+    carregarVoz();
+  }, [carregarVoz]);
 
   const handleCopy = (text: string, field: "id" | "email" | "whatsapp") => {
     haptic.light();
@@ -384,71 +486,27 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   if (!isAdmin) return null;
 
   /*
-    Um pedido "conta" quando não foi cancelado nem devolvido — a MESMA regra
-    que o servidor usa na lista de Clientes (`get_admin_customers_paged`, com
-    `status NOT IN ('cancelled','returned')`).
+    Os quatro números do resumo (total gasto, nº de pedidos, última compra
+    e ticket médio) nascem de UM lugar: `calcularResumoFicha`
+    (src/components/admin/users/ficha-resumo.ts), que carrega as regras e a
+    história delas:
 
-    Até 21/08/2026 esta ficha tinha três contagens que não conversavam: o card
-    "Cesta / Pedidos" mostrava `orders.length` (tudo, cancelados incluídos), o
-    LTV filtrava só `cancelled` (esquecendo `returned`), e a lista de Clientes
-    usava a regra completa. Resultado medido: o mesmo cliente aparecia com
-    "Pedidos 6" na lista e "Cesta / Pedidos 16" aqui, sem nada explicando os
-    10 de diferença. Com 72 dos 83 pedidos deste banco cancelados, isso valia
-    para quase todo cliente com histórico.
+    - Pedido CANCELADO (ou devolvido) NÃO entra na contagem nem no total
+      gasto — mesma regra do servidor na lista de Clientes
+      (`status NOT IN ('cancelled','returned')`);
+    - Dinheiro só com cobrança reconhecida: 'pago', 'pago_apos_expirar' e
+      'recebido_na_entrega' (migrations 20260823000000 e 20261021000000);
+      nulo, 'aguardando', 'recusado', 'expirado' e 'estornado' ficam fora;
+    - Última compra e contagem NÃO filtram cobrança (mesma regra do
+      `last_order_date`/`orders_count` do servidor);
+    - Ticket médio = total gasto ÷ pedidos COM dinheiro reconhecido — a
+      fórmula do `get_admin_analytics_v2` aplicada ao recorte do cliente.
 
-    A ABA continua mostrando o histórico inteiro de propósito: é o número de
-    linhas que a tabela abaixo dela lista. Trocar por 6 faria a aba mentir
-    sobre o próprio conteúdo. O que sai daqui não é o segundo número — é o
-    mistério, porque o card passa a dizer quantos ficaram de fora.
+    A ABA de pedidos continua mostrando o histórico inteiro de propósito:
+    é o número de linhas que a tabela abaixo dela lista.
   */
-  /*
-    O `as string` no `returned` não é gambiarra: `OrderStatus` (types/index.ts)
-    lista cinco valores e não inclui `returned`, mas o `mappers.ts:247` faz
-    `row.status as OrderStatus` — um cast, não uma validação. Se o banco
-    devolver `returned`, o valor chega aqui em tempo de execução com o tipo
-    mentindo sobre ele, e o TypeScript acha a comparação impossível.
-
-    Hoje nenhum pedido deste banco está nesse estado, então isto é defesa: o
-    servidor filtra por `returned` na lista, e as duas contagens têm de
-    continuar iguais no dia em que o status aparecer. Alinhar o tipo ao banco
-    é conserto de outro tamanho — mexeria em todo `switch` sobre `OrderStatus`
-    — e está anotado no relatório da auditoria.
-  */
-  const pedidosQueContam = orders.filter(
-    (o) => o.status !== "cancelled" && (o.status as string) !== "returned",
-  );
-  const pedidosDescartados = orders.length - pedidosQueContam.length;
-
-  /*
-    Achado 17 (auditoria de 20/08/2026): o "LTV Total" contava pedido que
-    ninguém pagou. A correção do servidor (migration `20260823000000`, em
-    `get_admin_customers_paged`) mexeu SÓ no dinheiro de `total_spent` —
-    `orders_count` continua contando pela MESMA regra de sempre (só status).
-    Se esta ficha também filtrasse `pedidosQueContam` por pagamento, o card
-    "Cesta / Pedidos" voltaria a divergir da coluna "Pedidos" da lista de
-    Clientes — reabrindo o achado 5 por outra porta. Por isso o filtro de
-    dinheiro é uma SEGUNDA passada, só para a soma do LTV, em cima do mesmo
-    `pedidosQueContam` — a contagem de pedidos não muda.
-
-    A regra de "dinheiro reconhecido" MUDOU com a migration `20261021000000`
-    (Task 2 de docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md):
-    `payment_status` nulo DEIXOU de contar. Até ali, nulo era o ÚNICO jeito
-    de representar "pago na entrega", e por isso contava; agora a loja
-    registra esse recebimento explicitamente (RPC
-    `registrar_pagamento_recebido`, que grava `payment_status =
-    'recebido_na_entrega'`), e nulo volta a significar só "sem pagamento
-    confirmado". Contam: 'pago', 'pago_apos_expirar' e
-    'recebido_na_entrega'. Ficam de fora: nulo, 'aguardando', 'recusado',
-    'expirado' e 'estornado'.
-  */
-  const pedidosPagos = pedidosQueContam.filter(
-    (o) =>
-      o.paymentStatus === "pago" ||
-      o.paymentStatus === "pago_apos_expirar" ||
-      o.paymentStatus === "recebido_na_entrega",
-  );
-
-  const totalSpent = pedidosPagos.reduce((sum, o) => sum + o.total, 0);
+  const resumo = calcularResumoFicha(orders);
+  const { pedidosQueContam, pedidosDescartados } = resumo;
 
   const renderContentSkeleton = () => (
     <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -502,21 +560,24 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   );
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-4 pb-admin lg:pb-12 duration-200 animate-in fade-in md:px-0">
+    <div className="pb-admin mx-auto max-w-7xl space-y-6 px-4 duration-200 animate-in fade-in md:px-0 lg:pb-12">
       {/* Header / Actions */}
       <div className="mt-6 flex items-center gap-4">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-black uppercase tracking-tighter text-white sm:text-2xl">
-            <span>Perfil do Cliente</span>
+          {/* Reforma visual (03/09, frente ficha do cliente): o título tinha
+              fórmula própria (text-xl sm:text-2xl) — agora nasce do
+              AdminPageHeader, igual ao resto do painel (PR #413). O botão de
+              ajuda continua dentro da linha do título, como em Cupons. */}
+          <AdminPageHeader titulo="Perfil do Cliente">
             <button
               type="button"
               onClick={() => setShowHelpModal(true)}
-              className="flex size-6 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+              className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
               title="Guia do Perfil do Cliente e Ajuda"
             >
-              <HelpCircle className="size-3" />
+              <HelpCircle className="size-4.5" />
             </button>
-          </h1>
+          </AdminPageHeader>
           <div className="mt-1 flex items-center gap-2">
             <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-500">
               ID
@@ -701,16 +762,21 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
           {/* Right Column: LTV, Financials and Tabs */}
           <div className="space-y-6 lg:col-span-8">
-            {/* Quick Stats Grid */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              {/* LTV Widget */}
+            {/* Quick Stats Grid — o resumo responde "quem é este cliente" sem
+                abrir aba: quanto gastou, quantas vezes, qual o tíquete médio e
+                quando foi a última vez (frente ficha do cliente, 03/09). */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              {/* LTV Widget — o "total gasto" do resumo. O rótulo continua
+                  "LTV Total" de propósito: é o nome estabelecido deste número
+                  nesta ficha e na lista de Clientes, e os testes vivos da
+                  tela leem o cartão por este rótulo exato. */}
               <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-admin-gold/50">
                 <div className="flex min-w-0 flex-col">
                   <span className="mb-0.5 text-[9px] font-black uppercase tracking-[0.15em] text-zinc-500">
                     LTV Total
                   </span>
                   <span className="text-xl font-black tracking-tight text-white sm:text-2xl">
-                    {formatCurrency(totalSpent)}
+                    {formatCurrency(resumo.totalGasto)}
                   </span>
                 </div>
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-admin-gold/20 bg-zinc-950 text-admin-gold">
@@ -744,6 +810,48 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </div>
               </div>
 
+              {/* Ticket Médio Widget — total gasto ÷ pedidos COM dinheiro
+                  reconhecido (a fórmula do `get_admin_analytics_v2` no recorte
+                  deste cliente; a regra completa vive em
+                  `ficha-resumo.ts`, regra 4). Zero pedido pago mostra R$ 0,00
+                  porque foi MEDIDO (o `ELSE 0` do servidor), não inventado. */}
+              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-purple-500/50">
+                <div className="flex min-w-0 flex-col">
+                  <span className="mb-0.5 text-[9px] font-black uppercase tracking-[0.15em] text-zinc-500">
+                    Ticket Médio
+                  </span>
+                  <span className="text-xl font-black tracking-tight text-white sm:text-2xl">
+                    {formatCurrency(resumo.ticketMedio)}
+                  </span>
+                </div>
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-purple-500/20 bg-zinc-950 text-purple-500">
+                  <CreditCard className="size-4" />
+                </div>
+              </div>
+
+              {/* Última Compra Widget — data do pedido que conta mais recente
+                  (não cancelado/devolvido, SEM filtro de cobrança: mesma
+                  regra do `last_order_date` do servidor; um PIX aguardando
+                  feito ontem prova que o cliente está ativo). Sem pedido que
+                  conta, "—" — nunca data inventada. */}
+              <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-sky-500/50">
+                <div className="flex min-w-0 flex-col">
+                  <span className="mb-0.5 text-[9px] font-black uppercase tracking-[0.15em] text-zinc-500">
+                    Última Compra
+                  </span>
+                  <span className="text-xl font-black tracking-tight text-white sm:text-2xl">
+                    {resumo.ultimaCompra
+                      ? format(resumo.ultimaCompra, "dd MMM yy", {
+                          locale: ptBR,
+                        })
+                      : "—"}
+                  </span>
+                </div>
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-sky-500/20 bg-zinc-950 text-sky-500">
+                  <Calendar className="size-4" />
+                </div>
+              </div>
+
               {/* Cart Standby Widget */}
               <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-green-500/50">
                 <div className="flex min-w-0 flex-col">
@@ -766,7 +874,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             {/* Operational Tabs */}
             <div className="rounded-3xl border border-zinc-800/80 bg-zinc-900/40 p-2 shadow-2xl backdrop-blur-md">
               <Tabs defaultValue="orders" className="w-full">
-                <TabsList className="mb-4 grid h-auto w-full grid-cols-3 rounded-2xl border border-zinc-800/50 bg-zinc-950/80 p-1.5 shadow-inner">
+                <TabsList className="mb-4 grid h-auto w-full grid-cols-2 rounded-2xl border border-zinc-800/50 bg-zinc-950/80 p-1.5 shadow-inner sm:grid-cols-4">
                   <TabsTrigger
                     value="orders"
                     className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
@@ -799,6 +907,17 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     <span className="sm:hidden">End.</span>
                     <span className="ml-1 text-[9px] opacity-70">
                       ({addresses.length})
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="voz"
+                    className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
+                  >
+                    <Star className="size-3.5" />
+                    <span className="hidden sm:inline">Voz do Cliente</span>
+                    <span className="sm:hidden">Voz</span>
+                    <span className="ml-1 text-[9px] opacity-70">
+                      ({avaliacoes.length + perguntas.length})
                     </span>
                   </TabsTrigger>
                 </TabsList>
@@ -983,8 +1102,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                 // Laudo 31/08 (menor E): `||` tratava o
                                 // override ZERO como ausência e exibia o
                                 // preço cheio de uma variação-brinde.
-                                const unitPrice =
-                                  precoVendido(item.product, variant);
+                                const unitPrice = precoVendido(
+                                  item.product,
+                                  variant,
+                                );
 
                                 return (
                                   <TableRow
@@ -1152,6 +1273,48 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     </div>
                   </div>
                 </TabsContent>
+
+                {/* PENDÊNCIA REGISTRADA (frente ficha do cliente, 03/09) — a
+                    aba "Favoritos" NÃO existe de propósito.
+
+                    O favorito mora no SERVIDOR (tabela `favorites`,
+                    FavoritesContext.tsx), e a ÚNICA policy de leitura dela é
+                    a `favorites_all_policy` (baseline
+                    20260806000000_baseline_do_schema_vivo.sql, l. 5512):
+
+                        USING (auth.uid() = user_id)
+
+                    Sem ramo `is_admin()` — diferente de `cart_items`, que
+                    ganhou o ramo de admin na migration 20261067000000. Ou
+                    seja: consultando aqui, o PostgREST devolveria as ZERO
+                    linhas que A LOJISTA pode ver — não as do cliente. Mostrar
+                    "0 favoritos" mentiria sobre uma lista que pode ter dez; e
+                    consertar isso exige migration de RLS, que está FORA do
+                    escopo desta frente (proibido por ordem do dono). Quando a
+                    policy ganhar o ramo de admin, a aba nasce da mesma forma
+                    das outras: consulta `.eq("user_id", userId)` em
+                    `favorites` + join em produtos para preço/imagem. */}
+                {/* Voz do Cliente Matrix */}
+                <TabsContent value="voz" className="mt-0 outline-none">
+                  <div className="overflow-hidden rounded-[1.2rem] bg-zinc-900/20">
+                    <div className="border-b border-zinc-800/50 bg-zinc-900/50 p-4">
+                      <h2 className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-white">
+                        <Star className="size-3.5 text-admin-gold" />O Que Este
+                        Cliente Escreveu
+                      </h2>
+                      <p className="mt-1 text-[9px] uppercase tracking-widest text-zinc-500">
+                        Avaliações e perguntas feitas pelo cliente
+                      </p>
+                    </div>
+                    <VozClienteTab
+                      carregando={vozCarregando}
+                      erro={vozErro}
+                      avaliacoes={avaliacoes}
+                      perguntas={perguntas}
+                      onTentarDeNovo={carregarVoz}
+                    />
+                  </div>
+                </TabsContent>
               </Tabs>
             </div>
           </div>
@@ -1166,9 +1329,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       >
         <div className="space-y-4">
           <p className="text-xs leading-relaxed text-zinc-400">
-            Esta tela detalha o perfil individual de um cliente, incluindo
-            histórico completo de compras, endereços de entrega cadastrados e
-            itens retidos no carrinho de compras.
+            Esta tela detalha o perfil individual de um cliente, incluindo o
+            resumo de compras no topo, histórico completo de pedidos, o que o
+            cliente escreveu (avaliações e perguntas), endereços de entrega
+            cadastrados e itens retidos no carrinho de compras.
           </p>
 
           <div className="space-y-3">
@@ -1176,6 +1340,18 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               Seções do Perfil
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
+                  <CreditCard className="size-4 text-admin-gold" />
+                  Resumo do Topo
+                </div>
+                <p className="text-xs text-zinc-400">
+                  Total gasto, número de pedidos, ticket médio e última compra.
+                  Pedido cancelado ou devolvido não entra na conta; o total só
+                  soma cobrança confirmada (paga, paga após expirar ou recebida
+                  na entrega).
+                </p>
+              </div>
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <MapPin className="size-4 text-emerald-500" />
@@ -1219,6 +1395,18 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   Permite ao administrador entrar em contato direto via WhatsApp
                   ou aplicar bloqueios de segurança se for um usuário
                   fraudulento.
+                </p>
+              </div>
+
+              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
+                  <Star className="size-4 text-admin-gold" />
+                  Voz do Cliente
+                </div>
+                <p className="text-xs text-zinc-400">
+                  As avaliações e perguntas que este cliente já escreveu na
+                  loja, com o status de aprovação de cada avaliação. A moderação
+                  continua nas telas de Avaliações e Perguntas.
                 </p>
               </div>
             </div>
