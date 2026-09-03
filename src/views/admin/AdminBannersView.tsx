@@ -4,6 +4,7 @@ import {
   AdminKpiCarousel,
   type KpiCardConfig,
 } from "@/components/admin/AdminKpiCarousel";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import {
   AlertDialog,
@@ -1708,17 +1709,19 @@ export const AdminBannersView = memo(function AdminBannersView({
                 </div>
                 <div className="flex flex-col min-w-0">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <h1 className="select-none text-xs font-black uppercase tracking-wider text-white truncate sm:text-sm">
-                      Gerenciador de Banners
-                    </h1>
-                    <button
-                      type="button"
-                      onClick={() => setShowHelpModal(true)}
-                      className="flex size-4 shrink-0 items-center justify-center rounded-full border border-white/10 bg-zinc-900/80 text-zinc-400 transition-all duration-300 hover:border-[#FFBF00]/40 hover:bg-[#FFBF00]/10 hover:text-[#FFBF00] active:scale-95"
-                      title="Guia do Gerenciador de Banners"
-                    >
-                      <HelpCircle className="size-2.5" />
-                    </button>
+                    {/* Onda 3 da reforma visual (03/09): o título minúsculo
+                        (text-xs) virou o AdminPageHeader, igual ao das listas
+                        aprovadas; o botão de ajuda continua ao lado. */}
+                    <AdminPageHeader titulo="Gerenciador de Banners">
+                      <button
+                        type="button"
+                        onClick={() => setShowHelpModal(true)}
+                        className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+                        title="Guia do Gerenciador de Banners"
+                      >
+                        <HelpCircle className="size-4.5" />
+                      </button>
+                    </AdminPageHeader>
                   </div>
                   <div className="flex items-center gap-1.5 text-[9px] font-medium text-zinc-400">
                     <span className="flex items-center gap-1">

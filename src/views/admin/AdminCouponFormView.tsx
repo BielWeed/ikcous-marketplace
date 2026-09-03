@@ -1,3 +1,4 @@
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -215,9 +216,11 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
         <div className="admin-glass flex items-center justify-between rounded-[2rem] border border-white/5 p-4 shadow-2xl">
           <div className="flex items-center gap-3">
             <div>
-              <h1 className="text-sm font-black uppercase tracking-tight text-white">
-                {isEditing ? "Editar Cupom" : "Novo Cupom"}
-              </h1>
+              {/* Onda 3 da reforma visual (03/09): o título minúsculo
+                  (text-sm) virou o AdminPageHeader, igual ao resto do painel. */}
+              <AdminPageHeader
+                titulo={isEditing ? "Editar Cupom" : "Novo Cupom"}
+              />
               <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
                 Configure os detalhes do seu cupom de desconto
               </p>
