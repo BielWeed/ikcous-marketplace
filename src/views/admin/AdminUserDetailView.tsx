@@ -1,13 +1,11 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
-  calcularResumoFicha,
-} from "@/components/admin/users/ficha-resumo";
-import {
   type AvaliacaoDaFicha,
   type PerguntaDaFicha,
   VozClienteTab,
 } from "@/components/admin/users/VozClienteTab";
+import { calcularResumoFicha } from "@/components/admin/users/ficha-resumo";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1104,8 +1102,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                 // Laudo 31/08 (menor E): `||` tratava o
                                 // override ZERO como ausência e exibia o
                                 // preço cheio de uma variação-brinde.
-                                const unitPrice =
-                                  precoVendido(item.product, variant);
+                                const unitPrice = precoVendido(
+                                  item.product,
+                                  variant,
+                                );
 
                                 return (
                                   <TableRow
@@ -1299,8 +1299,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   <div className="overflow-hidden rounded-[1.2rem] bg-zinc-900/20">
                     <div className="border-b border-zinc-800/50 bg-zinc-900/50 p-4">
                       <h2 className="flex items-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] text-white">
-                        <Star className="size-3.5 text-admin-gold" />
-                        O Que Este Cliente Escreveu
+                        <Star className="size-3.5 text-admin-gold" />O Que Este
+                        Cliente Escreveu
                       </h2>
                       <p className="mt-1 text-[9px] uppercase tracking-widest text-zinc-500">
                         Avaliações e perguntas feitas pelo cliente
@@ -1348,8 +1348,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 <p className="text-xs text-zinc-400">
                   Total gasto, número de pedidos, ticket médio e última compra.
                   Pedido cancelado ou devolvido não entra na conta; o total só
-                  soma cobrança confirmada (paga, paga após expirar ou
-                  recebida na entrega).
+                  soma cobrança confirmada (paga, paga após expirar ou recebida
+                  na entrega).
                 </p>
               </div>
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
@@ -1405,8 +1405,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 </div>
                 <p className="text-xs text-zinc-400">
                   As avaliações e perguntas que este cliente já escreveu na
-                  loja, com o status de aprovação de cada avaliação. A
-                  moderação continua nas telas de Avaliações e Perguntas.
+                  loja, com o status de aprovação de cada avaliação. A moderação
+                  continua nas telas de Avaliações e Perguntas.
                 </p>
               </div>
             </div>

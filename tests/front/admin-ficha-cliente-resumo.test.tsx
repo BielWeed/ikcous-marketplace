@@ -1,3 +1,5 @@
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 // @vitest-environment jsdom
 //
 // Frente "ficha do cliente" (03/09): o resumo do topo responde "quem é este
@@ -31,9 +33,7 @@
 // (`calcularResumoFicha`, onde a regra vive em UM lugar) e a TELA montada
 // (os cartões mostrando o que a função calculou — o número no ar).
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { type Root, createRoot } from "react-dom/client";
 import {
   afterEach,
   beforeAll,
@@ -44,9 +44,7 @@ import {
   vi,
 } from "vitest";
 
-import {
-  calcularResumoFicha,
-} from "@/components/admin/users/ficha-resumo";
+import { calcularResumoFicha } from "@/components/admin/users/ficha-resumo";
 import type { Order } from "@/types";
 import type { AdminUserDetailView as TipoTelaFicha } from "@/views/admin/AdminUserDetailView";
 
@@ -171,14 +169,16 @@ describe("calcularResumoFicha — a regra dos quatro números", () => {
 
     // O aguardando CONTA (cliente ativo); o cancelado de dia 20 não prova
     // nada — mesma regra do `last_order_date` do servidor.
-    expect(resumo.ultimaCompra?.toISOString()).toBe(
-      "2026-09-12T12:00:00.000Z",
-    );
+    expect(resumo.ultimaCompra?.toISOString()).toBe("2026-09-12T12:00:00.000Z");
   });
 
   it("cliente que nunca comprou (só cancelados) não tem última compra", () => {
     const resumo = calcularResumoFicha([
-      pedido({ id: "c1", status: "cancelled", createdAt: "2026-05-01T12:00:00Z" }),
+      pedido({
+        id: "c1",
+        status: "cancelled",
+        createdAt: "2026-05-01T12:00:00Z",
+      }),
     ]);
 
     expect(resumo.ultimaCompra).toBeNull();

@@ -114,10 +114,7 @@ function ListaAvaliacoes({ avaliacoes }: { avaliacoes: AvaliacaoDaFicha[] }) {
   return (
     <div className="divide-y divide-zinc-800/30">
       {avaliacoes.map((a) => (
-        <div
-          key={a.id}
-          className="p-4 transition-colors hover:bg-zinc-800/20"
-        >
+        <div key={a.id} className="p-4 transition-colors hover:bg-zinc-800/20">
           <div className="flex flex-wrap items-center gap-2">
             <Estrelas rating={a.rating} />
             {a.status === "pendente" && (
@@ -189,7 +186,10 @@ function ListaPerguntas({ perguntas }: { perguntas: PerguntaDaFicha[] }) {
                   className="rounded-lg border border-zinc-800/60 bg-zinc-950/60 p-2"
                 >
                   <p className="text-[8px] font-black uppercase tracking-widest text-zinc-500">
-                    Resposta <span className="text-zinc-700">• {dataCurta(r.createdAt)}</span>
+                    Resposta{" "}
+                    <span className="text-zinc-700">
+                      • {dataCurta(r.createdAt)}
+                    </span>
                   </p>
                   <p className="mt-1 text-xs leading-relaxed text-zinc-300">
                     {r.answer}
