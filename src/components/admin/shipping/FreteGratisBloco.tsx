@@ -214,10 +214,15 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1.5 rounded-xl border border-emerald-500/25 bg-black/60 px-3 py-2">
               <span className="text-xs font-black text-emerald-400">R$</span>
+              {/* REVISÃO A7 (frete v2, 03/09): o campo limpo grava 0 — e 0 é
+                  "desligado" no contrato de presets —, então salvar com o
+                  campo vazio DESLIGAVA o frete grátis sem a pessoa perceber
+                  (reabria como "Desligado"). O `min` bloqueia 0/negativo
+                  digitado e o aviso abaixo diz a consequência ANTES do salvar. */}
               <input
                 id="frete-gratis-acima-de"
                 type="number"
-                min="0"
+                min="0.01"
                 step="5"
                 inputMode="numeric"
                 value={acimaDe === 0 ? "" : acimaDe}
@@ -247,6 +252,10 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
               ))}
             </div>
           </div>
+          <p className="mt-2 text-[10.5px] leading-snug text-zinc-500">
+            Atenção: valor vazio desliga o frete grátis ao salvar (o mínimo é
+            R$ 0,01). Para desligar de propósito, escolha "Desligado" acima.
+          </p>
         </div>
       )}
     </section>

@@ -164,6 +164,13 @@ export const AdminShippingView = memo(function AdminShippingView({
   // Estado da conexão com a transportadora de cotação — derivado do provedor
   // SALVO (nunca de escolha pendente: fora daqui não existe escolha de
   // provedor "por salvar") cruzado com a credencial gravada.
+  //
+  // REVISÃO A5 (frete v2, 03/09): `provedorNome` é NULL quando o config não
+  // nomeia transportadora (provedor `flat_fee` remanescente de loja antiga ou
+  // ausente). O nome define o ARTIGO da frase do bloco nacional — "conecte o
+  // Melhor Envio" existe; "conecte o uma transportadora", não. O estado
+  // `conectado` só ocorre com provedor nomeado + credencial, então o nome lá
+  // nunca é nulo.
   const conexao = useMemo(() => {
     const provedorSalvo = config?.shippingProvider || "flat_fee";
     const nome =
@@ -171,7 +178,7 @@ export const AdminShippingView = memo(function AdminShippingView({
         ? "Melhor Envio"
         : provedorSalvo === "frenet"
           ? "Frenet"
-          : "uma transportadora";
+          : null;
     // Taxa fixa remanescente de loja antiga = sem cotação de fora, igual a
     // não conectado (a edge deixou de cotar por ela).
     const estado: EstadoConexaoNacional =
@@ -287,9 +294,13 @@ export const AdminShippingView = memo(function AdminShippingView({
   }, [config, conexao]);
 
   // Dirty check to enable save button — estratégia de grátis explícita +
-  // regras. Comparar a ESTRATÉGIA (não só o número derivado) é o que faz
-  // "Por produto marcado" (que grava 0, igual "Desligado") contar como
-  // mudança na tela.
+  // regras. Comparar a ESTRATÉGIA (via `presetDoConfig`, não só o número
+  // derivado) é o que faz a troca entre presets contar como mudança na tela:
+  // "Por produto marcado" grava a sentinela -1 (FRETE_GRATIS_POR_PRODUTO, o
+  // marcador da estratégia que mora na marcação do produto) e "Desligado"
+  // grava 0 — números distintos, mas é a comparação de estratégia que conta a
+  // história inteira (comentário corrigido pela revisão A6: aqui dizia que
+  // por_produto "grava 0, igual Desligado", o que nunca foi verdade).
   const isFormDirty = useMemo(() => {
     if (!config) return false;
     const minAtual = Number(config.freeShippingMin ?? 0);

@@ -257,6 +257,21 @@ describe("Contrato da tela de Frete v2", () => {
     expect(updateConfig.mock.calls[0][0]).toHaveProperty("freeShippingMin", 250);
   });
 
+  it("REVISÃO A7: o campo do 'acima de' trava 0/negativo e avisa que valor vazio desliga o grátis", async () => {
+    estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 100 };
+    await abrirTela();
+
+    await escolherPreset(/Grátis acima de um valor/);
+
+    const campoValor = hospedeiro.querySelector(
+      "#frete-gratis-acima-de",
+    ) as HTMLInputElement;
+    // `min="0.01"`: 0 é "desligado" no contrato de presets — nunca é limiar.
+    expect(campoValor.min).toBe("0.01");
+    // E a consequência é dita ANTES do salvar, não no susto da reabertura.
+    expect(texto()).toMatch(/valor vazio desliga o frete gr[áa]tis/i);
+  });
+
   it("preset 'Por produto marcado' grava a sentinela -1 e NÃO envia campo alheio", async () => {
     estadoDaLoja.atual = { ...estadoDaLoja.atual, freeShippingMin: 0 };
     await abrirTela();
@@ -341,6 +356,24 @@ describe("Contrato da tela de Frete v2", () => {
       (botaoAjustes as HTMLElement).click();
     });
     expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+  });
+
+  it("REVISÃO A5: provedor flat_fee (sem nome) diz 'conecte uma transportadora', nunca 'conecte o uma transportadora'", async () => {
+    // Loja antiga com `flat_fee` remanescente (ou provedor ausente): o nome
+    // é indefinido, então a frase do aviso troca o artigo em vez de costurar
+    // "o" + "uma transportadora".
+    estadoDaLoja.atual = { ...estadoDaLoja.atual, shippingProvider: "flat_fee" };
+    await abrirTela();
+
+    expect(texto()).toMatch(/conecte uma transportadora em Ajustes/);
+    expect(texto()).not.toMatch(/conecte o uma transportadora/i);
+  });
+
+  it("REVISÃO A5: provedor nomeado sem credencial mantém o artigo 'o' ('conecte o Melhor Envio')", async () => {
+    estadoDoBanco.credenciais = [];
+    await abrirTela();
+
+    expect(texto()).toMatch(/conecte o Melhor Envio em Ajustes/);
   });
 
   it("CEP da loja vazio no config: o hero diz que a entrega está PARADA (não inventa funcionamento)", async () => {

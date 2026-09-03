@@ -375,6 +375,12 @@ function clienteFalso(opts: {
    * B aqui foi removida).
    */
   semCredencial?: boolean;
+  /**
+   * Linhas de `produtos` devolvidas pela leitura `.in('id', …)` — é por aqui
+   * que a marcação `frete_gratis` chega à edge (revisão A1: ela só vale no
+   * preset por_produto).
+   */
+  produtos?: any[];
 }) {
   const { registro } = opts;
   const config = opts.config ?? CONFIG_DA_LOJA;
@@ -385,7 +391,7 @@ function clienteFalso(opts: {
         case "store_config":
           return Promise.resolve({ data: config, error: null });
         case "produtos":
-          return Promise.resolve({ data: [], error: null });
+          return Promise.resolve({ data: opts.produtos ?? [], error: null });
         case "shipping_quotes_cache":
           // Cache miss: é o caminho que cota na transportadora e grava.
           return Promise.resolve({ data: null, error: null });
@@ -496,6 +502,7 @@ async function cotar(
   config?: typeof CONFIG_DA_LOJA,
   logInsert?: () => Promise<any>,
   semCredencial = false,
+  produtos?: any[],
 ) {
   const registro = {
     inserts: [] as Array<{ tabela: string; linha: any }>,
@@ -513,7 +520,7 @@ async function cotar(
     )) as any;
   try {
     const resposta = await handler(requisicaoDeCotacao(), {
-      supabase: clienteFalso({ registro, cacheInsert, logInsert, config, semCredencial }),
+      supabase: clienteFalso({ registro, cacheInsert, logInsert, config, semCredencial, produtos }),
     });
     // Instantâneo tirado no momento EXATO em que o handler respondeu. Depois
     // do `finally` abaixo (que drena o que ficou em voo) essa medida já não
@@ -1057,6 +1064,71 @@ Deno.test("ENTREGA LOCAL INTACTA: provedor flat_fee remanescente + CEP da cidade
   );
   assertEquals((logLocal as any).linha.provider, "local");
   assertEquals((logLocal as any).linha.status, "success");
+});
+
+// --- Revisão A1 (frete v2, 03/09): a marcação só vale no por_produto -------
+//
+// A edge honrava `produtos.frete_gratis` INCONDICIONALMENTE: loja com o frete
+// grátis DESLIGADO (free_shipping_min = 0) e item marcado recebia "Frete
+// Grátis (Promoção)" R$ 0 — preço que a RPC do pedido NÃO honra (ela cobra a
+// entrega local real no último clique). O modelo é EXCLUSIVO: a marcação vale
+// SÓ no preset por_produto (free_shipping_min < 0), mesma regra da RPC
+// (20261081000000) e do carrinho — fonte única em
+// src/lib/presets-de-frete-gratis.ts.
+
+/** Item do carrinho com a marcação `frete_gratis` gravada no BANCO. */
+const PRODUTO_MARCADO = [{ id: "p1", nome: "Caneca", frete_gratis: true, preco_venda: 100 }];
+
+Deno.test("preset DESLIGADO + item marcado, CEP da cidade -> Entrega Local R$ 10, NUNCA R$ 0", async () => {
+  const { resposta, corpo } = await cotar(
+    () => Promise.resolve({ error: null }),
+    { ...CONFIG_DA_LOJA, free_shipping_min: 0, local_cep_range: "01001" },
+    undefined,
+    false,
+    PRODUTO_MARCADO,
+  );
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["local-delivery"]);
+  assertEquals(corpo.options[0].name, "Entrega Local");
+  assertEquals(corpo.options[0].price, 10);
+  assertEquals(JSON.stringify(corpo).includes("free-shipping-promo"), false);
+  assertEquals(JSON.stringify(corpo).includes('"price":0'), false);
+});
+
+Deno.test("preset DESLIGADO + item marcado, fora da cidade -> cotação real, NUNCA free-shipping-promo R$ 0", async () => {
+  const { resposta, corpo, texto } = await cotar(
+    () => Promise.resolve({ error: null }),
+    { ...CONFIG_DA_LOJA, free_shipping_min: 0 },
+    undefined,
+    false,
+    PRODUTO_MARCADO,
+  );
+
+  assertEquals(resposta.status, 200);
+  // A cotação REAL da transportadora (o PAC de R$ 25,50 do fetch falso), não
+  // a opção de grátis inventada.
+  assertEquals(corpo.options.map((o: any) => o.id), ["melhor-envio-1"]);
+  assertEquals(corpo.options[0].price, 25.5);
+  assertEquals(texto.includes("free-shipping-promo"), false);
+  assertEquals(texto.includes("Frete Grátis (Promoção)"), false);
+});
+
+Deno.test("controle: preset por_produto (-1) + item marcado -> o grátis CONTINUA (fora vira free-shipping-promo)", async () => {
+  // O conserto da A1 não pode desligar a estratégia: com a sentinela -1
+  // gravada, a marcação volta a valer e o carrinho todo-grátis recebe a
+  // promoção de R$ 0 como antes.
+  const { resposta, corpo } = await cotar(
+    () => Promise.resolve({ error: null }),
+    { ...CONFIG_DA_LOJA, free_shipping_min: -1 },
+    undefined,
+    false,
+    PRODUTO_MARCADO,
+  );
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.options.map((o: any) => o.id), ["free-shipping-promo"]);
+  assertEquals(corpo.options[0].price, 0);
 });
 
 // --- O campo viaja nas rotas que respondem ANTES da cotação ----------------

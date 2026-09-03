@@ -37,6 +37,13 @@ const FRASES_DO_BANCO = [
   "Estoque insuficiente para o produto % (Disponível: %, Solicitado: %)",
   "Entrega local não disponível para o CEP informado.",
   "A cotação de frete expirou. Calcule o frete novamente e refaça o pedido.",
+  // REVISÃO A8 (frete v2, 03/09): os três RAISE novos do portão de entrega da
+  // RPC emendada (20261081000000) — as regras irmãs em recusaDoPedido.ts
+  // (trocar_entrega ×2, recotar_frete) morrem caladas se alguma frase sumir
+  // ou for reescrita no SQL.
+  "Escolha uma opção de entrega antes de finalizar o pedido.",
+  "Opção de entrega inválida. Volte ao carrinho e escolha uma entrega válida.",
+  "Opção de entrega não reconhecida. Volte ao carrinho, calcule o frete e finalize de novo.",
   "Cupom % inválido ou expirado.",
   // Item 16 do laudo de 29/08 (migration 20261025000000): a recusa final do
   // cupom diz o MOTIVO. Os cinco literais são os RAISE novos das funções

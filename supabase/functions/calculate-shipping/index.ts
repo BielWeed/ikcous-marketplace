@@ -658,7 +658,7 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         // 1. Fetch public store configuration
         const { data: storeConfig, error: configError } = await supabaseClient
             .from('store_config')
-            .select('origin_cep, shipping_provider, shipping_fee, enabled_shipping_methods, shipping_coverage, local_delivery_fee, local_cep_range')
+            .select('origin_cep, shipping_provider, shipping_fee, free_shipping_min, enabled_shipping_methods, shipping_coverage, local_delivery_fee, local_cep_range')
             .eq('id', 1)
             .single()
 
@@ -708,8 +708,27 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
         const dbProductsMap = new Map(dbProducts.map(p => [p.id, p]))
 
-        // 3. Check if all items in the cart are free shipping
-        const allFree = cart && Array.isArray(cart) && cart.length > 0 && cart.every((item: any) => {
+        // FRETE V2 (revisão A1, 03/09/2026): a marcação `produtos.frete_gratis`
+        // vale SÓ dentro do preset "por_produto" — modelo EXCLUSIVO de presets:
+        // a estratégia gravada em `store_config.free_shipping_min` é a ÚNICA
+        // que vale, aqui e na RPC do pedido (migration 20261081000000) e no
+        // carrinho (CartContext). Fonte única do predicado:
+        // `src/lib/presets-de-frete-gratis.ts` (`presetDoConfig` — `min < 0`
+        // = por_produto; a sentinela é FRETE_GRATIS_POR_PRODUTO = -1). Esta
+        // edge roda em Deno com imports de URL e não alcança o `src/` do app,
+        // então o predicado MÍNIMO é replicado com a fonte apontada — lição
+        // #53: regra em dois lugares diverge; se a sentinela mudar lá, muda
+        // aqui na mesma rodada (o teste irmão em index_test.ts prende os dois
+        // lados).
+        const presetPorProduto = Number(storeConfig.free_shipping_min ?? 0) < 0
+
+        // 3. Check if all items in the cart are free shipping — SÓ no preset
+        // por_produto. Fora dele (desligado/sempre/acima_de_valor) TODOS os
+        // itens são tratados como não-grátis: antes este `allFree` honrava a
+        // marcação INCONDICIONALMENTE e devolvia "Frete Grátis (Promoção)"
+        // R$ 0 para loja com o grátis desligado — preço que a RPC do pedido
+        // NÃO honrava (ela cobra a entrega local real no último clique).
+        const allFree = presetPorProduto && cart && Array.isArray(cart) && cart.length > 0 && cart.every((item: any) => {
             const prodId = item.product?.id || item.productId
             const dbProd = dbProductsMap.get(prodId)
             return !!(dbProd?.frete_gratis ?? item.product?.freeShipping)
@@ -903,11 +922,16 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
 
         const credentials = credsData.credentials || {}
         let shippingOptions: any[] = []
-        const nonFreeCart = cart.filter((item: any) => {
-            const prodId = item.product?.id || item.productId
-            const dbProd = dbProductsMap.get(prodId)
-            return !(dbProd?.frete_gratis ?? item.product?.freeShipping ?? false)
-        })
+        // Mesmo predicado do `allFree` (revisão A1): fora do por_produto o
+        // carrinho INTEIRO entra na cotação — é ele que a transportadora vai
+        // pesar e cobrar; item marcado não some da balança.
+        const nonFreeCart = presetPorProduto
+            ? cart.filter((item: any) => {
+                const prodId = item.product?.id || item.productId
+                const dbProd = dbProductsMap.get(prodId)
+                return !(dbProd?.frete_gratis ?? item.product?.freeShipping ?? false)
+            })
+            : cart
 
         if (nonFreeCart.length === 0) {
             return new Response(

@@ -148,6 +148,27 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
     padrao: /^Entrega local não disponível para o CEP informado\.$/,
     acao: "trocar_entrega",
   },
+  // FRETE V2 (revisão A8, 03/09): as três recusas NOVAS do portão de entrega
+  // da RPC emendada (20261081000000 — "pedido sem entrega falha fechado").
+  // Sem regra, caíam em `conferir_antes` com o texto cru e a pessoa perdia o
+  // botão que a devolve ao carrinho no último clique. A ação segue o VERBO
+  // que o banco escreveu: "escolha (uma) entrega" -> trocar_entrega;
+  // "calcule o frete" -> recotar_frete. Mesmo padrão das regras acima
+  // (recusa de cotação expirada, entrega local fora da faixa).
+  {
+    padrao: /^Escolha uma opção de entrega antes de finalizar o pedido\.$/,
+    acao: "trocar_entrega",
+  },
+  {
+    padrao:
+      /^Opção de entrega inválida\. Volte ao carrinho e escolha uma entrega válida\.$/,
+    acao: "trocar_entrega",
+  },
+  {
+    padrao:
+      /^Opção de entrega não reconhecida\. Volte ao carrinho, calcule o frete e finalize de novo\.$/,
+    acao: "recotar_frete",
+  },
   {
     padrao: /^Endereço inválido ou não pertence ao usuário\.$/,
     acao: "trocar_endereco",

@@ -44,7 +44,15 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
   readonly onCoverage: (coverage: "local" | "national") => void;
   readonly conexao: {
     readonly estado: EstadoConexaoNacional;
-    readonly provedorNome: string;
+    /**
+     * Nome do provedor salvo ("Melhor Envio", "Frenet") — ou NULL quando o
+     * config não nomeia transportadora (flat_fee remanescente de loja antiga
+     * ou ausente). REVISÃO A5: o nulo define o ARTIGO da frase do estado
+     * desconectado — "conecte o Melhor Envio" x "conecte uma transportadora";
+     * jamais "conecte o uma transportadora". No estado `conectado` o nome
+     * nunca é nulo (a view só conecta provedor nomeado + credencial).
+     */
+    readonly provedorNome: string | null;
   };
   readonly onAbrirAjustes?: () => void;
   readonly onTentarDeNovo?: () => void;
@@ -138,9 +146,16 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
                 sua cidade.
               </p>
               <p className="mt-1 text-[11px] font-medium leading-snug text-amber-200/80">
-                Para vender para todo o Brasil, conecte o{" "}
-                {conexao.provedorNome} em Ajustes. Quem compra de fora não
-                consegue fechar o pedido até lá.
+                {/* REVISÃO A5 (frete v2, 03/09): o artigo acompanha o nome
+                    que o config salvou. Provedor nomeado leva "o" ("conecte o
+                    Melhor Envio"); sem nome (flat_fee remanescente ou
+                    ausente) a frase é "conecte uma transportadora" — nunca
+                    "conecte o uma transportadora". */}
+                Para vender para todo o Brasil,{" "}
+                {conexao.provedorNome
+                  ? `conecte o ${conexao.provedorNome} em Ajustes`
+                  : "conecte uma transportadora em Ajustes"}
+                . Quem compra de fora não consegue fechar o pedido até lá.
               </p>
             </div>
           </div>

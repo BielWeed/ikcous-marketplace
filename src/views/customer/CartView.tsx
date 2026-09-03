@@ -284,13 +284,21 @@ export function CartView({
     //  2. trava `&& !!user` no limiar (convidado tem o MESMO direito do
     //     logado — a entrega dele é local e o frete local entra na mesma
     //     regra; lição #53: regra copiada diverge).
+    //
+    // REVISÃO A3 (frete v2, 03/09): `savings` ZEROU nos dois caminhos. Ele
+    // comparava contra `config.shippingFee` — a taxa fixa que MORREU nesta
+    // branch (campo órfão no banco; o edge não cota mais por ela), então
+    // "Economizou R$ X" media a economia contra um preço que não existe. O
+    // que de fato deixaria de ser cobrado é a cotação/entrega local — e, com
+    // o grátis ativo, não há cotação em mãos para citar número nenhum. Sem
+    // número honesto, sem número: o selo diz "Frete grátis aplicado".
     if (freteGratis) {
       return {
         progressPercent: 100,
         amountToFree: 0,
         shipping: 0,
         total: subtotal,
-        savings: config.shippingFee || 0,
+        savings: 0,
         isNearlyThere: false,
       };
     }
@@ -309,9 +317,11 @@ export function CartView({
     // FRETE INDEFINIDO (laudo caça-bugs 30/08, achado 7): com provedor de
     // cotação real e nenhuma cotação escolhida, `ctxShippingFee` é o chute de
     // fábrica — exibir `null` ("A calcular") e NÃO somar frete ao total.
+    // REVISÃO A3: `save` zerou junto — comparava contra `config.shippingFee`,
+    // o preço morto da taxa fixa (ver o comentário acima).
     const ship = freteIndefinido ? null : ctxShippingFee;
     const tot = subtotal + (ship ?? 0);
-    const save = ship === 0 ? config.shippingFee || 0 : 0;
+    const save = 0;
     const nearly = Boolean(isRuleActive && progress >= 70 && progress < 100);
 
     return {
@@ -324,7 +334,6 @@ export function CartView({
     };
   }, [
     subtotal,
-    config.shippingFee,
     config.freeShippingMin,
     freteGratis,
     cart.length,
@@ -653,8 +662,12 @@ export function CartView({
                         </span>
                       </div>
                       {shipping === 0 && (
+                        /* REVISÃO A3 (frete v2, 03/09): o selo dizia
+                           "Economizou R$ X" contra `config.shippingFee` —
+                           preço morto da taxa fixa. Sem cotação alternativa
+                           em mãos não há número honesto: só o fato. */
                         <span className="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-emerald-700">
-                          Economizou {formatCurrency(savings)}
+                          Frete grátis aplicado
                         </span>
                       )}
                     </div>
