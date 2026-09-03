@@ -80,6 +80,13 @@ export const BottomNav = memo(function BottomNav({
               key={item.view}
               id={item.view === "cart" ? "bottom-nav-cart" : undefined}
               type="button"
+              // Laudo de acessibilidade 03/09, achado 5: o número da bolinha
+              // era mudo para o leitor de tela ("Carrinho" sem o "3 itens").
+              aria-label={
+                item.badge !== undefined && item.badge > 0
+                  ? `${item.label}, ${item.badge} ${item.badge === 1 ? "item" : "itens"}`
+                  : undefined
+              }
               onClick={() => {
                 haptic.light();
                 onNavigate(item.view);

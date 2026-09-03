@@ -44,6 +44,9 @@ export const CouponInput = memo(function CouponInput({
             sem mudar o visual discreto do X. */}
         <button
           onClick={onRemove}
+          // Laudo de acessibilidade 03/09, achado 2: o X era um "botão" sem
+          // nome — não se sabia que ele removia o cupom aplicado.
+          aria-label="Remover cupom"
           className="relative rounded-lg p-2 text-green-600 transition-colors after:absolute after:-inset-1.5 after:content-[''] hover:bg-green-100"
         >
           <X className="size-4" />

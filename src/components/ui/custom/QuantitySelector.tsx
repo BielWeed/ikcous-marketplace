@@ -42,7 +42,13 @@ export function QuantitySelector({
         <Minus className={`${iconSize} text-zinc-600`} />
       </button>
 
+      {/* Laudo de acessibilidade 03/09, achado 6: o número animado troca de
+          elemento a cada mudança (`key={quantity}`) e o leitor de tela nunca
+          era avisado — apertar "+" não dizia nada. A região live fica no
+          container PERSISTENTE (fora da animação) para o anúncio ser confiável,
+          sem tocar no visual. */}
       <div
+        aria-live="polite"
         className={`relative flex items-center justify-center overflow-hidden ${size === "sm" ? "h-7 w-8" : "h-8 w-10 xs:h-9 xs:w-12"}`}
       >
         <AnimatePresence mode="popLayout" initial={false}>

@@ -523,6 +523,11 @@ export const ProductCard = memo(function ProductCard({
                                 key={v.id}
                                 type="button"
                                 disabled={semEstoque}
+                                // Laudo de acessibilidade 03/09, achado 3: a
+                                // opção marcada só se distinguia pela cor —
+                                // `aria-pressed` anuncia o estado (padrão do
+                                // CategoryFilter).
+                                aria-pressed={ativa}
                                 onClick={(e) => alternarOpcao(e, nome, v.value)}
                                 title={
                                   semEstoque
