@@ -1,7 +1,7 @@
 import { useStore } from "@/contexts/StoreContext";
-import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
 import { formatCurrency } from "@/lib/utils";
+import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronRight, ShoppingCart, Truck } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -14,7 +14,6 @@ interface CartReminderProps {
 export function CartReminder({ onAction, docked }: CartReminderProps) {
   const { cart: items, getCartCount, cartTotal } = useCart();
   const { config } = useStore();
-  const { user } = useAuth();
   const [isVisible, setIsVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
 
@@ -22,12 +21,23 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
 
   const totalAmount = cartTotal;
 
-  // freeShippingMin = 0 significa que o lojista DESLIGOU a regra no admin — mesmo caso
-  // já tratado em FreeShippingBlock.tsx:17-20. Sem esta guarda `isFree` era sempre
-  // verdadeiro (todo total é >= 0) e o progresso dividia por zero: o cliente logado via
-  // "Frete VIP Liberado" com a barra cheia enquanto o checkout cobrava frete.
+  // FRETE V2 (frente B, 03/09): a meta exibida vem do PRESET do lojista
+  // (fonte única: presets-de-frete-gratis.ts).
+  //  - "sempre" (sentinela 0,01): sem meta e sem "faltam R$ 0,01" — o lembrete
+  //    diz "Frete grátis em toda a loja".
+  //  - "acima_de_valor": meta de valor normal, e vale para convidado também —
+  //    a trava de login do frete grátis morreu com o modelo de presets
+  //    (CartContext.tsx), então o "Faça login para liberar o Frete VIP" e a
+  //    barra zerada para convidado eram promessa falsa e saíram.
+  //  - "desligado" (0) E "por_produto" (sentinela -1): sem barra de valor —
+  //    com por produto quem comunica o grátis é a marcação no produto, e uma
+  //    barra de valor aqui mentiria (não existe número de corte).
+  const preset = presetDoConfig(config.freeShippingMin);
   const hasFreeShippingGoal = config.freeShippingMin > 0;
-  const isFree = hasFreeShippingGoal && totalAmount >= config.freeShippingMin;
+  const isSempreGratis = preset === "sempre";
+  const isFree =
+    isSempreGratis ||
+    (hasFreeShippingGoal && totalAmount >= config.freeShippingMin);
   const amountToFree = hasFreeShippingGoal
     ? Math.max(0, config.freeShippingMin - totalAmount)
     : 0;
@@ -85,7 +95,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
             <div className="absolute inset-x-0 top-0 h-[2px] bg-zinc-100">
               <motion.div
                 initial={{ width: 0 }}
-                animate={{ width: `${user ? progress : 0}%` }}
+                animate={{ width: `${isSempreGratis ? 100 : progress}%` }}
                 className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] transition-all duration-1000"
               />
             </div>
@@ -120,11 +130,11 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
                     ? "1 item no seu carrinho"
                     : `${itemCount} itens no seu carrinho`}
                 </p>
-              ) : !user ? (
-                <p className="text-[10px] font-semibold leading-tight text-slate-600">
-                  Faça login para liberar o{" "}
-                  <span className="italic text-emerald-500">Frete VIP</span>
-                </p>
+              ) : isSempreGratis ? (
+                <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight text-emerald-500">
+                  <Truck className="size-3" />
+                  <span>Frete grátis em toda a loja</span>
+                </div>
               ) : isFree ? (
                 <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight text-emerald-500">
                   <Truck className="size-3" />

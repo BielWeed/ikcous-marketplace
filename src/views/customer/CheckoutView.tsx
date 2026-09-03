@@ -1342,11 +1342,14 @@ export function CheckoutView({
     // quem chama `handleSubmitEvent` por outro caminho. Mesmo motivo do
     // "endereço de entrega" acima.
     if (semFreteSelecionado) {
+      // FRETE V2 (frente B, 03/09): o flat_fee morreu na edge
+      // (calculate-shipping deixa de cotar taxa fixa) — o caso de "loja ainda
+      // configurando" é só ORIGEM AUSENTE, independente do provedor gravado.
+      // Antes a mensagem honesta exigia `provider === "flat_fee"`; com a taxa
+      // fixa morta essa condição nunca casaria, e a loja sem origem receberia
+      // o conselho errado de "voltar ao carrinho e calcular".
       toast.error(
-        semFreteSelecionado &&
-          ctxFreteIndefinido &&
-          config.shippingProvider === "flat_fee" &&
-          !config.originCep?.trim()
+        ctxFreteIndefinido && !config.originCep?.trim()
           ? "A loja ainda está configurando o frete. Fale com a loja para combinar a entrega."
           : "Escolha uma opção de frete no carrinho antes de finalizar o pedido.",
       );
@@ -2751,7 +2754,6 @@ export function CheckoutView({
                         <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                         {semFreteSelecionado &&
                         ctxFreteIndefinido &&
-                        config.shippingProvider === "flat_fee" &&
                         !config.originCep?.trim()
                           ? "A loja ainda está configurando o frete — fale com a loja para combinar a entrega"
                           : "Volte ao carrinho e calcule o frete para continuar"}
