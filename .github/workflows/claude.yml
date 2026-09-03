@@ -47,5 +47,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Modelo do lado Claude escolhido pelo dono (02/09): Fable 5.1,
-          # topo do plano Max (confirmado no seletor do claude.ai/code).
-          model: fable-5.1
+          # topo do plano Max. O action NÃO tem input "model" (era ignorado
+          # em silêncio — robô vinha Sonnet 5); o caminho oficial é
+          # claude_args direto ao CLI. Alias "fable" = Fable mais recente.
+          claude_args: "--model fable"
