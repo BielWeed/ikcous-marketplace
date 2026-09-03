@@ -19,17 +19,26 @@
 //
 // DINHEIRO: o checkout da etiqueta usa o SALDO da conta do Melhor Envio do
 // lojista. Proteções embutidas:
+//   * pedido só etiqueta com pagamento CONFIRMADO (`payment_status` `pago` /
+//     `pago_apos_expirar`) — falha fechado (recomendação do revisor, aplicada
+//     pelo supervisor 03/09/2026; reversível pelo dono);
+//   * o pedido é REIVINDICADO com update condicional ENTRE o carrinho e o
+//     checkout (`shipping_label_id` NULL -> labelId, uma linha só vence) —
+//     re-clique/aba paralela não compra duas etiquetas; quem perde a corrida
+//     tem o item REMOVIDO do carrinho do ME e recebe "já existe uma geração
+//     em andamento";
 //   * pedido que JÁ TEM `shipping_label_id` não gera etiqueta de novo — a
 //     segunda chamada devolve a etiqueta existente (`already: true`), então
-//     re-clique/bandeja lenta não compra duas etiquetas;
+//     falha suave de generate/print/tracking não vira segunda compra;
+//   * falha no CHECKOUT remove o item do carrinho do ME (nada fica lá para o
+//     lojista comprar sem querer);
 //   * modo Sandbox da credencial manda tudo para o sandbox do ME (sem custo).
 //
 // ENDPOINTS v2 do Melhor Envio (doc oficial docs.melhorenvio.com.br):
-//   POST /api/v2/me                   — dados do remetente (empresa/endereço)
-//   POST /api/v2/me/shipment/calculate — cotação (só quando o pedido não
-//                                        guardou o serviço escolhido)
+//   GET  /api/v2/me                   — dados do remetente (empresa/endereço)
 //   POST /api/v2/me/cart              — cria a etiqueta no carrinho (201,
-//                                        não consome saldo)
+//                                       não consome saldo)
+//   DELETE /api/v2/me/cart/{id}       — remove etiqueta não paga do carrinho
 //   POST /api/v2/me/shipment/checkout — paga com o saldo ({ orders: [id] })
 //   POST /api/v2/me/shipment/generate — gera a etiqueta ({ orders: [id] })
 //   POST /api/v2/me/shipment/print    — link de impressão ({ url })
@@ -120,8 +129,10 @@ async function verifyIsAdmin(
  * `calculate-shipping` monta ids `melhor-envio-{service.id}`).
  *
  * Só casa o formato da própria casa: `melhor-envio-` + dígitos. Qualquer
- * outra coisa (flat-fee-*, local-delivery, null) devolve null — o chamador
- * então cota de novo e escolhe pelo que a loja habilitou.
+ * outra coisa (flat-fee-*, local-delivery, null) devolve null — e o chamador
+ * RECUSA o pedido: cotar de novo aqui escolheria `opcoes[0]` SEM o filtro de
+ * métodos que a loja habilitou (contratar serviço que o lojista nem oferece),
+ * e entrega fixa/local é feita pelo próprio lojista, não por etiqueta.
  */
 export function extrairServiceIdDaOpcao(optionId: unknown): string | null {
     if (typeof optionId !== 'string') return null
@@ -176,6 +187,25 @@ export function erroDePedidoParaEtiqueta(pedido: { status?: string | null; track
 }
 
 /**
+ * Portão de PAGAMENTO (falha FECHADO): a etiqueta usa o saldo REAL da conta
+ * do Melhor Envio do lojista — só pedido com pagamento CONFIRMADO etiqueta.
+ * `pago` e `pago_apos_expirar` passam; NULL (pedido antigo, anterior à
+ * coluna), 'aguardando', 'recusado', 'expirado' e 'estornado' todos recusados
+ * (mesmo critério de filtragem da lista do card — uma regra, dois lugares
+ * lendo da MESMA lista de valores do CHECK `marketplace_orders_payment_status_check`).
+ *
+ * Recomendação do revisor (@claude, PR #423) aplicada pelo supervisor em
+ * 03/09/2026 — reversível pelo dono.
+ */
+export const PAGAMENTOS_QUE_ETIQUETAM = ['pago', 'pago_apos_expirar'] as const
+
+export function erroDePagamentoParaEtiqueta(paymentStatus: unknown): string | null {
+    const status = String(paymentStatus || '').toLowerCase()
+    if ((PAGAMENTOS_QUE_ETIQUETAM as readonly string[]).includes(status)) return null
+    return 'Só pedido com pagamento confirmado gera etiqueta — ela é comprada com o saldo real da sua conta no Melhor Envio. Confirme o pagamento do pedido e tente de novo.'
+}
+
+/**
  * Produtos e volumes do corpo do carrinho do ME, a partir dos itens do pedido
  * (JOIN `marketplace_order_items` × `produtos`) — mesmo padrão de leitura do
  * `calculate-shipping`: peso/dimensões vêm do BANCO, com fallbacks iguais aos
@@ -202,7 +232,7 @@ export function montarProdutosEVolumes(
         const largura = Number(db?.largura_cm ?? 15)
         const altura = Number(db?.altura_cm ?? 15)
         const comprimento = Number(db?.comprimento_cm ?? 15)
-        const preco = Number(db?.preco_venda ?? item.unit_price ?? 0)
+        const preco = Number(db?.preco_venda ?? item.price ?? 0)
         const nome = String(db?.nome || 'Produto')
 
         products.push({
@@ -321,6 +351,30 @@ async function gravarEvento(
 }
 
 /**
+ * Remove a etiqueta NÃO PAGA do carrinho do Melhor Envio
+ * (DELETE /api/v2/me/cart/{id}). Usada quando esta geração NÃO vai
+ * acontecer: o item não pode ficar no carrinho — se o lojista "comprar o
+ * carrinho" no site do ME, pagaria por ele sem querer (revisor, item 4).
+ * Falha suave: se o DELETE não sair, a etiqueta não-paga expira sozinha no
+ * carrinho do ME; o erro original importa mais.
+ */
+async function removerDoCarrinho(
+    buscar: typeof fetch,
+    baseUrl: string,
+    headersME: Record<string, string>,
+    labelId: string,
+): Promise<void> {
+    try {
+        await buscarComTempo(buscar, `${baseUrl}/api/v2/me/cart/${labelId}`, {
+            method: 'DELETE',
+            headers: headersME,
+        })
+    } catch (err) {
+        console.error('[melhor-envio-etiqueta] Falha ao remover item do carrinho do ME (suave):', err)
+    }
+}
+
+/**
  * Costura de teste (mesmo padrão de `criar-pagamento`/`calculate-shipping`):
  * o handler é exportado e o cliente do Supabase e o fetch podem ser
  * substituídos por dublês. Em produção nada muda.
@@ -374,6 +428,19 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             .eq('provider', 'melhor_envio')
             .maybeSingle()
 
+        if (credError) {
+            // Sem a credencial lida NENHUMA action anda — falhar aqui com
+            // mensagem clara, não com "Bearer undefined" disfarçado de 401
+            // do Melhor Envio.
+            console.error('[melhor-envio-etiqueta] Falha ao ler credencial:', credError)
+            return new Response(
+                JSON.stringify({
+                    error: 'Não consegui ler a credencial do Melhor Envio agora. Tente novamente em instantes; se persistir, confira o cadastro do token em Logística & Frete.',
+                }),
+                { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            )
+        }
+
         const credentials = credRow?.credentials || {}
         const token = credentials.token
         const isSandbox = credentials.sandbox === true
@@ -384,6 +451,20 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
             'User-Agent': USER_AGENT,
+        }
+
+        // Sem token não existe fluxo NENHUM (nem consultar rastreio, que hoje
+        // sairia com "Bearer undefined" e voltaria 401 do ME disfarçado de
+        // "recusou o token"): falha ANTES de gastar qualquer chamada na API
+        // externa, nas DUAS actions. É a pendência do dono configurar o token
+        // na tela de frete (mesmo campo de hoje).
+        if (!token) {
+            return new Response(
+                JSON.stringify({
+                    error: 'Token do Melhor Envio não configurado. Cadastre o token em Logística & Frete (Método de Cálculo Nacional > Melhor Envio) e salve antes de usar etiquetas e rastreio.',
+                }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            )
         }
 
         // ── ACTION: consultar_rastreio ──────────────────────────────────────
@@ -463,22 +544,11 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             )
         }
 
-        // Sem token não existe fluxo: falha ANTES de gastar qualquer chamada
-        // na API externa. É a pendência do dono configurar o token na tela de
-        // frete (mesmo campo de hoje).
-        if (!token) {
-            return new Response(
-                JSON.stringify({
-                    error: 'Token do Melhor Envio não configurado. Cadastre o token em Logística & Frete (Método de Cálculo Nacional > Melhor Envio) e salve antes de gerar etiquetas.',
-                }),
-                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-            )
-        }
-
-        // 1. O pedido, com o que a etiqueta precisa.
+        // 1. O pedido, com o que a etiqueta precisa (inclui o estado de
+        //    pagamento para o portão e a URL da etiqueta para o `already`).
         const { data: pedido, error: pedidoError } = await supabaseClient
             .from('marketplace_orders')
-            .select('id, status, tracking_code, shipping_label_id, total, customer_name, customer_data')
+            .select('id, status, payment_status, subtotal, tracking_code, shipping_label_id, shipping_label_url, total, customer_name, customer_data')
             .eq('id', orderId)
             .maybeSingle()
 
@@ -492,6 +562,15 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         const erroDeStatus = erroDePedidoParaEtiqueta(pedido)
         if (erroDeStatus) {
             return new Response(JSON.stringify({ error: erroDeStatus }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            })
+        }
+
+        // 1.5 Portão de PAGAMENTO (falha fechado — ver erroDePagamentoParaEtiqueta).
+        const erroDePagamento = erroDePagamentoParaEtiqueta(pedido.payment_status)
+        if (erroDePagamento) {
+            return new Response(JSON.stringify({ error: erroDePagamento }), {
                 status: 400,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             })
@@ -523,9 +602,11 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
         }
 
         // 3. Itens do pedido + medições do banco (mesma leitura da cotação).
+        //    A coluna de preço no schema vivo é `price` (baseline
+        //    20260806000000 / src/types/supabase.ts) — `unit_price` não existe.
         const { data: itens, error: itensError } = await supabaseClient
             .from('marketplace_order_items')
-            .select('product_id, quantity, unit_price')
+            .select('product_id, quantity, price')
             .eq('order_id', orderId)
 
         if (itensError) {
@@ -546,6 +627,14 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             .in('id', productIds)
 
         const { products, volumes } = montarProdutosEVolumes(itensPedido, produtosDb || [])
+
+        // Valor declarado do seguro: SUBTOTAL dos itens (preço × quantidade),
+        // não o `total` do pedido — o total inclui frete e desconto, e o ME
+        // cobra o seguro em cima do valor declarado (revisor, item 8).
+        const subtotalItens = itensPedido.reduce(
+            (soma: number, item: Record<string, any>) => soma + Number(item.price || 0) * Number(item.quantity || 1),
+            0,
+        )
 
         // 4. Remetente: a conta do lojista no Melhor Envio é a fonte.
         const meResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me`, {
@@ -571,41 +660,21 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             )
         }
 
-        // 5. O serviço de transporte: o que o cliente ESCOLHEU no checkout, ou
-        //    o primeiro habilitado numa cotação nova.
+        // 5. O serviço de transporte: o que o cliente ESCOLHEU no checkout.
+        //    Pedido sem opção do Melhor Envio (frete fixo, entrega local,
+        //    null) NÃO etiqueta pela API: cotar de novo aqui escolheria
+        //    opcoes[0] SEM o filtro de métodos que a loja habilitou, e
+        //    entrega fixa/local é o próprio lojista entregando — sem etiqueta.
         const serviceId = extrairServiceIdDaOpcao(customerData.shipping_option_id)
-        let service = serviceId
-        let serviceNome: string | null = null
-
-        if (!service) {
-            const calcResponse = await buscarComTempo(buscar, `${baseUrl}/api/v2/me/shipment/calculate`, {
-                method: 'POST',
-                headers: headersME,
-                body: JSON.stringify({
-                    from: { postal_code: from.postal_code },
-                    to: { postal_code: endereco.cep },
-                    products,
+        if (!serviceId) {
+            return new Response(
+                JSON.stringify({
+                    error: 'Este pedido não tem frete do Melhor Envio escolhido no checkout (foi frete fixo ou entrega local — entregue você mesmo). A etiqueta pela API só sai para pedido com opção do Melhor Envio.',
                 }),
-            })
-            if (!calcResponse.ok) {
-                const detalhe = await calcResponse.text()
-                console.error('[melhor-envio-etiqueta] calculate HTTP', calcResponse.status, detalhe)
-                return new Response(
-                    JSON.stringify({ error: mensagemDoErroHttp(calcResponse.status, 'cotação do serviço') }),
-                    { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-                )
-            }
-            const calcData = await calcResponse.json()
-            const opcoes = Array.isArray(calcData) ? calcData.filter((s: any) => !s.error && s.price && s.id) : []
-            if (opcoes.length === 0) {
-                return new Response(
-                    JSON.stringify({ error: 'O Melhor Envio não devolveu nenhum serviço disponível para este destino.' }),
-                    { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-                )
-            }
-            service = String(opcoes[0].id)
-            serviceNome = opcoes[0].name || null
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            )
         }
+        const service = serviceId
 
         const to = {
             name: pedido.customer_name || 'Cliente',
@@ -633,7 +702,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 products,
                 volumes,
                 options: {
-                    insurance_value: Number(pedido.total || 0),
+                    insurance_value: subtotalItens,
                     receipt: false,
                     own_hand: false,
                     reverse: false,
@@ -659,9 +728,49 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             )
         }
 
+        // 6.5 IDEMPOTÊNCIA DE DINHEIRO — a trava anti-duplo-pagamento (revisor,
+        //     item 3): reivindicar o pedido ENTRE o carrinho e o checkout com
+        //     update CONDICIONAL. Só a chamada que converter
+        //     `shipping_label_id` NULL -> labelId (uma linha de volta) segue
+        //     para o checkout. Quem perde a corrida (re-clique, aba paralela,
+        //     página recarregada no meio da geração) remove o PRÓPRIO item do
+        //     carrinho e responde "já existe geração" — nada de duas etiquetas
+        //     pagas para o mesmo pedido. A partir daqui falha de
+        //     generate/print/tracking é suave: a etiqueta (id) já está no
+        //     pedido, e o `already: true` + "Atualizar rastreio" cobrem o resto.
+        const { data: reivindicado, error: reivindicarError } = await supabaseClient
+            .from('marketplace_orders')
+            .update({ shipping_label_id: labelId })
+            .eq('id', orderId)
+            .is('shipping_label_id', null)
+            .select()
+
+        if (reivindicarError || !Array.isArray(reivindicado) || reivindicado.length !== 1) {
+            if (reivindicarError) {
+                console.error('[melhor-envio-etiqueta] Falha ao reivindicar o pedido:', reivindicarError)
+            }
+            await removerDoCarrinho(buscar, baseUrl, headersME, labelId)
+            await gravarEvento(supabaseClient, {
+                order_id: orderId,
+                event_type: 'erro',
+                error_message: 'Geração concorrida: o pedido já tem etiqueta em andamento (item do carrinho removido).',
+                protocol: cartData?.protocol || null,
+                payload: { etapa: 'reivindicacao', label_id: labelId, sandbox: isSandbox },
+            })
+            return new Response(
+                JSON.stringify({ error: 'Já existe uma geração de etiqueta em andamento para este pedido. Aguarde ou recarregue para ver a etiqueta existente.' }),
+                { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            )
+        }
+
         const finalizarComErro = async (mensagem: string, etapa: string): Promise<Response> => {
-            // Etiqueta criada no carrinho e não paga: registrar o erro para o
-            // lojista decidir no ME (paga, cancela ou ignora — ela expira).
+            // Etiqueta criada no carrinho e o checkout NÃO fechou: registrar o
+            // erro para o lojista e REMOVER o item do carrinho do ME (revisor,
+            // item 4) — nada fica lá para o lojista "comprar o carrinho" sem
+            // querer. O vínculo shipping_label_id no pedido fica: se o ME
+            // chegou a processar a compra com resposta perdida, `already: true`
+            // devolve esta etiqueta em vez de comprar outra.
+            await removerDoCarrinho(buscar, baseUrl, headersME, labelId)
             await gravarEvento(supabaseClient, {
                 order_id: orderId,
                 event_type: 'erro',
@@ -740,7 +849,9 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             console.error('[melhor-envio-etiqueta] tracking falhou (suave):', trackingErr)
         }
 
-        // 11. Grava o resultado no pedido e no histórico.
+        // 11. Completa o resultado no pedido e grava o histórico. O
+        //     `shipping_label_id` JÁ foi gravado na reivindicação (6.5) — este
+        //     update acrescenta url de impressão e rastreio.
         const { error: updateError } = await supabaseClient
             .from('marketplace_orders')
             .update({
@@ -751,14 +862,14 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             .eq('id', orderId)
 
         if (updateError) {
-            // Etiqueta PAGA no ME mas sem vínculo no pedido: erro HONESTO com
-            // o id — o lojista não perde a etiqueta (ela está na conta dele);
-            // o resgate é manual e documentado na mensagem.
-            console.error('[melhor-envio-etiqueta] Falha ao gravar no pedido:', updateError)
+            // Etiqueta PAGA e VINCULADA (6.5), mas url/rastreio não subiram:
+            // erro honesto com o id — o lojista não perde a etiqueta (ela está
+            // na conta dele e no pedido); reimpressão pelo site do ME.
+            console.error('[melhor-envio-etiqueta] Falha ao completar o pedido:', updateError)
             await gravarEvento(supabaseClient, {
                 order_id: orderId,
                 event_type: 'erro',
-                error_message: 'Etiqueta paga no Melhor Envio, mas falhou ao gravar no pedido.',
+                error_message: 'Etiqueta paga e vinculada, mas falhou ao gravar url de impressão/rastreio.',
                 tracking_code: trackingCode,
                 label_url: labelUrl,
                 protocol: cartData?.protocol || null,
@@ -766,7 +877,7 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             })
             return new Response(
                 JSON.stringify({
-                    error: `A etiqueta foi paga no Melhor Envio (id ${labelId}) mas não conseguiu ser vinculada ao pedido. Resgate-a na sua conta do Melhor Envio e informe o suporte.`,
+                    error: `A etiqueta foi paga no Melhor Envio (id ${labelId}) e está vinculada ao pedido, mas o link de impressão não foi salvo. Reimprima pela sua conta do Melhor Envio; o rastreio pode ser atualizado aqui depois.`,
                 }),
                 { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
             )
@@ -782,9 +893,8 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 label_id: labelId,
                 purchase_id: checkout.purchaseId || null,
                 service,
-                service_nome: serviceNome,
                 sandbox: isSandbox,
-                valor_declarado: Number(pedido.total || 0),
+                valor_declarado: subtotalItens,
             },
         })
 

@@ -28,9 +28,10 @@ import { toast } from "sonner";
  * ABRE a confirmação; a geração só sai no segundo clique, com o pedido
  * nomeado. Nada gera etiqueta sem esse passo.
  *
- * IDEMPOTÊNCIA DE DINHEIRO (a function reforça, a tela repete): pedido que
- * já tem etiqueta devolve a etiqueta existente (`already: true`) — re-clique
- * ou aba lenta não compra etiqueta duas vezes.
+ * IDEMPOTÊNCIA DE DINHEIRO (a function reforça, a tela repete): só pedido com
+ * pagamento confirmado entra na lista, e pedido que já tem etiqueta devolve a
+ * etiqueta existente (`already: true`) — re-clique ou aba lenta não compra
+ * etiqueta duas vezes.
  *
  * Quem fala com a API é a edge function `melhor-envio-etiqueta` (admin-only);
  * este card NUNCA escreve no pedido direto — quem grava tracking_code e
@@ -44,6 +45,36 @@ interface EtiquetaResultado {
   label_url: string | null;
   label_id: string;
   already: boolean;
+}
+
+/**
+ * Contrato do supabase-js v2 (mesmo padrão de src/hooks/useOrders.ts): quando
+ * a edge function responde FORA de 2xx, `data` chega NULL e o corpo da
+ * resposta fica em `error.context` (um Response). Ler o corpo e mostrar a
+ * mensagem de negócio que a function escreveu (sem token, saldo, endereço,
+ * pagamento não confirmado, geração em andamento...) — só sem corpo legível
+ * cai na frase genérica de comunicação.
+ */
+async function mensagemDeErroInvocacao(
+  err: unknown,
+  opcoes: { mensagemGenerica: string },
+): Promise<string> {
+  try {
+    const corpo = await (
+      err as { context?: { json?: () => unknown } }
+    )?.context?.json?.();
+    if (
+      corpo &&
+      typeof corpo === "object" &&
+      "error" in corpo &&
+      (corpo as { error: unknown }).error
+    ) {
+      return String((corpo as { error: unknown }).error);
+    }
+  } catch {
+    // Corpo ilegível: segue para a mensagem genérica.
+  }
+  return mensagemAmigavelErroEdgeFunction(err as Error, opcoes);
 }
 
 export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
@@ -67,12 +98,18 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
     // aviso vermelho velho na tela.
     setPedidosError(false);
     try {
-      // Pedidos vivos para envio: cancelado e entregue não etiquetam (a
-      // function recusa de qualquer forma — a lista só já nasce honesta).
+      // Pedidos vivos para envio: cancelado e entregue não etiquetam, e só
+      // pagamento CONFIRMADO etiqueta (`pago`/`pago_apos_expirar` — o MESMO
+      // critério de falha fechado que a function aplica; a lista já nasce
+      // honesta e ninguém gasta saldo com pedido não pago). `shipping` é o
+      // valor do frete que o cliente pagou — entra na confirmação.
       const { data, error } = await supabase
         .from("marketplace_orders")
-        .select("id, customer_name, status, tracking_code, created_at")
+        .select(
+          "id, customer_name, status, payment_status, shipping, tracking_code, created_at",
+        )
         .in("status", ["new", "pending", "processing", "shipping"])
+        .in("payment_status", ["pago", "pago_apos_expirar"])
         .order("created_at", { ascending: false })
         .limit(20);
       if (error) throw error;
@@ -109,16 +146,11 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
           body: { action: "gerar_etiqueta", orderId: pedidoSelecionado },
         },
       );
-      if (error) throw error;
-
-      if (data?.error) {
-        // Erro de negócio da function (sem token, saldo, endereço...): a
-        // mensagem já vem em linguagem de lojista — mostrar como veio.
-        setErroMsg(String(data.error));
-        setFase("confirmar");
-        haptic.error();
-        toast.error("Não foi possível gerar a etiqueta");
-        return;
+      // Contrato do supabase-js v2: resposta fora de 2xx vem em `error` com
+      // `data` null — a mensagem de negócio da function está no corpo de
+      // `error.context`. Ramo `data?.error` não existe para esta function.
+      if (error || data?.error) {
+        throw error ?? new Error(String(data?.error));
       }
 
       setResultado({
@@ -135,10 +167,10 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
           : "Etiqueta gerada com sucesso!",
       );
       fetchPedidos();
-    } catch (err: any) {
+    } catch (err) {
       console.error("[EtiquetasEnvio] Erro na geração:", err);
       setErroMsg(
-        mensagemAmigavelErroEdgeFunction(err, {
+        await mensagemDeErroInvocacao(err, {
           mensagemGenerica:
             "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
         }),
@@ -159,10 +191,9 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
           body: { action: "consultar_rastreio", orderId: pedidoSelecionado },
         },
       );
-      if (error) throw error;
-      if (data?.error) {
-        toast.error(String(data.error));
-        return;
+      // Mesmo contrato do gerar: erro de negócio vem em `error.context`.
+      if (error || data?.error) {
+        throw error ?? new Error(String(data?.error));
       }
       if (data?.tracking_code) {
         setResultado((prev) =>
@@ -175,10 +206,10 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
         );
       }
       fetchPedidos();
-    } catch (err: any) {
+    } catch (err) {
       console.error("[EtiquetasEnvio] Erro ao consultar rastreio:", err);
       toast.error(
-        mensagemAmigavelErroEdgeFunction(err, {
+        await mensagemDeErroInvocacao(err, {
           mensagemGenerica:
             "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
         }),
@@ -200,6 +231,15 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
   // recusar o `fase === "gerando"` do clique em andamento (que MUDA a fase
   // durante o await). A booleana derivada não estreita o tipo da fase.
   const confirmacaoAberta = fase === "confirmar" || fase === "gerando";
+
+  // O lojista confirma o gasto vendo o que o cliente pagou de frete (revisor,
+  // item 7): serviço Melhor Envio + valor do pedido selecionado, quando existe.
+  const freteTexto =
+    pedido?.shipping != null && Number(pedido.shipping) > 0
+      ? `Melhor Envio — frete pago pelo cliente: R$ ${Number(pedido.shipping)
+          .toFixed(2)
+          .replace(".", ",")}`
+      : null;
 
   return (
     <div
@@ -362,6 +402,11 @@ export const EtiquetasEnvioCard = memo(function EtiquetasEnvioCard() {
                       {pedido?.customer_name || "o pedido selecionado"}
                     </span>
                     ?
+                    {freteTexto && (
+                      <span className="mt-1 block font-semibold text-amber-100/90">
+                        Serviço: {freteTexto}
+                      </span>
+                    )}
                   </span>
                 </p>
                 {erroMsg && (

@@ -10,16 +10,24 @@
 //   2. O resultado mostra o código de rastreio e o link da etiqueta.
 //   3. `already: true` (pedido que já tinha etiqueta) aparece como "nada foi
 //      comprado de novo" — proteção de dinheiro na cara da tela.
-//   4. Erro de negócio da function (ex.: token não configurado) aparece na
-//      tela com a mensagem amigável, sem código de rastreio inventado.
+//   4. Erro de negócio da function (ex.: token não configurado) chega NO
+//      FORMATO REAL do supabase-js v2 — `data: null` + FunctionsHttpError com
+//      o corpo em `error.context` (Response) — e a mensagem do corpo aparece
+//      na tela, sem código de rastreio inventado.
 //   5. Sem pedido selecionado o botão fica desabilitado — nada de invocar
 //      com orderId vazio.
+//   6. A lista já nasce com o portão de pagamento: o segundo `.in` filtra
+//      `payment_status` para `pago`/`pago_apos_expirar` (mesmo critério da
+//      function — falha fechado).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { invokeMock, pedidosState } = vi.hoisted(() => ({
+const { invokeMock, filtrosIn, pedidosState } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
+  // Captura os argumentos de CADA `.in` encadeado (status, payment_status).
+  filtrosIn: [] as Array<[string, string[]]>,
   pedidosState: {
     data: [] as any[] | null,
     error: null as { message: string } | null,
@@ -29,19 +37,25 @@ const { invokeMock, pedidosState } = vi.hoisted(() => ({
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
 // `marketplace_orders` responde o que o teste armou em `pedidosState`;
-// qualquer outra tabela devolve vazio sem erro.
+// qualquer outra tabela devolve vazio sem erro. A cadeia espelha a consulta
+// real: select → in(status) → in(payment_status) → order → limit.
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (_table: string) => ({
       select: () => ({
-        in: () => ({
-          order: () => ({
-            limit: () =>
-              Promise.resolve({
-                data: pedidosState.data,
-                error: pedidosState.error,
+        in: (colunaA: string, valoresA: string[]) => ({
+          in: (colunaB: string, valoresB: string[]) => {
+            filtrosIn.push([colunaA, valoresA], [colunaB, valoresB]);
+            return {
+              order: () => ({
+                limit: () =>
+                  Promise.resolve({
+                    data: pedidosState.data,
+                    error: pedidosState.error,
+                  }),
               }),
-          }),
+            };
+          },
         }),
       }),
     }),
@@ -65,6 +79,8 @@ const PEDIDOS = [
     id: "11111111-2222-3333-4444-555555555555",
     customer_name: "Maria Souza",
     status: "processing",
+    payment_status: "pago",
+    shipping: 24.9,
     tracking_code: null,
     created_at: "2026-09-03T10:00:00Z",
   },
@@ -72,6 +88,8 @@ const PEDIDOS = [
     id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
     customer_name: "João Pires",
     status: "shipping",
+    payment_status: "pago_apos_expirar",
+    shipping: 15,
     tracking_code: null,
     created_at: "2026-09-02T10:00:00Z",
   },
@@ -83,6 +101,7 @@ describe("EtiquetasEnvioCard — etiqueta só sai com confirmação explícita",
 
   beforeEach(() => {
     vi.clearAllMocks();
+    filtrosIn.length = 0;
     pedidosState.data = PEDIDOS;
     pedidosState.error = null;
     hospedeiro = document.createElement("div");
@@ -128,7 +147,7 @@ describe("EtiquetasEnvioCard — etiqueta só sai com confirmação explícita",
     });
   };
 
-  it("primeiro clique NÃO invoca a function — abre a confirmação com o nome do cliente", async () => {
+  it("primeiro clique NÃO invoca a function — abre a confirmação com o nome do cliente, o frete e o portão de pagamento", async () => {
     await abrirCard();
     await selecionarPedido();
 
@@ -139,6 +158,18 @@ describe("EtiquetasEnvioCard — etiqueta só sai com confirmação explícita",
     expect(invokeMock).not.toHaveBeenCalled();
     expect(hospedeiro.textContent).toMatch(/saldo da SUA conta/i);
     expect(hospedeiro.textContent).toMatch(/Maria Souza/);
+    // A7 do revisor: o lojista confirma vendo o frete que o cliente pagou.
+    expect(hospedeiro.textContent).toMatch(/frete pago pelo cliente/i);
+    expect(hospedeiro.textContent).toMatch(/R\$ 24,90/);
+    // A6 do revisor: a lista só nasce com pagamento confirmado — mesmo
+    // critério de falha fechado da function.
+    const filtroPagamento = filtrosIn.find(
+      ([coluna]) => coluna === "payment_status",
+    );
+    expect(filtroPagamento).toEqual([
+      "payment_status",
+      ["pago", "pago_apos_expirar"],
+    ]);
     expect(botao("Confirmar e gerar")).toBeTruthy();
   });
 
@@ -181,13 +212,15 @@ describe("EtiquetasEnvioCard — etiqueta só sai com confirmação explícita",
     expect(linkEtiqueta?.getAttribute("rel")).toMatch(/noopener/);
   });
 
-  it("already: true — a tela diz que NADA foi comprado de novo", async () => {
+  it("already: true — a tela diz que NADA foi comprado de novo E mostra o link da etiqueta existente", async () => {
     invokeMock.mockResolvedValue({
       data: {
         success: true,
         already: true,
         tracking_code: "ME1111AAAAABR",
-        label_url: null,
+        // A5 do revisor: a select do `already` agora traz shipping_label_url —
+        // re-clique mostra "Abrir etiqueta" de verdade.
+        label_url: "https://melhorenvio.com.br/imprimir/que-ja-existia",
         label_id: "10b87ac0-e99d-4aa4-b8b0-b147a84e16bf",
       },
     });
@@ -207,13 +240,29 @@ describe("EtiquetasEnvioCard — etiqueta só sai com confirmação explícita",
 
     expect(hospedeiro.textContent).toMatch(/já tinha etiqueta/i);
     expect(hospedeiro.textContent).toMatch(/nada foi comprado de novo/i);
+    expect(
+      hospedeiro.querySelector<HTMLAnchorElement>(
+        'a[href="https://melhorenvio.com.br/imprimir/que-ja-existia"]',
+      ),
+    ).toBeTruthy();
   });
 
-  it("erro de negócio (token não configurado): mensagem aparece na tela, sem código inventado", async () => {
+  it("erro de negócio no formato REAL do SDK (FunctionsHttpError + context): mensagem do corpo aparece na tela, sem código inventado", async () => {
+    // Contrato do supabase-js v2: resposta fora de 2xx chega como
+    // `data: null` + `error` (FunctionsHttpError) com o corpo da function em
+    // `error.context` (um Response) — O QUE O SDK REALMENTE PRODUZ. O mock
+    // antigo `{ data: { error } }` era um formato que o SDK não gera.
     invokeMock.mockResolvedValue({
-      data: {
-        error:
-          "Token do Melhor Envio não configurado. Cadastre o token em Logística & Frete.",
+      data: null,
+      error: {
+        name: "FunctionsHttpError",
+        context: new Response(
+          JSON.stringify({
+            error:
+              "Token do Melhor Envio não configurado. Cadastre o token em Logística & Frete.",
+          }),
+          { status: 400 },
+        ),
       },
     });
     await abrirCard();
@@ -239,6 +288,57 @@ describe("EtiquetasEnvioCard — etiqueta só sai com confirmação explícita",
     // Continua na confirmação para o lojista tentar de novo sem refazer o
     // caminho todo.
     expect(botao("Confirmar e gerar")).toBeTruthy();
+  });
+
+  it("consultar rastreio com erro de negócio: a mensagem do corpo da function sai no toast", async () => {
+    // Caminho realista: etiqueta já existe na conta (already), o lojista clica
+    // em "Atualizar rastreio" e a function responde 400 de negócio.
+    invokeMock
+      .mockResolvedValueOnce({
+        data: {
+          success: true,
+          already: true,
+          tracking_code: null,
+          label_url: null,
+          label_id: "10b87ac0-e99d-4aa4-b8b0-b147a84e16bf",
+        },
+      })
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          name: "FunctionsHttpError",
+          context: new Response(
+            JSON.stringify({
+              error: "O Melhor Envio recusou o token (não autenticado).",
+            }),
+            { status: 502 },
+          ),
+        },
+      });
+    await abrirCard();
+    await selecionarPedido();
+
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    await act(async () => {
+      botao("Confirmar e gerar")?.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      botao("Atualizar rastreio")?.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(invokeMock).toHaveBeenLastCalledWith("melhor-envio-etiqueta", {
+      body: { action: "consultar_rastreio", orderId: PEDIDOS[0].id },
+    });
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+      "O Melhor Envio recusou o token (não autenticado).",
+    );
   });
 
   it("sem pedido selecionado, o botão Gerar etiqueta fica desabilitado", async () => {

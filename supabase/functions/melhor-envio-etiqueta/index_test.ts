@@ -10,6 +10,7 @@ import {
   montarRemetente,
   normalizarCheckout,
   normalizarTracking,
+  erroDePagamentoParaEtiqueta,
   erroDePedidoParaEtiqueta,
 } from "./index.ts"
 
@@ -84,12 +85,32 @@ Deno.test("portão de status - processando e novo passam", () => {
   assertEquals(erroDePedidoParaEtiqueta({ status: null }), null)
 })
 
+// ── erroDePagamentoParaEtiqueta (falha fechado — só pago etiqueta) ─────────
+
+Deno.test("portão de pagamento - pago e pago_apos_expirar passam", () => {
+  assertEquals(erroDePagamentoParaEtiqueta("pago"), null)
+  assertEquals(erroDePagamentoParaEtiqueta("pago_apos_expirar"), null)
+  assertEquals(erroDePagamentoParaEtiqueta("PAGO"), null) // case-insensitive
+})
+
+Deno.test("portão de pagamento - aguardando, recusado, expirado, estornado e NULL recusados (falha fechado)", () => {
+  assertEquals(erroDePagamentoParaEtiqueta("aguardando") !== null, true)
+  assertEquals(erroDePagamentoParaEtiqueta("recusado") !== null, true)
+  assertEquals(erroDePagamentoParaEtiqueta("expirado") !== null, true)
+  assertEquals(erroDePagamentoParaEtiqueta("estornado") !== null, true)
+  // NULL = pedido antigo (pré-coluna) ou não confirmado: recusa.
+  assertEquals(erroDePagamentoParaEtiqueta(null) !== null, true)
+  assertEquals(erroDePagamentoParaEtiqueta(undefined) !== null, true)
+  assertEquals(erroDePagamentoParaEtiqueta("") !== null, true)
+})
+
 // ── montarProdutosEVolumes ─────────────────────────────────────────────────
 
 Deno.test("produtos e volumes - leitura do banco com fallbacks da cotação", () => {
+  // Coluna de preço real do schema vivo: `price` (marketplace_order_items).
   const itens = [
-    { product_id: "p1", quantity: 2, unit_price: 10 },
-    { product_id: "p2", quantity: 1, unit_price: 5 },
+    { product_id: "p1", quantity: 2, price: 10 },
+    { product_id: "p2", quantity: 1, price: 5 },
   ]
   const produtosDb = [
     { id: "p1", nome: "Caneca", preco_venda: 25, peso_kg: 0.4, largura_cm: 10, altura_cm: 12, comprimento_cm: 14 },
