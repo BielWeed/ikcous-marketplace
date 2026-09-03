@@ -7,10 +7,9 @@ import {
   FreteNacionalBloco,
 } from "@/components/admin/shipping/FreteNacionalBloco";
 import {
-  FreteResumoHero,
-  type StatusDoHeroFrete,
-} from "@/components/admin/shipping/FreteResumoHero";
-import { Skeleton } from "@/components/ui/skeleton";
+  FreteResumoFaixa,
+  type StatusDaFaixaFrete,
+} from "@/components/admin/shipping/FreteResumoFaixa";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
@@ -32,25 +31,37 @@ interface AdminShippingViewProps {
 }
 
 /**
- * Tela "Frete" do painel — redesign COMPLETO da frente frete-v2-0309
- * (03/09/2026, ordem do dono ao vivo: o ok visual do PR #414 foi REPROVADO —
- * "o visual não mudou nada" — e a "taxa de entrega fixa" foi aposentada:
- * "parece opção duplicada").
+ * Tela "Frete" do painel — direção D, aprovada pelo dono em 03/09/2026
+ * depois de 3 rodadas de iteração visual (a rodada anterior ele reprovou:
+ * "o visual não mudou nada"). O desenho:
  *
- * COMPOSIÇÃO NOVA (a antiga era uma lista de cards; esta é um painel com
- * índice): um HERO que responde "como a entrega funciona hoje?" derivando o
- * estado REAL do config salvo, seguido de 3 blocos grandes com identidade
- * própria — Frete local (âmbar), Frete nacional (azul), Frete grátis
- * (esmeralda, presets em cards de radio). O card de taxa fixa NÃO existe
- * mais: fora da cidade, o preço é só o da cotação real da transportadora
- * (o campo `shippingFee` fica órfão no banco de propósito — e é por isso
- * que o save daqui deixa de enviá-lo).
+ * - FAIXA-RESUMO entre duas hairlines com gradiente verde sutil no topo
+ *   (desktop: 3 colunas; celular: 3 linhas compactas rótulo+valor, notas
+ *   ocultas, 16px de respiro horizontal). Derivada do config SALVO — quem
+ *   veio conferir vê a realidade; o pendente tem a barra de salvar.
+ * - SEÇÕES COMO LINHAS FINAS, sem caixa/card nenhum: cabeçalho uppercase
+ *   espaçado com o estado à direita, linhas nome+dica à esquerda e comando
+ *   à direita, separadas por hairline (`primitivas-direcao-d.tsx`).
+ * - CHAVES SÓ ONDE HÁ ESTADO REAL: "Só entregar na cidade" grava
+ *   `shippingCoverage` (role="switch"); "Cotação na hora" é EXIBIÇÃO da
+ *   credencial da transportadora — esta tela só lê credencial (divisão de
+ *   território com Ajustes), então sem campo gravável não há chave
+ *   clicável: o comando de verdade, desconectado, é o CTA para Ajustes.
+ * - BARRA DE SALVAR FIXA no rodapé, que só existe com alteração pendente:
+ *   bolinha âmbar + "Alterações não salvas" à esquerda, botão verde
+ *   "Salvar alterações" à direita. Sem "Descartar" — o fluxo não existe
+ *   hoje e não foi inventado. O save do topo da rodada anterior saiu junto.
  *
- * DIVISÃO DE TERRITÓRIO (herdada da frente anterior, segue valendo):
- * esta tela é a dona das REGRAS (presets de grátis, CEP de origem,
- * cobertura, entrega local). Provedor, serviços e credenciais são da seção
- * de Transportadoras em Ajustes — daqui eles são apenas LEITURA (a conexão
- * mostrada vem da mesma tabela que Ajustes grava). Salvar aqui NÃO envia
+ * COMPOSIÇÃO DOS DADOS (intacta da rodada anterior): o card de taxa fixa
+ * NÃO existe — fora da cidade, o preço é só o da cotação real da
+ * transportadora (o campo `shippingFee` fica órfão no banco de propósito —
+ * e é por isso que o save daqui deixa de enviá-lo).
+ *
+ * DIVISÃO DE TERRITÓRIO (herdada, segue valendo): esta tela é a dona das
+ * REGRAS (presets de grátis, CEP de origem, cobertura, entrega local).
+ * Provedor, serviços e credenciais são da seção de Transportadoras em
+ * Ajustes — daqui eles são apenas LEITURA (a conexão mostrada vem da mesma
+ * tabela que Ajustes grava). Salvar aqui NÃO envia
  * `shippingProvider`/`enabledShippingMethods` — enviar de novo daqui
  * revertia a escolha salva por um valor velho de formulário.
  *
@@ -69,8 +80,8 @@ interface AdminShippingViewProps {
  *   novo de fora só passa se o formulário não estiver sujo — e a PRIMEIRA
  *   carga sempre passa (o formulário nasce "sujo" contra uma loja
  *   configurada; a guarda de uma condição só travaria a tela vazia);
- * - o hero descreve o config SALVO (a realidade), não o formulário
- *   pendente — o pendente ganha o selo "alterações não salvas".
+ * - a faixa-resumo descreve o config SALVO (a realidade), não o formulário
+ *   pendente — o pendente ganha a barra fixa "Alterações não salvas".
  */
 export const AdminShippingView = memo(function AdminShippingView({
   onNavigate,
@@ -99,8 +110,8 @@ export const AdminShippingView = memo(function AdminShippingView({
   });
 
   // Leitura da credencial de transportadora (mesma tabela que Ajustes
-  // grava) — só para dizer a VERDADE sobre a conexão no hero e no bloco
-  // nacional. Esta tela nunca grava credencial.
+  // grava) — só para dizer a VERDADE sobre a conexão na faixa e na seção
+  // "Fora da cidade". Esta tela nunca grava credencial.
   const [credsMapa, setCredsMapa] = useState<{ [key: string]: any }>({});
   const [credsErro, setCredsErro] = useState(false);
 
@@ -167,10 +178,10 @@ export const AdminShippingView = memo(function AdminShippingView({
   //
   // REVISÃO A5 (frete v2, 03/09): `provedorNome` é NULL quando o config não
   // nomeia transportadora (provedor `flat_fee` remanescente de loja antiga ou
-  // ausente). O nome define o ARTIGO da frase do bloco nacional — "conecte o
-  // Melhor Envio" existe; "conecte o uma transportadora", não. O estado
-  // `conectado` só ocorre com provedor nomeado + credencial, então o nome lá
-  // nunca é nulo.
+  // ausente). O nome define o ARTIGO da frase da seção "Fora da cidade" —
+  // "conecte o Melhor Envio" existe; "conecte o uma transportadora", não. O
+  // estado `conectado` só ocorre com provedor nomeado + credencial, então o
+  // nome lá nunca é nulo.
   const conexao = useMemo(() => {
     const provedorSalvo = config?.shippingProvider || "flat_fee";
     const nome =
@@ -192,11 +203,11 @@ export const AdminShippingView = memo(function AdminShippingView({
     return { estado, provedorNome: nome };
   }, [config?.shippingProvider, credsMapa, credsErro]);
 
-  // ── O hero descreve o que está SALVO (a realidade da loja hoje) ──────────
+  // ── A faixa-resumo descreve o que está SALVO (a realidade da loja hoje) ──
   // Frases derivadas do config, nunca do formulário pendente: quem abriu a
-  // tela para CONFERIR precisa ver o que está valendo; quem veio mexer vê o
-  // selo de "alterações não salvas" por cima.
-  const statusDoHero = useMemo(() => {
+  // tela para CONFERIR precisa ver o que está valendo; quem veio mexer vê a
+  // barra "Alterações não salvas" por cima (rodapé).
+  const statusDaFaixa = useMemo(() => {
     const minSalvo = Number(config?.freeShippingMin ?? 0);
     const presetSalvo = presetDoConfig(minSalvo);
     const localFee = Number(config?.localDeliveryFee ?? 10);
@@ -205,17 +216,15 @@ export const AdminShippingView = memo(function AdminShippingView({
     const ondeCidade =
       cidade && uf ? `${cidade}/${uf}` : cidade ? cidade : "sua cidade";
 
-    const local: StatusDoHeroFrete = !config?.originCep
+    const local: StatusDaFaixaFrete = !config?.originCep
       ? {
-          id: "bloco-frete-local",
-          rotulo: "Frete local",
+          rotulo: "Na sua cidade",
           valor: "Parado — falta o CEP da loja",
           detalhe: "Configure abaixo para abrir as vendas",
           tom: "atencao",
         }
       : {
-          id: "bloco-frete-local",
-          rotulo: "Frete local",
+          rotulo: "Na sua cidade",
           valor:
             localFee > 0
               ? `R$ ${reais(localFee)} por entrega`
@@ -224,43 +233,38 @@ export const AdminShippingView = memo(function AdminShippingView({
           tom: "positivo",
         };
 
-    const nacional: StatusDoHeroFrete =
+    const nacional: StatusDaFaixaFrete =
       (config?.shippingCoverage || "national") === "local"
         ? {
-            id: "bloco-frete-nacional",
-            rotulo: "Frete nacional",
+            rotulo: "Fora da cidade",
             valor: "Só na sua cidade",
             detalhe: "fora dela, a loja não atende",
             tom: "neutro",
           }
         : conexao.estado === "conectado"
           ? {
-              id: "bloco-frete-nacional",
-              rotulo: "Frete nacional",
+              rotulo: "Fora da cidade",
               valor: `${conexao.provedorNome} conectado`,
               detalhe: "cotação real na hora",
               tom: "positivo",
             }
           : conexao.estado === "indeterminado"
             ? {
-                id: "bloco-frete-nacional",
-                rotulo: "Frete nacional",
+                rotulo: "Fora da cidade",
                 valor: "Conexão a confirmar",
                 detalhe: "confira a transportadora em Ajustes",
                 tom: "neutro",
               }
             : {
-                id: "bloco-frete-nacional",
-                rotulo: "Frete nacional",
+                rotulo: "Fora da cidade",
                 valor: "Sem transportadora",
                 detalhe: "por enquanto, só entrega na cidade",
                 tom: "atencao",
               };
 
-    const gratis: StatusDoHeroFrete =
+    const gratis: StatusDaFaixaFrete =
       presetSalvo === "acima_de_valor"
         ? {
-            id: "bloco-frete-gratis",
             rotulo: "Frete grátis",
             valor: `Acima de R$ ${reais(minSalvo)}`,
             detalhe: "a compra que passa do valor não paga entrega",
@@ -268,7 +272,6 @@ export const AdminShippingView = memo(function AdminShippingView({
           }
         : presetSalvo === "sempre"
           ? {
-              id: "bloco-frete-gratis",
               rotulo: "Frete grátis",
               valor: "Em toda a loja",
               detalhe: "todo pedido sai com entrega grátis",
@@ -276,14 +279,12 @@ export const AdminShippingView = memo(function AdminShippingView({
             }
           : presetSalvo === "por_produto"
             ? {
-                id: "bloco-frete-gratis",
                 rotulo: "Frete grátis",
                 valor: "Por produto marcado",
                 detalhe: "produtos marcados saem sem custo de entrega",
                 tom: "positivo",
               }
             : {
-                id: "bloco-frete-gratis",
                 rotulo: "Frete grátis",
                 valor: "Desligado",
                 detalhe: "nenhuma regra de grátis ativa",
@@ -293,7 +294,7 @@ export const AdminShippingView = memo(function AdminShippingView({
     return [local, nacional, gratis] as const;
   }, [config, conexao]);
 
-  // Dirty check to enable save button — estratégia de grátis explícita +
+  // Dirty check to enable save bar — estratégia de grátis explícita +
   // regras. Comparar a ESTRATÉGIA (via `presetDoConfig`, não só o número
   // derivado) é o que faz a troca entre presets contar como mudança na tela:
   // "Por produto marcado" grava a sentinela -1 (FRETE_GRATIS_POR_PRODUTO, o
@@ -370,16 +371,11 @@ export const AdminShippingView = memo(function AdminShippingView({
     }
   };
 
-  const irParaBloco = useCallback((id: string) => {
-    document
-      .getElementById(id)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
-
   return (
-    <div className="pb-admin min-h-screen bg-admin-bg pb-32 text-zinc-100 transition-colors duration-200 animate-in fade-in sm:pb-36 lg:pb-40">
+    <div className="min-h-screen bg-admin-bg pb-32 text-zinc-100 transition-colors duration-200 animate-in fade-in sm:pb-36 lg:pb-40">
       {/* Top Header Bar — fórmula "Elite Header" (herdada da onda visual
-          02/09): AdminPageHeader padronizado + barra sticky na view. */}
+          02/09): AdminPageHeader padronizado + barra sticky na view. O
+          Salvar mora na BARRA FIXA do rodapé (direção D) — não aqui. */}
       <div className="sticky top-0 z-30 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
           <AdminPageHeader titulo="Frete">
@@ -392,107 +388,130 @@ export const AdminShippingView = memo(function AdminShippingView({
               <HelpCircle className="size-4" />
             </button>
           </AdminPageHeader>
-
-          <button
-            type="button"
-            disabled={!isFormDirty || isSaving || isOffline}
-            onClick={handleSave}
-            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold px-4 py-2 text-xs font-bold text-black shadow-lg shadow-amber-500/20 transition-all hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-          >
-            {isSaving ? (
-              <RefreshCw className="size-3.5 animate-spin" />
-            ) : (
-              <Save className="size-3.5" />
-            )}
-            <span>Salvar</span>
-          </button>
         </div>
       </div>
 
-      <div className="mx-auto max-w-4xl px-3 py-4 sm:p-6">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
         {!isLoaded ? (
-          <div className="animate-pulse space-y-4" aria-busy="true">
-            <div className="h-40 rounded-3xl border border-white/10 bg-zinc-900/40" />
+          <div className="animate-pulse space-y-12" aria-busy="true">
+            {/* Esqueleto na gramática da direção D: faixa + linhas, sem
+                cards. */}
+            <div className="h-20 border-y border-white/10 bg-white/[0.02]" />
             {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-44 rounded-3xl border border-white/10 bg-zinc-900/40 p-4"
-              >
-                <Skeleton className="h-4 w-1/3 rounded-md bg-white/5" />
+              <div key={i} className="space-y-5">
+                <div className="h-3.5 w-44 rounded bg-white/5" />
+                <div className="h-12 border-b border-white/5" />
+                <div className="h-12 border-b border-white/5" />
               </div>
             ))}
           </div>
         ) : (
-          <div className="space-y-4 sm:space-y-5">
-            <FreteResumoHero
-              status={statusDoHero}
-              sujo={isFormDirty}
-              onIrParaBloco={irParaBloco}
-            />
-
-            <FreteLocalBloco
-              valor={formData.localDeliveryFee}
-              onValor={(valor) =>
-                setFormData((prev) => ({ ...prev, localDeliveryFee: valor }))
-              }
-              faixa={formData.localCepRange}
-              onFaixa={(faixa) =>
-                setFormData((prev) => ({ ...prev, localCepRange: faixa }))
-              }
-              cidade={config?.storeCity}
-              uf={config?.storeState}
-              desabilitado={isOffline}
-            />
-
-            <FreteNacionalBloco
-              originCep={formData.originCep}
-              onOriginCep={(originCep) =>
-                setFormData((prev) => ({ ...prev, originCep }))
-              }
-              coverage={formData.shippingCoverage}
-              onCoverage={(shippingCoverage) =>
-                setFormData((prev) => ({ ...prev, shippingCoverage }))
-              }
-              conexao={conexao}
-              onAbrirAjustes={
-                onNavigate ? () => onNavigate("admin-settings") : undefined
-              }
-              onTentarDeNovo={fetchCreds}
-              desabilitado={isOffline}
-            />
-
-            <FreteGratisBloco
-              preset={formData.preset}
-              acimaDe={formData.acimaDe}
-              onEscolher={(preset) => {
-                haptic.light();
-                setFormData((prev) => ({
-                  ...prev,
-                  preset,
-                  // Primeiro clique no "acima de" sem valor guardado: semente
-                  // R$ 100 (a mesma que a tela antiga usava ao ligar o
-                  // interruptor) — editável antes de salvar, nunca gravada
-                  // sem a pessoa ver.
-                  acimaDe:
-                    preset === "acima_de_valor" && prev.acimaDe === 0
-                      ? 100
-                      : prev.acimaDe,
-                }));
-              }}
-              onAcimaDe={(acimaDe) =>
-                setFormData((prev) => ({ ...prev, acimaDe }))
-              }
-              desabilitado={isOffline}
-            />
-
-            <p className="flex items-start gap-2 px-1 text-[10.5px] leading-snug text-zinc-600">
-              <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-              Nada aqui vale antes de Salvar. Mexeu? Confira o resumo lá em cima
-              e salve.
+          <>
+            <p className="text-[14.5px] text-zinc-500">
+              Como a entrega funciona hoje — e os comandos para mudar.
             </p>
-          </div>
+
+            <div className="mt-5">
+              <FreteResumoFaixa status={statusDaFaixa} />
+            </div>
+
+            <div className="mt-10 space-y-12 md:mt-14 md:space-y-14">
+              <FreteLocalBloco
+                valor={formData.localDeliveryFee}
+                onValor={(valor) =>
+                  setFormData((prev) => ({ ...prev, localDeliveryFee: valor }))
+                }
+                faixa={formData.localCepRange}
+                onFaixa={(faixa) =>
+                  setFormData((prev) => ({ ...prev, localCepRange: faixa }))
+                }
+                coverage={formData.shippingCoverage}
+                onCoverage={(shippingCoverage) =>
+                  setFormData((prev) => ({ ...prev, shippingCoverage }))
+                }
+                cidade={config?.storeCity}
+                uf={config?.storeState}
+                semOrigem={!config?.originCep}
+                desabilitado={isOffline}
+              />
+
+              <FreteNacionalBloco
+                originCep={formData.originCep}
+                onOriginCep={(originCep) =>
+                  setFormData((prev) => ({ ...prev, originCep }))
+                }
+                conexao={conexao}
+                onAbrirAjustes={
+                  onNavigate ? () => onNavigate("admin-settings") : undefined
+                }
+                onTentarDeNovo={fetchCreds}
+                desabilitado={isOffline}
+              />
+
+              <FreteGratisBloco
+                preset={formData.preset}
+                acimaDe={formData.acimaDe}
+                onEscolher={(preset) => {
+                  haptic.light();
+                  setFormData((prev) => ({
+                    ...prev,
+                    preset,
+                    // Primeiro clique no "acima de" sem valor guardado: semente
+                    // R$ 100 (a mesma que a tela antiga usava ao ligar o
+                    // interruptor) — editável antes de salvar, nunca gravada
+                    // sem a pessoa ver.
+                    acimaDe:
+                      preset === "acima_de_valor" && prev.acimaDe === 0
+                        ? 100
+                        : prev.acimaDe,
+                  }));
+                }}
+                onAcimaDe={(acimaDe) =>
+                  setFormData((prev) => ({ ...prev, acimaDe }))
+                }
+                desabilitado={isOffline}
+              />
+            </div>
+
+            <p className="mt-10 flex items-start gap-2 text-[11px] leading-snug text-zinc-600">
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+              Nada aqui vale antes de salvar. Mexeu? A barra do rodapé aparece
+              para você conferir e salvar.
+            </p>
+          </>
         )}
       </div>
+
+      {/* ── Barra de salvar FIXA (direção D) — só existe com mudança
+          pendente. Sem "Descartar": o fluxo de descartar não existe nesta
+          tela e não foi inventado. O fluxo de salvar é EXATAMENTE o de
+          sempre (offline → guarda → updateConfig → toasts). ── */}
+      {isLoaded && isFormDirty && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#09090b]/90 backdrop-blur-md duration-200 animate-in fade-in">
+          <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+            <p className="flex min-w-0 items-center gap-2.5 text-[13px] font-medium text-zinc-400">
+              <span
+                aria-hidden="true"
+                className="size-[7px] shrink-0 rounded-full bg-amber-400 shadow-[0_0_8px] shadow-amber-400/50"
+              />
+              <span className="truncate">Alterações não salvas</span>
+            </p>
+            <button
+              type="button"
+              disabled={isSaving || isOffline}
+              onClick={handleSave}
+              className="flex shrink-0 items-center gap-2 rounded-xl bg-admin-accent px-5 py-2.5 text-sm font-extrabold text-zinc-950 shadow-lg shadow-admin-accent/20 transition-all hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            >
+              {isSaving ? (
+                <RefreshCw className="size-4 animate-spin" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              {isSaving ? "Salvando…" : "Salvar alterações"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Ajuda da tela — quem procurava o token sai sabendo onde ele está;
           quem procurava a taxa fixa sai sabendo que ela se foi. */}
@@ -503,11 +522,12 @@ export const AdminShippingView = memo(function AdminShippingView({
       >
         <div className="space-y-4">
           <p className="text-xs leading-relaxed text-zinc-400">
-            A entrega da sua loja tem três partes, cada uma com o bloco dela na
-            tela: o <span className="font-bold text-zinc-200">frete local</span>{" "}
-            (você mesmo entrega na cidade), o{" "}
-            <span className="font-bold text-zinc-200">frete nacional</span>{" "}
-            (transportadora cotada na hora) e o{" "}
+            A entrega da sua loja tem três partes, cada uma com a seção dela
+            na tela: o{" "}
+            <span className="font-bold text-zinc-200">frete local</span> (você
+            mesmo entrega na cidade), o{" "}
+            <span className="font-bold text-zinc-200">frete nacional</span> (a
+            transportadora cotada na hora) e o{" "}
             <span className="font-bold text-zinc-200">frete grátis</span> (você
             escolhe UMA estratégia pronta e edita do seu jeito).
           </p>
@@ -536,7 +556,8 @@ export const AdminShippingView = memo(function AdminShippingView({
               <span className="font-bold text-zinc-200">
                 Ajustes &gt; Transportadoras
               </span>
-              . O botão do bloco azul leva direto para lá.
+              . O botão "Abrir Ajustes" da seção Fora da cidade leva direto
+              para lá.
             </p>
           </div>
           <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
@@ -547,7 +568,8 @@ export const AdminShippingView = memo(function AdminShippingView({
             <p className="text-xs leading-relaxed text-zinc-400">
               O CEP da loja é obrigatório: sem ele o app não consegue calcular
               frete nenhum e o cliente não finaliza a compra. Mexeu em algo
-              aqui? Clique em Salvar no topo — nada é aplicado antes disso.
+              aqui? Clique em "Salvar alterações" na barra que aparece no
+              rodapé — nada é aplicado antes disso.
             </p>
           </div>
         </div>
