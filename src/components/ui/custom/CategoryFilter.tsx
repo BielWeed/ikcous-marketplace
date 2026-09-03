@@ -27,7 +27,14 @@ export const CategoryFilter = memo(function CategoryFilter({
 
   if (isLoading) {
     return (
-      <div className="sticky top-[72px] z-40 border-b border-gray-100 bg-white">
+      // Laudo de acessibilidade 03/09, achado 12: o skeleton era silêncio
+      // para leitor de tela — role="status" + sr-only anunciam "Carregando
+      // categorias" sem mudar o visual (sr-only não renderiza).
+      <div
+        role="status"
+        className="sticky top-[72px] z-40 border-b border-gray-100 bg-white"
+      >
+        <span className="sr-only">Carregando categorias</span>
         <div className="scrollbar-hide flex gap-2 overflow-x-auto px-4 py-3">
           {[1, 2, 3, 4].map((i) => (
             <div

@@ -2120,7 +2120,14 @@ export function CheckoutView({
             </div>
             <div className="p-4">
               {addressesLoading ? (
-                <div className="flex min-h-[112px] flex-col items-center justify-center py-8">
+                // Laudo de acessibilidade 03/09, achado 12: o carregamento
+                // dos endereços era silêncio para leitor de tela —
+                // role="status" + sr-only anunciam sem mudar o visual.
+                <div
+                  role="status"
+                  className="flex min-h-[112px] flex-col items-center justify-center py-8"
+                >
+                  <span className="sr-only">Carregando endereços</span>
                   <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-primary" />
                   <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                     Sincronizando endereços...
@@ -2747,7 +2754,13 @@ export function CheckoutView({
                       // frete recusa, e sem este aviso o cliente só via um
                       // botão cinza sem saber que precisa voltar ao
                       // carrinho e calcular o frete.
-                      <p className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500">
+                      // Laudo de acessibilidade 03/09, achado 9: este aviso
+                      // RECUSA o pagamento — role="alert" fala na hora,
+                      // padrão da casa (SaidaDaRecusa.tsx:82).
+                      <p
+                        role="alert"
+                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                      >
                         <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                         {semFreteSelecionado &&
                         ctxFreteIndefinido &&
