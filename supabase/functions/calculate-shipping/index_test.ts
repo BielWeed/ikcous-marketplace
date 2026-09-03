@@ -648,12 +648,14 @@ Deno.test("gravação OK -> o log continua registrando sucesso (controle)", asyn
 //
 // Verificado no ramo de frete das DUAS RPCs que o checkout chama —
 // `create_marketplace_order_v23` e `create_marketplace_order_v24` (a v24 no
-// pagamento online; a escolha está em `useOrders.ts:1060`). A definição viva
-// das duas é `supabase/migrations/20260821000200_cupom_sem_limite_e_ilimitado.sql`,
-// v23 a partir de :138 e v24 a partir de :383, e os dois ramos são hoje
-// idênticos. Neles: `local-delivery` sai de `store_config.local_delivery_fee`
-// e `flat-fee-%` sai de `store_config.shipping_fee` — nenhum dos dois consulta
-// `shipping_quotes_cache`. Só a cotação de transportadora
+// pagamento online; a escolha está em `useOrders.ts:1060`). A definição das
+// duas é a `supabase/migrations/20261081000000_a_regra_do_frete_gratis_mora_
+// no_servidor.sql` (corpos verbatim da 20261040000000) e os dois ramos são
+// idênticos. EMENDA FRETE V2 (03/09, "entrega fixa não faz sentido existir"):
+// a ÚNICA opção resolvida sem cache é a ENTREGA LOCAL
+// (`store_config.local_delivery_fee`). `flat-fee-%`, pedido sem opção e id
+// não reconhecido viraram RAISE EXCEPTION no servidor — nunca mais
+// `COALESCE(shipping_fee, 0)`. Só a cotação de transportadora
 // (`melhor-envio-*`, `frenet-*`) cai no SELECT do cache e é recusada sem ele.
 //
 // Loja nacional com faixa local configurada devolve `local-delivery` JUNTO das
@@ -668,10 +670,13 @@ const CONFIG_COM_ENTREGA_LOCAL = {
 };
 
 Deno.test("precoResolvidoSemCache espelha, um a um, os ramos da RPC", () => {
-  // Resolvidos pela config, sem tocar em shipping_quotes_cache:
+  // Resolvida pela config, sem tocar em shipping_quotes_cache:
   assertEquals(precoResolvidoSemCache("local-delivery"), true);
-  assertEquals(precoResolvidoSemCache("flat-fee-contingency"), true);
-  assertEquals(precoResolvidoSemCache("flat-fee-standard"), true);
+  // EMENDA 03/09: `flat-fee-%` deixou de ser resolvido pela loja — a RPC o
+  // RECUSA com exception (era este classificador que o mantinha "vendável"
+  // numa resposta de falha de cache, para o pedido morrer no último clique).
+  assertEquals(precoResolvidoSemCache("flat-fee-contingency"), false);
+  assertEquals(precoResolvidoSemCache("flat-fee-standard"), false);
   // Precisam da linha gravada:
   assertEquals(precoResolvidoSemCache("melhor-envio-1"), false);
   assertEquals(precoResolvidoSemCache("frenet-04014"), false);

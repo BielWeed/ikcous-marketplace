@@ -24,10 +24,21 @@
 -- baseline são só de dimensões de produto).
 --
 -- 🔴 CORPOS VERBATIM da 20261040000000 (última que reescreveu as v23/v24 —
--- já carrega 20260960, 20261025, 20261038, 20261039 e 20261040): SÓ o bloco
--- do limiar mudou, nas duas funções, com a mesma indentação. Não redigir
--- corpo de memória — o CREATE OR REPLACE substitui TUDO e desfaz guardas de
--- dinheiro em silêncio (alerta do cabeçalho da 20260951).
+-- já carrega 20260960, 20261025, 20261038, 20261039 e 20261040): DOIS blocos
+-- mudaram, nas duas funções, com a mesma indentação (prova byte-a-byte em
+-- tests/migration_frete_v2_presets_no_servidor_test.ts):
+--   1. BLOCO DO LIMIAR — o switch dos presets (por_produto/sempre/
+--      acima_de_valor/desligado) no lugar da regra antiga.
+--   2. BLOCO DO FRETE — emenda 03/09 (ordem do dono "entrega fixa não faz
+--      sentido existir"): o ramo `flat-fee-%` que ACEITAVA o id e cobrava
+--      shipping_fee da loja virou FALHA FECHADA; pedido sem opção escolhida
+--      (IS NULL/'') virou FALHA FECHADA — nunca mais COALESCE(shipping_fee,
+--      0), que era preço inventado ou zero; e o ELSE final (id não
+--      reconhecido sem CEP para reconciliar) idem. Entrega local, cotações
+--      de transportadora, portão do convidado, reconciliação CEP×cotação,
+--      idempotência e snapshot de endereço: INTACTOS, byte a byte.
+-- Não redigir corpo de memória — o CREATE OR REPLACE substitui TUDO e desfaz
+-- guardas de dinheiro em silêncio (alerta do cabeçalho da 20260951).
 --
 -- 🔴 NÃO APLICADA NO BANCO — PENDÊNCIA DO DONO (registro em
 -- equipe/modo-agente/pendencias-do-dono.md). O PR desta frente mergeia só
@@ -307,15 +318,20 @@ BEGIN
     THEN
         v_shipping_validated := 0;
 
+    -- FRETE V2 EMENDA (03/09, ordem do dono "entrega fixa não faz sentido
+    -- existir"): pedido SEM opção de entrega escolhida NÃO NASCE — o
+    -- COALESCE(shipping_fee, 0) daqui cobrava preço inventado ou zero.
     ELSIF p_shipping_option_id IS NULL OR p_shipping_option_id = '' THEN
-        v_shipping_validated := COALESCE(v_store_config.shipping_fee, 0);
+        RAISE EXCEPTION 'Escolha uma opção de entrega antes de finalizar o pedido.'
+            USING DETAIL = 'Pedido sem opção de entrega: o servidor não inventa frete nem cobra taxa da loja.';
 
-    -- ATENÇÃO: a edge function RETORNA ANTES de gravar no cache quando o provider
-    -- é 'flat_fee' ou quando a entrega é local. Essas opções nunca aparecem em
-    -- shipping_quotes_cache, então precisam ser resolvidas direto pela config —
-    -- que é valor de servidor de qualquer forma, sem risco de manipulação.
+    -- FRETE V2 EMENDA (03/09): o id `flat-fee-%` deixou de ser escolha válida
+    -- — a taxa fixa morreu na edge (calculate-shipping) e aqui no servidor.
+    -- Recebê-lo é payload velho ou forjado: falha fechada, NUNCA o
+    -- shipping_fee da loja.
     ELSIF p_shipping_option_id LIKE 'flat-fee-%' THEN
-        v_shipping_validated := COALESCE(v_store_config.shipping_fee, 0);
+        RAISE EXCEPTION 'Opção de entrega inválida. Volte ao carrinho e escolha uma entrega válida.'
+            USING DETAIL = format('O id %s é de taxa fixa, que não existe mais; o servidor não cobra shipping_fee da loja.', p_shipping_option_id);
 
     ELSIF p_shipping_option_id = 'local-delivery' THEN
         v_dest_cep := regexp_replace(COALESCE(p_destination_cep, ''), '\D', '', 'g');
@@ -385,7 +401,12 @@ BEGIN
         END IF;
 
     ELSE
-        v_shipping_validated := COALESCE(v_store_config.shipping_fee, 0);
+        -- FRETE V2 EMENDA (03/09): id não reconhecido — não é entrega local,
+        -- não é cotação de transportadora, e sem CEP não há onde reconciliar.
+        -- Antes caía em COALESCE(shipping_fee, 0): preço inventado ou zero.
+        -- Falha fechada, como o resto do caminho do dinheiro.
+        RAISE EXCEPTION 'Opção de entrega não reconhecida. Volte ao carrinho, calcule o frete e finalize de novo.'
+            USING DETAIL = format('O id %s não é entrega local nem cotação gravada, e não há CEP de cotação para reconciliar.', p_shipping_option_id);
     END IF;
 
     -- 5. Coupon Validation
@@ -783,15 +804,20 @@ BEGIN
     THEN
         v_shipping_validated := 0;
 
+    -- FRETE V2 EMENDA (03/09, ordem do dono "entrega fixa não faz sentido
+    -- existir"): pedido SEM opção de entrega escolhida NÃO NASCE — o
+    -- COALESCE(shipping_fee, 0) daqui cobrava preço inventado ou zero.
     ELSIF p_shipping_option_id IS NULL OR p_shipping_option_id = '' THEN
-        v_shipping_validated := COALESCE(v_store_config.shipping_fee, 0);
+        RAISE EXCEPTION 'Escolha uma opção de entrega antes de finalizar o pedido.'
+            USING DETAIL = 'Pedido sem opção de entrega: o servidor não inventa frete nem cobra taxa da loja.';
 
-    -- ATENÇÃO: a edge function RETORNA ANTES de gravar no cache quando o provider
-    -- é 'flat_fee' ou quando a entrega é local. Essas opções nunca aparecem em
-    -- shipping_quotes_cache, então precisam ser resolvidas direto pela config —
-    -- que é valor de servidor de qualquer forma, sem risco de manipulação.
+    -- FRETE V2 EMENDA (03/09): o id `flat-fee-%` deixou de ser escolha válida
+    -- — a taxa fixa morreu na edge (calculate-shipping) e aqui no servidor.
+    -- Recebê-lo é payload velho ou forjado: falha fechada, NUNCA o
+    -- shipping_fee da loja.
     ELSIF p_shipping_option_id LIKE 'flat-fee-%' THEN
-        v_shipping_validated := COALESCE(v_store_config.shipping_fee, 0);
+        RAISE EXCEPTION 'Opção de entrega inválida. Volte ao carrinho e escolha uma entrega válida.'
+            USING DETAIL = format('O id %s é de taxa fixa, que não existe mais; o servidor não cobra shipping_fee da loja.', p_shipping_option_id);
 
     ELSIF p_shipping_option_id = 'local-delivery' THEN
         v_dest_cep := regexp_replace(COALESCE(p_destination_cep, ''), '\D', '', 'g');
@@ -861,7 +887,12 @@ BEGIN
         END IF;
 
     ELSE
-        v_shipping_validated := COALESCE(v_store_config.shipping_fee, 0);
+        -- FRETE V2 EMENDA (03/09): id não reconhecido — não é entrega local,
+        -- não é cotação de transportadora, e sem CEP não há onde reconciliar.
+        -- Antes caía em COALESCE(shipping_fee, 0): preço inventado ou zero.
+        -- Falha fechada, como o resto do caminho do dinheiro.
+        RAISE EXCEPTION 'Opção de entrega não reconhecida. Volte ao carrinho, calcule o frete e finalize de novo.'
+            USING DETAIL = format('O id %s não é entrega local nem cotação gravada, e não há CEP de cotação para reconciliar.', p_shipping_option_id);
     END IF;
 
     -- 5. Coupon Validation

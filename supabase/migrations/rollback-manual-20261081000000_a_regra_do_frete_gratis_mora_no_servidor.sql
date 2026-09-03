@@ -7,6 +7,14 @@
 -- incondicional + trava de login no limite) — o que o merge desta frente
 -- muda no front.
 --
+-- EMENDA 03/09 ("entrega fixa não faz sentido existir"): a migration emendada
+-- troca AGORA DOIS blocos (limiar dos presets + bloco do frete, onde o ramo
+-- `flat-fee-%` e os COALESCE(shipping_fee, 0) viraram falha fechada). Este
+-- rollback continua o MESMO: a viva verbatim é o anterior exato da migration
+-- emendada — reabre a taxa fixa no servidor junto com a regra antiga de
+-- grátis. Prova byte-a-byte no teste da migration (corpo do rollback == corpo
+-- executável da 20261040000000).
+--
 -- SEM BEGIN/COMMIT (regra da casa).
 DROP FUNCTION IF EXISTS public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text);
 DROP FUNCTION IF EXISTS public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text);

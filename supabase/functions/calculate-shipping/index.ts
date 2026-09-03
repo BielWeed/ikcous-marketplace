@@ -210,51 +210,49 @@ function mensagemDoErro(erro: unknown): string {
  * `create_marketplace_order_v24` no pagamento online e
  * `create_marketplace_order_v23` no resto. Um classificador só serve para as
  * duas porque os ramos de frete delas são hoje IDÊNTICOS — conferido linha a
- * linha na definição viva, `20260821000200_cupom_sem_limite_e_ilimitado.sql`
- * (v23 a partir de :138, v24 a partir de :383). Se uma `v25` chegar com ramo
- * diferente, nada aqui avisa: é preciso reconferir esta lista à mão.
+ * linha na `20261081000000_a_regra_do_frete_gratis_mora_no_servidor.sql`
+ * (corpos verbatim da `20261040000000_a_idempotencia_insere_a_chave.sql`
+ * com a emenda de 03/09). Se uma `v25` chegar com ramo diferente, nada aqui
+ * avisa: é preciso reconferir esta lista à mão.
  *
- * A cópia literal dos ramos:
+ * A cópia literal dos ramos — EMENDA FRETE V2 (03/09, ordem do dono "entrega
+ * fixa não faz sentido existir"): os resquícios da taxa fixa que ACEITAVAM
+ * `flat-fee-%` cobrando `store_config.shipping_fee` e deixavam pedido sem
+ * opção cair em `COALESCE(shipping_fee, 0)` viraram FALHA FECHADA no
+ * servidor:
  *
- *   ELSIF p_shipping_option_id LIKE 'flat-fee-%'   -> store_config.shipping_fee
+ *   ELSIF p_shipping_option_id IS NULL/''          -> RAISE EXCEPTION (sem opção escolhida)
+ *   ELSIF p_shipping_option_id LIKE 'flat-fee-%'   -> RAISE EXCEPTION (taxa fixa morta)
  *   ELSIF p_shipping_option_id = 'local-delivery'  -> store_config.local_delivery_fee
  *   ELSIF p_destination_cep IS NOT NULL            -> SELECT em shipping_quotes_cache
+ *   ELSE (id não reconhecido, sem CEP p/ reconciliar) -> RAISE EXCEPTION
  *
- * Ou seja: `melhor-envio-*` e `frenet-*` caem no SELECT do cache e são
- * recusadas sem a linha gravada; as duas de cima passam do mesmo jeito.
+ * Ou seja: a ÚNICA opção resolvida sem cache é a ENTREGA LOCAL.
+ * `melhor-envio-*` e `frenet-*` caem no SELECT do cache e são recusadas sem a
+ * linha gravada; `flat-fee-%` e "sem opção" não passam NENHUMA — o servidor
+ * recusa com mensagem clara pedindo entrega válida, nunca cobra preço
+ * inventado ou zero.
  *
  * ⚠️ A cópia é literal sobre QUAL ramo a RPC toma, não sobre QUANTO ela
- * cobra: casar o ramo NÃO BASTA, porque o preço que vai valer é o da
- * `store_config` (`COALESCE(shipping_fee, 0)` / `local_delivery_fee`). Opção
- * cujo preço é CALCULADO não pode entrar neste classificador nem que o id
- * case com o prefixo — é o caso de `flat-fee-contingency`, que sai de
- * `calculateSmartFallback` e só é inofensiva hoje porque nasce no ramo em que
- * a gravação nem chega a ser tentada; movida para o `else`, ela faria a
- * cliente ver um preço que a RPC não vai honrar — e o pedido nem chega a
- * fechar pelo da `store_config`, porque as duas RPCs comparam o total que o
- * carrinho mandou com o que elas mesmas recalculam e RECUSAM a divergência
- * acima de cinco centavos (`ABS(v_calculated_total - p_total_amount) > 0.05`
- * -> `RAISE EXCEPTION`, v23 em :212 e v24 em :457 de
- * `20260821000200_cupom_sem_limite_e_ilimitado.sql`). O prejuízo, portanto,
- * não é sangria silenciosa do bolso da lojista: é venda perdida no último
- * clique, sem que nada apareça deste lado.
+ * cobra. Opção cujo preço é CALCULADO não pode entrar neste classificador:
+ * a cliente veria um preço que a RPC não honra — e as RPCs comparam o total
+ * do carrinho com o que elas mesmas recalculam e RECUSAM a divergência acima
+ * de cinco centavos (`ABS(v_calculated_total - p_total_amount) > 0.05` ->
+ * `RAISE EXCEPTION`). Venda perdida no último clique, sem nada aparecer
+ * deste lado. Errar para MENOS aqui (deixar de listar) só derruba a opção na
+ * falha de gravação — o lado seguro.
  *
  * Por isso a falha de gravação não pode derrubar a resposta inteira: ela só
  * pode derrubar o que a validação do pedido realmente recusaria.
  *
- * Casa por igualdade e por prefixo exatamente como o SQL (`=` e `LIKE
- * 'flat-fee-%'`). Qualquer id que não se encaixe nesses dois ramos conta como
- * "precisa do cache" — o lado seguro é recusar, nunca vender por um preço que
- * o banco vai rejeitar no último clique.
- *
  * FRETE V2 (03/09/2026): a edge NÃO PRODUZ mais ids `flat-fee-%` (o caminho
- * de taxa fixa saiu), mas o espelho continua listando os ramos — a RPC do
- * banco não mudou (sem migration nesta frente) e o classificador tem que
- * continuar refletindo ELA, não a edge.
+ * de taxa fixa saiu) e, com a emenda, a RPC os RECUSA em vez de cobrar a
+ * taxa da loja — mantê-los neste classificador seria deixá-los vivos numa
+ * resposta de falha de cache para o pedido morrer no último clique.
  */
 export function precoResolvidoSemCache(id: unknown): boolean {
     if (typeof id !== 'string') return false
-    return id === 'local-delivery' || id.startsWith('flat-fee-')
+    return id === 'local-delivery'
 }
 
 /**
