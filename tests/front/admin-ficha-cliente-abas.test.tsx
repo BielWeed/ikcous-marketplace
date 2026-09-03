@@ -14,8 +14,16 @@
 //     já consertaram uma vez cada);
 //   - carregando        -> skeleton, nenhum dos dois textos.
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { type Root, createRoot } from "react-dom/client";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import {
   type AvaliacaoDaFicha,
@@ -45,7 +53,11 @@ const perguntaProva: PerguntaDaFicha = {
   question: "Serve para roupas coloridas?",
   createdAt: "2026-08-28T10:00:00Z",
   respostas: [
-    { id: "a1", answer: "Serve sim, sem desbotar.", createdAt: "2026-08-29T10:00:00Z" },
+    {
+      id: "a1",
+      answer: "Serve sim, sem desbotar.",
+      createdAt: "2026-08-29T10:00:00Z",
+    },
   ],
 };
 
@@ -130,7 +142,10 @@ describe("VozClienteTab — os três estados com frases próprias", () => {
 
   it("erro tem frase PRÓPRIA — nunca a de lista vazia — e o botão tenta de novo", async () => {
     const tentarDeNovo = vi.fn();
-    await montar({ erro: "Não foi possível carregar o que este cliente escreveu.", onTentarDeNovo: tentarDeNovo });
+    await montar({
+      erro: "Não foi possível carregar o que este cliente escreveu.",
+      onTentarDeNovo: tentarDeNovo,
+    });
 
     const t = texto();
     expect(t).toMatch(/não conseguimos carregar o que este cliente escreveu/i);
@@ -200,7 +215,12 @@ vi.mock("@/lib/supabase", () => ({
             whatsapp: "34999999999",
           },
           orders: [
-            { id: "p1", status: "delivered", total: 80, created_at: "2026-08-01T12:00:00Z" },
+            {
+              id: "p1",
+              status: "delivered",
+              total: 80,
+              created_at: "2026-08-01T12:00:00Z",
+            },
           ],
           cart_items: [],
           addresses: [],
