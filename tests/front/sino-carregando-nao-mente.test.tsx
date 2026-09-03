@@ -91,7 +91,9 @@ describe("NotificationsView — carregando não é 'Tudo em ordem' (laudo #8)", 
     carregandoDaVez = true;
     const texto = await renderizar();
 
-    expect(hospedeiro.querySelector('[data-testid="sino-carregando"]')).not.toBeNull();
+    expect(
+      hospedeiro.querySelector('[data-testid="sino-carregando"]'),
+    ).not.toBeNull();
     expect(texto).not.toContain("Tudo em ordem");
     expect(texto).not.toContain("Sua caixa está limpa");
   });
@@ -101,7 +103,9 @@ describe("NotificationsView — carregando não é 'Tudo em ordem' (laudo #8)", 
     const texto = await renderizar();
 
     expect(texto).toContain("Tudo em ordem");
-    expect(hospedeiro.querySelector('[data-testid="sino-carregando"]')).toBeNull();
+    expect(
+      hospedeiro.querySelector('[data-testid="sino-carregando"]'),
+    ).toBeNull();
   });
 
   it("carregando mas com avisos já em mãos: mostra os avisos, sem skeleton", async () => {
@@ -110,6 +114,8 @@ describe("NotificationsView — carregando não é 'Tudo em ordem' (laudo #8)", 
     const texto = await renderizar();
 
     expect(texto).toContain("Aviso da loja");
-    expect(hospedeiro.querySelector('[data-testid="sino-carregando"]')).toBeNull();
+    expect(
+      hospedeiro.querySelector('[data-testid="sino-carregando"]'),
+    ).toBeNull();
   });
 });

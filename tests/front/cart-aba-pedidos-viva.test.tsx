@@ -232,9 +232,7 @@ describe("CartView — a aba Meus Pedidos reflete o estado VIVO do hook (laudo #
     });
 
     // A aba VIU a mudança: o pedido saiu de "Em Andamento" para "Histórico".
-    expect(
-      hospedeiro.querySelector('[data-testid="pedido-ped-1"]'),
-    ).toBeNull();
+    expect(hospedeiro.querySelector('[data-testid="pedido-ped-1"]')).toBeNull();
     expect(contadores()).toContain("Em Andamento (0)");
     expect(contadores()).toContain("Histórico (1)");
 

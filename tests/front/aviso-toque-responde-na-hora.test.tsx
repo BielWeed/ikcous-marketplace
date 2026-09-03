@@ -57,9 +57,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 describe("NotificationsView — o toque no aviso responde na hora (laudo #9)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
-  let onNavigate: ReturnType<
-    typeof vi.fn<(view: any, id?: string) => void>
-  >;
+  let onNavigate: ReturnType<typeof vi.fn<(view: any, id?: string) => void>>;
 
   beforeEach(() => {
     notificacoesDaVez = [notificacaoNaoLida];
