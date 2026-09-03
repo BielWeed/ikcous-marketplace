@@ -1,21 +1,25 @@
 // @vitest-environment jsdom
 //
-// Auditoria de 20/08/2026, achados 2 e 3 — a prova de que a TELA usa a regra,
-// e não só de que a regra existe.
+// A prova de que a TELA usa a regra — não só de que a regra existe.
 //
-// O companheiro deste arquivo (`admin-shipping-frases-da-regra.test.ts`) prova
-// a função pura. Sozinho ele não vale nada aqui: se alguém escrever a função
-// certinha e esquecer de ligá-la no markup, ele continua verde e a tela segue
-// mentindo. Este arquivo monta a tela de verdade e lê o texto renderizado.
+// HISTÓRICO: a suíte original (auditoria de 20/08) prendia as frases da taxa
+// fixa e o aviso de "entrega grátis para qualquer CEP" quando taxa e grátis
+// estavam em zero. Esse estado MORREU na frente frete-v2-0309 (03/09/2026,
+// ordem do dono: "entrega fixa não faz sentido existir") — o card de taxa
+// fixa saiu da tela, `shippingFee` não é mais enviado, e fora da cidade o
+// preço é SÓ o da cotação real da transportadora.
 //
-// O que a tela dizia antes, e não pode voltar a dizer:
-//   - "Frete grátis desativado. Todos os pedidos terão cobrança de entrega."
-//     com a taxa também em zero — quando na verdade o app cota R$ 0,00 para o
-//     Brasil inteiro.
-//   - "Sem taxa fixa configurada." para uma taxa que ESTÁ configurada, em zero,
-//     e que é usada.
-//   - "Frete grátis ativo para pedidos a partir de R$ X" sem dizer que a regra
-//     exige o cliente autenticado.
+// O que esta suíte prende AGORA, mesma lei de antes (a tela não promete
+// cobrança que o app não faz, nem esconde cobrança que faz):
+//   - sem preset de grátis, a tela NÃO diz que "todo pedido terá cobrança
+//     de entrega" como desfecho garantido (fora da cidade sem transportadora
+//     o cliente nem consegue comprar — afirmar cobrança seria mentir duas
+//     vezes);
+//   - nenhuma frase de grátis exige mais "entrar na conta": a trava de
+//     login da regra antiga morreu junto (frente FRETE B — convidado
+//     também tem direito); se a frase voltar a mencionar conta, está
+//     descrevendo uma trava que não existe;
+//   - a consequência do preset escolhido aparece NA HORA, antes de salvar.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,9 +27,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { mockConfig } = vi.hoisted(() => ({
   mockConfig: {
     freeShippingMin: 100,
-    shippingFee: 10,
     shippingCoverage: "national" as "local" | "national",
-    shippingProvider: "flat_fee" as "flat_fee" | "melhor_envio" | "frenet",
+    shippingProvider: "melhor_envio" as "flat_fee" | "melhor_envio" | "frenet",
     originCep: "38500-000",
     enabledShippingMethods: ["sedex", "pac"] as string[],
     localDeliveryFee: 10,
@@ -68,9 +71,8 @@ describe("AdminShippingView — a tela não promete cobrança que o app não faz
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfig.freeShippingMin = 100;
-    mockConfig.shippingFee = 10;
     mockConfig.shippingCoverage = "national";
-    mockConfig.shippingProvider = "flat_fee";
+    mockConfig.shippingProvider = "melhor_envio";
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -94,104 +96,91 @@ describe("AdminShippingView — a tela não promete cobrança que o app não faz
     await act(async () => {
       await esperarMicrotarefas();
     });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
   }
 
   const texto = () => hospedeiro.textContent ?? "";
 
-  it("com as duas regras ligadas: diz o valor e avisa que exige entrar na conta", async () => {
+  it("com grátis por valor ativo: mostra o valor e NÃO exige mais 'entrar na conta' (a trava de login morreu)", async () => {
     await abrirTela();
 
     expect(texto()).toContain("R$ 100");
-    expect(texto()).toMatch(/entrou na conta|entrar na conta/i);
-    expect(texto()).toContain("R$ 10");
+    // A regra nova (FRETE B) vale para TODO cliente, inclusive convidado.
+    // Uma frase que condicionasse o grátis a login estaria descrevendo a
+    // trava antiga — o mesmo defeito de origem desta suíte, do outro lado.
+    expect(texto()).not.toMatch(/entr(ou|ar) na conta/i);
   });
 
-  it("com as duas desligadas: NÃO diz que todo pedido paga entrega", async () => {
+  it("com tudo desligado: NÃO diz que todo pedido paga entrega, e a taxa fixa morta não é citada", async () => {
     mockConfig.freeShippingMin = 0;
-    mockConfig.shippingFee = 0;
     await abrirTela();
 
-    // A frase exata que a auditoria pegou.
+    // A frase exata que a auditoria de 20/08 pegou — ela não volta nem
+    // disfarçada: sem preset e sem transportadora, fora da cidade o cliente
+    // não compra; afirmar "cobrança de entrega" para todo pedido seria a
+    // tela prometendo o que não acontece.
     expect(texto()).not.toMatch(/Todos os pedidos ter[aã]o cobran[çc]a/i);
-    // E a que descrevia uma taxa configurada como se estivesse faltando.
-    expect(texto()).not.toMatch(/Sem taxa fixa configurada/i);
+    // E a taxa aposentada não é citada como se existisse.
+    expect(texto()).not.toMatch(/taxa de entrega fixa|taxa fixa/i);
   });
 
-  it("com as duas desligadas: avisa que a loja vai entregar de graça para qualquer CEP", async () => {
+  it("escolher um preset mostra a consequência NA HORA (selo de não salvas), sem tocar em Salvar", async () => {
+    // O sucessor do teste do interruptor: quem desliga/liga o grátis precisa
+    // ver a consequência ANTES de salvar. O hero continua descrevendo o
+    // config SALVO (a realidade) — por isso o selo de pendência é o que
+    // avisa, na hora, que há escolha nova não salva.
     mockConfig.freeShippingMin = 0;
-    mockConfig.shippingFee = 0;
     await abrirTela();
 
-    expect(texto()).toMatch(/qualquer CEP/i);
-    expect(texto()).toMatch(/Quem paga a entrega é a loja/i);
-  });
+    expect(texto()).not.toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
 
-  it("taxa em zero mas cobertura só local: o aviso NÃO aparece", async () => {
-    // A taxa fixa não governa o preço nesse estado — a edge function responde
-    // pela taxa local e retorna antes de olhar para ela. O aviso aqui seria a
-    // tela afirmando um efeito que não acontece, que é o defeito de origem.
-    mockConfig.freeShippingMin = 0;
-    mockConfig.shippingFee = 0;
-    mockConfig.shippingCoverage = "local";
-    await abrirTela();
-
-    expect(texto()).not.toMatch(/qualquer CEP/i);
-  });
-
-  it("taxa acima de zero: o aviso NÃO aparece", async () => {
-    mockConfig.freeShippingMin = 0;
-    mockConfig.shippingFee = 10;
-    await abrirTela();
-
-    expect(texto()).not.toMatch(/qualquer CEP/i);
-    expect(texto()).not.toMatch(/Todos os pedidos ter[aã]o cobran[çc]a/i);
-  });
-
-  it("taxa em zero com transportadora salva (melhor_envio): o aviso NÃO aparece, e o resumo cita a transportadora SALVA", async () => {
-    // Achado D1 da revisão adversária (frente glm-visual-admin-0209): com a
-    // mudança de casa das transportadoras, o provedor que alimenta o aviso
-    // passou a ser o SALVO (`config.shippingProvider`) — era o do formulário.
-    // Todos os cenários anteriores usam flat_fee, então uma regressão que
-    // cravasse "flat_fee" no código passaria batida por esta suíte inteira.
-    // Este cenário prende a LIGAÇÃO: com melhor_envio salvo, a taxa fixa não
-    // governa o preço nacional (a cotação governa) e o aviso de entrega
-    // gratuita seria a tela afirmando um efeito que não acontece.
-    mockConfig.freeShippingMin = 0;
-    mockConfig.shippingFee = 0;
-    mockConfig.shippingCoverage = "national";
-    mockConfig.shippingProvider = "melhor_envio";
-    await abrirTela();
-
-    expect(texto()).not.toMatch(/qualquer CEP/i);
-    expect(texto()).not.toMatch(/Quem paga a entrega é a loja/i);
-    // O resumo do frete nacional nomeia a transportadora salva — se esta
-    // linha quebra, o provedor deixou de ser lido do config.
-    expect(texto()).toMatch(/Melhor Envio/i);
-  });
-
-  it("o texto acompanha o interruptor antes de salvar, não o que está no banco", async () => {
-    // Quem desliga a taxa precisa ver a consequência ANTES de tocar em Salvar.
-    // Se as frases lessem o config salvo em vez do formulário, a tela só
-    // contaria a verdade depois do estrago.
-    mockConfig.freeShippingMin = 0;
-    mockConfig.shippingFee = 10;
-    await abrirTela();
-
-    expect(texto()).not.toMatch(/qualquer CEP/i);
-
-    const interruptorDaTaxa = hospedeiro.querySelector(
-      "#shipping-fee-switch",
-    ) as HTMLButtonElement;
-    expect(interruptorDaTaxa).toBeTruthy();
-
+    const sempre = [...hospedeiro.querySelectorAll('[role="radio"]')].find(
+      (r) => /Sempre grátis/.test(r.textContent || ""),
+    );
+    expect(sempre).toBeDefined();
     await act(async () => {
-      interruptorDaTaxa.click();
+      (sempre as HTMLElement).click();
     });
     await act(async () => {
       await esperarMicrotarefas();
     });
 
-    // Desligou a taxa: o aviso tem de aparecer na hora, sem salvar nada.
-    expect(texto()).toMatch(/qualquer CEP/i);
+    expect(
+      hospedeiro
+        .querySelector('[role="radio"][aria-checked="true"]')
+        ?.textContent,
+    ).toMatch(/Sempre grátis/);
+    expect(texto()).toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
+  });
+
+  it("o hero descreve o config SALVO, não a escolha pendente — e o selo marca a diferença", async () => {
+    // Se o hero lesse o formulário, a tela contaria uma realidade que ainda
+    // não existe (o lojista pode desistir de salvar). O pendente tem selo.
+    mockConfig.freeShippingMin = 100;
+    await abrirTela();
+
+    const hero = () =>
+      hospedeiro.querySelector(
+        '[aria-label="Como a entrega funciona hoje"]',
+      )?.textContent ?? "";
+    expect(hero()).toContain("Acima de R$ 100");
+
+    const sempre = [...hospedeiro.querySelectorAll('[role="radio"]')].find(
+      (r) => /Sempre grátis/.test(r.textContent || ""),
+    ) as HTMLElement;
+    await act(async () => {
+      sempre.click();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    // Realidade salva, não a pendente:
+    expect(hero()).toContain("Acima de R$ 100");
+    expect(hero()).not.toContain("Em toda a loja");
+    // …com o selo de que há diferença.
+    expect(texto()).toMatch(/altera[çc][õo]es n[ãa]o salvas/i);
   });
 });

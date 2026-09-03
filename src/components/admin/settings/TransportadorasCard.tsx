@@ -60,9 +60,13 @@ const OPCOES: ReadonlyArray<{
 }> = [
   {
     id: "flat_fee",
-    nome: "Taxa única fixa",
+    // TEXTOS ajustados pela frete-v2-0309 (frente A — permissão do dossiê:
+    // só texto, sem lógica nova): a taxa fixa foi aposentada na edge
+    // (calculate-shipping deixa de cotar por ela). Escolher esta opção
+    // agora significa, honestamente, "sem cotação de fora".
+    nome: "Sem cotação automática",
     descricao:
-      "Sem transportadora: quem compra em qualquer CEP do Brasil paga a taxa fixa que você definir na tela de Frete.",
+      "Sem transportadora: a loja entrega apenas na sua cidade. Para vender para todo o Brasil, conecte uma transportadora.",
     detalhe: "Não precisa de conta em transportadora",
   },
   {
@@ -313,7 +317,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         description: credsPuladas
           ? "A escolha foi salva. As chaves de acesso NÃO foram salvas (falha na leitura)."
           : provider === "flat_fee"
-            ? "O cálculo pela taxa fixa está salvo."
+            ? "Preferência salva: sem cotação automática."
             : "A escolha e as chaves de acesso foram salvas.",
       });
     } catch (err) {
@@ -332,9 +336,10 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       <div className="admin-glass border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
         <div className="flex flex-col gap-3">
           <p className="text-left text-[9.5px] leading-snug text-zinc-400">
-            Escolha como o frete é calculado fora da sua cidade: pela taxa fixa
-            que você define na tela de Frete, ou cotado na hora por uma
-            transportadora. Quem compra vê o resultado no fechamento do pedido.
+            Escolha como o frete é calculado fora da sua cidade: cotado na
+            hora por uma transportadora, ou sem cotação automática (a loja
+            entrega apenas na sua cidade). Quem compra vê o resultado no
+            fechamento do pedido.
           </p>
 
           {/* Escolha da transportadora — cartões selecionáveis, um por
