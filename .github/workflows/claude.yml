@@ -46,3 +46,6 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Modelo do lado Claude escolhido pelo dono (02/09): Fable 5.1,
+          # topo do plano Max (confirmado no seletor do claude.ai/code).
+          model: fable-5.1
