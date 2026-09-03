@@ -41,19 +41,21 @@ function fonte(caminho: string): string {
 const CHECKOUT = "/src/views/customer/CheckoutView.tsx";
 const HOME = "/src/views/customer/HomeView.tsx";
 const COUPON_INPUT = "/src/components/ui/custom/CouponInput.tsx";
+const PRODUCT_LIST = "/src/components/ui/custom/ProductList.tsx";
 const PRODUCT_CARD_SKELETON =
   "/src/components/ui/custom/ProductCardSkeleton.tsx";
 const CATEGORY_FILTER = "/src/components/ui/custom/CategoryFilter.tsx";
 
-describe("o glob casou os 5 arquivos da onda 2 (nada de prova vazia)", () => {
+describe("o glob casou os 6 arquivos da onda 2 (nada de prova vazia)", () => {
   const esperados = [
     CHECKOUT,
     HOME,
     COUPON_INPUT,
+    PRODUCT_LIST,
     PRODUCT_CARD_SKELETON,
     CATEGORY_FILTER,
   ];
-  it("os 5 fontes existem no glob", () => {
+  it("os 6 fontes existem no glob", () => {
     for (const caminho of esperados) {
       expect(FONTES, `falta o fonte de ${caminho}`).toHaveProperty(caminho);
     }
@@ -88,12 +90,26 @@ describe("achado 9 — recusas anunciadas: cupom e frete pendente", () => {
 });
 
 describe("achado 12 — carregando em silêncio: skeletons viram status", () => {
-  it("skeleton do card da vitrine anuncia Carregando produtos", () => {
-    const src = fonte(PRODUCT_CARD_SKELETON);
-    expect(src).toMatch(/<div\s+role="status"/);
+  it("o grid de skeletons da vitrine é UMA região de status", () => {
+    const src = fonte(PRODUCT_LIST);
+    expect(src).toMatch(
+      /<div\s+role="status"\s+className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4"/,
+    );
     expect(src).toContain("Carregando produtos");
     expect(src).toContain('className="sr-only"');
-    // Classes originais do bloco inteiro preservadas.
+    // Classes originais do grid preservadas.
+    expect(src).toContain(
+      'className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4"',
+    );
+  });
+
+  it("o skeleton do card em si NÃO é região de status (ajuste do revisor: 8 cópias = 8 falas)", () => {
+    const src = fonte(PRODUCT_CARD_SKELETON);
+    // O componente nunca renderiza sozinho — a região única mora no
+    // ProductList. Aqui, NENHUM aria-live repetido.
+    expect(src).not.toMatch(/role="status"/);
+    expect(src).not.toContain("sr-only");
+    // E o arquivo voltou ao estado da base: classes byte-idênticas.
     expect(src).toContain(
       'className="flex h-full flex-1 flex-col gap-0.5 overflow-hidden rounded-[2rem] border border-zinc-200/60 bg-zinc-50/30 p-2.5"',
     );

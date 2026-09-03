@@ -2,14 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function ProductCardSkeleton() {
   return (
-    // Laudo de acessibilidade 03/09, achado 12: a prateleira era silêncio
-    // para leitor de tela — role="status" + sr-only anunciam "Carregando
-    // produtos" e nada muda de visual (sr-only não renderiza).
-    <div
-      role="status"
-      className="flex h-full flex-1 flex-col gap-0.5 overflow-hidden rounded-[2rem] border border-zinc-200/60 bg-zinc-50/30 p-2.5"
-    >
-      <span className="sr-only">Carregando produtos</span>
+    <div className="flex h-full flex-1 flex-col gap-0.5 overflow-hidden rounded-[2rem] border border-zinc-200/60 bg-zinc-50/30 p-2.5">
       {/* Image Skeleton */}
       <Skeleton className="mb-2 aspect-[4/5] w-full rounded-2xl" />
 
