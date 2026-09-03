@@ -34,6 +34,11 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+      # id-token: write — EXIGIDO pelo claude-code-action (busca token OIDC
+      # mesmo autenticando com OAuth; sem isso o run falha em ~26 s com
+      # "Unable to get ACTIONS_ID_TOKEN_REQUEST_URL"). Dá identidade, não
+      # poder de escrita. Medido em 02/09 (run 33700366317).
+      id-token: write
     steps:
       - uses: actions/checkout@v6
         with:
