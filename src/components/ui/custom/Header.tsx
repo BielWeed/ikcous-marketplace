@@ -349,7 +349,13 @@ export const Header = memo(function Header({
                     haptic.light();
                     onOpenNotifications?.();
                   }}
-                  aria-label="Notificações"
+                  // Laudo de acessibilidade 03/09, achado 5: o contador de
+                  // não lidas da bolinha era mudo para o leitor de tela.
+                  aria-label={
+                    unreadCount > 0
+                      ? `Notificações, ${unreadCount} não ${unreadCount === 1 ? "lida" : "lidas"}`
+                      : "Notificações"
+                  }
                   className="relative flex size-9 items-center justify-center rounded-full bg-zinc-50 transition-colors after:absolute after:-inset-1 after:content-[''] hover:bg-zinc-100 active:scale-90 xs:size-10"
                 >
                   <Bell className="size-4.5 text-zinc-700 xs:size-5" />
