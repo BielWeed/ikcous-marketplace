@@ -24,9 +24,14 @@ on:
 
 jobs:
   claude:
+    # "@claude-draft" CONTÉM o texto "@claude" — sem a exclusão abaixo, todo
+    # rascunho do robô irmão (claude-draft.yml) dispararia TAMBÉM este revisor
+    # (gasto dobrado, parecer duplicado: viola "um trabalho, um canal").
     if: >-
-      contains(github.event.comment.body, '@claude') ||
-      contains(github.event.issue.body, '@claude')
+      (contains(github.event.comment.body, '@claude') &&
+       !contains(github.event.comment.body, '@claude-draft')) ||
+      (contains(github.event.issue.body, '@claude') &&
+       !contains(github.event.issue.body, '@claude-draft'))
     runs-on: ubuntu-latest
     permissions:
       # contents: read — checkout do código para revisão. SEM write:
