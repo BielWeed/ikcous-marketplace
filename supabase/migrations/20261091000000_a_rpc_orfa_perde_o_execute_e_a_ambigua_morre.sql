@@ -60,11 +60,17 @@
 -- "does not exist"). Por isso o DROP leva IF EXISTS — re-executar mantém o
 -- mesmo estado final sem erro.
 --
+-- COMO APLICAR: só via `node scripts/db-apply.cjs` (uma transação por
+-- arquivo, com registro no ledger) ou `psql -1` — NUNCA statement a
+-- statement: sem envelope transacional, uma falha no meio deixa o pacote
+-- pela metade.
+--
 -- COMO PROVAR (padrão da casa — transação com ROLLBACK, nada gravado):
---   node scripts/db-prove-blindagem-rpcs-orfas.cjs
--- A prova simula o DEPOIS dentro da transação (os mesmos REVOKE/DROP + 
--- pré-condições re-verificadas ao vivo) e desfaz tudo; roda TANTO antes da
--- aplicação quanto depois (REVOKE vira no-op e as afirmativas provam o vivo).
+--   ANTES de aplicar:  node scripts/db-prove-blindagem-rpcs-orfas.cjs
+--      (lê ESTE arquivo do disco — sha256 impresso — e o executa numa tx
+--      desfeita no fim; pré-condições ao vivo antes de qualquer simulação)
+--   DEPOIS de aplicar: node scripts/db-prove-blindagem-rpcs-orfas.cjs --verificar
+--      (NÃO simula nada: A1-A4 medem o estado VIVO, fora de transação)
 --
 -- ROLLBACK: rollback-manual-20261091000000_*.sql versionado junto — inclui
 -- o CREATE fiel (pg_get_functiondef de 04/09) das duas funções dropadas.
@@ -129,3 +135,53 @@ REVOKE EXECUTE ON FUNCTION public.get_sales_analytics(start_date timestamp with 
 -- banco divergente do molde e deve parar em vermelho, não passar calado.
 REVOKE EXECUTE ON FUNCTION public.handle_order_item_stock() FROM anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.tr_prevent_role_change() FROM anon, authenticated;
+
+-- 5. Trava de estado final (C-2 do laudo 20260904-1053): mesmo desenho da
+-- migration irmã 20261090000000 — o bloco VIAJA COM O ARQUIVO e vale em
+-- db-apply, psql -1 e no clone de qualquer cliente, sem depender de prova
+-- externa. Varre o catálogo: nas 20 funções que este arquivo tira do
+-- alcance do app (v22 + as 19 órfãs, qualquer sobrecarga), anon e
+-- authenticated não podem mais ter EXECUTE; nas v23/v24 (vivas do
+-- checkout de convidado), anon e authenticated TÊM que ter e PUBLIC não.
+-- Valida o INSTANTE em que o arquivo roda (DO block executa uma vez); quem
+-- vigia daqui em diante são os repetíveis: a prova --verificar e o
+-- detector de objetos do CI (#139).
+DO $$ DECLARE sobrou record; BEGIN
+  FOR sobrou IN
+    SELECT p.proname, r.papel
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    CROSS JOIN unnest(ARRAY['anon', 'authenticated']) AS r(papel)
+    WHERE n.nspname = 'public'
+      AND p.proname IN (
+        'create_marketplace_order_v22',
+        'check_is_admin', 'check_user_confirmation_status', 'decrement_stock',
+        'get_active_products_internal', 'get_admin_dashboard_stats',
+        'get_admin_dashboard_summary', 'get_admin_executive_summary',
+        'get_admin_list_paginated', 'get_category_sales',
+        'get_customer_intelligence', 'get_inventory_health',
+        'get_product_optimization_data', 'get_product_stats',
+        'get_products_with_variants', 'validate_coupon_secure',
+        'get_retention_analytics', 'get_sales_analytics',
+        'handle_order_item_stock', 'tr_prevent_role_change'
+      )
+      AND has_function_privilege(r.papel, p.oid::regprocedure::text, 'EXECUTE')
+  LOOP
+    RAISE EXCEPTION 'blindagem 114 falhou: % ainda alcanca EXECUTE de % (qualquer sobrecarga conta)', sobrou.papel, sobrou.proname;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) g
+    WHERE n.nspname = 'public'
+      AND p.proname IN ('create_marketplace_order_v23', 'create_marketplace_order_v24')
+      AND g.privilege_type = 'EXECUTE' AND g.grantee = 0
+  ) THEN
+    RAISE EXCEPTION 'blindagem 114 falhou: PUBLIC ainda tem EXECUTE em v23/v24';
+  END IF;
+  IF NOT has_function_privilege('anon', 'public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', 'EXECUTE')
+     OR NOT has_function_privilege('anon', 'public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'blindagem 114 falhou: checkout de convidado quebrado — anon perdeu EXECUTE em v23/v24';
+  END IF;
+END $$;

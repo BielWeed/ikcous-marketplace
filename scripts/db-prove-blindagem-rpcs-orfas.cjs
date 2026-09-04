@@ -491,9 +491,18 @@ async function main() {
   }
   const statementsArquivo = separarStatements(sqlArquivo);
 
-  console.log(
-    `\n=== A0: fonte da simulação é o ARQUIVO da migration ===\n  ${path.basename(MIGRACAO_114)}\n  sha256=${hashArquivo.slice(0, 16)}… · commit=${commit} · ${statementsArquivo.length} statements`,
-  );
+  if (MODO_VERIFICAR) {
+    // C-1 do laudo 20260904-1053: neste modo NENHUM statement do arquivo
+    // roda — imprimir sha/contagem como se exercitasse seria a afirmativa
+    // que não testou nada. O que se confirma aqui é o RESULTADO vivo (A1-A4).
+    console.log(
+      `\n=== A0 (modo --verificar): NENHUM statement deste arquivo roda agora ===\n  ${path.basename(MIGRACAO_114)} · sha256=${hashArquivo.slice(0, 16)}… · commit=${commit}\n  (o sha identifica o que FOI aplicado; a conferência do resultado vem nas A1-A4)`,
+    );
+  } else {
+    console.log(
+      `\n=== A0: fonte da simulação é o ARQUIVO da migration ===\n  ${path.basename(MIGRACAO_114)}\n  sha256=${hashArquivo.slice(0, 16)}… · commit=${commit} · ${statementsArquivo.length} statements`,
+    );
+  }
   if (statementsArquivo.length === 0) {
     console.log(
       "\n[ERRO] zero statements lidos do .sql — parser ou arquivo errado.",
@@ -576,17 +585,43 @@ async function main() {
   async function publicTemExecute(nome, args) {
     // O MESMO coalesce da fotoExecute (laudo 20260904-1012, B-3): sem ele,
     // aclexplode(NULL) devolve zero linhas e "SEM PUBLIC" fica verde com a
-    // porta escancada num banco onde a função nasceu sem GRANT explícito
-    // (o default do Postgres PARA FUNÇÃO dá EXECUTE a PUBLIC).
+    // porta escancara num banco onde a função nasceu sem GRANT explícito.
+    // E a resolução é por CAST (ressalva 2 do laudo 20260904-1053): o filtro
+    // por identity-arguments ficava verde por vacuidade se a assinatura não
+    // casasse — `'public.f(tipos)'::regprocedure` LANÇA quando não resolve,
+    // então assinatura errada é ERRO, não verde.
+    const soTipos = args
+      .split(",")
+      .map((parte) => {
+        const palavras = parte.trim().split(/\s+/);
+        const tiposConhecidos = new Set([
+          "jsonb",
+          "numeric",
+          "text",
+          "uuid",
+          "integer",
+          "bigint",
+          "boolean",
+          "timestamp",
+          "timestamptz",
+          "date",
+          "json",
+          "real",
+          "double",
+          "interval",
+        ]);
+        return tiposConhecidos.has(palavras[0])
+          ? parte.trim()
+          : palavras.slice(1).join(" ");
+      })
+      .join(", ");
     const r = await client.query(
       `SELECT count(*)::int AS n
        FROM pg_proc p
-       JOIN pg_namespace n2 ON n2.oid = p.pronamespace
        CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) g(grantor, grantee, privilege_type, is_grantable)
-       WHERE n2.nspname='public' AND p.proname=$1
-         AND pg_get_function_identity_arguments(p.oid)=$2
+       WHERE p.oid = ('public.' || $1 || '(' || $2 || ')')::regprocedure
          AND g.privilege_type='EXECUTE' AND g.grantee = 0`,
-      [nome, args],
+      [nome, soTipos],
     );
     return { tem: r.rows[0].n > 0, n: r.rows[0].n };
   }
@@ -673,7 +708,7 @@ async function main() {
     const svcMantem = (await temExec(nome, args, "service_role")) === true;
     const pgMantem = (await temExec(nome, args, "postgres")) === true;
     afirmar(
-      `A3: ${nome}${argsParen} fora do alcance de anon e authenticated${tinhamNoAntes ? "" : " (no-op: já estava fechada — o REVOKE aqui não muda nada)"}`,
+      `A3: ${nome}${argsParen} fora do alcance de anon e authenticated${MODO_VERIFICAR ? "" : tinhamNoAntes ? "" : " (no-op: já estava fechada — o REVOKE aqui não muda nada)"}`,
       anonSem && authSem && svcMantem && pgMantem,
     );
   }
@@ -707,13 +742,24 @@ async function main() {
   // materializa o default com acldefault e a guarda abaixo exige chaves
   // para todo nome que existe no catálogo). v23/v24 entram na lista mesmo
   // sendo chamadas por ternário (o vão das funções do dinheiro).
-  const alvosA5 = [
-    ...new Set([
-      ...nomesChamados,
-      "create_marketplace_order_v23",
-      "create_marketplace_order_v24",
-    ]),
-  ];
+  // C-1 do laudo 20260904-1053: no modo --verificar a A5 NÃO RODA — sem a
+  // simulação, "antes" e "depois" são a MESMA fotografia do vivo e a
+  // afirmativa imprimiria um OK que não testou nada. Ela é declarada NÃO
+  // APLICÁVEL e não conta como afirmativa.
+  if (MODO_VERIFICAR) {
+    console.log(
+      "  [N/A  ] A5: NÃO APLICÁVEL no modo --verificar (não há baseline pré-aplicação para comparar; quem confere o vivo são A1-A4)",
+    );
+  }
+  const alvosA5 = MODO_VERIFICAR
+    ? []
+    : [
+        ...new Set([
+          ...nomesChamados,
+          "create_marketplace_order_v23",
+          "create_marketplace_order_v24",
+        ]),
+      ];
   const funcoesExistentes = new Set(
     (
       await client.query(
@@ -817,6 +863,40 @@ async function main() {
   for (const stmt of statementsArquivo) {
     await client.query(stmt);
   }
+
+  // Inversões da TRAVA DO $$ do arquivo (mesma disciplina da prova irmã
+  // 141): cada reconcessão TEM que explodir a trava — senão ela seria
+  // verdadeira por vacuidade. A trava é o ÚLTIMO statement do arquivo.
+  console.log(
+    "\n=== Inversões da trava DO $$ (o último statement do arquivo) ===",
+  );
+  const travaStmt = statementsArquivo[statementsArquivo.length - 1];
+  async function inversaoDaTrava(rotulo, reconcessao) {
+    await client.query("SAVEPOINT inversao");
+    await client.query(reconcessao);
+    let explodiu = false;
+    let msg = "";
+    try {
+      await client.query(travaStmt);
+    } catch (e) {
+      explodiu = true;
+      msg = e.message;
+    }
+    await client.query("ROLLBACK TO SAVEPOINT inversao");
+    afirmar(`A6 inversão: trava EXPLODE com ${rotulo}`, explodiu, msg);
+  }
+  await inversaoDaTrava(
+    "EXECUTE de volta a anon numa órfã (check_is_admin)",
+    "GRANT EXECUTE ON FUNCTION public.check_is_admin() TO anon",
+  );
+  await inversaoDaTrava(
+    "EXECUTE a PUBLIC na v23 (a porta que o bloco 2 fecha)",
+    "GRANT EXECUTE ON FUNCTION public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid) TO PUBLIC",
+  );
+  await inversaoDaTrava(
+    "anon PERDENDO a v23 (checkout de convidado — o sobrevivente legítimo)",
+    "REVOKE EXECUTE ON FUNCTION public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid) FROM anon",
+  );
 
   console.log("\n=== ROLLBACK — nada saiu gravado ===");
   await client.query("ROLLBACK");

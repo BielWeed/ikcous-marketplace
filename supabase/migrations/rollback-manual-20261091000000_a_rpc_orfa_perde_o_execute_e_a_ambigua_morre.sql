@@ -3,7 +3,8 @@
 -- ============================================================================
 -- ATENÇÃO: este rollback REABRE as portas que a migration fecha —
 -- create_marketplace_order_v22 volta ao alcance de anon/authenticated (a
--- versão que grava total NULL nas colunas novas), v23/v24 voltam a ter
+-- encaminhadora órfã que só delegava para a v23 — ver docs/auditoria/
+-- 2026-08-20-cliente-e-backend.md), v23/v24 voltam a ter
 -- EXECUTE para PUBLIC, e as duas sobrecargas ambíguas (300 Multiple Choices
 -- no PostgREST) renascem. Só executar se a migration causar dano comprovado,
 -- e reaplicar a migration assim que o dano for tratado.
