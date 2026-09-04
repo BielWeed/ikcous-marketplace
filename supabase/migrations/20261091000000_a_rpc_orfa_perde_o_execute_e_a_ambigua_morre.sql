@@ -9,8 +9,13 @@
 --
 --   * create_marketplace_order_v22 — o checkout JÁ migrou para v23/v24
 --     (src/hooks/useOrders.ts escolhe por ternário); a v22 segue com EXECUTE
---     para anon e authenticated. É a versão que grava total NULL nas colunas
---     novas (nasce zerada no painel sem erro nenhum).
+--     para anon e authenticated. A v22 só ENCAMINHA para a v23 (docs da casa:
+--     docs/auditoria/2026-08-20-cliente-e-backend.md — "inofensiva"): o risco
+--     dela não é errar, é ser uma porta de escrita de pedido que ninguém
+--     precisa ter aberta. (O "pedido zerado" da issue #114 é a v1, que o
+--     banco já blindou: EXECUTE só postgres/service_role.) NOTA para o dono:
+--     um bundle antigo em cache de service worker ainda pode chamá-la — a
+--     revogação é o fechamento por princípio; medir logs antes é opção.
 --   * create_marketplace_order_v23 e _v24 — as duas vivas do checkout têm
 --     EXECUTE para PUBLIC (grantee vazio no proacl, herdado do grant da
 --     criação). PUBLIC não precisa existir: os papéis reais (anon para o
@@ -91,9 +96,7 @@ REVOKE EXECUTE ON FUNCTION public.create_marketplace_order_v24(
 FROM PUBLIC;
 
 -- 3. Sobrecargas ambíguas: a irmã exata morre, fica uma de cada -------------
-DROP FUNCTION IF EXISTS public.get_sales_analytics(
-  timestamp without time zone, timestamp without time zone);
-
+DROP FUNCTION IF EXISTS public.get_sales_analytics(timestamp without time zone, timestamp without time zone);
 DROP FUNCTION IF EXISTS public.get_retention_analytics(integer);
 
 -- 4. Órfãs completas do mapa: fora do alcance do app -------------------------
@@ -118,7 +121,11 @@ REVOKE EXECUTE ON FUNCTION public.validate_coupon_secure(p_code text, p_subtotal
 -- fora do alcance do app até alguém precisar de verdade.
 REVOKE EXECUTE ON FUNCTION public.get_retention_analytics() FROM anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.get_sales_analytics(start_date timestamp with time zone, end_date timestamp with time zone) FROM anon, authenticated;
--- Trigger functions sem trigger: já estavam sem anon/authenticated; os REVOKE
--- abaixo são no-ops documentados — garantem o estado mesmo em base que divergiu.
+-- Trigger functions sem trigger: no MOLDE já estão sem anon/authenticated;
+-- o REVOKE nelas é no-op no molde (idempotência) — ATENÇÃO: REVOKE não tem
+-- IF EXISTS; numa base onde a função NÃO exista, o statement ERRA e o
+-- db-apply (que aplica o arquivo numa transação só) aborta a migration
+-- inteira sem aplicar nada — fail-closed deliberado: banco sem a função é
+-- banco divergente do molde e deve parar em vermelho, não passar calado.
 REVOKE EXECUTE ON FUNCTION public.handle_order_item_stock() FROM anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.tr_prevent_role_change() FROM anon, authenticated;

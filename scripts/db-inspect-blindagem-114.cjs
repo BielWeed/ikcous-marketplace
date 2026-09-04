@@ -9,9 +9,11 @@
  * POR QUE ESTE SCRIPT EXISTE:
  *   A issue #114 quer aposentar RPC órfã "com prova de que ninguém chama" —
  *   e avisa que o grep ingênuo de `.rpc(` SUBCONTA mais da metade das chamadas
- *   (template strings, indireção). Este script cobre as formas que existem no
- *   repo: .rpc('nome', .rpc("nome", /rpc/nome (URL do PostgREST) e
- *   'rpc/nome'. O cruzamento banco x código é o mapa de chamadores.
+ *   (template strings, indireção). Este script cobre as formas que EXISTEM
+ *   no repo hoje (medido 04/09): .rpc('nome', .rpc("nome" e .rpc(`nome`),
+ *   inclusive com a linha quebrada no meio, mais a rede de citação por
+ *   nome-string. URL /rpc/nome do PostgREST: ZERO ocorrências no repo
+ *   (medido) — se um dia existir, o padrão aqui cresce junto.
  *
  * O que ele imprime, por função do schema public:
  *   * assinatura (argumentos), retorno, owner, SECURITY DEFINER?, search_path;

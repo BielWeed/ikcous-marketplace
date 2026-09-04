@@ -326,7 +326,14 @@ async function main() {
       v24Depois.negado ? v24Depois.mensagem : "criado",
     );
 
-    console.log("\n=== 5. A v22 (encaminhador) continua executável ===");
+    console.log(
+      "\n=== 5. A v22 (encaminhador) está BARRADA para o app (migration 20261091000000) ===",
+    );
+    // Até 04/09/2026 esta afirmativa exigia que a v22 CONTINUASSE executável
+    // para authenticated. A migration 20261091000000 (issue #114) revogou o
+    // EXECUTE de anon/authenticated da v22 — órfã desde a v23, só encaminha
+    // — e esta prova virou a segunda confirmação INDEPENDENTE da blindagem:
+    // o esperado agora é "permission denied", nunca outro erro.
     const v22Depois = await tentar(
       client,
       `SELECT public.create_marketplace_order_v22(
@@ -337,9 +344,11 @@ async function main() {
       "create_marketplace_order_v22",
     );
     conferir(
-      "DEPOIS da migration, a v22 continua executável e cria pedido",
-      !v22Depois.negado,
-      v22Depois.negado ? v22Depois.mensagem : "criado",
+      "DEPOIS de 20261091000000, a v22 é barrada por PERMISSION DENIED para authenticated (e não por outro erro)",
+      v22Depois.negado && /permission denied/i.test(v22Depois.mensagem),
+      v22Depois.negado
+        ? v22Depois.mensagem
+        : "executou — a blindagem 20261091000000 não está aplicada",
     );
   } finally {
     await trocarPara(client, null).catch(() => {});

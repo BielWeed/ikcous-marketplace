@@ -62,7 +62,12 @@ function lerDatabaseUrl() {
   throw new Error("DATABASE_URL não encontrada.");
 }
 
-/** As 22 órfãs completas do mapa de 04/09 (db-inspect-blindagem-114.cjs). */
+/**
+ * As órfãs completas do mapa de 04/09 (db-inspect-blindagem-114.cjs).
+ * Conta para quem auditar (laudo 20260904-1012, ressalva 7): 19 NOMES aqui
+ * = 21 assinaturas (get_sales_analytics e get_retention_analytics têm duas
+ * cada) — somadas à v22 são as "22 funções órfãs" do mapa.
+ */
 const ORFAS = [
   "check_is_admin",
   "check_user_confirmation_status",
@@ -83,20 +88,6 @@ const ORFAS = [
   "handle_order_item_stock",
   "tr_prevent_role_change",
   "validate_coupon_secure",
-];
-
-/** As duas que a migration DROPA (por assinatura). */
-const DROPADAS = [
-  {
-    nome: "get_sales_analytics",
-    args: "start_date timestamp without time zone, end_date timestamp without time zone",
-    rotulo: "get_sales_analytics(timestamp,timestamp)",
-  },
-  {
-    nome: "get_retention_analytics",
-    args: "p_days integer",
-    rotulo: "get_retention_analytics(integer)",
-  },
 ];
 
 const V22 = {
@@ -124,7 +115,20 @@ function acharUsosNoCodigo() {
   // check_user_confirmation_status saiu — sem o strip, a P1 abortava com a
   // citação de um comentário histórico). Chamada real nunca mora em comentário.
   const stripComentarios = (t) =>
-    t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*(\/\/|#).*$/gm, "");
+    t
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => {
+        removidosPeloStrip.push(m);
+        return "";
+      })
+      .replace(/^\s*(\/\/|#).*$/gm, "");
+  // B-4 do laudo 20260904-1012: o strip de comentário NÃO pode alimentar a
+  // passada de CHAMADA — "image/*" de um <input accept> abre "/*" e come JSX
+  // vivo até um */ dezenas de linhas adiante (medido em 4 arquivos do repo).
+  // Chamada lê o BRUTO (código inteiro, linha certa); citação lê o STRIPPED
+  // (documentação de função morta não é uso — AuthContext.tsx:976); e se o
+  // que o strip removeu contiver .rpc(, o varredor PARA — o mapa que
+  // autoriza DROP não pode depender de sorte de layout de JSX.
+  const removidosPeloStrip = [];
   function registrar(mapa, nome, onde) {
     if (!mapa.has(nome)) mapa.set(nome, []);
     if (!mapa.get(nome).includes(onde)) mapa.get(nome).push(onde);
@@ -137,24 +141,36 @@ function acharUsosNoCodigo() {
         if (entrada.name === "node_modules" || entrada.name === ".git")
           continue;
         varrer(caminho);
-      } else if (exts.test(entrada.name)) {
+      } else if (
+        exts.test(entrada.name) &&
+        !/_test\.|\.test\./.test(entrada.name)
+      ) {
+        // Arquivos de TESTE fora: uso do app é src/ e functions/, não suíte
+        // (o webhook index_test.ts documenta um cliente falso com .rpc( em
+        // comentário — pego pelo guarda do strip, medido em 04/09).
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- idem
         const bruto = fs.readFileSync(caminho, "utf8");
+        removidosPeloStrip.length = 0;
         const conteudo = stripComentarios(bruto);
-        for (const [padrao, tipo] of [
-          // Aspas-simples/aspas-duplas/CRASE do template literal no MESMO
-          // conjunto de caracteres (laudo 20260904-0935: a crase faltava e o
-          // docstring prometia cobertura que não existia).
-          [/\.rpc\(\s*["'`]([^"'`]+)["'`]/g, "chamada"],
-          [/["'`]([a-z0-9_]{4,})["'`]/g, "citacao"],
+        if (removidosPeloStrip.some((t) => /\.rpc\s*\(/.test(t))) {
+          throw new Error(
+            `${path.relative(PROJECT_ROOT, caminho)}: bloco removido pelo strip contém .rpc( — strip inseguro aqui; revisar à mão`,
+          );
+        }
+        const linhaNo = (idx, texto) =>
+          texto.slice(0, idx).split(/\r?\n/).length;
+        for (const [padrao, tipo, texto] of [
+          // Aspas-simples/aspas-duplas/CRASE no MESMO conjunto (laudo
+          // 20260904-0935) — sobre o BRUTO.
+          [/\.rpc\(\s*["'`]([^"'`]+)["'`]/g, "chamada", bruto],
+          [/["'`]([a-z0-9_]{4,})["'`]/g, "citacao", conteudo],
         ]) {
           let m;
-          while ((m = padrao.exec(conteudo)) !== null) {
-            const linha = conteudo.slice(0, m.index).split(/\r?\n/).length;
+          while ((m = padrao.exec(texto)) !== null) {
             registrar(
               tipo === "chamada" ? chamadas : citacoes,
               m[1],
-              `${path.relative(PROJECT_ROOT, caminho)}:${linha}`,
+              `${path.relative(PROJECT_ROOT, caminho)}:${linhaNo(m.index, texto)}`,
             );
           }
         }
@@ -184,7 +200,10 @@ async function main() {
   console.log("=== PRÉ-CONDIÇÕES (o mapa de 04/09 ainda vale?) ===");
   const { chamadas, citacoes } = acharUsosNoCodigo();
   let preOk = true;
-  for (const nome of ORFAS) {
+  // A v22 entra na conferência de orfandade (laudo 20260904-1012, ressalva
+  // 6): ela é o único alvo com anon cuja orfandade a P1 não media.
+  const nomesOrfos = [...ORFAS, V22.nome];
+  for (const nome of nomesOrfos) {
     const c = chamadas.get(nome) ?? [];
     const t = citacoes.get(nome) ?? [];
     if (c.length > 0 || t.length > 0) {
@@ -197,7 +216,9 @@ async function main() {
   afirmar(
     "P1: nenhuma das órfãs é chamada ou citada no código",
     preOk,
-    preOk ? `${ORFAS.length} nomes conferidos` : "ver acima",
+    preOk
+      ? `${nomesOrfos.length} nomes conferidos (19 do mapa + a v22)`
+      : "ver acima",
   );
 
   // P2 falha FECHADA (laudo 20260904-0935, bloqueio 1): "não consegui ler"
@@ -350,59 +371,172 @@ async function main() {
     console.log(`  ${chave}: ${antes[chave].join(", ")}`);
   }
 
-  // ---------- SIMULAÇÃO (dentro de tx) -------------------------------------
-  console.log(
-    "\n=== Simulação do DEPOIS (REVOKE/DROP dentro de transação) ===",
+  // ---------- SIMULAÇÃO: o ARQUIVO .sql é a fonte (A0) ----------------------
+  // Laudo 20260904-1012, B-2: a prova não testemunhava sobre o .sql — os
+  // comandos eram digitados em JS e três mutações no arquivo passavam verde.
+  // Agora: os statements são LIDOS do disco, executados NA ORDEM, e a prova
+  // imprime SHA-256 + contagem (e cai se a contagem for zero). Nenhum
+  // comando de mudança é digitado neste .cjs.
+  const MODO_VERIFICAR = process.argv.includes("--verificar");
+  const crypto = require("node:crypto");
+  const { execSync } = require("node:child_process");
+  const MIGRACAO_114 = path.join(
+    PROJECT_ROOT,
+    "supabase/migrations/20261091000000_a_rpc_orfa_perde_o_execute_e_a_ambigua_morre.sql",
   );
-  await client.query("BEGIN");
-  // Limites da transação (laudo 20260904-0935, item 6): a tx segura
-  // AccessExclusiveLock sobre ~21 objetos por 10-20 s de round-trips. Os
-  // três timeouts abaixo são DO SERVIDOR — cobrem inclusive o processo
-  // hibernando ou a conexão caindo sem FIN (idle in transaction > 15 s é
-  // abortado pelo backend, soltando os locks em vez de pendurá-los por horas).
-  await client.query("SET LOCAL lock_timeout = '3s'");
-  await client.query("SET LOCAL statement_timeout = '30s'");
-  await client.query("SET LOCAL idle_in_transaction_session_timeout = '15s'");
-  await client.query(
-    `REVOKE EXECUTE ON FUNCTION public.create_marketplace_order_v22(${V22.args}) FROM anon, authenticated`,
-  );
-  await client.query(
-    `REVOKE EXECUTE ON FUNCTION public.create_marketplace_order_v23(${V23_24_ARGS}) FROM PUBLIC`,
-  );
-  await client.query(
-    `REVOKE EXECUTE ON FUNCTION public.create_marketplace_order_v24(${V23_24_ARGS}) FROM PUBLIC`,
-  );
-  for (const d of DROPADAS) {
-    await client.query(`DROP FUNCTION IF EXISTS public.${d.nome}(${d.args})`);
-  }
-  const revokes = [
-    "check_is_admin()",
-    "check_user_confirmation_status(p_email text)",
-    "decrement_stock(p_id uuid, quantity integer)",
-    "get_active_products_internal()",
-    "get_admin_dashboard_stats()",
-    "get_admin_dashboard_summary()",
-    "get_admin_executive_summary()",
-    "get_admin_list_paginated(p_table_name text, p_page_size integer, p_page_number integer, p_search_query text, p_filter_status text)",
-    "get_category_sales(start_date text, end_date text)",
-    "get_customer_intelligence()",
-    "get_inventory_health()",
-    "get_product_optimization_data()",
-    "get_product_stats()",
-    "get_products_with_variants()",
-    "validate_coupon_secure(p_code text, p_subtotal numeric)",
-    "get_retention_analytics()",
-    "get_sales_analytics(start_date timestamp with time zone, end_date timestamp with time zone)",
-    "handle_order_item_stock()",
-    "tr_prevent_role_change()",
-  ];
-  for (const fn of revokes) {
-    await client.query(
-      `REVOKE EXECUTE ON FUNCTION public.${fn} FROM anon, authenticated`,
-    );
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo versionado no repo
+  const sqlArquivo = fs.readFileSync(MIGRACAO_114, "utf8");
+  const hashArquivo = crypto
+    .createHash("sha256")
+    .update(sqlArquivo)
+    .digest("hex");
+  let commit = "(git indisponível)";
+  try {
+    commit = execSync("git rev-parse --short HEAD", { cwd: PROJECT_ROOT })
+      .toString()
+      .trim();
+  } catch {
+    /* sem git na máquina: o hash do arquivo segue valendo */
   }
 
-  const depois = await fotoExecute(TODOS);
+  /**
+   * Separador de statements: corta ";" no nível zero — fora de aspas
+   * simples, comentários (-- e bloco) e DOLLAR-QUOTING ($$...$$ e
+   * $tag$...$tag$ — o rollback-manual tem CREATE FUNCTION AS $function$...
+   * com ";" dentro do corpo; medido: sem isto o parser corta no meio).
+   */
+  function separarStatements(sql) {
+    const statements = [];
+    let atual = "";
+    let emAspas = false;
+    let emBloco = false;
+    let emLinha = false;
+    let emDollar = null; // guarda a tag de abertura ("$$" ou "$function$")
+    for (let i = 0; i < sql.length; i += 1) {
+      const ch = sql[i];
+      const prox = sql[i + 1];
+      if (emDollar !== null) {
+        // Dentro do dollar-quote: tudo é LITERAL (inclusive ;) até a tag
+        // de fechamento idêntica à de abertura.
+        if (sql.startsWith(emDollar, i)) {
+          atual += emDollar;
+          i += emDollar.length - 1;
+          emDollar = null;
+        } else {
+          atual += ch;
+        }
+        continue;
+      }
+      if (emLinha) {
+        if (ch === "\n") emLinha = false;
+        atual += ch;
+        continue;
+      }
+      if (emBloco) {
+        if (ch === "*" && prox === "/") {
+          emBloco = false;
+          atual += "*/";
+          i += 1;
+        } else atual += ch;
+        continue;
+      }
+      if (emAspas) {
+        atual += ch;
+        if (ch === "'") emAspas = false;
+        continue;
+      }
+      if (ch === "-" && prox === "-") {
+        emLinha = true;
+        atual += "--";
+        i += 1;
+        continue;
+      }
+      if (ch === "/" && prox === "*") {
+        emBloco = true;
+        atual += "/*";
+        i += 1;
+        continue;
+      }
+      if (ch === "'") {
+        emAspas = true;
+        atual += ch;
+        continue;
+      }
+      // dollar-quoting no nível zero: $$ ou $tag$
+      if (ch === "$") {
+        const m = /^\$[a-zA-Z_]*\$/.exec(sql.slice(i));
+        if (m) {
+          emDollar = m[0];
+          atual += m[0];
+          i += m[0].length - 1;
+          continue;
+        }
+      }
+      if (ch === ";") {
+        statements.push(atual);
+        atual = "";
+        continue;
+      }
+      atual += ch;
+    }
+    if (atual.trim()) statements.push(atual);
+    // Statement que só tem comentário/whitespace não é comando.
+    return statements.filter(
+      (s) =>
+        s
+          .replace(/\/\*[\s\S]*?\*\//g, "")
+          .replace(/--[^\n]*/g, "")
+          .trim().length > 0,
+    );
+  }
+  const statementsArquivo = separarStatements(sqlArquivo);
+
+  console.log(
+    `\n=== A0: fonte da simulação é o ARQUIVO da migration ===\n  ${path.basename(MIGRACAO_114)}\n  sha256=${hashArquivo.slice(0, 16)}… · commit=${commit} · ${statementsArquivo.length} statements`,
+  );
+  if (statementsArquivo.length === 0) {
+    console.log(
+      "\n[ERRO] zero statements lidos do .sql — parser ou arquivo errado.",
+    );
+    process.exit(1);
+  }
+
+  // Papel da conexão (laudo 20260904-1012, ressalva 8): as afirmativas
+  // "MANTÉM para postgres" medem acesso EFETIVO — e este postgres NÃO é
+  // superuser, mas É membro de service_role (medição abaixo), então elas
+  // têm dente: falhariam se service_role perdesse EXECUTE.
+  const papelCon = await client.query(
+    "SELECT current_user AS eu, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS super, (SELECT pg_has_role(current_user, 'service_role', 'MEMBER')) AS membro_svc",
+  );
+  console.log(
+    `  conexão: ${papelCon.rows[0].eu} (super=${papelCon.rows[0].super}, membro de service_role=${papelCon.rows[0].membro_svc})`,
+  );
+
+  let depois;
+  if (MODO_VERIFICAR) {
+    // R10: pular a simulação e medir o VIVO (pós-aplicação): as afirmativas
+    // A1-A4 abaixo rodam contra o banco real, sem tx.
+    console.log(
+      "\n=== Modo --verificar: SEM simulação — A1-A4 medem o estado VIVO ===",
+    );
+    depois = await fotoExecute(TODOS);
+  } else {
+    console.log(
+      "\n=== Simulação do DEPOIS: o ARQUIVO inteiro roda dentro de transação ===",
+    );
+    await client.query("BEGIN");
+    // Limites da transação (laudo 20260904-0935, item 6): a tx segura
+    // AccessExclusiveLock sobre ~21 objetos. Os três timeouts são DO
+    // SERVIDOR — cobrem hibernação e queda sem FIN (idle > 15 s é abortado
+    // pelo backend, soltando os locks).
+    await client.query("SET LOCAL lock_timeout = '3s'");
+    await client.query("SET LOCAL statement_timeout = '30s'");
+    await client.query("SET LOCAL idle_in_transaction_session_timeout = '15s'");
+    for (const stmt of statementsArquivo) {
+      await client.query(stmt);
+    }
+    depois = await fotoExecute(TODOS);
+  }
 
   async function temExec(nome, args, papel) {
     // has_function_privilege exige a assinatura SÓ COM TIPOS (sem nomes de
@@ -440,11 +574,15 @@ async function main() {
     return r.rows[0].tem;
   }
   async function publicTemExecute(nome, args) {
+    // O MESMO coalesce da fotoExecute (laudo 20260904-1012, B-3): sem ele,
+    // aclexplode(NULL) devolve zero linhas e "SEM PUBLIC" fica verde com a
+    // porta escancada num banco onde a função nasceu sem GRANT explícito
+    // (o default do Postgres PARA FUNÇÃO dá EXECUTE a PUBLIC).
     const r = await client.query(
       `SELECT count(*)::int AS n
        FROM pg_proc p
        JOIN pg_namespace n2 ON n2.oid = p.pronamespace
-       CROSS JOIN LATERAL aclexplode(p.proacl) g(grantor, grantee, privilege_type, is_grantable)
+       CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) g(grantor, grantee, privilege_type, is_grantable)
        WHERE n2.nspname='public' AND p.proname=$1
          AND pg_get_function_identity_arguments(p.oid)=$2
          AND g.privilege_type='EXECUTE' AND g.grantee = 0`,
@@ -606,14 +744,17 @@ async function main() {
     }
     for (const chave of chavesAntes) {
       comparadas += 1;
-      const depoisSet = (depois[chave] ?? []).slice().sort().join(",");
-      const antesSet = antes[chave].slice().sort().join(",");
-      // v23/v24 PERDEM PUBLIC de propósito (é a migration): a não-regressão
-      // delas é sobre os papéis que ficam (A2), não sobre PUBLIC.
-      const esperado =
-        chave.startsWith("create_marketplace_order_v2") &&
-        chave.endsWith("uuid)");
-      if (esperado) continue;
+      // A isenção que a migration justifica é do PAPEL PUBLIC, não da função
+      // (laudo 20260904-1012, ressalva 1): compara-se o conjunto com PUBLIC
+      // descontado — v23/v24 perdem PUBLIC de propósito, e qualquer OUTRA
+      // mudança nelas (ou numa v25 futura) continua sendo regressão.
+      const sem = (set) =>
+        (set ?? [])
+          .filter((p) => p !== "PUBLIC")
+          .sort()
+          .join(",");
+      const depoisSet = sem(depois[chave]);
+      const antesSet = sem(antes[chave]);
       if (antesSet !== depoisSet) {
         regressoes += 1;
         console.log(
@@ -623,11 +764,60 @@ async function main() {
     }
   }
   afirmar(
-    `A5: nenhuma RPC chamada pelo código (${alvosA5.length} nomes, ${comparadas} assinaturas comparadas — inclui v23/v24 do ternário) mudou de ACL`,
+    `A5: nenhuma RPC chamada pelo código (${alvosA5.length} nomes, ${comparadas} assinaturas comparadas — inclui v23/v24 do ternário) mudou de ACL (exceto PUBLIC onde a migration tira de propósito)`,
     regressoes === 0,
   );
 
-  // ---------- ROLLBACK ------------------------------------------------------
+  // ---------- ROLLBACK (só no modo simulação) --------------------------------
+  if (MODO_VERIFICAR) {
+    await client.end();
+    console.log(
+      `\n${falhas === 0 ? "TODAS AS AFIRMATIVAS PASSARAM (contra o estado VIVO)" : `${falhas} AFIRMATIVA(S) CAÍRAM`}`,
+    );
+    process.exit(falhas === 0 ? 0 : 1);
+  }
+  // R2 do laudo 20260904-1012: o ROLLBACK-MANUAL também é texto que ninguém
+  // exercitava — o db-prove-rollback da casa não cobre migration de puro
+  // REVOKE/DROP (detectarAlvos só enxerga CREATE FUNCTION/ALTER TABLE; ele
+  // próprio falha fechado com INSTRUMENTO_QUEBRADO, medido — dívida
+  // registrada no PR). Então a partida é aqui: o ARQUIVO de rollback roda
+  // em cima do estado simulado e tem que devolver a fotografia de entrada.
+  console.log(
+    "\n=== O ROLLBACK-MANUAL do disco roda na tx e restaura a entrada ===",
+  );
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo versionado no repo
+  const rollbackArquivo = fs.readFileSync(
+    path.join(
+      PROJECT_ROOT,
+      "supabase/migrations/rollback-manual-20261091000000_a_rpc_orfa_perde_o_execute_e_a_ambigua_morre.sql",
+    ),
+    "utf8",
+  );
+  for (const stmt of separarStatements(rollbackArquivo)) {
+    await client.query(stmt);
+  }
+  const aposRollbackArquivo = await fotoExecute(TODOS);
+  const chavesFoto = new Set([
+    ...Object.keys(antes),
+    ...Object.keys(aposRollbackArquivo),
+  ]);
+  const diverg = [];
+  for (const k of [...chavesFoto].sort()) {
+    const a = (antes[k] ?? []).sort().join(",");
+    const d = (aposRollbackArquivo[k] ?? []).sort().join(",");
+    if (a !== d) diverg.push(`${k}: antes={${a}} depois={${d}}`);
+  }
+  afirmar(
+    "P5: o ARQUIVO de rollback-manual executado devolve o ACL à fotografia de entrada (inclui os 2 CREATEs recriados)",
+    diverg.length === 0,
+    diverg.length === 0 ? "idêntico" : diverg.join(" | "),
+  );
+  // Re-executa a migration (fonte: o disco) para o ROLLBACK final fechar
+  // um estado consistente e a fotografia final medir o que espera.
+  for (const stmt of statementsArquivo) {
+    await client.query(stmt);
+  }
+
   console.log("\n=== ROLLBACK — nada saiu gravado ===");
   await client.query("ROLLBACK");
   const apos = await fotoExecute(TODOS);

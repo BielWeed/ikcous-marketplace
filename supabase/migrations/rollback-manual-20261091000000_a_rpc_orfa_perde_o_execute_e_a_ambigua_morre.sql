@@ -62,9 +62,13 @@ END;
 $function$;
 
 GRANT EXECUTE ON FUNCTION public.get_sales_analytics(timestamp without time zone, timestamp without time zone) TO authenticated, service_role;
--- Função recém-CREATE nasce com EXECUTE para PUBLIC (default do Postgres);
--- o estado pré-migration NÃO tinha PUBLIC — tira para ficar fiel.
+-- Função recém-CREATE nasce com EXECUTE para PUBLIC (default do Postgres) E
+-- para anon (ALTER DEFAULT PRIVILEGES vigente — a RAIZ medida na M5 de
+-- 04/09); o estado pré-migration NÃO tinha nenhum dos dois — tira.
 REVOKE EXECUTE ON FUNCTION public.get_sales_analytics(timestamp without time zone, timestamp without time zone) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.get_sales_analytics(timestamp without time zone, timestamp without time zone) FROM anon;
+-- R3: SECURITY DEFINER roda com o cracha do DONO — fixa o dono de volta.
+ALTER FUNCTION public.get_sales_analytics(timestamp without time zone, timestamp without time zone) OWNER TO postgres;
 
 CREATE OR REPLACE FUNCTION public.get_retention_analytics(p_days integer DEFAULT 90)
  RETURNS numeric
@@ -104,8 +108,12 @@ END;
 $function$;
 
 GRANT EXECUTE ON FUNCTION public.get_retention_analytics(integer) TO authenticated, service_role;
--- Idem: tirar o PUBLIC de nascimento do CREATE.
+-- Idem: PUBLIC e anon de nascimento (default do Postgres + default
+-- privileges vigente — ver nota do bloco acima).
 REVOKE EXECUTE ON FUNCTION public.get_retention_analytics(integer) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.get_retention_analytics(integer) FROM anon;
+-- Idem: dono fixado de volta.
+ALTER FUNCTION public.get_retention_analytics(integer) OWNER TO postgres;
 
 -- 4. Órfãs voltam ao estado medido ----------------------------------------------
 -- (ACL medido ao vivo função por função na revisão de 04/09 — cada linha
