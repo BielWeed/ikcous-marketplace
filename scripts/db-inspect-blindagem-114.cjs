@@ -138,7 +138,12 @@ async function main() {
     .query(`
     SELECT jobname, command FROM cron.job
   `)
-    .catch((e) => { console.warn("  [AVISO] cron.job ilegível — checagem de cron CEGA: " + e.message); return { rows: [] }; });
+    .catch((e) => {
+      console.warn(
+        `  [AVISO] cron.job ilegível — checagem de cron CEGA: ${e.message}`,
+      );
+      return { rows: [] };
+    });
   const views = await client.query(`
     SELECT viewname, definition FROM pg_views WHERE schemaname = 'public';
   `);
@@ -157,7 +162,10 @@ async function main() {
     JOIN pg_class c ON c.oid = i.indexrelid
     WHERE i.indexprs IS NOT NULL;
   `)
-    .catch((e) => { console.warn("  [AVISO] índices ilegíveis — checagem CEGA: " + e.message); return { rows: [] }; });
+    .catch((e) => {
+      console.warn(`  [AVISO] índices ilegíveis — checagem CEGA: ${e.message}`);
+      return { rows: [] };
+    });
   const corpos = await client.query(`
     SELECT p2.proname AS dona, p2.prosrc AS corpo
     FROM pg_proc p2

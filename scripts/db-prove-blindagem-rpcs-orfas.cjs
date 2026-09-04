@@ -211,7 +211,11 @@ async function main() {
       const r = await client.query(sql, params);
       return { rotulo, n: r.rows[0].n, nota: "" };
     } catch (e) {
-      return { rotulo, n: 1, nota: `ERRO ao medir (${e.message}) — vale FALHA` };
+      return {
+        rotulo,
+        n: 1,
+        nota: `ERRO ao medir (${e.message}) — vale FALHA`,
+      };
     }
   }
   const cronExiste = await client.query(
@@ -220,17 +224,17 @@ async function main() {
   const checagens = [
     await contar(
       "policies (TODOS os schemas)",
-      `SELECT count(*)::int AS n FROM pg_policies WHERE qual ~ $1 OR with_check ~ $1`,
+      "SELECT count(*)::int AS n FROM pg_policies WHERE qual ~ $1 OR with_check ~ $1",
       [PADRAO],
     ),
     await contar(
       "views (TODOS os schemas)",
-      `SELECT count(*)::int AS n FROM pg_views WHERE definition ~ $1`,
+      "SELECT count(*)::int AS n FROM pg_views WHERE definition ~ $1",
       [PADRAO],
     ),
     await contar(
       "views materializadas",
-      `SELECT count(*)::int AS n FROM pg_matviews WHERE definition ~ $1`,
+      "SELECT count(*)::int AS n FROM pg_matviews WHERE definition ~ $1",
       [PADRAO],
     ),
     cronExiste.rows[0].ok
@@ -239,7 +243,11 @@ async function main() {
           "SELECT count(*)::int AS n FROM cron.job WHERE command ~ $1",
           [PADRAO],
         )
-      : { rotulo: "cron jobs", n: 0, nota: "pg_cron ausente deste banco (to_regclass mediu)" },
+      : {
+          rotulo: "cron jobs",
+          n: 0,
+          nota: "pg_cron ausente deste banco (to_regclass mediu)",
+        },
     await contar(
       "defaults de coluna",
       `SELECT count(*)::int AS n FROM pg_attrdef d
@@ -278,8 +286,13 @@ async function main() {
     "P2: as 2 DROPadas não têm NADA apontando (policies/views/matviews/cron/defaults/índices/corpos/pg_depend)",
     p2,
     p2
-      ? checagens.map((c) => `${c.rotulo}=0${c.nota ? ` [${c.nota}]` : ""}`).join("; ")
-      : checagens.filter((c) => c.n > 0).map((c) => `${c.rotulo}=${c.n}${c.nota ? ` [${c.nota}]` : ""}`).join("; "),
+      ? checagens
+          .map((c) => `${c.rotulo}=0${c.nota ? ` [${c.nota}]` : ""}`)
+          .join("; ")
+      : checagens
+          .filter((c) => c.n > 0)
+          .map((c) => `${c.rotulo}=${c.n}${c.nota ? ` [${c.nota}]` : ""}`)
+          .join("; "),
   );
 
   if (!preOk || !p2) {
@@ -556,7 +569,13 @@ async function main() {
   // materializa o default com acldefault e a guarda abaixo exige chaves
   // para todo nome que existe no catálogo). v23/v24 entram na lista mesmo
   // sendo chamadas por ternário (o vão das funções do dinheiro).
-  const alvosA5 = [...new Set([...nomesChamados, "create_marketplace_order_v23", "create_marketplace_order_v24"])];
+  const alvosA5 = [
+    ...new Set([
+      ...nomesChamados,
+      "create_marketplace_order_v23",
+      "create_marketplace_order_v24",
+    ]),
+  ];
   const funcoesExistentes = new Set(
     (
       await client.query(
@@ -570,7 +589,9 @@ async function main() {
   for (const nome of alvosA5) {
     if (!funcoesExistentes.has(nome)) {
       regressoes += 1;
-      console.log(`  [FALHOU] A5: ${nome} NÃO EXISTE no catálogo — o código chama um fantasma`);
+      console.log(
+        `  [FALHOU] A5: ${nome} NÃO EXISTE no catálogo — o código chama um fantasma`,
+      );
       continue;
     }
     const chavesAntes = Object.keys(antes).filter((k) =>
@@ -578,7 +599,9 @@ async function main() {
     );
     if (chavesAntes.length === 0) {
       regressoes += 1;
-      console.log(`  [FALHOU] A5: ${nome} existe mas não entrou na fotografia — comparação vazia é verde falso`);
+      console.log(
+        `  [FALHOU] A5: ${nome} existe mas não entrou na fotografia — comparação vazia é verde falso`,
+      );
       continue;
     }
     for (const chave of chavesAntes) {
@@ -636,6 +659,8 @@ main().catch((e) => {
   // a transação órfã com ROLLBACK quando a conexão cai (e o
   // idle_in_transaction_session_timeout do servidor recolhe os locks). A
   // mensagem diz a fase para um log truncado não parecer sucesso parcial.
-  console.error(`[ERRO na prova — nada é gravado; a tx órfã é descartada pelo servidor] ${e.message}`);
+  console.error(
+    `[ERRO na prova — nada é gravado; a tx órfã é descartada pelo servidor] ${e.message}`,
+  );
   process.exit(1);
 });
