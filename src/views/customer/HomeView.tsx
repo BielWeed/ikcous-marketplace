@@ -300,7 +300,14 @@ export const HomeView = React.memo(function HomeView({
       {!searchQuery &&
         selectedCategory === "Todas" &&
         (!bannersLoaded && topBanners.length === 0 ? (
-          <div className="mb-2 flex h-[200px] w-full animate-pulse items-center justify-center bg-zinc-100 sm:h-[400px]">
+          // Laudo de acessibilidade 03/09, achado 12: o banner vazio era
+          // silêncio para leitor de tela — role="status" + sr-only
+          // anunciam "Carregando banners" sem mudar o visual.
+          <div
+            role="status"
+            className="mb-2 flex h-[200px] w-full animate-pulse items-center justify-center bg-zinc-100 sm:h-[400px]"
+          >
+            <span className="sr-only">Carregando banners</span>
             <div className="size-8 animate-spin rounded-full border-4 border-zinc-200 border-t-primary" />
           </div>
         ) : topBanners.length > 0 ? (
