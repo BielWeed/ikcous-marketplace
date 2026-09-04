@@ -119,11 +119,7 @@ describe("perf: o primeiro paint da loja não baixa framer-motion", () => {
       .map((arquivo) => arquivo.slice(1));
     expect(
       infratores,
-      "Estes módulos estão no caminho ESTÁTICO do entry e puxam " +
-        "framer-motion para o primeiro paint: " +
-        infratores.join(", ") +
-        ". Importe-os por React.lazy (ou mova o uso para um módulo lazy) — " +
-        "veja o cabeçalho de src/App.tsx.",
+      `Estes módulos estão no caminho ESTÁTICO do entry e puxam framer-motion para o primeiro paint: ${infratores.join(", ")}. Importe-os por React.lazy (ou mova o uso para um módulo lazy) — veja o cabeçalho de src/App.tsx.`,
     ).toEqual([]);
     // Se um import parar de resolver, a caminhada fica cega sem ninguém
     // perceber — os não resolvidos do entry são pacote externo (fora do
