@@ -1,3 +1,4 @@
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { useAvisosDoLojista } from "@/hooks/useAvisosDoLojista";
 import type { View } from "@/types";
 import type { Aviso, TipoDeAviso } from "@/utils/avisos-do-lojista";
@@ -170,9 +171,10 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
               <Bell className="size-4" />
             </div>
             <div>
-              <h1 className="text-base font-black leading-none tracking-tight text-white">
-                Notificações
-              </h1>
+              {/* Onda 4 da reforma visual (03/09): o título tinha fórmula
+                  própria (text-base) — agora nasce do AdminPageHeader, igual
+                  ao resto do painel. */}
+              <AdminPageHeader titulo="Notificações" />
               <p className="mt-1 text-[10px] leading-none text-zinc-500">
                 O que está esperando por você
               </p>

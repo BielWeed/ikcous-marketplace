@@ -107,14 +107,6 @@ describe("AdminShippingView — não inventa CEP de origem", () => {
     return campo;
   }
 
-  function pegarBotaoSalvar(): HTMLButtonElement {
-    const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Salvar"),
-    ) as HTMLButtonElement;
-    expect(botao).toBeDefined();
-    return botao;
-  }
-
   it("abre com o CEP de origem vazio quando a loja não configurou", async () => {
     mockConfig.originCep = undefined;
     await abrirTela();
@@ -133,10 +125,17 @@ describe("AdminShippingView — não inventa CEP de origem", () => {
     mockConfig.originCep = undefined;
     await abrirTela();
 
-    // O botão Salvar depende de `isFormDirty`. Se a comparação de "sujo"
-    // ainda usar a reserva "38500-000", o formData ("") nunca bate com ela
-    // e o botão fica habilitado sem nenhuma mudança real da pessoa.
-    expect(pegarBotaoSalvar().disabled).toBe(true);
+    // DIREÇÃO D (frete-v2, 03/09): o Salvar mora numa BARRA FIXA do rodapé
+    // que SÓ existe com alteração pendente — o botão sempre-visível da tela
+    // anterior foi aposentado com o desenho. A MESMA promessa deste teste,
+    // na casca nova: se a comparação de "sujo" ainda usasse a reserva
+    // "38500-000", o formData ("") nunca batería com ela e a barra (com o
+    // botão "Salvar alterações") apareceria sem nenhuma mudança real da
+    // pessoa. Sem mexer em nada, ela nem pode existir.
+    const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Salvar"),
+    );
+    expect(botaoSalvar).toBeUndefined();
   });
 
   it("avisa a consequência REAL do CEP vazio: sem ele a LOJA NÃO VENDE (laudo 31/08, B1)", async () => {

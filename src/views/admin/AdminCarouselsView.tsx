@@ -1,4 +1,5 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
@@ -391,9 +392,9 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             <div className="flex size-6 items-center justify-center rounded-md border border-[#FFBF00]/30 bg-[#FFBF00]/10 text-[#FFBF00]">
               <Layers className="size-3" />
             </div>
-            <h1 className="select-none text-xs font-black uppercase tracking-wider text-white truncate">
-              Vitrines & Carrosséis
-            </h1>
+            {/* Onda 3 da reforma visual (03/09): o título minúsculo (text-xs)
+                virou o AdminPageHeader, igual ao das listas aprovadas. */}
+            <AdminPageHeader titulo="Vitrines & Carrosséis" />
           </div>
           <div className="flex items-center gap-2">
             <button

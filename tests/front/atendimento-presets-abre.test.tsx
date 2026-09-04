@@ -9,6 +9,14 @@
 //
 // Este teste fixa o contrato: clicar no botão abre o painel de modelos no
 // document.body (portal), com a busca e a lista de modelos visíveis.
+//
+// ATUALIZAÇÃO da frente glm-visual-canais-avisar-0309 (03/09, MUDANÇA DE
+// CASCA, não de regra): a tela entrou no padrão de seções colapsáveis dos
+// Ajustes e a seção "Mensagem de Compartilhamento de Produtos" nasce
+// FECHADA (o mockup pesado do WhatsApp deixa de empurrar o resto da tela).
+// O botão de presets mora dentro dela, então o teste agora EXPANDE a seção
+// antes de clicar — o comportamento provado (portal abre com busca e
+// modelos) é exatamente o mesmo.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -64,6 +72,23 @@ describe("Atendimento — botão de presets abre o painel de modelos", () => {
     );
     await act(async () => {
       raiz.render(<AdminWhatsAppConfigView active />);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Casca nova: a seção da mensagem nasce FECHADA — expandir antes de
+    // procurar o botão de presets (que mora dentro dela).
+    const cabecalhoSecao = [
+      ...hospedeiro.querySelectorAll("button[aria-expanded]"),
+    ].find((b) =>
+      (b.textContent ?? "").includes(
+        "Mensagem de Compartilhamento de Produtos",
+      ),
+    ) as HTMLButtonElement;
+    expect(cabecalhoSecao).toBeTruthy();
+    await act(async () => {
+      cabecalhoSecao.click();
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));

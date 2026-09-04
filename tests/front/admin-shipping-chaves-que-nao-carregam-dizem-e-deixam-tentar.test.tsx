@@ -4,17 +4,17 @@
 //
 // Achado 2 da auditoria rodada 2 (26/08/2026). `fetchShippingCreds` só faz
 // `setCredsLoaded(true)` quando o fetch volta bem; no ramo de erro ele apenas
-// escrevia no console (`:118`) e não guardava estado nenhum. Como `credsLoaded`
-// ficava `false` para sempre e nada tentava de novo, os dois `disabled` que a
+// escrevia no console e não guardava estado nenhum. Como `credsLoaded` ficava
+// `false` para sempre e nada tentava de novo, os dois `disabled` que a
 // correção C4/B1 da madrugada acrescentou travavam a seção INTEIRA: campo do
 // token apagado, e no lugar do botão de Sandbox a palavra "Recarregando…"
 // eternamente — sem mensagem, sem explicação, sem botão de recuperar.
 //
-// A correção da madrugada estava CERTA na intenção: antes, a tela descartava o
-// token digitado em silêncio e ainda dava aviso verde de "salvo com sucesso".
-// O que ficou foi a outra metade da mesma doença — de "perde teu dado calada"
-// para "morre calada". O conserto não é tirar o `disabled`; é a tela contar o
-// que sabe e oferecer saída.
+// MUDOU DE TELA (frente glm-visual-admin-0209, pedido do Gabriel 02/09): as
+// chaves das transportadoras saíram da tela de Frete e agora são a seção
+// "Transportadoras e cotação de frete" da tela de Ajustes
+// (`TransportadorasSection`). As travas vieram junto, e ESTE arquivo continua
+// sendo a prova — agora contra o componente novo.
 //
 // Contra o HEAD (843ca0a) os dois primeiros testes reprovam: não existe
 // mensagem de erro nenhuma no DOM, e não existe botão de tentar de novo.
@@ -28,7 +28,6 @@ const updateConfig = vi.fn();
 const { estadoDaLoja, estadoDoBanco } = vi.hoisted(() => ({
   estadoDaLoja: {
     atual: {
-      originCep: "38400-000" as string | undefined,
       shippingProvider: "melhor_envio",
       enabledShippingMethods: ["sedex", "pac"] as string[],
     },
@@ -95,14 +94,13 @@ function esperarMicrotarefas(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe("AdminShippingView — chaves que não carregam dizem, e deixam tentar", () => {
+describe("TransportadorasSection — chaves que não carregam dizem, e deixam tentar", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
     vi.clearAllMocks();
     estadoDaLoja.atual = {
-      originCep: "38400-000",
       shippingProvider: "melhor_envio",
       enabledShippingMethods: ["sedex", "pac"],
     };
@@ -121,12 +119,12 @@ describe("AdminShippingView — chaves que não carregam dizem, e deixam tentar"
     vi.restoreAllMocks();
   });
 
-  async function abrirTela() {
-    const { AdminShippingView } = await import(
-      "@/views/admin/AdminShippingView"
+  async function abrirSecao() {
+    const { TransportadorasSection } = await import(
+      "@/components/admin/settings/TransportadorasCard"
     );
     await act(async () => {
-      raiz.render(<AdminShippingView active={true} onSetDirty={vi.fn()} />);
+      raiz.render(<TransportadorasSection />);
     });
     await act(async () => {
       await esperarMicrotarefas();
@@ -140,7 +138,7 @@ describe("AdminShippingView — chaves que não carregam dizem, e deixam tentar"
   }
 
   it("a falha vira mensagem na tela, não só linha no console", async () => {
-    await abrirTela();
+    await abrirSecao();
 
     expect(hospedeiro.textContent).toMatch(
       /não foi possível carregar as chaves/i,
@@ -148,15 +146,17 @@ describe("AdminShippingView — chaves que não carregam dizem, e deixam tentar"
   });
 
   it("a tela não afirma mais que está 'Recarregando' quando nada recarrega", async () => {
-    await abrirTela();
+    await abrirSecao();
 
     // A palavra prometia um movimento que não existia: nada tenta de novo
     // sozinho. Ela só pode aparecer enquanto a busca está mesmo em curso.
+    // ("Carregando…" não casa com /recarregando/i — o rótulo só aparece
+    // enquanto o fetch de verdade está em curso, nunca depois de falhar.)
     expect(hospedeiro.textContent).not.toMatch(/recarregando/i);
   });
 
   it("o botão de tentar de novo existe e realmente refaz a busca", async () => {
-    await abrirTela();
+    await abrirSecao();
     const chamadasDepoisDaAbertura = estadoDoBanco.chamadasDeCredenciais;
 
     const botao = botaoDeTentarDeNovo();

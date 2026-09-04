@@ -1,0 +1,60 @@
+# Rascunho "@claude-draft" (Claude Code GitHub Actions, modelo Sonnet 5) —
+# parte do super modo agente v1, emenda 2 (linha de montagem em 4 estágios) e
+# emenda 8 (dupla de criação entra no primeiro trabalho real de criação).
+# Desenho completo: mesa GLM (C:/Users/Gabriel/equipe/arquitetura/super-modo-agente/).
+#
+# PAPEL: estágio CRIAÇÃO em dupla — rascunho/abordagem/plano em pt-BR sobre o
+# que o comentário pedir (design, caminhos de implementação, riscos, critérios
+# de pronto). A escrita de código continua sendo do GLM (emenda 1: o lado
+# Claude NÃO codifica), então as permissões são as mesmas do revisor "@claude":
+# `contents: read` — lê o código, NÃO empurra commit/branch.
+#
+# GATILHO: comentário com `@claude-draft` em PR ou issue nova. O workflow
+# irmão (claude.yml) EXCLUI `@claude-draft` e este aqui só casa com ele —
+# um trabalho, um canal (nenhum disparo duplicado).
+# Requisito: secret CLAUDE_CODE_OAUTH_TOKEN (assinatura do dono — sem API paga).
+name: Claude Draft
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened]
+
+jobs:
+  claude-draft:
+    if: >-
+      contains(github.event.comment.body, '@claude-draft') ||
+      contains(github.event.issue.body, '@claude-draft')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Papel fixo do rascunho (pt-BR, casa IKCOUS): dupla de criação,
+          # nunca implementação. O código é do GLM.
+          prompt: >-
+            Você é a dupla de CRIAÇÃO (estágio 1 da linha de montagem) do super
+            modo agente do projeto IKCOUS. Responda em português do Brasil, em
+            linguagem direta. Seu papel: rascunhar abordagem, desenho, caminhos
+            de implementação, riscos e critérios de "deu certo" para o que o
+            comentário pedir — lendo o código do repo para se basear. NÃO
+            escreva código pronto para commit e NÃO empurre nada (suas
+            permissões não permitem): entrego você o rascunho e a implementação
+            é do lado GLM. Sempre cite os arquivos que leu e o commit/sha em
+            que se baseou. Cite o time/sessão de origem que vier no comentário
+            no seu parecer.
+          # Modelo do rascunho: Sonnet 5 (emenda 2 — criação barata e rápida;
+          # o toque final/revisão fica no Fable do claude.yml). Alias "sonnet"
+          # = Sonnet mais recente, mesmo caminho oficial claude_args.
+          claude_args: "--model sonnet"

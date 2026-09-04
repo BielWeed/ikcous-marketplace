@@ -95,8 +95,11 @@ function variante(extra: Partial<VariantRow> = {}): VariantRow {
 
 const PEDIDO_BASE: OrderRow = {
   address_id: null,
+  cancelled_after_shipping: false,
+  confirmation_email_sent_at: null,
   coupon_code: null,
   coupon_id: null,
+  coupon_usage_returned: false,
   created_at: "2026-08-01T10:00:00.000Z",
   customer_data: {},
   customer_name: "Joana",
@@ -105,13 +108,21 @@ const PEDIDO_BASE: OrderRow = {
   expires_at: null,
   gateway_payment_id: null,
   id: "ped-1",
+  idempotency_key: null,
   notes: null,
   observation: null,
+  paid_at: null,
+  pagamento_recebido_em: null,
+  pagamento_recebido_por: null,
   payment_method: null,
   payment_status: null,
+  returned_to_seller_at: null,
   shipping: null,
   shipping_cost: null,
-  status: null,
+  shipping_label_id: null,
+  shipping_label_url: null,
+  status: "pending",
+  stock_returned_at: null,
   subtotal: 100,
   total: 120,
   total_amount: null,
@@ -321,7 +332,13 @@ describe("mapVariantFromDB", () => {
 });
 
 describe("mapOrderFromDB", () => {
-  it("prefere o endereço do join ao que está no snapshot", () => {
+  it("o snapshot do customer_data vence ao endereço do join (laudo #4, onda 2)", () => {
+    // Era "prefere o endereço do join" — e era o defeito: o JOIN traz o
+    // endereço ATUAL do perfil; deixá-lo vencer fazia editar/apagar endereço
+    // no perfil reescrever/apagar o "Endereço de Entrega" de pedido antigo.
+    // O snapshot gravado na compra é a verdade do comprovante (laudo
+    // cliente-pós-compra 02/09, #4 — onda 2). Prova completa em
+    // mappers-endereco-snapshot-vence.test.ts.
     const endereco: Address = {
       id: "end-1",
       user_id: "u-1",
@@ -345,9 +362,8 @@ describe("mapOrderFromDB", () => {
         },
       }),
     );
-    expect(o.customer.address).toBe("Rua das Flores");
-    expect(o.customer.city).toBe("Monte Carmelo");
-    expect(o.customer.reference).toBe("ao lado da praça");
+    expect(o.customer.address).toBe("Rua Antiga");
+    expect(o.customer.city).toBe("Outra Cidade");
   });
 
   it("sem join, usa o snapshot addressData do customer_data", () => {

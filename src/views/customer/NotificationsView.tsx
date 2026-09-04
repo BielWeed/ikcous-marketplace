@@ -20,9 +20,73 @@ interface NotificationsViewProps {
 
 type TabType = "todas" | "avisos";
 
+/**
+ * Laudo 02/09 #9 (onda 2): a decisão de destino a partir de `action_url` é
+ * pura e virou função própria — o clique precisa navegar ANTES de qualquer
+ * espera (o `await markAsRead` antigo congelava o toque sob rede lenta).
+ */
+function navegarPorUrl(
+  url: string,
+  onNavigate?: (view: any, id?: string) => void,
+) {
+  try {
+    const parsedUrl = new URL(url, window.location.origin);
+    const pathname = parsedUrl.pathname;
+    const searchParams = parsedUrl.searchParams;
+    const cleanPath = pathname.replace(/^\/+|\/+$/g, "");
+
+    if (cleanPath === "product-detail" || cleanPath === "product") {
+      const id = searchParams.get("id");
+      if (id) {
+        onNavigate?.("product-detail", id);
+        return;
+      }
+    }
+
+    if (cleanPath === "order-details" || cleanPath === "order") {
+      const id = searchParams.get("id");
+      if (id) {
+        onNavigate?.("order-details", id);
+        return;
+      }
+    }
+
+    const knownViews = [
+      "home",
+      "cart",
+      "product-detail",
+      "checkout",
+      "profile",
+      "user-profile",
+      "search",
+      "auth",
+      "login",
+      "favorites",
+      "notifications",
+      "order-success",
+      "orders",
+      "order-details",
+      "account-settings",
+    ];
+
+    if (knownViews.includes(cleanPath)) {
+      onNavigate?.(cleanPath as any, searchParams.get("id") || undefined);
+    } else {
+      onNavigate?.("home");
+    }
+  } catch {
+    if (url.includes("cart")) onNavigate?.("cart");
+    else if (url.includes("favorites")) onNavigate?.("favorites");
+    else if (url.includes("profile")) onNavigate?.("profile");
+    else if (url.includes("checkout")) onNavigate?.("checkout");
+    else onNavigate?.("home");
+  }
+}
+
 export function NotificationsView({ onNavigate }: NotificationsViewProps) {
   const {
     notifications,
+    loading,
     erro,
     refresh,
     markAllAsRead,
@@ -73,70 +137,24 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
 
   // Parse action_url or order_id and navigate
   const handleNotificationClick = useCallback(
-    async (notif: any) => {
-      if (!notif.read) {
-        await markAsRead(notif.id);
-      }
-
+    (notif: any) => {
+      // Laudo 02/09 #9 (onda 2): navegar NA HORA. O `await markAsRead` que
+      // vinha antes segurava a navegação até o "lida" salvar — rede lenta,
+      // toque sem resposta. Prendado por
+      // tests/front/aviso-toque-responde-na-hora.test.tsx.
       if (notif.order_id) {
         onNavigate?.("order-details", notif.order_id);
-        return;
+      } else if (notif.action_url) {
+        navegarPorUrl(notif.action_url, onNavigate);
       }
 
-      if (notif.action_url) {
-        const url = notif.action_url;
-        try {
-          const parsedUrl = new URL(url, window.location.origin);
-          const pathname = parsedUrl.pathname;
-          const searchParams = parsedUrl.searchParams;
-          const cleanPath = pathname.replace(/^\/+|\/+$/g, "");
-
-          if (cleanPath === "product-detail" || cleanPath === "product") {
-            const id = searchParams.get("id");
-            if (id) {
-              onNavigate?.("product-detail", id);
-              return;
-            }
-          }
-
-          if (cleanPath === "order-details" || cleanPath === "order") {
-            const id = searchParams.get("id");
-            if (id) {
-              onNavigate?.("order-details", id);
-              return;
-            }
-          }
-
-          const knownViews = [
-            "home",
-            "cart",
-            "product-detail",
-            "checkout",
-            "profile",
-            "user-profile",
-            "search",
-            "auth",
-            "login",
-            "favorites",
-            "notifications",
-            "order-success",
-            "orders",
-            "order-details",
-            "account-settings",
-          ];
-
-          if (knownViews.includes(cleanPath)) {
-            onNavigate?.(cleanPath as any, searchParams.get("id") || undefined);
-          } else {
-            onNavigate?.("home");
-          }
-        } catch {
-          if (url.includes("cart")) onNavigate?.("cart");
-          else if (url.includes("favorites")) onNavigate?.("favorites");
-          else if (url.includes("profile")) onNavigate?.("profile");
-          else if (url.includes("checkout")) onNavigate?.("checkout");
-          else onNavigate?.("home");
-        }
+      // Marcar como lida roda em segundo plano: falha não impede a navegação
+      // nem derruba a tela (o contexto já avisa a cliente — ver
+      // notificacoes-acao-que-falha-avisa-a-cliente.test.tsx).
+      if (!notif.read) {
+        markAsRead(notif.id).catch(() => {
+          // silêncio de propósito: a navegação já aconteceu.
+        });
       }
     },
     [markAsRead, onNavigate],
@@ -411,6 +429,36 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
               })}
             </AnimatePresence>
           </motion.div>
+        ) : loading && notifications.length === 0 ? (
+          /* Laudo 02/09 #8 (onda 2): o PRIMEIRO carregamento não é caixa
+           * limpa — sem este ramo, a lista vazia caía no "Tudo em ordem"
+           * enquanto a consulta ainda andava (rede lenta mentindo para quem
+           * tem avisos a caminho). Skeleton simples no estilo da casa
+           * (ProductCardSkeleton é de outra frente); "Tudo em ordem" fica
+           * reservado para o vazio DE VERDADE. Prendado por
+           * tests/front/sino-carregando-nao-mente.test.tsx. */
+          <div
+            data-testid="sino-carregando"
+            role="status"
+            aria-label="Carregando notificações"
+            className="space-y-3"
+          >
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="animate-pulse rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm dark:border-zinc-900/60 dark:bg-zinc-900/50"
+              >
+                <div className="flex gap-4">
+                  <div className="size-11 shrink-0 rounded-2xl bg-zinc-200 dark:bg-zinc-800" />
+                  <div className="flex-1 space-y-2 py-1">
+                    <div className="h-3 w-2/3 rounded bg-zinc-200 dark:bg-zinc-800" />
+                    <div className="h-2.5 w-full rounded bg-zinc-100 dark:bg-zinc-800/60" />
+                    <div className="h-2.5 w-1/4 rounded bg-zinc-100 dark:bg-zinc-800/60" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : erro && filteredNotifications.length === 0 ? (
           /* Estado de ERRO — falha de consulta não é caixa limpa: sem este
            * ramo, a tela dizia "Tudo em ordem" para uma cliente com avisos

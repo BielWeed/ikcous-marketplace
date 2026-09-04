@@ -7,6 +7,7 @@ import { AnimatePresence, motion, useDragControls } from "framer-motion";
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   Clock,
   ExternalLink,
   Headset,
@@ -256,6 +257,93 @@ const getProcessedPreviewText = (
   return processed;
 };
 
+/**
+ * Seção colapsável da tela de Atendimento (frente glm-visual-canais-avisar-0309):
+ * o mesmo padrão da `SecaoColapsavel` dos Ajustes — cabeçalho clicável com
+ * `aria-expanded`, conteúdo montado só quando aberta e trava de pendência
+ * (fechar desmonta o conteúdo; com alteração não salva, o fechamento é
+ * RECUSADO com aviso no cabeçalho — achado A1 da revisão adversária da
+ * onda do Frete). Local a este arquivo de propósito: a versão dos Ajustes
+ * é o desenho de referência, não um componente exportado.
+ *
+ * `aberta`/`aoAlternar`: modo controlado opcional — a seção de mensagem
+ * precisa dele para o dono da tela reconstruir o editor (contentEditable)
+ * toda vez que a seção (re)abre.
+ */
+function SecaoColapsavel({
+  titulo,
+  icone: Icone,
+  abertaPorPadrao = false,
+  comPendencia = false,
+  aberta: abertaExterna,
+  aoAlternar,
+  children,
+}: {
+  readonly titulo: string;
+  readonly icone: React.ElementType;
+  readonly abertaPorPadrao?: boolean;
+  readonly comPendencia?: boolean;
+  readonly aberta?: boolean;
+  readonly aoAlternar?: (proxima: boolean) => void;
+  readonly children: React.ReactNode;
+}) {
+  const [abertaInterna, setAbertaInterna] = useState(abertaPorPadrao);
+  const aberta = abertaExterna ?? abertaInterna;
+
+  return (
+    <div className="admin-glass relative overflow-hidden rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6">
+      <button
+        type="button"
+        onClick={() => {
+          // Há trabalho não salvo dentro: fechar desmontaria o conteúdo e
+          // jogaria fora o que foi digitado. A saída é o botão Salvar do topo.
+          if (aberta && comPendencia) return;
+          const proxima = !aberta;
+          if (abertaExterna === undefined) setAbertaInterna(proxima);
+          aoAlternar?.(proxima);
+        }}
+        aria-expanded={aberta}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-admin-gold/20 bg-admin-gold/10 text-admin-gold">
+            <Icone className="size-5" strokeWidth={2.5} />
+          </span>
+          <span className="truncate text-sm font-black uppercase tracking-wider text-white">
+            {titulo}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          {aberta && comPendencia && (
+            <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">
+              Salve antes de fechar
+            </span>
+          )}
+          <ChevronDown
+            className={`size-4 shrink-0 text-zinc-400 transition-transform duration-200 ${
+              aberta ? "rotate-180" : ""
+            }`}
+          />
+        </span>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {aberta && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className="pt-4">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 interface AdminWhatsAppConfigViewProps {
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
@@ -285,6 +373,9 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
 
   const [isPresetsOpen, setIsPresetsOpen] = useState(false);
   const [presetSearch, setPresetSearch] = useState("");
+  // Seção "Mensagem de Compartilhamento" (casca nova): controlada pela view
+  // para o efeito abaixo reconstruir o editor toda vez que ela (re)abre.
+  const [isMensagemOpen, setIsMensagemOpen] = useState(false);
   const dragControls = useDragControls();
 
   // Lock scroll when presets bottom sheet is open
@@ -533,25 +624,39 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
   }, [active, refresh]);
 
   // Notify parent of dirty state
+  // A MESMA expressão de antes, agora num valor compartilhado: além de ligar
+  // a guarda do App (onSetDirty), ela trava o fechamento das seções
+  // colapsáveis enquanto houver alteração não salva (fechar desmontaria o
+  // conteúdo e descartaria o que foi digitado — padrão "Salve antes de
+  // fechar" dos Ajustes).
+  const temAlteracaoNaoSalva =
+    !!config &&
+    (getCleanPhone(formData.whatsappNumber) !==
+      getCleanPhone(config.whatsappNumber || "") ||
+      formData.businessHours !== (config.businessHours || "") ||
+      formData.shareText !== (config.shareText || ""));
+
   useEffect(() => {
     if (!onSetDirty || !config) return;
-    const cleanPhone = getCleanPhone(config.whatsappNumber || "");
-    const isDirty =
-      getCleanPhone(formData.whatsappNumber) !== cleanPhone ||
-      formData.businessHours !== (config.businessHours || "") ||
-      formData.shareText !== (config.shareText || "");
-
-    onSetDirty(isDirty);
+    onSetDirty(temAlteracaoNaoSalva);
     return () => {
       onSetDirty(false);
     };
-  }, [
-    formData.whatsappNumber,
-    formData.businessHours,
-    formData.shareText,
-    config,
-    onSetDirty,
-  ]);
+  }, [temAlteracaoNaoSalva, config, onSetDirty]);
+
+  // A seção fechada DESMONTA o editor (contentEditable). Ao (re)abrir, ele
+  // volta do estado do formulário — sem isto, reabrir mostraria o editor
+  // vazio mesmo com mensagem salva. Roda SÓ na transição de abertura: enquanto
+  // aberta, o que está no editor manda (reescrever o innerHTML a cada tecla
+  // destruiria a posição do cursor e a seleção do lojista).
+  useEffect(() => {
+    if (!isMensagemOpen) return;
+    const editor = document.getElementById("settings-share-message-editor");
+    if (editor) {
+      editor.innerHTML = convertPlainTextToHTML(formData.shareText || "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMensagemOpen]);
 
   const handleSubmit = async () => {
     if (isOffline) {
@@ -653,156 +758,161 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
           </div>
         )}
 
-        <div className="admin-glass relative space-y-6 overflow-hidden rounded-2xl border border-white/5 p-4 shadow-2xl sm:p-6">
-          <div className="flex items-center gap-3 border-b border-white/5 pb-4">
-            <div className="flex size-10 items-center justify-center rounded-xl border border-admin-gold/20 bg-admin-gold/10">
-              <Headset className="size-5 text-admin-gold" strokeWidth={2.5} />
-            </div>
-            <div>
-              <h2 className="text-sm font-black uppercase tracking-wider text-white">
-                Canais de Atendimento
-              </h2>
-              <p className="text-[10px] text-zinc-500">
-                Configure os pontos de contato e expedição do seu suporte
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            {/* WhatsApp input */}
-            <div className="flex-grow space-y-2">
-              <div className="flex items-center justify-between">
-                <Label
-                  htmlFor="settings-whatsapp"
-                  className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400"
-                >
-                  WhatsApp da Operação
-                </Label>
-                <span className="rounded-full border border-[#25d366]/20 bg-[#25d366]/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-[#25d366]">
-                  Atendimento & Vendas
-                </span>
-              </div>
-              <p className="ml-1 text-[9.5px] leading-snug text-zinc-500">
-                Número que receberá contatos diretos de clientes.
-              </p>
-              <div className="group relative">
-                {/* Âncora no PRIMEIRO 20px do bloco (centro do input h-10),
+        {/* ── Seção 1: contatos e expediente — a porta de todo dia, nasce
+            aberta. Conteúdo (campos, máscara, validação, avisos) intocado. */}
+        <SecaoColapsavel
+          titulo="Canais de Atendimento"
+          icone={Headset}
+          abertaPorPadrao
+          comPendencia={temAlteracaoNaoSalva}
+        >
+          <div className="space-y-5">
+            <p className="text-[10px] leading-snug text-zinc-500">
+              Configure os pontos de contato e expedição do seu suporte
+            </p>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              {/* WhatsApp input */}
+              <div className="flex-grow space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label
+                    htmlFor="settings-whatsapp"
+                    className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                  >
+                    WhatsApp da Operação
+                  </Label>
+                  <span className="rounded-full border border-[#25d366]/20 bg-[#25d366]/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-[#25d366]">
+                    Atendimento & Vendas
+                  </span>
+                </div>
+                <p className="ml-1 text-[9.5px] leading-snug text-zinc-500">
+                  Número que receberá contatos diretos de clientes.
+                </p>
+                <div className="group relative">
+                  {/* Âncora no PRIMEIRO 20px do bloco (centro do input h-10),
                     não em `top-1/2`: o bloco cresce para baixo quando a
                     validação acusa erro, e o meio do bloco empurrava o
                     ícone/+55 para fora da linha do campo. */}
-                <div className="pointer-events-none absolute left-3.5 top-5 flex h-5 -translate-y-1/2 items-center gap-1.5 border-r border-white/10 pr-2.5">
-                  <MessageCircle className="size-3.5 text-[#25d366]" />
-                  <span className="text-[11px] font-black leading-none text-zinc-500">
-                    +55
+                  <div className="pointer-events-none absolute left-3.5 top-5 flex h-5 -translate-y-1/2 items-center gap-1.5 border-r border-white/10 pr-2.5">
+                    <MessageCircle className="size-3.5 text-[#25d366]" />
+                    <span className="text-[11px] font-black leading-none text-zinc-500">
+                      +55
+                    </span>
+                  </div>
+                  <LocalBufferedInput
+                    id="settings-whatsapp"
+                    name="whatsapp"
+                    useShadcn
+                    mask="phone"
+                    delay={350}
+                    value={formData.whatsappNumber}
+                    onFlush={onChangeWhatsappNumber}
+                    placeholder="(00) 00000-0000"
+                    className="h-10 rounded-xl border-white/10 bg-black/40 pl-16 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:ring-admin-gold/50"
+                    autoComplete="tel"
+                    disabled={isOffline}
+                    validate={(val) => {
+                      // Campo OPCIONAL (decisão do Gabriel, 30/08): vazio é
+                      // estado legítimo — o botão de WhatsApp some da loja.
+                      // Erro só quando digitar errado.
+                      if (!val) return null;
+                      const clean = val.replace(/\D/g, "");
+                      if (clean.length < 10 || clean.length > 11) {
+                        return "Informe DDD + número (10 ou 11 dígitos)";
+                      }
+                      return null;
+                    }}
+                  />
+                </div>
+                <div className="space-y-1 rounded-lg border border-white/5 bg-zinc-950/40 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest text-zinc-500">
+                    <Info className="size-3 text-admin-gold" />
+                    <span>Formato e Protocolo</span>
+                  </div>
+                  <p className="text-[9px] leading-relaxed text-zinc-400">
+                    Campo opcional: vazio, e o botão de WhatsApp some da loja.
+                    Preenchido, use DDD + número — o código{" "}
+                    <code className="font-mono text-zinc-300">55</code> é
+                    adicionado automaticamente.
+                  </p>
+                </div>
+              </div>
+
+              {/* Business Hours */}
+              <div className="flex-grow space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label
+                    htmlFor="settings-business-hours"
+                    className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                  >
+                    Horário de Funcionamento
+                  </Label>
+                  <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-blue-400">
+                    Expediente
                   </span>
                 </div>
-                <LocalBufferedInput
-                  id="settings-whatsapp"
-                  name="whatsapp"
-                  useShadcn
-                  mask="phone"
-                  delay={350}
-                  value={formData.whatsappNumber}
-                  onFlush={onChangeWhatsappNumber}
-                  placeholder="(00) 00000-0000"
-                  className="h-10 rounded-xl border-white/10 bg-black/40 pl-16 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:ring-admin-gold/50"
-                  autoComplete="tel"
-                  disabled={isOffline}
-                  validate={(val) => {
-                    // Campo OPCIONAL (decisão do Gabriel, 30/08): vazio é
-                    // estado legítimo — o botão de WhatsApp some da loja.
-                    // Erro só quando digitar errado.
-                    if (!val) return null;
-                    const clean = val.replace(/\D/g, "");
-                    if (clean.length < 10 || clean.length > 11) {
-                      return "Informe DDD + número (10 ou 11 dígitos)";
-                    }
-                    return null;
-                  }}
-                />
-              </div>
-              <div className="space-y-1 rounded-lg border border-white/5 bg-zinc-950/40 p-2.5">
-                <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest text-zinc-500">
-                  <Info className="size-3 text-admin-gold" />
-                  <span>Formato e Protocolo</span>
-                </div>
-                <p className="text-[9px] leading-relaxed text-zinc-400">
-                  Campo opcional: vazio, e o botão de WhatsApp some da loja.
-                  Preenchido, use DDD + número — o código{" "}
-                  <code className="font-mono text-zinc-300">55</code> é
-                  adicionado automaticamente.
+                <p className="ml-1 text-[9.5px] leading-snug text-zinc-500">
+                  Informa aos clientes no PWA o expediente de suporte.
                 </p>
-              </div>
-            </div>
-
-            {/* Business Hours */}
-            <div className="flex-grow space-y-2">
-              <div className="flex items-center justify-between">
-                <Label
-                  htmlFor="settings-business-hours"
-                  className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400"
-                >
-                  Horário de Funcionamento
-                </Label>
-                <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-blue-400">
-                  Expediente
-                </span>
-              </div>
-              <p className="ml-1 text-[9.5px] leading-snug text-zinc-500">
-                Informa aos clientes no PWA o expediente de suporte.
-              </p>
-              <div className="group relative">
-                <div className="pointer-events-none absolute left-3.5 top-1/2 flex -translate-y-1/2 items-center border-r border-white/10 pr-2.5">
-                  <Clock className="size-3.5 text-admin-gold" />
+                <div className="group relative">
+                  <div className="pointer-events-none absolute left-3.5 top-1/2 flex -translate-y-1/2 items-center border-r border-white/10 pr-2.5">
+                    <Clock className="size-3.5 text-admin-gold" />
+                  </div>
+                  <LocalBufferedInput
+                    id="settings-business-hours"
+                    name="businessHours"
+                    useShadcn
+                    delay={350}
+                    value={formData.businessHours}
+                    onFlush={onChangeBusinessHours}
+                    placeholder="Ex: Ter a Sáb, 9h às 18h"
+                    className="h-10 rounded-xl border-white/10 bg-black/40 pl-11 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:ring-admin-gold/50"
+                    autoComplete="off"
+                    disabled={isOffline}
+                  />
                 </div>
-                <LocalBufferedInput
-                  id="settings-business-hours"
-                  name="businessHours"
-                  useShadcn
-                  delay={350}
-                  value={formData.businessHours}
-                  onFlush={onChangeBusinessHours}
-                  placeholder="Ex: Ter a Sáb, 9h às 18h"
-                  className="h-10 rounded-xl border-white/10 bg-black/40 pl-11 text-xs font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:ring-admin-gold/50"
-                  autoComplete="off"
-                  disabled={isOffline}
-                />
-              </div>
-              <div className="space-y-1 rounded-lg border border-white/5 bg-zinc-950/40 p-2.5">
-                <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest text-zinc-500">
-                  <Clock className="size-3 text-zinc-500" />
-                  <span>Exemplos recomendados</span>
+                <div className="space-y-1 rounded-lg border border-white/5 bg-zinc-950/40 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[8px] font-black uppercase tracking-widest text-zinc-500">
+                    <Clock className="size-3 text-zinc-500" />
+                    <span>Exemplos recomendados</span>
+                  </div>
+                  <p className="text-[9px] leading-relaxed text-zinc-400">
+                    •{" "}
+                    <code className="font-mono text-zinc-300">
+                      Ter a Sáb: 9h às 18h
+                    </code>
+                    <br />•{" "}
+                    <code className="font-mono text-zinc-300">
+                      Seg a Sex: 8h às 18h | Sáb: 8h às 12h
+                    </code>
+                  </p>
                 </div>
-                <p className="text-[9px] leading-relaxed text-zinc-400">
-                  •{" "}
-                  <code className="font-mono text-zinc-300">
-                    Ter a Sáb: 9h às 18h
-                  </code>
-                  <br />•{" "}
-                  <code className="font-mono text-zinc-300">
-                    Seg a Sex: 8h às 18h | Sáb: 8h às 12h
-                  </code>
-                </p>
               </div>
             </div>
           </div>
+        </SecaoColapsavel>
 
-          {/* Share Message */}
-          <div className="space-y-4 border-t border-white/5 pt-5">
+        {/* ── Seção 2: mensagem de compartilhamento — nasce FECHADA (a seção
+            fecha desmonta o mockup pesado do WhatsApp); ao (re)abrir, o
+            editor é reconstruído do estado salvo (efeito `isMensagemOpen`). */}
+        <SecaoColapsavel
+          titulo="Mensagem de Compartilhamento de Produtos"
+          icone={Share2}
+          aberta={isMensagemOpen}
+          aoAlternar={setIsMensagemOpen}
+          comPendencia={temAlteracaoNaoSalva}
+        >
+          <div className="space-y-4">
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="ml-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 block">
-                  Mensagem de Compartilhamento de Produtos
-                </span>
+                <p className="ml-1 text-[9.5px] leading-snug text-zinc-500">
+                  Texto anexado quando um usuário compartilha um produto. O nome
+                  do produto, o preço e o link serão adicionados de acordo com
+                  os placeholders.
+                </p>
                 <span className="rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-purple-400">
                   Divulgação
                 </span>
               </div>
-              <p className="ml-1 text-[9.5px] leading-snug text-zinc-500">
-                Texto anexado quando um usuário compartilha um produto. O nome
-                do produto, o preço e o link serão adicionados de acordo com os
-                placeholders.
-              </p>
             </div>
 
             <div className="space-y-6">
@@ -988,7 +1098,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
               </div>
             </div>
           </div>
-        </div>
+        </SecaoColapsavel>
       </div>
 
       {/* Slide-Up Bottom Sheet for Presets.

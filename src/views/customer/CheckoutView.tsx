@@ -116,6 +116,22 @@ interface CheckoutFormValues {
   complement?: string;
 }
 
+// Ordem de tabulação do formulário. Usada para levar o foco ao PRIMEIRO campo
+// com erro quando o pedido é recusado por preenchimento (laudo de
+// acessibilidade 03/09, achado 1): o leitor de tela cai no campo já marcado
+// com `aria-invalid` e anuncia a mensagem ligada por `aria-describedby`.
+// `satisfies` quebra a compilação se um campo renomear e a lista envelhecer.
+const ORDEM_CAMPOS_FOCO = [
+  "name",
+  "whatsapp",
+  "cep",
+  "number",
+  "street",
+  "neighborhood",
+  "city",
+  "state",
+] as const satisfies readonly (keyof CheckoutFormValues)[];
+
 /**
  * Decide QUAL saída a tela oferece para a recusa que o banco deu no último
  * clique.
@@ -1294,6 +1310,16 @@ export function CheckoutView({
 
     if (!isFormValid) {
       travaDeEnvioRef.current.liberar();
+      // Laudo de acessibilidade 03/09, achado 1: o aviso genérico do toast
+      // não diz ONDE está o erro. Levar o foco ao primeiro campo inválido faz
+      // o leitor de tela anunciar o campo já marcado com `aria-invalid` e a
+      // mensagem específica dele, ligada por `aria-describedby`.
+      const primeiroErro = ORDEM_CAMPOS_FOCO.find(
+        (campo) => form.getFieldState(campo).invalid,
+      );
+      if (primeiroErro) {
+        form.setFocus(primeiroErro);
+      }
       toast.error(
         "Por favor, preencha todos os campos obrigatórios corretamente.",
       );
@@ -1316,11 +1342,14 @@ export function CheckoutView({
     // quem chama `handleSubmitEvent` por outro caminho. Mesmo motivo do
     // "endereço de entrega" acima.
     if (semFreteSelecionado) {
+      // FRETE V2 (frente B, 03/09): o flat_fee morreu na edge
+      // (calculate-shipping deixa de cotar taxa fixa) — o caso de "loja ainda
+      // configurando" é só ORIGEM AUSENTE, independente do provedor gravado.
+      // Antes a mensagem honesta exigia `provider === "flat_fee"`; com a taxa
+      // fixa morta essa condição nunca casaria, e a loja sem origem receberia
+      // o conselho errado de "voltar ao carrinho e calcular".
       toast.error(
-        semFreteSelecionado &&
-          ctxFreteIndefinido &&
-          config.shippingProvider === "flat_fee" &&
-          !config.originCep?.trim()
+        ctxFreteIndefinido && !config.originCep?.trim()
           ? "A loja ainda está configurando o frete. Fale com a loja para combinar a entrega."
           : "Escolha uma opção de frete no carrinho antes de finalizar o pedido.",
       );
@@ -1739,10 +1768,23 @@ export function CheckoutView({
                   autoComplete="name"
                   {...form.register("name")}
                   placeholder="Como devemos te chamar?"
+                  // Laudo de acessibilidade 03/09, achado 1: o campo errado
+                  // precisa ser MARCADO (`aria-invalid`) e LIGADO à mensagem
+                  // (`aria-describedby`) — texto vermelho sozinho o leitor de
+                  // tela não anuncia.
+                  aria-invalid={form.formState.errors.name ? true : undefined}
+                  aria-describedby={
+                    form.formState.errors.name
+                      ? "erro-checkout-name"
+                      : undefined
+                  }
                   className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                 />
                 {form.formState.errors.name && (
-                  <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                  <p
+                    id="erro-checkout-name"
+                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                  >
                     {form.formState.errors.name.message}
                   </p>
                 )}
@@ -1772,15 +1814,27 @@ export function CheckoutView({
                         onChange={(e) =>
                           field.onChange(formatWhatsApp(e.target.value))
                         }
+                        ref={field.ref}
                         placeholder="(00) 00000-0000"
                         maxLength={15}
+                        aria-invalid={
+                          form.formState.errors.whatsapp ? true : undefined
+                        }
+                        aria-describedby={
+                          form.formState.errors.whatsapp
+                            ? "erro-checkout-tel"
+                            : undefined
+                        }
                         className="w-full rounded-xl border-2 border-transparent bg-zinc-50 py-3 pl-12 pr-4 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                       />
                     )}
                   />
                 </div>
                 {form.formState.errors.whatsapp && (
-                  <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                  <p
+                    id="erro-checkout-tel"
+                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                  >
                     {form.formState.errors.whatsapp.message}
                   </p>
                 )}
@@ -1846,6 +1900,14 @@ export function CheckoutView({
                         {...form.register("cep")}
                         placeholder="00000-000"
                         disabled={isSearchingCep}
+                        aria-invalid={
+                          form.formState.errors.cep ? true : undefined
+                        }
+                        aria-describedby={
+                          form.formState.errors.cep
+                            ? "erro-guest-cep"
+                            : undefined
+                        }
                         className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                         onChange={async (e) => {
                           const { limpo, formatado } = formatarCep(
@@ -1877,7 +1939,10 @@ export function CheckoutView({
                       )}
                     </div>
                     {form.formState.errors.cep && (
-                      <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                      <p
+                        id="erro-guest-cep"
+                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                      >
                         {form.formState.errors.cep.message}
                       </p>
                     )}
@@ -1893,10 +1958,21 @@ export function CheckoutView({
                       id="guest-number"
                       {...form.register("number")}
                       placeholder="123"
+                      aria-invalid={
+                        form.formState.errors.number ? true : undefined
+                      }
+                      aria-describedby={
+                        form.formState.errors.number
+                          ? "erro-guest-number"
+                          : undefined
+                      }
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                     />
                     {form.formState.errors.number && (
-                      <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                      <p
+                        id="erro-guest-number"
+                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                      >
                         {form.formState.errors.number.message}
                       </p>
                     )}
@@ -1912,10 +1988,21 @@ export function CheckoutView({
                       id="guest-street"
                       {...form.register("street")}
                       placeholder="Nome da rua"
+                      aria-invalid={
+                        form.formState.errors.street ? true : undefined
+                      }
+                      aria-describedby={
+                        form.formState.errors.street
+                          ? "erro-guest-street"
+                          : undefined
+                      }
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                     />
                     {form.formState.errors.street && (
-                      <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                      <p
+                        id="erro-guest-street"
+                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                      >
                         {form.formState.errors.street.message}
                       </p>
                     )}
@@ -1931,10 +2018,21 @@ export function CheckoutView({
                       id="guest-neighborhood"
                       {...form.register("neighborhood")}
                       placeholder="Seu bairro"
+                      aria-invalid={
+                        form.formState.errors.neighborhood ? true : undefined
+                      }
+                      aria-describedby={
+                        form.formState.errors.neighborhood
+                          ? "erro-guest-neighborhood"
+                          : undefined
+                      }
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                     />
                     {form.formState.errors.neighborhood && (
-                      <p className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500">
+                      <p
+                        id="erro-guest-neighborhood"
+                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                      >
                         {form.formState.errors.neighborhood.message}
                       </p>
                     )}
@@ -1950,6 +2048,12 @@ export function CheckoutView({
                       id="guest-city"
                       {...form.register("city")}
                       placeholder="Cidade"
+                      // Sem mensagem renderizada para este campo, mas o erro
+                      // existe no schema (convidado): `aria-invalid` + foco
+                      // do handler anunciam o problema (laudo 03/09, achado 1).
+                      aria-invalid={
+                        form.formState.errors.city ? true : undefined
+                      }
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                     />
                   </div>
@@ -1966,6 +2070,9 @@ export function CheckoutView({
                       maxLength={2}
                       placeholder={
                         config.shippingCoverage === "national" ? "UF" : "MG"
+                      }
+                      aria-invalid={
+                        form.formState.errors.state ? true : undefined
                       }
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
                     />
@@ -2016,7 +2123,14 @@ export function CheckoutView({
             </div>
             <div className="p-4">
               {addressesLoading ? (
-                <div className="flex min-h-[112px] flex-col items-center justify-center py-8">
+                // Laudo de acessibilidade 03/09, achado 12: o carregamento
+                // dos endereços era silêncio para leitor de tela —
+                // role="status" + sr-only anunciam sem mudar o visual.
+                <div
+                  role="status"
+                  className="flex min-h-[112px] flex-col items-center justify-center py-8"
+                >
+                  <span className="sr-only">Carregando endereços</span>
                   <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-primary" />
                   <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                     Sincronizando endereços...
@@ -2067,7 +2181,15 @@ export function CheckoutView({
               Meio de Pagamento
             </span>
           </div>
-          <div className="grid grid-cols-1 gap-2.5 p-4">
+          {/* Laudo de acessibilidade 03/09, achado 3: as opções de pagamento
+              são uma escolha ÚNICA, mas nada anunciava qual estava marcada —
+              o "check" era só um desenho. `radiogroup` + `radio` com
+              `aria-checked` dá o estado ao leitor de tela. */}
+          <div
+            role="radiogroup"
+            aria-label="Meio de pagamento"
+            className="grid grid-cols-1 gap-2.5 p-4"
+          >
             {[
               ...(PAGAMENTO_ONLINE_LIGADO
                 ? [
@@ -2125,6 +2247,12 @@ export function CheckoutView({
               return (
                 <button
                   key={option.value}
+                  type="button"
+                  role="radio"
+                  // Fiel ao que se VÊ: opção bloqueada por falta de conta não
+                  // mostra seleção (a borda dela não usa `isSelected`), então
+                  // não anuncia seleção.
+                  aria-checked={isSelected && !bloqueadaPorFaltaDeConta}
                   onClick={() => {
                     if (bloqueadaPorFaltaDeConta) {
                       haptic.light();
@@ -2629,11 +2757,16 @@ export function CheckoutView({
                       // frete recusa, e sem este aviso o cliente só via um
                       // botão cinza sem saber que precisa voltar ao
                       // carrinho e calcular o frete.
-                      <p className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500">
+                      // Laudo de acessibilidade 03/09, achado 9: este aviso
+                      // RECUSA o pagamento — role="alert" fala na hora,
+                      // padrão da casa (SaidaDaRecusa.tsx:82).
+                      <p
+                        role="alert"
+                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                      >
                         <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                         {semFreteSelecionado &&
                         ctxFreteIndefinido &&
-                        config.shippingProvider === "flat_fee" &&
                         !config.originCep?.trim()
                           ? "A loja ainda está configurando o frete — fale com a loja para combinar a entrega"
                           : "Volte ao carrinho e calcule o frete para continuar"}

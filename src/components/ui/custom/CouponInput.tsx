@@ -44,6 +44,9 @@ export const CouponInput = memo(function CouponInput({
             sem mudar o visual discreto do X. */}
         <button
           onClick={onRemove}
+          // Laudo de acessibilidade 03/09, achado 2: o X era um "botão" sem
+          // nome — não se sabia que ele removia o cupom aplicado.
+          aria-label="Remover cupom"
           className="relative rounded-lg p-2 text-green-600 transition-colors after:absolute after:-inset-1.5 after:content-[''] hover:bg-green-100"
         >
           <X className="size-4" />
@@ -71,6 +74,10 @@ export const CouponInput = memo(function CouponInput({
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           placeholder="Cupom de desconto"
+          // Laudo de acessibilidade 03/09, achado 9: com erro, o campo se
+          // declara inválido e aponta a mensagem (id abaixo).
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "erro-cupom" : undefined}
           className="flex-1 bg-transparent text-sm focus:outline-none"
         />
         <button
@@ -82,7 +89,14 @@ export const CouponInput = memo(function CouponInput({
         </button>
       </div>
       {error && (
-        <p className="flex items-center gap-1 text-xs text-red-500">
+        // Laudo de acessibilidade 03/09, achado 9: a recusa do cupom era
+        // silenciosa para leitor de tela — role="alert" fala na hora, o
+        // mesmo tratamento da recusa do pedido (SaidaDaRecusa.tsx).
+        <p
+          id="erro-cupom"
+          role="alert"
+          className="flex items-center gap-1 text-xs text-red-500"
+        >
           <X className="size-3" />
           {error}
         </p>

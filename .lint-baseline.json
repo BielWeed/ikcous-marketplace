@@ -89,14 +89,20 @@
     "ADICIONOU 1 warning de eslint (detect-non-literal-fs-filename num",
     "existsSync com variavel, o padrao que os db-prove convivem com",
     "eslint-disable) — consertado no mesmo commit com o disable, devolvendo os",
-    "550. Baixado SO' DEPOIS do CI, como as duas quedas anteriores."
+    "550. Baixado SO' DEPOIS do CI, como as duas quedas anteriores.",
+    "",
+    "03/09/2026 — warnings de eslint de 550 para 523 e biome de 21 para 20.",
+    "Medido no CI, run 33785472791 (PR #424): 'eslint warnings 523 / teto 550 —",
+    "baixou -27' e 'biome errors 20 / teto 21 — baixou -1'. A queda provavelmente",
+    "veio da develop: o PR so tocou 3 arquivos de teste + formatter. Baixado",
+    "SO' DEPOIS do CI, como as quedas anteriores."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 550
+    "warnings": 523
   },
   "biome": {
-    "errors": 21,
+    "errors": 20,
     "warnings": 1
   }
 }

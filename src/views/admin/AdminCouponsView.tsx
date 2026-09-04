@@ -1,4 +1,5 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -281,19 +282,19 @@ export const AdminCouponsView = memo(function AdminCouponsView({
           <div className="flex items-center gap-4">
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="flex select-none items-center gap-2 text-xl font-black uppercase tracking-tight text-white">
-                  <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-                    <span className="italic text-white">Cupons</span>
-                  </span>
+                {/* Onda 3 da reforma visual (03/09): o título vivia com
+                    fórmula própria (text-xl) — agora é o AdminPageHeader; o
+                    botão de ajuda continua dentro da linha do título. */}
+                <AdminPageHeader titulo="Cupons">
                   <button
                     type="button"
                     onClick={() => setShowHelpModal(true)}
-                    className="flex size-7 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
                     title="Guia de Cupons e Ajuda"
                   >
-                    <HelpCircle className="size-3.5" />
+                    <HelpCircle className="size-4.5" />
                   </button>
-                </h1>
+                </AdminPageHeader>
               </div>
               <p className="mt-0.5 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-500">
                 Campanhas

@@ -778,12 +778,16 @@ export const ProductView = React.memo(function ProductView({
           <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-4 opacity-100 transition-opacity duration-300 hover-hover:opacity-0 hover-hover:group-hover:opacity-100">
             <button
               onClick={prevImage}
+              // Laudo de acessibilidade 03/09, achado 2: botões de ícone sem
+              // nome nenhum para o leitor de tela.
+              aria-label="Foto anterior"
               className="pointer-events-auto flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
             >
               <ChevronLeft className="size-4" />
             </button>
             <button
               onClick={nextImage}
+              aria-label="Próxima foto"
               className="pointer-events-auto flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
             >
               <ChevronRight className="size-4" />
@@ -798,6 +802,11 @@ export const ProductView = React.memo(function ProductView({
               <button
                 key={index}
                 onClick={() => setCurrentImageIndex(index)}
+                // Laudo de acessibilidade 03/09, achado 2: as bolinhas eram
+                // "botão, botão, botão" — agora dizem qual foto abrem e qual
+                // é a atual (`aria-current`).
+                aria-label={`Foto ${index + 1} de ${product.images?.length ?? 0}`}
+                aria-current={index === currentImageIndex ? "true" : undefined}
                 className={`h-1 rounded-full transition-all duration-500 ${
                   index === currentImageIndex
                     ? "w-6 bg-white"
@@ -815,6 +824,12 @@ export const ProductView = React.memo(function ProductView({
               e.stopPropagation();
               onToggleFavorite();
             }}
+            // Laudo de acessibilidade 03/09, achado 2: sem nome, favoritar
+            // era impossível por leitor de tela (o "Compartilhar" ao lado já
+            // tinha `aria-label` — este é o padrão da casa).
+            aria-label={
+              isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"
+            }
             className="flex size-9 items-center justify-center rounded-full bg-white/85 shadow-premium backdrop-blur-md transition-all hover:bg-white active:scale-95"
           >
             <Heart
@@ -979,6 +994,11 @@ export const ProductView = React.memo(function ProductView({
                         <button
                           key={v.id}
                           type="button"
+                          // Laudo de acessibilidade 03/09, achado 3: a
+                          // variante escolhida só se distinguia pela cor da
+                          // borda — `aria-pressed` anuncia o estado (padrão do
+                          // CategoryFilter).
+                          aria-pressed={isSelected}
                           onClick={() =>
                             setSelectedVariants((prev) => ({
                               ...prev,

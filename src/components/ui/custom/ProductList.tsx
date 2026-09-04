@@ -126,7 +126,16 @@ export const ProductList = React.memo(function ProductList({
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+      // Laudo de acessibilidade 03/09, achado 12 (ajuste do revisor): UMA
+      // única região de status para o grid inteiro — o skeleton em si nunca
+      // renderiza sozinho (a vitrine monta 8 cópias, produto 4, favoritos
+      // 4) e 8 regiões aria-live idênticas enfileirariam falas repetidas
+      // no leitor de tela (anti-padrão APG). Visual intacto.
+      <div
+        role="status"
+        className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4"
+      >
+        <span className="sr-only">Carregando produtos</span>
         {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
           <ProductCardSkeleton key={i} />
         ))}
