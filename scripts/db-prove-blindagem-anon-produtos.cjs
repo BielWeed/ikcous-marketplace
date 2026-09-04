@@ -306,7 +306,13 @@ async function main() {
     const restouAdmin = ESCRITA_ANON.filter(
       (p) => antes.vw_produtos_admin.anon[p],
     );
-    const restouPublica = ["TRUNCATE", "TRIGGER", "MAINTAIN"].filter(
+    // Os SEIS privilégios (laudo 20260904-1251, §2.1): o corpo da migration
+    // revoga 6 na view pública desde o 9558bad — o portão de pré-condição
+    // precisa acompanhar, senão num clone com a view renascida o --depois
+    // passa o portão, o corpo revoga de verdade e A4 diagnostica
+    // "idempotência quebrada" quando o fato é "banco divergiu" (exit 1
+    // onde o certo era exit 2 INCONCLUSIVO).
+    const restouPublica = ESCRITA_ANON.filter(
       (p) =>
         antes.vw_produtos_public.anon[p] ||
         antes.vw_produtos_public.authenticated[p],
@@ -595,47 +601,48 @@ async function main() {
   );
 
   // S5: CONTROLE POSITIVO — admin de verdade cadastra pela view e a linha é
-  // desfeita no savepoint. Sem admin, ABORTA como INCONCLUSIVO: verde sem o
-  // único controle positivo é vácuo — e "clone recém-provisionado sem
-  // lojista" é exatamente a população-alvo desta frente (laudo 3ª rodada, P2).
-  // O sujeito é escolhido pela FONTE que is_admin() LÊ (laudo 20260904-1111,
-  // §2): a função decide por app_metadata do claim e por
-  // auth.users.raw_app_meta_data — profiles.role não entra na fechadura, e
-  // escolher por profiles faria S5 e S4 devolver a MESMA mensagem num clone
-  // dessincronizado (padrão da casa: db-prove-pedidos-em-aberto.cjs).
+  // desfeita no savepoint. O sujeito é escolhido pela FONTE que is_admin()
+  // LÊ (laudo 20260904-1111, §2): a função decide por app_metadata do claim
+  // e por auth.users.raw_app_meta_data — profiles.role não entra na
+  // fechadura (padrão da casa: db-prove-pedidos-em-aberto.cjs).
+  // Sem admin, S5 vira NÃO APLICÁVEL e a saída é INCONCLUSIVA — mas o
+  // portão RESPEITA vermelho (laudo 20260904-1251, §2.2): S7 e S6 sempre
+  // rodam antes do fim, e afirmativas já caídas continuam contando (exit 1),
+  // porque "INCONCLUSIVO = nada foi simulado" precisa ser verdade.
+  let semAdmin = false;
   const admin = await client.query(
     `SELECT u.id::text FROM auth.users u
      WHERE coalesce(u.raw_app_meta_data ->> 'role', '') = 'admin'
      ORDER BY u.created_at LIMIT 1`,
   );
   if (admin.rows.length === 0) {
-    await client.query("ROLLBACK");
-    await client.end();
+    semAdmin = true;
     console.log(
-      "\nINCONCLUSIVO: nenhum auth.users com raw_app_meta_data.role='admin' (a fonte que is_admin() lê) — o controle positivo (S5) não pode rodar, e verde sem ele é vácuo.",
+      "  [N/A  ] S5: NÃO APLICÁVEL — nenhum auth.users com raw_app_meta_data.role='admin' (a fonte que is_admin() lê); clone sem lojista. A suíte segue: S7 e S6 ainda medem a leitura anônima.",
     );
-    process.exit(2);
   }
-  const sub = admin.rows[0].id;
-  const claims = JSON.stringify({
-    sub,
-    role: "authenticated",
-    app_metadata: { role: "admin" },
-  });
-  const cadastroAdmin = await sondar(
-    client,
-    "authenticated",
-    INSERT_VIEW,
-    claims,
-    true,
-  );
-  afirmar(
-    `S5 CADASTRO COM ADMIN (sub=${sub.slice(0, 8)}…): INSERT na view FUNCIONA — produto cadastrado e desfeito no savepoint`,
-    cadastroAdmin.ok === true,
-    cadastroAdmin.ok
-      ? `${cadastroAdmin.linhas} linha(s) inserida(s) e desfeita(s)`
-      : cadastroAdmin.erro,
-  );
+  if (!semAdmin) {
+    const sub = admin.rows[0].id;
+    const claims = JSON.stringify({
+      sub,
+      role: "authenticated",
+      app_metadata: { role: "admin" },
+    });
+    const cadastroAdmin = await sondar(
+      client,
+      "authenticated",
+      INSERT_VIEW,
+      claims,
+      true,
+    );
+    afirmar(
+      `S5 CADASTRO COM ADMIN (sub=${sub.slice(0, 8)}…): INSERT na view FUNCIONA — produto cadastrado e desfeito no savepoint`,
+      cadastroAdmin.ok === true,
+      cadastroAdmin.ok
+        ? `${cadastroAdmin.linhas} linha(s) inserida(s) e desfeita(s)`
+        : cadastroAdmin.erro,
+    );
+  }
 
   // S7: o que anon LÊ na view admin (T1 do laudo 3ª rodada — medição que
   // faltava: a view não é invoker e a única fechadura do SELECT de anon é o
@@ -713,8 +720,16 @@ async function main() {
   );
 
   await client.end();
+  // INCONCLUSIVO (exit 2) só quando é verdade: nenhuma afirmativa caiu E o
+  // único furo é a falta de admin (S5 N/A). Vermelho continua vermelho.
+  if (semAdmin && falhas === 0) {
+    console.log(
+      "\nINCONCLUSIVO: S5 (controle positivo) não rodou por falta de admin no banco — com o resto verde, a leitura anônima foi medida (S7/S6), mas o cadastro por admin ficou sem testemunha.",
+    );
+    process.exit(2);
+  }
   console.log(
-    `\n${falhas === 0 ? "TODAS AS AFIRMATIVAS PASSARAM" : `${falhas} AFIRMATIVA(S) CAÍRAM`}`,
+    `\n${falhas === 0 ? `TODAS AS AFIRMATIVAS PASSARAM${MODO_DEPOIS ? " (--depois; exercício do rollback pulado neste modo)" : ""}` : `${falhas} AFIRMATIVA(S) CAÍRAM`}`,
   );
   process.exit(falhas === 0 ? 0 : 1);
 }
