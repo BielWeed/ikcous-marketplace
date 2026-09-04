@@ -181,7 +181,6 @@ import { useNetworkAdaptive } from "@/hooks/useNetworkAdaptive";
 import { usePredictiveNavigation } from "@/hooks/usePredictiveNavigation";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useSwipeBack } from "@/hooks/useSwipeBack";
-import { useUpdateCheck } from "@/hooks/useUpdateCheck";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { useWebVitals } from "@/hooks/useWebVitals";
 
@@ -299,13 +298,11 @@ function AdminAccessDenied({
   return <AdminRouteLoading />;
 }
 import { PushNotificationBanner } from "@/components/pwa/PushNotificationBanner";
-import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { corPrimariaEfetiva } from "@/config/cor-da-loja";
 import { CartProvider } from "@/contexts/CartContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { StoreProvider, useStore } from "@/contexts/StoreContext";
 import { useCartActions, useCartState } from "@/hooks/useCart";
-import { useRealtimeUpdate } from "@/hooks/useRealtimeUpdate";
 import type { Product, SortOption, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 
@@ -326,7 +323,6 @@ export default function App() {
       <CartProvider>
         <FavoritesProvider>
           <AppContent />
-          <PWAUpdateManager />
         </FavoritesProvider>
       </CartProvider>
     </StoreProvider>
@@ -2791,33 +2787,13 @@ const AppContent = () => {
         </AlertDialogContent>
       </AlertDialog>
 
+      <PWAUpdateManager currentView={currentView} />
       <Toaster />
     </div>
   );
 };
 
-function PWAUpdateManager() {
-  const { user } = useAuth();
-  const { checkUpdate, updateAvailable, newVersion, performNuclearPurge } =
-    useUpdateCheck();
-
-  const handleUpdate = useCallback(
-    (newVer?: string) => {
-      console.log(
-        `[RealtimeUpdate] Update ping detected (${newVer || "no-ver"}). Triggering deep checkUpdate...`,
-      );
-      checkUpdate(newVer);
-    },
-    [checkUpdate],
-  );
-
-  useRealtimeUpdate(handleUpdate, user?.id);
-
-  return (
-    <UpdateNotification
-      show={updateAvailable}
-      onUpdate={() => performNuclearPurge(true)}
-      newVersion={newVersion}
-    />
-  );
-}
+// O gerente do aviso de atualização (useUpdateCheck + realtime + o modal)
+// vive em @/components/pwa/PWAUpdateGate: desde 04/09/2026 ele recebe a view
+// atual e segura o aviso nas telas de compra (cart/checkout/address-form).
+import { PWAUpdateManager } from "@/components/pwa/PWAUpdateGate";
