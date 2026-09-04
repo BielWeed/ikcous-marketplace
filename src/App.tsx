@@ -2600,7 +2600,7 @@ const AppContent = () => {
   // renderView has been extracted to AdminArea.tsx to ensure layouts are only parsed post-verification.
 
   return (
-    <div className="flex size-full min-h-[100dvh] h-[100dvh] flex-col overflow-hidden bg-background text-foreground">
+    <div className="flex size-full h-dvh min-h-dvh flex-col overflow-hidden bg-background text-foreground">
       <AppBadgeSynchronizer />
       {/* Barra de rota SOB DEMANDA: render condicional para o Suspense não
           pedir o chunk das animações no boot por conta própria (F1). */}
@@ -2610,7 +2610,7 @@ const AppContent = () => {
         </React.Suspense>
       )}
       {!currentView.startsWith("admin") && (
-        <div className="gpu-accelerated flex-shrink-0 relative z-[100]">
+        <div className="gpu-accelerated relative z-[100] flex-shrink-0">
           {/* Fallback com a GEOMETRIA do header (safe-area + 52px + borda):
               sem isto o <main> sobe ~53px e volta quando o chunk chega —
               salto de layout no topo, onde o olho está (achado b2 do laudo
@@ -2618,7 +2618,7 @@ const AppContent = () => {
           <React.Suspense
             fallback={
               <header
-                className="relative top-0 left-0 right-0 border-b border-transparent bg-white flex-shrink-0"
+                className="relative inset-x-0 top-0 flex-shrink-0 border-b border-transparent bg-white"
                 style={{ paddingTop: "var(--safe-area-top)" }}
               >
                 <div className="h-[var(--header-height)]" />
