@@ -31,6 +31,12 @@ const CONTEUDOS = import.meta.glob<string>(
   { query: "?raw", import: "default", eager: true },
 );
 
+// Map em vez de indexar o objeto do glob direto: `CONTEUDOS[chave]` com
+// variável dispara security/detect-object-injection, e a catraca de lint
+// deste projeto reprova qualquer aviso novo (mesma decisão do dublê de
+// localStorage dos outros testes da pasta).
+const ARQUIVOS = new Map(Object.entries(CONTEUDOS));
+
 const ENTRY = "/src/main.tsx";
 const APP = "/src/App.tsx";
 const MODULO_DAS_ANIMACOES = "/src/components/layouts/AppMotionFallbacks.tsx";
@@ -45,7 +51,7 @@ function resolverEspecificador(deOnde: string, spec: string): string | null {
   const limpo = (p: string) => p.replaceAll("/./", "/");
   for (const ext of EXTENSOES) {
     for (const candidato of [limpo(base + ext), limpo(`${base}/index${ext}`)]) {
-      if (candidato in CONTEUDOS) return candidato;
+      if (ARQUIVOS.has(candidato)) return candidato;
     }
   }
   return null;
@@ -76,7 +82,7 @@ function grafoEstaticoAPartirDoEntry(): {
     const arquivo = fila.shift() as string;
     if (vistos.has(arquivo)) continue;
     vistos.add(arquivo);
-    const conteudo = CONTEUDOS[arquivo];
+    const conteudo = ARQUIVOS.get(arquivo) ?? "";
     for (const spec of importsEstaticos(conteudo)) {
       const externo = !spec.startsWith(".") && !spec.startsWith("@/");
       if (externo) continue;
@@ -91,13 +97,16 @@ function grafoEstaticoAPartirDoEntry(): {
   return { arquivos: [...vistos], semResolucao };
 }
 
+// Regex lineares (sem grupo opcional quantificado): a forma com `(?:...)`
+// quantificado disparava security/detect-unsafe-regex — e a catraca de lint
+// deste projeto reprova qualquer aviso novo.
 const importaFramerMotion = (conteudo: string) =>
-  /from\s*["']framer-motion(?:\/[^"']*)?["']/.test(conteudo) ||
-  /import\s*["']framer-motion(?:\/[^"']*)?["']/.test(conteudo);
+  /from\s*["']framer-motion[^"']*["']/.test(conteudo) ||
+  /import\s*["']framer-motion[^"']*["']/.test(conteudo);
 
 describe("perf: o primeiro paint da loja não baixa framer-motion", () => {
   it("o App.tsx não declara import estático de framer-motion", () => {
-    expect(importaFramerMotion(CONTEUDOS[APP])).toBe(false);
+    expect(importaFramerMotion(ARQUIVOS.get(APP) ?? "")).toBe(false);
   });
 
   it("nenhum módulo do grafo estático do entry importa framer-motion", () => {
@@ -106,14 +115,15 @@ describe("perf: o primeiro paint da loja não baixa framer-motion", () => {
     // suíte ficaria cega (entry errado, tudo verde por vacuidade).
     expect(arquivos, "o grafo do entry não alcançou o App.tsx").toContain(APP);
     const infratores = arquivos
-      .filter((arquivo) => importaFramerMotion(CONTEUDOS[arquivo]))
+      .filter((arquivo) => importaFramerMotion(ARQUIVOS.get(arquivo) ?? ""))
       .map((arquivo) => arquivo.slice(1));
     expect(
       infratores,
-      `Estes módulos estão no caminho ESTÁTICO do entry e puxam ` +
-        `framer-motion para o primeiro paint: ${infratores.join(", ")}. ` +
-        `Importe-os por React.lazy (ou mova o uso para um módulo lazy) — ` +
-        `veja o cabeçalho de src/App.tsx.`,
+      "Estes módulos estão no caminho ESTÁTICO do entry e puxam " +
+        "framer-motion para o primeiro paint: " +
+        infratores.join(", ") +
+        ". Importe-os por React.lazy (ou mova o uso para um módulo lazy) — " +
+        "veja o cabeçalho de src/App.tsx.",
     ).toEqual([]);
     // Se um import parar de resolver, a caminhada fica cega sem ninguém
     // perceber — os não resolvidos do entry são pacote externo (fora do
@@ -122,13 +132,13 @@ describe("perf: o primeiro paint da loja não baixa framer-motion", () => {
   });
 
   it("a animação não morreu: o App carrega as animações por lazy", () => {
-    const conteudo = CONTEUDOS[APP];
+    const conteudo = ARQUIVOS.get(APP) ?? "";
     expect(conteudo).toContain(
       'import("@/components/layouts/AppMotionFallbacks")',
     );
     // E o módulo das animações é quem detém o import estático — com os
     // mesmos três usos que o App tinha (shells + barra de rota).
-    const modulo = CONTEUDOS[MODULO_DAS_ANIMACOES];
+    const modulo = ARQUIVOS.get(MODULO_DAS_ANIMACOES) ?? "";
     expect(importaFramerMotion(modulo)).toBe(true);
     for (const exportacao of [
       "MainTabsMotionShell",
@@ -140,25 +150,26 @@ describe("perf: o primeiro paint da loja não baixa framer-motion", () => {
   });
 
   it("os componentes de chrome que usam framer-motion são lazy no App", () => {
-    const conteudo = CONTEUDOS[APP];
-    // PWAUpdateManager importa UpdateNotification (framer-motion) — o
-    // caminho do aviso de update também é lazy.
-    for (const modulo of [
-      "Header",
-      "BottomNav",
-      "CartReminder",
-      "PushNotificationBanner",
-      "PWAUpdateGate",
-    ]) {
-      const dinamico = new RegExp(`import\\("@/[^"]*${modulo}"\\)`);
+    const conteudo = ARQUIVOS.get(APP) ?? "";
+    // Caminho EXATO de cada um (mais forte que prefixo): PWAUpdateManager
+    // importa UpdateNotification (framer-motion) — o caminho do aviso de
+    // update também é lazy. String pura com includes: `new RegExp` com
+    // variável dispara security/detect-non-literal-regexp.
+    const CAMINHOS = [
+      ["Header", "@/components/ui/custom/Header"],
+      ["BottomNav", "@/components/ui/custom/BottomNav"],
+      ["CartReminder", "@/components/ui/custom/CartReminder"],
+      ["PushNotificationBanner", "@/components/pwa/PushNotificationBanner"],
+      ["PWAUpdateGate", "@/components/pwa/PWAUpdateGate"],
+    ] as const;
+    for (const [nome, caminho] of CAMINHOS) {
       expect(
-        dinamico.test(conteudo),
-        `${modulo} precisa ser carregado por import() dinâmico no App (ele usa framer-motion).`,
+        conteudo.includes(`import("${caminho}")`),
+        `${nome} precisa ser carregado por import() dinâmico no App (ele usa framer-motion).`,
       ).toBe(true);
-      const estatico = new RegExp(`from "@/[^"]*${modulo}"`);
       expect(
-        estatico.test(conteudo),
-        `${modulo} voltou a ser importado estaticamente no App (ele usa framer-motion).`,
+        conteudo.includes(`from "${caminho}"`),
+        `${nome} voltou a ser importado estaticamente no App (ele usa framer-motion).`,
       ).toBe(false);
     }
   });
