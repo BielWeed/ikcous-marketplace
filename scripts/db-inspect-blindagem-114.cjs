@@ -217,7 +217,7 @@ async function main() {
       chamadasDiretas.length === 0 ? " ÓRFÃ-de-chamada-direta" : "";
     // ACL de EXECUTE (grantee vazio no proacl = PUBLIC):
     const acl = await client.query(
-      `SELECT coalesce(g.grantee::regrole::text,'PUBLIC') AS grantee
+      `SELECT coalesce(pg_get_userbyid(nullif(g.grantee, 0)), 'PUBLIC') AS grantee
        FROM pg_proc p
        JOIN pg_namespace n ON n.oid = p.pronamespace
        CROSS JOIN LATERAL aclexplode(p.proacl) g(grantor, grantee, privilege_type, is_grantable)
@@ -234,7 +234,7 @@ async function main() {
     );
     if (f.config) console.log(`  config: ${f.config}`);
     console.log(
-      `  EXECUTE: ${executores.join(", ") || "(nenhum explícito — default do owner)"}`,
+      `  EXECUTE: ${executores.join(", ") || "(proacl NULL — default do Postgres: PUBLIC TEM EXECUTE)"}`,
     );
     if (chamadasDiretas.length > 0) {
       console.log(`  .rpc() (${chamadasDiretas.length}):`);

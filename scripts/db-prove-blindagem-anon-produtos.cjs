@@ -27,7 +27,10 @@
  *         MAINTAIN (resíduo da leva de 20/08);
  *     A3 controles: PUBLIC sem INSERT/MAINTAIN na tabela; vizinho intocado
  *         (anon mantém REFERENCES); sobreviventes (service_role mantém tudo;
- *         postgres dono intocado); anon sem SELECT na tabela (como hoje).
+ *         service_role mantém INSERT na tabela — o único sobrevivente medido;
+ *         postgres é o DONO dos três objetos e dono não perde por REVOKE de
+ *         papel, mas a prova NÃO o mede: a promessa de dono vem da leitura do
+ *         catálogo no inspect, não daqui); anon sem SELECT na tabela (hoje).
  *   TRAVA DE ESTADO (o DO $$ do próprio arquivo, extraído do disco):
  *     A4 passa no estado blindado E EXPLODE na inversão de cada um dos 3
  *     disjuntos-chave (INSERT→anon; INSERT→PUBLIC; MAINTAIN→anon), cada
@@ -366,11 +369,23 @@ async function main() {
   await client.query(trava);
 
   const depois = await fotografar(client);
-  afirmar(
-    "A4: a trava DO $$ do arquivo PASSOU ao rodar o arquivo inteiro na tx (explodir = exit 1 no catch)",
-    !fotosIguais(depois, antes), // e o estado MUDOU mesmo (não é vermelho-vácuo)
-    "estado mudou em relação à entrada",
-  );
+  // O anti-vácuo TEM DIREÇÕES OPOSTAS nos dois modos (laudo 20260904-1111,
+  // bloqueio): no padrão, provar que o arquivo MUDOU algo; no --depois, o
+  // arquivo é comprovadamente no-op num banco já blindado — e a igualdade
+  // das fotos é a própria propriedade a provar (idempotência).
+  if (MODO_DEPOIS) {
+    afirmar(
+      "A4: no estado já blindado, o arquivo inteiro é NO-OP (fotos antes==depois: a idempotência que o cabeçalho promete; a trava passou sem explodir)",
+      fotosIguais(depois, antes),
+      "arquivo idempotente no estado pós-migration",
+    );
+  } else {
+    afirmar(
+      "A4: a trava DO $$ do arquivo PASSOU ao rodar o arquivo inteiro na tx (explodir = exit 1 no catch)",
+      !fotosIguais(depois, antes), // e o estado MUDOU mesmo (não é vermelho-vácuo)
+      "estado mudou em relação à entrada",
+    );
+  }
   imprimirFoto("DEPOIS (na tx)", depois);
 
   titulo("2. Afirmativas de catálogo (critério #141 + views)");
@@ -583,19 +598,30 @@ async function main() {
   // desfeita no savepoint. Sem admin, ABORTA como INCONCLUSIVO: verde sem o
   // único controle positivo é vácuo — e "clone recém-provisionado sem
   // lojista" é exatamente a população-alvo desta frente (laudo 3ª rodada, P2).
+  // O sujeito é escolhido pela FONTE que is_admin() LÊ (laudo 20260904-1111,
+  // §2): a função decide por app_metadata do claim e por
+  // auth.users.raw_app_meta_data — profiles.role não entra na fechadura, e
+  // escolher por profiles faria S5 e S4 devolver a MESMA mensagem num clone
+  // dessincronizado (padrão da casa: db-prove-pedidos-em-aberto.cjs).
   const admin = await client.query(
-    `SELECT p.id::text FROM profiles p WHERE p.role='admin' ORDER BY p.created_at LIMIT 1`,
+    `SELECT u.id::text FROM auth.users u
+     WHERE coalesce(u.raw_app_meta_data ->> 'role', '') = 'admin'
+     ORDER BY u.created_at LIMIT 1`,
   );
   if (admin.rows.length === 0) {
     await client.query("ROLLBACK");
     await client.end();
     console.log(
-      "\nINCONCLUSIVO: nenhum profiles.role='admin' neste banco — o controle positivo (S5) não pode rodar, e verde sem ele é vácuo.",
+      "\nINCONCLUSIVO: nenhum auth.users com raw_app_meta_data.role='admin' (a fonte que is_admin() lê) — o controle positivo (S5) não pode rodar, e verde sem ele é vácuo.",
     );
     process.exit(2);
   }
   const sub = admin.rows[0].id;
-  const claims = JSON.stringify({ sub, role: "authenticated" });
+  const claims = JSON.stringify({
+    sub,
+    role: "authenticated",
+    app_metadata: { role: "admin" },
+  });
   const cadastroAdmin = await sondar(
     client,
     "authenticated",
@@ -622,9 +648,10 @@ async function main() {
     true,
   );
   afirmar(
-    "S7 LEITURA da view admin por anon: 0 linha(s) (o WHERE is_admin() filtra) ou barrado",
-    !leituraAnonViewAdmin.ok ||
-      (leituraAnonViewAdmin.ok && leituraAnonViewAdmin.linhas === 0),
+    'S7 LEITURA da view admin por anon: 0 linha(s) — mensagem PRENDIDA: conta executada com 0 linhas, ou "permission denied" (qualquer outro erro NÃO conta; laudo 20260904-1111, ressalva 7)',
+    (leituraAnonViewAdmin.ok && leituraAnonViewAdmin.linhas === 0) ||
+      (!leituraAnonViewAdmin.ok &&
+        /permission denied/i.test(leituraAnonViewAdmin.erro)),
     leituraAnonViewAdmin.ok
       ? `${leituraAnonViewAdmin.linhas} linha(s)`
       : leituraAnonViewAdmin.erro,
@@ -644,28 +671,37 @@ async function main() {
   );
 
   // ---------- EXERCÍCIO DO ROLLBACK (laudo 3ª rodada, P5) ----------------------
-  // O arquivo de rollback também é texto que ninguém exercitava: dentro da
-  // MESMA tx, executa-se o rollback do disco em cima do estado blindado e o
-  // resultado tem que ser FOTOGRAFICAMENTE a entrada de novo.
-  titulo("5. O ROLLBACK do disco roda na tx e restaura a entrada");
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo versionado no repo
-  const rollbackSql = fs.readFileSync(
-    path.join(
-      PROJECT_ROOT,
-      "supabase/migrations/rollback-manual-20261090000000_anon_nao_nasce_com_poder_de_escrever_em_produtos.sql",
-    ),
-    "utf8",
-  );
-  await client.query(rollbackSql);
-  const aposRollbackArquivo = await fotografar(client);
-  afirmar(
-    "P5: o ARQUIVO de rollback executado devolve o ACL à fotografia de entrada",
-    fotosIguais(aposRollbackArquivo, antes),
-  );
-  // Re-aplica a migration (para o ROLLBACK final da tx desfazer um estado
-  // consistente e a afirmativa final medir o que espera).
-  await client.query(corpo);
-  await client.query(trava);
+  // SÓ NO MODO PADRÃO (laudo 20260904-1111, bloqueio): no --depois a
+  // migration foi no-op e o rollback reconstruiria o estado PRÉ-migration —
+  // a comparação contra a entrada teria expectativa oposta; pior, a seção
+  // executaria GRANTs de reabertura contra o banco vivo (desfeitos no fim,
+  // mas alongando a janela de lock sem propósito). A guarda do rollback
+  // também abortaria? Não: no estado blindado ela passa e os GRANTs rodam.
+  if (!MODO_DEPOIS) {
+    titulo("5. O ROLLBACK do disco roda na tx e restaura a entrada");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo versionado no repo
+    const rollbackSql = fs.readFileSync(
+      path.join(
+        PROJECT_ROOT,
+        "supabase/migrations/rollback-manual-20261090000000_anon_nao_nasce_com_poder_de_escrever_em_produtos.sql",
+      ),
+      "utf8",
+    );
+    await client.query(rollbackSql);
+    const aposRollbackArquivo = await fotografar(client);
+    afirmar(
+      "P5: o ARQUIVO de rollback executado devolve o ACL à fotografia de entrada",
+      fotosIguais(aposRollbackArquivo, antes),
+    );
+    // Re-aplica a migration (para o ROLLBACK final da tx desfazer um estado
+    // consistente e a afirmativa final medir o que espera).
+    await client.query(corpo);
+    await client.query(trava);
+  } else {
+    console.log(
+      "\n=== 5. Exercício do rollback: NÃO RODA no modo --depois (a migration foi no-op; rodar o rollback reconstruiria o pré-migration e executaria GRANTs de reabertura contra o vivo) ===",
+    );
+  }
 
   // ---------- ROLLBACK ---------------------------------------------------------
   titulo("6. ROLLBACK — nada saiu gravado");

@@ -11,9 +11,10 @@
 --     MAINTAIN, REFERENCES, TRIGGER, TRUNCATE, UPDATE (grantor=postgres).
 --   * VIEW vw_produtos_admin: anon carrega INSERT, UPDATE, DELETE, TRUNCATE,
 --     TRIGGER, MAINTAIN — o MESMO pacote que a view irmã vw_produtos_public
---     tinha em 20/08 e que a migration 20260821000100 revogou; a view de
---     admin ficou fora daquela correção (verificada: nenhuma das 4 migrations
---     que citam vw_produtos_admin a revoga). A view não é security_invoker,
+--     tinha em 20/08. A 20260821000100 revogou 3 dos 6 (INSERT, UPDATE,
+--     DELETE — de anon E de authenticated) SÓ na irmã pública; a view de
+--     admin ficou fora daquela correção inteira (verificada: nenhuma das 4
+--     migrations que citam vw_produtos_admin a revoga). A view não é security_invoker,
 --     roda com o crachá do dono — e o dono é isento do RLS da tabela
 --     (relforcerowsecurity=false, documentado na própria 20260821000100).
 --     A única fechadura é o WHERE is_admin() com check_option=cascaded:
@@ -117,17 +118,22 @@ REVOKE TRUNCATE, TRIGGER, MAINTAIN
   ON public.vw_produtos_admin FROM authenticated;
 
 -- 3. VIEW vw_produtos_public (resíduo da mesma leva) ---------------------------
-REVOKE TRUNCATE, TRIGGER, MAINTAIN
+-- O INSERT/UPDATE/DELETE entra também (ressalva 2 do laudo 20260904-1111):
+-- hoje a 20260821000100 já os tirou — é no-op no molde — mas a trava do
+-- bloco 4 EXIGE essa ausência, e ela não pode depender de outro arquivo:
+-- se um DROP+CREATE da view fizer o pacote renascer, ESTE arquivo tem que
+-- ser autossuficiente para consertar o que ele mesmo exige.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER, MAINTAIN
   ON public.vw_produtos_public FROM anon;
-REVOKE TRUNCATE, TRIGGER, MAINTAIN
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER, MAINTAIN
   ON public.vw_produtos_public FROM authenticated;
 
 -- 4. Trava de estado final: varre o QUADRO INTEIRO que esta migration mexe
--- (3 objetos x 2 papéis x 6 privilégios = 24 triplas) e explode se SOBRAR
--- qualquer célula de escrita/manutenção fora das exceções legítimas (o
--- INSERT/UPDATE/DELETE de authenticated, que o painel usa; SELECT e
--- REFERENCES, que esta migration não toca). Cobertura 24/24 — não uma lista
--- de disjuntos que envelhece mal. INSERT/UPDATE também conferidos por
+-- (3 objetos x 2 papéis x 6 privilégios = 36 células varridas) e explode se
+-- SOBRAR qualquer célula de escrita/manutenção fora das exceções legítimas
+-- (o INSERT/UPDATE/DELETE de authenticated em produtos e na view admin, que
+-- o painel usa: 6 células isentas — o quadro afere as outras 30). Não é uma
+-- lista de disjuntos que envelhece mal: é o produto cartesiano inteiro. INSERT/UPDATE também conferidos por
 -- COLUNA (a cicatriz da 20260821000100: grant de coluna escapa do
 -- has_table_privilege). IMPORTANTE, dito com precisão: isto valida o
 -- INSTANTE em que este arquivo roda — um DO block executa uma vez, não

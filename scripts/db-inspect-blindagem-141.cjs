@@ -63,7 +63,7 @@ async function main() {
 
   titulo("1. Privilégios de TABELA em public.produtos (relacl)");
   const tabela = await client.query(`
-    SELECT coalesce(g.grantee::regrole::text,'PUBLIC') AS grantee,
+    SELECT coalesce(pg_get_userbyid(nullif(g.grantee, 0)), 'PUBLIC') AS grantee,
            g.privilege_type AS priv
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -83,7 +83,7 @@ async function main() {
   titulo("2. Privilégios de COLUNA em public.produtos (attacl)");
   const colunas = await client.query(`
     SELECT a.attname AS coluna,
-           coalesce(g.grantee::regrole::text,'PUBLIC') AS grantee,
+           coalesce(pg_get_userbyid(nullif(g.grantee, 0)), 'PUBLIC') AS grantee,
            g.privilege_type AS priv
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
