@@ -266,3 +266,37 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Verifica os links relativos dos .md
         run: npm run lint:links
+
+  objetos:
+    name: Código x banco (objetos usados)
+    runs-on: ubuntu-latest
+    # Detector da BANCO-080 (#139): todo nome passado para .from()/.rpc()/
+    # .storage.from() em src/ e supabase/functions/ conferido contra o
+    # catálogo REAL do banco (pg_class, pg_proc, storage.buckets).
+    #
+    # Nasceu do caso de 05/08/2026: vw_produtos_admin não existia em nenhum
+    # schema enquanto o front a chamava em sete lugares — cadastrar produto
+    # quebrado em produção, escondido pelo fallback de StoreContext. O ledger
+    # de migrations não pegaria: nunca houve migration criando a view.
+    #
+    # Distingue AUSENTE (o banco não tem) de INALCANÇÁVEL (tem, mas nenhum
+    # papel da origem alcança) — defeitos de correção diferente.
+    #
+    # PRECONDIÇÃO: o secret DATABASE_URL do repo (leitura de catálogo; mesmo
+    # valor do .env da máquina). Enquanto não existir, o script sai 0 com um
+    # ::warning:: visível no log — detector inerte é dívida declarada, não
+    # vermelho que o time aprende a ignorar (regra deste arquivo). A lógica
+    # em si já é coberta sem banco por tests/db_check_objetos_do_codigo_test.ts
+    # (caso da view sumida semeado), que roda no job Testes.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # Só pelo `pg`: o detector em si usa node:fs/node:path.
+      - run: npm ci
+      - name: Confere objetos usados pelo código contra o catálogo do banco
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scripts/db-check-objetos-do-codigo.mjs
