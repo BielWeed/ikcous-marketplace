@@ -69,6 +69,11 @@ verify_jwt = true
 [functions."calculate-shipping"]
 verify_jwt = true
 
+# Onda 3 (etiqueta/rastreio): chamada SÓ pelo painel admin com sessao — o
+# verify_jwt barra trafego de fora; o papel de admin a funcao confere por fora.
+[functions."melhor-envio-etiqueta"]
+verify_jwt = true
+
 [functions."send-push"]
 verify_jwt = true
 
